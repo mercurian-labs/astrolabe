@@ -8,10 +8,13 @@
         {
           "glass": true,
           "image-name": "text.svg",
-          "name": "Text",
+          "name": "Planet",
           "position": {
-            "scale": 8.5,
-            "translation-in-points": [0, 0]
+            "scale": 22,
+            "translation-in-points": [
+              0,
+              0
+            ]
           }
         },
         {
@@ -20,7 +23,10 @@
           "name": "Annotations",
           "position": {
             "scale": 8.5,
-            "translation-in-points": [0, 0]
+            "translation-in-points": [
+              0,
+              0
+            ]
           }
         },
         {
@@ -29,7 +35,10 @@
           "name": "Background",
           "position": {
             "scale": 8.1,
-            "translation-in-points": [0, 0]
+            "translation-in-points": [
+              0,
+              0
+            ]
           }
         }
       ],
@@ -44,7 +53,9 @@
     }
   ],
   "supported-platforms": {
-    "circles": ["watchOS"],
+    "circles": [
+      "watchOS"
+    ],
     "squares": "shared"
   }
 }

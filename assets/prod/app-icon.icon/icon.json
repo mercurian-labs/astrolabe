@@ -7,10 +7,13 @@
       "layers": [
         {
           "image-name": "text.svg",
-          "name": "Text",
+          "name": "Planet",
           "position": {
-            "scale": 10,
-            "translation-in-points": [0, 0]
+            "scale": 24,
+            "translation-in-points": [
+              0,
+              0
+            ]
           }
         }
       ],
@@ -25,7 +28,9 @@
     }
   ],
   "supported-platforms": {
-    "circles": ["watchOS"],
+    "circles": [
+      "watchOS"
+    ],
     "squares": "shared"
   }
 }
