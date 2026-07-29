@@ -660,7 +660,13 @@ jobs:
         run: vp run --filter t3 build
 
       - name: Publish CLI package
-        run: node apps/server/scripts/cli.ts publish --tag "${{ needs.preflight.outputs.cli_dist_tag }}" --app-version "${{ needs.preflight.outputs.version }}" --verbose
+        run: |
+          node apps/server/scripts/cli.ts publish \
+            --tag "${{ needs.preflight.outputs.cli_dist_tag }}" \
+            --app-version "${{ needs.preflight.outputs.version }}" \
+            --publish-name "@mercurian/astrolabe" \
+            --publish-bin astrolabe \
+            --verbose
 
   release:
     name: Publish GitHub Release
@@ -785,6 +791,8 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 10
+    outputs:
+      deployment_status: ${{ steps.vercel_config.outputs.present == 'true' && 'deployed' || 'skipped_not_configured' }}
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
@@ -797,12 +805,24 @@ jobs:
       T3CODE_WEB_NIGHTLY_DOMAIN: ${{ vars.T3CODE_WEB_NIGHTLY_DOMAIN }}
       VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
     steps:
+      - id: vercel_config
+        name: Check hosted web deployment configuration
+        run: |
+          if [[ -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_ORG_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Vercel is not configured; skipping the out-of-scope hosted web deployment."
+          fi
+
       - name: Checkout
+        if: steps.vercel_config.outputs.present == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.preflight.outputs.ref }}
 
       - name: Setup Vite+
+        if: steps.vercel_config.outputs.present == 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -813,12 +833,14 @@ jobs:
               - --filter=@t3tools/web...
 
       - name: Download relay client tracing config
+        if: steps.vercel_config.outputs.present == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
+        if: steps.vercel_config.outputs.present == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
@@ -827,20 +849,18 @@ jobs:
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
+        if: steps.vercel_config.outputs.present == 'true'
         run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
 
       - name: Refresh release lockfile
+        if: steps.vercel_config.outputs.present == 'true'
         run: vp install --lockfile-only --ignore-scripts
 
       - name: Deploy and alias channel
+        if: steps.vercel_config.outputs.present == 'true'
         shell: bash
         run: |
           set -euo pipefail
-
-          if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" || -z "${VERCEL_PROJECT_ID:-}" ]]; then
-            echo "Missing one or more required Vercel secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID." >&2
-            exit 1
-          fi
 
           router_url="${T3CODE_WEB_ROUTER_URL:-https://app.t3.codes}"
           latest_domain="${T3CODE_WEB_LATEST_DOMAIN:-latest.app.t3.codes}"
@@ -974,6 +994,8 @@ jobs:
       needs.relay_public_config.result == 'success' &&
       needs.release.result == 'success' &&
       needs.deploy_web.result == 'success' &&
+      (needs.deploy_web.outputs.deployment_status == 'deployed' ||
+       needs.deploy_web.outputs.deployment_status == 'skipped_not_configured') &&
       (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
     needs: [preflight, relay_public_config, release, deploy_web, finalize]
     runs-on: blacksmith-8vcpu-ubuntu-2404
