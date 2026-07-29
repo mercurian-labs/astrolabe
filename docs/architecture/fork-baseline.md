@@ -28,22 +28,22 @@ Discipline while tracking:
 
 **Cut-over trigger** (whichever comes first): the app-shell reshaping (backlog 020) lands on `main`, or a routine upstream merge costs more than a working day to resolve. At the trigger, reassess; the expected outcome is a cut to hard fork. The cut is recorded by amending this section with the date and the state merged last — after it, upstream fixes arrive only by deliberate cherry-pick.
 
-Given up: the freedom to restructure and rebrand immediately, and some ongoing merge tax. Alternatives declined: *hard fork now* (forfeits ~300 commits/month of fixes to a runtime we are actively reusing) and *indefinite tracking* (permanently constrains how invasively the sidebar, thread view, and settings can be reshaped — incompatible with the app-shell phase).
+Given up: the freedom to restructure and rebrand immediately, and some ongoing merge tax. Alternatives declined: _hard fork now_ (forfeits ~300 commits/month of fixes to a runtime we are actively reusing) and _indefinite tracking_ (permanently constrains how invasively the sidebar, thread view, and settings can be reshaped — incompatible with the app-shell phase).
 
 ### 2. Dispositions for out-of-design surfaces
 
-*Parked* means: stays in the tree, excluded from CI, builds, and releases, unmaintained and unshipped. Parked code merges cleanly from upstream and costs nothing but tree weight; stripping before cut-over buys recurring conflicts. Parked surfaces are deleted or revived by a later amendment to this ADR, not silently.
+_Parked_ means: stays in the tree, excluded from CI, builds, and releases, unmaintained and unshipped. Parked code merges cleanly from upstream and costs nothing but tree weight; stripping before cut-over buys recurring conflicts. Parked surfaces are deleted or revived by a later amendment to this ADR, not silently.
 
-| Surface | Disposition | Rationale / governing note |
-|---|---|---|
-| `apps/mobile` | **Parked** | No Mercurian mobile design exists in the vault; upstream churns here most, so parking keeps merges clean. Revival requires a vault design first. |
-| `apps/marketing` | **Parked** | Upstream branding; never ships under Mercurian. Delete at cut-over. |
-| `packages/ssh`, `packages/tailscale` | **Parked** | Remote-environment plumbing; candidates for the cloud phase ("Environments" defers the shared workspace). Revisit then. |
-| Plan/default interaction mode | **Stripped at backlog 062** | "Assistant" (resolved): planning is mode-free; sessions carry runtime modes only. Until 062 it remains as shipped-by-upstream behavior in unreshaped surfaces. |
-| Environments-as-navigation (connect flows, per-environment icons) | **Stripped at backlog 020/040** | "Environments" (resolved: plumbing). A repository's row says where it lives; nothing navigational remains. |
-| `.repos/` vendored references, `experiments/` | **Kept** | Read-only reference material, synced with dependency versions per upstream convention. |
+| Surface                                                           | Disposition                     | Rationale / governing note                                                                                                                                     |
+| ----------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/mobile`                                                     | **Parked**                      | No Mercurian mobile design exists in the vault; upstream churns here most, so parking keeps merges clean. Revival requires a vault design first.               |
+| `apps/marketing`                                                  | **Parked**                      | Upstream branding; never ships under Mercurian. Delete at cut-over.                                                                                            |
+| `packages/ssh`, `packages/tailscale`                              | **Parked**                      | Remote-environment plumbing; candidates for the cloud phase ("Environments" defers the shared workspace). Revisit then.                                        |
+| Plan/default interaction mode                                     | **Stripped at backlog 062**     | "Assistant" (resolved): planning is mode-free; sessions carry runtime modes only. Until 062 it remains as shipped-by-upstream behavior in unreshaped surfaces. |
+| Environments-as-navigation (connect flows, per-environment icons) | **Stripped at backlog 020/040** | "Environments" (resolved: plumbing). A repository's row says where it lives; nothing navigational remains.                                                     |
+| `.repos/` vendored references, `experiments/`                     | **Kept**                        | Read-only reference material, synced with dependency versions per upstream convention.                                                                         |
 
-### 3. Branding, design, and license *(amended 2026-07-17, second review)*
+### 3. Branding, design, and license _(amended 2026-07-17, second review)_
 
 Split three ways:
 
