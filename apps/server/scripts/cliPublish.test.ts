@@ -77,6 +77,28 @@ describe("server CLI publish manifest", () => {
     });
   });
 
+  it("rejects a publish bin override when the source exposes multiple bins", () => {
+    assert.throws(
+      () =>
+        createPublishPackageJson(
+          {
+            ...sourcePackageJson,
+            bin: {
+              t3: "./dist/bin.mjs",
+              "t3-admin": "./dist/admin.mjs",
+            },
+          },
+          {
+            version: "1.2.3",
+            dependencies: {},
+            overrides: {},
+            publishBin: "astrolabe",
+          },
+        ),
+      /expected exactly one source bin entry, found t3, t3-admin/,
+    );
+  });
+
   it("keeps dry-run publishing on the workspace package while forwarding npm options", () => {
     assert.deepEqual(
       createVpPmPublishArgs({

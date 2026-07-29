@@ -33,10 +33,20 @@ export const createPublishPackageJson = (
 ): PublishPackageJson => {
   const hasIdentityOverride = options.publishName !== undefined || options.publishBin !== undefined;
   const binEntries = Object.entries(source.bin);
-  const publishBin =
-    options.publishBin === undefined
-      ? source.bin
-      : Object.fromEntries(binEntries.map(([, path]) => [options.publishBin, path]));
+  let publishBin = source.bin;
+
+  if (options.publishBin !== undefined) {
+    const sourceBinEntry = binEntries[0];
+    if (binEntries.length !== 1 || sourceBinEntry === undefined) {
+      const entryNames = binEntries.map(([name]) => name).join(", ") || "(none)";
+      throw new Error(
+        `Cannot rename package bin to "${options.publishBin}": expected exactly one source bin entry, found ${entryNames}.`,
+      );
+    }
+    publishBin = {
+      [options.publishBin]: sourceBinEntry[1],
+    };
+  }
 
   return {
     name: options.publishName ?? source.name,

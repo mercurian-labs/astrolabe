@@ -79,6 +79,11 @@ git push origin sync/upstream-<YYYYMMDD>
 Do not regenerate or accept lockfile conflicts automatically. Review the incoming dependency changes
 and regenerate `pnpm-lock.yaml` only when that is the deliberate resolution. Once CI is green, merge
 the pull request normally.
+If `pnpm-lock.yaml` proves to be the dominant recurring conflict, a scoped auto-regeneration step
+(checkout upstream's lockfile, run `vp install --lockfile-only`, and surface only the remaining
+conflicts) may be added to the sync workflow later; it is intentionally not day-one behavior, and
+adding it first requires amending M-122's "conflicts are never resolved automatically" acceptance
+criterion.
 
 ## Protect `main`
 

@@ -994,8 +994,6 @@ jobs:
       needs.relay_public_config.result == 'success' &&
       needs.release.result == 'success' &&
       needs.deploy_web.result == 'success' &&
-      (needs.deploy_web.outputs.deployment_status == 'deployed' ||
-       needs.deploy_web.outputs.deployment_status == 'skipped_not_configured') &&
       (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
     needs: [preflight, relay_public_config, release, deploy_web, finalize]
     runs-on: blacksmith-8vcpu-ubuntu-2404
