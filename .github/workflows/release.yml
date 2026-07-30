@@ -6,7 +6,9 @@ on:
       - "v*.*.*"
       - "!v*-nightly.*"
   schedule:
-    - cron: "0 */3 * * *"
+    # Once daily. check_changes still short-circuits when main is unchanged, so
+    # a higher frequency mostly paid for the gating jobs themselves.
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       channel:
@@ -30,7 +32,9 @@ jobs:
   check_changes:
     name: Check for changes since last nightly
     if: github.event_name == 'schedule'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Two git rev-parse calls; no dependency install, so arm64 is safe here.
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    timeout-minutes: 10
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
     steps:
@@ -170,7 +174,7 @@ jobs:
     name: Resolve T3 Connect public config
     needs: preflight
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     environment:
       name: production
@@ -354,7 +358,9 @@ jobs:
             target: dmg
             arch: x64
           - label: Linux x64
-            runner: blacksmith-32vcpu-ubuntu-2404
+            # Measured at ~6% average CPU on 32 vCPU. Must stay x64: produces
+            # an x64 AppImage.
+            runner: blacksmith-8vcpu-ubuntu-2404
             platform: linux
             target: AppImage
             arch: x64
@@ -698,7 +704,7 @@ jobs:
     name: Publish GitHub Release
     needs: [preflight, build, publish_cli]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && needs.publish_cli.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - id: app_token
@@ -815,7 +821,7 @@ jobs:
     name: Deploy hosted web app
     needs: [preflight, relay_public_config, release]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:
       deployment_status: ${{ steps.vercel_config.outputs.present == 'true' && 'deployed' || 'skipped_not_configured' }}
@@ -941,7 +947,7 @@ jobs:
     name: Finalize release
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
     needs: [preflight, release]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - id: app_token
@@ -1022,7 +1028,7 @@ jobs:
       needs.deploy_web.result == 'success' &&
       (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
     needs: [preflight, relay_public_config, release, deploy_web, finalize]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Checkout

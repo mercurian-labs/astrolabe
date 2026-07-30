@@ -15,7 +15,8 @@ concurrency:
 jobs:
   sync:
     name: Open upstream sync pull request
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # git + gh only, no dependency install, so arm64 is safe here.
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     timeout-minutes: 15
     permissions:
       contents: write

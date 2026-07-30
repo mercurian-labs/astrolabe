@@ -8,7 +8,9 @@ jobs:
   preview:
     name: EAS Preview
     if: contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Submits to EAS; the build itself runs on Expo's infrastructure.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write

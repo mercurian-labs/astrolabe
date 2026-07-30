@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+# Collapse superseded PR runs. Pushes to main are never cancelled so every
+# merged commit keeps a complete CI record.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: Check
@@ -63,8 +69,17 @@ jobs:
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
-    runs-on: blacksmith-12vcpu-macos-26
+    # swiftlint/ktlint/detekt are all source-only linters here (no xcodebuild,
+    # no simulator, no codesigning), so this runs on Linux rather than paying
+    # the macOS runner multiplier. Must stay x64: the SwiftLint arm64 Linux
+    # build is far less exercised than amd64.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
+    env:
+      SWIFTLINT_VERSION: "0.65.0"
+      KTLINT_VERSION: "1.8.0"
+      DETEKT_VERSION: "1.23.8"
+      NATIVE_TOOLS_DIR: ${{ github.workspace }}/.native-static-tools
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -76,15 +91,58 @@ jobs:
           cache: true
           run-install: true
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache mobile native static analysis tools
+        id: native-tools
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NATIVE_TOOLS_DIR }}
+          key: native-static-tools-linux-x64-swiftlint${{ env.SWIFTLINT_VERSION }}-ktlint${{ env.KTLINT_VERSION }}-detekt${{ env.DETEKT_VERSION }}
+
       - name: Install mobile native static analysis tools
-        run: brew bundle install --file apps/mobile/Brewfile
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bin_dir="$NATIVE_TOOLS_DIR/bin"
+          mkdir -p "$bin_dir" "$NATIVE_TOOLS_DIR/tmp"
+
+          # swiftlint-static is the fully static build, so no Swift runtime
+          # shared libraries are needed on the runner image.
+          curl -fsSL -o "$NATIVE_TOOLS_DIR/tmp/swiftlint.zip" \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/swiftlint_linux_amd64.zip"
+          unzip -q -o "$NATIVE_TOOLS_DIR/tmp/swiftlint.zip" -d "$NATIVE_TOOLS_DIR/tmp/swiftlint"
+          install -m 0755 "$NATIVE_TOOLS_DIR/tmp/swiftlint/swiftlint-static" "$bin_dir/swiftlint"
+
+          curl -fsSL -o "$bin_dir/ktlint" \
+            "https://github.com/pinterest/ktlint/releases/download/${KTLINT_VERSION}/ktlint"
+          chmod 0755 "$bin_dir/ktlint"
+
+          curl -fsSL -o "$NATIVE_TOOLS_DIR/tmp/detekt.zip" \
+            "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}.zip"
+          unzip -q -o "$NATIVE_TOOLS_DIR/tmp/detekt.zip" -d "$NATIVE_TOOLS_DIR/tmp/detekt"
+          cp -R "$NATIVE_TOOLS_DIR/tmp/detekt/detekt-cli-${DETEKT_VERSION}" "$NATIVE_TOOLS_DIR/detekt-cli"
+          # The script invokes `detekt`; upstream ships the launcher as
+          # `detekt-cli`. The Gradle start script resolves symlinks to find its
+          # own lib directory, so a sibling symlink is safe.
+          ln -sf "../detekt-cli/bin/detekt-cli" "$bin_dir/detekt"
+          chmod 0755 "$NATIVE_TOOLS_DIR/detekt-cli/bin/detekt-cli"
+
+          rm -rf "$NATIVE_TOOLS_DIR/tmp"
+
+      - name: Expose native static analysis tools on PATH
+        run: echo "$NATIVE_TOOLS_DIR/bin" >> "$GITHUB_PATH"
 
       - name: Lint mobile native sources
         run: vp run lint:mobile
 
   release_smoke:
     name: Release Smoke
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Checkout

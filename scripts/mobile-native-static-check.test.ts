@@ -10,7 +10,7 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { collectSources, runCommand } from "./mobile-native-static-check.ts";
+import { collectSources, handleMissingTool, runCommand } from "./mobile-native-static-check.ts";
 
 const processHandle = (
   exitCode: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>,
@@ -54,6 +54,29 @@ it.layer(NodeServices.layer)("mobile native source discovery", (it) => {
     }),
   );
 });
+
+const swiftLintTool = { command: "swiftlint", installHint: "brew install swiftlint" } as const;
+
+it.effect("fails instead of skipping when a missing tool is required", () =>
+  Effect.gen(function* () {
+    const error = yield* handleMissingTool(swiftLintTool, "SwiftLint", true).pipe(Effect.flip);
+
+    assert.equal(error._tag, "NativeStaticCheckMissingToolError");
+    assert.equal(error.command, "swiftlint");
+    assert.equal(error.checkName, "SwiftLint");
+    assert.equal(
+      error.message,
+      "swiftlint is required to run SwiftLint but was not found on PATH. Install it with 'brew install swiftlint'.",
+    );
+  }),
+);
+
+it.effect("skips a missing tool when it is not required", () =>
+  Effect.gen(function* () {
+    // Succeeds rather than failing, preserving local-dev ergonomics.
+    yield* handleMissingTool(swiftLintTool, "SwiftLint", false);
+  }),
+);
 
 it.effect("preserves process spawn context and the exact cause", () => {
   const cause = PlatformError.systemError({
