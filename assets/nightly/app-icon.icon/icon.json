@@ -11,10 +11,7 @@
           "name": "Planet",
           "position": {
             "scale": 22,
-            "translation-in-points": [
-              0,
-              0
-            ]
+            "translation-in-points": [0, 0]
           }
         },
         {
@@ -24,10 +21,7 @@
           "opacity": 1,
           "position": {
             "scale": 15,
-            "translation-in-points": [
-              387.9605131881942,
-              -134.30064713259117
-            ]
+            "translation-in-points": [387.9605131881942, -134.30064713259117]
           }
         },
         {
@@ -36,10 +30,7 @@
           "name": "Cloud Lower Left",
           "position": {
             "scale": 25,
-            "translation-in-points": [
-              -309.63750000000005,
-              268.66077693836917
-            ]
+            "translation-in-points": [-309.63750000000005, 268.66077693836917]
           }
         },
         {
@@ -49,10 +40,7 @@
           "name": "Background",
           "position": {
             "scale": 8.1,
-            "translation-in-points": [
-              0,
-              -2.171875
-            ]
+            "translation-in-points": [0, -2.171875]
           }
         }
       ],
@@ -100,9 +88,7 @@
     }
   ],
   "supported-platforms": {
-    "circles": [
-      "watchOS"
-    ],
+    "circles": ["watchOS"],
     "squares": "shared"
   }
 }
