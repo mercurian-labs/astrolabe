@@ -8,6 +8,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Command } from "effect/unstable/cli";
@@ -58,7 +59,7 @@ export class NativeStaticCheckMissingToolError extends Schema.TaggedErrorClass<N
   },
 ) {
   override get message(): string {
-    return `${this.command} is required to run ${this.checkName} but was not found on PATH. Install it with '${this.installHint}'.`;
+    return `${this.command} is required to run ${this.checkName} but was not found on PATH. Install it with '${this.installHint}' (macOS), or see the tool install step in .github/workflows/ci.yml.`;
   }
 }
 
@@ -131,10 +132,13 @@ const commandExists = Effect.fn("commandExists")(function* (command: string) {
  * but must never happen in CI, where it would turn a missing toolchain into a
  * green build that checked nothing.
  */
-const requireTools = Config.boolean("MOBILE_NATIVE_STATIC_CHECK_REQUIRE_TOOLS").pipe(
-  Config.orElse(() => Config.boolean("CI")),
-  Config.withDefault(false),
-);
+// An unset or malformed T3CODE_MOBILE_LINT_REQUIRE_TOOLS both resolve to None
+// and fall back to CI, so in CI a typo still leaves the tools required. Only an
+// explicit, well-formed `false` opts out.
+export const requireTools = Config.all({
+  explicit: Config.boolean("T3CODE_MOBILE_LINT_REQUIRE_TOOLS").pipe(Config.option),
+  ci: Config.boolean("CI").pipe(Config.withDefault(false)),
+}).pipe(Effect.map(({ ci, explicit }) => Option.getOrElse(explicit, () => ci)));
 
 export const handleMissingTool = (tool: NativeStaticTool, checkName: string, required: boolean) =>
   required
