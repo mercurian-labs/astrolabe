@@ -10,7 +10,14 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { collectSources, runCommand } from "./mobile-native-static-check.ts";
+import * as ConfigProvider from "effect/ConfigProvider";
+
+import {
+  collectSources,
+  handleMissingTool,
+  requireTools,
+  runCommand,
+} from "./mobile-native-static-check.ts";
 
 const processHandle = (
   exitCode: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>,
@@ -54,6 +61,64 @@ it.layer(NodeServices.layer)("mobile native source discovery", (it) => {
     }),
   );
 });
+
+const swiftLintTool = { command: "swiftlint", installHint: "brew install swiftlint" } as const;
+
+const withEnv = (env: Record<string, string>) =>
+  Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env })));
+
+it.effect("fails instead of skipping when a missing tool is required", () =>
+  Effect.gen(function* () {
+    const error = yield* handleMissingTool(swiftLintTool, "SwiftLint", true).pipe(Effect.flip);
+
+    assert.equal(error._tag, "NativeStaticCheckMissingToolError");
+    assert.equal(error.command, "swiftlint");
+    assert.equal(error.checkName, "SwiftLint");
+    assert.equal(
+      error.message,
+      "swiftlint is required to run SwiftLint but was not found on PATH. Install it with 'brew install swiftlint' (macOS), or see the tool install step in .github/workflows/ci.yml.",
+    );
+  }),
+);
+
+it.effect("does not require tools when nothing is configured", () =>
+  Effect.gen(function* () {
+    assert.equal(yield* requireTools.pipe(withEnv({})), false);
+  }),
+);
+
+it.effect("requires tools when CI is set", () =>
+  Effect.gen(function* () {
+    assert.equal(yield* requireTools.pipe(withEnv({ CI: "true" })), true);
+  }),
+);
+
+it.effect("lets an explicit opt-out override CI", () =>
+  Effect.gen(function* () {
+    const required = yield* requireTools.pipe(
+      withEnv({ CI: "true", T3CODE_MOBILE_LINT_REQUIRE_TOOLS: "false" }),
+    );
+
+    assert.equal(required, false);
+  }),
+);
+
+it.effect("keeps tools required in CI when the opt-out is malformed", () =>
+  Effect.gen(function* () {
+    // Config.option yields None for a malformed value as well as a missing one,
+    // so a typo falls back to CI rather than silently disabling the linters.
+    const required = yield* requireTools.pipe(
+      withEnv({ CI: "true", T3CODE_MOBILE_LINT_REQUIRE_TOOLS: "ture" }),
+    );
+
+    assert.equal(required, true);
+  }),
+);
+
+// Succeeds rather than failing, preserving local-dev ergonomics.
+it.effect("skips a missing tool when it is not required", () =>
+  handleMissingTool(swiftLintTool, "SwiftLint", false),
+);
 
 it.effect("preserves process spawn context and the exact cause", () => {
   const cause = PlatformError.systemError({
