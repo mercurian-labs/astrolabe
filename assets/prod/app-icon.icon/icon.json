@@ -7,9 +7,9 @@
       "layers": [
         {
           "image-name": "text.svg",
-          "name": "Text",
+          "name": "Planet",
           "position": {
-            "scale": 10,
+            "scale": 24,
             "translation-in-points": [0, 0]
           }
         }
