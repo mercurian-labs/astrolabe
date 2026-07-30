@@ -85,7 +85,6 @@ jobs:
       KTLINT_SHA256: "a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75"
       DETEKT_VERSION: "1.23.8"
       DETEKT_SHA256: "2ce2ff952e150baf28a29cda70a363b0340b3e81a55f43e51ec5edffc3d066c1"
-      NATIVE_TOOLS_DIR: ${{ runner.temp }}/native-static-tools
       # Belt and braces: the script also infers this from CI, but setting it
       # explicitly means the hard-failure path does not depend on ambient env.
       T3CODE_MOBILE_LINT_REQUIRE_TOOLS: "true"
@@ -110,7 +109,9 @@ jobs:
         id: native-tools
         uses: actions/cache@v4
         with:
-          path: ${{ env.NATIVE_TOOLS_DIR }}
+          # The runner context is only available from step level, never in the
+          # job-level env block.
+          path: ${{ runner.temp }}/native-static-tools
           # v1 tracks the install layout; bump it when the install step changes
           # shape without a version bump.
           key: native-static-tools-v1-linux-x64-swiftlint${{ env.SWIFTLINT_VERSION }}-ktlint${{ env.KTLINT_VERSION }}-detekt${{ env.DETEKT_VERSION }}
@@ -119,8 +120,9 @@ jobs:
         if: steps.native-tools.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          bin_dir="$NATIVE_TOOLS_DIR/bin"
-          lib_dir="$NATIVE_TOOLS_DIR/lib"
+          tools_dir="$RUNNER_TEMP/native-static-tools"
+          bin_dir="$tools_dir/bin"
+          lib_dir="$tools_dir/lib"
           tmp_dir="$(mktemp -d)"
           mkdir -p "$bin_dir" "$lib_dir"
           trap 'rm -rf "$tmp_dir"' EXIT
@@ -156,7 +158,7 @@ jobs:
           chmod 0755 "$bin_dir/detekt"
 
       - name: Expose native static analysis tools on PATH
-        run: echo "$NATIVE_TOOLS_DIR/bin" >> "$GITHUB_PATH"
+        run: echo "$RUNNER_TEMP/native-static-tools/bin" >> "$GITHUB_PATH"
 
       # The workflow-side half of the fail-closed guard: prove all three tools
       # resolve and are the pinned versions before trusting a green lint.
