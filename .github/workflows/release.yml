@@ -288,7 +288,10 @@ jobs:
     name: Build WSL node-pty (linux-x64)
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # 0.78 and 0.73 min at 8 vCPU. node-gyp on a single addon is largely serial,
+    # so cores buy little. Must stay x64: it produces the linux-x64 pty.node
+    # that the Windows installer bundles.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -348,12 +351,16 @@ jobs:
       matrix:
         include:
           - label: macOS arm64
-            runner: blacksmith-12vcpu-macos-26
+            # 3.07 min at 12 vCPU across two releases. macOS bills 6.67x, so
+            # halving cores halves the rate; this only stops paying if wall time
+            # passes 7 min, a 2.3x regression.
+            runner: blacksmith-6vcpu-macos-26
             platform: mac
             target: dmg
             arch: arm64
           - label: macOS x64
-            runner: blacksmith-12vcpu-macos-26
+            # 3.20 and 3.15 min at 12 vCPU. Same threshold as arm64 above.
+            runner: blacksmith-6vcpu-macos-26
             platform: mac
             target: dmg
             arch: x64
@@ -365,7 +372,10 @@ jobs:
             target: AppImage
             arch: x64
           - label: Windows x64
-            runner: blacksmith-32vcpu-windows-2025
+            # 6.62 and 6.43 min at 32 vCPU. Stops paying only past 13 min, a 2x
+            # regression. Must stay x64 for the MSVC Spectre libs and the
+            # linux-x64 pty.node it bundles.
+            runner: blacksmith-16vcpu-windows-2025
             platform: win
             target: nsis
             arch: x64
