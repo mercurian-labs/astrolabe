@@ -11,17 +11,19 @@ Complete these steps before publishing the first Mercurian release:
    **Pull requests: Read and write**, and install it only on `mercurian-labs/astrolabe`.
 2. Add its App ID and private key as repository Actions secrets named `RELEASE_APP_ID` and
    `RELEASE_APP_PRIVATE_KEY`.
-3. Create the `production` GitHub Actions environment and populate the relay, Clerk, Cloudflare,
-   and APNs configuration listed in [release.md](./release.md#t3-connect-relay-deployment).
-4. Run `.github/workflows/deploy-relay.yml` from `main` and confirm the production relay deploy is
-   green. Release preflight reads public client configuration from that deployed relay.
-5. Reserve the npm organization `mercurian` and package `@mercurian/astrolabe`.
-6. Configure npm Trusted Publisher for `@mercurian/astrolabe`:
+3. Reserve the npm organization `mercurian` and package `@mercurian/astrolabe`.
+4. Configure npm Trusted Publisher for `@mercurian/astrolabe`:
    - provider: GitHub Actions
    - organization or user: `mercurian-labs`
    - repository: `astrolabe`
    - workflow: `release.yml`
    - environment: leave unset unless the npm package is configured to require one
+
+T3 Connect is parked for the current release phase. With no Connect configuration present,
+`relay_public_config` skips its infrastructure steps, reports `connect_configured=false`, and clients
+build without Connect. The **Deploy T3 Connect relay** workflow is disabled in the Actions UI.
+Reviving Connect during the cloud phase means re-populating the `production` environment and
+re-enabling that workflow.
 
 The workspace package remains named `t3` to reduce upstream merge conflicts. The release workflow
 passes `--publish-name @mercurian/astrolabe --publish-bin astrolabe`; these flags alter only the
