@@ -3,10 +3,12 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { isCommandAvailable, resolveSpawnCommand } from "@t3tools/shared/shell";
+import * as Config from "effect/Config";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Command } from "effect/unstable/cli";
@@ -45,6 +47,19 @@ export class NativeStaticCheckProcessError extends Schema.TaggedErrorClass<Nativ
 ) {
   override get message(): string {
     return `Native static check process operation '${this.operation}' failed for command '${this.command}'.`;
+  }
+}
+
+export class NativeStaticCheckMissingToolError extends Schema.TaggedErrorClass<NativeStaticCheckMissingToolError>()(
+  "NativeStaticCheckMissingToolError",
+  {
+    command: Schema.String,
+    checkName: Schema.String,
+    installHint: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `${this.command} is required to run ${this.checkName} but was not found on PATH. Install it with '${this.installHint}' (macOS), or see the tool install step in .github/workflows/ci.yml.`;
   }
 }
 
@@ -112,10 +127,39 @@ const commandExists = Effect.fn("commandExists")(function* (command: string) {
   return yield* isCommandAvailable(command);
 });
 
-const warnMissingTool = (tool: NativeStaticTool, checkName: string) =>
-  Effect.logWarning(
-    `${tool.command} is not installed; skipping ${checkName}. Install it with '${tool.installHint}' or run 'brew bundle install --file apps/mobile/Brewfile'.`,
+/**
+ * Skipping a linter because its binary is absent is fine on a developer machine
+ * but must never happen in CI, where it would turn a missing toolchain into a
+ * green build that checked nothing.
+ */
+// An unset or malformed T3CODE_MOBILE_LINT_REQUIRE_TOOLS both resolve to None
+// and fall back to CI, so in CI a typo still leaves the tools required. Only an
+// explicit, well-formed `false` opts out.
+export const requireTools = Effect.gen(function* () {
+  const ci = yield* Config.boolean("CI").pipe(Config.withDefault(false));
+  // `Config.option` folds away a *missing* value but surfaces a malformed one as
+  // a ConfigError, so the fall-back to None is made explicit here to keep a typo
+  // fail-closed instead of aborting the run.
+  const explicit = yield* Config.boolean("T3CODE_MOBILE_LINT_REQUIRE_TOOLS").pipe(
+    Config.option,
+    Effect.orElseSucceed(() => Option.none<boolean>()),
   );
+
+  return Option.getOrElse(explicit, () => ci);
+});
+
+export const handleMissingTool = (tool: NativeStaticTool, checkName: string, required: boolean) =>
+  required
+    ? Effect.fail(
+        new NativeStaticCheckMissingToolError({
+          command: tool.command,
+          checkName,
+          installHint: tool.installHint,
+        }),
+      )
+    : Effect.logWarning(
+        `${tool.command} is not installed; skipping ${checkName}. Install it with '${tool.installHint}' or run 'brew bundle install --file apps/mobile/Brewfile'.`,
+      );
 
 export const runCommand = Effect.fn("runCommand")(function* (
   command: string,
@@ -237,6 +281,7 @@ const runNativeStaticChecks = Effect.fn("runNativeStaticChecks")(function* () {
     return extension === ".kt" || extension === ".kts";
   });
   const availableTools = new Map<string, boolean>();
+  const toolsRequired = yield* requireTools;
 
   for (const tool of tools) {
     availableTools.set(tool.command, yield* commandExists(tool.command));
@@ -250,7 +295,7 @@ const runNativeStaticChecks = Effect.fn("runNativeStaticChecks")(function* () {
     if (availableTools.get("swiftlint")) {
       yield* runCommand("swiftlint", ["lint", "--config", ".swiftlint.yml", "--strict"], root);
     } else {
-      yield* warnMissingTool(tools[0], "SwiftLint");
+      yield* handleMissingTool(tools[0], "SwiftLint", toolsRequired);
     }
   }
 
@@ -260,7 +305,7 @@ const runNativeStaticChecks = Effect.fn("runNativeStaticChecks")(function* () {
     if (availableTools.get("ktlint")) {
       yield* runCommand("ktlint", relativeKotlinSources, root);
     } else {
-      yield* warnMissingTool(tools[1], "ktlint");
+      yield* handleMissingTool(tools[1], "ktlint", toolsRequired);
     }
 
     if (availableTools.get("detekt")) {
@@ -276,7 +321,7 @@ const runNativeStaticChecks = Effect.fn("runNativeStaticChecks")(function* () {
         root,
       );
     } else {
-      yield* warnMissingTool(tools[2], "detekt");
+      yield* handleMissingTool(tools[2], "detekt", toolsRequired);
     }
   }
 

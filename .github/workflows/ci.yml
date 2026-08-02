@@ -6,8 +6,10 @@ on:
     branches:
       - main
 
+# Collapse superseded PR runs. Pushes to main are never cancelled so every
+# merged commit keeps a complete CI record.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.sha }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -91,8 +93,25 @@ jobs:
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
-    runs-on: blacksmith-6vcpu-macos-26
+    # swiftlint/ktlint/detekt are all source-only linters here (no xcodebuild,
+    # no simulator, no codesigning), so this runs on Linux rather than paying
+    # the macOS runner multiplier. Must stay x64: the SwiftLint arm64 Linux
+    # build is far less exercised than amd64.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
+    env:
+      # Keep in step with apps/mobile/Brewfile, which macOS developers use.
+      # Bumping SWIFTLINT_VERSION requires re-checking the SourceKit note in
+      # apps/mobile/.swiftlint.yml.
+      SWIFTLINT_VERSION: "0.65.0"
+      SWIFTLINT_SHA256: "79306a34e5c7cc55a220cd108cbb861dcad5f10138dcdf261e2624ae8b0a486b"
+      KTLINT_VERSION: "1.8.0"
+      KTLINT_SHA256: "a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75"
+      DETEKT_VERSION: "1.23.8"
+      DETEKT_SHA256: "2ce2ff952e150baf28a29cda70a363b0340b3e81a55f43e51ec5edffc3d066c1"
+      # Belt and braces: the script also infers this from CI, but setting it
+      # explicitly means the hard-failure path does not depend on ambient env.
+      T3CODE_MOBILE_LINT_REQUIRE_TOOLS: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -111,15 +130,82 @@ jobs:
             args:
               - --filter=@t3tools/scripts...
 
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache mobile native static analysis tools
+        id: native-tools
+        uses: actions/cache@v4
+        with:
+          # The runner context is only available from step level, never in the
+          # job-level env block.
+          path: ${{ runner.temp }}/native-static-tools
+          # v1 tracks the install layout; bump it when the install step changes
+          # shape without a version bump.
+          key: native-static-tools-v1-linux-x64-swiftlint${{ env.SWIFTLINT_VERSION }}-ktlint${{ env.KTLINT_VERSION }}-detekt${{ env.DETEKT_VERSION }}
+
       - name: Install mobile native static analysis tools
-        run: brew bundle install --file apps/mobile/Brewfile
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          tools_dir="$RUNNER_TEMP/native-static-tools"
+          bin_dir="$tools_dir/bin"
+          lib_dir="$tools_dir/lib"
+          tmp_dir="$(mktemp -d)"
+          mkdir -p "$bin_dir" "$lib_dir"
+          trap 'rm -rf "$tmp_dir"' EXIT
+
+          verify() { echo "$2  $1" | sha256sum --check --status; }
+
+          # The archive ships two binaries: `swiftlint` needs SourceKit and the
+          # Swift toolchain's shared libraries at runtime, while
+          # `swiftlint-static` is the musl static build with no shared-library
+          # dependencies. See the statement_position note in .swiftlint.yml for
+          # the rule-coverage consequence of choosing the static one.
+          curl -fsSL -o "$tmp_dir/swiftlint.zip" \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/swiftlint_linux_amd64.zip"
+          verify "$tmp_dir/swiftlint.zip" "$SWIFTLINT_SHA256"
+          unzip -q -j "$tmp_dir/swiftlint.zip" swiftlint-static -d "$tmp_dir"
+          install -m 0755 "$tmp_dir/swiftlint-static" "$bin_dir/swiftlint"
+
+          curl -fsSL -o "$tmp_dir/ktlint" \
+            "https://github.com/pinterest/ktlint/releases/download/${KTLINT_VERSION}/ktlint"
+          verify "$tmp_dir/ktlint" "$KTLINT_SHA256"
+          install -m 0755 "$tmp_dir/ktlint" "$bin_dir/ktlint"
+
+          # The check script invokes `detekt`, but upstream's zip names the
+          # launcher `detekt-cli`. Install the fat jar behind our own wrapper,
+          # the way Homebrew's formula does.
+          curl -fsSL -o "$lib_dir/detekt-cli.jar" \
+            "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}-all.jar"
+          verify "$lib_dir/detekt-cli.jar" "$DETEKT_SHA256"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exec java -jar "$(dirname "$(readlink -f "$0")")/../lib/detekt-cli.jar" "$@"' \
+            > "$bin_dir/detekt"
+          chmod 0755 "$bin_dir/detekt"
+
+      - name: Expose native static analysis tools on PATH
+        run: echo "$RUNNER_TEMP/native-static-tools/bin" >> "$GITHUB_PATH"
+
+      # The workflow-side half of the fail-closed guard: prove all three tools
+      # resolve and are the pinned versions before trusting a green lint.
+      - name: Verify native static analysis tool versions
+        run: |
+          set -euo pipefail
+          swiftlint --version | grep -qxF "$SWIFTLINT_VERSION"
+          ktlint --version | grep -qF "$KTLINT_VERSION"
+          detekt --version | grep -qF "$DETEKT_VERSION"
 
       - name: Lint mobile native sources
         run: vp run lint:mobile
 
   release_smoke:
     name: Release Smoke
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Checkout

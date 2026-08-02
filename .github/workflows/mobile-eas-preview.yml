@@ -10,7 +10,9 @@ jobs:
     if: |
       contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment') &&
       (github.event.action != 'labeled' || github.event.label.name == '🚀 Mobile Continuous Deployment')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Submits to EAS; the build itself runs on Expo's infrastructure.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
     concurrency:
       group: mobile-eas-preview-${{ github.event.pull_request.number }}
       cancel-in-progress: true
