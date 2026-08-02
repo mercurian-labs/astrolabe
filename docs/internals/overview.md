@@ -121,6 +121,21 @@ baseline capture, completed-turn capture, diff projection, and reverting both th
 provider conversation. The storage contract is `VcsCheckpointOps` in
 [`VcsDriver.ts`](../../apps/server/src/vcs/VcsDriver.ts), implemented for Git in the same directory.
 
+## Mercurian's commit store
+
+Planning history lives in a second SQLite database, `mercurian.sqlite`, beside `state.sqlite` in the
+state directory, with its own migration sequence ([`mercurian/persistence/`][mercurian-persistence]).
+Its client is provided privately in [`server.ts`][server]; the ambient `SqlClient` every t3code
+consumer resolves is still `state.sqlite`.
+
+[`CommitStore.ts`][commit-store] owns the commit DAG: every commit carries an unbounded ordered
+`parents` list (zero for a root, one for a continuation, two or more for an n-ary merge), a `kind`
+and an `author`, and a one-way `published` flag. The store enforces the design's structural
+guarantees as refusals — forks and merges are human-driven only, coding-session commits are leaves,
+a parent must already exist (so the graph is acyclic by construction), and publishing a commit also
+publishes its unpublished ancestors along every parent path. See
+[ADR 001](../architecture/local-first-runtime.md).
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -150,3 +165,6 @@ already dispatch.
 [checkpoint]: ../../apps/server/src/orchestration/Layers/CheckpointReactor.ts
 [receipts]: ../../apps/server/src/orchestration/Layers/RuntimeReceiptBus.ts
 [drivers]: ../../apps/server/src/provider/builtInDrivers.ts
+[server]: ../../apps/server/src/server.ts
+[mercurian-persistence]: ../../apps/server/src/mercurian/persistence/
+[commit-store]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
