@@ -135,10 +135,18 @@ const commandExists = Effect.fn("commandExists")(function* (command: string) {
 // An unset or malformed T3CODE_MOBILE_LINT_REQUIRE_TOOLS both resolve to None
 // and fall back to CI, so in CI a typo still leaves the tools required. Only an
 // explicit, well-formed `false` opts out.
-export const requireTools = Config.all({
-  explicit: Config.boolean("T3CODE_MOBILE_LINT_REQUIRE_TOOLS").pipe(Config.option),
-  ci: Config.boolean("CI").pipe(Config.withDefault(false)),
-}).pipe(Effect.map(({ ci, explicit }) => Option.getOrElse(explicit, () => ci)));
+export const requireTools = Effect.gen(function* () {
+  const ci = yield* Config.boolean("CI").pipe(Config.withDefault(false));
+  // `Config.option` folds away a *missing* value but surfaces a malformed one as
+  // a ConfigError, so the fall-back to None is made explicit here to keep a typo
+  // fail-closed instead of aborting the run.
+  const explicit = yield* Config.boolean("T3CODE_MOBILE_LINT_REQUIRE_TOOLS").pipe(
+    Config.option,
+    Effect.orElseSucceed(() => Option.none<boolean>()),
+  );
+
+  return Option.getOrElse(explicit, () => ci);
+});
 
 export const handleMissingTool = (tool: NativeStaticTool, checkName: string, required: boolean) =>
   required

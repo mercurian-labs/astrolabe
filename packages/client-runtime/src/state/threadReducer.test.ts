@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   CheckpointRef,
+  CommandId,
   EventId,
   MessageId,
   ProjectId,
@@ -34,6 +35,8 @@ const baseThread: OrchestrationThread = {
   createdAt: "2026-04-01T00:00:00.000Z",
   updatedAt: "2026-04-01T00:00:00.000Z",
   archivedAt: null,
+  settledOverride: null,
+  settledAt: null,
   deletedAt: null,
   messages: [],
   proposedPlans: [],
@@ -121,8 +124,15 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.archived / thread.unarchived", () => {
-    it("sets archivedAt", () => {
-      const result = applyThreadDetailEvent(baseThread, {
+    it("sets archivedAt and clears title regeneration", () => {
+      const regeneratingThread: OrchestrationThread = {
+        ...baseThread,
+        titleRegeneration: {
+          requestId: CommandId.make("regenerate-title"),
+          startedAt: "2026-04-01T02:00:00.000Z",
+        },
+      };
+      const result = applyThreadDetailEvent(regeneratingThread, {
         ...baseEventFields,
         sequence: 3,
         occurredAt: "2026-04-01T03:00:00.000Z",
@@ -139,6 +149,7 @@ describe("applyThreadDetailEvent", () => {
       expect(result.kind).toBe("updated");
       if (result.kind === "updated") {
         expect(result.thread.archivedAt).toBe("2026-04-01T03:00:00.000Z");
+        expect(result.thread.titleRegeneration).toBeNull();
       }
     });
 
@@ -160,6 +171,62 @@ describe("applyThreadDetailEvent", () => {
       expect(result.kind).toBe("updated");
       if (result.kind === "updated") {
         expect(result.thread.archivedAt).toBeNull();
+      }
+    });
+  });
+
+  describe("thread.settled / thread.unsettled", () => {
+    it("sets the settled override and timestamp", () => {
+      const settledAt = "2026-04-01T05:00:00.000Z";
+      const result = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 5,
+        occurredAt: settledAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.settled",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          settledAt,
+          updatedAt: settledAt,
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.settledOverride).toBe("settled");
+        expect(result.thread.settledAt).toBe(settledAt);
+      }
+    });
+
+    it.each([
+      ["user", "active"],
+      ["activity", null],
+    ] as const)("unsettles for %s with override %s", (reason, settledOverride) => {
+      const settledThread: OrchestrationThread = {
+        ...baseThread,
+        settledOverride: "settled",
+        settledAt: "2026-04-01T05:00:00.000Z",
+      };
+      const updatedAt = "2026-04-01T06:00:00.000Z";
+      const result = applyThreadDetailEvent(settledThread, {
+        ...baseEventFields,
+        sequence: 6,
+        occurredAt: updatedAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.unsettled",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          reason,
+          updatedAt,
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.settledOverride).toBe(settledOverride);
+        expect(result.thread.settledAt).toBeNull();
       }
     });
   });

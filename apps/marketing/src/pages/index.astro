@@ -1,6 +1,11 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import { GITHUB_REPOSITORY_URL, MARKETING_STATS } from "../lib/site";
+import {
+  ANDROID_PLAY_STORE_URL,
+  GITHUB_REPOSITORY_URL,
+  IOS_APP_STORE_URL,
+  MARKETING_STATS,
+} from "../lib/site";
 import { tweets } from "../lib/tweets";
 
 const desktopEndorsementRows = [
@@ -33,6 +38,9 @@ const mobileEndorsementRows = [
       <span class="hero-float-mark hf-cursor" title="Cursor">
         <img src="/harnesses/cursor_light.svg" alt="" />
       </span>
+      <span class="hero-float-mark hf-grok" title="Grok">
+        <img src="/harnesses/grok-dark.svg" alt="" />
+      </span>
     </div>
 
     <div class="container hero-inner">
@@ -41,7 +49,7 @@ const mobileEndorsementRows = [
       </h1>
 
       <p class="hero-sub">
-        Orchestrate Claude Code, Codex, OpenCode and Cursor from one surface.
+        Orchestrate Claude Code, Codex, OpenCode, Cursor, and Grok from one surface.
         Bring your own subscription. Fork the whole thing.
       </p>
 
@@ -63,6 +71,12 @@ const mobileEndorsementRows = [
           <span>Steal our code (legally)</span>
           <svg class="hero-source-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg>
         </a>
+        <p class="hero-mobile-line">
+          Also on your phone:
+          <a href={IOS_APP_STORE_URL} target="_blank" rel="noopener noreferrer">iOS</a>
+          <span aria-hidden="true">·</span>
+          <a href={ANDROID_PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">Android</a>
+        </p>
       </div>
 
       <div class="hero-preview">
@@ -173,7 +187,7 @@ const mobileEndorsementRows = [
         <h2>Bring your own sub</h2>
         <p>
           T3 Code doesn't resell tokens. Plug in Claude Code, Codex, OpenCode,
-          or Cursor with the credentials you already have — we orchestrate
+          Cursor, or Grok with the credentials you already have — we orchestrate
           them, you keep your plan.
         </p>
       </div>
@@ -205,6 +219,13 @@ const mobileEndorsementRows = [
           <div class="harness-meta">
             <div class="harness-name">Cursor</div>
             <div class="harness-tag">cursor-agent</div>
+          </div>
+        </div>
+        <div class="harness">
+          <div class="harness-mark"><img src="/harnesses/grok-dark.svg" alt="" /></div>
+          <div class="harness-meta">
+            <div class="harness-name">Grok CLI</div>
+            <div class="harness-tag">grok login</div>
           </div>
         </div>
       </div>
@@ -568,6 +589,28 @@ const mobileEndorsementRows = [
     opacity: 1;
   }
 
+  .hero-mobile-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--fg-dim);
+    font-size: 13px;
+    letter-spacing: -0.005em;
+  }
+
+  .hero-mobile-line a {
+    color: var(--fg-muted);
+    text-decoration: underline;
+    text-decoration-color: rgba(161, 161, 170, 0.4);
+    text-underline-offset: 3px;
+    transition: color 0.18s ease, text-decoration-color 0.18s ease;
+  }
+
+  .hero-mobile-line a:hover {
+    color: var(--fg);
+    text-decoration-color: var(--fg);
+  }
+
   /* Download button icons (platform-aware) */
   .dl-icon {
     display: none;
@@ -615,8 +658,9 @@ const mobileEndorsementRows = [
 
   .hero-float-mark.hf-claude   { background: radial-gradient(circle at 30% 25%, rgba(217, 119, 87, 0.22), rgba(20, 20, 24, 0.92) 65%); top: 8%;  left: 7%;  animation-delay: 0s;    transform: rotate(-8deg); }
   .hero-float-mark.hf-codex    { background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), rgba(20, 20, 24, 0.92) 65%); top: 6%;  right: 7%; animation-delay: -2.5s; transform: rotate(6deg); }
-  .hero-float-mark.hf-opencode { background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.06), rgba(20, 20, 24, 0.92) 65%); top: 32%; left: 5%;  animation-delay: -5s;   transform: rotate(4deg); }
+  .hero-float-mark.hf-opencode { background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.06), rgba(20, 20, 24, 0.92) 65%); top: 30%; left: 5%;  animation-delay: -5s;   transform: rotate(4deg); }
   .hero-float-mark.hf-cursor   { background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), rgba(20, 20, 24, 0.92) 65%); top: 30%; right: 5%; animation-delay: -7s;   transform: rotate(-5deg); }
+  .hero-float-mark.hf-grok     { background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), rgba(20, 20, 24, 0.92) 65%); top: 52%; left: 6%;  animation-delay: -1.2s; transform: rotate(3deg); }
 
   @media (max-width: 1180px) {
     .hero-float-mark { width: 76px; height: 76px; border-radius: 20px; }
@@ -625,6 +669,7 @@ const mobileEndorsementRows = [
     .hero-float-mark.hf-codex    { top: 2%;  right: 3%; }
     .hero-float-mark.hf-opencode { top: 26%; left: 2%; }
     .hero-float-mark.hf-cursor   { top: 24%; right: 2%; }
+    .hero-float-mark.hf-grok     { top: 48%; left: 2%;  transform: rotate(3deg); }
   }
 
   @media (max-width: 820px) {
@@ -659,17 +704,18 @@ const mobileEndorsementRows = [
       height: 44px;
     }
 
-    /* Two above the title, two flanking the call-to-action area. */
+    /* Three stacked on the left, two on the right — keeps the center CTA clear. */
     .hero-float-mark.hf-claude {
       top: 44px;
       left: 10px;
       transform: rotate(-10deg);
     }
 
-    .hero-float-mark.hf-codex {
-      top: 44px;
-      right: 10px;
-      transform: rotate(8deg);
+    .hero-float-mark.hf-grok {
+      top: 240px;
+      left: 4px;
+      right: auto;
+      transform: rotate(-4deg);
     }
 
     .hero-float-mark.hf-opencode {
@@ -677,6 +723,12 @@ const mobileEndorsementRows = [
       left: 4px;
       right: auto;
       transform: rotate(-6deg);
+    }
+
+    .hero-float-mark.hf-codex {
+      top: 44px;
+      right: 10px;
+      transform: rotate(8deg);
     }
 
     .hero-float-mark.hf-cursor {
@@ -688,6 +740,14 @@ const mobileEndorsementRows = [
   }
 
   @media (max-width: 340px) {
+    .hero-float-mark.hf-grok {
+      top: 220px;
+      left: 0;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+    }
+
     .hero-float-mark.hf-opencode,
     .hero-float-mark.hf-cursor {
       top: 580px;
@@ -704,6 +764,7 @@ const mobileEndorsementRows = [
       right: 0;
     }
 
+    .hero-float-mark.hf-grok img,
     .hero-float-mark.hf-opencode img,
     .hero-float-mark.hf-cursor img {
       width: 30px;
@@ -750,7 +811,7 @@ const mobileEndorsementRows = [
 
   .harness-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -1205,6 +1266,10 @@ const mobileEndorsementRows = [
     .harness-grid { grid-template-columns: 1fr 1fr; }
     .harness { border-right: 0; border-bottom: 1px solid var(--border); }
     .harness:nth-child(odd) { border-right: 1px solid var(--border); }
+    .harness:nth-child(5):last-child {
+      grid-column: 1 / -1;
+      border-right: 0;
+    }
     .git-inner { grid-template-columns: 1fr; gap: 40px; }
     .open-grid { grid-template-columns: 1fr; }
   }
