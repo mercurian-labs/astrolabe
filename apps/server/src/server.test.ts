@@ -29,6 +29,8 @@ import {
   ThreadId,
   WS_METHODS,
   WsRpcGroup,
+  MERCURIAN_WS_METHODS,
+  MercurianProjectId,
   EditorId,
 } from "@t3tools/contracts";
 import {
@@ -75,6 +77,9 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as HttpResponseCompression from "./httpCompression/HttpResponseCompression.ts";
 import { makeRoutesLayer } from "./server.ts";
+import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
+import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
+import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import { resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -893,6 +898,14 @@ const buildAppUnderTest = (options?: {
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(HttpResponseCompression.layerNode),
+      // Mercurian's planning store, real but in-memory: it owns its own
+      // database file, so nothing here reaches t3code's store.
+      Layer.provide(
+        PlanningStore.layer.pipe(
+          Layer.provide(CommitStore.layer),
+          Layer.provide(MercurianSqlite.layerMemory),
+        ),
+      ),
       Layer.provide(layerConfig),
     );
 
@@ -4284,6 +4297,67 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(record.resourceAttributes["service.name"], "t3-web");
         assert.equal(record.status?.code, String(span.status.code));
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc mercurian planning, and births a plan at its first message", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            // Before any message the project is in the tree and has no plans.
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Reshape the sidebar",
+            });
+            yield* client[MERCURIAN_WS_METHODS.appendPlanMessage]({
+              planId: created.plan.planId,
+              text: "And the planning space",
+            });
+            const detail = yield* client[MERCURIAN_WS_METHODS.getPlan]({
+              planId: created.plan.planId,
+            });
+            return { project, created, detail };
+          }),
+        ),
+      );
+
+      assert.equal(result.project.name, "Astrolabe");
+      assert.equal(result.created.plan.title, "Reshape the sidebar");
+      assert.deepEqual(
+        result.detail.messages.map((message) => message.text),
+        ["Reshape the sidebar", "And the planning space"],
+      );
+      assert.deepEqual(
+        result.detail.messages.map((message) => message.authorKind),
+        ["human", "human"],
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("refuses a plan on an unknown mercurian project", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const failure = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: MercurianProjectId.make("missing"),
+              message: "Anything",
+            }),
+          ),
+        ),
+      );
+
+      assert.equal(failure._tag, "MercurianProjectNotFoundError");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>
