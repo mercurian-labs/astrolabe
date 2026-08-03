@@ -87,7 +87,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import { navigateToParkedThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
 import {
   applyWslEnvironmentConfiguration,
   parseWslUncPath,
@@ -893,11 +893,9 @@ function OpenCommandPaletteDialog(props: {
             clientSettings.sidebarThreadSortOrder,
           );
       if (latestThread) {
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(
-            scopeThreadRef(latestThread.environmentId, latestThread.id),
-          ),
+        await navigateToParkedThreadRoute({
+          kind: "server",
+          threadRef: scopeThreadRef(latestThread.environmentId, latestThread.id),
         });
         return;
       }
@@ -1001,9 +999,9 @@ function OpenCommandPaletteDialog(props: {
             : undefined;
         },
         runThread: async (thread) => {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+          await navigateToParkedThreadRoute({
+            kind: "server",
+            threadRef: scopeThreadRef(thread.environmentId, thread.id),
           });
         },
       }),
@@ -1554,11 +1552,9 @@ function OpenCommandPaletteDialog(props: {
           clientSettings.sidebarThreadSortOrder,
         );
         if (latestThread) {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(
-              scopeThreadRef(latestThread.environmentId, latestThread.id),
-            ),
+          await navigateToParkedThreadRoute({
+            kind: "server",
+            threadRef: scopeThreadRef(latestThread.environmentId, latestThread.id),
           });
         } else {
           const navigationResult = await settlePromise(() =>

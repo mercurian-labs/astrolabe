@@ -136,6 +136,12 @@ a parent must already exist (so the graph is acyclic by construction), and publi
 publishes its unpublished ancestors along every parent path. See
 [ADR 001](../architecture/local-first-runtime.md).
 
+[`PlanningStore.ts`][planning-store] adds projects and plans over that graph. A plan owns exactly
+one history and is created together with its root commit, so a plan without a first message cannot
+exist. The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription,
+which re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced
+deltas.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -168,3 +174,4 @@ already dispatch.
 [server]: ../../apps/server/src/server.ts
 [mercurian-persistence]: ../../apps/server/src/mercurian/persistence/
 [commit-store]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
+[planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts

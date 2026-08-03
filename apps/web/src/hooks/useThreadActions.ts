@@ -28,7 +28,7 @@ import {
   readThreadShell,
 } from "../state/entities";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
+import { navigateToParkedThreadRoute, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
@@ -322,12 +322,9 @@ export function useThreadActions() {
           );
           if (fallbackThread) {
             const navigationResult = await settlePromise(() =>
-              router.navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(
-                  scopeThreadRef(fallbackThread.environmentId, fallbackThread.id),
-                ),
-                replace: true,
+              navigateToParkedThreadRoute({
+                kind: "server",
+                threadRef: scopeThreadRef(fallbackThread.environmentId, fallbackThread.id),
               }),
             );
             if (navigationResult._tag === "Failure") {

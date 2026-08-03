@@ -92,7 +92,15 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+/**
+ * `showSettingsRow` is false for the project tree, which puts Settings in its
+ * Workspace group instead — the footer then carries only the update pills.
+ */
+export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  showSettingsRow = true,
+}: {
+  showSettingsRow?: boolean;
+}) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const handleSettingsClick = useCallback(() => {
@@ -106,14 +114,16 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter className="p-[var(--sidebar-content-inset)]">
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton onClick={handleSettingsClick}>
-            <SettingsIcon />
-            <span>Settings</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      {showSettingsRow ? (
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={handleSettingsClick}>
+              <SettingsIcon />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      ) : null}
     </SidebarFooter>
   );
 });
