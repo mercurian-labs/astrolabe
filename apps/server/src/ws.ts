@@ -31,6 +31,10 @@ import {
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  MERCURIAN_WS_METHODS,
+  MercurianPlanningError,
+  isMercurianProjectNotFoundError,
+  isPlanNotFoundError,
   type ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -73,6 +77,13 @@ import {
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import {
+  toWirePlanDetail,
+  toWirePlanMessage,
+  toWireProject,
+  toWireTreeSnapshot,
+} from "./mercurian/planning/wire.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -355,6 +366,7 @@ const makeWsRpcLayer = (
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const planningStore = yield* PlanningStore.PlanningStore;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -1017,6 +1029,16 @@ const makeWsRpcLayer = (
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
+      const loadPlanningTreeSnapshot = planningStore.getTreeSnapshot.pipe(
+        Effect.map(toWireTreeSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian planning tree snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianPlanningError({ operation: "subscribeTree", cause }),
+        ),
+      );
+
       return WsRpcGroup.of({
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
@@ -1371,6 +1393,100 @@ const makeWsRpcLayer = (
               );
             }),
             { "rpc.aggregate": "orchestration" },
+          ),
+        [MERCURIAN_WS_METHODS.subscribeTree]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WS_METHODS.subscribeTree,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // mutation landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                planningStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadPlanningTreeSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // The tree is one small value, so a burst of mutations is
+                  // worth exactly one re-send: the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadPlanningTreeSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.createProject]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.createProject,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.createProject({ name: input.name, createdAt }),
+              ),
+              Effect.map(toWireProject),
+              Effect.mapError(
+                (cause) => new MercurianPlanningError({ operation: "createProject", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.createPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.createPlan,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.createPlan({
+                  projectId: input.projectId,
+                  message: input.message,
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanDetail),
+              Effect.mapError((cause) =>
+                isMercurianProjectNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "createPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.appendPlanMessage]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.appendPlanMessage,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.appendMessage({
+                  planId: input.planId,
+                  text: input.text,
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanMessage),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "appendPlanMessage", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.getPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.getPlan,
+            planningStore.getPlan({ planId: input.planId }).pipe(
+              Effect.map(toWirePlanDetail),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "getPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>
           observeRpcEffect(WS_METHODS.serverProbe, Effect.succeed({}), {

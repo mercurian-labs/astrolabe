@@ -63,6 +63,21 @@ import {
   OrchestrationGetTurnDiffInput,
   OrchestrationRpcSchemas,
 } from "./orchestration.ts";
+import {
+  MERCURIAN_WS_METHODS,
+  MercurianAppendPlanMessageInput,
+  MercurianCreatePlanInput,
+  MercurianCreateProjectInput,
+  MercurianGetPlanInput,
+  MercurianPlanningError,
+  MercurianProject,
+  MercurianProjectNotFoundError,
+  MercurianSubscribeTreeInput,
+  PlanDetail,
+  PlanMessage,
+  PlanNotFoundError,
+  PlanningTreeStreamItem,
+} from "./mercurian.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelayClientInstallFailedError,
@@ -783,6 +798,44 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
   stream: true,
 });
 
+// Mercurian planning. The tree subscription re-sends a whole (small) snapshot
+// on change rather than carrying sequenced deltas — projects and plans are few
+// and move only on discrete human acts.
+export const WsMercurianSubscribeTreeRpc = Rpc.make(MERCURIAN_WS_METHODS.subscribeTree, {
+  payload: MercurianSubscribeTreeInput,
+  success: PlanningTreeStreamItem,
+  error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsMercurianCreateProjectRpc = Rpc.make(MERCURIAN_WS_METHODS.createProject, {
+  payload: MercurianCreateProjectInput,
+  success: MercurianProject,
+  error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianCreatePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.createPlan, {
+  payload: MercurianCreatePlanInput,
+  success: PlanDetail,
+  error: Schema.Union([
+    MercurianProjectNotFoundError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianAppendPlanMessageRpc = Rpc.make(MERCURIAN_WS_METHODS.appendPlanMessage, {
+  payload: MercurianAppendPlanMessageInput,
+  success: PlanMessage,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianGetPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan, {
+  payload: MercurianGetPlanInput,
+  success: PlanDetail,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -863,4 +916,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsMercurianSubscribeTreeRpc,
+  WsMercurianCreateProjectRpc,
+  WsMercurianCreatePlanRpc,
+  WsMercurianAppendPlanMessageRpc,
+  WsMercurianGetPlanRpc,
 );

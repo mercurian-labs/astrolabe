@@ -55,8 +55,18 @@ export function buildDraftThreadRouteParams(draftId: DraftId): {
   return { draftId };
 }
 
+/**
+ * The thread routes left the app with the app-shell reshaping: navigation is
+ * the project tree now, and the thread surfaces are parked in place until the
+ * coding-session work returns to them. Every parked navigation goes through
+ * here, so it is inert and greppable rather than silently broken.
+ */
+export function navigateToParkedThreadRoute(_target: ThreadRouteTarget): Promise<void> {
+  return Promise.resolve();
+}
+
 export function resolveThreadRouteRef(
-  params: Partial<Record<"environmentId" | "threadId", string | undefined>>,
+  params: Partial<Record<string, string | undefined>>,
 ): ScopedThreadRef | null {
   if (!params.environmentId || !params.threadId) {
     return null;
@@ -66,7 +76,7 @@ export function resolveThreadRouteRef(
 }
 
 export function resolveThreadRouteTarget(
-  params: Partial<Record<"environmentId" | "threadId" | "draftId", string | undefined>>,
+  params: Partial<Record<string, string | undefined>>,
 ): ThreadRouteTarget | null {
   if (params.environmentId && params.threadId) {
     return {

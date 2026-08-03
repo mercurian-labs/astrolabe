@@ -12,6 +12,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [Planning history](#planning-history)
+- [Projects and plans](#projects-and-plans)
 
 ## Concepts
 
@@ -20,6 +21,8 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 #### Project
 
 The top-level workspace record in the app. In [the orchestration contracts][1], a project has a `workspaceRoot` and a title. It does not contain threads: `OrchestrationProject` and `OrchestrationThread` are separate arrays on the read model, and a project can have zero threads. See [workspace-layout.md][2].
+
+Not to be confused with a **Mercurian project**, which contains plans and has no path on disk. Everything on Mercurian's side of that seam is `Mercurian`-prefixed on the wire — see [Projects and plans](#projects-and-plans).
 
 #### Workspace root
 
@@ -157,6 +160,22 @@ The DAG of commits for one planning space, and the anchor its commits reference.
 
 Whether a commit has crossed from the author's workspace into shared history. The flag is one-way, and publishing a commit also publishes its unpublished ancestors along every parent path, so shared history is always complete from any published commit back to the root. An imported plan's root is born published; everything else starts private. Reads take an explicit `visibility` of `published` or `all`.
 
+### Projects and plans
+
+Mercurian's planning layer, stored beside the commit graph in [PlanningStore.ts][26] and crossing the wire through [mercurian.ts][27].
+
+#### Mercurian project
+
+A container of plans, and the context its plans ground in. It has a name and nothing else today: the set of repositories a project scopes is a default rather than a boundary, and the table that holds it arrives with the feature that manages it. Distinct from a t3code [Project](#project), which is a workspace root on disk.
+
+#### Plan
+
+The unit of work, born in a project and owning exactly one planning space. A plan exists only from its first message: creation takes that message and writes it as the history's root commit, which is why there are no empty rows in the project tree and nothing to clean up after an abandoned draft. Its title is derived from the first line of that message.
+
+#### Planning space
+
+A plan's conversation, rendered over its [history](#history). The surface appends human `message` commits at the tip; assistant turns, the plan artifact, and explicit parent selection each land on this seam later.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -197,3 +216,5 @@ Whether a commit has crossed from the author's workspace into shared history. Th
 [23]: ../../apps/server/src/checkpointing/Diffs.ts
 [24]: ./overview.md
 [25]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
+[26]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
+[27]: ../../packages/contracts/src/mercurian.ts

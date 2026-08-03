@@ -67,6 +67,10 @@
       "types": "./src/state/models.ts",
       "default": "./src/state/models.ts"
     },
+    "./state/mercurian-planning": {
+      "types": "./src/state/mercurianPlanning.ts",
+      "default": "./src/state/mercurianPlanning.ts"
+    },
     "./state/orchestration": {
       "types": "./src/state/orchestration.ts",
       "default": "./src/state/orchestration.ts"

@@ -99,7 +99,7 @@ import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import {
-  buildThreadRouteParams,
+  navigateToParkedThreadRoute,
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
@@ -1817,10 +1817,7 @@ export default function SidebarV2() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );

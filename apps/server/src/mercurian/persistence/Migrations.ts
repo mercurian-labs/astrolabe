@@ -13,8 +13,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import Migration0001 from "./Migrations/001_CommitGraph.ts";
+import Migration0002 from "./Migrations/002_ProjectsPlans.ts";
 
-export const migrationEntries = [[1, "CommitGraph", Migration0001]] as const;
+export const migrationEntries = [
+  [1, "CommitGraph", Migration0001],
+  [2, "ProjectsPlans", Migration0002],
+] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
 

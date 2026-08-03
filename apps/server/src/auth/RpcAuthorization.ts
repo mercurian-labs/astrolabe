@@ -6,6 +6,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
@@ -28,6 +29,14 @@ export const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_WS_METHODS.subscribeShell]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.subscribeThread]: AuthOrchestrationReadScope,
+  // Planning is workspace orchestration in the same trust domain; a
+  // Mercurian-specific scope would force re-pairing for a boundary that does
+  // not exist yet. Revisit with shared workspaces.
+  [MERCURIAN_WS_METHODS.subscribeTree]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.getPlan]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,
