@@ -23,6 +23,8 @@ import { fixPath } from "./os-jank.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
+import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
+import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -239,6 +241,12 @@ const ProviderLayerLive = ProviderServiceLive.pipe(
 
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
 
+// Mercurian's planning store lives beside t3code's, in its own database file
+// with its own migration sequence (ADR 001 §2). Its `SqlClient` is provided
+// privately — `Layer.provide`, never `provideMerge` — so the global
+// `SqlClient` every upstream consumer resolves is still `state.sqlite`.
+const MercurianPersistenceLayerLive = CommitStore.layer.pipe(Layer.provide(MercurianSqlite.layer));
+
 const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(
   Layer.provide(VcsProjectConfig.layer),
 );
@@ -389,6 +397,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+  Layer.provideMerge(MercurianPersistenceLayerLive),
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),
