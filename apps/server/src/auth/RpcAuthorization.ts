@@ -34,6 +34,7 @@ export const RPC_REQUIRED_SCOPES = {
   // not exist yet. Revisit with shared workspaces.
   [MERCURIAN_WS_METHODS.subscribeTree]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,

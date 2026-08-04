@@ -3,10 +3,12 @@
  * and history of a planning space.
  *
  * A project contains plans; a plan is the unit of work and owns exactly one
- * planning space. The DAG's shape does not cross — a commit arrives already
- * projected into what the surface renders, never as an opaque payload — with
- * one exception: `sequence`, the store's append order, which is what a
- * subscription resumes from.
+ * planning space. A commit arrives already projected into what the surface
+ * renders, never as an opaque payload. Three constant-size facts about the
+ * commit itself ride along as deliberate exceptions, because the DAG explorer
+ * renders the history's shape: `sequence`, the store's append order and a
+ * subscription's resume cursor; `parents`, the edges the explorer draws; and
+ * `published`, which tells shared work from private.
  *
  * Names are `Mercurian`-prefixed wherever the fork already owns the word:
  * a t3code `Project` is an on-disk workspace root, a Mercurian project is a
@@ -25,6 +27,7 @@ export const MERCURIAN_WS_METHODS = {
   createPlan: "mercurian.createPlan",
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
+  getPlanTextAt: "mercurian.getPlanTextAt",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -62,13 +65,26 @@ export const PlanShell = Schema.Struct({
 });
 export type PlanShell = typeof PlanShell.Type;
 
-export const PlanMessage = Schema.Struct({
+/**
+ * The commit facts every timeline item carries, whatever kind it is: where it
+ * sits in the append order, which commits it hangs from, and whether it has
+ * crossed into shared history. The explorer draws the history from these.
+ */
+const PlanCommitFields = {
   commitId: MercurianCommitId,
   /** The commit's place in the store's global append order. */
   sequence: Schema.Number,
+  /** Ordered; empty for the root, more than one for a merge. */
+  parents: Schema.Array(MercurianCommitId),
+  /** `false` is private work — the author's own, not yet shared. */
+  published: Schema.Boolean,
   authorKind: PlanAuthorKind,
-  text: Schema.String,
   createdAt: IsoDateTime,
+} as const;
+
+export const PlanMessage = Schema.Struct({
+  ...PlanCommitFields,
+  text: Schema.String,
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -76,14 +92,11 @@ export type PlanMessage = typeof PlanMessage.Type;
  * A direct edit of the plan artifact, as the history records it. The revision
  * carries no text: the artifact's *current* text crosses once as
  * {@link PlanDetail.planText}, and re-sending every historical snapshot would
- * grow the payload with the square of editing activity.
+ * grow the payload with the square of editing activity. The text as of an
+ * earlier commit is a frozen fact, read once through
+ * {@link MercurianGetPlanTextAtInput} when someone looks back.
  */
-export const PlanRevision = Schema.Struct({
-  commitId: MercurianCommitId,
-  sequence: Schema.Number,
-  authorKind: PlanAuthorKind,
-  createdAt: IsoDateTime,
-});
+export const PlanRevision = Schema.Struct(PlanCommitFields);
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
@@ -184,6 +197,22 @@ export const MercurianSavePlanRevisionInput = Schema.Struct({
 });
 export type MercurianSavePlanRevisionInput = typeof MercurianSavePlanRevisionInput.Type;
 
+/**
+ * The plan as of one commit — what the artifact showed when that commit
+ * landed. Only the client's own subscription can name a commit here, so a
+ * commit that does not belong to this plan's history is a bug, not a refusal
+ * the surface renders.
+ */
+export const MercurianGetPlanTextAtInput = Schema.Struct({
+  planId: PlanId,
+  commitId: MercurianCommitId,
+});
+export type MercurianGetPlanTextAtInput = typeof MercurianGetPlanTextAtInput.Type;
+
+/** History above a commit cannot change, so this answer never goes stale. */
+export const PlanTextAt = Schema.Struct({ planText: Schema.String });
+export type PlanTextAt = typeof PlanTextAt.Type;
+
 export const MercurianSubscribePlanInput = Schema.Struct({
   planId: PlanId,
   /** A cursor to resume from. Absent — or too far behind — means a fresh snapshot. */
@@ -231,6 +260,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "createPlan",
       "appendPlanMessage",
       "savePlanRevision",
+      "getPlanTextAt",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

@@ -11,22 +11,27 @@ import {
 
 import { applyPlanStreamItem, EMPTY_PLAN_STATE } from "./planReducer.ts";
 
-const message = (id: string, sequence: number, text: string): PlanTimelineItem => ({
-  _tag: "message",
+const commitFields = (id: string, sequence: number, parents: ReadonlyArray<string>) => ({
   commitId: MercurianCommitId.make(id),
   sequence,
-  authorKind: "human",
-  text,
+  parents: parents.map((parentId) => MercurianCommitId.make(parentId)),
+  published: false,
+  authorKind: "human" as const,
   createdAt: "2026-08-03T00:00:00.000Z",
 });
 
-const revision = (id: string, sequence: number): PlanTimelineItem => ({
-  _tag: "plan-revision",
-  commitId: MercurianCommitId.make(id),
-  sequence,
-  authorKind: "human",
-  createdAt: "2026-08-03T00:00:00.000Z",
-});
+const message = (
+  id: string,
+  sequence: number,
+  text: string,
+  parents: ReadonlyArray<string> = [],
+): PlanTimelineItem => ({ _tag: "message", ...commitFields(id, sequence, parents), text });
+
+const revision = (
+  id: string,
+  sequence: number,
+  parents: ReadonlyArray<string> = [],
+): PlanTimelineItem => ({ _tag: "plan-revision", ...commitFields(id, sequence, parents) });
 
 const snapshot: PlanDetail = {
   plan: {
@@ -84,6 +89,18 @@ describe("applyPlanStreamItem", () => {
     ]);
     expect(state.detail?.timeline).toHaveLength(1);
     expect(state.detail?.snapshotSequence).toBe(1);
+  });
+
+  it("carries the commit's own graph facts through the fold", () => {
+    // The explorer reads the history's shape off this same state; a commit
+    // that arrives as an event has to be as complete as one in the snapshot.
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "commit", sequence: 2, item: message("commit-2", 2, "Later", ["commit-1"]) },
+    ]);
+    const appended = state.detail?.timeline.at(-1);
+    expect(appended?.parents).toEqual(["commit-1"]);
+    expect(appended?.published).toBe(false);
   });
 
   it("flips synchronized without disturbing the space", () => {

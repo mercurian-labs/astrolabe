@@ -66,26 +66,34 @@ export type MessageCommitPayload = typeof MessageCommitPayload.Type;
 export const PlanRevisionCommitPayload = Schema.Struct({ text: Schema.String });
 export type PlanRevisionCommitPayload = typeof PlanRevisionCommitPayload.Type;
 
-/** One commit on the planning space's path, as the conversation renders it. */
-export const PlanMessage = Schema.Struct({
+/**
+ * What every projected commit carries whatever its kind: its place in the
+ * order, its edges, its attribution, and whether it is shared yet. The last
+ * two are the DAG explorer's whole input — it draws the history from these
+ * rather than from a second read of the graph.
+ */
+const PlanCommitFields = {
   commitId: CommitId,
   sequence: Schema.Number,
+  parents: Schema.Array(CommitId),
+  published: Schema.Boolean,
   authorKind: CommitAuthorKind,
-  text: Schema.String,
   createdAt: Schema.DateTimeUtcFromString,
+} as const;
+
+/** One commit on the planning space's path, as the conversation renders it. */
+export const PlanMessage = Schema.Struct({
+  ...PlanCommitFields,
+  text: Schema.String,
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
 /**
  * A direct edit of the plan, as the history records it. Attribution and place
- * in the order; the text it produced is the artifact, read as {@link PlanDetail.planText}.
+ * in the order; the text it produced is the artifact, read as {@link PlanDetail.planText}
+ * at the tip and as {@link PlanningStore.getPlanTextAt} anywhere earlier.
  */
-export const PlanRevision = Schema.Struct({
-  commitId: CommitId,
-  sequence: Schema.Number,
-  authorKind: CommitAuthorKind,
-  createdAt: Schema.DateTimeUtcFromString,
-});
+export const PlanRevision = Schema.Struct(PlanCommitFields);
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
@@ -172,6 +180,9 @@ export const ListTimelineSinceInput = Schema.Struct({
 });
 export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
+export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
+export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
+
 // ===============================
 // Service
 // ===============================
@@ -211,6 +222,14 @@ export class PlanningStore extends Context.Service<
     readonly listTimelineSince: (
       input: ListTimelineSinceInput,
     ) => Effect.Effect<ReadonlyArray<PlanTimelineEvent>, PlanningStoreError>;
+    /**
+     * The artifact as of one commit: the last revision at or above it on the
+     * path, `""` when there is none. A commit outside this plan's history does
+     * not exist *for this plan* and refuses as {@link CommitStore.CommitNotFoundError}.
+     */
+    readonly getPlanTextAt: (
+      input: GetPlanTextAtInput,
+    ) => Effect.Effect<string, PlanningStoreError>;
     /** Fires once per mutation. What keeps a subscribed tree and plan fresh. */
     readonly changes: Stream.Stream<void>;
   }
@@ -408,23 +427,21 @@ export const make = Effect.gen(function* () {
     return found.value;
   });
 
-  const toPlanMessage = Effect.fn("PlanningStore.toPlanMessage")(function* (commit: Commit) {
-    const payload = yield* decodeMessagePayload(commit.payload);
-    return {
-      commitId: commit.commitId,
-      sequence: commit.sequence,
-      authorKind: commit.authorKind,
-      text: payload.text,
-      createdAt: commit.createdAt,
-    } satisfies PlanMessage;
-  });
-
-  const toPlanRevision = (commit: Commit): PlanRevision => ({
+  const toPlanCommitFields = (commit: Commit) => ({
     commitId: commit.commitId,
     sequence: commit.sequence,
+    parents: commit.parents,
+    published: commit.published,
     authorKind: commit.authorKind,
     createdAt: commit.createdAt,
   });
+
+  const toPlanMessage = Effect.fn("PlanningStore.toPlanMessage")(function* (commit: Commit) {
+    const payload = yield* decodeMessagePayload(commit.payload);
+    return { ...toPlanCommitFields(commit), text: payload.text } satisfies PlanMessage;
+  });
+
+  const toPlanRevision = (commit: Commit): PlanRevision => toPlanCommitFields(commit);
 
   /**
    * A commit as the planning space sees it, or nothing when the space has no
@@ -675,6 +692,46 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  /**
+   * Reading backwards from the commit rather than folding forwards: a
+   * revision's payload is the artifact whole, so the first one found walking
+   * down the path is the answer and nothing before it matters.
+   *
+   * Along a single path `sequence` order *is* path order, so last-by-sequence
+   * is exact. Across a merge's several parent paths it is a tiebreak — which
+   * costs nothing while merges cannot exist, and stops mattering when they can:
+   * a merge's own output is a plan revision, so every post-merge path answers
+   * from the merge itself.
+   */
+  const getPlanTextAt: PlanningStore["Service"]["getPlanTextAt"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const found = yield* commits.getCommit({ commitId: input.commitId, visibility: "all" });
+      // A commit of some other plan's history does not exist for this plan.
+      if (Option.isNone(found) || found.value.historyId !== plan.historyId) {
+        return yield* new CommitStore.CommitNotFoundError({ commitId: input.commitId });
+      }
+      const ancestry = yield* commits.ancestors({
+        commitId: input.commitId,
+        visibility: "all",
+      });
+      const path = [...ancestry, found.value];
+      for (let index = path.length - 1; index >= 0; index -= 1) {
+        const commit = path[index];
+        if (commit !== undefined && commit.kind === "plan-revision") {
+          return (yield* decodeRevisionPayload(commit.payload)).text;
+        }
+      }
+      return "";
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.getPlanTextAt:query",
+          "PlanningStore.getPlanTextAt:decodeRows",
+        ),
+      ),
+    );
+
   return {
     createProject,
     getTreeSnapshot,
@@ -683,6 +740,7 @@ export const make = Effect.gen(function* () {
     savePlanRevision,
     getPlanSnapshot,
     listTimelineSince,
+    getPlanTextAt,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

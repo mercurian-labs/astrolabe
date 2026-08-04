@@ -22,9 +22,23 @@ if you navigate away without sending, nothing is left behind but the text you ty
 still there if you come back to the same project. Once the first message lands, the plan appears
 under its project, titled from that message's first line.
 
-Opening a plan from the tree lands on its planning space: the plan itself beside the conversation
-that evolves it, and a composer to add to it. The plan you are looking at stays highlighted in the
-tree while you are anywhere inside it.
+Opening a plan from the tree lands on its planning space: the conversation that evolves the plan,
+with a composer to add to it, and a pane on the right for the plan's two standing views. The plan
+you are looking at stays highlighted in the tree while you are anywhere inside it.
+
+## The right pane
+
+Two icons sit in the space's top-right corner: the **plan** and the **history**. Pressing one shows
+it in the right pane; pressing the one already showing closes the pane and gives the conversation
+the whole width.
+
+The first plan you open comes up with its plan visible and the history one press away. After that
+the pane comes back the way you left it — open or closed, and on whichever view — and that choice
+follows you from plan to plan, because which view you prefer is a fact about you rather than about
+one plan.
+
+Drag the divider between the conversation and the pane to give either side more room; the width is
+remembered. On a narrow window the two stack, pane above conversation.
 
 ## The plan
 
@@ -38,11 +52,30 @@ edits interleaved with the messages — one history, not a document with a chang
 Clearing the plan is an edit like any other, and the plan's text is always exactly what that
 history adds up to.
 
-Drag the divider between the plan and the conversation to give either side more room; the width is
-remembered. On a narrow window the two stack, plan above conversation.
-
 Nothing here needs refreshing. An edit or a message appears as it lands — including one made in
 another window open on the same plan.
+
+## The history
+
+The history view shows every commit in the plan: your messages, the assistant's, and every edit of
+the plan, with the branch points visible. It offers two readings, and remembers which one you chose.
+
+**Navigator** is the one you move through: every commit as a row in the order it happened, with
+lanes drawn down the left showing where work split and where it came back together. **Graph** is a
+map of the same history laid out in space — every commit a point, every connection drawn, the whole
+shape at once. Use the navigator to walk the history; use the graph to see it. Drag the map to move
+around it and scroll to zoom; it draws the same way every time you open it, and where you are
+standing is ringed and comes to the middle.
+
+Work you have published reads solid; work still private to you reads muted.
+
+Pick any commit, in either view, and the space moves there: the conversation shows the path through
+that commit, the plan shows what it said at the time, and the history highlights where you are
+standing. The conversation is always one path — a branch you are not on is a different conversation,
+not more of this one. Nothing is destroyed by looking: no history is rewritten, and nothing is
+thrown away. While you are back there the composer and **Edit** step aside for **Back to now**,
+because adding from an earlier point is starting a new line of work rather than appending to this
+one. **Back to now** — or picking the latest commit — returns you to the live view.
 
 ## Empty states
 
