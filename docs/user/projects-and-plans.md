@@ -22,9 +22,27 @@ if you navigate away without sending, nothing is left behind but the text you ty
 still there if you come back to the same project. Once the first message lands, the plan appears
 under its project, titled from that message's first line.
 
-Opening a plan from the tree lands on its planning space: the conversation so far, and a composer
-to add to it. The plan you are looking at stays highlighted in the tree while you are anywhere
-inside it.
+Opening a plan from the tree lands on its planning space: the plan itself beside the conversation
+that evolves it, and a composer to add to it. The plan you are looking at stays highlighted in the
+tree while you are anywhere inside it.
+
+## The plan
+
+Every planning space has exactly one plan, and it is yours to edit. A new plan starts empty —
+**Edit** in the plan's header opens it for writing, **Save** keeps what you wrote, **Cancel**
+throws it away. The plan is written in Markdown and renders as a document.
+
+Saving is not a side channel: your edit joins the plan's history alongside the messages, in the
+order things happened, with who made it and when. Scroll the conversation and you will see the
+edits interleaved with the messages — one history, not a document with a change log bolted on.
+Clearing the plan is an edit like any other, and the plan's text is always exactly what that
+history adds up to.
+
+Drag the divider between the plan and the conversation to give either side more room; the width is
+remembered. On a narrow window the two stack, plan above conversation.
+
+Nothing here needs refreshing. An edit or a message appears as it lands — including one made in
+another window open on the same plan.
 
 ## Empty states
 
