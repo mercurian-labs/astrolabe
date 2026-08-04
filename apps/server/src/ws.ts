@@ -79,6 +79,7 @@ import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
+import { normalizePlanAttachments } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import {
   toWirePlanCommitEvent,
@@ -1451,10 +1452,20 @@ const makeWsRpcLayer = (
             MERCURIAN_WS_METHODS.createPlan,
             DateTime.now.pipe(
               Effect.flatMap((createdAt) =>
-                planningStore.createPlan({
-                  projectId: input.projectId,
-                  message: input.message,
-                  createdAt,
+                Effect.gen(function* () {
+                  // The bytes land before the history does: a commit records
+                  // what a file already is, never a promise of one. A plan
+                  // being born has no id yet, so its project names the files.
+                  const attachments = yield* normalizePlanAttachments({
+                    owner: input.projectId,
+                    uploads: input.attachments,
+                  });
+                  return yield* planningStore.createPlan({
+                    projectId: input.projectId,
+                    message: input.message,
+                    attachments,
+                    createdAt,
+                  });
                 }),
               ),
               Effect.map(toWirePlanDetail),
@@ -1471,10 +1482,22 @@ const makeWsRpcLayer = (
             MERCURIAN_WS_METHODS.appendPlanMessage,
             DateTime.now.pipe(
               Effect.flatMap((createdAt) =>
-                planningStore.appendMessage({
-                  planId: input.planId,
-                  text: input.text,
-                  createdAt,
+                Effect.gen(function* () {
+                  const attachments = yield* normalizePlanAttachments({
+                    owner: input.planId,
+                    uploads: input.attachments,
+                  });
+                  return yield* planningStore.appendMessage({
+                    planId: input.planId,
+                    text: input.text,
+                    // Where the sender stood. A commit that already has a
+                    // child is a legal parent — that append is the fork.
+                    ...(input.parentCommitId === undefined
+                      ? {}
+                      : { parentCommitId: CommitId.make(input.parentCommitId) }),
+                    attachments,
+                    createdAt,
+                  });
                 }),
               ),
               Effect.map(toWirePlanMessage),
@@ -1494,6 +1517,11 @@ const makeWsRpcLayer = (
                 planningStore.savePlanRevision({
                   planId: input.planId,
                   text: input.text,
+                  // An edit lands on the branch its author was standing on,
+                  // not on whichever one last received a commit.
+                  ...(input.parentCommitId === undefined
+                    ? {}
+                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
                   createdAt,
                 }),
               ),

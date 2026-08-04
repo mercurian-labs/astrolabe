@@ -150,6 +150,16 @@ second rendering of that one subscription rather than a second stream; the artif
 commit is the only fact the client cannot derive from it, and `mercurian.getPlanTextAt` reads it
 unarily over the immutable history.
 
+Both write paths name their own parent. `appendPlanMessage` and `savePlanRevision` carry an optional
+`parentCommitId` — the commit the act continues from, resolved inside the same transaction as the
+append and refused as `CommitNotFoundError` when it belongs to no history of this plan; absent still
+means the space's tip. Naming a commit that already has a child _is_ the fork, which is why forking
+needs no operation of its own: the commit store already permits it for a human and refuses it for an
+assistant. A plan message may also carry image attachments, and they are the server's ordinary ones
+— normalized at the ws boundary the way a thread turn's are ([`Normalizer.ts`][normalizer]), written
+to the same `attachmentsDir`, and read back through the assets door by id, which never knew what a
+thread was. Only their metadata rides a commit's payload, so the snapshot stays constant-size.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -182,4 +192,5 @@ already dispatch.
 [server]: ../../apps/server/src/server.ts
 [mercurian-persistence]: ../../apps/server/src/mercurian/persistence/
 [commit-store]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
+[normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
