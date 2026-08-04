@@ -14,8 +14,10 @@ import { Route as PairRouteImport } from './routes/pair'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as SettingsTrackersRouteImport } from './routes/settings.trackers'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
+import { Route as SettingsPreferencesRouteImport } from './routes/settings.preferences'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
@@ -52,6 +54,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
+const SettingsTrackersRoute = SettingsTrackersRouteImport.update({
+  id: '/trackers',
+  path: '/trackers',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
   id: '/source-control',
   path: '/source-control',
@@ -60,6 +67,11 @@ const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
 const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsPreferencesRoute = SettingsPreferencesRouteImport.update({
+  id: '/preferences',
+  path: '/preferences',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
@@ -132,8 +144,10 @@ export interface FileRoutesByFullPath {
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/preferences': typeof SettingsPreferencesRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/trackers': typeof SettingsTrackersRoute
   '/plans/$planId': typeof ChatPlansPlanIdRoute
   '/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
 }
@@ -150,8 +164,10 @@ export interface FileRoutesByTo {
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/preferences': typeof SettingsPreferencesRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/trackers': typeof SettingsTrackersRoute
   '/': typeof ChatIndexRoute
   '/plans/$planId': typeof ChatPlansPlanIdRoute
   '/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
@@ -171,8 +187,10 @@ export interface FileRoutesById {
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/preferences': typeof SettingsPreferencesRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/trackers': typeof SettingsTrackersRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/plans/$planId': typeof ChatPlansPlanIdRoute
   '/_chat/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
@@ -193,8 +211,10 @@ export interface FileRouteTypes {
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/preferences'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/settings/trackers'
     | '/plans/$planId'
     | '/plans/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
@@ -211,8 +231,10 @@ export interface FileRouteTypes {
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/preferences'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/settings/trackers'
     | '/'
     | '/plans/$planId'
     | '/plans/draft/$draftId'
@@ -231,8 +253,10 @@ export interface FileRouteTypes {
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/preferences'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/settings/trackers'
     | '/_chat/'
     | '/_chat/plans/$planId'
     | '/_chat/plans/draft/$draftId'
@@ -283,6 +307,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/settings/trackers': {
+      id: '/settings/trackers'
+      path: '/trackers'
+      fullPath: '/settings/trackers'
+      preLoaderRoute: typeof SettingsTrackersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/source-control': {
       id: '/settings/source-control'
       path: '/source-control'
@@ -295,6 +326,13 @@ declare module '@tanstack/react-router' {
       path: '/providers'
       fullPath: '/settings/providers'
       preLoaderRoute: typeof SettingsProvidersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/preferences': {
+      id: '/settings/preferences'
+      path: '/preferences'
+      fullPath: '/settings/preferences'
+      preLoaderRoute: typeof SettingsPreferencesRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/keybindings': {
@@ -401,8 +439,10 @@ interface SettingsRouteChildren {
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
+  SettingsPreferencesRoute: typeof SettingsPreferencesRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
+  SettingsTrackersRoute: typeof SettingsTrackersRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -413,8 +453,10 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
+  SettingsPreferencesRoute: SettingsPreferencesRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
+  SettingsTrackersRoute: SettingsTrackersRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
