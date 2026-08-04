@@ -174,7 +174,11 @@ The unit of work, born in a project and owning exactly one planning space. A pla
 
 #### Planning space
 
-A plan's artifact beside the conversation that evolves it, both rendered over its [history](#history). The surface appends human `message` and `plan-revision` commits at the tip, and reads live over one `mercurian.subscribePlan` subscription — a snapshot, then commit events keyed by the commit store's own `sequence` ([ADR 002](../architecture/event-streaming-model.md)). Assistant turns and explicit parent selection land on this seam later.
+The conversation that evolves a plan, with a right pane holding the plan's two standing views — the artifact and the [DAG explorer](#dag-explorer) — chosen from icons in the surface's top-right corner and closable by re-pressing the active one. Everything on it renders over the plan's one [history](#history). The surface appends human `message` and `plan-revision` commits at the tip, and reads live over one `mercurian.subscribePlan` subscription — a snapshot, then commit events keyed by the commit store's own `sequence` ([ADR 002](../architecture/event-streaming-model.md)). Whether the pane is open and which view it holds are per-browser preferences, unkeyed by plan so they follow the person across plans. Assistant turns land on this seam later.
+
+#### DAG explorer
+
+The plan's history as the right pane draws it, in two views: Navigator (a compact tree, indented at branch points, where a merge appears under each parent as one real node plus marked references that jump to it) and Graph (the full git-graph, lanes and edges, drawing each merge once). It opens no channel of its own — `parents` and `published` ride on every timeline item, so the explorer is a second _rendering_ of the plan subscription, modelled purely in `PlanGraph.logic.ts`. Published and private commits are distinguished. Picking a commit navigates: the surface shows the [ancestor closure](#history) of that commit as the conversation you are in, and `mercurian.getPlanTextAt` reads the artifact as of there — the one fact the client cannot derive, since revisions travel without their text. Position is per-window transient view state, never persisted and never server-owned; nothing is written by moving, and acting from an earlier point is disabled behind a "Back to now" affordance rather than silently appending at the tip.
 
 #### Plan revision
 

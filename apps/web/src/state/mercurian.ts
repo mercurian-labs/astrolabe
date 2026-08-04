@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
   EnvironmentId,
+  MercurianCommitId,
   MercurianProjectId,
   PlanDetail,
   PlanId,
@@ -139,4 +140,18 @@ export function useAppendPlanMessage() {
 export function useSavePlanRevision() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.savePlanRevision);
   return useCallback((planId: PlanId, text: string) => run({ planId, text }), [run]);
+}
+
+/**
+ * The plan as it read at an earlier commit. The timeline's revisions travel
+ * without their text — re-sending every historical snapshot would grow the
+ * subscription with the square of editing activity — so looking back asks
+ * once. The answer cannot go stale: history above a commit never changes.
+ */
+export function useGetPlanTextAt() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.getPlanTextAt);
+  return useCallback(
+    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
+    [run],
+  );
 }

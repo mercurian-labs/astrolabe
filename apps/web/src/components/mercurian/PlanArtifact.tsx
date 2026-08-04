@@ -1,6 +1,6 @@
 import type { PlanId, PlanTimelineItem } from "@t3tools/contracts";
 import { PencilIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -22,10 +22,20 @@ export function PlanArtifact({
   planId,
   planText,
   timeline,
+  readOnly = false,
+  readOnlyAction,
 }: {
   readonly planId: PlanId;
   readonly planText: string;
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
+  /**
+   * Set while the surface is looking at an earlier commit. Editing there is
+   * not a smaller version of editing — it is a fork — so the affordance goes
+   * away rather than quietly appending at the tip.
+   */
+  readonly readOnly?: boolean;
+  /** What takes Edit's place while read-only: the way back to now. */
+  readonly readOnlyAction?: ReactNode;
 }) {
   const savePlanRevision = useSavePlanRevision();
   const [draft, setDraft] = useState<string | null>(null);
@@ -49,7 +59,9 @@ export function PlanArtifact({
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
           {lastRevisionLabel(timeline)}
         </span>
-        {draft === null ? (
+        {readOnly ? (
+          readOnlyAction
+        ) : draft === null ? (
           <Button size="sm" variant="ghost" onClick={() => setDraft(planText)}>
             <PencilIcon className="size-3.5" />
             Edit
@@ -70,7 +82,7 @@ export function PlanArtifact({
           </div>
         )}
       </div>
-      {draft === null ? (
+      {draft === null || readOnly ? (
         <PlanArtifactBody planText={planText} />
       ) : (
         <PlanArtifactEditor value={draft} onChange={setDraft} onSave={() => void save()} />
