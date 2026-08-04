@@ -27,6 +27,8 @@ describe("resolveTreeSelection", () => {
   it("selects the workspace rows by prefix", () => {
     expect(resolveTreeSelection("/repositories").isRepositoriesActive).toBe(true);
     expect(resolveTreeSelection("/settings/appearance").isSettingsActive).toBe(true);
+    expect(resolveTreeSelection("/settings/trackers").isSettingsActive).toBe(true);
+    expect(resolveTreeSelection("/settings/preferences").isSettingsActive).toBe(true);
     expect(resolveTreeSelection("/settings/appearance").isRepositoriesActive).toBe(false);
     expect(resolveTreeSelection("/").activePlanId).toBeNull();
   });

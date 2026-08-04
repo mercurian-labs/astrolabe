@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
+import { SETTINGS_LANDING_PATH } from "../components/mercurian/SettingsNav.logic";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
 import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
@@ -129,7 +130,7 @@ export const Route = createFileRoute("/settings")({
     }
 
     if (location.pathname === "/settings") {
-      throw redirect({ to: "/settings/general", replace: true });
+      throw redirect({ to: SETTINGS_LANDING_PATH, replace: true });
     }
   },
   component: SettingsRouteLayout,

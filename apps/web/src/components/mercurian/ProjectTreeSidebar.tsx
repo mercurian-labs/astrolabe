@@ -17,7 +17,6 @@ import { usePlanDraftStore } from "../../planDraftStore";
 import { useCreateMercurianProject, useMercurianTree } from "../../state/mercurian";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { resolveMercurianProjectExpanded, useUiStateStore } from "../../uiStateStore";
-import { SettingsSidebarNav } from "../settings/SettingsSidebarNav";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
 import { Button } from "../ui/button";
 import {
@@ -53,6 +52,7 @@ import {
   sortProjectsForTree,
   type TreeSelection,
 } from "./ProjectTreeSidebar.logic";
+import { SettingsNav } from "./SettingsNav";
 
 const selectPlanPreviewCount = (settings: { readonly sidebarPlanPreviewCount: number }) =>
   settings.sidebarPlanPreviewCount;
@@ -77,7 +77,7 @@ export default function ProjectTreeSidebar() {
       {selection.isSettingsActive ? (
         // Settings takes the panel over while you are in it, and the tree
         // returns when you leave.
-        <SettingsSidebarNav pathname={pathname} />
+        <SettingsNav pathname={pathname} />
       ) : (
         <SidebarContent>
           <ProjectTree selection={selection} />
