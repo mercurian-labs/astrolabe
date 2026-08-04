@@ -1,4 +1,4 @@
-import type { PlanId, PlanTimelineItem } from "@t3tools/contracts";
+import type { MercurianCommitId, PlanId, PlanTimelineItem } from "@t3tools/contracts";
 import { PencilIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
@@ -21,12 +21,19 @@ import { lastPlanRevision } from "./PlanArtifact.logic";
 export function PlanArtifact({
   planId,
   planText,
+  parentCommitId,
   timeline,
   readOnly = false,
   readOnlyAction,
 }: {
   readonly planId: PlanId;
   readonly planText: string;
+  /**
+   * Where the surface is standing. An edit is a commit like any other, so it
+   * hangs from the branch its author was on — not from whichever branch last
+   * received one.
+   */
+  readonly parentCommitId?: MercurianCommitId;
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /**
    * Set while the surface is looking at an earlier commit. Editing there is
@@ -44,13 +51,17 @@ export function PlanArtifact({
   const save = useCallback(async () => {
     if (draft === null || isSaving) return;
     setIsSaving(true);
-    const saved = await savePlanRevision(planId, draft);
+    const saved = await savePlanRevision({
+      planId,
+      text: draft,
+      ...(parentCommitId === undefined ? {} : { parentCommitId }),
+    });
     setIsSaving(false);
     if (saved !== null) {
       // The stream delivers the new text; the buffer's job is done.
       setDraft(null);
     }
-  }, [draft, isSaving, planId, savePlanRevision]);
+  }, [draft, isSaving, parentCommitId, planId, savePlanRevision]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">

@@ -2,8 +2,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
   EnvironmentId,
+  MercurianAppendPlanMessageInput,
   MercurianCommitId,
-  MercurianProjectId,
+  MercurianCreatePlanInput,
+  MercurianSavePlanRevisionInput,
   PlanDetail,
   PlanId,
   PlanningTreeSnapshot,
@@ -118,28 +120,32 @@ export function useCreateMercurianProject() {
 
 /**
  * The birth act. A plan exists from the moment its first message lands, so
- * this is the only way to make one.
+ * this is the only way to make one — and that first message composes with the
+ * same powers as every later one, images included.
  */
 export function useCreatePlan() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.createPlan);
-  return useCallback(
-    (projectId: MercurianProjectId, message: string) => run({ projectId, message }),
-    [run],
-  );
+  return useCallback((input: MercurianCreatePlanInput) => run(input), [run]);
 }
 
+/**
+ * Say something in a plan, from wherever you are standing. `parentCommitId` is
+ * that place: naming a commit that already has a child lands a fork whose
+ * first commit is this message, which is the only way a fork is made.
+ */
 export function useAppendPlanMessage() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.appendPlanMessage);
-  return useCallback((planId: PlanId, text: string) => run({ planId, text }), [run]);
+  return useCallback((input: MercurianAppendPlanMessageInput) => run(input), [run]);
 }
 
 /**
  * A direct edit of the plan. The text is the artifact's whole new body — a
- * revision is a snapshot, and an empty one is a legal edit.
+ * revision is a snapshot, and an empty one is a legal edit. It lands on the
+ * branch its author was standing on, for the same reason a message does.
  */
 export function useSavePlanRevision() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.savePlanRevision);
-  return useCallback((planId: PlanId, text: string) => run({ planId, text }), [run]);
+  return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
 }
 
 /**

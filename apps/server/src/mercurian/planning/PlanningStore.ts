@@ -32,6 +32,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
+  ChatAttachment,
   MercurianProjectId,
   MercurianProjectNotFoundError,
   PlanId,
@@ -51,8 +52,18 @@ import { MercurianProject, Plan } from "./schema.ts";
 // Domain
 // ===============================
 
-/** What a message commit carries. */
-export const MessageCommitPayload = Schema.Struct({ text: Schema.String });
+/**
+ * What a message commit carries.
+ *
+ * Attachments are metadata: the bytes live beside the other attachments this
+ * server holds and are read back through the assets door by id. Optional
+ * because every message written before images could ride one has to keep
+ * decoding — the field's absence is not a different kind of message.
+ */
+export const MessageCommitPayload = Schema.Struct({
+  text: Schema.String,
+  attachments: Schema.optional(Schema.Array(ChatAttachment)),
+});
 export type MessageCommitPayload = typeof MessageCommitPayload.Type;
 
 /**
@@ -85,6 +96,7 @@ const PlanCommitFields = {
 export const PlanMessage = Schema.Struct({
   ...PlanCommitFields,
   text: Schema.String,
+  attachments: Schema.optional(Schema.Array(ChatAttachment)),
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -152,13 +164,21 @@ export const CreatePlanInput = Schema.Struct({
   projectId: MercurianProjectId,
   /** The plan's first message. Its arrival *is* the plan's creation. */
   message: Schema.String,
+  attachments: Schema.optional(Schema.Array(ChatAttachment)),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type CreatePlanInput = typeof CreatePlanInput.Type;
 
+/**
+ * `parentCommitId` is the commit this act continues from — where the sender
+ * stood. Absent means the space's tip. Naming a commit that already has a
+ * child is a fork, and appending is the only way to make one.
+ */
 export const AppendMessageInput = Schema.Struct({
   planId: PlanId,
   text: Schema.String,
+  parentCommitId: Schema.optional(CommitId),
+  attachments: Schema.optional(Schema.Array(ChatAttachment)),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendMessageInput = typeof AppendMessageInput.Type;
@@ -167,6 +187,8 @@ export const SavePlanRevisionInput = Schema.Struct({
   planId: PlanId,
   /** The artifact's whole text after the edit. Empty is legal — clearing is an edit. */
   text: Schema.String,
+  /** Which branch the edit lands on. Absent means the space's tip. */
+  parentCommitId: Schema.optional(CommitId),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type SavePlanRevisionInput = typeof SavePlanRevisionInput.Type;
@@ -201,15 +223,18 @@ export class PlanningStore extends Context.Service<
      */
     readonly createPlan: (input: CreatePlanInput) => Effect.Effect<PlanDetail, PlanningStoreError>;
     /**
-     * Append a message at the space's tip. Explicit parent selection belongs to
-     * the DAG surface; while one linear path renders, the tip is the answer.
+     * Append a message onto the commit the sender named, or onto the space's
+     * tip when they named none. A commit that already has a child is a legal
+     * parent: that append *is* the fork, and it is the only way one is made.
+     * A parent outside this plan's history refuses as
+     * {@link CommitStore.CommitNotFoundError}.
      */
     readonly appendMessage: (
       input: AppendMessageInput,
     ) => Effect.Effect<PlanMessage, PlanningStoreError>;
     /**
-     * A human's direct edit of the plan, landed at the space's tip as a
-     * commit of the same standing as a message.
+     * A human's direct edit of the plan, landed as a commit of the same
+     * standing as a message on the branch they were standing on.
      */
     readonly savePlanRevision: (
       input: SavePlanRevisionInput,
@@ -438,7 +463,11 @@ export const make = Effect.gen(function* () {
 
   const toPlanMessage = Effect.fn("PlanningStore.toPlanMessage")(function* (commit: Commit) {
     const payload = yield* decodeMessagePayload(commit.payload);
-    return { ...toPlanCommitFields(commit), text: payload.text } satisfies PlanMessage;
+    return {
+      ...toPlanCommitFields(commit),
+      text: payload.text,
+      ...(payload.attachments === undefined ? {} : { attachments: payload.attachments }),
+    } satisfies PlanMessage;
   });
 
   const toPlanRevision = (commit: Commit): PlanRevision => toPlanCommitFields(commit);
@@ -542,7 +571,12 @@ export const make = Effect.gen(function* () {
               kind: "message",
               authorKind: "human",
               createdAt: input.createdAt,
-              payload: { text: input.message } satisfies MessageCommitPayload,
+              payload: {
+                text: input.message,
+                ...(input.attachments === undefined || input.attachments.length === 0
+                  ? {}
+                  : { attachments: input.attachments }),
+              } satisfies MessageCommitPayload,
             },
             // Born blank is born private; an imported plan's published root
             // belongs to issue import.
@@ -572,12 +606,37 @@ export const make = Effect.gen(function* () {
     );
 
   /**
-   * Read the tip and append onto it inside one transaction. Two write paths
-   * now target the tip — a message and a plan revision — so a linear history
-   * has to hold by construction, not by the client happening to serialize.
+   * Where an act hangs from: the commit it named, or the tip when it named
+   * none. A commit of some other plan's history does not exist for this plan —
+   * the same rule {@link PlanningStore.getPlanTextAt} reads by.
    */
-  const appendAtTip = Effect.fn("PlanningStore.appendAtTip")(function* (input: {
+  const resolveParent = Effect.fn("PlanningStore.resolveParent")(function* (
+    plan: Plan,
+    parentCommitId: CommitId | undefined,
+  ) {
+    if (parentCommitId === undefined) {
+      return yield* readTip(plan.historyId);
+    }
+    const found = yield* commits.getCommit({ commitId: parentCommitId, visibility: "all" });
+    if (Option.isNone(found) || found.value.historyId !== plan.historyId) {
+      return yield* new CommitStore.CommitNotFoundError({ commitId: parentCommitId });
+    }
+    return found.value;
+  });
+
+  /**
+   * Resolve the parent and append onto it inside one transaction, so the shape
+   * of the history is decided by one reader of it rather than by two writers
+   * racing.
+   *
+   * Nothing here knows about forks. Appending onto a commit that already has a
+   * child is a fork, and the commit store is where that is legal for a human
+   * and refused for an assistant — this path inherits that law rather than
+   * restating it.
+   */
+  const appendAt = Effect.fn("PlanningStore.appendAt")(function* (input: {
     readonly plan: Plan;
+    readonly parentCommitId: CommitId | undefined;
     readonly commitId: CommitId;
     readonly kind: "message" | "plan-revision";
     readonly payload: unknown;
@@ -585,7 +644,7 @@ export const make = Effect.gen(function* () {
   }) {
     return yield* sql.withTransaction(
       Effect.gen(function* () {
-        const tip = yield* readTip(input.plan.historyId);
+        const parent = yield* resolveParent(input.plan, input.parentCommitId);
         const commit = yield* commits.append({
           historyId: input.plan.historyId,
           commitId: input.commitId,
@@ -593,7 +652,7 @@ export const make = Effect.gen(function* () {
           // Hardcoded, never taken from the caller: the assistant's revisions
           // arrive with the assistant and its own write path.
           authorKind: "human",
-          parents: tip === undefined ? [] : [tip.commitId],
+          parents: parent === undefined ? [] : [parent.commitId],
           createdAt: input.createdAt,
           payload: input.payload,
         });
@@ -607,11 +666,17 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       const commitId = yield* mintId(CommitId);
-      const appended = yield* appendAtTip({
+      const appended = yield* appendAt({
         plan,
+        parentCommitId: input.parentCommitId,
         commitId,
         kind: "message",
-        payload: { text: input.text } satisfies MessageCommitPayload,
+        payload: {
+          text: input.text,
+          ...(input.attachments === undefined || input.attachments.length === 0
+            ? {}
+            : { attachments: input.attachments }),
+        } satisfies MessageCommitPayload,
         createdAt: input.createdAt,
       });
 
@@ -630,8 +695,9 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       const commitId = yield* mintId(CommitId);
-      const appended = yield* appendAtTip({
+      const appended = yield* appendAt({
         plan,
+        parentCommitId: input.parentCommitId,
         commitId,
         kind: "plan-revision",
         payload: { text: input.text } satisfies PlanRevisionCommitPayload,
