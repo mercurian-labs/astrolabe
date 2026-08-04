@@ -68,5 +68,15 @@ export function createMercurianPlanningAtoms<R, E>(
       // serializing them per plan is what keeps the local history linear.
       concurrency: serialPerPlan,
     }),
+    /**
+     * The artifact as of an earlier commit. A read, not a write — but history
+     * above a commit is frozen, so there is nothing to order it against and no
+     * concurrency key to give it.
+     */
+    getPlanTextAt: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:get-plan-text-at",
+      tag: MERCURIAN_WS_METHODS.getPlanTextAt,
+      scheduler: writeScheduler,
+    }),
   };
 }

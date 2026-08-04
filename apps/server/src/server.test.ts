@@ -4336,7 +4336,22 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               Stream.take(3),
               Stream.runCollect,
             );
-            return { project, created, items };
+            // The artifact as of an earlier commit is the one thing the
+            // subscription deliberately does not carry: revisions travel
+            // without their text.
+            const atRoot = yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
+              planId: created.plan.planId,
+              commitId: created.timeline[0]!.commitId,
+            });
+            const revisionEvent = items[2];
+            const atRevision =
+              revisionEvent?.kind === "commit"
+                ? yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
+                    planId: created.plan.planId,
+                    commitId: revisionEvent.item.commitId,
+                  })
+                : null;
+            return { project, created, items, atRoot, atRevision };
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
@@ -4356,6 +4371,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(snapshot?.planText, "");
       assert.deepEqual(result.items[1], { kind: "synchronized" });
 
+      // The graph's shape rides along: the explorer draws the history from
+      // these rather than from a second read.
+      assert.deepEqual([...(snapshot?.timeline[0]?.parents ?? [])], []);
+      assert.deepEqual(
+        [...(snapshot?.timeline[1]?.parents ?? [])],
+        [snapshot?.timeline[0]?.commitId],
+      );
+      assert.equal(snapshot?.timeline[0]?.published, false);
+
       const event = result.items[2];
       assert.equal(event?.kind, "commit");
       if (event?.kind === "commit") {
@@ -4364,6 +4388,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(event.planText, "# Approach\n\nStart from the tree.");
         assert.ok(event.sequence > (snapshot?.snapshotSequence ?? 0));
       }
+
+      // Born blank at the root, and the revision's own text where it landed.
+      assert.equal(result.atRoot.planText, "");
+      assert.equal(result.atRevision?.planText, "# Approach\n\nStart from the tree.");
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

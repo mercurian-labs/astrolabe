@@ -68,6 +68,7 @@ import {
   MercurianAppendPlanMessageInput,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
+  MercurianGetPlanTextAtInput,
   MercurianPlanningError,
   MercurianProject,
   MercurianProjectNotFoundError,
@@ -80,6 +81,7 @@ import {
   PlanningTreeStreamItem,
   PlanRevision,
   PlanStreamItem,
+  PlanTextAt,
 } from "./mercurian.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
@@ -849,6 +851,15 @@ export const WsMercurianSubscribePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.subscri
   stream: true,
 });
 
+// The plan as of an earlier commit. History above a commit is frozen, so this
+// is a unary read rather than anything the subscription has to carry: the
+// timeline's revisions deliberately travel without their text.
+export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlanTextAt, {
+  payload: MercurianGetPlanTextAtInput,
+  success: PlanTextAt,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -935,4 +946,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSubscribePlanRpc,
+  WsMercurianGetPlanTextAtRpc,
 );

@@ -78,12 +78,14 @@ import {
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { CommitId } from "./mercurian/commitTree/schema.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import {
   toWirePlanCommitEvent,
   toWirePlanDetail,
   toWirePlanMessage,
   toWirePlanRevision,
+  toWirePlanTextAt,
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
@@ -1502,6 +1504,26 @@ const makeWsRpcLayer = (
                   : new MercurianPlanningError({ operation: "savePlanRevision", cause }),
               ),
             ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.getPlanTextAt]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.getPlanTextAt,
+            planningStore
+              .getPlanTextAt({
+                planId: input.planId,
+                commitId: CommitId.make(input.commitId),
+              })
+              .pipe(
+                Effect.map(toWirePlanTextAt),
+                // A commit the client did not receive from this plan's own
+                // subscription is a planning bug, not something to render.
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause)
+                    ? cause
+                    : new MercurianPlanningError({ operation: "getPlanTextAt", cause }),
+                ),
+              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.subscribePlan]: (input) =>

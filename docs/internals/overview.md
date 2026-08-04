@@ -144,7 +144,11 @@ The tree the left sidebar renders arrives over one `mercurian.subscribeTree` sub
 re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
 planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
 by `commits.sequence`, since the commit DAG is already the durable log
-([ADR 002](../architecture/event-streaming-model.md)).
+([ADR 002](../architecture/event-streaming-model.md)). Each projected commit carries `parents` and
+`published` alongside `sequence`, which is what lets the DAG explorer draw the history's shape as a
+second rendering of that one subscription rather than a second stream; the artifact as of an earlier
+commit is the only fact the client cannot derive from it, and `mercurian.getPlanTextAt` reads it
+unarily over the immutable history.
 
 ## Startup
 

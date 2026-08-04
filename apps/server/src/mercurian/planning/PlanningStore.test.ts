@@ -540,4 +540,195 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(counts?.plans, 1);
     }),
   );
+
+  it.effect("carries each commit's edges and its published state onto the timeline", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "First draft",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      const detail = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const [root, revision] = detail.timeline;
+      assert.deepStrictEqual([...(root?.parents ?? [])], []);
+      assert.deepStrictEqual([...(revision?.parents ?? [])], [root?.commitId]);
+      // Everything written in-app is born private; publishing has no write
+      // path yet, so the explorer's distinction runs against a uniform input.
+      assert.ok(detail.timeline.every((item) => item.published === false));
+    }),
+  );
+
+  it.effect("reads the artifact as of any commit on the path", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const rootCommitId = created.timeline[0]!.commitId;
+
+      // A plan born blank has nothing above its root: the empty artifact is a
+      // real answer, not a missing one.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: rootCommitId }),
+        "",
+      );
+
+      const first = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "First draft",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      const message = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "What about the tree?",
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+      const cleared = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "",
+        createdAt: at("2026-08-03T00:04:00.000Z"),
+      });
+
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: first.commitId }),
+        "First draft",
+      );
+      // A message leaves the artifact exactly as the revision below it left it.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: message.commitId }),
+        "First draft",
+      );
+      // Clearing is an edit: the answer is the empty artifact, not the text
+      // before it.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: cleared.commitId }),
+        "",
+      );
+      // The root still answers from its own past, unmoved by what came after.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: rootCommitId }),
+        "",
+      );
+    }),
+  );
+
+  it.effect("answers each fork's leaf from its own path", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const rootCommitId = created.timeline[0]!.commitId;
+      const shared = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "Shared ground",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      // Forking has no UI yet, so the branch is built through the commit store
+      // directly — human-authored, which is the only way a fork is legal.
+      const branch = (commitId: string, text: string, iso: string) =>
+        commits.append({
+          historyId: created.plan.historyId,
+          commitId: CommitId.make(commitId),
+          kind: "plan-revision",
+          authorKind: "human",
+          parents: [shared.commitId],
+          createdAt: at(iso),
+          payload: { text },
+        });
+
+      const left = yield* branch("fork-left", "Left branch", "2026-08-03T00:03:00.000Z");
+      const right = yield* branch("fork-right", "Right branch", "2026-08-03T00:04:00.000Z");
+
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: left.commitId }),
+        "Left branch",
+      );
+      // The later sibling does not leak down the other path: each leaf reads
+      // its own ancestry.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: right.commitId }),
+        "Right branch",
+      );
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: shared.commitId }),
+        "Shared ground",
+      );
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: rootCommitId }),
+        "",
+      );
+    }),
+  );
+
+  it.effect("refuses a commit that does not exist for the plan asked about", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const first = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "First plan",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const second = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Second plan",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      const missingPlan = yield* Effect.flip(
+        store.getPlanTextAt({
+          planId: PlanId.make("nope"),
+          commitId: first.timeline[0]!.commitId,
+        }),
+      );
+      assert.strictEqual(missingPlan._tag, "PlanNotFoundError");
+
+      const missingCommit = yield* Effect.flip(
+        store.getPlanTextAt({ planId: first.plan.planId, commitId: CommitId.make("nope") }),
+      );
+      assert.strictEqual(missingCommit._tag, "CommitNotFoundError");
+
+      // A real commit of another plan's history does not exist *for this plan*.
+      const foreignCommit = yield* Effect.flip(
+        store.getPlanTextAt({
+          planId: first.plan.planId,
+          commitId: second.timeline[0]!.commitId,
+        }),
+      );
+      assert.strictEqual(foreignCommit._tag, "CommitNotFoundError");
+    }),
+  );
 });

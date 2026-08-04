@@ -39,20 +39,22 @@ export const toWirePlanShell = (plan: Plan): Contracts.PlanShell => ({
   updatedAt: iso(plan.updatedAt),
 });
 
-export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage => ({
-  commitId: MercurianCommitId.make(message.commitId),
-  sequence: message.sequence,
-  authorKind: message.authorKind,
-  text: message.text,
-  createdAt: iso(message.createdAt),
+const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision) => ({
+  commitId: MercurianCommitId.make(commit.commitId),
+  sequence: commit.sequence,
+  parents: commit.parents.map((parentId) => MercurianCommitId.make(parentId)),
+  published: commit.published,
+  authorKind: commit.authorKind,
+  createdAt: iso(commit.createdAt),
 });
 
-export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision => ({
-  commitId: MercurianCommitId.make(revision.commitId),
-  sequence: revision.sequence,
-  authorKind: revision.authorKind,
-  createdAt: iso(revision.createdAt),
+export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage => ({
+  ...toWirePlanCommitFields(message),
+  text: message.text,
 });
+
+export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision =>
+  toWirePlanCommitFields(revision);
 
 export const toWirePlanTimelineItem = (item: PlanTimelineItem): Contracts.PlanTimelineItem =>
   item._tag === "message"
@@ -72,6 +74,8 @@ export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanS
   item: toWirePlanTimelineItem(event.item),
   ...(event.planText === undefined ? {} : { planText: event.planText }),
 });
+
+export const toWirePlanTextAt = (planText: string): Contracts.PlanTextAt => ({ planText });
 
 export const toWireTreeSnapshot = (
   snapshot: PlanningTreeSnapshot,
