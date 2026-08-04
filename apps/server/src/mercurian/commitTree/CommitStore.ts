@@ -182,6 +182,18 @@ export const ListCommitsInput = Schema.Struct({
 });
 export type ListCommitsInput = typeof ListCommitsInput.Type;
 
+/**
+ * The event read: what landed in a history after a cursor. The store is
+ * already the append-only log a subscription needs, so "since" is a `sequence`
+ * comparison rather than a second event table.
+ */
+export const ListCommitsSinceInput = Schema.Struct({
+  historyId: HistoryId,
+  afterSequence: Schema.Number,
+  visibility: CommitVisibility,
+});
+export type ListCommitsSinceInput = typeof ListCommitsSinceInput.Type;
+
 export const CommitTraversalInput = Schema.Struct({
   commitId: CommitId,
   visibility: CommitVisibility,
@@ -216,6 +228,10 @@ export class CommitStore extends Context.Service<
     readonly listCommits: (
       input: ListCommitsInput,
     ) => Effect.Effect<ReadonlyArray<Commit>, CommitStoreError>;
+    /** The commits a history gained after `afterSequence`, in append order. */
+    readonly listCommitsSince: (
+      input: ListCommitsSinceInput,
+    ) => Effect.Effect<ReadonlyArray<Commit>, CommitStoreError>;
     /** Commits naming this one as a parent. More than one means a fork. */
     readonly children: (
       input: CommitTraversalInput,
@@ -234,6 +250,7 @@ export class CommitStore extends Context.Service<
 const CommitRow = Schema.Struct({
   commitId: CommitId,
   historyId: HistoryId,
+  sequence: Schema.Number,
   kind: CommitKind,
   authorKind: CommitAuthorKind,
   published: Schema.Number,
@@ -249,6 +266,8 @@ const CommitLookupRow = Schema.Struct({
 });
 
 const CommitIdRow = Schema.Struct({ commitId: CommitId });
+
+const CommitSequenceRow = Schema.Struct({ sequence: Schema.Number });
 
 const ParentEdgeRow = Schema.Struct({
   commitId: CommitId,
@@ -289,6 +308,11 @@ const VisibleHistoryRequest = Schema.Struct({
   historyId: HistoryId,
   publishedOnly: Schema.Number,
 });
+const VisibleHistorySinceRequest = Schema.Struct({
+  historyId: HistoryId,
+  afterSequence: Schema.Number,
+  publishedOnly: Schema.Number,
+});
 
 /**
  * SQLite has no boolean; the filter rides as 0/1 so one prepared statement
@@ -310,6 +334,7 @@ function toCommit(row: CommitRow, parentsByCommit: ReadonlyMap<string, ReadonlyA
   return {
     commitId: row.commitId,
     historyId: row.historyId,
+    sequence: row.sequence,
     kind: row.kind,
     authorKind: row.authorKind,
     parents: parentsByCommit.get(row.commitId) ?? [],
@@ -340,6 +365,7 @@ export const make = Effect.gen(function* () {
   const commitColumns = sql`
     commits.commit_id AS "commitId",
     commits.history_id AS "historyId",
+    commits.sequence AS "sequence",
     commits.kind AS "kind",
     commits.author_kind AS "authorKind",
     commits.published AS "published",
@@ -356,8 +382,11 @@ export const make = Effect.gen(function* () {
       `,
   });
 
-  const insertCommitRow = SqlSchema.void({
+  // Returns the sequence the insert assigned, so an appended commit carries
+  // its cursor without a second read.
+  const insertCommitRow = SqlSchema.findOne({
     Request: InsertCommitRow,
+    Result: CommitSequenceRow,
     execute: (row) =>
       sql`
         INSERT INTO commits (
@@ -378,6 +407,7 @@ export const make = Effect.gen(function* () {
           ${row.createdAt},
           ${JSON.stringify(row.payload ?? null)}
         )
+        RETURNING sequence AS "sequence"
       `,
   });
 
@@ -465,6 +495,20 @@ export const make = Effect.gen(function* () {
         SELECT ${commitColumns}
         FROM commits
         WHERE commits.history_id = ${historyId}
+          AND (${publishedOnly} = 0 OR commits.published = 1)
+        ORDER BY commits.sequence ASC
+      `,
+  });
+
+  const listCommitRowsSince = SqlSchema.findAll({
+    Request: VisibleHistorySinceRequest,
+    Result: CommitRow,
+    execute: ({ historyId, afterSequence, publishedOnly }) =>
+      sql`
+        SELECT ${commitColumns}
+        FROM commits
+        WHERE commits.history_id = ${historyId}
+          AND commits.sequence > ${afterSequence}
           AND (${publishedOnly} = 0 OR commits.published = 1)
         ORDER BY commits.sequence ASC
       `,
@@ -630,7 +674,7 @@ export const make = Effect.gen(function* () {
       }
     }
 
-    yield* insertCommitRow({
+    const inserted = yield* insertCommitRow({
       commitId,
       historyId,
       kind: input.kind,
@@ -647,6 +691,7 @@ export const make = Effect.gen(function* () {
     return {
       commitId,
       historyId,
+      sequence: inserted.sequence,
       kind: input.kind,
       authorKind: input.authorKind,
       parents,
@@ -776,6 +821,21 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const listCommitsSince: CommitStore["Service"]["listCommitsSince"] = (input) =>
+    listCommitRowsSince({
+      historyId: input.historyId,
+      afterSequence: input.afterSequence,
+      publishedOnly: publishedOnlyFlag(input.visibility),
+    }).pipe(
+      Effect.flatMap(withParents),
+      Effect.mapError(
+        toCommitStoreError(
+          "CommitStore.listCommitsSince:query",
+          "CommitStore.listCommitsSince:decodeRows",
+        ),
+      ),
+    );
+
   const children: CommitStore["Service"]["children"] = (input) =>
     listChildRows({
       commitId: input.commitId,
@@ -805,6 +865,7 @@ export const make = Effect.gen(function* () {
     getHistory,
     getCommit,
     listCommits,
+    listCommitsSince,
     children,
     ancestors,
   } satisfies CommitStore["Service"];
