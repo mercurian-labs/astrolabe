@@ -731,4 +731,256 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(foreignCommit._tag, "CommitNotFoundError");
     }),
   );
+
+  it.effect("continues the conversation when the sender names its tip", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const rootCommitId = created.timeline[0]!.commitId;
+
+      const second = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Start from the tree",
+        parentCommitId: rootCommitId,
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      assert.deepStrictEqual([...second.parents], [rootCommitId]);
+
+      // Naming the tip and naming nothing are the same act while the history
+      // is one line.
+      const third = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "And the explorer?",
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+      assert.deepStrictEqual([...third.parents], [second.commitId]);
+    }),
+  );
+
+  it.effect("lands a fork when the sender names a commit that already has a child", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const rootCommitId = created.timeline[0]!.commitId;
+
+      const onward = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Start from the tree",
+        parentCommitId: rootCommitId,
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      // Standing back at the root and sending: the fork is the append, and
+      // this message is the branch's first commit.
+      const sibling = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Start from the composer instead",
+        parentCommitId: rootCommitId,
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+
+      assert.deepStrictEqual([...sibling.parents], [rootCommitId]);
+
+      const path = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      // Nothing was rewritten: three commits, and the root now has two
+      // children the explorer can draw.
+      assert.strictEqual(path.length, 3);
+      const childrenOfRoot = path.filter((commit) =>
+        commit.parents.some((parentId) => parentId === rootCommitId),
+      );
+      assert.deepStrictEqual(
+        childrenOfRoot.map((commit) => commit.commitId).sort(),
+        [onward.commitId, sibling.commitId].sort(),
+      );
+
+      // Both lines are real, and each answers from its own path.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({
+          planId: created.plan.planId,
+          commitId: sibling.commitId,
+        }),
+        "",
+      );
+    }),
+  );
+
+  it.effect("saves a revision onto the branch its author was standing on", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const rootCommitId = created.timeline[0]!.commitId;
+
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Left",
+        parentCommitId: rootCommitId,
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Right",
+        parentCommitId: rootCommitId,
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+
+      const leftRevision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "The left plan",
+        parentCommitId: left.commitId,
+        createdAt: at("2026-08-03T00:04:00.000Z"),
+      });
+      const rightRevision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "The right plan",
+        parentCommitId: right.commitId,
+        createdAt: at("2026-08-03T00:05:00.000Z"),
+      });
+
+      assert.deepStrictEqual([...leftRevision.parents], [left.commitId]);
+      assert.deepStrictEqual([...rightRevision.parents], [right.commitId]);
+
+      // The later edit does not leak onto the other branch: each leaf reads
+      // the artifact from its own ancestry.
+      assert.strictEqual(
+        yield* store.getPlanTextAt({
+          planId: created.plan.planId,
+          commitId: leftRevision.commitId,
+        }),
+        "The left plan",
+      );
+      assert.strictEqual(
+        yield* store.getPlanTextAt({
+          planId: created.plan.planId,
+          commitId: rightRevision.commitId,
+        }),
+        "The right plan",
+      );
+    }),
+  );
+
+  it.effect("refuses a parent that does not exist for the plan being written", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const first = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "First plan",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const second = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Second plan",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      const unknownParent = yield* Effect.flip(
+        store.appendMessage({
+          planId: first.plan.planId,
+          text: "From nowhere",
+          parentCommitId: CommitId.make("nope"),
+          createdAt: at("2026-08-03T00:03:00.000Z"),
+        }),
+      );
+      assert.strictEqual(unknownParent._tag, "CommitNotFoundError");
+
+      // A real commit of another plan's history does not exist *for this plan*
+      // — the same rule reading the artifact reads by.
+      const foreignParent = yield* Effect.flip(
+        store.savePlanRevision({
+          planId: first.plan.planId,
+          text: "Somewhere else entirely",
+          parentCommitId: second.timeline[0]!.commitId,
+          createdAt: at("2026-08-03T00:04:00.000Z"),
+        }),
+      );
+      assert.strictEqual(foreignParent._tag, "CommitNotFoundError");
+
+      // A refused write left nothing behind.
+      const detail = yield* store.getPlanSnapshot({ planId: first.plan.planId });
+      assert.strictEqual(detail.timeline.length, 1);
+    }),
+  );
+
+  it.effect("carries a message's images as metadata, and decodes one without them", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Here is the mock",
+        attachments: [
+          {
+            type: "image",
+            id: "plan-0000-mock",
+            name: "mock.png",
+            mimeType: "image/png",
+            sizeBytes: 2048,
+          },
+        ],
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+
+      const born = created.timeline[0]!;
+      assert.strictEqual(born._tag, "message");
+      assert.deepStrictEqual(
+        born._tag === "message" ? born.attachments?.map((entry) => entry.id) : null,
+        ["plan-0000-mock"],
+      );
+
+      yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "And no image here",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      const detail = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const [withImage, without] = detail.timeline;
+      assert.strictEqual(withImage?._tag === "message" ? withImage.attachments?.length : null, 1);
+      // A message written before images could ride one decodes as a message,
+      // not as a broken one.
+      assert.strictEqual(
+        without?._tag === "message" ? without.attachments : "not-a-message",
+        undefined,
+      );
+    }),
+  );
 });

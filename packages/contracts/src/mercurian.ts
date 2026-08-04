@@ -10,6 +10,11 @@
  * subscription's resume cursor; `parents`, the edges the explorer draws; and
  * `published`, which tells shared work from private.
  *
+ * A message's `attachments` are the fourth such exception, and the same shape
+ * of one: metadata only — id, name, type, size — so a commit stays
+ * constant-size on the wire. The bytes are fetched later through the assets
+ * door, by id, and never ride a subscription.
+ *
  * Names are `Mercurian`-prefixed wherever the fork already owns the word:
  * a t3code `Project` is an on-disk workspace root, a Mercurian project is a
  * container of plans, and the contracts barrel re-exports both.
@@ -19,6 +24,7 @@
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ChatAttachment, UploadChatAttachment } from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
   subscribeTree: "mercurian.subscribeTree",
@@ -85,6 +91,12 @@ const PlanCommitFields = {
 export const PlanMessage = Schema.Struct({
   ...PlanCommitFields,
   text: Schema.String,
+  /**
+   * Images the message carried. Metadata only — the bytes come from the assets
+   * door by id. Optional because every commit written before messages could
+   * carry images has to keep decoding.
+   */
+  attachments: Schema.optional(Schema.Array(ChatAttachment)),
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -178,22 +190,40 @@ export type MercurianCreateProjectInput = typeof MercurianCreateProjectInput.Typ
 export const MercurianCreatePlanInput = Schema.Struct({
   projectId: MercurianProjectId,
   message: Schema.String,
+  /** The birth message is a message: it composes with the same powers. */
+  attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
 });
 export type MercurianCreatePlanInput = typeof MercurianCreatePlanInput.Type;
 
+/**
+ * `parentCommitId` is where the sender stood: the composer acts from wherever
+ * you are, so the act names its own point of departure rather than trusting
+ * the server to guess. Naming a commit that already has a child is how a fork
+ * is made, and the only way one can be — forks are human acts.
+ *
+ * Absent means the space's tip, which keeps the input honest for a caller with
+ * no position of its own.
+ */
 export const MercurianAppendPlanMessageInput = Schema.Struct({
   planId: PlanId,
   text: Schema.String,
+  parentCommitId: Schema.optional(MercurianCommitId),
+  attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
 });
 export type MercurianAppendPlanMessageInput = typeof MercurianAppendPlanMessageInput.Type;
 
 /**
  * The artifact's whole text after the edit — a revision is a snapshot, not a
  * diff. An empty string is a legal artifact state, so this is not trimmed.
+ *
+ * `parentCommitId` carries the same meaning as on a message: an edit saved
+ * while standing on a branch has to land on *that* branch, not on whichever
+ * one last received a commit.
  */
 export const MercurianSavePlanRevisionInput = Schema.Struct({
   planId: PlanId,
   text: Schema.String,
+  parentCommitId: Schema.optional(MercurianCommitId),
 });
 export type MercurianSavePlanRevisionInput = typeof MercurianSavePlanRevisionInput.Type;
 

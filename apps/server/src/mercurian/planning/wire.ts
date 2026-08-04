@@ -51,6 +51,8 @@ const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision) => ({
 export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage => ({
   ...toWirePlanCommitFields(message),
   text: message.text,
+  // Metadata only, by design: the bytes come from the assets door by id.
+  ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
 });
 
 export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision =>
