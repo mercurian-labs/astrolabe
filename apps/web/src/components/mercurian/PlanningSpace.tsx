@@ -39,6 +39,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import { DagExplorer } from "./DagExplorer";
 import { PlanArtifact } from "./PlanArtifact";
+import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
 import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -102,7 +103,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   });
 
   const [position, setPosition] = useState<PlanPosition>(LATEST);
-  const [pastText, setPastText] = useState<string | null>(null);
+  const [pathText, setPathText] = useState<string | null>(null);
   const draft = usePlanComposerStore(
     (state) => state.draftsByPlanId[planId] ?? EMPTY_PLAN_COMPOSER_DRAFT,
   );
@@ -143,23 +144,29 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     return timeline.filter((item) => closure.has(item.commitId));
   }, [graph, head, timeline]);
 
-  // The artifact's text at an earlier commit is the one fact the client cannot
-  // derive: revisions travel without their bodies. It is frozen, so one read
-  // per place stood is the whole cost.
+  /**
+   * The artifact's text along *this* path is the one fact the client cannot
+   * derive: revisions travel without their bodies. The snapshot's `planText`
+   * answers for the whole history, which is the same answer only while the
+   * last revision on this path is the last one anywhere — so the read happens
+   * exactly when it is not, which on a linear history is never.
+   */
+  const needsPathText = head !== null && !snapshotTextIsForPath(timeline, visibleTimeline);
+
   useEffect(() => {
-    if (!viewingPast || head === null) {
-      setPastText(null);
+    if (!needsPathText || head === null) {
+      setPathText(null);
       return;
     }
     let cancelled = false;
-    setPastText(null);
+    setPathText(null);
     void getPlanTextAt(planId, head).then((result) => {
-      if (!cancelled && result !== null) setPastText(result.planText);
+      if (!cancelled && result !== null) setPathText(result.planText);
     });
     return () => {
       cancelled = true;
     };
-  }, [getPlanTextAt, head, planId, viewingPast]);
+  }, [getPlanTextAt, head, needsPathText, planId]);
 
   /**
    * Sending says where it stands. From a branch tip that continues the
@@ -209,7 +216,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     );
   }
 
-  const artifactText = viewingPast ? pastText : (detail?.planText ?? null);
+  const artifactText = needsPathText ? pathText : (detail?.planText ?? null);
 
   return (
     <PlanningSurface
