@@ -4,7 +4,7 @@ import {
   type UploadChatAttachment,
 } from "@t3tools/contracts";
 import type { ServerProviderSkill } from "@t3tools/contracts";
-import { ImageIcon, SendHorizontalIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, ImageIcon, XIcon } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { compressImageForStash } from "../../lib/imageCompression";
@@ -13,6 +13,8 @@ import { cn } from "../../lib/utils";
 import type { PlanComposerAttachment } from "../../planComposerStore";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /**
  * The planning space's one place to act.
@@ -115,10 +117,9 @@ export function PlanComposer({
   }, [attachments, isSending, onSend, text]);
 
   return (
-    <div className="border-t border-border">
-      {banner}
+    <div className="px-3 pb-3 pt-2 sm:px-5">
       <div
-        className={cn("px-3 py-3 transition-colors sm:px-5", isDragOver && "bg-primary/5")}
+        className="mx-auto w-full min-w-0 max-w-3xl"
         onDragEnter={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -147,41 +148,53 @@ export function PlanComposer({
           editorRef.current?.focusAtEnd();
         }}
       >
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-          {attachments.length === 0 ? null : (
-            <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
+        {/* One card holds everything the composer is: what it is standing on,
+            what it is carrying, what you are writing, and what you press. The
+            editor gets the full width — the controls sit under it rather than
+            beside it, which is also what keeps it usable when the right pane
+            has taken most of the window. */}
+        <div
+          className={cn(
+            "overflow-hidden rounded-[20px] border border-border bg-background transition-[background-color,box-shadow] duration-200",
+            "focus-within:border-border/80 focus-within:shadow-sm",
+            isDragOver && "bg-accent/45 ring-1 ring-primary/70",
           )}
-          <div className="flex items-end gap-2">
-            <div className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 ring-ring focus-within:ring-2">
-              <ComposerPromptEditor
-                cursor={cursor}
-                disabled={isSending}
-                editorRef={editorRef}
-                placeholder={placeholder}
-                skills={NO_SKILLS}
-                terminalContexts={NO_TERMINAL_CONTEXTS}
-                value={text}
-                onChange={(nextText, nextCursor) => {
-                  onChangeText(nextText);
-                  setCursor(nextCursor);
-                }}
-                onCommandKeyDown={(key, event) => {
-                  if (key !== "Enter" || event.shiftKey) return false;
-                  void submit();
-                  return true;
-                }}
-                onPaste={(event) => {
-                  const files = Array.from(event.clipboardData.files);
-                  if (!files.some((file) => file.type.startsWith("image/"))) return;
-                  // A pasted screenshot is an attachment, not the base64 of one.
-                  event.preventDefault();
-                  void collect(files);
-                }}
-                // Nothing here can hold a terminal context, so nothing can
-                // remove one.
-                onRemoveTerminalContext={noop}
-              />
-            </div>
+        >
+          {banner}
+          <div className="px-3 pt-3">
+            {attachments.length === 0 ? null : (
+              <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
+            )}
+            <ComposerPromptEditor
+              cursor={cursor}
+              disabled={isSending}
+              editorRef={editorRef}
+              placeholder={placeholder}
+              skills={NO_SKILLS}
+              terminalContexts={NO_TERMINAL_CONTEXTS}
+              value={text}
+              onChange={(nextText, nextCursor) => {
+                onChangeText(nextText);
+                setCursor(nextCursor);
+              }}
+              onCommandKeyDown={(key, event) => {
+                if (key !== "Enter" || event.shiftKey) return false;
+                void submit();
+                return true;
+              }}
+              onPaste={(event) => {
+                const files = Array.from(event.clipboardData.files);
+                if (!files.some((file) => file.type.startsWith("image/"))) return;
+                // A pasted screenshot is an attachment, not the base64 of one.
+                event.preventDefault();
+                void collect(files);
+              }}
+              // Nothing here can hold a terminal context, so nothing can
+              // remove one.
+              onRemoveTerminalContext={noop}
+            />
+          </div>
+          <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
             <input
               ref={fileInputRef}
               accept="image/*"
@@ -196,27 +209,70 @@ export function PlanComposer({
             />
             <Button
               aria-label="Attach images"
+              className="shrink-0 text-muted-foreground"
               disabled={isSending || attachments.length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS}
-              size="sm"
+              size="icon-sm"
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
             >
-              <ImageIcon className="size-4" />
+              <ImageIcon />
             </Button>
-            <Button
-              aria-label="Send"
+            <SendControl
               // One control, one state. Held while a send is in flight, which
               // is what "no queueing" means at the only concurrency there is.
               disabled={!hasContent || isSending}
-              size="sm"
-              onClick={() => void submit()}
-            >
-              <SendHorizontalIcon className="size-4" />
-            </Button>
+              isSending={isSending}
+              onSend={() => void submit()}
+            />
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Send and stop as one control.
+ *
+ * Its face comes from the composer's state and nothing else, which is what
+ * makes the Stop face a change of state rather than a second button when the
+ * planning assistant lands.
+ */
+function SendControl({
+  disabled,
+  isSending,
+  onSend,
+}: {
+  readonly disabled: boolean;
+  readonly isSending: boolean;
+  readonly onSend: () => void;
+}) {
+  return (
+    <button
+      aria-label={isSending ? "Sending" : "Send"}
+      className={cn(
+        "relative flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground shadow-xs transition-all duration-150 sm:size-8",
+        "enabled:cursor-pointer hover:bg-primary hover:scale-105 active:shadow-none",
+        "disabled:pointer-events-none disabled:opacity-30 disabled:shadow-none",
+      )}
+      disabled={disabled}
+      type="button"
+      onClick={onSend}
+    >
+      {isSending ? (
+        <Spinner aria-hidden className="size-3.5" />
+      ) : (
+        <svg aria-hidden fill="none" height="14" viewBox="0 0 14 14" width="14">
+          <path
+            d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.8"
+          />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -228,22 +284,41 @@ function AttachmentRow({
   readonly onRemove: (localId: string) => void;
 }) {
   return (
-    <ul className="flex flex-wrap gap-2">
+    <ul className="mb-3 flex flex-wrap gap-2">
       {attachments.map((attachment) => (
-        <li key={attachment.localId} className="group relative">
-          <img
-            alt={attachment.name}
-            className="size-14 rounded-md border border-border object-cover"
-            src={attachment.dataUrl}
-          />
-          <button
+        <li
+          key={attachment.localId}
+          className="relative size-16 overflow-hidden rounded-lg border border-border/80 bg-background"
+        >
+          <img alt={attachment.name} className="size-full object-cover" src={attachment.dataUrl} />
+          {attachment.persistable ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    aria-label="Attachment may not survive a reload"
+                    className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-amber-600"
+                    role="img"
+                  >
+                    <CircleAlertIcon className="size-3" />
+                  </span>
+                }
+              />
+              <TooltipPopup className="max-w-64 whitespace-normal leading-tight" side="top">
+                This image was too large to save with the draft. It will send fine, but it will not
+                be here after a reload.
+              </TooltipPopup>
+            </Tooltip>
+          )}
+          <Button
             aria-label={`Remove ${attachment.name}`}
-            className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            type="button"
+            className="absolute right-1 top-1 bg-background/80 hover:bg-background/90"
+            size="icon-xs"
+            variant="ghost"
             onClick={() => onRemove(attachment.localId)}
           >
-            <XIcon className="size-3" />
-          </button>
+            <XIcon />
+          </Button>
         </li>
       ))}
     </ul>

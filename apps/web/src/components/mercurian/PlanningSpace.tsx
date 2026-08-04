@@ -354,16 +354,16 @@ function PlanPaneToggle({
  */
 function ViewingEarlierBanner({ onBack }: { readonly onBack: () => void }) {
   return (
-    <div className="border-b border-border/60 bg-muted/30 px-3 py-2 sm:px-5">
-      <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
-        <ClockIcon className="size-4 shrink-0 text-muted-foreground/70" />
-        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-          Viewing an earlier point — sending starts a new branch from here
-        </span>
-        <Button size="sm" variant="outline" onClick={onBack}>
-          Back to now
-        </Button>
-      </div>
+    <div className="flex items-center gap-2 border-b border-border/65 bg-muted/20 px-3 py-2">
+      <ClockIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+      {/* Wraps rather than truncates: what sending does from here is the one
+          thing that must not get cut off in a narrow window. */}
+      <span className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
+        Viewing an earlier point — sending starts a new branch from here
+      </span>
+      <Button className="shrink-0" size="xs" variant="outline" onClick={onBack}>
+        Back to now
+      </Button>
     </div>
   );
 }
