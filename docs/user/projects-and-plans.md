@@ -58,18 +58,24 @@ another window open on the same plan.
 ## The history
 
 The history view shows every commit in the plan: your messages, the assistant's, and every edit of
-the plan, in one list with the branch points visible. It offers two readings, and remembers which
-one you chose. **Navigator** is the compact one — a tree you can scan, indented where the history
-branched. **Graph** draws the full picture, lanes and all, so you can see where work split and
-where it came back together. Work you have published reads solid; work still private to you reads
-muted.
+the plan, with the branch points visible. It offers two readings, and remembers which one you chose.
 
-Pick any commit and the space moves there: the conversation shows the path through that commit, the
-plan shows what it said at the time, and the history highlights where you are standing. Nothing is
-destroyed by looking — no history is rewritten, and nothing is thrown away. While you are back
-there the composer and **Edit** step aside for **Back to now**, because adding from an earlier point
-is starting a new line of work rather than appending to this one. **Back to now** — or picking the
-latest commit — returns you to the live view.
+**Navigator** is the one you move through: every commit as a row in the order it happened, with
+lanes drawn down the left showing where work split and where it came back together. **Graph** is a
+map of the same history laid out in space — every commit a point, every connection drawn, the whole
+shape at once. Use the navigator to walk the history; use the graph to see it. Drag the map to move
+around it and scroll to zoom; it draws the same way every time you open it, and where you are
+standing is ringed and comes to the middle.
+
+Work you have published reads solid; work still private to you reads muted.
+
+Pick any commit, in either view, and the space moves there: the conversation shows the path through
+that commit, the plan shows what it said at the time, and the history highlights where you are
+standing. The conversation is always one path — a branch you are not on is a different conversation,
+not more of this one. Nothing is destroyed by looking: no history is rewritten, and nothing is
+thrown away. While you are back there the composer and **Edit** step aside for **Back to now**,
+because adding from an earlier point is starting a new line of work rather than appending to this
+one. **Back to now** — or picking the latest commit — returns you to the live view.
 
 ## Empty states
 

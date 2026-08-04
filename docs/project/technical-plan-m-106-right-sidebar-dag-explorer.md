@@ -57,8 +57,8 @@ All new code stays in `apps/web/src/components/mercurian/` on `ui/` primitives. 
 - **`PlanningSpace.tsx`** — the layout inverts. The conversation column (`PlanTimeline` + `PlanComposer`) is the `flex-1` main content; the right pane sits beside it, `border-l`, width via `useResizableWidth` with `edge: "left"` and key `mercurian:plan-right-pane-width:v1`. Below `sm` the pane stacks above the conversation. The header's right edge carries the toggle icons. Position state, the anchored projection, and the `getPlanTextAt` fetch live here. `PlanningSpaceDraft` is untouched: no plan, no pane, no icons.
 - **`PlanPaneToggle`** — the icon pair on `ui/toggle-group` (single-select, deselect-on-reclick = close, exactly the AC's toggle semantics), tooltip labels "Plan" / "History", `FileTextIcon` and `GitBranchIcon`. State is one preference object, `mercurian:plan-right-pane:v1`, default `{ open: true, view: "artifact" }` — the amended vault resolution. Not keying by plan is what makes the choice follow you across plans.
 - **`PlanArtifact.tsx`** — moves into the pane as-is; gains `readOnly` + `readOnlyAction` for the anchored case and otherwise keeps its M-100 contract byte-for-byte.
-- **`PlanGraph.logic.ts` (+ test)** — the pure graph model over `ReadonlyArray<PlanTimelineItem>`: `buildPlanGraph` (children by inverting `parents`; branch points, merges, `latest`; parent ids absent from the timeline become dropped edges rather than throws), `ancestorClosure`, `navigatorRows` (tree linearization where a merge appears under each parent — one real row, the rest visibly marked references that jump to it), `graphLayout` (lane assignment: first parent inherits the lane, further children open lanes, merges close them), and `planCommitSummary`.
-- **`DagExplorer.tsx`** — the pane's explorer: a slim header with the Navigator/Graph switch (`mercurian:dag-explorer-view:v1`, default `navigator`), both views over the logic module. Navigator is a DOM list indented by depth; Graph shares the row rendering with an absolutely-positioned inline SVG rail drawing lanes and edges — no canvas, no animation loop, no graph dependency. Both distinguish published from private, highlight the position, auto-scroll it into view, and call `onSelect` to navigate.
+- **`PlanGraph.logic.ts` (+ test)** — the pure graph model over `ReadonlyArray<PlanTimelineItem>`: `buildPlanGraph` (children by inverting `parents`; branch points, merges, `latest`; parent ids absent from the timeline become dropped edges rather than throws), `ancestorClosure`, `navigatorRows` (tree linearization where a merge appears under each parent — one real row, the rest visibly marked references that jump to it), `graphLayout` (lane assignment: first parent inherits the lane, further children open lanes, merges close them), and `planCommitSummary`. _(Superseded by the addendum below: `navigatorRows` is dropped, `graphLayout` becomes `navigatorLayout`, and `spatialLayout` is added.)_
+- **`DagExplorer.tsx`** — the pane's explorer: a slim header with the Navigator/Graph switch (`mercurian:dag-explorer-view:v1`, default `navigator`), both views over the logic module. Navigator is a DOM list indented by depth; Graph shares the row rendering with an absolutely-positioned inline SVG rail drawing lanes and edges — no canvas, no animation loop, no graph dependency. Both distinguish published from private, highlight the position, auto-scroll it into view, and call `onSelect` to navigate. _(View assignment superseded by the addendum below.)_
 
 ### AC criteria that resolve by construction
 
@@ -74,3 +74,48 @@ All new code stays in `apps/web/src/components/mercurian/` on `ui/` primitives. 
 - Forks are representable everywhere here but creatable nowhere until M-108; merge rendering is contract-only until M-111. The logic tests build both shapes by hand.
 - `PlanningStore.readTip` picks the _globally latest_ commit as append target — fine while the UI cannot create forks, but wrong-shaped the day M-108 lands (a send should extend the _viewed_ path). Out of scope here; recorded for M-108's plan.
 - The old `mercurian:plan-artifact-width:v1` localStorage entries are orphaned by the key change; harmless, no migration written.
+
+---
+
+## Addendum (2026-08-04) — view semantics corrected: the Navigator is the git-graph; the Graph is the spatial map
+
+_Recorded after review of the in-progress build (PR #11). The vault is amended to match (almagest: "DAG Explorer", "Merges" — vault commit `6ead8bc`); this addendum records the implementation consequences. Everything not named here stands as planned._
+
+**The correction.** The two views were mis-assigned above. The lane-rail git-graph — sequence-ordered commit rows with an SVG rail drawing lanes and edges — is the **Navigator**: rows in time order are the easier reading to move through, and rows are the thing you pick. The **Graph** view is a spatial, Obsidian-style map of the DAG — every commit a node, every parent edge drawn, the whole shape visible at once — for seeing structure, not for walking it. Consequently no view renders the history tree-style, and the merge-under-each-parent contract (Merges) goes dormant: both views draw a merge once — the navigator where its lanes reunite, the graph as one node with an edge from each parent.
+
+### Superseded in the plan above
+
+- `NavigatorView` (tree-indented DOM list) and `navigatorRows` (tree linearization with merge reference rows) are dropped. The rendering built as `GraphView` — commit rows sharing the row component, SVG rail from `graphLayout` — is the Navigator; its lane semantics move over unchanged, under the name `navigatorLayout` (with `PlanGraphRow`/`PlanGraphEdge`/`PlanGraphLayout` renamed to `NavigatorRow`/`NavigatorEdge`/`NavigatorLayout`, the freed `NavigatorRow` name now meaning the right thing).
+- The AC bullet on tree-style merge rendering is amended in place.
+- The Graph view is new work: the spatial map, architecture below.
+- Unchanged: the persisted view preference (`mercurian:dag-explorer-view:v1`, default `"navigator"`), navigate-on-pick, position highlight, published/private treatment, `ancestorClosure`, and everything outside `DagExplorer.tsx` / `PlanGraph.logic.ts`.
+
+### Architecture of the spatial Graph view
+
+The known failure modes of a force-directed DAG view are instability (a different layout every open), hairball (direction illegible), live commits re-scrambling the map, and reaching for a graph engine. Each is addressed head-on, inside the repo's temperament (no graph dependency, no continuously repainting animations):
+
+- **Layout is a pure, deterministic function** in `PlanGraph.logic.ts`: `spatialLayout(graph, prior?) → { nodes, positions, edges, bounds, simulated }`. No `Math.random`, no clocks — initial positions are seeded from an FNV-1a hash of each commit id, arranged along a time axis by generation. Same timeline → same picture, every open, every window — and it tests exactly like the rest of the logic module.
+- **Force simulation runs synchronously** to a fixed tick budget, then renders once as static SVG. Three forces: springs along parent edges; pairwise repulsion (n² is fine — histories are human-scale; beyond `SPATIAL_MAX_SIMULATED_NODES` (300) the sim is skipped for the plain time-axis arrangement, reported as `simulated: false`); and a weak directional field ordering nodes by generation along one axis (ancestors above, descendants below). The directional field is the piece plain Obsidian doesn't have and a DAG needs — it keeps root→tips reading as flow instead of a hairball, while springs and repulsion still let branches splay sideways.
+- **Two invariants are enforced rather than hoped for**, in post-passes after the solve: every child sits strictly beyond every parent along the flow axis (a soft force gets this right _most_ of the time, and "most of the time" is how a graph view starts lying about which way time runs), and no two nodes end up closer than `SPATIAL_MIN_SEPARATION`. The separation pass pushes only along the cross axis, so the two passes cannot fight.
+- **Locality under live commits**: when the timeline grows, new nodes initialize at their first parent's position plus a small seeded offset, and the sim re-runs warm from `prior` positions with a reduced budget — the map drifts locally instead of re-solving globally. (`prior` is per-window component state, like the position anchor.)
+- **Rendering and interaction**: one inline SVG (the rail idiom, grown up) — nodes as the same solid/hollow published-vs-private dots with the kind glyph, edges as curves, labels on the current node and on hover; click is `onSelect(commitId)`, the same navigate contract; the current position highlighted and centred on position change. Pan/zoom is a single `transform` on a `<g>`, driven by pointer/wheel events — state changes only during a gesture; nothing repaints at rest.
+- **Explicitly declined**: d3-force / reactflow / dagre (a dependency for a problem that is small at this scale), canvas/WebGL (SVG suffices), continuous simulation (temperament), semantic zoom (nothing to elide at these history sizes; revisit if real histories outgrow a screen).
+
+### Two defects the corrected build surfaced
+
+Both were found by putting a real forked history on screen for the first time (seeded through `CommitStore`, since M-108 does not exist yet), and both are fixed here:
+
+- **Pointer capture swallowed the pick.** Capturing the pointer on `pointerdown` to drive panning retargets the subsequent `click` to the capturing element, so clicking a node never reached its handler — the map was draggable but not clickable. Capture is now deferred until the pointer has travelled past a small threshold: a press that never moves is a pick, not a pan. (`setPointerCapture` is wrapped in `try`/`catch`, matching `useResizableWidth`'s precedent.)
+- **`now` showed every commit, not the path.** The conversation filtered by ancestor closure only while anchored; at `now` it rendered the unfiltered timeline, which on a forked history interleaves parallel branches into one conversation. It now filters by the closure of the anchored commit _or the latest one_ — the conversation is always exactly one path, and a branch you are not on is a different conversation rather than more of this one.
+
+Also fixed in passing: the map's node groups carried no accessible name, leaving them unreadable to a screen reader and unreachable by keyboard. Each now carries `aria-label={planCommitSummary(item)}`.
+
+### Test plan deltas
+
+`PlanGraph.logic.test.ts` drops the `navigatorRows` cases, keeps the lane cases under `navigatorLayout`, and gains `spatialLayout` cases: determinism (two runs, identical output, across chain/fork/merge fixtures); the flow axis is monotone along ancestry (every child strictly beyond its parents); minimum node separation after convergence on the fixture shapes; locality (appending a leaf moves no prior node beyond a tolerance, and the newcomer lands near its parent); the over-cap fallback. The AC walk swaps the two views' descriptions accordingly.
+
+### Checklist deltas
+
+- `apps/web/src/components/mercurian/PlanGraph.logic.ts`: drop `navigatorRows`, rename `graphLayout` → `navigatorLayout`, add `spatialLayout`.
+- `apps/web/src/components/mercurian/DagExplorer.tsx`: the rows-plus-rail rendering becomes `NavigatorView`; a new `GraphView` renders the spatial map.
+- `apps/web/src/components/mercurian/PlanningSpace.tsx`: `visibleTimeline` filters by ancestor closure at `now` as well as when anchored.

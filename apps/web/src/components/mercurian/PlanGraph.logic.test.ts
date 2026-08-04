@@ -5,9 +5,11 @@ import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 import {
   ancestorClosure,
   buildPlanGraph,
-  graphLayout,
-  navigatorRows,
+  navigatorLayout,
   planCommitSummary,
+  spatialLayout,
+  SPATIAL_MAX_SIMULATED_NODES,
+  SPATIAL_MIN_SEPARATION,
 } from "./PlanGraph.logic";
 
 const id = (value: string) => MercurianCommitId.make(value);
@@ -99,8 +101,8 @@ describe("buildPlanGraph", () => {
     const graph = buildPlanGraph([]);
     expect(graph.nodes).toEqual([]);
     expect(graph.latest).toBeNull();
-    expect(navigatorRows(graph)).toEqual([]);
-    expect(graphLayout(graph)).toEqual({ rows: [], edges: [], laneCount: 0 });
+    expect(navigatorLayout(graph)).toEqual({ rows: [], edges: [], laneCount: 0 });
+    expect(spatialLayout(graph).nodes).toEqual([]);
   });
 });
 
@@ -139,46 +141,9 @@ describe("ancestorClosure", () => {
   });
 });
 
-describe("navigatorRows", () => {
-  it("indents at a fork and nowhere else", () => {
-    const rows = navigatorRows(buildPlanGraph(fork));
-    expect(rows.map((row) => [row.commitId, row.depth])).toEqual([
-      ["a", 0],
-      ["b", 0],
-      ["l", 1],
-      ["r", 1],
-    ]);
-    expect(rows.every((row) => !row.isReference)).toBe(true);
-  });
-
-  it("shows a merge under each parent: one real node, the rest references", () => {
-    const rows = navigatorRows(buildPlanGraph(merged));
-    const occurrences = rows.filter((row) => row.commitId === "m");
-    expect(occurrences).toHaveLength(3);
-    expect(occurrences.filter((row) => !row.isReference)).toHaveLength(1);
-    // Every occurrence names the same commit, so a reference has somewhere to
-    // jump to; only the keys differ.
-    expect(new Set(occurrences.map((row) => row.rowId)).size).toBe(3);
-    expect(occurrences.every((row) => row.isMerge)).toBe(true);
-
-    // The real node is the one under the first parent, and it is the only one
-    // the walk continues below.
-    const real = occurrences.find((row) => !row.isReference);
-    const realIndex = rows.indexOf(real!);
-    expect(rows[realIndex - 1]?.commitId).toBe("l");
-    expect(rows.filter((row) => row.commitId === "after")).toHaveLength(1);
-    expect(rows.indexOf(rows.find((row) => row.commitId === "after")!)).toBe(realIndex + 1);
-  });
-
-  it("walks every commit of a linear history exactly once", () => {
-    const rows = navigatorRows(buildPlanGraph(chain));
-    expect(rows.map((row) => row.commitId)).toEqual(["a", "b", "c"]);
-  });
-});
-
-describe("graphLayout", () => {
+describe("navigatorLayout", () => {
   it("keeps a linear history in one lane", () => {
-    const layout = graphLayout(buildPlanGraph(chain));
+    const layout = navigatorLayout(buildPlanGraph(chain));
     expect(layout.laneCount).toBe(1);
     expect(layout.rows.map((row) => [row.commitId, row.row, row.lane])).toEqual([
       ["a", 0, 0],
@@ -192,7 +157,7 @@ describe("graphLayout", () => {
   });
 
   it("opens a lane at a fork", () => {
-    const layout = graphLayout(buildPlanGraph(fork));
+    const layout = navigatorLayout(buildPlanGraph(fork));
     const lane = (commitId: string) => layout.rows.find((row) => row.commitId === commitId)?.lane;
     expect(lane("l")).toBe(lane("b"));
     expect(lane("r")).not.toBe(lane("b"));
@@ -200,7 +165,7 @@ describe("graphLayout", () => {
   });
 
   it("draws a merge once, and closes the lanes that reached it", () => {
-    const layout = graphLayout(buildPlanGraph(merged));
+    const layout = navigatorLayout(buildPlanGraph(merged));
     expect(layout.rows.filter((row) => row.commitId === "m")).toHaveLength(1);
     // Three parents converge, so three edges land on the one row.
     expect(layout.edges.filter((edge) => edge.toCommitId === "m")).toHaveLength(3);
@@ -212,9 +177,94 @@ describe("graphLayout", () => {
   });
 
   it("gives every commit a row in append order", () => {
-    const layout = graphLayout(buildPlanGraph(merged));
+    const layout = navigatorLayout(buildPlanGraph(merged));
     expect(layout.rows.map((row) => row.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
     expect(layout.rows.map((row) => row.commitId)).toEqual(["a", "b", "l", "r", "x", "m", "after"]);
+  });
+});
+
+describe("spatialLayout", () => {
+  const shapes = [
+    ["a chain", chain],
+    ["a fork", fork],
+    ["an n-ary merge", merged],
+  ] as const;
+
+  it("draws the same picture every time it is asked", () => {
+    // The whole reason positions are seeded from commit ids: a map that
+    // rearranged itself on every open would be a different map every time.
+    for (const [name, timeline] of shapes) {
+      const graph = buildPlanGraph(timeline);
+      const first = spatialLayout(graph);
+      const second = spatialLayout(graph);
+      expect(first.nodes, name).toEqual(second.nodes);
+      expect(first.bounds, name).toEqual(second.bounds);
+    }
+  });
+
+  it("orders the flow axis along ancestry, strictly", () => {
+    // Every child beyond every parent — this is what keeps the map reading as
+    // root-to-tips flow instead of a hairball.
+    for (const [name, timeline] of shapes) {
+      const graph = buildPlanGraph(timeline);
+      const layout = spatialLayout(graph);
+      for (const node of graph.nodes) {
+        const here = layout.positions.get(node.commitId)!;
+        for (const parentId of node.parents) {
+          expect(here.y, `${name}: ${node.commitId} below ${parentId}`).toBeGreaterThan(
+            layout.positions.get(parentId)!.y,
+          );
+        }
+      }
+    }
+  });
+
+  it("keeps every pair of nodes apart", () => {
+    for (const [name, timeline] of shapes) {
+      const layout = spatialLayout(buildPlanGraph(timeline));
+      for (const [index, node] of layout.nodes.entries()) {
+        for (const other of layout.nodes.slice(index + 1)) {
+          const distance = Math.hypot(node.x - other.x, node.y - other.y);
+          expect(distance, `${name}: ${node.commitId} vs ${other.commitId}`).toBeGreaterThanOrEqual(
+            SPATIAL_MIN_SEPARATION - 0.01,
+          );
+        }
+      }
+    }
+  });
+
+  it("drifts locally when a commit lands, instead of re-solving the map", () => {
+    const before = spatialLayout(buildPlanGraph(merged));
+    const grown = spatialLayout(
+      buildPlanGraph([...merged, commit("leaf", 8, ["after"])]),
+      before.positions,
+    );
+
+    for (const node of before.nodes) {
+      const moved = grown.positions.get(node.commitId)!;
+      expect(
+        Math.hypot(moved.x - node.x, moved.y - node.y),
+        `${node.commitId} stayed put`,
+      ).toBeLessThan(SPATIAL_MIN_SEPARATION);
+    }
+    // And the newcomer landed near where it came from, not off in the seed field.
+    const anchor = grown.positions.get(id("after"))!;
+    const leaf = grown.positions.get(id("leaf"))!;
+    expect(Math.hypot(leaf.x - anchor.x, leaf.y - anchor.y)).toBeLessThan(200);
+  });
+
+  it("falls back to the time axis past the simulation cap", () => {
+    const long = Array.from({ length: SPATIAL_MAX_SIMULATED_NODES + 1 }, (_, index) =>
+      commit(`c${index}`, index + 1, index === 0 ? [] : [`c${index - 1}`]),
+    );
+    const layout = spatialLayout(buildPlanGraph(long));
+    expect(layout.simulated).toBe(false);
+    expect(layout.nodes).toHaveLength(long.length);
+    // Degraded to a legible column, not to a stall or a pile.
+    for (const [index, node] of layout.nodes.entries()) {
+      if (index === 0) continue;
+      expect(node.y).toBeGreaterThan(layout.nodes[index - 1]!.y);
+    }
   });
 });
 

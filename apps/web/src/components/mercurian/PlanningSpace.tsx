@@ -113,13 +113,19 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
 
   /**
-   * The path through the anchored commit. History above a commit is immutable,
-   * so this needs no liveness of its own — new commits keep folding into the
-   * subscription, and this projection cannot change.
+   * The conversation is always one path, never the whole history: the commits
+   * leading to wherever you stand. At an anchor that is the path through the
+   * anchored commit; at now it is the path through the latest one — a branch
+   * you are not on is a different conversation, not more of this one.
+   *
+   * History above a commit is immutable, so the anchored case needs no
+   * liveness of its own: new commits keep folding into the subscription, and
+   * the projection through an earlier commit cannot change.
    */
   const visibleTimeline = useMemo(() => {
-    if (position._tag === "now") return timeline;
-    const closure = ancestorClosure(graph, position.commitId);
+    const head = position._tag === "anchored" ? position.commitId : graph.latest;
+    if (head === null) return timeline;
+    const closure = ancestorClosure(graph, head);
     return timeline.filter((item) => closure.has(item.commitId));
   }, [graph, position, timeline]);
 
