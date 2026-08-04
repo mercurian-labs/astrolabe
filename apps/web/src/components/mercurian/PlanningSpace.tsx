@@ -6,12 +6,11 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ClockIcon, FileTextIcon, GitBranchIcon, SendHorizontalIcon } from "lucide-react";
+import { ClockIcon, FileTextIcon, GitBranchIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -20,6 +19,11 @@ import {
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
+import {
+  EMPTY_PLAN_COMPOSER_DRAFT,
+  usePlanComposerStore,
+  type PlanComposerAttachment,
+} from "../../planComposerStore";
 import { usePlanDraftStore } from "../../planDraftStore";
 import {
   useAppendPlanMessage,
@@ -35,7 +39,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import { DagExplorer } from "./DagExplorer";
 import { PlanArtifact } from "./PlanArtifact";
+import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
 import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
+import {
+  advance,
+  isViewingPast,
+  LATEST,
+  positionAfterPick,
+  resolveHead,
+  type PlanPosition,
+} from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
 
 const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
@@ -56,20 +69,6 @@ type RightPaneState = typeof RightPaneState.Type;
  * about you, not about the issue, so it follows you across plans.
  */
 const DEFAULT_RIGHT_PANE: RightPaneState = { open: true, view: "artifact" };
-
-/**
- * Where the planning surface is looking.
- *
- * Per-window and transient — not persisted, not server-owned. Nothing ranks or
- * rolls up from where a window is pointed, so position is scroll-state-shaped
- * (ADR 002 §5): two windows on one plan may look at different commits and
- * still agree on every fact the server owns. Reopening a plan lands on now.
- */
-type PlanPosition =
-  | { readonly _tag: "now" }
-  | { readonly _tag: "anchored"; readonly commitId: MercurianCommitId };
-
-const NOW: PlanPosition = { _tag: "now" };
 
 /** One identity for "nothing yet", so the derived graph is not rebuilt for it. */
 const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
@@ -102,66 +101,98 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     edge: "left",
   });
 
-  const [position, setPosition] = useState<PlanPosition>(NOW);
-  const [anchoredText, setAnchoredText] = useState<string | null>(null);
+  const [position, setPosition] = useState<PlanPosition>(LATEST);
+  const [pastText, setPastText] = useState<string | null>(null);
+  const draft = usePlanComposerStore(
+    (state) => state.draftsByPlanId[planId] ?? EMPTY_PLAN_COMPOSER_DRAFT,
+  );
+  const setDraftText = usePlanComposerStore((state) => state.setDraftText);
+  const addDraftAttachments = usePlanComposerStore((state) => state.addAttachments);
+  const removeDraftAttachment = usePlanComposerStore((state) => state.removeAttachment);
+  const clearDraft = usePlanComposerStore((state) => state.clearDraft);
 
   // Another plan is another history: whatever you were looking at there does
   // not name anything here.
-  useEffect(() => setPosition(NOW), [planId]);
+  useEffect(() => setPosition(LATEST), [planId]);
 
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
 
   /**
+   * Standing somewhere live means riding that branch forward: a commit landing
+   * on this line moves the surface onto it, and a commit landing anywhere else
+   * in the DAG moves nothing. Looking back never moves at all.
+   */
+  useEffect(() => setPosition((current) => advance(graph, current)), [graph]);
+
+  const head = resolveHead(graph, position);
+  const viewingPast = isViewingPast(graph, position);
+
+  /**
    * The conversation is always one path, never the whole history: the commits
-   * leading to wherever you stand. At an anchor that is the path through the
-   * anchored commit; at now it is the path through the latest one — a branch
-   * you are not on is a different conversation, not more of this one.
+   * leading to wherever you stand. A branch you are not on is a different
+   * conversation, not more of this one.
    *
-   * History above a commit is immutable, so the anchored case needs no
-   * liveness of its own: new commits keep folding into the subscription, and
-   * the projection through an earlier commit cannot change.
+   * History above a commit is immutable, so looking back needs no liveness of
+   * its own: new commits keep folding into the subscription, and the
+   * projection through an earlier commit cannot change.
    */
   const visibleTimeline = useMemo(() => {
-    const head = position._tag === "anchored" ? position.commitId : graph.latest;
     if (head === null) return timeline;
     const closure = ancestorClosure(graph, head);
     return timeline.filter((item) => closure.has(item.commitId));
-  }, [graph, position, timeline]);
+  }, [graph, head, timeline]);
 
   // The artifact's text at an earlier commit is the one fact the client cannot
   // derive: revisions travel without their bodies. It is frozen, so one read
-  // per anchor is the whole cost.
+  // per place stood is the whole cost.
   useEffect(() => {
-    if (position._tag === "now") {
-      setAnchoredText(null);
+    if (!viewingPast || head === null) {
+      setPastText(null);
       return;
     }
     let cancelled = false;
-    setAnchoredText(null);
-    void getPlanTextAt(planId, position.commitId).then((result) => {
-      if (!cancelled && result !== null) setAnchoredText(result.planText);
+    setPastText(null);
+    void getPlanTextAt(planId, head).then((result) => {
+      if (!cancelled && result !== null) setPastText(result.planText);
     });
     return () => {
       cancelled = true;
     };
-  }, [getPlanTextAt, planId, position]);
+  }, [getPlanTextAt, head, planId, viewingPast]);
 
+  /**
+   * Sending says where it stands. From a branch tip that continues the
+   * conversation; from a commit that already led somewhere it opens a fork,
+   * and this message is the fork's first commit — which is the only way one
+   * is made.
+   *
+   * The surface then stands live on what it just wrote, so the window follows
+   * the line it extended rather than whichever branch is newest.
+   */
   const send = useCallback(
-    // The stream delivers the message back; there is nothing to refresh.
-    async (text: string) => (await appendMessage(planId, text)) !== null,
-    [appendMessage, planId],
+    async ({ text, attachments }: PlanComposerSubmission) => {
+      const sent = await appendMessage({
+        planId,
+        text,
+        ...(head === null ? {} : { parentCommitId: head }),
+        ...(attachments.length === 0 ? {} : { attachments }),
+      });
+      if (sent === null) return false;
+      // The stream delivers the message back; there is nothing to refresh.
+      setPosition({ _tag: "at", commitId: sent.commitId, live: true });
+      clearDraft(planId);
+      return true;
+    },
+    [appendMessage, clearDraft, head, planId],
   );
 
   const select = useCallback(
-    (commitId: MercurianCommitId) =>
-      // Picking the latest commit *is* standing at now: there is no separate
-      // way back to say the same thing.
-      setPosition(commitId === graph.latest ? NOW : { _tag: "anchored", commitId }),
-    [graph.latest],
+    (commitId: MercurianCommitId) => setPosition(positionAfterPick(graph, commitId)),
+    [graph],
   );
 
-  const backToNow = useCallback(() => setPosition(NOW), []);
+  const backToNow = useCallback(() => setPosition(LATEST), []);
 
   if (error !== null) {
     return (
@@ -178,8 +209,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     );
   }
 
-  const anchored = position._tag === "anchored";
-  const artifactText = anchored ? anchoredText : (detail?.planText ?? null);
+  const artifactText = viewingPast ? pastText : (detail?.planText ?? null);
 
   return (
     <PlanningSurface
@@ -193,11 +223,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       <div className="flex min-h-0 flex-1 flex-col-reverse sm:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <PlanTimeline timeline={visibleTimeline} />
-          {anchored ? (
-            <BackToNowBar onBack={backToNow} />
-          ) : (
-            <PlanComposer placeholder="Message this plan" onSend={send} />
-          )}
+          <PlanComposer
+            attachments={draft.attachments}
+            // Standing at an earlier point does not take the composer away —
+            // it changes what sending means, and the banner says so.
+            banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
+            placeholder="Message this plan"
+            text={draft.text}
+            onAddAttachments={(added) => addDraftAttachments(planId, added)}
+            onChangeText={(text) => setDraftText(planId, text)}
+            onRemoveAttachment={(localId) => removeDraftAttachment(planId, localId)}
+            onSend={send}
+          />
         </div>
         {detail === null || !pane.open ? null : (
           <>
@@ -218,11 +255,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               style={{ "--plan-pane-width": `${width}px` } as CSSProperties}
             >
               {pane.view === "explorer" ? (
-                <DagExplorer
-                  anchoredCommitId={anchored ? position.commitId : null}
-                  graph={graph}
-                  onSelect={select}
-                />
+                // The highlight is wherever the composer acts from, so
+                // following a branch shows in the explorer as it happens.
+                <DagExplorer anchoredCommitId={head} graph={graph} onSelect={select} />
               ) : artifactText === null ? (
                 // The plan as of then is still on its way. An empty artifact
                 // and an unread one look alike, and saying nothing is better
@@ -232,9 +267,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 </div>
               ) : (
                 <PlanArtifact
+                  // An edit lands on the branch you are standing on. Editing
+                  // is only offered live, so a revision can never be the thing
+                  // that opens a fork: a fork opens with a message.
+                  {...(head === null ? {} : { parentCommitId: head })}
                   planId={planId}
                   planText={artifactText}
-                  readOnly={anchored}
+                  readOnly={viewingPast}
                   readOnlyAction={
                     <Button size="sm" variant="ghost" onClick={backToNow}>
                       Back to now
@@ -299,18 +338,20 @@ function PlanPaneToggle({
 }
 
 /**
- * What stands where the composer stands while you are looking at an earlier
- * point. Acting from there is a fork, not an append — so rather than quietly
- * adding to the tip behind your back, the space says where you are and offers
- * the way out.
+ * What the composer says while you are standing at an earlier point.
+ *
+ * The composer still acts — that is the whole point of standing somewhere —
+ * but what it does from here is open a branch rather than continue this
+ * conversation, so the surface says that before you press send, and keeps the
+ * way back beside it.
  */
-function BackToNowBar({ onBack }: { readonly onBack: () => void }) {
+function ViewingEarlierBanner({ onBack }: { readonly onBack: () => void }) {
   return (
-    <div className="border-t border-border px-3 py-3 sm:px-5">
+    <div className="border-b border-border/60 bg-muted/30 px-3 py-2 sm:px-5">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
         <ClockIcon className="size-4 shrink-0 text-muted-foreground/70" />
         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-          Viewing an earlier point in this plan’s history
+          Viewing an earlier point — sending starts a new branch from here
         </span>
         <Button size="sm" variant="outline" onClick={onBack}>
           Back to now
@@ -331,11 +372,22 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   const setDraftText = usePlanDraftStore((state) => state.setDraftText);
   const discardDraft = usePlanDraftStore((state) => state.discardDraft);
   const createPlan = useCreatePlan();
+  /**
+   * The unborn plan's images. Held here rather than in `planDraftStore`
+   * because there is no plan to key them by yet and the draft they belong to
+   * lives exactly as long as this view does — the text is what survives
+   * leaving, and it already did before this issue.
+   */
+  const [attachments, setAttachments] = useState<ReadonlyArray<PlanComposerAttachment>>([]);
 
   const send = useCallback(
-    async (text: string) => {
+    async ({ text, attachments: uploads }: PlanComposerSubmission) => {
       if (draft === undefined) return false;
-      const created = await createPlan(draft.projectId as MercurianProjectId, text);
+      const created = await createPlan({
+        projectId: draft.projectId as MercurianProjectId,
+        message: text,
+        ...(uploads.length === 0 ? {} : { attachments: uploads }),
+      });
       if (created === null) {
         return false;
       }
@@ -376,9 +428,14 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         </EmptyHeader>
       </Empty>
       <PlanComposer
+        attachments={attachments}
         placeholder="Describe the work"
-        value={draft.text}
-        onChangeValue={(text) => setDraftText(draftId, text)}
+        text={draft.text}
+        onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}
+        onChangeText={(text) => setDraftText(draftId, text)}
+        onRemoveAttachment={(localId) =>
+          setAttachments((current) => current.filter((one) => one.localId !== localId))
+        }
         onSend={send}
       />
     </PlanningSurface>
@@ -410,85 +467,5 @@ function PlanningSurface({
         {children}
       </div>
     </SidebarInset>
-  );
-}
-
-/**
- * Auto-growing textarea plus send. Deliberately not the thread composer: this
- * is how you talk to the plan, not how you edit it — editing is the artifact's
- * own affordance, and both land as commits either way.
- */
-function PlanComposer({
-  placeholder,
-  value,
-  onChangeValue,
-  onSend,
-}: {
-  readonly placeholder: string;
-  readonly value?: string;
-  readonly onChangeValue?: (value: string) => void;
-  readonly onSend: (text: string) => Promise<boolean>;
-}) {
-  const [internalValue, setInternalValue] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const text = value ?? internalValue;
-
-  const setText = useCallback(
-    (next: string) => {
-      if (onChangeValue) {
-        onChangeValue(next);
-      } else {
-        setInternalValue(next);
-      }
-    },
-    [onChangeValue],
-  );
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea === null) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 240)}px`;
-  }, [text]);
-
-  const submit = useCallback(async () => {
-    const trimmed = text.trim();
-    if (trimmed.length === 0 || isSending) return;
-    setIsSending(true);
-    const sent = await onSend(trimmed);
-    setIsSending(false);
-    if (sent) {
-      setText("");
-    }
-  }, [isSending, onSend, setText, text]);
-
-  return (
-    <div className="border-t border-border px-3 py-3 sm:px-5">
-      <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          className="min-h-9 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-hidden ring-ring focus-visible:ring-2"
-          placeholder={placeholder}
-          rows={1}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void submit();
-            }
-          }}
-        />
-        <Button
-          aria-label="Send"
-          disabled={text.trim().length === 0 || isSending}
-          size="sm"
-          onClick={() => void submit()}
-        >
-          <SendHorizontalIcon className="size-4" />
-        </Button>
-      </div>
-    </div>
   );
 }

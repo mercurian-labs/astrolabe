@@ -26,6 +26,28 @@ Opening a plan from the tree lands on its planning space: the conversation that 
 with a composer to add to it, and a pane on the right for the plan's two standing views. The plan
 you are looking at stays highlighted in the tree while you are anywhere inside it.
 
+## The composer
+
+The composer is where you act in a plan. It acts from wherever you are standing — normally that is
+the end of the conversation you are in, and after picking an earlier commit in the history it is
+that commit instead.
+
+A message you have not sent stays with its plan. Leave the planning space, come back, and it is
+still in the composer, images and all; the same is true after a reload. Sending clears it, and a
+draft in one plan says nothing about any other.
+
+Messages carry images. Paste a screenshot, drop a file onto the composer, or use the image button —
+each one becomes a thumbnail above what you are typing, removable with the × in its corner, and it
+appears in the message once you send. A very large image is still accepted; it may just not be
+there if you reload before sending.
+
+Type **@** to mention a file from the plan's repositories: the mention becomes a chip in the
+message and travels with it. Until a plan has repositories registered there is nothing to offer,
+so the menu stays closed.
+
+**Enter** sends and **Shift+Enter** starts a new line. There is no queueing — while a message is
+going out the send button is held, and the next one waits.
+
 ## The right pane
 
 Two icons sit in the space's top-right corner: the **plan** and the **history**. Pressing one shows
@@ -73,9 +95,15 @@ Pick any commit, in either view, and the space moves there: the conversation sho
 that commit, the plan shows what it said at the time, and the history highlights where you are
 standing. The conversation is always one path — a branch you are not on is a different conversation,
 not more of this one. Nothing is destroyed by looking: no history is rewritten, and nothing is
-thrown away. While you are back there the composer and **Edit** step aside for **Back to now**,
-because adding from an earlier point is starting a new line of work rather than appending to this
-one. **Back to now** — or picking the latest commit — returns you to the live view.
+thrown away.
+
+Picking the end of a branch stands you in that conversation, and the space follows that branch as
+it grows. Branches other than yours can grow all they like; you stay where you are.
+
+Picking a commit that already led somewhere is looking back. The plan goes read-only, and the
+composer says so: _sending starts a new branch from here_. Send, and it does — a new branch whose
+first commit is your message, and the space follows it. That is the only way a branch is made:
+every one begins with something you said. **Back to now** returns you to the newest line of work.
 
 ## Empty states
 
