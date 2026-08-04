@@ -9,6 +9,11 @@
  * - a plan owns exactly one planning space. `plans.history_id` is unique, and
  *   the store never hands out a history that a plan does not already name.
  *
+ * The plan artifact follows from those: it has no table and no column. A plan
+ * revision is a commit interleaved with messages in the one history, and the
+ * artifact's current text is derived from that history — which is why there is
+ * no way for a second plan, or a second edit log, to exist.
+ *
  * Plans compose {@link CommitStore} rather than reimplementing it: the commit
  * graph keeps its own invariants, and a refusal from it passes through
  * untranslated so a planning bug reads as exactly what it is.
@@ -46,22 +51,69 @@ import { MercurianProject, Plan } from "./schema.ts";
 // Domain
 // ===============================
 
-/** What a message commit carries. The only payload shape written today. */
+/** What a message commit carries. */
 export const MessageCommitPayload = Schema.Struct({ text: Schema.String });
 export type MessageCommitPayload = typeof MessageCommitPayload.Type;
+
+/**
+ * What a plan-revision commit carries: the plan's full text after the edit.
+ *
+ * A snapshot rather than a diff, deliberately. The artifact at any commit is
+ * then the nearest revision at or above it — O(1), no patch replay to corrupt,
+ * and a fork's text is just its own path's latest snapshot. Plans are
+ * human-scale documents; the storage this costs is not scarce.
+ */
+export const PlanRevisionCommitPayload = Schema.Struct({ text: Schema.String });
+export type PlanRevisionCommitPayload = typeof PlanRevisionCommitPayload.Type;
 
 /** One commit on the planning space's path, as the conversation renders it. */
 export const PlanMessage = Schema.Struct({
   commitId: CommitId,
+  sequence: Schema.Number,
   authorKind: CommitAuthorKind,
   text: Schema.String,
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
+/**
+ * A direct edit of the plan, as the history records it. Attribution and place
+ * in the order; the text it produced is the artifact, read as {@link PlanDetail.planText}.
+ */
+export const PlanRevision = Schema.Struct({
+  commitId: CommitId,
+  sequence: Schema.Number,
+  authorKind: CommitAuthorKind,
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type PlanRevision = typeof PlanRevision.Type;
+
+/**
+ * One item of the space's history. Messages and plan revisions interleave in a
+ * single ordered list, because that is what they are in the store: commits of
+ * the same standing in one history. There is no separate edit log.
+ */
+export type PlanTimelineItem =
+  | ({ readonly _tag: "message" } & PlanMessage)
+  | ({ readonly _tag: "plan-revision" } & PlanRevision);
+
+/**
+ * A projected commit, ready to emit as an event. `planText` rides along only
+ * when the commit changed the artifact — a revision's payload *is* the new
+ * current text, so a subscriber never has to recompute it.
+ */
+export interface PlanTimelineEvent {
+  readonly item: PlanTimelineItem;
+  readonly planText?: string;
+}
+
 export interface PlanDetail {
   readonly plan: Plan;
-  readonly messages: ReadonlyArray<PlanMessage>;
+  /** Derived from the history, never stored. `""` is a real state. */
+  readonly planText: string;
+  readonly timeline: ReadonlyArray<PlanTimelineItem>;
+  /** The highest commit sequence this snapshot accounts for; `0` for none. */
+  readonly snapshotSequence: number;
 }
 
 export interface PlanningTreeSnapshot {
@@ -103,8 +155,22 @@ export const AppendMessageInput = Schema.Struct({
 });
 export type AppendMessageInput = typeof AppendMessageInput.Type;
 
+export const SavePlanRevisionInput = Schema.Struct({
+  planId: PlanId,
+  /** The artifact's whole text after the edit. Empty is legal — clearing is an edit. */
+  text: Schema.String,
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SavePlanRevisionInput = typeof SavePlanRevisionInput.Type;
+
 export const GetPlanInput = Schema.Struct({ planId: PlanId });
 export type GetPlanInput = typeof GetPlanInput.Type;
+
+export const ListTimelineSinceInput = Schema.Struct({
+  planId: PlanId,
+  afterSequence: Schema.Number,
+});
+export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
 // ===============================
 // Service
@@ -130,8 +196,22 @@ export class PlanningStore extends Context.Service<
     readonly appendMessage: (
       input: AppendMessageInput,
     ) => Effect.Effect<PlanMessage, PlanningStoreError>;
-    readonly getPlan: (input: GetPlanInput) => Effect.Effect<PlanDetail, PlanningStoreError>;
-    /** Fires once per mutation. What keeps a subscribed tree fresh. */
+    /**
+     * A human's direct edit of the plan, landed at the space's tip as a
+     * commit of the same standing as a message.
+     */
+    readonly savePlanRevision: (
+      input: SavePlanRevisionInput,
+    ) => Effect.Effect<PlanRevision, PlanningStoreError>;
+    /** The planning space whole: the artifact, its history, and a cursor. */
+    readonly getPlanSnapshot: (
+      input: GetPlanInput,
+    ) => Effect.Effect<PlanDetail, PlanningStoreError>;
+    /** What the space gained after a cursor — the subscription's event read. */
+    readonly listTimelineSince: (
+      input: ListTimelineSinceInput,
+    ) => Effect.Effect<ReadonlyArray<PlanTimelineEvent>, PlanningStoreError>;
+    /** Fires once per mutation. What keeps a subscribed tree and plan fresh. */
     readonly changes: Stream.Stream<void>;
   }
 >()("t3/mercurian/planning/PlanningStore") {}
@@ -201,6 +281,26 @@ function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
 }
 
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
+const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
+
+/**
+ * The artifact at the end of a path: the text of the last revision on it, or
+ * the empty string when there is none.
+ *
+ * Written as a fold over whatever the path holds rather than as a rule about
+ * where revisions sit, so it stays total. A plan born blank has no revision
+ * and derives `""` — the empty artifact. An imported plan whose root *is* a
+ * revision derives that root. Nothing assumes a blank root.
+ */
+function derivePlanText(events: ReadonlyArray<PlanTimelineEvent>): string {
+  let text = "";
+  for (const event of events) {
+    if (event.planText !== undefined) {
+      text = event.planText;
+    }
+  }
+  return text;
+}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -312,25 +412,52 @@ export const make = Effect.gen(function* () {
     const payload = yield* decodeMessagePayload(commit.payload);
     return {
       commitId: commit.commitId,
+      sequence: commit.sequence,
       authorKind: commit.authorKind,
       text: payload.text,
       createdAt: commit.createdAt,
     } satisfies PlanMessage;
   });
 
+  const toPlanRevision = (commit: Commit): PlanRevision => ({
+    commitId: commit.commitId,
+    sequence: commit.sequence,
+    authorKind: commit.authorKind,
+    createdAt: commit.createdAt,
+  });
+
   /**
-   * Only `message` commits render as conversation. Nothing else is written
-   * today, and when plan revisions and coding sessions arrive they get their
-   * own projection rather than being squeezed into this one.
+   * A commit as the planning space sees it, or nothing when the space has no
+   * rendering for that kind. Skipping the unknown rather than failing is what
+   * lets coding-session and issue-revision commits land later without breaking
+   * every reader of this surface.
    */
-  const listPlanMessages = Effect.fn("PlanningStore.listPlanMessages")(function* (
-    historyId: HistoryId,
+  const toTimelineEvent = Effect.fn("PlanningStore.toTimelineEvent")(function* (commit: Commit) {
+    if (commit.kind === "message") {
+      const message = yield* toPlanMessage(commit);
+      return Option.some<PlanTimelineEvent>({ item: { _tag: "message", ...message } });
+    }
+    if (commit.kind === "plan-revision") {
+      const payload = yield* decodeRevisionPayload(commit.payload);
+      return Option.some<PlanTimelineEvent>({
+        item: { _tag: "plan-revision", ...toPlanRevision(commit) },
+        planText: payload.text,
+      });
+    }
+    return Option.none<PlanTimelineEvent>();
+  });
+
+  const projectCommits = Effect.fn("PlanningStore.projectCommits")(function* (
+    path: ReadonlyArray<Commit>,
   ) {
+    const projected = yield* Effect.forEach(path, toTimelineEvent);
+    return projected.filter(Option.isSome).map((event) => event.value);
+  });
+
+  /** The tip of the space: what a new commit hangs from. */
+  const readTip = Effect.fn("PlanningStore.readTip")(function* (historyId: HistoryId) {
     const path = yield* commits.listCommits({ historyId, visibility: "all" });
-    return yield* Effect.forEach(
-      path.filter((commit) => commit.kind === "message"),
-      toPlanMessage,
-    );
+    return path.at(-1);
   });
 
   const createProject: PlanningStore["Service"]["createProject"] = (input) =>
@@ -410,7 +537,14 @@ export const make = Effect.gen(function* () {
       );
 
       yield* announceChange;
-      return { plan, messages: [yield* toPlanMessage(root)] } satisfies PlanDetail;
+      // Born blank: one message, no revision, so the artifact is empty by
+      // construction rather than by a special case.
+      return {
+        plan,
+        planText: "",
+        timeline: [{ _tag: "message", ...(yield* toPlanMessage(root)) }],
+        snapshotSequence: root.sequence,
+      } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
         toPlanningStoreError(
@@ -420,31 +554,49 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  /**
+   * Read the tip and append onto it inside one transaction. Two write paths
+   * now target the tip — a message and a plan revision — so a linear history
+   * has to hold by construction, not by the client happening to serialize.
+   */
+  const appendAtTip = Effect.fn("PlanningStore.appendAtTip")(function* (input: {
+    readonly plan: Plan;
+    readonly commitId: CommitId;
+    readonly kind: "message" | "plan-revision";
+    readonly payload: unknown;
+    readonly createdAt: Commit["createdAt"];
+  }) {
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const tip = yield* readTip(input.plan.historyId);
+        const commit = yield* commits.append({
+          historyId: input.plan.historyId,
+          commitId: input.commitId,
+          kind: input.kind,
+          // Hardcoded, never taken from the caller: the assistant's revisions
+          // arrive with the assistant and its own write path.
+          authorKind: "human",
+          parents: tip === undefined ? [] : [tip.commitId],
+          createdAt: input.createdAt,
+          payload: input.payload,
+        });
+        yield* touchPlanRow({ planId: input.plan.planId, updatedAt: input.createdAt });
+        return commit;
+      }),
+    );
+  });
+
   const appendMessage: PlanningStore["Service"]["appendMessage"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      const path = yield* commits.listCommits({
-        historyId: plan.historyId,
-        visibility: "all",
-      });
-      const tip = path.at(-1);
       const commitId = yield* mintId(CommitId);
-
-      const appended = yield* sql.withTransaction(
-        Effect.gen(function* () {
-          const commit = yield* commits.append({
-            historyId: plan.historyId,
-            commitId,
-            kind: "message",
-            authorKind: "human",
-            parents: tip === undefined ? [] : [tip.commitId],
-            createdAt: input.createdAt,
-            payload: { text: input.text } satisfies MessageCommitPayload,
-          });
-          yield* touchPlanRow({ planId: plan.planId, updatedAt: input.createdAt });
-          return commit;
-        }),
-      );
+      const appended = yield* appendAtTip({
+        plan,
+        commitId,
+        kind: "message",
+        payload: { text: input.text } satisfies MessageCommitPayload,
+        createdAt: input.createdAt,
+      });
 
       yield* announceChange;
       return yield* toPlanMessage(appended);
@@ -457,15 +609,69 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const getPlan: PlanningStore["Service"]["getPlan"] = (input) =>
+  const savePlanRevision: PlanningStore["Service"]["savePlanRevision"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const appended = yield* appendAtTip({
+        plan,
+        commitId,
+        kind: "plan-revision",
+        payload: { text: input.text } satisfies PlanRevisionCommitPayload,
+        createdAt: input.createdAt,
+      });
+
+      // An edit is activity: the tree's recency ordering should feel it.
+      yield* announceChange;
+      return toPlanRevision(appended);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.savePlanRevision:query",
+          "PlanningStore.savePlanRevision:encodeRequest",
+        ),
+      ),
+    );
+
+  const getPlanSnapshot: PlanningStore["Service"]["getPlanSnapshot"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       // The author's own workspace sees its drafts, so every commit counts.
-      const messages = yield* listPlanMessages(plan.historyId);
-      return { plan, messages } satisfies PlanDetail;
+      const path = yield* commits.listCommits({
+        historyId: plan.historyId,
+        visibility: "all",
+      });
+      const events = yield* projectCommits(path);
+      return {
+        plan,
+        planText: derivePlanText(events),
+        timeline: events.map((event) => event.item),
+        snapshotSequence: path.at(-1)?.sequence ?? 0,
+      } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
-        toPlanningStoreError("PlanningStore.getPlan:query", "PlanningStore.getPlan:decodeRows"),
+        toPlanningStoreError(
+          "PlanningStore.getPlanSnapshot:query",
+          "PlanningStore.getPlanSnapshot:decodeRows",
+        ),
+      ),
+    );
+
+  const listTimelineSince: PlanningStore["Service"]["listTimelineSince"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const since = yield* commits.listCommitsSince({
+        historyId: plan.historyId,
+        afterSequence: input.afterSequence,
+        visibility: "all",
+      });
+      return yield* projectCommits(since);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.listTimelineSince:query",
+          "PlanningStore.listTimelineSince:decodeRows",
+        ),
       ),
     );
 
@@ -474,7 +680,9 @@ export const make = Effect.gen(function* () {
     getTreeSnapshot,
     createPlan,
     appendMessage,
-    getPlan,
+    savePlanRevision,
+    getPlanSnapshot,
+    listTimelineSince,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

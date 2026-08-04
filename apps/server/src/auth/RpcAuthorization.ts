@@ -33,10 +33,11 @@ export const RPC_REQUIRED_SCOPES = {
   // Mercurian-specific scope would force re-pairing for a boundary that does
   // not exist yet. Revisit with shared workspaces.
   [MERCURIAN_WS_METHODS.subscribeTree]: AuthOrchestrationReadScope,
-  [MERCURIAN_WS_METHODS.getPlan]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

@@ -365,4 +365,78 @@ layer("CommitStore", (it) => {
       assert.deepStrictEqual(publishedChildren, []);
     }),
   );
+  it.effect("carries the append order every read can cursor from", () =>
+    Effect.gen(function* () {
+      const store = yield* CommitStore.CommitStore;
+
+      const root = yield* store.createHistory({
+        historyId: historyId("seq"),
+        rootCommit: newCommit("seq-root"),
+        rootPublished: false,
+      });
+      const first = yield* append(store, "seq", "seq-a", ["seq-root"]);
+      const second = yield* append(store, "seq", "seq-b", ["seq-a"]);
+
+      assert.ok(root.sequence < first.sequence);
+      assert.ok(first.sequence < second.sequence);
+
+      // The sequence an append reports is the sequence every later read sees.
+      const listed = yield* store.listCommits({
+        historyId: historyId("seq"),
+        visibility: "all",
+      });
+      assert.deepStrictEqual(
+        listed.map((commit) => commit.sequence),
+        [root.sequence, first.sequence, second.sequence],
+      );
+    }),
+  );
+
+  it.effect("reads exactly what landed after a cursor, honouring visibility", () =>
+    Effect.gen(function* () {
+      const store = yield* CommitStore.CommitStore;
+
+      const root = yield* store.createHistory({
+        historyId: historyId("since"),
+        rootCommit: newCommit("since-root"),
+        rootPublished: true,
+      });
+      // A second history proves the cursor read is scoped: its commits share
+      // the global sequence but must never leak into this one's events.
+      yield* store.createHistory({
+        historyId: historyId("other"),
+        rootCommit: newCommit("other-root"),
+        rootPublished: true,
+      });
+      const draft = yield* append(store, "since", "since-draft", ["since-root"]);
+
+      const all = yield* store.listCommitsSince({
+        historyId: historyId("since"),
+        afterSequence: root.sequence,
+        visibility: "all",
+      });
+      assert.deepStrictEqual(ids(all), ["since-draft"]);
+
+      const published = yield* store.listCommitsSince({
+        historyId: historyId("since"),
+        afterSequence: root.sequence,
+        visibility: "published",
+      });
+      assert.deepStrictEqual(published, []);
+
+      const caughtUp = yield* store.listCommitsSince({
+        historyId: historyId("since"),
+        afterSequence: draft.sequence,
+        visibility: "all",
+      });
+      assert.deepStrictEqual(caughtUp, []);
+
+      const fromScratch = yield* store.listCommitsSince({
+        historyId: historyId("since"),
+        afterSequence: 0,
+        visibility: "all",
+      });
+      assert.deepStrictEqual(ids(fromScratch), ["since-root", "since-draft"]);
+    }),
+  );
 });

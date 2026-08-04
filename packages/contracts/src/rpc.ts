@@ -68,15 +68,18 @@ import {
   MercurianAppendPlanMessageInput,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
-  MercurianGetPlanInput,
   MercurianPlanningError,
   MercurianProject,
   MercurianProjectNotFoundError,
+  MercurianSavePlanRevisionInput,
+  MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
   PlanDetail,
   PlanMessage,
   PlanNotFoundError,
   PlanningTreeStreamItem,
+  PlanRevision,
+  PlanStreamItem,
 } from "./mercurian.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
@@ -830,10 +833,20 @@ export const WsMercurianAppendPlanMessageRpc = Rpc.make(MERCURIAN_WS_METHODS.app
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
-export const WsMercurianGetPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan, {
-  payload: MercurianGetPlanInput,
-  success: PlanDetail,
+export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.savePlanRevision, {
+  payload: MercurianSavePlanRevisionInput,
+  success: PlanRevision,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+// The planning space's read path. Unlike the tree, a plan carries sequenced
+// events: the commit store is already the totally-ordered log, so the cursor
+// is `commits.sequence` and resume is bounded-gap-replay-else-snapshot.
+export const WsMercurianSubscribePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.subscribePlan, {
+  payload: MercurianSubscribePlanInput,
+  success: PlanStreamItem,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+  stream: true,
 });
 
 export const WsRpcGroup = RpcGroup.make(
@@ -920,5 +933,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianCreateProjectRpc,
   WsMercurianCreatePlanRpc,
   WsMercurianAppendPlanMessageRpc,
-  WsMercurianGetPlanRpc,
+  WsMercurianSavePlanRevisionRpc,
+  WsMercurianSubscribePlanRpc,
 );

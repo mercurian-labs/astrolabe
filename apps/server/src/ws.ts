@@ -35,6 +35,7 @@ import {
   MercurianPlanningError,
   isMercurianProjectNotFoundError,
   isPlanNotFoundError,
+  type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -79,8 +80,10 @@ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngi
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import {
+  toWirePlanCommitEvent,
   toWirePlanDetail,
   toWirePlanMessage,
+  toWirePlanRevision,
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
@@ -315,6 +318,12 @@ const SHELL_RESUME_MAX_GAP = 1_000;
 // hundreds of thousands of events behind have OOM-killed servers on large
 // databases. Past this gap the client is reset with a fresh thread snapshot.
 const THREAD_RESUME_MAX_GAP = 1_000;
+
+// Same bound for a planning space's resume. The replay here is already scoped
+// to one history by the cursor query, so the cost is bounded by that plan's own
+// commits — but a cursor further behind than this means the client has drifted
+// far enough that one snapshot of a human-scale plan is the simpler answer.
+const PLAN_RESUME_MAX_GAP = 1_000;
 
 function toAuthAccessStreamEvent(
   change: PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
@@ -1475,17 +1484,106 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.getPlan]: (input) =>
+        [MERCURIAN_WS_METHODS.savePlanRevision]: (input) =>
           observeRpcEffect(
-            MERCURIAN_WS_METHODS.getPlan,
-            planningStore.getPlan({ planId: input.planId }).pipe(
-              Effect.map(toWirePlanDetail),
+            MERCURIAN_WS_METHODS.savePlanRevision,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.savePlanRevision({
+                  planId: input.planId,
+                  text: input.text,
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanRevision),
               Effect.mapError((cause) =>
                 isPlanNotFoundError(cause)
                   ? cause
-                  : new MercurianPlanningError({ operation: "getPlan", cause }),
+                  : new MercurianPlanningError({ operation: "savePlanRevision", cause }),
               ),
             ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.subscribePlan]: (input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WS_METHODS.subscribePlan,
+            Effect.gen(function* () {
+              const toPlanStreamError = (cause: unknown) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "subscribePlan", cause });
+
+              // Attach the change signal before reading anything, so a commit
+              // landing while the first query is in flight still reaches this
+              // subscriber — it lands after the cursor either way.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                planningStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+
+              const readSince = (afterSequence: number) =>
+                planningStore
+                  .listTimelineSince({ planId: input.planId, afterSequence })
+                  .pipe(Effect.mapError(toPlanStreamError));
+
+              // Resume when the client carries a cursor and the replay is
+              // small enough to be worth sending as events. Unlike the thread
+              // stream's replay this query is already scoped to one history,
+              // so the cap is about wire payload, not about decoding an
+              // unbounded global range.
+              const resume =
+                input.afterSequence === undefined
+                  ? null
+                  : yield* readSince(input.afterSequence).pipe(
+                      Effect.map((events) => (events.length > PLAN_RESUME_MAX_GAP ? null : events)),
+                    );
+
+              const opening =
+                resume === null
+                  ? yield* planningStore.getPlanSnapshot({ planId: input.planId }).pipe(
+                      Effect.map((detail) => ({
+                        cursor: detail.snapshotSequence,
+                        items: [
+                          { kind: "snapshot" as const, snapshot: toWirePlanDetail(detail) },
+                        ] satisfies ReadonlyArray<PlanStreamItem>,
+                      })),
+                      Effect.mapError(toPlanStreamError),
+                    )
+                  : {
+                      cursor: resume.at(-1)?.item.sequence ?? input.afterSequence ?? 0,
+                      items: resume.map(toWirePlanCommitEvent),
+                    };
+
+              const cursor = yield* Ref.make(opening.cursor);
+
+              // The change signal is not per-plan, so filtering *is* the
+              // cursor query: a mutation on some other plan reads zero rows
+              // for this history and emits nothing.
+              const liveStream = Stream.fromQueue(changes).pipe(
+                Stream.mapEffect(() =>
+                  Effect.gen(function* () {
+                    const events = yield* readSince(yield* Ref.get(cursor));
+                    const last = events.at(-1);
+                    if (last !== undefined) {
+                      yield* Ref.set(cursor, last.item.sequence);
+                    }
+                    return events.map(toWirePlanCommitEvent);
+                  }),
+                ),
+                Stream.flatMap(Stream.fromIterable),
+              );
+
+              return Stream.concat(
+                Stream.fromIterable<PlanStreamItem>([
+                  ...opening.items,
+                  { kind: "synchronized" as const },
+                ]),
+                liveStream,
+              );
+            }),
             { "rpc.aggregate": "mercurian" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>

@@ -138,9 +138,13 @@ publishes its unpublished ancestors along every parent path. See
 
 [`PlanningStore.ts`][planning-store] adds projects and plans over that graph. A plan owns exactly
 one history and is created together with its root commit, so a plan without a first message cannot
-exist. The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription,
-which re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced
-deltas.
+exist. The plan artifact has no table: a direct edit lands as a `plan-revision` commit carrying the
+whole new text, and the plan's current text is derived from the revisions along the history's path.
+The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
+re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
+planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
+by `commits.sequence`, since the commit DAG is already the durable log
+([ADR 002](../architecture/event-streaming-model.md)).
 
 ## Startup
 

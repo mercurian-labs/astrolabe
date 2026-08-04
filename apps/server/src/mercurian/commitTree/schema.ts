@@ -59,6 +59,12 @@ export type CommitHistory = typeof CommitHistory.Type;
 export const Commit = Schema.Struct({
   commitId: CommitId,
   historyId: HistoryId,
+  /**
+   * The store's global append order, assigned at insert. Totally ordered
+   * across every history, which is what makes it a subscription's cursor:
+   * "what landed after this" is one comparison, not a timestamp guess.
+   */
+  sequence: Schema.Number,
   kind: CommitKind,
   authorKind: CommitAuthorKind,
   /** Ordered and unbounded. Empty for the root. */

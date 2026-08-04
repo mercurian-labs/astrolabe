@@ -1,36 +1,55 @@
-import type { MercurianProjectId, PlanId, PlanMessage } from "@t3tools/contracts";
+import type { MercurianProjectId, PlanId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { SendHorizontalIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
+import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
 import { usePlanDraftStore } from "../../planDraftStore";
 import { useAppendPlanMessage, useCreatePlan, usePlanDetail } from "../../state/mercurian";
-import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
+import { PlanArtifact } from "./PlanArtifact";
+import { PlanTimeline } from "./PlanTimeline";
+
+const ARTIFACT_WIDTH_STORAGE_KEY = "mercurian:plan-artifact-width:v1";
+const ARTIFACT_DEFAULT_WIDTH = 480;
+const ARTIFACT_MIN_WIDTH = 280;
+const ARTIFACT_MAX_WIDTH = 900;
 
 /**
- * The planning space: one plan's conversation over the commit store.
+ * The planning space: the plan artifact beside the conversation that evolves
+ * it, and a composer to act from.
  *
- * Minimal on purpose. Every commit written here is a human `message`; the plan
- * artifact, assistant turns, and the DAG surface each land on this seam later.
+ * The plan sits on the left because it is the standing object the space orbits
+ * — and because the right edge belongs to the DAG explorer this surface is
+ * growing toward. Nothing here holds plan state: the artifact and the history
+ * are two readings of one subscription over the plan's commits.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error, refresh } = usePlanDetail(planId);
+  const { detail, isPending, error } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
+  const { width, handlers } = useResizableWidth({
+    storageKey: ARTIFACT_WIDTH_STORAGE_KEY,
+    defaultWidth: ARTIFACT_DEFAULT_WIDTH,
+    minWidth: ARTIFACT_MIN_WIDTH,
+    maxWidth: ARTIFACT_MAX_WIDTH,
+    edge: "right",
+  });
 
   const send = useCallback(
-    async (text: string) => {
-      const appended = await appendMessage(planId, text);
-      if (appended !== null) {
-        refresh();
-      }
-      return appended !== null;
-    },
-    [appendMessage, planId, refresh],
+    // The stream delivers the message back; there is nothing to refresh.
+    async (text: string) => (await appendMessage(planId, text)) !== null,
+    [appendMessage, planId],
   );
 
   if (error !== null) {
@@ -50,8 +69,37 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   return (
     <PlanningSurface title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}>
-      <MessageList messages={detail?.messages ?? []} />
-      <PlanComposer placeholder="Message this plan" onSend={send} />
+      {/* Below `sm` the panes stack, artifact above conversation — same
+          content, no second surface to keep in step. */}
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-border sm:w-(--plan-artifact-width) sm:flex-none sm:border-r sm:border-b-0"
+          style={{ "--plan-artifact-width": `${width}px` } as CSSProperties}
+        >
+          {/* Nothing to edit until the space has loaded: an empty artifact and
+              a real one look alike, and saving the difference would be a
+              revision nobody asked for. */}
+          {detail === null ? null : (
+            <PlanArtifact planId={planId} planText={detail.planText} timeline={detail.timeline} />
+          )}
+        </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          className="group relative hidden w-0 shrink-0 select-none sm:block"
+        >
+          <div className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize" {...handlers}>
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover:bg-border group-active:bg-primary/60"
+            />
+          </div>
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <PlanTimeline timeline={detail?.timeline ?? []} />
+          <PlanComposer placeholder="Message this plan" onSend={send} />
+        </div>
+      </div>
     </PlanningSurface>
   );
 }
@@ -145,44 +193,10 @@ function PlanningSurface({
   );
 }
 
-function MessageList({ messages }: { readonly messages: ReadonlyArray<PlanMessage> }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length]);
-
-  if (messages.length === 0) {
-    return <div className="min-h-0 flex-1" />;
-  }
-
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">
-      <ol className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        {messages.map((message) => (
-          <li
-            key={message.commitId}
-            className={cn(
-              "rounded-lg border border-border/60 px-3 py-2",
-              message.authorKind === "human" ? "bg-card/40" : "bg-muted/30",
-            )}
-          >
-            <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-              <span>{message.authorKind === "human" ? "You" : "Assistant"}</span>
-              <span>{formatRelativeTimeLabel(message.createdAt)}</span>
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-foreground">{message.text}</p>
-          </li>
-        ))}
-      </ol>
-      <div ref={bottomRef} />
-    </div>
-  );
-}
-
 /**
- * Auto-growing textarea plus send. Deliberately not the thread composer — the
- * rich composer belongs to the plan artifact, which has not landed.
+ * Auto-growing textarea plus send. Deliberately not the thread composer: this
+ * is how you talk to the plan, not how you edit it — editing is the artifact's
+ * own affordance, and both land as commits either way.
  */
 function PlanComposer({
   placeholder,

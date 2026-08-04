@@ -174,7 +174,11 @@ The unit of work, born in a project and owning exactly one planning space. A pla
 
 #### Planning space
 
-A plan's conversation, rendered over its [history](#history). The surface appends human `message` commits at the tip; assistant turns, the plan artifact, and explicit parent selection each land on this seam later.
+A plan's artifact beside the conversation that evolves it, both rendered over its [history](#history). The surface appends human `message` and `plan-revision` commits at the tip, and reads live over one `mercurian.subscribePlan` subscription — a snapshot, then commit events keyed by the commit store's own `sequence` ([ADR 002](../architecture/event-streaming-model.md)). Assistant turns and explicit parent selection land on this seam later.
+
+#### Plan revision
+
+A direct edit of the plan, recorded as a `plan-revision` commit in the plan's one history, interleaved with messages at the same standing. Its payload is the plan's _whole_ text after the edit, not a diff, so the plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the plan anywhere else: the current text is derived from the history, which is why a plan born blank derives an empty artifact and an imported plan whose root is a revision renders from that root.
 
 ## Practical Shortcuts
 

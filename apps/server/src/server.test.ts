@@ -4319,25 +4319,52 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               planId: created.plan.planId,
               text: "And the planning space",
             });
-            const detail = yield* client[MERCURIAN_WS_METHODS.getPlan]({
+            // The subscription's own `synchronized` marker is the receipt that
+            // the stream is live: the edit is landed from there, so the commit
+            // that follows can only have arrived as an event.
+            const items = yield* client[MERCURIAN_WS_METHODS.subscribePlan]({
               planId: created.plan.planId,
-            });
-            return { project, created, detail };
+            }).pipe(
+              Stream.tap((item) =>
+                item.kind === "synchronized"
+                  ? client[MERCURIAN_WS_METHODS.savePlanRevision]({
+                      planId: created.plan.planId,
+                      text: "# Approach\n\nStart from the tree.",
+                    }).pipe(Effect.asVoid)
+                  : Effect.void,
+              ),
+              Stream.take(3),
+              Stream.runCollect,
+            );
+            return { project, created, items };
           }),
         ),
-      );
+      ).pipe(Effect.timeout("5 seconds"));
 
       assert.equal(result.project.name, "Astrolabe");
       assert.equal(result.created.plan.title, "Reshape the sidebar");
+      assert.equal(result.created.planText, "");
+
+      const opening = result.items[0];
+      assert.equal(opening?.kind, "snapshot");
+      const snapshot =
+        opening !== undefined && opening.kind === "snapshot" ? opening.snapshot : null;
       assert.deepEqual(
-        result.detail.messages.map((message) => message.text),
-        ["Reshape the sidebar", "And the planning space"],
+        snapshot?.timeline.map((item) => item._tag),
+        ["message", "message"],
       );
-      assert.deepEqual(
-        result.detail.messages.map((message) => message.authorKind),
-        ["human", "human"],
-      );
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+      assert.equal(snapshot?.planText, "");
+      assert.deepEqual(result.items[1], { kind: "synchronized" });
+
+      const event = result.items[2];
+      assert.equal(event?.kind, "commit");
+      if (event?.kind === "commit") {
+        assert.equal(event.item._tag, "plan-revision");
+        assert.equal(event.item.authorKind, "human");
+        assert.equal(event.planText, "# Approach\n\nStart from the tree.");
+        assert.ok(event.sequence > (snapshot?.snapshotSequence ?? 0));
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
   it.effect("refuses a plan on an unknown mercurian project", () =>

@@ -1,4 +1,4 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
   EnvironmentId,
@@ -29,7 +29,12 @@ const EMPTY_TREE_ATOM = Atom.make(
     never
   >(false),
 );
-const EMPTY_PLAN_ATOM = Atom.make(AsyncResult.initial<PlanDetail, never>(false));
+const EMPTY_PLAN_ATOM = Atom.make(
+  AsyncResult.initial<
+    { readonly detail: PlanDetail | null; readonly synchronized: boolean },
+    never
+  >(false),
+);
 
 const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [] };
 
@@ -63,9 +68,13 @@ export interface PlanDetailState {
   readonly detail: PlanDetail | null;
   readonly isPending: boolean;
   readonly error: string | null;
-  readonly refresh: () => void;
 }
 
+/**
+ * The planning space, live. There is no refresh: the artifact and the history
+ * are one subscription over the plan's commits, so an edit or a message —
+ * from this window or another — arrives as it lands.
+ */
 export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const environmentId = usePrimaryEnvironmentId();
   const atom =
@@ -73,13 +82,11 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
       ? EMPTY_PLAN_ATOM
       : mercurianPlanning.plan({ environmentId, input: { planId } });
   const result = useAtomValue(atom);
-  const refreshAtom = useAtomRefresh(atom);
-  const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
+  const detail = Option.getOrNull(AsyncResult.value(result))?.detail ?? null;
   return {
-    detail: Option.getOrNull(AsyncResult.value(result)),
-    isPending: result.waiting,
+    detail,
+    isPending: detail === null && environmentId !== null && planId !== null,
     error: errorMessage(result, "Could not load this plan."),
-    refresh,
   };
 }
 
@@ -122,5 +129,14 @@ export function useCreatePlan() {
 
 export function useAppendPlanMessage() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.appendPlanMessage);
+  return useCallback((planId: PlanId, text: string) => run({ planId, text }), [run]);
+}
+
+/**
+ * A direct edit of the plan. The text is the artifact's whole new body — a
+ * revision is a snapshot, and an empty one is a legal edit.
+ */
+export function useSavePlanRevision() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.savePlanRevision);
   return useCallback((planId: PlanId, text: string) => run({ planId, text }), [run]);
 }
