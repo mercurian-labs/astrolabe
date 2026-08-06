@@ -1534,6 +1534,37 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.visitPlan,
+            DateTime.now.pipe(
+              // The act names the plan; the moment is ours. A client clock
+              // could otherwise put a visit in the future and silence a row.
+              Effect.flatMap((visitedAt) =>
+                planningStore.recordPlanVisit({ planId: input.planId, visitedAt }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "visitPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.markPlanUnread]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.markPlanUnread,
+            planningStore.markPlanUnread({ planId: input.planId }).pipe(
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "markPlanUnread", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.getPlanTextAt]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.getPlanTextAt,

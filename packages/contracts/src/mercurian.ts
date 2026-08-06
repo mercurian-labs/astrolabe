@@ -34,6 +34,8 @@ export const MERCURIAN_WS_METHODS = {
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
   getPlanTextAt: "mercurian.getPlanTextAt",
+  visitPlan: "mercurian.visitPlan",
+  markPlanUnread: "mercurian.markPlanUnread",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -61,7 +63,7 @@ export const MercurianProject = Schema.Struct({
 });
 export type MercurianProject = typeof MercurianProject.Type;
 
-/** What a plan looks like as a tree row: enough to render, nothing more. */
+/** What a plan is, at the size a surface needs to name it. */
 export const PlanShell = Schema.Struct({
   planId: PlanId,
   projectId: MercurianProjectId,
@@ -70,6 +72,33 @@ export const PlanShell = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 export type PlanShell = typeof PlanShell.Type;
+
+/**
+ * What a plan looks like as a tree row: the shell, plus the three facts a
+ * status is ranked from.
+ *
+ * The split from {@link PlanShell} is deliberate. Status is the tree's
+ * business — the planning space renders none of it — so a `PlanDetail` never
+ * carries visit state it has no use for.
+ *
+ * Every input here is a server-side fact and the client only ranks them
+ * (ADR 002 §4). "Unseen updates" is deliberately *not* a field: it is
+ * `updatedAt` against `visitedAt`, which is ranking rather than originating,
+ * and the palette needs both raw timestamps anyway for its own ordering.
+ */
+export const PlanTreeRow = Schema.Struct({
+  ...PlanShell.fields,
+  /**
+   * Something in this plan is waiting on a person: a structured question, or a
+   * coding session's approval request rolled up from below.
+   */
+  hasPendingInput: Schema.Boolean,
+  /** A reply is streaming in this plan right now. */
+  isWorking: Schema.Boolean,
+  /** When you last opened it. Absent means never — which reads as unseen. */
+  visitedAt: Schema.optional(IsoDateTime),
+});
+export type PlanTreeRow = typeof PlanTreeRow.Type;
 
 /**
  * The commit facts every timeline item carries, whatever kind it is: where it
@@ -161,7 +190,7 @@ export type PlanStreamItem = typeof PlanStreamItem.Type;
  */
 export const PlanningTreeSnapshot = Schema.Struct({
   projects: Schema.Array(MercurianProject),
-  plans: Schema.Array(PlanShell),
+  plans: Schema.Array(PlanTreeRow),
 });
 export type PlanningTreeSnapshot = typeof PlanningTreeSnapshot.Type;
 
@@ -243,6 +272,25 @@ export type MercurianGetPlanTextAtInput = typeof MercurianGetPlanTextAtInput.Typ
 export const PlanTextAt = Schema.Struct({ planText: Schema.String });
 export type PlanTextAt = typeof PlanTextAt.Type;
 
+/**
+ * You opened this plan. The moment is the server's to mint — the act names the
+ * plan and nothing else, so no client's clock can put a visit in the future and
+ * silence a row forever.
+ */
+export const MercurianVisitPlanInput = Schema.Struct({ planId: PlanId });
+export type MercurianVisitPlanInput = typeof MercurianVisitPlanInput.Type;
+
+/** Put a plan back in front of you. Re-arms unseen in every open window. */
+export const MercurianMarkPlanUnreadInput = Schema.Struct({ planId: PlanId });
+export type MercurianMarkPlanUnreadInput = typeof MercurianMarkPlanUnreadInput.Type;
+
+/**
+ * Both visit acts answer with nothing to render: what they changed comes back
+ * on the tree subscription, which is the one place row state is read from.
+ */
+export const MercurianVisitAcknowledged = Schema.Struct({});
+export type MercurianVisitAcknowledged = typeof MercurianVisitAcknowledged.Type;
+
 export const MercurianSubscribePlanInput = Schema.Struct({
   planId: PlanId,
   /** A cursor to resume from. Absent — or too far behind — means a fresh snapshot. */
@@ -291,6 +339,8 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "appendPlanMessage",
       "savePlanRevision",
       "getPlanTextAt",
+      "visitPlan",
+      "markPlanUnread",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

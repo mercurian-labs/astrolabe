@@ -20,6 +20,7 @@ import type {
   PlanRevision,
   PlanTimelineEvent,
   PlanTimelineItem,
+  PlanTreeRow,
 } from "./PlanningStore.ts";
 
 const iso = (value: DateTime.Utc) => DateTime.formatIso(value);
@@ -79,9 +80,30 @@ export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanS
 
 export const toWirePlanTextAt = (planText: string): Contracts.PlanTextAt => ({ planText });
 
+/**
+ * A plan as a tree row — and the one place a row's status facts are composed.
+ *
+ * `hasPendingInput` and `isWorking` are constants here because no producer
+ * exists yet, not because they are decorative: with no planning runtime, "is
+ * anything streaming in this plan" is honestly `false`. They cross the wire now
+ * so that when the producers land they change this function's inputs and
+ * nothing else — no contract, no client, no resolver.
+ *
+ * The producers, by name: M-104's planning turns set `isWorking` while a reply
+ * streams and `hasPendingInput` when it asks a structured question; M-114's
+ * coding sessions contribute both from the other store, composed *here* rather
+ * than by a cross-database transaction (ADR 002 §4).
+ */
+export const toWirePlanTreeRow = (row: PlanTreeRow): Contracts.PlanTreeRow => ({
+  ...toWirePlanShell(row),
+  hasPendingInput: false,
+  isWorking: false,
+  ...(row.visitedAt === undefined ? {} : { visitedAt: iso(row.visitedAt) }),
+});
+
 export const toWireTreeSnapshot = (
   snapshot: PlanningTreeSnapshot,
 ): Contracts.PlanningTreeSnapshot => ({
   projects: snapshot.projects.map(toWireProject),
-  plans: snapshot.plans.map(toWirePlanShell),
+  plans: snapshot.plans.map(toWirePlanTreeRow),
 });

@@ -69,12 +69,15 @@ import {
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
   MercurianGetPlanTextAtInput,
+  MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
   MercurianProject,
   MercurianProjectNotFoundError,
   MercurianSavePlanRevisionInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
+  MercurianVisitAcknowledged,
+  MercurianVisitPlanInput,
   PlanDetail,
   PlanMessage,
   PlanNotFoundError,
@@ -841,6 +844,22 @@ export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
+// Attention, recorded. Both write one plan's visited-at and answer with
+// nothing: the change they made comes back on the tree subscription, where
+// every other row fact already lives. Neither joins the environment
+// subscription group — they are unary acts, not streams.
+export const WsMercurianVisitPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.visitPlan, {
+  payload: MercurianVisitPlanInput,
+  success: MercurianVisitAcknowledged,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianMarkPlanUnreadRpc = Rpc.make(MERCURIAN_WS_METHODS.markPlanUnread, {
+  payload: MercurianMarkPlanUnreadInput,
+  success: MercurianVisitAcknowledged,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
 // The planning space's read path. Unlike the tree, a plan carries sequenced
 // events: the commit store is already the totally-ordered log, so the cursor
 // is `commits.sequence` and resume is bounded-gap-replay-else-snapshot.
@@ -945,6 +964,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianCreatePlanRpc,
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
+  WsMercurianVisitPlanRpc,
+  WsMercurianMarkPlanUnreadRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
 );
