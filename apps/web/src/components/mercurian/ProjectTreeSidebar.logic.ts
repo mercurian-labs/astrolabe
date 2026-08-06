@@ -7,6 +7,12 @@ interface PlanRowFields {
   readonly updatedAt: string;
 }
 
+/** What a plan's lifecycle state is, as any listing of plans reads it. */
+export interface PlanLifecycleFields {
+  readonly archivedAt: string | null;
+  readonly hasPublishedCommits: boolean;
+}
+
 interface ProjectRowFields {
   readonly projectId: string;
   readonly createdAt: string;
@@ -53,6 +59,44 @@ export function sortPlansNewestFirst<T extends Pick<PlanRowFields, "updatedAt" |
     }
     return left.updatedAt < right.updatedAt ? 1 : -1;
   });
+}
+
+/**
+ * Active plans and archived ones, split the one way every surface needs them.
+ *
+ * The tree, the palette's recents, and any later listing all render `active`;
+ * the Archived page in Settings renders `archived`. Keeping the split here
+ * rather than in each caller is what makes "archiving removes the plan from
+ * every listing" hold for listings that do not exist yet.
+ */
+export function partitionPlansByLifecycle<T extends Pick<PlanLifecycleFields, "archivedAt">>(
+  plans: readonly T[],
+): { readonly active: T[]; readonly archived: T[] } {
+  const active: T[] = [];
+  const archived: T[] = [];
+  for (const plan of plans) {
+    if (plan.archivedAt === null) {
+      active.push(plan);
+    } else {
+      archived.push(plan);
+    }
+  }
+  return { active, archived };
+}
+
+/**
+ * Which verbs a plan row offers.
+ *
+ * Archive is always one of them — it is every plan's disappearance, and the
+ * only one a published plan has. Delete exists only while the plan is fully
+ * private: before anything crossed into shared history the work was the
+ * author's alone to destroy, and after it, it is not only theirs.
+ */
+export function resolvePlanRowActions(plan: Pick<PlanLifecycleFields, "hasPublishedCommits">): {
+  readonly canArchive: boolean;
+  readonly canDelete: boolean;
+} {
+  return { canArchive: true, canDelete: !plan.hasPublishedCommits };
 }
 
 export function groupPlansByProject<T extends PlanRowFields>(

@@ -66,8 +66,10 @@ import {
 import {
   MERCURIAN_WS_METHODS,
   MercurianAppendPlanMessageInput,
+  MercurianArchivePlanInput,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
+  MercurianDeletePlanInput,
   MercurianGetPlanTextAtInput,
   MercurianPlanningError,
   MercurianProject,
@@ -75,7 +77,10 @@ import {
   MercurianSavePlanRevisionInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
+  MercurianUnarchivePlanInput,
+  PlanDeleteBlockedError,
   PlanDetail,
+  PlanLifecycleAck,
   PlanMessage,
   PlanNotFoundError,
   PlanningTreeStreamItem,
@@ -841,6 +846,32 @@ export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
+// The plan lifecycle. Archive is every plan's disappearance and is reversible;
+// delete exists only while a plan is fully private, and refuses once anything
+// it holds has been published.
+export const WsMercurianArchivePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.archivePlan, {
+  payload: MercurianArchivePlanInput,
+  success: PlanLifecycleAck,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianUnarchivePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.unarchivePlan, {
+  payload: MercurianUnarchivePlanInput,
+  success: PlanLifecycleAck,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianDeletePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.deletePlan, {
+  payload: MercurianDeletePlanInput,
+  success: PlanLifecycleAck,
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanDeleteBlockedError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 // The planning space's read path. Unlike the tree, a plan carries sequenced
 // events: the commit store is already the totally-ordered log, so the cursor
 // is `commits.sequence` and resume is bounded-gap-replay-else-snapshot.
@@ -945,6 +976,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianCreatePlanRpc,
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
+  WsMercurianArchivePlanRpc,
+  WsMercurianUnarchivePlanRpc,
+  WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
 );

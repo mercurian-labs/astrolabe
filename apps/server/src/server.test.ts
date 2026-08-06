@@ -31,6 +31,7 @@ import {
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
   MercurianProjectId,
+  type PlanId,
   EditorId,
 } from "@t3tools/contracts";
 import {
@@ -4392,6 +4393,70 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Born blank at the root, and the revision's own text where it landed.
       assert.equal(result.atRoot.planText, "");
       assert.equal(result.atRevision?.planText, "# Approach\n\nStart from the tree.");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("routes websocket rpc mercurian plan lifecycle: archive, restore, delete", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            // Each read is its own subscription taken to its opening snapshot:
+            // the tree re-sends whole, so the opening frame is the truth.
+            const readPlanRow = (planId: PlanId) =>
+              client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+                Stream.take(1),
+                Stream.runCollect,
+                Effect.map((items) =>
+                  items[0]?.snapshot.plans.find((plan) => plan.planId === planId),
+                ),
+              );
+
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Reshape the sidebar",
+            });
+            const planId = created.plan.planId;
+            const born = yield* readPlanRow(planId);
+
+            yield* client[MERCURIAN_WS_METHODS.archivePlan]({ planId });
+            const archived = yield* readPlanRow(planId);
+
+            yield* client[MERCURIAN_WS_METHODS.unarchivePlan]({ planId });
+            const restored = yield* readPlanRow(planId);
+
+            yield* client[MERCURIAN_WS_METHODS.deletePlan]({ planId });
+            const deleted = yield* readPlanRow(planId);
+            const secondDelete = yield* Effect.flip(
+              client[MERCURIAN_WS_METHODS.deletePlan]({ planId }),
+            );
+
+            return { born, archived, restored, deleted, secondDelete };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      // Born in the tree and born private: the shell carries both facts, which
+      // is what lets a row decide between archive and delete without a second
+      // read.
+      assert.equal(result.born?.archivedAt, null);
+      assert.equal(result.born?.hasPublishedCommits, false);
+
+      assert.ok(typeof result.archived?.archivedAt === "string");
+      // Archiving destroys nothing — the row is still in the snapshot, just
+      // stamped, which is what the Archived page in Settings renders from.
+      assert.equal(result.archived?.planId, result.born?.planId);
+      assert.equal(result.restored?.archivedAt, null);
+
+      // Delete is the other kind of disappearance, and leaves nothing to find.
+      assert.equal(result.deleted, undefined);
+      assert.equal(result.secondDelete._tag, "PlanNotFoundError");
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

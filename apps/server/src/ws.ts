@@ -34,6 +34,7 @@ import {
   MERCURIAN_WS_METHODS,
   MercurianPlanningError,
   isMercurianProjectNotFoundError,
+  isPlanDeleteBlockedError,
   isPlanNotFoundError,
   type PlanStreamItem,
   type ProjectId,
@@ -79,7 +80,10 @@ import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
-import { normalizePlanAttachments } from "./mercurian/planning/attachments.ts";
+import {
+  normalizePlanAttachments,
+  removePlanAttachments,
+} from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import {
   toWirePlanCommitEvent,
@@ -1530,6 +1534,51 @@ const makeWsRpcLayer = (
                 isPlanNotFoundError(cause)
                   ? cause
                   : new MercurianPlanningError({ operation: "savePlanRevision", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.archivePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.archivePlan,
+            DateTime.now.pipe(
+              Effect.flatMap((archivedAt) =>
+                planningStore.archivePlan({ planId: input.planId, archivedAt }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "archivePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.unarchivePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.unarchivePlan,
+            planningStore.unarchivePlan({ planId: input.planId }).pipe(
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "unarchivePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.deletePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.deletePlan,
+            planningStore.deletePlan({ planId: input.planId }).pipe(
+              // Bytes go after the rows that named them, never before: a
+              // refused delete must leave the plan's images where they are.
+              Effect.tap((deletion) => removePlanAttachments(deletion)),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) || isPlanDeleteBlockedError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "deletePlan", cause }),
               ),
             ),
             { "rpc.aggregate": "mercurian" },

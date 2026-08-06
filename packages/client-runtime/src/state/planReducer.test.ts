@@ -40,6 +40,8 @@ const snapshot: PlanDetail = {
     title: "Reshape the sidebar",
     createdAt: "2026-08-03T00:00:00.000Z",
     updatedAt: "2026-08-03T00:00:00.000Z",
+    archivedAt: null,
+    hasPublishedCommits: false,
   },
   planText: "",
   timeline: [message("commit-1", 1, "Reshape the sidebar")],

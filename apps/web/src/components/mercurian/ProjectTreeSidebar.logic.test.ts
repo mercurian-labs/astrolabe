@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   getVisiblePlansForProject,
   groupPlansByProject,
+  partitionPlansByLifecycle,
+  resolvePlanRowActions,
   resolveTreeSelection,
   sortPlansNewestFirst,
   sortProjectsForTree,
@@ -117,5 +119,38 @@ describe("sortProjectsForTree", () => {
       { projectId: "a", createdAt: "2026-08-01T00:00:00.000Z" },
     ]);
     expect(sorted.map((entry) => entry.projectId)).toEqual(["a", "b"]);
+  });
+});
+
+describe("partitionPlansByLifecycle", () => {
+  it("keeps archived plans out of the active listing", () => {
+    const { active, archived } = partitionPlansByLifecycle([
+      { planId: "a", archivedAt: null },
+      { planId: "b", archivedAt: "2026-08-04T00:00:00.000Z" },
+      { planId: "c", archivedAt: null },
+    ]);
+    expect(active.map((plan) => plan.planId)).toEqual(["a", "c"]);
+    expect(archived.map((plan) => plan.planId)).toEqual(["b"]);
+  });
+
+  it("keeps the order it was given, so callers stay in charge of sorting", () => {
+    const { active } = partitionPlansByLifecycle([
+      { planId: "z", archivedAt: null },
+      { planId: "a", archivedAt: null },
+    ]);
+    expect(active.map((plan) => plan.planId)).toEqual(["z", "a"]);
+  });
+});
+
+describe("resolvePlanRowActions", () => {
+  it("offers delete only while the plan is fully private", () => {
+    expect(resolvePlanRowActions({ hasPublishedCommits: false })).toEqual({
+      canArchive: true,
+      canDelete: true,
+    });
+    expect(resolvePlanRowActions({ hasPublishedCommits: true })).toEqual({
+      canArchive: true,
+      canDelete: false,
+    });
   });
 });

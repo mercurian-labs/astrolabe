@@ -1,16 +1,20 @@
-import type { MercurianProjectId } from "@t3tools/contracts";
+import type { MercurianProjectId, PlanId } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
+  ArchiveIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  MoreHorizontalIcon,
   SettingsIcon,
   SquarePenIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { isElectron } from "../../env";
+import { usePlanLifecycleActions } from "../../hooks/usePlanLifecycleActions";
 import { useClientSettings } from "../../hooks/useSettings";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore } from "../../planDraftStore";
@@ -29,6 +33,7 @@ import {
 } from "../ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Input } from "../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import {
   SidebarContent,
   SidebarGroup,
@@ -45,6 +50,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   getVisiblePlansForProject,
   groupPlansByProject,
+  partitionPlansByLifecycle,
+  resolvePlanRowActions,
   resolvePlanRowClassName,
   resolveProjectRowClassName,
   resolveTreeSelection,
@@ -93,7 +100,12 @@ function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
   const { snapshot } = useMercurianTree();
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
-  const plansByProject = useMemo(() => groupPlansByProject(snapshot.plans), [snapshot.plans]);
+  // The tree is the active listing. An archived plan is not destroyed, just
+  // gone from here — Settings → Archived is where it waits.
+  const plansByProject = useMemo(
+    () => groupPlansByProject(partitionPlansByLifecycle(snapshot.plans).active),
+    [snapshot.plans],
+  );
 
   return (
     <SidebarGroup>
@@ -148,9 +160,10 @@ interface ProjectTreeRowProps {
   readonly projectId: MercurianProjectId;
   readonly name: string;
   readonly plans: ReadonlyArray<{
-    readonly planId: string;
+    readonly planId: PlanId;
     readonly title: string;
     readonly updatedAt: string;
+    readonly hasPublishedCommits: boolean;
   }>;
   readonly activePlanId: string | null;
 }
@@ -241,7 +254,7 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
             </SidebarMenuSubItem>
           ) : null}
           {visiblePlans.map((plan) => (
-            <SidebarMenuSubItem key={plan.planId} className="w-full">
+            <SidebarMenuSubItem key={plan.planId} className="group/plan-row relative w-full">
               <SidebarMenuSubButton
                 render={<button type="button" />}
                 className={cn(resolvePlanRowClassName({ isActive: plan.planId === activePlanId }))}
@@ -250,10 +263,17 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
                 }}
               >
                 <span className="min-w-0 flex-1 truncate">{plan.title}</span>
-                <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60">
+                {/* The timestamp yields on hover to the row's verbs, so a plan
+                    row stays a title until you reach for it. */}
+                <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60 group-hover/plan-row:invisible group-focus-within/plan-row:invisible">
                   {formatRelativeTimeLabel(plan.updatedAt)}
                 </span>
               </SidebarMenuSubButton>
+              <PlanRowActions
+                planId={plan.planId}
+                title={plan.title}
+                hasPublishedCommits={plan.hasPublishedCommits}
+              />
             </SidebarMenuSubItem>
           ))}
           {hasHiddenPlans ? (
@@ -273,6 +293,60 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
     </SidebarMenuItem>
   );
 });
+
+/**
+ * A plan row's verbs, in one menu the row itself owns.
+ *
+ * One affordance carries both because the web app has no context-menu
+ * primitive — the fork's row menu is Electron-only — and a menu the row owns
+ * works on every surface, touch included. Archive is always offered; Delete
+ * only while the plan is fully private, which is the lifecycle rule made
+ * visible rather than a refusal waiting to happen.
+ */
+function PlanRowActions({
+  planId,
+  title,
+  hasPublishedCommits,
+}: {
+  readonly planId: PlanId;
+  readonly title: string;
+  readonly hasPublishedCommits: boolean;
+}) {
+  const { archivePlan, deletePlan } = usePlanLifecycleActions();
+  const { canDelete } = resolvePlanRowActions({ hasPublishedCommits });
+
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Actions for ${title}`}
+            className={cn(
+              ICON_ACTION_BUTTON_CLASS,
+              "absolute end-1.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/plan-row:opacity-100 group-focus-within/plan-row:opacity-100 data-[popup-open]:opacity-100 max-sm:opacity-100",
+            )}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <MoreHorizontalIcon className="size-3.5" />
+          </button>
+        }
+      />
+      <MenuPopup align="end" side="bottom">
+        <MenuItem onClick={() => void archivePlan(planId)}>
+          <ArchiveIcon />
+          <span>Archive</span>
+        </MenuItem>
+        {canDelete ? (
+          <MenuItem variant="destructive" onClick={() => void deletePlan(planId)}>
+            <Trash2Icon />
+            <span>Delete</span>
+          </MenuItem>
+        ) : null}
+      </MenuPopup>
+    </Menu>
+  );
+}
 
 function WorkspaceGroup({ selection }: { readonly selection: TreeSelection }) {
   const navigate = useNavigate();

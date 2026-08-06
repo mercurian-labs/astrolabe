@@ -983,4 +983,261 @@ layer("PlanningStore", (it) => {
       );
     }),
   );
+
+  it.effect("archives a plan out of the tree, idempotently, without moving it", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      assert.strictEqual(created.plan.archivedAt, null);
+
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 2)), {
+        startImmediately: true,
+      });
+
+      yield* store.archivePlan({
+        planId: created.plan.planId,
+        archivedAt: at("2026-08-04T00:00:00.000Z"),
+      });
+      // A second archive keeps the first stamp: "archived 3 days ago" should
+      // not reset because someone clicked again.
+      yield* store.archivePlan({
+        planId: created.plan.planId,
+        archivedAt: at("2026-08-05T00:00:00.000Z"),
+      });
+
+      const snapshot = yield* store.getTreeSnapshot;
+      const archived = snapshot.plans.find((plan) => plan.planId === created.plan.planId);
+      assert.strictEqual(
+        archived?.archivedAt === null || archived?.archivedAt === undefined
+          ? null
+          : DateTime.formatIso(archived.archivedAt),
+        "2026-08-04T00:00:00.000Z",
+      );
+      // Archiving is not activity: `updatedAt` is untouched, so restoring
+      // returns the plan to its old place rather than to the top.
+      assert.strictEqual(
+        DateTime.formatIso(archived!.updatedAt),
+        DateTime.formatIso(created.plan.updatedAt),
+      );
+
+      const signals = yield* Fiber.join(changes);
+      assert.strictEqual(signals.length, 2);
+    }),
+  );
+
+  it.effect("restores an archived plan", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+
+      yield* store.archivePlan({
+        planId: created.plan.planId,
+        archivedAt: at("2026-08-04T00:00:00.000Z"),
+      });
+      yield* store.unarchivePlan({ planId: created.plan.planId });
+
+      const detail = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(detail.plan.archivedAt, null);
+      // The space itself was never touched: archiving destroys nothing, so the
+      // history is exactly what it was.
+      assert.strictEqual(detail.timeline.length, 1);
+    }),
+  );
+
+  it.effect("refuses to archive or restore a plan that does not exist", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const missing = PlanId.make("no-such-plan");
+
+      const archive = yield* Effect.flip(
+        store.archivePlan({ planId: missing, archivedAt: at("2026-08-04T00:00:00.000Z") }),
+      );
+      assert.strictEqual(archive._tag, "PlanNotFoundError");
+
+      const restore = yield* Effect.flip(store.unarchivePlan({ planId: missing }));
+      assert.strictEqual(restore._tag, "PlanNotFoundError");
+    }),
+  );
+
+  it.effect("deletes a fully private plan without a trace", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const sql = yield* SqlClient.SqlClient;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        attachments: [
+          {
+            type: "image",
+            id: "plan-0000-mock",
+            name: "mock.png",
+            mimeType: "image/png",
+            sizeBytes: 2048,
+          },
+        ],
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "First draft",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+
+      const deletion = yield* store.deletePlan({ planId: created.plan.planId });
+      // The rows are the store's to destroy; the bytes the ids name are the
+      // boundary's, and this is how it learns which.
+      assert.deepStrictEqual([...deletion.attachmentIds], ["plan-0000-mock"]);
+
+      const [counts] = yield* sql<{
+        readonly plans: number;
+        readonly commits: number;
+        readonly parents: number;
+        readonly histories: number;
+      }>`
+        SELECT
+          (SELECT COUNT(*) FROM plans WHERE plan_id = ${created.plan.planId}) AS "plans",
+          (SELECT COUNT(*) FROM commits WHERE history_id = ${created.plan.historyId}) AS "commits",
+          (
+            SELECT COUNT(*) FROM commit_parents
+            WHERE commit_id IN (SELECT commit_id FROM commits WHERE history_id = ${created.plan.historyId})
+          ) AS "parents",
+          (
+            SELECT COUNT(*) FROM commit_histories WHERE history_id = ${created.plan.historyId}
+          ) AS "histories"
+      `;
+      assert.deepStrictEqual(counts, { plans: 0, commits: 0, parents: 0, histories: 0 });
+
+      // Nothing left to find: this is what makes re-importing the origin issue
+      // of a deleted plan start fresh rather than resurface anything.
+      const gone = yield* Effect.flip(store.getPlanSnapshot({ planId: created.plan.planId }));
+      assert.strictEqual(gone._tag, "PlanNotFoundError");
+    }),
+  );
+
+  it.effect("refuses to delete a plan once any of its commits is published", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+      const sql = yield* SqlClient.SqlClient;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+
+      // The imported-plan shape: the root itself is published, so the plan is
+      // archive-only from birth.
+      const born = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Imported from an issue",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const [root] = yield* commits.listCommits({
+        historyId: born.plan.historyId,
+        visibility: "all",
+      });
+      yield* commits.publish({ commitId: root!.commitId });
+
+      const refused = yield* Effect.flip(store.deletePlan({ planId: born.plan.planId }));
+      assert.strictEqual(refused._tag, "PlanDeleteBlockedError");
+
+      // And the same the other way round: a plan that starts private and
+      // publishes something later loses delete at that moment.
+      const later = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      const midCommit = yield* store.appendMessage({
+        planId: later.plan.planId,
+        text: "Second thought",
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+      yield* store.appendMessage({
+        planId: later.plan.planId,
+        text: "Third thought",
+        createdAt: at("2026-08-03T00:04:00.000Z"),
+      });
+      yield* commits.publish({ commitId: midCommit.commitId });
+
+      const alsoRefused = yield* Effect.flip(store.deletePlan({ planId: later.plan.planId }));
+      assert.strictEqual(alsoRefused._tag, "PlanDeleteBlockedError");
+
+      // Archive is what a published plan has instead, and it destroys nothing:
+      // the row and its history survive, which is what lets re-importing the
+      // origin issue resurface this plan rather than duplicate it.
+      yield* store.archivePlan({
+        planId: born.plan.planId,
+        archivedAt: at("2026-08-04T00:00:00.000Z"),
+      });
+      const [survivors] = yield* sql<{ readonly plans: number; readonly commits: number }>`
+        SELECT
+          (SELECT COUNT(*) FROM plans WHERE plan_id = ${born.plan.planId}) AS "plans",
+          (SELECT COUNT(*) FROM commits WHERE history_id = ${born.plan.historyId}) AS "commits"
+      `;
+      assert.deepStrictEqual(survivors, { plans: 1, commits: 1 });
+    }),
+  );
+
+  it.effect("reports whether a plan's history has been published", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Reshape the sidebar",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      assert.strictEqual(created.plan.hasPublishedCommits, false);
+
+      const readFlags = Effect.gen(function* () {
+        const tree = yield* store.getTreeSnapshot;
+        const detail = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+        return {
+          tree: tree.plans.find((plan) => plan.planId === created.plan.planId)?.hasPublishedCommits,
+          detail: detail.plan.hasPublishedCommits,
+        };
+      });
+
+      assert.deepStrictEqual(yield* readFlags, { tree: false, detail: false });
+
+      const [root] = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      yield* commits.publish({ commitId: root!.commitId });
+
+      // No column moved: the flag is an EXISTS over the commits, so it flips
+      // the moment publishing lands.
+      assert.deepStrictEqual(yield* readFlags, { tree: true, detail: true });
+    }),
+  );
 });

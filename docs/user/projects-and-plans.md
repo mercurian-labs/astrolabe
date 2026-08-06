@@ -105,6 +105,37 @@ composer says so: _sending starts a new branch from here_. Send, and it does —
 first commit is your message, and the space follows it. That is the only way a branch is made:
 every one begins with something you said. **Back to now** returns you to the newest line of work.
 
+## Archiving and deleting a plan
+
+Hover a plan row in the tree and its timestamp gives way to a **⋯** button. That menu holds the two
+ways a plan leaves the tree.
+
+**Archive** is always there. It takes the plan out of the tree and out of every listing, and
+destroys nothing — the conversation, the plan, and the whole history are exactly where they were.
+An archived plan's own address keeps working, so a link to it still opens.
+
+**Delete** is only there while a plan is fully private, which means no commit in it has been
+published. Before that crossing the work was never seen by anyone else, so deleting leaves no
+trace: the plan, its conversation, and its history are gone, and importing the same issue again
+starts a fresh plan. Once anything in a plan is published, delete stops being offered anywhere in
+the app — archive is the only disappearance a published plan has. Plans that came in through issue
+import are published from birth, so they are archive-only from the start.
+
+Deleting or archiving the plan you are looking at returns you to the tree.
+
+### Getting an archived plan back
+
+**Settings** → **Archived** lists everything you have archived, grouped by project and most
+recently archived first, with when it was archived and when it was created. **Restore** puts a plan
+back under its project, in the place in the list it had before — archiving is not activity, so a
+restored plan does not jump to the top.
+
+**Delete** sits beside Restore only for a plan that is still fully private. For a published plan
+there is nothing to offer there.
+
+The page is live. Archive a plan in one window and the row appears here in another; restore it and
+it returns to the tree in both. Nothing needs refreshing.
+
 ## Empty states
 
 A workspace with no projects yet says so, with the button to create the first one. An expanded

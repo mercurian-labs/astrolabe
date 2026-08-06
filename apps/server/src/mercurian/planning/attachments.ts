@@ -31,7 +31,11 @@ import {
   type UploadChatAttachment,
 } from "@t3tools/contracts";
 
-import { createAttachmentId, resolveAttachmentPath } from "../../attachmentStore.ts";
+import {
+  createAttachmentId,
+  resolveAttachmentPath,
+  resolveAttachmentPathById,
+} from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { parseBase64DataUrl } from "../../imageMime.ts";
 
@@ -141,5 +145,54 @@ export const normalizePlanAttachments = Effect.fn("PlanAttachments.normalize")(f
     // One at a time, as the thread path does: a burst of large images should
     // not race the disk.
     { concurrency: 1 },
+  );
+});
+
+/**
+ * Unlink the files a deleted plan's messages referenced.
+ *
+ * The mirror of {@link normalizePlanAttachments}, and for the same reason: the
+ * store owns rows and the boundary owns bytes. It runs after the delete
+ * transaction has committed, so the rows that named these files are already
+ * gone and nothing can reach them again.
+ *
+ * Best-effort by construction. A missing file is not a failed delete — the
+ * plan is destroyed either way, and a leftover byte is a smaller wrong than a
+ * delete that refuses because a file was already swept.
+ */
+export const removePlanAttachments = Effect.fn("PlanAttachments.remove")(function* (input: {
+  readonly attachmentIds: ReadonlyArray<string>;
+}) {
+  if (input.attachmentIds.length === 0) {
+    return;
+  }
+
+  const fileSystem = yield* FileSystem.FileSystem;
+  const serverConfig = yield* ServerConfig;
+
+  yield* Effect.forEach(
+    input.attachmentIds,
+    (attachmentId) =>
+      Effect.gen(function* () {
+        const attachmentPath = resolveAttachmentPathById({
+          attachmentsDir: serverConfig.attachmentsDir,
+          attachmentId,
+        });
+        // Resolution answers null when no file with that id is on disk, which
+        // is the ordinary case for a message that carried no image.
+        if (attachmentPath === null) {
+          return;
+        }
+        yield* fileSystem
+          .remove(attachmentPath, { force: true })
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("plan attachment could not be removed after delete").pipe(
+                Effect.annotateLogs({ attachmentId, cause }),
+              ),
+            ),
+          );
+      }),
+    { concurrency: 1, discard: true },
   );
 });

@@ -12,7 +12,7 @@ import * as DateTime from "effect/DateTime";
 import type * as Contracts from "@t3tools/contracts";
 import { MercurianCommitId } from "@t3tools/contracts";
 
-import type { MercurianProject, Plan } from "./schema.ts";
+import type { MercurianProject, PlanSummary } from "./schema.ts";
 import type {
   PlanDetail,
   PlanMessage,
@@ -31,12 +31,14 @@ export const toWireProject = (project: MercurianProject): Contracts.MercurianPro
   updatedAt: iso(project.updatedAt),
 });
 
-export const toWirePlanShell = (plan: Plan): Contracts.PlanShell => ({
+export const toWirePlanShell = (plan: PlanSummary): Contracts.PlanShell => ({
   planId: plan.planId,
   projectId: plan.projectId,
   title: plan.title,
   createdAt: iso(plan.createdAt),
   updatedAt: iso(plan.updatedAt),
+  archivedAt: plan.archivedAt === null ? null : iso(plan.archivedAt),
+  hasPublishedCommits: plan.hasPublishedCommits,
 });
 
 const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision) => ({
