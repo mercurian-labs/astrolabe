@@ -83,6 +83,21 @@ import {
   PlanStreamItem,
   PlanTextAt,
 } from "./mercurian.ts";
+import {
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MercurianAddRepositoryInput,
+  MercurianRemoveRepositoryInput,
+  MercurianRepositoriesStreamItem,
+  MercurianRepository,
+  MercurianRepositoryError,
+  MercurianRepositoryNotFoundError,
+  MercurianSaveRepositoryScriptsInput,
+  MercurianSetProjectRepositoriesInput,
+  MercurianSubscribeRepositoriesInput,
+  RepositoryAlreadyRegisteredError,
+  RepositoryHasLiveWorktreesError,
+  RepositoryPathInvalidError,
+} from "./mercurianRepositories.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelayClientInstallFailedError,
@@ -860,6 +875,72 @@ export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
+// Mercurian repositories. Same snapshot-re-emit shape as the tree, and for the
+// same reason: a repository set moves when a person adds, removes, or
+// reassigns one. Project sets ride this snapshot rather than the tree's —
+// including the removal cascade, whose signal is this store's.
+export const WsMercurianSubscribeRepositoriesRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories,
+  {
+    payload: MercurianSubscribeRepositoriesInput,
+    success: MercurianRepositoriesStreamItem,
+    error: Schema.Union([MercurianRepositoryError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianAddRepositoryRpc = Rpc.make(MERCURIAN_REPOSITORY_WS_METHODS.addRepository, {
+  payload: MercurianAddRepositoryInput,
+  success: MercurianRepository,
+  error: Schema.Union([
+    RepositoryPathInvalidError,
+    RepositoryAlreadyRegisteredError,
+    MercurianRepositoryError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianRemoveRepositoryRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.removeRepository,
+  {
+    payload: MercurianRemoveRepositoryInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MercurianRepositoryNotFoundError,
+      RepositoryHasLiveWorktreesError,
+      MercurianRepositoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianSaveRepositoryScriptsRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts,
+  {
+    payload: MercurianSaveRepositoryScriptsInput,
+    success: MercurianRepository,
+    error: Schema.Union([
+      MercurianRepositoryNotFoundError,
+      MercurianRepositoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories,
+  {
+    payload: MercurianSetProjectRepositoriesInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MercurianProjectNotFoundError,
+      MercurianRepositoryNotFoundError,
+      MercurianRepositoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -947,4 +1028,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
+  WsMercurianSubscribeRepositoriesRpc,
+  WsMercurianAddRepositoryRpc,
+  WsMercurianRemoveRepositoryRpc,
+  WsMercurianSaveRepositoryScriptsRpc,
+  WsMercurianSetProjectRepositoriesRpc,
 );

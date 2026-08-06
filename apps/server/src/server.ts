@@ -26,6 +26,7 @@ import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -247,6 +248,9 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // privately — `Layer.provide`, never `provideMerge` — so the global
 // `SqlClient` every upstream consumer resolves is still `state.sqlite`.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
+  // The registry probes git for facts it refuses to store, so it is the one
+  // Mercurian service that needs a process runner.
+  Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(ProcessRunner.layer))),
   Layer.provideMerge(CommitStore.layer),
   Layer.provide(MercurianSqlite.layer),
 );
