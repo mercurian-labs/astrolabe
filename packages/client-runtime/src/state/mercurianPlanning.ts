@@ -69,6 +69,23 @@ export function createMercurianPlanningAtoms<R, E>(
       concurrency: serialPerPlan,
     }),
     /**
+     * You opened a plan. A write: what it changes is read by every window off
+     * the tree, so it shares the plan's key — a visit and a mark-unread on one
+     * plan must not land out of the order they were made in.
+     */
+    visitPlan: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:visit-plan",
+      tag: MERCURIAN_WS_METHODS.visitPlan,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    markPlanUnread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:mark-plan-unread",
+      tag: MERCURIAN_WS_METHODS.markPlanUnread,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    /**
      * The artifact as of an earlier commit. A read, not a write — but history
      * above a commit is frozen, so there is nothing to order it against and no
      * concurrency key to give it.

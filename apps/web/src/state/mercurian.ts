@@ -149,6 +149,25 @@ export function useSavePlanRevision() {
 }
 
 /**
+ * Record that you are looking at a plan. Unguarded on purpose: the server
+ * writes only when the visit changes seen-ness, so a redundant call costs
+ * nothing — no write, and no re-emit of the tree.
+ */
+export function useVisitPlan() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.visitPlan);
+  return useCallback((planId: PlanId) => run({ planId }), [run]);
+}
+
+/**
+ * Put a plan back in front of you. Server-side state, so it re-arms in every
+ * window at once rather than in the one you clicked in.
+ */
+export function useMarkPlanUnread() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.markPlanUnread);
+  return useCallback((planId: PlanId) => run({ planId }), [run]);
+}
+
+/**
  * The plan as it read at an earlier commit. The timeline's revisions travel
  * without their text — re-sending every historical snapshot would grow the
  * subscription with the square of editing activity — so looking back asks

@@ -30,6 +30,7 @@ import {
   useCreatePlan,
   useGetPlanTextAt,
   usePlanDetail,
+  useVisitPlan,
 } from "../../state/mercurian";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
@@ -87,6 +88,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const { detail, isPending, error } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
+  const visitPlan = useVisitPlan();
   const [pane, setPane] = useLocalStorage(
     RIGHT_PANE_STORAGE_KEY,
     DEFAULT_RIGHT_PANE,
@@ -115,6 +117,21 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   // Another plan is another history: whatever you were looking at there does
   // not name anything here.
   useEffect(() => setPosition(LATEST), [planId]);
+
+  /**
+   * Being here is seeing it: opening the plan clears its unseen dot, and
+   * activity that lands while you watch is marked seen as it arrives — which
+   * is what keeps your own sends from flashing your own row.
+   *
+   * Deliberately unguarded. Guarding would need the tree row's `visitedAt`,
+   * which this surface has no business reading; the server already refuses to
+   * write — or announce — a visit that changes nothing.
+   */
+  const planUpdatedAt = detail?.plan.updatedAt;
+  useEffect(() => {
+    if (planUpdatedAt === undefined) return;
+    void visitPlan(planId);
+  }, [planId, planUpdatedAt, visitPlan]);
 
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
