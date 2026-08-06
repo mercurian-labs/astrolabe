@@ -194,6 +194,22 @@ The plan's history as the right pane draws it, in two views. **Navigator** is th
 
 A direct edit of the plan, recorded as a `plan-revision` commit in the plan's one history, interleaved with messages at the same standing. Its payload is the plan's _whole_ text after the edit, not a diff, so the plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the plan anywhere else: the current text is derived from the history, which is why a plan born blank derives an empty artifact and an imported plan whose root is a revision renders from that root.
 
+#### Issue status
+
+The one thing a tree row is saying right now, from a vocabulary of three: **awaiting your input** (something is waiting on a person — a structured question, or a coding session's approval request), **assistant working** (a reply is streaming), **unseen updates** (the plan moved while you were not looking at it). When several are true the most urgent wins, in that order, and a row shows exactly one. The vocabulary is deliberately narrower than the thread sidebar's five pills: signals from both stores map into these three words _before_ they are ranked, so a session's pending approval and a plan's structured question are one status and there is nothing left to rank inside a tier.
+
+Every input is a server-side fact on the tree subscription's rows — `hasPendingInput`, `isWorking`, and [visited-at](#visited-at) — and the client only ranks them ([ADR 002](../architecture/event-streaming-model.md) §4). The two booleans are composed at one point, `toWirePlanTreeRow` in [wire.ts][28], and are constant `false` until planning turns and coding-session runtimes exist to raise them. Unseen is not a wire field at all: it is `updatedAt` against `visitedAt`, which is ranking rather than originating, and the search palette needs both raw timestamps anyway.
+
+**Rollup** is the same resolver applied to a row's children, most urgent wins: a collapsed project speaks for its plans, and a plan will speak for its coding sessions when those rows nest under it. It is level-agnostic by construction, so adding a level does not change it. An _expanded_ project stays quiet — its plans are on screen saying it themselves.
+
+#### Visited-at
+
+When a plan was last opened, stored per plan in Mercurian's `plan_visits` table. Server-owned rather than client-local ([ADR 002](../architecture/event-streaming-model.md) §5), because unseen is a status the tree ranks and the palette orders — a fact one window's `localStorage` could hold only for that window. It rides back out on the tree subscription like any other row change, so every window agrees. Absent means never visited, which reads as unseen.
+
+Its own table rather than a column on `plans`, so that reading a plan can never bump the plan's `updated_at` and reorder the tree: the tree's order is activity, not attention. `mercurian.visitPlan` writes only when the visit changes seen-ness, which is what lets the open plan fire it on every activity advance for free.
+
+**Mark unread** (`mercurian.markPlanUnread`) puts a plan back in front of you by standing its visit one millisecond before the plan's latest activity, so unseen falls out of the same comparison every row is read by rather than needing a second flag that could disagree with it. Per-user visited state is deferred until identity exists.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -236,3 +252,4 @@ A direct edit of the plan, recorded as a `plan-revision` commit in the plan's on
 [25]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
 [26]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
 [27]: ../../packages/contracts/src/mercurian.ts
+[28]: ../../apps/server/src/mercurian/planning/wire.ts
