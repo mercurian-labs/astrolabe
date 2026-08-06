@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
-  EnvironmentId,
   MercurianAppendPlanMessageInput,
   MercurianCommitId,
   MercurianCreatePlanInput,
@@ -17,7 +16,7 @@ import { useCallback } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { usePrimaryEnvironmentId } from "./environments";
-import { useAtomCommand } from "./use-atom-command";
+import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 
@@ -91,26 +90,6 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
     isPending: detail === null && environmentId !== null && planId !== null,
     error: errorMessage(result, "Could not load this plan."),
   };
-}
-
-function useEnvironmentBoundCommand<Input, Output>(
-  command: Parameters<
-    typeof useAtomCommand<Output, unknown, { environmentId: EnvironmentId; input: Input }>
-  >[0],
-) {
-  const environmentId = usePrimaryEnvironmentId();
-  const run = useAtomCommand(command);
-  return useCallback(
-    (input: Input) => {
-      if (environmentId === null) {
-        return Promise.resolve(null);
-      }
-      return run({ environmentId, input }).then((result) =>
-        result._tag === "Success" ? result.value : null,
-      );
-    },
-    [environmentId, run],
-  );
 }
 
 export function useCreateMercurianProject() {

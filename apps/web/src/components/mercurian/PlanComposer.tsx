@@ -4,9 +4,14 @@ import {
   type UploadChatAttachment,
 } from "@t3tools/contracts";
 import type { ServerProviderSkill } from "@t3tools/contracts";
-import { CircleAlertIcon, ImageIcon, XIcon } from "lucide-react";
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { CircleAlertIcon, FileIcon, ImageIcon, XIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import {
+  collapseExpandedComposerCursor,
+  detectComposerTrigger,
+  replaceTextRange,
+} from "../../composer-logic";
 import { compressImageForStash } from "../../lib/imageCompression";
 import type { TerminalContextDraft } from "../../lib/terminalContext";
 import { cn } from "../../lib/utils";
@@ -15,6 +20,11 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../Compos
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  formatMentionToken,
+  moveMentionHighlight,
+  type MentionCandidate,
+} from "./planMentions.logic";
 
 /**
  * The planning space's one place to act.
@@ -36,6 +46,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 /** No skills in a planning space, and no terminal to take context from. */
 const NO_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const NO_TERMINAL_CONTEXTS: ReadonlyArray<TerminalContextDraft> = [];
+const NO_MENTION_CANDIDATES: ReadonlyArray<MentionCandidate> = [];
 
 /**
  * Base64 turns three bytes into four characters, so this is the server's byte
@@ -65,9 +76,11 @@ export function PlanComposer({
   text,
   attachments,
   banner,
+  mentionCandidates = NO_MENTION_CANDIDATES,
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
+  onMentionQueryChange,
   onSend,
 }: {
   readonly placeholder: string;
@@ -75,14 +88,24 @@ export function PlanComposer({
   readonly attachments: ReadonlyArray<PlanComposerAttachment>;
   /** Docked above the composer. Where the surface says where you are standing. */
   readonly banner?: ReactNode;
+  /**
+   * What `@` can reach: the plan's project's repositories, already searched.
+   * Empty is a real state — a project with no repository set has nothing to
+   * offer, and the menu simply never opens.
+   */
+  readonly mentionCandidates?: ReadonlyArray<MentionCandidate>;
   readonly onChangeText: (text: string) => void;
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
+  /** The `@…` under the caret, or `null` when there is none. */
+  readonly onMentionQueryChange?: (query: string | null) => void;
   /** `true` when the message landed — the surface clears the draft, not this. */
   readonly onSend: (submission: PlanComposerSubmission) => Promise<boolean>;
 }) {
   const [state, setState] = useState<PlanComposerState>("idle");
   const [cursor, setCursor] = useState(0);
+  const [expandedCursor, setExpandedCursor] = useState(0);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const editorRef = useRef<ComposerPromptEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +113,41 @@ export function PlanComposer({
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
   const isSending = state === "sending";
+
+  // The trigger is read from the prompt as written, not from the collapsed
+  // view the editor renders: a mention's own grammar lives in the raw text.
+  const trigger = useMemo(() => {
+    const detected = detectComposerTrigger(text, expandedCursor);
+    return detected?.kind === "path" ? detected : null;
+  }, [expandedCursor, text]);
+
+  useEffect(() => {
+    onMentionQueryChange?.(trigger?.query ?? null);
+  }, [onMentionQueryChange, trigger?.query]);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [trigger?.query]);
+
+  const isMentionMenuOpen = trigger !== null && mentionCandidates.length > 0 && !isSending;
+
+  const insertMention = useCallback(
+    (candidate: MentionCandidate) => {
+      if (trigger === null) return;
+      const next = replaceTextRange(
+        text,
+        trigger.rangeStart,
+        trigger.rangeEnd,
+        formatMentionToken(candidate.path),
+      );
+      onChangeText(next.text);
+      // The caret belongs after the token it just wrote.
+      setExpandedCursor(next.cursor);
+      setCursor(collapseExpandedComposerCursor(next.text, next.cursor));
+      editorRef.current?.focusAt(collapseExpandedComposerCursor(next.text, next.cursor));
+    },
+    [onChangeText, text, trigger],
+  );
 
   const collect = useCallback(
     async (files: ReadonlyArray<File>) => {
@@ -161,6 +219,13 @@ export function PlanComposer({
           )}
         >
           {banner}
+          {isMentionMenuOpen ? (
+            <MentionMenu
+              candidates={mentionCandidates}
+              highlightedIndex={highlightedIndex}
+              onSelect={insertMention}
+            />
+          ) : null}
           <div className="px-3 pt-3">
             {attachments.length === 0 ? null : (
               <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
@@ -173,11 +238,33 @@ export function PlanComposer({
               skills={NO_SKILLS}
               terminalContexts={NO_TERMINAL_CONTEXTS}
               value={text}
-              onChange={(nextText, nextCursor) => {
+              onChange={(nextText, nextCursor, nextExpandedCursor) => {
                 onChangeText(nextText);
                 setCursor(nextCursor);
+                setExpandedCursor(nextExpandedCursor);
               }}
               onCommandKeyDown={(key, event) => {
+                // While the menu is open it owns the arrows and the commit
+                // keys; everything else stays exactly as it was.
+                if (isMentionMenuOpen) {
+                  if (key === "ArrowDown" || key === "ArrowUp") {
+                    setHighlightedIndex((index) =>
+                      moveMentionHighlight(
+                        index,
+                        mentionCandidates.length,
+                        key === "ArrowDown" ? "down" : "up",
+                      ),
+                    );
+                    return true;
+                  }
+                  if (key === "Enter" || key === "Tab") {
+                    const candidate = mentionCandidates[highlightedIndex];
+                    if (candidate !== undefined) {
+                      insertMention(candidate);
+                      return true;
+                    }
+                  }
+                }
                 if (key !== "Enter" || event.shiftKey) return false;
                 void submit();
                 return true;
@@ -228,6 +315,53 @@ export function PlanComposer({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The `@` menu: files from the repositories this plan's project is working in.
+ *
+ * It lives inside the composer card rather than floating over the page — the
+ * composer already owns a docked region for what it is standing on, and a
+ * mention is the same kind of statement about where the message reaches.
+ */
+function MentionMenu({
+  candidates,
+  highlightedIndex,
+  onSelect,
+}: {
+  readonly candidates: ReadonlyArray<MentionCandidate>;
+  readonly highlightedIndex: number;
+  readonly onSelect: (candidate: MentionCandidate) => void;
+}) {
+  return (
+    <ul className="max-h-56 overflow-y-auto border-b border-border py-1">
+      {candidates.map((candidate, index) => (
+        <li key={candidate.key}>
+          <button
+            type="button"
+            className={cn(
+              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
+              index === highlightedIndex ? "bg-accent text-foreground" : "text-muted-foreground",
+            )}
+            // The editor keeps focus: a mousedown that blurs it would move the
+            // caret out from under the token being written.
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelect(candidate);
+            }}
+          >
+            <FileIcon className="size-3.5 shrink-0 opacity-70" />
+            <span className="min-w-0 flex-1 truncate">{candidate.label}</span>
+            {candidate.repositoryName === null ? null : (
+              <span className="shrink-0 text-[11px] text-muted-foreground/70">
+                {candidate.repositoryName}
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
