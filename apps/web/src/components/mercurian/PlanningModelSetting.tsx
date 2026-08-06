@@ -1,11 +1,9 @@
-import { useAtomValue } from "@effect/atom-react";
 import { type PlanningModelSelection, type ProviderDriverKind } from "@t3tools/contracts";
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { usePlanningModel, useSetPlanningModel } from "../../state/mercurianWorkspace";
-import { primaryServerProvidersAtom } from "../../state/server";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { SettingsRow } from "../settings/settingsLayout";
 import { Button } from "../ui/button";
@@ -40,9 +38,10 @@ function AccentDot({ color }: { color: string | undefined }) {
  * which instance runs it, or why nothing does — and it never writes back.
  */
 export function PlanningModelSetting() {
-  const { setting, resolution, isPending, error } = usePlanningModel();
+  // `providers` comes from the hook rather than the raw stream so the options
+  // and the resolution below are computed from exactly the same snapshots.
+  const { setting, resolution, providers, isPending, error } = usePlanningModel();
   const setPlanningModel = useSetPlanningModel();
-  const providers = useAtomValue(primaryServerProvidersAtom);
   const settings = usePrimarySettings();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
