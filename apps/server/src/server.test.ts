@@ -80,6 +80,7 @@ import { makeRoutesLayer } from "./server.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import { resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -898,10 +899,10 @@ const buildAppUnderTest = (options?: {
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(HttpResponseCompression.layerNode),
-      // Mercurian's planning store, real but in-memory: it owns its own
-      // database file, so nothing here reaches t3code's store.
+      // Mercurian's stores, real but in-memory: they own their own database
+      // file, so nothing here reaches t3code's store.
       Layer.provide(
-        PlanningStore.layer.pipe(
+        Layer.mergeAll(PlanningStore.layer, WorkspaceSettingsStore.layer).pipe(
           Layer.provide(CommitStore.layer),
           Layer.provide(MercurianSqlite.layerMemory),
         ),

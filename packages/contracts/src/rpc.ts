@@ -83,6 +83,13 @@ import {
   PlanStreamItem,
   PlanTextAt,
 } from "./mercurian.ts";
+import {
+  MERCURIAN_WORKSPACE_WS_METHODS,
+  MercurianSetPlanningModelInput,
+  MercurianSubscribeWorkspaceSettingsInput,
+  MercurianWorkspaceError,
+  WorkspaceSettingsStreamItem,
+} from "./mercurianWorkspace.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelayClientInstallFailedError,
@@ -860,6 +867,27 @@ export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
+// Workspace settings: few, and moved only by a discrete human act, so the read
+// is a whole-value re-send rather than a sequenced log.
+export const WsMercurianSubscribeWorkspaceSettingsRpc = Rpc.make(
+  MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings,
+  {
+    payload: MercurianSubscribeWorkspaceSettingsInput,
+    success: WorkspaceSettingsStreamItem,
+    error: Schema.Union([MercurianWorkspaceError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianSetPlanningModelRpc = Rpc.make(
+  MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
+  {
+    payload: MercurianSetPlanningModelInput,
+    success: Schema.Void,
+    error: Schema.Union([MercurianWorkspaceError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -947,4 +975,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
+  WsMercurianSubscribeWorkspaceSettingsRpc,
+  WsMercurianSetPlanningModelRpc,
 );
