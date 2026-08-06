@@ -141,10 +141,11 @@ export function PlanComposer({
         formatMentionToken(candidate.path),
       );
       onChangeText(next.text);
-      // The caret belongs after the token it just wrote.
+      // The caret belongs after the token it just wrote, and moving it is the
+      // controlled `cursor` prop's job. Focusing the editor here instead would
+      // read back its pre-update content and undo the insertion.
       setExpandedCursor(next.cursor);
       setCursor(collapseExpandedComposerCursor(next.text, next.cursor));
-      editorRef.current?.focusAt(collapseExpandedComposerCursor(next.text, next.cursor));
     },
     [onChangeText, text, trigger],
   );

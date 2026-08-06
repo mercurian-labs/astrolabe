@@ -367,6 +367,12 @@ function RemoveRepositoryDialog({
   const removeRepository = useRemoveRepository();
   const [refusal, setRefusal] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  // Held past the removal so the dialog keeps saying whose name it asked
+  // about while it closes, rather than blanking as the row disappears.
+  const [name, setName] = useState("");
+  useEffect(() => {
+    if (repository !== null) setName(repository.name);
+  }, [repository]);
 
   const confirm = useCallback(async () => {
     if (repository === null || isRemoving) return;
@@ -395,7 +401,7 @@ function RemoveRepositoryDialog({
     >
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>Remove {repository?.name}?</AlertDialogTitle>
+          <AlertDialogTitle>Remove {name}?</AlertDialogTitle>
           <AlertDialogDescription>
             This disconnects the repository: its scripts and its project memberships go with it. The
             files on disk are untouched, and anything already written into a plan&rsquo;s history
