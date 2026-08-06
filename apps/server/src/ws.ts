@@ -32,9 +32,14 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   MERCURIAN_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
   MercurianPlanningError,
+  MercurianTrackerError,
   isMercurianProjectNotFoundError,
   isPlanNotFoundError,
+  isTrackerAuthError,
+  isTrackerConnectionNotFoundError,
+  isTrackerUnreachableError,
   type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -90,6 +95,8 @@ import {
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
+import { toWireConnection, toWireTrackersSnapshot } from "./mercurian/trackers/wire.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -379,6 +386,7 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const trackerStore = yield* TrackerStore.TrackerStore;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -1041,6 +1049,16 @@ const makeWsRpcLayer = (
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
+      const loadTrackersSnapshot = trackerStore.getSnapshot.pipe(
+        Effect.map(toWireTrackersSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian trackers snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianTrackerError({ operation: "subscribeTrackers", cause }),
+        ),
+      );
+
       const loadPlanningTreeSnapshot = planningStore.getTreeSnapshot.pipe(
         Effect.map(toWireTreeSnapshot),
         Effect.tapError((cause) =>
@@ -1634,6 +1652,83 @@ const makeWsRpcLayer = (
                 liveStream,
               );
             }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // connect landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                trackerStore.changes.pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadTrackersSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadTrackersSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.connectTracker,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                trackerStore.connect({ kind: input.kind, token: input.token, createdAt }),
+              ),
+              Effect.map(toWireConnection),
+              // The two refusals travel because the dialog says something
+              // different for each. Nothing else about the attempt does — in
+              // particular the payload, which held the credential, is never
+              // echoed into a cause.
+              Effect.mapError((cause) =>
+                isTrackerAuthError(cause) || isTrackerUnreachableError(cause)
+                  ? cause
+                  : new MercurianTrackerError({ operation: "connectTracker" }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.disconnectTracker,
+            trackerStore
+              .disconnect({ connectionId: input.connectionId })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isTrackerConnectionNotFoundError(cause)
+                    ? cause
+                    : new MercurianTrackerError({ operation: "disconnectTracker", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues,
+            trackerStore
+              .listIssues({
+                connectionId: input.connectionId,
+                ...(input.search === undefined ? {} : { search: input.search }),
+                ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+              })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isTrackerConnectionNotFoundError(cause) ||
+                  isTrackerAuthError(cause) ||
+                  isTrackerUnreachableError(cause)
+                    ? cause
+                    : new MercurianTrackerError({ operation: "listTrackerIssues", cause }),
+                ),
+              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>

@@ -80,6 +80,15 @@ import { makeRoutesLayer } from "./server.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
+import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
+
+const stubTrackerConnector: TrackerConnector = {
+  kind: "linear",
+  probe: () => Effect.succeed({ label: "Linear" }),
+  listIssues: () => Effect.succeed({ issues: [] }),
+};
 import { resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -903,6 +912,15 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         PlanningStore.layer.pipe(
           Layer.provide(CommitStore.layer),
+          Layer.provide(MercurianSqlite.layerMemory),
+        ),
+      ),
+      // Tracker connections, real but in-memory, over a connector that reaches
+      // no network: the server suite is about the wire, not about Linear.
+      Layer.provide(
+        TrackerStore.layer.pipe(
+          Layer.provide(TrackerConnectorRegistry.layerWith({ linear: stubTrackerConnector })),
+          Layer.provide(ServerSecretStore.layer),
           Layer.provide(MercurianSqlite.layerMemory),
         ),
       ),
