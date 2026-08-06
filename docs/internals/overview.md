@@ -160,6 +160,14 @@ assistant. A plan message may also carry image attachments, and they are the ser
 to the same `attachmentsDir`, and read back through the assets door by id, which never knew what a
 thread was. Only their metadata rides a commit's payload, so the snapshot stays constant-size.
 
+[`mercurian/trackers/`][trackers] holds the seam to external issue trackers, in the same database
+and knowing nothing about plans. `TrackerConnector` has a `probe` and a `listIssues` and no write
+method, so pull-only is a property of the type rather than a rule; every connector answers in the
+same five-field `TrackerIssue` — id, title, description, url, status — and nothing else crosses.
+Credentials are `ServerSecretStore` files keyed by connection id, never rows and never responses;
+standing is probed live behind a short-TTL cache, never stored; issues are read live and never
+stored at all.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -194,3 +202,4 @@ already dispatch.
 [commit-store]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
 [normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
+[trackers]: ../../apps/server/src/mercurian/trackers/
