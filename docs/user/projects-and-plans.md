@@ -105,6 +105,23 @@ composer says so: _sending starts a new branch from here_. Send, and it does —
 first commit is your message, and the space follows it. That is the only way a branch is made:
 every one begins with something you said. **Back to now** returns you to the newest line of work.
 
+## The planning model
+
+The model the planning assistant runs under is chosen once for the whole workspace, under
+**Settings** → **Providers**. It names a provider and a model — Claude and Opus, say — and never
+one of your connected accounts, because accounts live on the machine they were signed in on and the
+workspace is shared.
+
+Each machine works out for itself which of its own instances of that provider runs the model, and
+the setting says which one underneath the picker. If a machine has no instance of that provider, or
+the model is not on offer there, it says so plainly and keeps showing what the workspace chose —
+nothing is cleared, and the setting resolves again as soon as an instance exists. When a model is
+missing because the installed agent is too old to run it, the message names the update that unlocks
+it, and that update is one click away on the instance's own card further down the page.
+
+The picker offers each provider's models the way you have curated them: models you have hidden stay
+hidden, your ordering holds, and your favorites come first.
+
 ## Empty states
 
 A workspace with no projects yet says so, with the button to create the first one. An expanded
