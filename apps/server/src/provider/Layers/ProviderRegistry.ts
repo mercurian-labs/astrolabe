@@ -79,6 +79,18 @@ const hasModelCapabilities = (model: ServerProvider["models"][number]): boolean 
   (model.capabilities?.optionDescriptors?.length ?? 0) > 0;
 
 const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean => {
+  // A successful probe against an installed CLI reports the inventory it
+  // actually resolved, so a model missing from it is genuinely unavailable —
+  // a per-version capability floor stopped advertising it, a plugin went away.
+  // Retaining across such a snapshot resurrects models seeded by a driver's
+  // pre-probe snapshot, which lists every built-in because it has no version
+  // to gate on yet. Snapshots that could not establish an inventory (pending
+  // probes, `warning` partials such as a failed model discovery, and errors)
+  // still retain — that is what keeps the pickers from flapping mid-probe.
+  if (provider.installed && provider.status === "ready") {
+    return false;
+  }
+
   if (provider.driver !== ProviderDriverKind.make("opencode")) {
     return true;
   }
@@ -95,6 +107,14 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
   return isPendingInitialProbe || didInstalledProviderProbeFail;
 };
 
+// A refresh that reports *no* models is a weaker signal than one that reports
+// fewer. Outside OpenCode — whose inventory legitimately empties on logout or
+// plugin removal — an empty list reads as a blip rather than as an inventory,
+// so the previous list stands even when the snapshot is otherwise authoritative.
+const shouldRetainProviderModelsOnEmptyRefresh = (provider: ServerProvider): boolean =>
+  provider.driver !== ProviderDriverKind.make("opencode") ||
+  shouldRetainMissingProviderModels(provider);
+
 const mergeProviderModels = (
   provider: ServerProvider,
   previousModels: ReadonlyArray<ServerProvider["models"][number]>,
@@ -102,7 +122,11 @@ const mergeProviderModels = (
 ): ReadonlyArray<ServerProvider["models"][number]> => {
   const shouldRetainMissingModels = shouldRetainMissingProviderModels(provider);
 
-  if (shouldRetainMissingModels && nextModels.length === 0 && previousModels.length > 0) {
+  if (
+    nextModels.length === 0 &&
+    previousModels.length > 0 &&
+    shouldRetainProviderModelsOnEmptyRefresh(provider)
+  ) {
     return previousModels;
   }
 
