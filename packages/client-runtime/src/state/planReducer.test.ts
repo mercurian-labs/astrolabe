@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  MercurianCommitId,
+  MercurianProjectId,
+  PlanId,
+  type PlanDetail,
+  type PlanStreamItem,
+  type PlanTimelineItem,
+} from "@t3tools/contracts";
+
+import { applyPlanStreamItem, EMPTY_PLAN_STATE } from "./planReducer.ts";
+
+const commitFields = (id: string, sequence: number, parents: ReadonlyArray<string>) => ({
+  commitId: MercurianCommitId.make(id),
+  sequence,
+  parents: parents.map((parentId) => MercurianCommitId.make(parentId)),
+  published: false,
+  authorKind: "human" as const,
+  createdAt: "2026-08-03T00:00:00.000Z",
+});
+
+const message = (
+  id: string,
+  sequence: number,
+  text: string,
+  parents: ReadonlyArray<string> = [],
+): PlanTimelineItem => ({ _tag: "message", ...commitFields(id, sequence, parents), text });
+
+const revision = (
+  id: string,
+  sequence: number,
+  parents: ReadonlyArray<string> = [],
+): PlanTimelineItem => ({ _tag: "plan-revision", ...commitFields(id, sequence, parents) });
+
+const snapshot: PlanDetail = {
+  plan: {
+    planId: PlanId.make("plan-1"),
+    projectId: MercurianProjectId.make("project-1"),
+    title: "Reshape the sidebar",
+    createdAt: "2026-08-03T00:00:00.000Z",
+    updatedAt: "2026-08-03T00:00:00.000Z",
+  },
+  planText: "",
+  timeline: [message("commit-1", 1, "Reshape the sidebar")],
+  snapshotSequence: 1,
+};
+
+const fold = (items: ReadonlyArray<PlanStreamItem>) =>
+  items.reduce(applyPlanStreamItem, EMPTY_PLAN_STATE);
+
+describe("applyPlanStreamItem", () => {
+  it("takes the snapshot as the whole planning space", () => {
+    const state = fold([{ kind: "snapshot", snapshot }]);
+    expect(state.detail).toEqual(snapshot);
+    expect(state.synchronized).toBe(false);
+  });
+
+  it("ignores commits until a snapshot has landed", () => {
+    const state = fold([{ kind: "commit", sequence: 2, item: message("commit-2", 2, "Later") }]);
+    expect(state.detail).toBeNull();
+  });
+
+  it("appends a message without touching the artifact", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, planText: "# Approach" } },
+      { kind: "commit", sequence: 2, item: message("commit-2", 2, "What about the tree?") },
+    ]);
+    expect(state.detail?.timeline.map((item) => item.commitId)).toEqual(["commit-1", "commit-2"]);
+    expect(state.detail?.planText).toBe("# Approach");
+    expect(state.detail?.snapshotSequence).toBe(2);
+  });
+
+  it("replaces the artifact when a revision carries new text", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "commit", sequence: 2, item: revision("commit-2", 2), planText: "# Approach" },
+    ]);
+    expect(state.detail?.planText).toBe("# Approach");
+    expect(state.detail?.timeline.map((item) => item._tag)).toEqual(["message", "plan-revision"]);
+  });
+
+  it("drops a commit the snapshot already accounts for", () => {
+    // The echo of an edit this window just made, or an overlap after a resume:
+    // folding it again would duplicate the row in the history.
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "commit", sequence: 1, item: message("commit-1", 1, "Reshape the sidebar") },
+    ]);
+    expect(state.detail?.timeline).toHaveLength(1);
+    expect(state.detail?.snapshotSequence).toBe(1);
+  });
+
+  it("carries the commit's own graph facts through the fold", () => {
+    // The explorer reads the history's shape off this same state; a commit
+    // that arrives as an event has to be as complete as one in the snapshot.
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "commit", sequence: 2, item: message("commit-2", 2, "Later", ["commit-1"]) },
+    ]);
+    const appended = state.detail?.timeline.at(-1);
+    expect(appended?.parents).toEqual(["commit-1"]);
+    expect(appended?.published).toBe(false);
+  });
+
+  it("flips synchronized without disturbing the space", () => {
+    const state = fold([{ kind: "snapshot", snapshot }, { kind: "synchronized" }]);
+    expect(state.synchronized).toBe(true);
+    expect(state.detail).toEqual(snapshot);
+  });
+
+  it("re-snapshots onto an established space", () => {
+    const replacement: PlanDetail = { ...snapshot, planText: "Fresh", snapshotSequence: 9 };
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "synchronized" },
+      { kind: "snapshot", snapshot: replacement },
+    ]);
+    expect(state.detail).toEqual(replacement);
+    expect(state.synchronized).toBe(true);
+  });
+});

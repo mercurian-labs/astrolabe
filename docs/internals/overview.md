@@ -121,6 +121,72 @@ baseline capture, completed-turn capture, diff projection, and reverting both th
 provider conversation. The storage contract is `VcsCheckpointOps` in
 [`VcsDriver.ts`](../../apps/server/src/vcs/VcsDriver.ts), implemented for Git in the same directory.
 
+## Mercurian's commit store
+
+Planning history lives in a second SQLite database, `mercurian.sqlite`, beside `state.sqlite` in the
+state directory, with its own migration sequence ([`mercurian/persistence/`][mercurian-persistence]).
+Its client is provided privately in [`server.ts`][server]; the ambient `SqlClient` every t3code
+consumer resolves is still `state.sqlite`.
+
+[`CommitStore.ts`][commit-store] owns the commit DAG: every commit carries an unbounded ordered
+`parents` list (zero for a root, one for a continuation, two or more for an n-ary merge), a `kind`
+and an `author`, and a one-way `published` flag. The store enforces the design's structural
+guarantees as refusals — forks and merges are human-driven only, coding-session commits are leaves,
+a parent must already exist (so the graph is acyclic by construction), and publishing a commit also
+publishes its unpublished ancestors along every parent path. See
+[ADR 001](../architecture/local-first-runtime.md).
+
+[`PlanningStore.ts`][planning-store] adds projects and plans over that graph. A plan owns exactly
+one history and is created together with its root commit, so a plan without a first message cannot
+exist. The plan artifact has no table: a direct edit lands as a `plan-revision` commit carrying the
+whole new text, and the plan's current text is derived from the revisions along the history's path.
+The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
+re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
+planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
+by `commits.sequence`, since the commit DAG is already the durable log
+([ADR 002](../architecture/event-streaming-model.md)). Each projected commit carries `parents` and
+`published` alongside `sequence`, which is what lets the DAG explorer draw the history's shape as a
+second rendering of that one subscription rather than a second stream; the artifact as of an earlier
+commit is the only fact the client cannot derive from it, and `mercurian.getPlanTextAt` reads it
+unarily over the immutable history.
+
+Both write paths name their own parent. `appendPlanMessage` and `savePlanRevision` carry an optional
+`parentCommitId` — the commit the act continues from, resolved inside the same transaction as the
+append and refused as `CommitNotFoundError` when it belongs to no history of this plan; absent still
+means the space's tip. Naming a commit that already has a child _is_ the fork, which is why forking
+needs no operation of its own: the commit store already permits it for a human and refuses it for an
+assistant. A plan message may also carry image attachments, and they are the server's ordinary ones
+— normalized at the ws boundary the way a thread turn's are ([`Normalizer.ts`][normalizer]), written
+to the same `attachmentsDir`, and read back through the assets door by id, which never knew what a
+thread was. Only their metadata rides a commit's payload, so the snapshot stays constant-size.
+
+Every tree row also carries the facts a status is ranked from — whether something awaits a person,
+whether a reply is streaming, and when the plan was last opened — composed at one point in
+[`wire.ts`][planning-wire] and ranked into one status per row on the client (ADR 002 §4). Visited-at
+is server state in its own `plan_visits` table, written by `mercurian.visitPlan` only when the visit
+changes seen-ness and re-armed by `mercurian.markPlanUnread`, so unseen agrees across windows rather
+than living in one of them (§5).
+
+[`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
+database: the registry of codebases the app can reach, the app-owned scripts declared on each, and
+the `project_repositories` join that gives a project its set. Two facts on the snapshot have no
+column behind them. `hasGit` is a live `git rev-parse` probe behind a short-TTL `Cache`, on the
+`RepositoryIdentityResolver` pattern — a plain directory registers fine, and the working-tree
+features light up on their own once it becomes a repository. A row's environment is a fact about
+which server answered, not data. Removal deletes the row, its scripts, and its memberships in one
+transaction, and is refused while `git worktree list` names a linked worktree under
+`ServerConfig.worktreesDir`. The registry streams over `mercurian.subscribeRepositories` with the
+same snapshot-re-emit shape as the tree, and project sets ride that snapshot rather than the tree's
+— including the cascade a removal leaves behind, whose signal is this store's.
+
+[`mercurian/trackers/`][trackers] holds the seam to external issue trackers, in the same database
+and knowing nothing about plans. `TrackerConnector` has a `probe` and a `listIssues` and no write
+method, so pull-only is a property of the type rather than a rule; every connector answers in the
+same five-field `TrackerIssue` — id, title, description, url, status — and nothing else crosses.
+Credentials are `ServerSecretStore` files keyed by connection id, never rows and never responses;
+standing is probed live behind a short-TTL cache, never stored; issues are read live and never
+stored at all.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -150,3 +216,11 @@ already dispatch.
 [checkpoint]: ../../apps/server/src/orchestration/Layers/CheckpointReactor.ts
 [receipts]: ../../apps/server/src/orchestration/Layers/RuntimeReceiptBus.ts
 [drivers]: ../../apps/server/src/provider/builtInDrivers.ts
+[server]: ../../apps/server/src/server.ts
+[mercurian-persistence]: ../../apps/server/src/mercurian/persistence/
+[commit-store]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
+[normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
+[planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
+[planning-wire]: ../../apps/server/src/mercurian/planning/wire.ts
+[repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
+[trackers]: ../../apps/server/src/mercurian/trackers/

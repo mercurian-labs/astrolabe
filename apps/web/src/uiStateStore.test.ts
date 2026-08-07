@@ -10,8 +10,10 @@ import {
   type PersistedUiState,
   persistState,
   reorderProjects,
+  resolveMercurianProjectExpanded,
   resolveProjectExpanded,
   setDefaultAdvertisedEndpointKey,
+  setMercurianProjectExpanded,
   setProjectExpanded,
   setThreadChangedFilesExpanded,
   type UiState,
@@ -20,6 +22,7 @@ import {
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
+    mercurianProjectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
@@ -79,6 +82,23 @@ describe("uiStateStore pure functions", () => {
       "environment-b:/repo": false,
     });
     expect(setProjectExpanded(next, keys, false)).toBe(next);
+  });
+
+  it("keeps Mercurian project expansion in its own map, expanded by default", () => {
+    const initialState = makeUiState();
+
+    expect(resolveMercurianProjectExpanded(initialState.mercurianProjectExpandedById, "p1")).toBe(
+      true,
+    );
+
+    const collapsed = setMercurianProjectExpanded(initialState, "p1", false);
+    expect(collapsed.mercurianProjectExpandedById).toEqual({ p1: false });
+    // The t3code map is untouched: Mercurian ids never enter its legacy ladder.
+    expect(collapsed.projectExpandedById).toEqual({});
+    expect(resolveMercurianProjectExpanded(collapsed.mercurianProjectExpandedById, "p1")).toBe(
+      false,
+    );
+    expect(setMercurianProjectExpanded(collapsed, "p1", false)).toBe(collapsed);
   });
 
   it("reorders from the current atom-derived project order", () => {
@@ -172,6 +192,7 @@ describe("parsePersistedState", () => {
       projectExpandedById: {
         logical: false,
       },
+      mercurianProjectExpandedById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
@@ -291,6 +312,7 @@ describe("uiStateStore persistence", () => {
       projectExpandedById: {
         logical: false,
       },
+      mercurianProjectExpandedById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",

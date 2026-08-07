@@ -1,12 +1,17 @@
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+
+import { navigateToParkedThreadRoute } from "../threadRoutes";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Outlet,
   createRootRoute,
   type ErrorComponentProps,
   useLocation,
-  useNavigate,
 } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -315,7 +320,6 @@ function AuthenticatedTracingBootstrap() {
 }
 
 function EventRouter() {
-  const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const primaryEnvironment = usePrimaryEnvironment();
@@ -361,13 +365,11 @@ function EventRouter() {
       if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {
         return;
       }
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: {
-          environmentId: payload.environment.environmentId,
-          threadId: payload.bootstrapThreadId,
-        },
-        replace: true,
+      // Landing straight in a thread was the thread-first shell's behavior.
+      // Navigation is the project tree now, so bootstrap lands on the index.
+      await navigateToParkedThreadRoute({
+        kind: "server",
+        threadRef: scopeThreadRef(payload.environment.environmentId, payload.bootstrapThreadId),
       });
       handledBootstrapThreadIdRef.current = payload.bootstrapThreadId;
     })().catch(() => undefined);

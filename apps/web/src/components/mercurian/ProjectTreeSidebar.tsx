@@ -1,0 +1,622 @@
+import { PlanId, type MercurianProjectId } from "@t3tools/contracts";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import {
+  ArchiveIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CircleDotIcon,
+  FolderGit2Icon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  MoreHorizontalIcon,
+  SettingsIcon,
+  SquarePenIcon,
+  Trash2Icon,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
+
+import { isElectron } from "../../env";
+import { usePlanLifecycleActions } from "../../hooks/usePlanLifecycleActions";
+import { readLocalApi } from "../../localApi";
+import { useClientSettings } from "../../hooks/useSettings";
+import { cn, randomUUID } from "../../lib/utils";
+import { usePlanDraftStore } from "../../planDraftStore";
+import {
+  useCreateMercurianProject,
+  useMarkPlanUnread,
+  useMercurianTree,
+} from "../../state/mercurian";
+import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { resolveMercurianProjectExpanded, useUiStateStore } from "../../uiStateStore";
+import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
+import { Input } from "../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import {
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  useSidebar,
+} from "../ui/sidebar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  buildPlanRowMenuItems,
+  getVisiblePlansForProject,
+  groupPlansByProject,
+  partitionPlansByLifecycle,
+  resolvePlanRowClassName,
+  resolvePlanRowStatus,
+  resolveProjectRowClassName,
+  resolveRollupStatus,
+  resolveTreeSelection,
+  resolveWorkspaceRowClassName,
+  sortProjectsForTree,
+  type PlanRowMenuAction,
+  type PlanRowStatus,
+  type TreeSelection,
+} from "./ProjectTreeSidebar.logic";
+import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
+import { SettingsNav } from "./SettingsNav";
+
+/**
+ * How each status reads. The urgency palette is the fork's, unchanged: amber
+ * and indigo for what wants you, sky for what is moving, emerald for what
+ * finished while you were away. Only working pulses — the dot moves when the
+ * work does.
+ */
+const PLAN_STATUS_PRESENTATION: Record<
+  PlanRowStatus,
+  { readonly label: string; readonly colorClass: string; readonly dotClass: string }
+> = {
+  "awaiting-input": {
+    label: "Awaiting your input",
+    colorClass: "text-indigo-600 dark:text-indigo-300/90",
+    dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+  },
+  working: {
+    label: "Assistant working",
+    colorClass: "text-sky-600 dark:text-sky-300/80",
+    dotClass: "bg-sky-500 dark:bg-sky-300/80 animate-status-pulse",
+  },
+  unseen: {
+    label: "Unseen updates",
+    colorClass: "text-emerald-600 dark:text-emerald-300/90",
+    dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
+  },
+};
+
+/**
+ * One status, one dot. No label on the row: a tree row's width belongs to the
+ * plan's title, and the word is a hover away.
+ */
+function PlanStatusDot({ status }: { readonly status: PlanRowStatus }) {
+  const presentation = PLAN_STATUS_PRESENTATION[status];
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={presentation.label}
+            className={cn(
+              "inline-flex size-3.5 shrink-0 items-center justify-center",
+              presentation.colorClass,
+            )}
+          />
+        }
+      >
+        <span className={cn("size-[9px] rounded-full", presentation.dotClass)} />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{presentation.label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * The popup's icons, keyed by the same ids the native menu carries. The
+ * platform menu draws its own chrome, so this is the popup's business alone.
+ */
+const PLAN_ROW_MENU_ICONS: Record<PlanRowMenuAction, ReactNode> = {
+  "mark-unread": <CircleDotIcon />,
+  archive: <ArchiveIcon />,
+  delete: <Trash2Icon />,
+};
+
+const selectPlanPreviewCount = (settings: { readonly sidebarPlanPreviewCount: number }) =>
+  settings.sidebarPlanPreviewCount;
+
+const ICON_ACTION_BUTTON_CLASS =
+  "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
+
+/**
+ * The left sidebar: the project tree, then Workspace.
+ *
+ * Rows in the tree are projects and the plans nested under them. Coding
+ * sessions are the designed third level and are absent because none exist
+ * yet — the row model deliberately does not pre-build an empty level.
+ */
+export default function ProjectTreeSidebar() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const selection = useMemo(() => resolveTreeSelection(pathname), [pathname]);
+
+  return (
+    <>
+      <SidebarChromeHeader isElectron={isElectron} />
+      {selection.isSettingsActive ? (
+        // Settings takes the panel over while you are in it, and the tree
+        // returns when you leave.
+        <SettingsNav pathname={pathname} />
+      ) : (
+        <SidebarContent>
+          <ProjectTree selection={selection} />
+          <WorkspaceGroup selection={selection} />
+        </SidebarContent>
+      )}
+      <SidebarChromeFooter showSettingsRow={false} />
+    </>
+  );
+}
+
+function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
+  const { snapshot } = useMercurianTree();
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
+  // The tree is the active listing. An archived plan is not destroyed, just
+  // gone from here — Settings → Archived is where it waits.
+  const plansByProject = useMemo(
+    () => groupPlansByProject(partitionPlansByLifecycle(snapshot.plans).active),
+    [snapshot.plans],
+  );
+
+  return (
+    <SidebarGroup>
+      <div className="flex items-center justify-between pe-1">
+        <SidebarGroupLabel>Projects</SidebarGroupLabel>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label="New project"
+                className={ICON_ACTION_BUTTON_CLASS}
+                onClick={() => setIsNewProjectOpen(true)}
+              >
+                <FolderPlusIcon className="size-3.5" />
+              </button>
+            }
+          />
+          <TooltipPopup side="bottom">New project</TooltipPopup>
+        </Tooltip>
+      </div>
+      <SidebarGroupContent>
+        {projects.length === 0 ? (
+          <Empty className="gap-2 p-4 text-left">
+            <EmptyHeader>
+              <EmptyTitle className="text-sm font-medium">No projects yet</EmptyTitle>
+              <EmptyDescription className="text-xs">
+                A project is where plans live. Create one to start planning.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <SidebarMenu>
+            {projects.map((project) => (
+              <ProjectTreeRow
+                key={project.projectId}
+                projectId={project.projectId}
+                name={project.name}
+                plans={plansByProject.get(project.projectId) ?? []}
+                activePlanId={selection.activePlanId}
+              />
+            ))}
+          </SidebarMenu>
+        )}
+      </SidebarGroupContent>
+      <NewProjectDialog open={isNewProjectOpen} onOpenChange={setIsNewProjectOpen} />
+    </SidebarGroup>
+  );
+}
+
+interface ProjectTreePlan {
+  readonly planId: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly hasPendingInput: boolean;
+  readonly isWorking: boolean;
+  readonly visitedAt?: string | undefined;
+  readonly hasPublishedCommits: boolean;
+}
+
+interface ProjectTreeRowProps {
+  readonly projectId: MercurianProjectId;
+  readonly name: string;
+  readonly plans: ReadonlyArray<ProjectTreePlan>;
+  readonly activePlanId: string | null;
+}
+
+const ProjectTreeRow = memo(function ProjectTreeRow({
+  projectId,
+  name,
+  plans,
+  activePlanId,
+}: ProjectTreeRowProps) {
+  const navigate = useNavigate();
+  const expandedById = useUiStateStore((state) => state.mercurianProjectExpandedById);
+  const setExpanded = useUiStateStore((state) => state.setMercurianProjectExpanded);
+  const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
+  const planPreviewCount = useClientSettings(selectPlanPreviewCount);
+  // Deliberately forgotten between visits: show-more is a glance, not a preference.
+  const [isPlanListExpanded, setIsPlanListExpanded] = useState(false);
+  const [isRepositoriesOpen, setIsRepositoriesOpen] = useState(false);
+
+  const isExpanded = resolveMercurianProjectExpanded(expandedById, projectId);
+  const containsSelection =
+    activePlanId !== null && plans.some((plan) => plan.planId === activePlanId);
+
+  /**
+   * Collapsed, a project speaks for its plans; expanded, they speak for
+   * themselves. Rolling up under an open project would say the same thing
+   * twice.
+   */
+  const rollupStatus = useMemo(
+    () => (isExpanded ? null : resolveRollupStatus(plans.map(resolvePlanRowStatus))),
+    [isExpanded, plans],
+  );
+
+  const { visiblePlans, hasHiddenPlans } = useMemo(
+    () =>
+      getVisiblePlansForProject({
+        plans,
+        activePlanId,
+        isPlanListExpanded,
+        previewLimit: planPreviewCount,
+      }),
+    [activePlanId, isPlanListExpanded, planPreviewCount, plans],
+  );
+
+  const handleNewPlan = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      const draft = openDraftForProject(projectId, randomUUID(), new Date().toISOString());
+      void navigate({ to: "/plans/draft/$draftId", params: { draftId: draft.draftId } });
+    },
+    [navigate, openDraftForProject, projectId],
+  );
+
+  const handleManageRepositories = useCallback((event: MouseEvent) => {
+    event.stopPropagation();
+    setIsRepositoriesOpen(true);
+  }, []);
+
+  return (
+    <SidebarMenuItem>
+      <div className="group/project-header relative flex items-center">
+        <button
+          type="button"
+          className={cn(
+            resolveProjectRowClassName({ containsSelection }),
+            "flex items-center gap-1 pe-8",
+          )}
+          aria-expanded={isExpanded}
+          onClick={() => setExpanded(projectId, !isExpanded)}
+        >
+          {isExpanded ? (
+            <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
+          ) : (
+            <ChevronRightIcon className="size-3.5 shrink-0 opacity-60" />
+          )}
+          <span className="truncate">{name}</span>
+          {rollupStatus === null ? null : <PlanStatusDot status={rollupStatus} />}
+        </button>
+        <div className="absolute end-0.5 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100 group-focus-within/project-header:opacity-100 max-sm:opacity-100">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Repositories for ${name}`}
+                  className={ICON_ACTION_BUTTON_CLASS}
+                  onClick={handleManageRepositories}
+                >
+                  <FolderGit2Icon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="top">Repositories</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`New plan in ${name}`}
+                  className={ICON_ACTION_BUTTON_CLASS}
+                  onClick={handleNewPlan}
+                >
+                  <SquarePenIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="top">New plan</TooltipPopup>
+          </Tooltip>
+        </div>
+      </div>
+
+      <ManageProjectRepositoriesDialog
+        open={isRepositoriesOpen}
+        projectId={projectId}
+        projectName={name}
+        onOpenChange={setIsRepositoriesOpen}
+      />
+
+      {isExpanded ? (
+        <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 border-l-0 px-1 py-0">
+          {plans.length === 0 ? (
+            <SidebarMenuSubItem className="w-full">
+              <div className="flex h-8 w-full items-center px-2 text-left text-xs text-sidebar-muted-foreground/75">
+                <span>No plans yet</span>
+              </div>
+            </SidebarMenuSubItem>
+          ) : null}
+          {visiblePlans.map((plan) => (
+            <PlanTreeRow key={plan.planId} plan={plan} isActive={plan.planId === activePlanId} />
+          ))}
+          {hasHiddenPlans ? (
+            <SidebarMenuSubItem className="w-full">
+              <SidebarMenuSubButton
+                render={<button type="button" />}
+                size="sm"
+                className="h-8 w-full translate-x-0 justify-start px-2 text-left text-xs text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                onClick={() => setIsPlanListExpanded((expanded) => !expanded)}
+              >
+                <span>{isPlanListExpanded ? "Show less" : "Show more"}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ) : null}
+        </SidebarMenuSub>
+      ) : null}
+    </SidebarMenuItem>
+  );
+});
+
+/**
+ * One plan row, and the one menu it answers to.
+ *
+ * The verbs come from `buildPlanRowMenuItems` and are shown two ways, never
+ * two lists: the platform's own context menu where there is one, and a popup
+ * the row owns everywhere else. The web app has no context-menu primitive —
+ * `readLocalApi()` is undefined outside the desktop shell — so without the
+ * popup these acts would exist on desktop only, and archive and delete are not
+ * desktop features.
+ */
+const PlanTreeRow = memo(function PlanTreeRow({
+  plan,
+  isActive,
+}: {
+  readonly plan: ProjectTreePlan;
+  readonly isActive: boolean;
+}) {
+  const navigate = useNavigate();
+  const markPlanUnread = useMarkPlanUnread();
+  const { archivePlan, deletePlan } = usePlanLifecycleActions();
+  const status = resolvePlanRowStatus(plan);
+  const items = useMemo(() => buildPlanRowMenuItems(plan), [plan]);
+
+  const runAction = useCallback(
+    async (action: PlanRowMenuAction) => {
+      const planId = PlanId.make(plan.planId);
+      if (action === "mark-unread") {
+        await markPlanUnread(planId);
+        return;
+      }
+      if (action === "archive") {
+        await archivePlan(planId);
+        return;
+      }
+      await deletePlan(planId);
+    },
+    [archivePlan, deletePlan, markPlanUnread, plan.planId],
+  );
+
+  const handleContextMenu = useCallback(
+    (event: MouseEvent) => {
+      const api = readLocalApi();
+      // No native menu here: the row's own popup is the way in, and letting
+      // the browser menu open is better than swallowing the gesture.
+      if (api === undefined) return;
+      event.preventDefault();
+      void (async () => {
+        const clicked = await api.contextMenu.show(items, {
+          x: event.clientX,
+          y: event.clientY,
+        });
+        if (clicked !== null) {
+          await runAction(clicked);
+        }
+      })();
+    },
+    [items, runAction],
+  );
+
+  return (
+    <SidebarMenuSubItem className="group/plan-row relative w-full">
+      <SidebarMenuSubButton
+        render={<button type="button" />}
+        className={cn(resolvePlanRowClassName({ isActive }), "flex items-center gap-1.5")}
+        onClick={() => {
+          void navigate({ to: "/plans/$planId", params: { planId: plan.planId } });
+        }}
+        onContextMenu={handleContextMenu}
+      >
+        {status === null ? null : <PlanStatusDot status={status} />}
+        <span className="min-w-0 flex-1 truncate">{plan.title}</span>
+        {/* The timestamp yields on hover to the row's verbs, so a plan row
+            stays a title until you reach for it. */}
+        <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60 group-hover/plan-row:invisible group-focus-within/plan-row:invisible">
+          {formatRelativeTimeLabel(plan.updatedAt)}
+        </span>
+      </SidebarMenuSubButton>
+      <Menu>
+        <MenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label={`Actions for ${plan.title}`}
+              className={cn(
+                ICON_ACTION_BUTTON_CLASS,
+                "absolute end-1.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/plan-row:opacity-100 group-focus-within/plan-row:opacity-100 data-[popup-open]:opacity-100 max-sm:opacity-100",
+              )}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MoreHorizontalIcon className="size-3.5" />
+            </button>
+          }
+        />
+        <MenuPopup align="end" side="bottom">
+          {items.map((item) => (
+            <MenuItem
+              key={item.id}
+              variant={item.destructive === true ? "destructive" : "default"}
+              onClick={() => void runAction(item.id)}
+            >
+              {PLAN_ROW_MENU_ICONS[item.id]}
+              <span>{item.label}</span>
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
+    </SidebarMenuSubItem>
+  );
+});
+
+function WorkspaceGroup({ selection }: { readonly selection: TreeSelection }) {
+  const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const go = useCallback(
+    (to: "/repositories" | "/settings") => {
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      void navigate({ to });
+    },
+    [isMobile, navigate, setOpenMobile],
+  );
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <button
+              type="button"
+              className={cn(
+                resolveWorkspaceRowClassName({ isActive: selection.isRepositoriesActive }),
+                "flex items-center gap-2",
+              )}
+              onClick={() => go("/repositories")}
+            >
+              <GitBranchIcon className="size-4 shrink-0 opacity-70" />
+              <span className="truncate">Repositories</span>
+            </button>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <button
+              type="button"
+              className={cn(
+                resolveWorkspaceRowClassName({ isActive: selection.isSettingsActive }),
+                "flex items-center gap-2",
+              )}
+              onClick={() => go("/settings")}
+            >
+              <SettingsIcon className="size-4 shrink-0 opacity-70" />
+              <span className="truncate">Settings</span>
+            </button>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+function NewProjectDialog({
+  open,
+  onOpenChange,
+}: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const createProject = useCreateMercurianProject();
+  const [name, setName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = useCallback(async () => {
+    const trimmed = name.trim();
+    if (trimmed.length === 0 || isSubmitting) return;
+    setIsSubmitting(true);
+    const project = await createProject(trimmed);
+    setIsSubmitting(false);
+    if (project !== null) {
+      setName("");
+      onOpenChange(false);
+    }
+  }, [createProject, isSubmitting, name, onOpenChange]);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setName("");
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogPopup className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New project</DialogTitle>
+        </DialogHeader>
+        <DialogPanel className="space-y-4">
+          <div className="grid gap-1.5">
+            <span className="text-xs font-medium text-foreground">Project name</span>
+            <Input
+              aria-label="Project name"
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+            />
+          </div>
+        </DialogPanel>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={name.trim().length === 0 || isSubmitting} onClick={() => void submit()}>
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogPopup>
+    </Dialog>
+  );
+}

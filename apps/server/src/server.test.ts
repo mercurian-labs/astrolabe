@@ -31,6 +31,9 @@ import {
   ThreadId,
   WS_METHODS,
   WsRpcGroup,
+  MERCURIAN_WS_METHODS,
+  MercurianProjectId,
+  type PlanId,
   EditorId,
 } from "@t3tools/contracts";
 import {
@@ -102,6 +105,21 @@ const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import { makeRoutesLayer } from "./server.ts";
+import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
+import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
+import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
+import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
+import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
+import * as ProcessRunner from "./processRunner.ts";
+
+const stubTrackerConnector: TrackerConnector = {
+  kind: "linear",
+  probe: () => Effect.succeed({ label: "Linear" }),
+  listIssues: () => Effect.succeed({ issues: [] }),
+};
 import { isThreadDetailEvent, resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -948,6 +966,25 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
+      // Mercurian's stores, real but in-memory: they own their own database
+      // file, so nothing here reaches t3code's store.
+      Layer.provide(
+        Layer.mergeAll(
+          PlanningStore.layer,
+          RepositoryStore.layer,
+          WorkspaceSettingsStore.layer,
+          // Over a connector that reaches no network: the server suite is about
+          // the wire, not about Linear.
+          TrackerStore.layer.pipe(
+            Layer.provide(TrackerConnectorRegistry.layerWith({ linear: stubTrackerConnector })),
+            Layer.provide(ServerSecretStore.layer),
+          ),
+        ).pipe(
+          Layer.provide(CommitStore.layer),
+          Layer.provide(MercurianSqlite.layerMemory),
+          Layer.provide(ProcessRunner.layer),
+        ),
+      ),
       Layer.provide(layerConfig),
     );
 
@@ -4361,6 +4398,239 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(record.resourceAttributes["service.name"], "t3-web");
         assert.equal(record.status?.code, String(span.status.code));
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc mercurian planning, and births a plan at its first message", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            // Before any message the project is in the tree and has no plans.
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Reshape the sidebar",
+            });
+            yield* client[MERCURIAN_WS_METHODS.appendPlanMessage]({
+              planId: created.plan.planId,
+              text: "And the planning space",
+            });
+            // The subscription's own `synchronized` marker is the receipt that
+            // the stream is live: the edit is landed from there, so the commit
+            // that follows can only have arrived as an event.
+            const items = yield* client[MERCURIAN_WS_METHODS.subscribePlan]({
+              planId: created.plan.planId,
+            }).pipe(
+              Stream.tap((item) =>
+                item.kind === "synchronized"
+                  ? client[MERCURIAN_WS_METHODS.savePlanRevision]({
+                      planId: created.plan.planId,
+                      text: "# Approach\n\nStart from the tree.",
+                    }).pipe(Effect.asVoid)
+                  : Effect.void,
+              ),
+              Stream.take(3),
+              Stream.runCollect,
+            );
+            // The artifact as of an earlier commit is the one thing the
+            // subscription deliberately does not carry: revisions travel
+            // without their text.
+            const atRoot = yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
+              planId: created.plan.planId,
+              commitId: created.timeline[0]!.commitId,
+            });
+            const revisionEvent = items[2];
+            const atRevision =
+              revisionEvent?.kind === "commit"
+                ? yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
+                    planId: created.plan.planId,
+                    commitId: revisionEvent.item.commitId,
+                  })
+                : null;
+            return { project, created, items, atRoot, atRevision };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      assert.equal(result.project.name, "Astrolabe");
+      assert.equal(result.created.plan.title, "Reshape the sidebar");
+      assert.equal(result.created.planText, "");
+
+      const opening = result.items[0];
+      assert.equal(opening?.kind, "snapshot");
+      const snapshot =
+        opening !== undefined && opening.kind === "snapshot" ? opening.snapshot : null;
+      assert.deepEqual(
+        snapshot?.timeline.map((item) => item._tag),
+        ["message", "message"],
+      );
+      assert.equal(snapshot?.planText, "");
+      assert.deepEqual(result.items[1], { kind: "synchronized" });
+
+      // The graph's shape rides along: the explorer draws the history from
+      // these rather than from a second read.
+      assert.deepEqual([...(snapshot?.timeline[0]?.parents ?? [])], []);
+      assert.deepEqual(
+        [...(snapshot?.timeline[1]?.parents ?? [])],
+        [snapshot?.timeline[0]?.commitId],
+      );
+      assert.equal(snapshot?.timeline[0]?.published, false);
+
+      const event = result.items[2];
+      assert.equal(event?.kind, "commit");
+      if (event?.kind === "commit") {
+        assert.equal(event.item._tag, "plan-revision");
+        assert.equal(event.item.authorKind, "human");
+        assert.equal(event.planText, "# Approach\n\nStart from the tree.");
+        assert.ok(event.sequence > (snapshot?.snapshotSequence ?? 0));
+      }
+
+      // Born blank at the root, and the revision's own text where it landed.
+      assert.equal(result.atRoot.planText, "");
+      assert.equal(result.atRevision?.planText, "# Approach\n\nStart from the tree.");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("routes websocket rpc mercurian visits, and carries status facts on tree rows", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Reshape the sidebar",
+            });
+
+            // The tree re-sends a whole snapshot on change, so one opening
+            // frame is the whole read.
+            const readTreeRow = client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.map((items) =>
+                items[0]?.snapshot.plans.find((plan) => plan.planId === created.plan.planId),
+              ),
+            );
+
+            const born = yield* readTreeRow;
+            yield* client[MERCURIAN_WS_METHODS.visitPlan]({ planId: created.plan.planId });
+            const visited = yield* readTreeRow;
+            yield* client[MERCURIAN_WS_METHODS.markPlanUnread]({ planId: created.plan.planId });
+            const rearmed = yield* readTreeRow;
+
+            return { born, visited, rearmed };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      // The two producer facts ride the row today with no producer behind
+      // them, so the contract 042 and 062 fill in is already the one shipped.
+      assert.equal(result.born?.hasPendingInput, false);
+      assert.equal(result.born?.isWorking, false);
+      // Never opened: no visit at all, which is what reads as unseen.
+      assert.equal(result.born?.visitedAt, undefined);
+
+      assert.ok(result.visited?.visitedAt !== undefined);
+      assert.ok(result.visited.visitedAt >= result.visited.updatedAt);
+
+      // Mark unread stands the visit back before the latest activity.
+      assert.ok(result.rearmed?.visitedAt !== undefined);
+      assert.ok(result.rearmed.visitedAt < result.rearmed.updatedAt);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("routes websocket rpc mercurian plan lifecycle: archive, restore, delete", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            // Each read is its own subscription taken to its opening snapshot:
+            // the tree re-sends whole, so the opening frame is the truth.
+            const readPlanRow = (planId: PlanId) =>
+              client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+                Stream.take(1),
+                Stream.runCollect,
+                Effect.map((items) =>
+                  items[0]?.snapshot.plans.find((plan) => plan.planId === planId),
+                ),
+              );
+
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Reshape the sidebar",
+            });
+            const planId = created.plan.planId;
+            const born = yield* readPlanRow(planId);
+
+            yield* client[MERCURIAN_WS_METHODS.archivePlan]({ planId });
+            const archived = yield* readPlanRow(planId);
+
+            yield* client[MERCURIAN_WS_METHODS.unarchivePlan]({ planId });
+            const restored = yield* readPlanRow(planId);
+
+            yield* client[MERCURIAN_WS_METHODS.deletePlan]({ planId });
+            const deleted = yield* readPlanRow(planId);
+            const secondDelete = yield* Effect.flip(
+              client[MERCURIAN_WS_METHODS.deletePlan]({ planId }),
+            );
+
+            return { born, archived, restored, deleted, secondDelete };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      // Born in the tree and born private: the row carries both facts, which
+      // is what lets it decide between archive and delete without a second
+      // read.
+      assert.equal(result.born?.archivedAt, null);
+      assert.equal(result.born?.hasPublishedCommits, false);
+
+      assert.ok(typeof result.archived?.archivedAt === "string");
+      // Archiving destroys nothing — the row is still in the snapshot, just
+      // stamped, which is what the Archived page in Settings renders from.
+      assert.equal(result.archived?.planId, result.born?.planId);
+      assert.equal(result.restored?.archivedAt, null);
+
+      // Delete is the other kind of disappearance, and leaves nothing to find.
+      assert.equal(result.deleted, undefined);
+      assert.equal(result.secondDelete._tag, "PlanNotFoundError");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("refuses a plan on an unknown mercurian project", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const failure = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: MercurianProjectId.make("missing"),
+              message: "Anything",
+            }),
+          ),
+        ),
+      );
+
+      assert.equal(failure._tag, "MercurianProjectNotFoundError");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>

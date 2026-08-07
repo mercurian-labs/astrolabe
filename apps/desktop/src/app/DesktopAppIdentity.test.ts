@@ -194,9 +194,13 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         yield* identity.configure;
 
-        assert.deepEqual(calls.setName, ["T3 Code (Alpha)"]);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "T3 Code (Alpha)");
+        assert.deepEqual(calls.setName, ["Astrolabe (Alpha)"]);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "Astrolabe (Alpha)");
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
+        assert.equal(
+          calls.setAboutPanelOptions[0]?.copyright,
+          "© 2026 Mercurian — built on t3code, MIT © 2026 T3 Tools Inc.",
+        );
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
         assert.deepEqual(calls.setDockIcon, ["/icon.png"]);
       }),

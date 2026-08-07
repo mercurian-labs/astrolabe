@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
+  useCallback,
   useEffect,
   useState,
   useSyncExternalStore,
@@ -10,13 +11,12 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
-import { getLocalStorageItem } from "../hooks/useLocalStorage";
+import { getLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { useEnvironmentIdentificationMode, useSidebarV2Enabled } from "../hooks/useSettings";
-import ThreadSidebar from "./Sidebar";
-import ThreadSidebarV2 from "./SidebarV2";
+import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
+import ProjectTreeSidebar from "./mercurian/ProjectTreeSidebar";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import {
   resolveInitialThreadSidebarWidth,
@@ -44,6 +44,22 @@ function subscribeToViewportWidth(onChange: () => void): () => void {
 
 function readViewportWidth(): number {
   return window.innerWidth;
+}
+
+const SIDEBAR_OPEN_STORAGE_KEY = "t3code:sidebar-open:v1";
+
+/**
+ * Collapse state is remembered the same way every sibling preference is:
+ * schema-validated localStorage. The shadcn provider wrote a `sidebar_state`
+ * cookie that nothing ever read, so the sidebar always came back expanded.
+ */
+function readInitialSidebarOpen(): boolean {
+  try {
+    return getLocalStorageItem(SIDEBAR_OPEN_STORAGE_KEY, Schema.Boolean) ?? true;
+  } catch (error) {
+    console.error("Could not read persisted sidebar open state.", error);
+    return true;
+  }
 }
 
 function readInitialThreadSidebarWidth(): number {
@@ -118,13 +134,8 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const sidebarV2Enabled = useSidebarV2Enabled();
-  // Settings routes render the settings nav, which lives in the v1 component
-  // and is identical for both sidebars — so v1 stays mounted there.
   const pathname = useLocation({ select: (location) => location.pathname });
-  const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const useSidebarV2 = sidebarV2Enabled && !isOnSettings;
-  const useSidebarV2Theme = useSidebarV2 || isOnSettings;
+  const [isSidebarOpen, setIsSidebarOpen] = useState(readInitialSidebarOpen);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -144,6 +155,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),
   } as CSSProperties;
+
+  const handleSidebarOpenChange = useCallback((open: boolean) => {
+    setIsSidebarOpen(open);
+    setLocalStorageItem(SIDEBAR_OPEN_STORAGE_KEY, open, Schema.Boolean);
+  }, []);
 
   useEffect(() => {
     if (!isMacosDesktop) return;
@@ -183,12 +199,17 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   }, [navigate, pathname]);
 
   return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
+    <SidebarProvider
+      className="h-dvh! min-h-0!"
+      open={isSidebarOpen}
+      onOpenChange={handleSidebarOpenChange}
+      style={sidebarProviderStyle}
+    >
       <Sidebar
         side="left"
         collapsible="offcanvas"
         data-app-sidebar=""
-        data-sidebar-version={useSidebarV2Theme ? "v2" : "v1"}
+        data-sidebar-version="v2"
         className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
         resizable={{
           maxWidth: sidebarMaximumWidth,
@@ -200,7 +221,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           onResize: setSidebarWidth,
         }}
       >
-        {useSidebarV2 ? <ThreadSidebarV2 /> : <ThreadSidebar />}
+        <ProjectTreeSidebar />
         <SidebarRail />
       </Sidebar>
       {children}

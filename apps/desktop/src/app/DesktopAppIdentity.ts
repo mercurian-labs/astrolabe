@@ -123,6 +123,7 @@ export const make = Effect.gen(function* () {
     yield* electronApp.setAboutPanelOptions({
       applicationName: environment.displayName,
       applicationVersion: environment.appVersion,
+      copyright: "© 2026 Mercurian — built on t3code, MIT © 2026 T3 Tools Inc.",
       version: Option.getOrElse(commitHash, () => "unknown"),
     });
 

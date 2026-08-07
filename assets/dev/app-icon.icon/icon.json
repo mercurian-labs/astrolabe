@@ -8,9 +8,9 @@
         {
           "glass": true,
           "image-name": "text.svg",
-          "name": "Text",
+          "name": "Planet",
           "position": {
-            "scale": 8.5,
+            "scale": 22,
             "translation-in-points": [0, 0]
           }
         },

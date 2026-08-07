@@ -19,6 +19,13 @@ disabled_rules:
   - line_length
   - lower_acl_than_parent
   - modifier_order
+  # statement_position is the one default-enabled rule that needs SourceKit
+  # (@DisabledWithoutSourceKit). CI runs SwiftLint's static Linux binary, which
+  # has no SourceKit and would skip this rule silently, so macOS and CI would
+  # disagree. Disabling it explicitly keeps the two identical and makes the
+  # tradeoff reviewable. Re-check this when bumping SWIFTLINT_VERSION in
+  # .github/workflows/ci.yml.
+  - statement_position
   - trailing_comma
   - type_body_length
 
