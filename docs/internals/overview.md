@@ -167,6 +167,26 @@ is server state in its own `plan_visits` table, written by `mercurian.visitPlan`
 changes seen-ness and re-armed by `mercurian.markPlanUnread`, so unseen agrees across windows rather
 than living in one of them (§5).
 
+[`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
+database: the registry of codebases the app can reach, the app-owned scripts declared on each, and
+the `project_repositories` join that gives a project its set. Two facts on the snapshot have no
+column behind them. `hasGit` is a live `git rev-parse` probe behind a short-TTL `Cache`, on the
+`RepositoryIdentityResolver` pattern — a plain directory registers fine, and the working-tree
+features light up on their own once it becomes a repository. A row's environment is a fact about
+which server answered, not data. Removal deletes the row, its scripts, and its memberships in one
+transaction, and is refused while `git worktree list` names a linked worktree under
+`ServerConfig.worktreesDir`. The registry streams over `mercurian.subscribeRepositories` with the
+same snapshot-re-emit shape as the tree, and project sets ride that snapshot rather than the tree's
+— including the cascade a removal leaves behind, whose signal is this store's.
+
+[`mercurian/trackers/`][trackers] holds the seam to external issue trackers, in the same database
+and knowing nothing about plans. `TrackerConnector` has a `probe` and a `listIssues` and no write
+method, so pull-only is a property of the type rather than a rule; every connector answers in the
+same five-field `TrackerIssue` — id, title, description, url, status — and nothing else crosses.
+Credentials are `ServerSecretStore` files keyed by connection id, never rows and never responses;
+standing is probed live behind a short-TTL cache, never stored; issues are read live and never
+stored at all.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -202,3 +222,5 @@ already dispatch.
 [normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
 [planning-wire]: ../../apps/server/src/mercurian/planning/wire.ts
+[repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
+[trackers]: ../../apps/server/src/mercurian/trackers/

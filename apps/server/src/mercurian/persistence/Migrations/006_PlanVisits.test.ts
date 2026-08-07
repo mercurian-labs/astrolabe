@@ -11,11 +11,11 @@ const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 const toNames = (columns: ReadonlyArray<{ readonly name: string }>) =>
   new Set(columns.map((column) => column.name));
 
-layer("003_PlanVisits", (it) => {
+layer("006_PlanVisits", (it) => {
   it.effect("creates the plan visits table", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 6 });
 
       const visits = toNames(yield* sql<{ readonly name: string }>`PRAGMA table_info(plan_visits)`);
       for (const column of ["plan_id", "visited_at"]) {
@@ -27,7 +27,7 @@ layer("003_PlanVisits", (it) => {
   it.effect("keeps at most one visit per plan", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 6 });
 
       yield* sql`
         INSERT INTO projects (project_id, name, created_at, updated_at)

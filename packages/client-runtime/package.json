@@ -71,6 +71,18 @@
       "types": "./src/state/mercurianPlanning.ts",
       "default": "./src/state/mercurianPlanning.ts"
     },
+    "./state/mercurian-repositories": {
+      "types": "./src/state/mercurianRepositories.ts",
+      "default": "./src/state/mercurianRepositories.ts"
+    },
+    "./state/mercurian-trackers": {
+      "types": "./src/state/mercurianTrackers.ts",
+      "default": "./src/state/mercurianTrackers.ts"
+    },
+    "./state/mercurian-workspace": {
+      "types": "./src/state/mercurianWorkspace.ts",
+      "default": "./src/state/mercurianWorkspace.ts"
+    },
     "./state/orchestration": {
       "types": "./src/state/orchestration.ts",
       "default": "./src/state/orchestration.ts"

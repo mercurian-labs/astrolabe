@@ -6,6 +6,9 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
   MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
@@ -42,6 +45,24 @@ export const RPC_REQUIRED_SCOPES = {
   // Attention is state every window reads, so recording it is a write.
   [MERCURIAN_WS_METHODS.visitPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.markPlanUnread]: AuthOrchestrationOperateScope,
+  // The registry is the same trust domain by the same reasoning: reading what
+  // code the app can reach, and changing it, are workspace orchestration.
+  [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: AuthOrchestrationReadScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  // Tracker connections likewise: connecting and disconnecting are operations;
+  // seeing where a connection stands, and reading the issues it reaches, are
+  // reads.
+  [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: AuthOrchestrationReadScope,
+  [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: AuthOrchestrationReadScope,
+  [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: AuthOrchestrationOperateScope,
+  [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: AuthOrchestrationOperateScope,
+  // Workspace settings likewise: the planning model is workspace configuration,
+  // and it names no instance, so it carries no machine-scoped authority.
+  [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: AuthOrchestrationReadScope,
+  [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

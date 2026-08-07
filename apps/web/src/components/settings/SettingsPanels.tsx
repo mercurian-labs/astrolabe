@@ -139,6 +139,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { PlanningModelSetting } from "../mercurian/PlanningModelSetting";
 
 const THEME_OPTIONS = [
   {
@@ -2036,6 +2037,7 @@ export function ProviderSettingsPanel() {
           </div>
         }
       >
+        <PlanningModelSetting />
         <SettingsRow
           title={
             <span className="inline-flex items-center gap-1.5">

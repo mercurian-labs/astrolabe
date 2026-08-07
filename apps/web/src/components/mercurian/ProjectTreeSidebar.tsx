@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  FolderGit2Icon,
   FolderPlusIcon,
   GitBranchIcon,
   SettingsIcon,
@@ -61,6 +62,7 @@ import {
   type PlanRowStatus,
   type TreeSelection,
 } from "./ProjectTreeSidebar.logic";
+import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
 import { SettingsNav } from "./SettingsNav";
 
 /**
@@ -235,6 +237,7 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
   const planPreviewCount = useClientSettings(selectPlanPreviewCount);
   // Deliberately forgotten between visits: show-more is a glance, not a preference.
   const [isPlanListExpanded, setIsPlanListExpanded] = useState(false);
+  const [isRepositoriesOpen, setIsRepositoriesOpen] = useState(false);
 
   const isExpanded = resolveMercurianProjectExpanded(expandedById, projectId);
   const containsSelection =
@@ -270,6 +273,11 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
     [navigate, openDraftForProject, projectId],
   );
 
+  const handleManageRepositories = useCallback((event: MouseEvent) => {
+    event.stopPropagation();
+    setIsRepositoriesOpen(true);
+  }, []);
+
   return (
     <SidebarMenuItem>
       <div className="group/project-header relative flex items-center">
@@ -290,10 +298,25 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
           <span className="truncate">{name}</span>
           {rollupStatus === null ? null : <PlanStatusDot status={rollupStatus} />}
         </button>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <div className="absolute end-0.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100 group-focus-within/project-header:opacity-100 max-sm:opacity-100">
+        <div className="absolute end-0.5 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100 group-focus-within/project-header:opacity-100 max-sm:opacity-100">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Repositories for ${name}`}
+                  className={ICON_ACTION_BUTTON_CLASS}
+                  onClick={handleManageRepositories}
+                >
+                  <FolderGit2Icon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="top">Repositories</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
                 <button
                   type="button"
                   aria-label={`New plan in ${name}`}
@@ -302,12 +325,19 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
                 >
                   <SquarePenIcon className="size-3.5" />
                 </button>
-              </div>
-            }
-          />
-          <TooltipPopup side="top">New plan</TooltipPopup>
-        </Tooltip>
+              }
+            />
+            <TooltipPopup side="top">New plan</TooltipPopup>
+          </Tooltip>
+        </div>
       </div>
+
+      <ManageProjectRepositoriesDialog
+        open={isRepositoriesOpen}
+        projectId={projectId}
+        projectName={name}
+        onOpenChange={setIsRepositoriesOpen}
+      />
 
       {isExpanded ? (
         <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 border-l-0 px-1 py-0">

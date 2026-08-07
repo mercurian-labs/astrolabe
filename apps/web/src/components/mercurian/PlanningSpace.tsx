@@ -42,6 +42,7 @@ import { DagExplorer } from "./DagExplorer";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
+import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
 import {
   advance,
@@ -113,6 +114,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const addDraftAttachments = usePlanComposerStore((state) => state.addAttachments);
   const removeDraftAttachment = usePlanComposerStore((state) => state.removeAttachment);
   const clearDraft = usePlanComposerStore((state) => state.clearDraft);
+  // The plan's project is what says which code this space can mention. With no
+  // repository set, there is nothing to offer and the menu stays closed.
+  const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
 
   // Another plan is another history: whatever you were looking at there does
   // not name anything here.
@@ -247,15 +251,20 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       <div className="flex min-h-0 flex-1 flex-col-reverse sm:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <PlanTimeline timeline={visibleTimeline} />
+          {/* One live search per repository in the project's set. Renders
+              nothing; it is what makes `@` reach real files. */}
+          {mentions.sources}
           <PlanComposer
             attachments={draft.attachments}
             // Standing at an earlier point does not take the composer away —
             // it changes what sending means, and the banner says so.
             banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
+            mentionCandidates={mentions.candidates}
             placeholder="Message this plan"
             text={draft.text}
             onAddAttachments={(added) => addDraftAttachments(planId, added)}
             onChangeText={(text) => setDraftText(planId, text)}
+            onMentionQueryChange={mentions.onMentionQueryChange}
             onRemoveAttachment={(localId) => removeDraftAttachment(planId, localId)}
             onSend={send}
           />
@@ -403,6 +412,12 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
    * leaving, and it already did before this issue.
    */
   const [attachments, setAttachments] = useState<ReadonlyArray<PlanComposerAttachment>>([]);
+  // The birth message composes with the same powers as every later one, and
+  // the project it is being born into is already what says which code it can
+  // reach.
+  const mentions = usePlanMentionCandidates(
+    draft === undefined ? null : (draft.projectId as MercurianProjectId),
+  );
 
   const send = useCallback(
     async ({ text, attachments: uploads }: PlanComposerSubmission) => {
@@ -451,12 +466,15 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
+      {mentions.sources}
       <PlanComposer
         attachments={attachments}
+        mentionCandidates={mentions.candidates}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}
         onChangeText={(text) => setDraftText(draftId, text)}
+        onMentionQueryChange={mentions.onMentionQueryChange}
         onRemoveAttachment={(localId) =>
           setAttachments((current) => current.filter((one) => one.localId !== localId))
         }
