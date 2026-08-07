@@ -18,7 +18,7 @@ import { usePrimarySettings } from "../hooks/useSettings";
 import { applyProviderInstanceSettings, deriveProviderInstanceEntries } from "../providerInstances";
 import { usePrimaryEnvironmentId } from "./environments";
 import { primaryServerProvidersAtom } from "./server";
-import { useAtomCommand } from "./use-atom-command";
+import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianWorkspace = createMercurianWorkspaceAtoms(connectionAtomRuntime);
 
@@ -113,17 +113,9 @@ export function usePlanningModel(): PlanningModelState {
  * on every other machine in the workspace.
  */
 export function useSetPlanningModel() {
-  const environmentId = usePrimaryEnvironmentId();
-  const run = useAtomCommand(mercurianWorkspace.setPlanningModel);
+  const run = useEnvironmentBoundCommand(mercurianWorkspace.setPlanningModel);
   return useCallback(
-    (planningModel: PlanningModelSelection | null) => {
-      if (environmentId === null) {
-        return Promise.resolve(false);
-      }
-      return run({ environmentId, input: { planningModel } }).then(
-        (result) => result._tag === "Success",
-      );
-    },
-    [environmentId, run],
+    (planningModel: PlanningModelSelection | null) => run({ planningModel }),
+    [run],
   );
 }

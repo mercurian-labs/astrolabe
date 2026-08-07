@@ -6,6 +6,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  MERCURIAN_REPOSITORY_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
@@ -40,6 +41,15 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
+  // The registry is the same trust domain by the same reasoning: reading what
+  // code the app can reach, and changing it, are workspace orchestration.
+  [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: AuthOrchestrationReadScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  // Workspace settings likewise: the planning model is workspace configuration,
+  // and it names no instance, so it carries no machine-scoped authority.
   [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: AuthOrchestrationReadScope,
   [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,

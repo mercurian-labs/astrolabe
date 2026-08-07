@@ -14,12 +14,14 @@ import * as Layer from "effect/Layer";
 
 import Migration0001 from "./Migrations/001_CommitGraph.ts";
 import Migration0002 from "./Migrations/002_ProjectsPlans.ts";
-import Migration0003 from "./Migrations/003_WorkspaceSettings.ts";
+import Migration0003 from "./Migrations/003_Repositories.ts";
+import Migration0004 from "./Migrations/004_WorkspaceSettings.ts";
 
 export const migrationEntries = [
   [1, "CommitGraph", Migration0001],
   [2, "ProjectsPlans", Migration0002],
-  [3, "WorkspaceSettings", Migration0003],
+  [3, "Repositories", Migration0003],
+  [4, "WorkspaceSettings", Migration0004],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

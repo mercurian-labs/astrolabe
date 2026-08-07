@@ -8,6 +8,10 @@ Below it, a **Workspace** group links to Repositories and Settings.
 A project is a container for plans and the context those plans ground in. Create one with the
 **+** button in the Projects header, give it a name, and it appears in the tree.
 
+A project's context is its repositories. Hover a project row and press the **repositories** icon to
+choose which registered repositories its plans work in — a default, not a boundary, and never a
+label on anything. See [Repositories](./repositories.md).
+
 A project row expands and collapses with a click, and the tree remembers which projects you left
 expanded. A project with many plans shows its most recent ones and a **Show more** row for the
 rest; expanding that list is deliberately forgotten when you come back.
@@ -41,9 +45,11 @@ each one becomes a thumbnail above what you are typing, removable with the × in
 appears in the message once you send. A very large image is still accepted; it may just not be
 there if you reload before sending.
 
-Type **@** to mention a file from the plan's repositories: the mention becomes a chip in the
-message and travels with it. Until a plan has repositories registered there is nothing to offer,
-so the menu stays closed.
+Type **@** to mention a file from the plan's repositories: a menu lists files from every repository
+in the project's set, saying which one each came from when there is more than one, and picking one
+turns it into a chip that travels with the message. A project with no repositories has nothing to
+offer, so the menu stays closed — see [Repositories](./repositories.md) for setting the project's
+set.
 
 **Enter** sends and **Shift+Enter** starts a new line. There is no queueing — while a message is
 going out the send button is held, and the next one waits.

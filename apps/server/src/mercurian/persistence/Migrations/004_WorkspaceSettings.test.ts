@@ -8,11 +8,11 @@ import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
-layer("003_WorkspaceSettings", (it) => {
+layer("004_WorkspaceSettings", (it) => {
   it.effect("creates the workspace settings table", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 4 });
 
       const columns = new Set(
         (yield* sql<{ readonly name: string }>`PRAGMA table_info(workspace_settings)`).map(
@@ -28,7 +28,7 @@ layer("003_WorkspaceSettings", (it) => {
   it.effect("keys one row per setting", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 4 });
 
       const insert = () => sql`
         INSERT INTO workspace_settings (key, value, updated_at)
