@@ -81,6 +81,18 @@ import { makeRoutesLayer } from "./server.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
+import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
+import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
+import * as ProcessRunner from "./processRunner.ts";
+
+const stubTrackerConnector: TrackerConnector = {
+  kind: "linear",
+  probe: () => Effect.succeed({ label: "Linear" }),
+  listIssues: () => Effect.succeed({ issues: [] }),
+};
 import { resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -899,12 +911,23 @@ const buildAppUnderTest = (options?: {
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(HttpResponseCompression.layerNode),
-      // Mercurian's planning store, real but in-memory: it owns its own
-      // database file, so nothing here reaches t3code's store.
+      // Mercurian's stores, real but in-memory: they own their own database
+      // file, so nothing here reaches t3code's store.
       Layer.provide(
-        PlanningStore.layer.pipe(
+        Layer.mergeAll(
+          PlanningStore.layer,
+          RepositoryStore.layer,
+          WorkspaceSettingsStore.layer,
+          // Over a connector that reaches no network: the server suite is about
+          // the wire, not about Linear.
+          TrackerStore.layer.pipe(
+            Layer.provide(TrackerConnectorRegistry.layerWith({ linear: stubTrackerConnector })),
+            Layer.provide(ServerSecretStore.layer),
+          ),
+        ).pipe(
           Layer.provide(CommitStore.layer),
           Layer.provide(MercurianSqlite.layerMemory),
+          Layer.provide(ProcessRunner.layer),
         ),
       ),
       Layer.provide(layerConfig),
@@ -4396,6 +4419,59 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
+  it.effect("routes websocket rpc mercurian visits, and carries status facts on tree rows", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Reshape the sidebar",
+            });
+
+            // The tree re-sends a whole snapshot on change, so one opening
+            // frame is the whole read.
+            const readTreeRow = client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.map((items) =>
+                items[0]?.snapshot.plans.find((plan) => plan.planId === created.plan.planId),
+              ),
+            );
+
+            const born = yield* readTreeRow;
+            yield* client[MERCURIAN_WS_METHODS.visitPlan]({ planId: created.plan.planId });
+            const visited = yield* readTreeRow;
+            yield* client[MERCURIAN_WS_METHODS.markPlanUnread]({ planId: created.plan.planId });
+            const rearmed = yield* readTreeRow;
+
+            return { born, visited, rearmed };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      // The two producer facts ride the row today with no producer behind
+      // them, so the contract 042 and 062 fill in is already the one shipped.
+      assert.equal(result.born?.hasPendingInput, false);
+      assert.equal(result.born?.isWorking, false);
+      // Never opened: no visit at all, which is what reads as unseen.
+      assert.equal(result.born?.visitedAt, undefined);
+
+      assert.ok(result.visited?.visitedAt !== undefined);
+      assert.ok(result.visited.visitedAt >= result.visited.updatedAt);
+
+      // Mark unread stands the visit back before the latest activity.
+      assert.ok(result.rearmed?.visitedAt !== undefined);
+      assert.ok(result.rearmed.visitedAt < result.rearmed.updatedAt);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
   it.effect("routes websocket rpc mercurian plan lifecycle: archive, restore, delete", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
@@ -4442,8 +4518,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      // Born in the tree and born private: the shell carries both facts, which
-      // is what lets a row decide between archive and delete without a second
+      // Born in the tree and born private: the row carries both facts, which
+      // is what lets it decide between archive and delete without a second
       // read.
       assert.equal(result.born?.archivedAt, null);
       assert.equal(result.born?.hasPublishedCommits, false);

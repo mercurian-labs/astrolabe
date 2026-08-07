@@ -71,16 +71,18 @@ import {
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
   MercurianGetPlanTextAtInput,
+  MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
   MercurianProject,
   MercurianProjectNotFoundError,
   MercurianSavePlanRevisionInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
+  MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
+  MercurianVisitPlanInput,
   PlanDeleteBlockedError,
   PlanDetail,
-  PlanLifecycleAck,
   PlanMessage,
   PlanNotFoundError,
   PlanningTreeStreamItem,
@@ -88,6 +90,42 @@ import {
   PlanStreamItem,
   PlanTextAt,
 } from "./mercurian.ts";
+import {
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MercurianAddRepositoryInput,
+  MercurianRemoveRepositoryInput,
+  MercurianRepositoriesStreamItem,
+  MercurianRepository,
+  MercurianRepositoryError,
+  MercurianRepositoryNotFoundError,
+  MercurianSaveRepositoryScriptsInput,
+  MercurianSetProjectRepositoriesInput,
+  MercurianSubscribeRepositoriesInput,
+  RepositoryAlreadyRegisteredError,
+  RepositoryHasLiveWorktreesError,
+  RepositoryPathInvalidError,
+} from "./mercurianRepositories.ts";
+import {
+  MERCURIAN_TRACKER_WS_METHODS,
+  MercurianConnectTrackerInput,
+  MercurianDisconnectTrackerInput,
+  MercurianListTrackerIssuesInput,
+  MercurianSubscribeTrackersInput,
+  MercurianTrackerError,
+  TrackerAuthError,
+  TrackerConnection,
+  TrackerConnectionNotFoundError,
+  TrackerIssuePage,
+  TrackersStreamItem,
+  TrackerUnreachableError,
+} from "./mercurianTrackers.ts";
+import {
+  MERCURIAN_WORKSPACE_WS_METHODS,
+  MercurianSetPlanningModelInput,
+  MercurianSubscribeWorkspaceSettingsInput,
+  MercurianWorkspaceError,
+  WorkspaceSettingsStreamItem,
+} from "./mercurianWorkspace.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelayClientInstallFailedError,
@@ -846,24 +884,40 @@ export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
-// The plan lifecycle. Archive is every plan's disappearance and is reversible;
-// delete exists only while a plan is fully private, and refuses once anything
-// it holds has been published.
+// Attention, recorded. Both write one plan's visited-at and answer with
+// nothing: the change they made comes back on the tree subscription, where
+// every other row fact already lives. Neither joins the environment
+// subscription group — they are unary acts, not streams.
+export const WsMercurianVisitPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.visitPlan, {
+  payload: MercurianVisitPlanInput,
+  success: MercurianPlanAcknowledged,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianMarkPlanUnreadRpc = Rpc.make(MERCURIAN_WS_METHODS.markPlanUnread, {
+  payload: MercurianMarkPlanUnreadInput,
+  success: MercurianPlanAcknowledged,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+// The plan lifecycle, answering the same way and for the same reason. Archive
+// is every plan's disappearance and is reversible; delete exists only while a
+// plan is fully private, and refuses once anything it holds has been published.
 export const WsMercurianArchivePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.archivePlan, {
   payload: MercurianArchivePlanInput,
-  success: PlanLifecycleAck,
+  success: MercurianPlanAcknowledged,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
 export const WsMercurianUnarchivePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.unarchivePlan, {
   payload: MercurianUnarchivePlanInput,
-  success: PlanLifecycleAck,
+  success: MercurianPlanAcknowledged,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
 export const WsMercurianDeletePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.deletePlan, {
   payload: MercurianDeletePlanInput,
-  success: PlanLifecycleAck,
+  success: MercurianPlanAcknowledged,
   error: Schema.Union([
     PlanNotFoundError,
     PlanDeleteBlockedError,
@@ -890,6 +944,151 @@ export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan
   success: PlanTextAt,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
+
+// Mercurian repositories. Same snapshot-re-emit shape as the tree, and for the
+// same reason: a repository set moves when a person adds, removes, or
+// reassigns one. Project sets ride this snapshot rather than the tree's —
+// including the removal cascade, whose signal is this store's.
+export const WsMercurianSubscribeRepositoriesRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories,
+  {
+    payload: MercurianSubscribeRepositoriesInput,
+    success: MercurianRepositoriesStreamItem,
+    error: Schema.Union([MercurianRepositoryError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianAddRepositoryRpc = Rpc.make(MERCURIAN_REPOSITORY_WS_METHODS.addRepository, {
+  payload: MercurianAddRepositoryInput,
+  success: MercurianRepository,
+  error: Schema.Union([
+    RepositoryPathInvalidError,
+    RepositoryAlreadyRegisteredError,
+    MercurianRepositoryError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianRemoveRepositoryRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.removeRepository,
+  {
+    payload: MercurianRemoveRepositoryInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MercurianRepositoryNotFoundError,
+      RepositoryHasLiveWorktreesError,
+      MercurianRepositoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianSaveRepositoryScriptsRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts,
+  {
+    payload: MercurianSaveRepositoryScriptsInput,
+    success: MercurianRepository,
+    error: Schema.Union([
+      MercurianRepositoryNotFoundError,
+      MercurianRepositoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories,
+  {
+    payload: MercurianSetProjectRepositoriesInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MercurianProjectNotFoundError,
+      MercurianRepositoryNotFoundError,
+      MercurianRepositoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+// Workspace settings: few, and moved only by a discrete human act, so the read
+// is a whole-value re-send rather than a sequenced log.
+export const WsMercurianSubscribeWorkspaceSettingsRpc = Rpc.make(
+  MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings,
+  {
+    payload: MercurianSubscribeWorkspaceSettingsInput,
+    success: WorkspaceSettingsStreamItem,
+    error: Schema.Union([MercurianWorkspaceError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianSetPlanningModelRpc = Rpc.make(
+  MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
+  {
+    payload: MercurianSetPlanningModelInput,
+    success: Schema.Void,
+    error: Schema.Union([MercurianWorkspaceError, EnvironmentAuthorizationError]),
+  },
+);
+
+// Mercurian trackers. Four methods and not one of them writes tracker-ward:
+// connections are pull-only by construction, so "no operation anywhere writes
+// to the tracker" is a property of this list rather than a rule to remember.
+export const WsMercurianSubscribeTrackersRpc = Rpc.make(
+  MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers,
+  {
+    payload: MercurianSubscribeTrackersInput,
+    success: TrackersStreamItem,
+    error: Schema.Union([MercurianTrackerError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+// The credential's one crossing, client→server. The answer is the connection —
+// label and standing — and never the token: there is nothing to redact because
+// nothing comes back.
+export const WsMercurianConnectTrackerRpc = Rpc.make(MERCURIAN_TRACKER_WS_METHODS.connectTracker, {
+  payload: MercurianConnectTrackerInput,
+  success: TrackerConnection,
+  error: Schema.Union([
+    TrackerAuthError,
+    TrackerUnreachableError,
+    MercurianTrackerError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianDisconnectTrackerRpc = Rpc.make(
+  MERCURIAN_TRACKER_WS_METHODS.disconnectTracker,
+  {
+    payload: MercurianDisconnectTrackerInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      TrackerConnectionNotFoundError,
+      MercurianTrackerError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+// Fetched live, never stored — no issue row exists anywhere in Mercurian's
+// schema, which is what "import is selection, not synchronization" is at this
+// layer. The page carries the minimal common shape and nothing else.
+export const WsMercurianListTrackerIssuesRpc = Rpc.make(
+  MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues,
+  {
+    payload: MercurianListTrackerIssuesInput,
+    success: TrackerIssuePage,
+    error: Schema.Union([
+      TrackerConnectionNotFoundError,
+      TrackerAuthError,
+      TrackerUnreachableError,
+      MercurianTrackerError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
 
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
@@ -976,9 +1175,22 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianCreatePlanRpc,
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
+  WsMercurianVisitPlanRpc,
+  WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
   WsMercurianUnarchivePlanRpc,
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
+  WsMercurianSubscribeRepositoriesRpc,
+  WsMercurianAddRepositoryRpc,
+  WsMercurianRemoveRepositoryRpc,
+  WsMercurianSaveRepositoryScriptsRpc,
+  WsMercurianSetProjectRepositoriesRpc,
+  WsMercurianSubscribeWorkspaceSettingsRpc,
+  WsMercurianSetPlanningModelRpc,
+  WsMercurianSubscribeTrackersRpc,
+  WsMercurianConnectTrackerRpc,
+  WsMercurianDisconnectTrackerRpc,
+  WsMercurianListTrackerIssuesRpc,
 );

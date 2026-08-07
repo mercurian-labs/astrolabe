@@ -22,6 +22,7 @@
  */
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -47,7 +48,7 @@ import {
 } from "../../persistence/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, CommitAuthorKind, CommitId, HistoryId } from "../commitTree/schema.ts";
-import { MercurianProject, Plan, PlanSummary } from "./schema.ts";
+import { MercurianProject, Plan } from "./schema.ts";
 
 // ===============================
 // Domain
@@ -129,13 +130,34 @@ export interface PlanTimelineEvent {
 }
 
 export interface PlanDetail {
-  readonly plan: PlanSummary;
+  readonly plan: Plan;
   /** Derived from the history, never stored. `""` is a real state. */
   readonly planText: string;
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The highest commit sequence this snapshot accounts for; `0` for none. */
   readonly snapshotSequence: number;
 }
+
+/**
+ * A plan as the tree renders it: the plan row, plus when it was last looked at
+ * and whether anything in it has been shared.
+ *
+ * `visitedAt` is absent for a plan nobody has opened. That absence is the
+ * honest value — a sentinel timestamp would make "never visited" and "visited
+ * at the epoch" the same fact — and it is what the tree reads "unseen updates"
+ * from, against the plan's own `updatedAt`.
+ *
+ * `hasPublishedCommits` rides here rather than on {@link Plan} for the same
+ * reason `visitedAt` does: it is derived per read rather than stored, and the
+ * surfaces that need it — the tree's row verbs and the Archived page — are the
+ * ones reading this snapshot.
+ */
+export const PlanTreeRow = Schema.Struct({
+  ...Plan.fields,
+  visitedAt: Schema.optional(Schema.DateTimeUtcFromString),
+  hasPublishedCommits: Schema.Boolean,
+});
+export type PlanTreeRow = typeof PlanTreeRow.Type;
 
 export interface PlanningTreeSnapshot {
   readonly projects: ReadonlyArray<MercurianProject>;
@@ -144,7 +166,7 @@ export interface PlanningTreeSnapshot {
    * Archived plans ride along carrying their `archivedAt`: one live source
    * keeps the tree and the Archived page correct in every window at once.
    */
-  readonly plans: ReadonlyArray<PlanSummary>;
+  readonly plans: ReadonlyArray<PlanTreeRow>;
 }
 
 /**
@@ -239,6 +261,16 @@ export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
 
+export const RecordPlanVisitInput = Schema.Struct({
+  planId: PlanId,
+  /** Minted by the caller's clock, never by the client — the server owns time. */
+  visitedAt: Schema.DateTimeUtcFromString,
+});
+export type RecordPlanVisitInput = typeof RecordPlanVisitInput.Type;
+
+export const MarkPlanUnreadInput = Schema.Struct({ planId: PlanId });
+export type MarkPlanUnreadInput = typeof MarkPlanUnreadInput.Type;
+
 // ===============================
 // Service
 // ===============================
@@ -311,6 +343,25 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
+    /**
+     * You looked at this plan. Writes — and announces — only when the visit
+     * changes seen-ness: advancing an already-current visit changes nothing any
+     * window can render, and must not cost the tree a re-emit. The open
+     * planning space fires this on every activity advance, and that guard is
+     * what keeps the loop quiet.
+     */
+    readonly recordPlanVisit: (
+      input: RecordPlanVisitInput,
+    ) => Effect.Effect<void, PlanningStoreError>;
+    /**
+     * Put the plan back in front of you: visited just *before* its latest
+     * activity, so the same comparison that derives unseen derives it again.
+     * Server-side rather than in one window's storage (ADR 002 §5), so it
+     * re-arms everywhere at once.
+     */
+    readonly markPlanUnread: (
+      input: MarkPlanUnreadInput,
+    ) => Effect.Effect<void, PlanningStoreError>;
     /** Fires once per mutation. What keeps a subscribed tree and plan fresh. */
     readonly changes: Stream.Stream<void>;
   }
@@ -340,13 +391,22 @@ const PlanRowFields = {
 const PlanRow = Schema.Struct(PlanRowFields);
 
 /**
- * A plan row as every read takes it: the columns, plus sqlite's answer to
- * "is any of this history published" as the 0/1 an `EXISTS` yields.
+ * The tree's read of a plan. SQL answers a missing visit with NULL and an
+ * `EXISTS` with 0/1, so that is what the row decodes; {@link toPlanTreeRow}
+ * narrows both to the domain's shapes, keeping "never visited" one shape
+ * rather than two.
  */
-const PlanSummaryRow = Schema.Struct({
-  ...PlanRowFields,
+const PlanTreeRowResult = Schema.Struct({
+  ...PlanRow.fields,
+  visitedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   hasPublishedCommits: Schema.Number,
 });
+
+const toPlanTreeRow = (row: typeof PlanTreeRowResult.Type): PlanTreeRow => {
+  const { visitedAt, hasPublishedCommits, ...plan } = row;
+  const published = { ...plan, hasPublishedCommits: hasPublishedCommits !== 0 };
+  return visitedAt === null ? published : { ...published, visitedAt };
+};
 
 const ProjectIdRequest = Schema.Struct({ projectId: MercurianProjectId });
 const PlanIdRequest = Schema.Struct({ planId: PlanId });
@@ -354,6 +414,10 @@ const HistoryIdRequest = Schema.Struct({ historyId: HistoryId });
 const TouchPlanRequest = Schema.Struct({
   planId: PlanId,
   updatedAt: Schema.DateTimeUtcFromString,
+});
+const VisitPlanRequest = Schema.Struct({
+  planId: PlanId,
+  visitedAt: Schema.DateTimeUtcFromString,
 });
 const NoRequest = Schema.Struct({});
 
@@ -459,12 +523,6 @@ export const make = Effect.gen(function* () {
     `,
   });
 
-  /**
-   * The lifecycle rule, asked of the commit graph on every read of a plan: a
-   * plan is fully private exactly while no commit of its history is published.
-   * There is no column to keep in step, so the answer flips the moment
-   * publishing (or an imported plan's published root) lands.
-   */
   const planColumns = sql`
     plan_id AS "planId",
     project_id AS "projectId",
@@ -472,7 +530,16 @@ export const make = Effect.gen(function* () {
     title AS "title",
     created_at AS "createdAt",
     updated_at AS "updatedAt",
-    archived_at AS "archivedAt",
+    archived_at AS "archivedAt"
+  `;
+
+  /**
+   * The lifecycle rule, asked of the commit graph rather than of a column: a
+   * plan is fully private exactly while no commit of its history is published.
+   * There is nothing to keep in step, so the answer flips the moment publishing
+   * (or an imported plan's published root) lands.
+   */
+  const hasPublishedCommitsColumn = sql`
     EXISTS (
       SELECT 1 FROM commits
       WHERE commits.history_id = plans.history_id AND commits.published = 1
@@ -499,7 +566,7 @@ export const make = Effect.gen(function* () {
 
   const findPlanRow = SqlSchema.findOneOption({
     Request: PlanIdRequest,
-    Result: PlanSummaryRow,
+    Result: PlanRow,
     execute: ({ planId }) => sql`
       SELECT ${planColumns}
       FROM plans
@@ -507,13 +574,39 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  /**
+   * Whether anything in a plan's history has been shared. Read on its own
+   * rather than folded into {@link findPlanRow}, because only the delete path
+   * asks — and it asks inside its own transaction, where the answer has to be
+   * current rather than merely recent.
+   */
+  const findPublishedFlag = SqlSchema.findOne({
+    Request: PlanIdRequest,
+    Result: Schema.Struct({ hasPublishedCommits: Schema.Number }),
+    execute: ({ planId }) => sql`
+      SELECT ${hasPublishedCommitsColumn}
+      FROM plans
+      WHERE plan_id = ${planId}
+    `,
+  });
+
   const listPlanRows = SqlSchema.findAll({
     Request: NoRequest,
-    Result: PlanSummaryRow,
+    Result: PlanTreeRowResult,
     execute: () => sql`
-      SELECT ${planColumns}
+      SELECT
+        plans.plan_id AS "planId",
+        plans.project_id AS "projectId",
+        plans.history_id AS "historyId",
+        plans.title AS "title",
+        plans.created_at AS "createdAt",
+        plans.updated_at AS "updatedAt",
+        plans.archived_at AS "archivedAt",
+        plan_visits.visited_at AS "visitedAt",
+        ${hasPublishedCommitsColumn}
       FROM plans
-      ORDER BY project_id ASC, updated_at DESC, plan_id ASC
+      LEFT JOIN plan_visits ON plan_visits.plan_id = plans.plan_id
+      ORDER BY plans.project_id ASC, plans.updated_at DESC, plans.plan_id ASC
     `,
   });
 
@@ -521,6 +614,25 @@ export const make = Effect.gen(function* () {
     Request: TouchPlanRequest,
     execute: ({ planId, updatedAt }) => sql`
       UPDATE plans SET updated_at = ${updatedAt} WHERE plan_id = ${planId}
+    `,
+  });
+
+  const upsertVisitRow = SqlSchema.void({
+    Request: VisitPlanRequest,
+    execute: ({ planId, visitedAt }) => sql`
+      INSERT INTO plan_visits (plan_id, visited_at)
+      VALUES (${planId}, ${visitedAt})
+      ON CONFLICT(plan_id) DO UPDATE SET visited_at = excluded.visited_at
+    `,
+  });
+
+  const findVisitRow = SqlSchema.findOneOption({
+    Request: PlanIdRequest,
+    Result: Schema.Struct({ visitedAt: Schema.DateTimeUtcFromString }),
+    execute: ({ planId }) => sql`
+      SELECT visited_at AS "visitedAt"
+      FROM plan_visits
+      WHERE plan_id = ${planId}
     `,
   });
 
@@ -567,20 +679,22 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  // A deleted plan takes its visit with it: the row would otherwise outlive
+  // the plan it names and be adopted by nothing.
+  const deleteVisitRow = SqlSchema.void({
+    Request: PlanIdRequest,
+    execute: ({ planId }) => sql`DELETE FROM plan_visits WHERE plan_id = ${planId}`,
+  });
+
   const mintId = <Id extends string>(brand: { readonly make: (value: string) => Id }) =>
     crypto.randomUUIDv4.pipe(Effect.map(brand.make));
-
-  const toPlanSummary = (row: typeof PlanSummaryRow.Type): PlanSummary => ({
-    ...row,
-    hasPublishedCommits: row.hasPublishedCommits !== 0,
-  });
 
   const requirePlan = Effect.fn("PlanningStore.requirePlan")(function* (planId: PlanId) {
     const found = yield* findPlanRow({ planId });
     if (Option.isNone(found)) {
       return yield* new PlanNotFoundError({ planId });
     }
-    return toPlanSummary(found.value);
+    return found.value;
   });
 
   const toPlanCommitFields = (commit: Commit) => ({
@@ -660,7 +774,7 @@ export const make = Effect.gen(function* () {
 
   const getTreeSnapshot: PlanningStore["Service"]["getTreeSnapshot"] = Effect.gen(function* () {
     const [projects, plans] = yield* Effect.all([listProjectRows({}), listPlanRows({})]);
-    return { projects, plans: plans.map(toPlanSummary) } satisfies PlanningTreeSnapshot;
+    return { projects, plans: plans.map(toPlanTreeRow) } satisfies PlanningTreeSnapshot;
   }).pipe(
     Effect.mapError(
       toPlanningStoreError(
@@ -725,7 +839,7 @@ export const make = Effect.gen(function* () {
       // Born blank: one message, no revision, so the artifact is empty by
       // construction rather than by a special case.
       return {
-        plan: { ...plan, hasPublishedCommits: false },
+        plan,
         planText: "",
         timeline: [{ _tag: "message", ...(yield* toPlanMessage(root)) }],
         snapshotSequence: root.sequence,
@@ -907,7 +1021,8 @@ export const make = Effect.gen(function* () {
           // moment anything is published, but the rule is re-read here, inside
           // the transaction, because a publish landing between the two would
           // otherwise leave a hidden affordance as the only guard.
-          if (plan.hasPublishedCommits) {
+          const published = yield* findPublishedFlag({ planId: input.planId });
+          if (published.hasPublishedCommits !== 0) {
             return yield* new PlanDeleteBlockedError({ planId: input.planId });
           }
 
@@ -918,6 +1033,7 @@ export const make = Effect.gen(function* () {
           const attachmentIds = yield* collectAttachmentIds(path);
 
           yield* deleteCommitParentRows({ historyId: plan.historyId });
+          yield* deleteVisitRow({ planId: input.planId });
           yield* deletePlanRow({ planId: input.planId });
           yield* deleteCommitRows({ historyId: plan.historyId });
           yield* deleteHistoryRow({ historyId: plan.historyId });
@@ -1019,6 +1135,65 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  /**
+   * A visit is worth writing only when it changes what a window would draw:
+   * the plan has never been visited, or the visit lands at or after activity
+   * the last one missed. Anything else is the same seen-ness written twice, and
+   * the tree would re-emit for nothing.
+   */
+  const recordPlanVisit: PlanningStore["Service"]["recordPlanVisit"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const wrote = yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const existing = yield* findVisitRow({ planId: input.planId });
+          if (
+            Option.isSome(existing) &&
+            DateTime.isGreaterThanOrEqualTo(existing.value.visitedAt, plan.updatedAt)
+          ) {
+            return false;
+          }
+          yield* upsertVisitRow({ planId: input.planId, visitedAt: input.visitedAt });
+          return true;
+        }),
+      );
+      if (wrote) {
+        yield* announceChange;
+      }
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.recordPlanVisit:query",
+          "PlanningStore.recordPlanVisit:encodeRequest",
+        ),
+      ),
+    );
+
+  /**
+   * The upstream trick, moved server-side: visited one millisecond before the
+   * plan's latest activity. Unseen then falls out of the same `updatedAt >
+   * visitedAt` comparison every other row is read by, rather than needing a
+   * second flag that could disagree with it.
+   */
+  const markPlanUnread: PlanningStore["Service"]["markPlanUnread"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      yield* sql.withTransaction(
+        upsertVisitRow({
+          planId: input.planId,
+          visitedAt: DateTime.subtract(plan.updatedAt, { milliseconds: 1 }),
+        }),
+      );
+      yield* announceChange;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.markPlanUnread:query",
+          "PlanningStore.markPlanUnread:encodeRequest",
+        ),
+      ),
+    );
+
   return {
     createProject,
     getTreeSnapshot,
@@ -1031,6 +1206,8 @@ export const make = Effect.gen(function* () {
     getPlanSnapshot,
     listTimelineSince,
     getPlanTextAt,
+    recordPlanVisit,
+    markPlanUnread,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

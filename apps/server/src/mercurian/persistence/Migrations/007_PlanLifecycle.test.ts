@@ -8,11 +8,11 @@ import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
-layer("003_PlanLifecycle", (it) => {
+layer("007_PlanLifecycle", (it) => {
   it.effect("adds the one lifecycle column plans needed", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 7 });
 
       const columns = yield* sql<{
         readonly name: string;
@@ -42,7 +42,7 @@ layer("003_PlanLifecycle", (it) => {
         VALUES ('plan', 'project', 'history', 'Plan', '2026-08-03', '2026-08-03')
       `;
 
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 7 });
 
       const [row] = yield* sql<{ readonly archived_at: string | null }>`
         SELECT archived_at FROM plans WHERE plan_id = 'plan'

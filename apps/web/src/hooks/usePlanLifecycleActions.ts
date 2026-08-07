@@ -1,16 +1,13 @@
-import {
-  type AtomCommandResult,
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, PlanId } from "@t3tools/contracts";
+import type { PlanId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { mercurianPlanning } from "../state/mercurian";
-import { usePrimaryEnvironmentId } from "../state/environments";
-import { useAtomCommand } from "../state/use-atom-command";
+import {
+  useEnvironmentBoundCommandResult,
+  type EnvironmentBoundCommandResult,
+} from "../state/useEnvironmentBoundCommand";
 
 /**
  * The three ways a plan leaves the tree, from wherever a plan is listed.
@@ -19,23 +16,21 @@ import { useAtomCommand } from "../state/use-atom-command";
  * the way when the plan you just acted on is the one on screen. Two of the
  * three are reversible — archiving and restoring are the same door — and the
  * third only exists while the plan is fully private, which the caller decides
- * with `resolvePlanRowActions` before ever offering it.
+ * with `buildPlanRowMenuItems` before ever offering it.
+ *
+ * The refusals are surfaced rather than swallowed, which is why these bind
+ * through `useEnvironmentBoundCommandResult`: a delete that lost the race
+ * against a publish comes back as `PlanDeleteBlockedError`, and its own message
+ * is the one worth showing.
  *
  * Nothing here refreshes a listing. The tree is one live subscription, so the
  * row leaves (or returns) in every window as the server announces the change.
  */
 export function usePlanLifecycleActions() {
-  const environmentId = usePrimaryEnvironmentId();
   const router = useRouter();
-  const archivePlanCommand = useAtomCommand(mercurianPlanning.archivePlan, {
-    reportFailure: false,
-  });
-  const unarchivePlanCommand = useAtomCommand(mercurianPlanning.unarchivePlan, {
-    reportFailure: false,
-  });
-  const deletePlanCommand = useAtomCommand(mercurianPlanning.deletePlan, {
-    reportFailure: false,
-  });
+  const runArchive = useEnvironmentBoundCommandResult(mercurianPlanning.archivePlan);
+  const runUnarchive = useEnvironmentBoundCommandResult(mercurianPlanning.unarchivePlan);
+  const runDelete = useEnvironmentBoundCommandResult(mercurianPlanning.deletePlan);
 
   /**
    * Whether the plan being acted on is the one the route is showing. Archiving
@@ -54,49 +49,40 @@ export function usePlanLifecycleActions() {
   const perform = useCallback(
     async (input: {
       readonly planId: PlanId;
-      readonly run: (value: {
-        environmentId: EnvironmentId;
-        input: { planId: PlanId };
-      }) => Promise<AtomCommandResult<unknown, unknown>>;
+      readonly run: (value: { planId: PlanId }) => Promise<EnvironmentBoundCommandResult<unknown>>;
       readonly failureTitle: string;
       readonly leavesTheRoute: boolean;
     }) => {
-      if (environmentId === null) {
-        return false;
-      }
       // Navigate before the act when it removes what the route is showing: a
       // deleted plan's subscription would otherwise refuse mid-render.
       if (input.leavesTheRoute && isPlanOpen(input.planId)) {
         await router.navigate({ to: "/", replace: true });
       }
-      const result = await input.run({ environmentId, input: { planId: input.planId } });
-      if (result._tag === "Success") {
+      const result = await input.run({ planId: input.planId });
+      if (result.ok) {
         return true;
       }
-      if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: input.failureTitle,
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      }
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: input.failureTitle,
+          description: result.error instanceof Error ? result.error.message : "An error occurred.",
+        }),
+      );
       return false;
     },
-    [environmentId, isPlanOpen, router],
+    [isPlanOpen, router],
   );
 
   const archivePlan = useCallback(
     (planId: PlanId) =>
       perform({
         planId,
-        run: archivePlanCommand,
+        run: runArchive,
         failureTitle: "Failed to archive plan",
         leavesTheRoute: true,
       }),
-    [archivePlanCommand, perform],
+    [perform, runArchive],
   );
 
   /** Restore, as the Archived page names it. The plan returns to its project. */
@@ -104,22 +90,22 @@ export function usePlanLifecycleActions() {
     (planId: PlanId) =>
       perform({
         planId,
-        run: unarchivePlanCommand,
+        run: runUnarchive,
         failureTitle: "Failed to restore plan",
         leavesTheRoute: false,
       }),
-    [perform, unarchivePlanCommand],
+    [perform, runUnarchive],
   );
 
   const deletePlan = useCallback(
     (planId: PlanId) =>
       perform({
         planId,
-        run: deletePlanCommand,
+        run: runDelete,
         failureTitle: "Failed to delete plan",
         leavesTheRoute: true,
       }),
-    [deletePlanCommand, perform],
+    [perform, runDelete],
   );
 
   return useMemo(

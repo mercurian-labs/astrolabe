@@ -4,6 +4,8 @@
 
 - [Install and first run](./user/install.md)
 - [Projects and plans](./user/projects-and-plans.md)
+- [Repositories](./user/repositories.md)
+- [Trackers](./user/trackers.md)
 - [Permission modes](./user/permission-modes.md)
 - [Keyboard shortcuts](./user/keybindings.md)
 - [Remote access](./user/remote-access.md)

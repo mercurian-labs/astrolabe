@@ -43,18 +43,3 @@ export const Plan = Schema.Struct({
   archivedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
 });
 export type Plan = typeof Plan.Type;
-
-/**
- * A plan as a reader of it sees it: the row, plus the one fact about its
- * history that decides which verbs it offers.
- *
- * `hasPublishedCommits` is computed per read rather than stored, because it is
- * a question about the commits — "is any of this shared yet" — and the commit
- * graph is where publishing happens. A column would be a second truth to drift
- * from the first.
- */
-export const PlanSummary = Schema.Struct({
-  ...Plan.fields,
-  hasPublishedCommits: Schema.Boolean,
-});
-export type PlanSummary = typeof PlanSummary.Type;
