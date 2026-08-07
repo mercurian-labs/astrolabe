@@ -160,6 +160,13 @@ assistant. A plan message may also carry image attachments, and they are the ser
 to the same `attachmentsDir`, and read back through the assets door by id, which never knew what a
 thread was. Only their metadata rides a commit's payload, so the snapshot stays constant-size.
 
+Every tree row also carries the facts a status is ranked from — whether something awaits a person,
+whether a reply is streaming, and when the plan was last opened — composed at one point in
+[`wire.ts`][planning-wire] and ranked into one status per row on the client (ADR 002 §4). Visited-at
+is server state in its own `plan_visits` table, written by `mercurian.visitPlan` only when the visit
+changes seen-ness and re-armed by `mercurian.markPlanUnread`, so unseen agrees across windows rather
+than living in one of them (§5).
+
 [`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
 database: the registry of codebases the app can reach, the app-owned scripts declared on each, and
 the `project_repositories` join that gives a project its set. Two facts on the snapshot have no
@@ -214,5 +221,6 @@ already dispatch.
 [commit-store]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
 [normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
+[planning-wire]: ../../apps/server/src/mercurian/planning/wire.ts
 [repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
 [trackers]: ../../apps/server/src/mercurian/trackers/

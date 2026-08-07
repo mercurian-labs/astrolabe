@@ -30,6 +30,28 @@ Opening a plan from the tree lands on its planning space: the conversation that 
 with a composer to add to it, and a pane on the right for the plan's two standing views. The plan
 you are looking at stays highlighted in the tree while you are anywhere inside it.
 
+## Status in the tree
+
+A glance at the tree is a glance at where you are needed. A plan row carries a small
+coloured dot when there is something to say about it, and never more than one — when several
+things are true at once, the most urgent one wins. Hover the dot to read what it means.
+
+- **Awaiting your input** — something in the plan is waiting on you to answer.
+- **Assistant working** — a reply is coming in right now. This is the one that pulses.
+- **Unseen updates** — the plan moved while you were not looking at it.
+
+Opening a plan clears its unseen dot, and anything that lands while you are reading is marked
+seen as it arrives — your own messages never light up your own row. To put a plan back in front
+of you, right-click its row and choose **Mark unread**; it comes back everywhere, not just in the
+window you clicked in.
+
+A collapsed project shows one dot for everything inside it: the most urgent status among its
+plans. Expand it and the dot moves down to the plans themselves, which are now on screen to speak
+for themselves.
+
+None of this needs a refresh. A status appears, changes, and clears as it happens, in every window
+you have open.
+
 ## The composer
 
 The composer is where you act in a plan. It acts from wherever you are standing — normally that is

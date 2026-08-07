@@ -1,3 +1,5 @@
+import type { ContextMenuItem } from "@t3tools/contracts";
+
 import { cn } from "../../lib/utils";
 
 /** Structural shapes, not the wire types: these helpers only ever read ids and timestamps. */
@@ -138,6 +140,95 @@ export function resolveProjectRowClassName(input: { readonly containsSelection: 
 
 export function resolveWorkspaceRowClassName(input: { readonly isActive: boolean }): string {
   return resolvePlanRowClassName(input);
+}
+
+/**
+ * The three things a row can be saying, in the order they matter. One status
+ * per row: when several are true, the most urgent wins.
+ *
+ * Three words, deliberately, and not the fork's five pills. Signals from both
+ * stores map *into this vocabulary before they are ranked* — a coding session's
+ * pending approval and a plan's structured question are both awaiting-input —
+ * so there is nothing left to rank inside a tier. One dot is one colour.
+ */
+export type PlanRowStatus = "awaiting-input" | "working" | "unseen";
+
+const PLAN_STATUS_PRIORITY: Record<PlanRowStatus, number> = {
+  "awaiting-input": 3,
+  working: 2,
+  unseen: 1,
+};
+
+/**
+ * The facts a status is ranked from. Structural, like every shape in this file:
+ * the resolver reads booleans and timestamps, never the wire type.
+ *
+ * `hasPendingInput` and `isWorking` are server-derived; the client ranks them
+ * and never originates them. `unseen` is not among them because it is not a
+ * fact of its own — it is the comparison below.
+ */
+export interface PlanRowStatusFields {
+  readonly hasPendingInput: boolean;
+  readonly isWorking: boolean;
+  readonly updatedAt: string;
+  readonly visitedAt?: string | undefined;
+}
+
+/**
+ * Has this plan moved since you last looked at it?
+ *
+ * NaN-safe in both directions, and asymmetrically so on purpose. Activity we
+ * cannot read is not evidence that anything happened, so a malformed
+ * `updatedAt` never pins a row to unseen forever; a malformed *visit*, against
+ * activity we can read, means we do not know that you have seen it, and the
+ * honest answer there is to show the dot.
+ */
+function hasUnseenActivity(row: PlanRowStatusFields): boolean {
+  const updatedAt = Date.parse(row.updatedAt);
+  if (Number.isNaN(updatedAt)) return false;
+  if (row.visitedAt === undefined) return true;
+  const visitedAt = Date.parse(row.visitedAt);
+  if (Number.isNaN(visitedAt)) return true;
+  return updatedAt > visitedAt;
+}
+
+/** The one status a plan row shows, or nothing at all for a quiet row. */
+export function resolvePlanRowStatus(row: PlanRowStatusFields): PlanRowStatus | null {
+  if (row.hasPendingInput) return "awaiting-input";
+  if (row.isWorking) return "working";
+  if (hasUnseenActivity(row)) return "unseen";
+  return null;
+}
+
+/**
+ * What a row says on behalf of everything under it: the most urgent of its
+ * children, or nothing when they are all quiet.
+ *
+ * Level-agnostic by construction — a collapsed project over its plans today,
+ * and a plan over its coding sessions when those rows arrive. The rollup does
+ * not know which level it is at, which is why it does not need changing when a
+ * level is added.
+ */
+export function resolveRollupStatus(
+  statuses: ReadonlyArray<PlanRowStatus | null>,
+): PlanRowStatus | null {
+  let mostUrgent: PlanRowStatus | null = null;
+  for (const status of statuses) {
+    if (status === null) continue;
+    if (mostUrgent === null || PLAN_STATUS_PRIORITY[status] > PLAN_STATUS_PRIORITY[mostUrgent]) {
+      mostUrgent = status;
+    }
+  }
+  return mostUrgent;
+}
+
+/**
+ * A plan row's context menu. Mark unread only: renaming, archiving and deleting
+ * a plan are their own feature, and an item that does nothing is worse than an
+ * item that is not there.
+ */
+export function buildPlanRowContextMenuItems(): readonly ContextMenuItem<"mark-unread">[] {
+  return [{ id: "mark-unread", label: "Mark unread" }];
 }
 
 export function sortProjectsForTree<T extends ProjectRowFields>(projects: readonly T[]): T[] {

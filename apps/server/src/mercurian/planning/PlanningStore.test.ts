@@ -983,4 +983,195 @@ layer("PlanningStore", (it) => {
       );
     }),
   );
+
+  const seedPlan = Effect.fn("seedPlan")(function* (createdAt: string) {
+    const store = yield* PlanningStore.PlanningStore;
+    const project = yield* store.createProject({
+      name: "Astrolabe",
+      createdAt: at(createdAt),
+    });
+    return yield* store.createPlan({
+      projectId: project.projectId,
+      message: "Reshape the sidebar",
+      createdAt: at(createdAt),
+    });
+  });
+
+  const treeRow = Effect.fn("treeRow")(function* (planId: PlanId) {
+    const store = yield* PlanningStore.PlanningStore;
+    const snapshot = yield* store.getTreeSnapshot;
+    return snapshot.plans.find((plan) => plan.planId === planId);
+  });
+
+  it.effect("a plan nobody has opened has no visit at all", () =>
+    Effect.gen(function* () {
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      const row = yield* treeRow(created.plan.planId);
+      assert.strictEqual(row?.visitedAt, undefined);
+    }),
+  );
+
+  it.effect("records a visit that changes seen-ness, and announces it", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:05:00.000Z"),
+      });
+      const signals = yield* Fiber.join(changes);
+      assert.strictEqual(signals.length, 1);
+
+      const row = yield* treeRow(created.plan.planId);
+      assert.strictEqual(
+        row?.visitedAt === undefined ? null : DateTime.formatIso(row.visitedAt),
+        "2026-08-03T00:05:00.000Z",
+      );
+    }),
+  );
+
+  it.effect("a visit on an already-seen plan writes nothing and stays silent", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:05:00.000Z"),
+      });
+
+      // The receipt is the *next* signal: a silent visit lets the message that
+      // follows it be the first thing the stream carries.
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:06:00.000Z"),
+      });
+      yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Something happened",
+        createdAt: at("2026-08-03T00:07:00.000Z"),
+      });
+      yield* Fiber.join(changes);
+
+      // The redundant visit left the stored one alone.
+      const row = yield* treeRow(created.plan.planId);
+      assert.strictEqual(
+        row?.visitedAt === undefined ? null : DateTime.formatIso(row.visitedAt),
+        "2026-08-03T00:05:00.000Z",
+      );
+    }),
+  );
+
+  it.effect("activity after a visit is unseen, and visiting again clears it", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:05:00.000Z"),
+      });
+      yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "Landed while you were away",
+        createdAt: at("2026-08-03T00:06:00.000Z"),
+      });
+
+      const unseen = yield* treeRow(created.plan.planId);
+      assert.ok(
+        unseen?.visitedAt !== undefined && DateTime.isLessThan(unseen.visitedAt, unseen.updatedAt),
+      );
+
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:07:00.000Z"),
+      });
+      const seen = yield* treeRow(created.plan.planId);
+      assert.ok(
+        seen?.visitedAt !== undefined &&
+          DateTime.isGreaterThanOrEqualTo(seen.visitedAt, seen.updatedAt),
+      );
+    }),
+  );
+
+  it.effect("mark unread stands the visit just before the latest activity", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:05:00.000Z"),
+      });
+
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      yield* store.markPlanUnread({ planId: created.plan.planId });
+      const signals = yield* Fiber.join(changes);
+      assert.strictEqual(signals.length, 1);
+
+      const rearmed = yield* treeRow(created.plan.planId);
+      assert.strictEqual(
+        rearmed?.visitedAt === undefined ? null : DateTime.formatIso(rearmed.visitedAt),
+        "2026-08-02T23:59:59.999Z",
+      );
+      assert.ok(
+        rearmed?.visitedAt !== undefined &&
+          DateTime.isLessThan(rearmed.visitedAt, rearmed.updatedAt),
+      );
+
+      // And opening it clears it again.
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:08:00.000Z"),
+      });
+      const cleared = yield* treeRow(created.plan.planId);
+      assert.ok(
+        cleared?.visitedAt !== undefined &&
+          DateTime.isGreaterThanOrEqualTo(cleared.visitedAt, cleared.updatedAt),
+      );
+    }),
+  );
+
+  it.effect("visiting is attention, not activity: the tree's order does not move", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+
+      yield* store.recordPlanVisit({
+        planId: created.plan.planId,
+        visitedAt: at("2026-08-03T00:05:00.000Z"),
+      });
+      yield* store.markPlanUnread({ planId: created.plan.planId });
+
+      const row = yield* treeRow(created.plan.planId);
+      assert.strictEqual(
+        row === undefined ? null : DateTime.formatIso(row.updatedAt),
+        DateTime.formatIso(created.plan.updatedAt),
+      );
+    }),
+  );
+
+  it.effect("both visit acts refuse a plan that does not exist", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+
+      const visit = yield* Effect.flip(
+        store.recordPlanVisit({
+          planId: PlanId.make("nope"),
+          visitedAt: at("2026-08-03T00:00:00.000Z"),
+        }),
+      );
+      assert.strictEqual(visit._tag, "PlanNotFoundError");
+
+      const unread = yield* Effect.flip(store.markPlanUnread({ planId: PlanId.make("nope") }));
+      assert.strictEqual(unread._tag, "PlanNotFoundError");
+    }),
+  );
 });

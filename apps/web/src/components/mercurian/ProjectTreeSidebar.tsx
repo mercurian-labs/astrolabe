@@ -1,4 +1,4 @@
-import type { MercurianProjectId } from "@t3tools/contracts";
+import { PlanId, type MercurianProjectId } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDownIcon,
@@ -12,10 +12,15 @@ import {
 import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { isElectron } from "../../env";
+import { readLocalApi } from "../../localApi";
 import { useClientSettings } from "../../hooks/useSettings";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore } from "../../planDraftStore";
-import { useCreateMercurianProject, useMercurianTree } from "../../state/mercurian";
+import {
+  useCreateMercurianProject,
+  useMarkPlanUnread,
+  useMercurianTree,
+} from "../../state/mercurian";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { resolveMercurianProjectExpanded, useUiStateStore } from "../../uiStateStore";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
@@ -44,17 +49,74 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
+  buildPlanRowContextMenuItems,
   getVisiblePlansForProject,
   groupPlansByProject,
   resolvePlanRowClassName,
+  resolvePlanRowStatus,
   resolveProjectRowClassName,
+  resolveRollupStatus,
   resolveTreeSelection,
   resolveWorkspaceRowClassName,
   sortProjectsForTree,
+  type PlanRowStatus,
   type TreeSelection,
 } from "./ProjectTreeSidebar.logic";
 import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
 import { SettingsNav } from "./SettingsNav";
+
+/**
+ * How each status reads. The urgency palette is the fork's, unchanged: amber
+ * and indigo for what wants you, sky for what is moving, emerald for what
+ * finished while you were away. Only working pulses — the dot moves when the
+ * work does.
+ */
+const PLAN_STATUS_PRESENTATION: Record<
+  PlanRowStatus,
+  { readonly label: string; readonly colorClass: string; readonly dotClass: string }
+> = {
+  "awaiting-input": {
+    label: "Awaiting your input",
+    colorClass: "text-indigo-600 dark:text-indigo-300/90",
+    dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+  },
+  working: {
+    label: "Assistant working",
+    colorClass: "text-sky-600 dark:text-sky-300/80",
+    dotClass: "bg-sky-500 dark:bg-sky-300/80 animate-status-pulse",
+  },
+  unseen: {
+    label: "Unseen updates",
+    colorClass: "text-emerald-600 dark:text-emerald-300/90",
+    dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
+  },
+};
+
+/**
+ * One status, one dot. No label on the row: a tree row's width belongs to the
+ * plan's title, and the word is a hover away.
+ */
+function PlanStatusDot({ status }: { readonly status: PlanRowStatus }) {
+  const presentation = PLAN_STATUS_PRESENTATION[status];
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={presentation.label}
+            className={cn(
+              "inline-flex size-3.5 shrink-0 items-center justify-center",
+              presentation.colorClass,
+            )}
+          />
+        }
+      >
+        <span className={cn("size-[9px] rounded-full", presentation.dotClass)} />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{presentation.label}</TooltipPopup>
+    </Tooltip>
+  );
+}
 
 const selectPlanPreviewCount = (settings: { readonly sidebarPlanPreviewCount: number }) =>
   settings.sidebarPlanPreviewCount;
@@ -146,14 +208,19 @@ function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
   );
 }
 
+interface ProjectTreePlan {
+  readonly planId: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly hasPendingInput: boolean;
+  readonly isWorking: boolean;
+  readonly visitedAt?: string | undefined;
+}
+
 interface ProjectTreeRowProps {
   readonly projectId: MercurianProjectId;
   readonly name: string;
-  readonly plans: ReadonlyArray<{
-    readonly planId: string;
-    readonly title: string;
-    readonly updatedAt: string;
-  }>;
+  readonly plans: ReadonlyArray<ProjectTreePlan>;
   readonly activePlanId: string | null;
 }
 
@@ -175,6 +242,16 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
   const isExpanded = resolveMercurianProjectExpanded(expandedById, projectId);
   const containsSelection =
     activePlanId !== null && plans.some((plan) => plan.planId === activePlanId);
+
+  /**
+   * Collapsed, a project speaks for its plans; expanded, they speak for
+   * themselves. Rolling up under an open project would say the same thing
+   * twice.
+   */
+  const rollupStatus = useMemo(
+    () => (isExpanded ? null : resolveRollupStatus(plans.map(resolvePlanRowStatus))),
+    [isExpanded, plans],
+  );
 
   const { visiblePlans, hasHiddenPlans } = useMemo(
     () =>
@@ -219,6 +296,7 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
             <ChevronRightIcon className="size-3.5 shrink-0 opacity-60" />
           )}
           <span className="truncate">{name}</span>
+          {rollupStatus === null ? null : <PlanStatusDot status={rollupStatus} />}
         </button>
         <div className="absolute end-0.5 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100 group-focus-within/project-header:opacity-100 max-sm:opacity-100">
           <Tooltip>
@@ -271,20 +349,7 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
             </SidebarMenuSubItem>
           ) : null}
           {visiblePlans.map((plan) => (
-            <SidebarMenuSubItem key={plan.planId} className="w-full">
-              <SidebarMenuSubButton
-                render={<button type="button" />}
-                className={cn(resolvePlanRowClassName({ isActive: plan.planId === activePlanId }))}
-                onClick={() => {
-                  void navigate({ to: "/plans/$planId", params: { planId: plan.planId } });
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">{plan.title}</span>
-                <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60">
-                  {formatRelativeTimeLabel(plan.updatedAt)}
-                </span>
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
+            <PlanTreeRow key={plan.planId} plan={plan} isActive={plan.planId === activePlanId} />
           ))}
           {hasHiddenPlans ? (
             <SidebarMenuSubItem className="w-full">
@@ -301,6 +366,59 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
         </SidebarMenuSub>
       ) : null}
     </SidebarMenuItem>
+  );
+});
+
+const PlanTreeRow = memo(function PlanTreeRow({
+  plan,
+  isActive,
+}: {
+  readonly plan: ProjectTreePlan;
+  readonly isActive: boolean;
+}) {
+  const navigate = useNavigate();
+  const markPlanUnread = useMarkPlanUnread();
+  const status = resolvePlanRowStatus(plan);
+
+  /**
+   * The way back to unseen. Right-click rather than a hover button: it is a
+   * rare act, and the row's width belongs to the plan's title.
+   */
+  const handleContextMenu = useCallback(
+    (event: MouseEvent) => {
+      const api = readLocalApi();
+      if (api === undefined) return;
+      event.preventDefault();
+      void (async () => {
+        const clicked = await api.contextMenu.show(buildPlanRowContextMenuItems(), {
+          x: event.clientX,
+          y: event.clientY,
+        });
+        if (clicked === "mark-unread") {
+          await markPlanUnread(PlanId.make(plan.planId));
+        }
+      })();
+    },
+    [markPlanUnread, plan.planId],
+  );
+
+  return (
+    <SidebarMenuSubItem className="w-full">
+      <SidebarMenuSubButton
+        render={<button type="button" />}
+        className={cn(resolvePlanRowClassName({ isActive }), "flex items-center gap-1.5")}
+        onClick={() => {
+          void navigate({ to: "/plans/$planId", params: { planId: plan.planId } });
+        }}
+        onContextMenu={handleContextMenu}
+      >
+        {status === null ? null : <PlanStatusDot status={status} />}
+        <span className="min-w-0 flex-1 truncate">{plan.title}</span>
+        <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60">
+          {formatRelativeTimeLabel(plan.updatedAt)}
+        </span>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
   );
 });
 

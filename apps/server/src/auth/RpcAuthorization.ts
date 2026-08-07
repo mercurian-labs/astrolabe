@@ -42,6 +42,9 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
+  // Attention is state every window reads, so recording it is a write.
+  [MERCURIAN_WS_METHODS.visitPlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.markPlanUnread]: AuthOrchestrationOperateScope,
   // The registry is the same trust domain by the same reasoning: reading what
   // code the app can reach, and changing it, are workspace orchestration.
   [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: AuthOrchestrationReadScope,
