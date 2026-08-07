@@ -93,11 +93,17 @@ export const toWirePlanTextAt = (planText: string): Contracts.PlanTextAt => ({ p
  * streams and `hasPendingInput` when it asks a structured question; M-114's
  * coding sessions contribute both from the other store, composed *here* rather
  * than by a cross-database transaction (ADR 002 §4).
+ *
+ * The lifecycle facts beside them are already real: `archivedAt` is the plan's
+ * own column, and `hasPublishedCommits` the store's per-read answer about its
+ * commits.
  */
 export const toWirePlanTreeRow = (row: PlanTreeRow): Contracts.PlanTreeRow => ({
   ...toWirePlanShell(row),
   hasPendingInput: false,
   isWorking: false,
+  archivedAt: row.archivedAt === null ? null : iso(row.archivedAt),
+  hasPublishedCommits: row.hasPublishedCommits,
   ...(row.visitedAt === undefined ? {} : { visitedAt: iso(row.visitedAt) }),
 });
 

@@ -1,17 +1,23 @@
 import { PlanId, type MercurianProjectId } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
+  ArchiveIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CircleDotIcon,
   FolderGit2Icon,
   FolderPlusIcon,
   GitBranchIcon,
+  MoreHorizontalIcon,
   SettingsIcon,
   SquarePenIcon,
+  Trash2Icon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { isElectron } from "../../env";
+import { usePlanLifecycleActions } from "../../hooks/usePlanLifecycleActions";
 import { readLocalApi } from "../../localApi";
 import { useClientSettings } from "../../hooks/useSettings";
 import { cn, randomUUID } from "../../lib/utils";
@@ -35,6 +41,7 @@ import {
 } from "../ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Input } from "../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import {
   SidebarContent,
   SidebarGroup,
@@ -49,9 +56,10 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  buildPlanRowContextMenuItems,
+  buildPlanRowMenuItems,
   getVisiblePlansForProject,
   groupPlansByProject,
+  partitionPlansByLifecycle,
   resolvePlanRowClassName,
   resolvePlanRowStatus,
   resolveProjectRowClassName,
@@ -59,6 +67,7 @@ import {
   resolveTreeSelection,
   resolveWorkspaceRowClassName,
   sortProjectsForTree,
+  type PlanRowMenuAction,
   type PlanRowStatus,
   type TreeSelection,
 } from "./ProjectTreeSidebar.logic";
@@ -118,6 +127,16 @@ function PlanStatusDot({ status }: { readonly status: PlanRowStatus }) {
   );
 }
 
+/**
+ * The popup's icons, keyed by the same ids the native menu carries. The
+ * platform menu draws its own chrome, so this is the popup's business alone.
+ */
+const PLAN_ROW_MENU_ICONS: Record<PlanRowMenuAction, ReactNode> = {
+  "mark-unread": <CircleDotIcon />,
+  archive: <ArchiveIcon />,
+  delete: <Trash2Icon />,
+};
+
 const selectPlanPreviewCount = (settings: { readonly sidebarPlanPreviewCount: number }) =>
   settings.sidebarPlanPreviewCount;
 
@@ -157,7 +176,12 @@ function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
   const { snapshot } = useMercurianTree();
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
-  const plansByProject = useMemo(() => groupPlansByProject(snapshot.plans), [snapshot.plans]);
+  // The tree is the active listing. An archived plan is not destroyed, just
+  // gone from here — Settings → Archived is where it waits.
+  const plansByProject = useMemo(
+    () => groupPlansByProject(partitionPlansByLifecycle(snapshot.plans).active),
+    [snapshot.plans],
+  );
 
   return (
     <SidebarGroup>
@@ -215,6 +239,7 @@ interface ProjectTreePlan {
   readonly hasPendingInput: boolean;
   readonly isWorking: boolean;
   readonly visitedAt?: string | undefined;
+  readonly hasPublishedCommits: boolean;
 }
 
 interface ProjectTreeRowProps {
@@ -369,6 +394,16 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
   );
 });
 
+/**
+ * One plan row, and the one menu it answers to.
+ *
+ * The verbs come from `buildPlanRowMenuItems` and are shown two ways, never
+ * two lists: the platform's own context menu where there is one, and a popup
+ * the row owns everywhere else. The web app has no context-menu primitive —
+ * `readLocalApi()` is undefined outside the desktop shell — so without the
+ * popup these acts would exist on desktop only, and archive and delete are not
+ * desktop features.
+ */
 const PlanTreeRow = memo(function PlanTreeRow({
   plan,
   isActive,
@@ -378,32 +413,48 @@ const PlanTreeRow = memo(function PlanTreeRow({
 }) {
   const navigate = useNavigate();
   const markPlanUnread = useMarkPlanUnread();
+  const { archivePlan, deletePlan } = usePlanLifecycleActions();
   const status = resolvePlanRowStatus(plan);
+  const items = useMemo(() => buildPlanRowMenuItems(plan), [plan]);
 
-  /**
-   * The way back to unseen. Right-click rather than a hover button: it is a
-   * rare act, and the row's width belongs to the plan's title.
-   */
+  const runAction = useCallback(
+    async (action: PlanRowMenuAction) => {
+      const planId = PlanId.make(plan.planId);
+      if (action === "mark-unread") {
+        await markPlanUnread(planId);
+        return;
+      }
+      if (action === "archive") {
+        await archivePlan(planId);
+        return;
+      }
+      await deletePlan(planId);
+    },
+    [archivePlan, deletePlan, markPlanUnread, plan.planId],
+  );
+
   const handleContextMenu = useCallback(
     (event: MouseEvent) => {
       const api = readLocalApi();
+      // No native menu here: the row's own popup is the way in, and letting
+      // the browser menu open is better than swallowing the gesture.
       if (api === undefined) return;
       event.preventDefault();
       void (async () => {
-        const clicked = await api.contextMenu.show(buildPlanRowContextMenuItems(), {
+        const clicked = await api.contextMenu.show(items, {
           x: event.clientX,
           y: event.clientY,
         });
-        if (clicked === "mark-unread") {
-          await markPlanUnread(PlanId.make(plan.planId));
+        if (clicked !== null) {
+          await runAction(clicked);
         }
       })();
     },
-    [markPlanUnread, plan.planId],
+    [items, runAction],
   );
 
   return (
-    <SidebarMenuSubItem className="w-full">
+    <SidebarMenuSubItem className="group/plan-row relative w-full">
       <SidebarMenuSubButton
         render={<button type="button" />}
         className={cn(resolvePlanRowClassName({ isActive }), "flex items-center gap-1.5")}
@@ -414,10 +465,41 @@ const PlanTreeRow = memo(function PlanTreeRow({
       >
         {status === null ? null : <PlanStatusDot status={status} />}
         <span className="min-w-0 flex-1 truncate">{plan.title}</span>
-        <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60">
+        {/* The timestamp yields on hover to the row's verbs, so a plan row
+            stays a title until you reach for it. */}
+        <span className="shrink-0 text-[11px] text-sidebar-muted-foreground/60 group-hover/plan-row:invisible group-focus-within/plan-row:invisible">
           {formatRelativeTimeLabel(plan.updatedAt)}
         </span>
       </SidebarMenuSubButton>
+      <Menu>
+        <MenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label={`Actions for ${plan.title}`}
+              className={cn(
+                ICON_ACTION_BUTTON_CLASS,
+                "absolute end-1.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/plan-row:opacity-100 group-focus-within/plan-row:opacity-100 data-[popup-open]:opacity-100 max-sm:opacity-100",
+              )}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MoreHorizontalIcon className="size-3.5" />
+            </button>
+          }
+        />
+        <MenuPopup align="end" side="bottom">
+          {items.map((item) => (
+            <MenuItem
+              key={item.id}
+              variant={item.destructive === true ? "destructive" : "default"}
+              onClick={() => void runAction(item.id)}
+            >
+              {PLAN_ROW_MENU_ICONS[item.id]}
+              <span>{item.label}</span>
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
     </SidebarMenuSubItem>
   );
 });

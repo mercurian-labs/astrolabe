@@ -42,6 +42,10 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
+  // A plan's disappearance, reversible or not.
+  [MERCURIAN_WS_METHODS.archivePlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.unarchivePlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.deletePlan]: AuthOrchestrationOperateScope,
   // Attention is state every window reads, so recording it is a write.
   [MERCURIAN_WS_METHODS.visitPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.markPlanUnread]: AuthOrchestrationOperateScope,

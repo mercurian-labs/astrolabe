@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  buildPlanRowContextMenuItems,
+  buildPlanRowMenuItems,
   getVisiblePlansForProject,
   groupPlansByProject,
+  partitionPlansByLifecycle,
+  resolvePlanRowActions,
   resolvePlanRowStatus,
   resolveRollupStatus,
   resolveTreeSelection,
@@ -190,8 +192,54 @@ describe("resolveRollupStatus", () => {
   });
 });
 
-describe("buildPlanRowContextMenuItems", () => {
-  it("offers the way back to unseen, and nothing else yet", () => {
-    expect(buildPlanRowContextMenuItems()).toEqual([{ id: "mark-unread", label: "Mark unread" }]);
+describe("buildPlanRowMenuItems", () => {
+  it("offers the way back to unseen beside the two ways out of the tree", () => {
+    expect(buildPlanRowMenuItems({ hasPublishedCommits: false })).toEqual([
+      { id: "mark-unread", label: "Mark unread" },
+      { id: "archive", label: "Archive" },
+      { id: "delete", label: "Delete", destructive: true },
+    ]);
+  });
+
+  it("drops delete entirely once the plan has published work", () => {
+    // Omitted rather than disabled: for a published plan delete does not
+    // exist, and a greyed-out verb would say it does.
+    expect(buildPlanRowMenuItems({ hasPublishedCommits: true })).toEqual([
+      { id: "mark-unread", label: "Mark unread" },
+      { id: "archive", label: "Archive" },
+    ]);
+  });
+});
+
+describe("partitionPlansByLifecycle", () => {
+  it("keeps archived plans out of the active listing", () => {
+    const { active, archived } = partitionPlansByLifecycle([
+      { planId: "a", archivedAt: null },
+      { planId: "b", archivedAt: "2026-08-04T00:00:00.000Z" },
+      { planId: "c", archivedAt: null },
+    ]);
+    expect(active.map((plan) => plan.planId)).toEqual(["a", "c"]);
+    expect(archived.map((plan) => plan.planId)).toEqual(["b"]);
+  });
+
+  it("keeps the order it was given, so callers stay in charge of sorting", () => {
+    const { active } = partitionPlansByLifecycle([
+      { planId: "z", archivedAt: null },
+      { planId: "a", archivedAt: null },
+    ]);
+    expect(active.map((plan) => plan.planId)).toEqual(["z", "a"]);
+  });
+});
+
+describe("resolvePlanRowActions", () => {
+  it("offers delete only while the plan is fully private", () => {
+    expect(resolvePlanRowActions({ hasPublishedCommits: false })).toEqual({
+      canArchive: true,
+      canDelete: true,
+    });
+    expect(resolvePlanRowActions({ hasPublishedCommits: true })).toEqual({
+      canArchive: true,
+      canDelete: false,
+    });
   });
 });

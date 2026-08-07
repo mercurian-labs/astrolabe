@@ -8,7 +8,7 @@ import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS, type UploadChatAttachment } from "@
 
 import { resolveAttachmentPathById } from "../../attachmentStore.ts";
 import * as ServerConfig from "../../config.ts";
-import { normalizePlanAttachments } from "./attachments.ts";
+import { normalizePlanAttachments, removePlanAttachments } from "./attachments.ts";
 
 // Real files, in a temporary state directory: where the bytes land is the
 // thing under test, so there is nothing here to fake.
@@ -117,6 +117,46 @@ layer("normalizePlanAttachments", (it) => {
         }),
       );
       assert.strictEqual(empty._tag, "PlanAttachmentError");
+    }),
+  );
+});
+
+layer("removePlanAttachments", (it) => {
+  it.effect("unlinks the files a deleted plan's messages named", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+
+      const attachments = yield* normalizePlanAttachments({
+        owner: OWNER,
+        uploads: [upload({ name: "one.png" }), upload({ name: "two.png" })],
+      });
+      const ids = attachments.map((attachment) => attachment.id);
+      const resolve = (attachmentId: string) =>
+        resolveAttachmentPathById({ attachmentsDir: config.attachmentsDir, attachmentId });
+      assert.ok(ids.every((id) => resolve(id) !== null));
+
+      yield* removePlanAttachments({ attachmentIds: ids });
+
+      // Resolution answers null once nothing with that id is on disk, which is
+      // exactly what "leaves no trace" means for the bytes.
+      assert.ok(ids.every((id) => resolve(id) === null));
+    }),
+  );
+
+  it.effect("tolerates ids whose files are already gone", () =>
+    Effect.gen(function* () {
+      const attachments = yield* normalizePlanAttachments({
+        owner: OWNER,
+        uploads: [upload({ name: "swept.png" })],
+      });
+      const id = attachments[0]!.id;
+
+      yield* removePlanAttachments({ attachmentIds: [id] });
+      // A missing file is not a failed delete: the plan is destroyed either
+      // way, so a second sweep — or a message that never carried an image —
+      // has to pass silently.
+      yield* removePlanAttachments({ attachmentIds: [id, "never-written-at-all"] });
+      yield* removePlanAttachments({ attachmentIds: [] });
     }),
   );
 });

@@ -66,8 +66,10 @@ import {
 import {
   MERCURIAN_WS_METHODS,
   MercurianAppendPlanMessageInput,
+  MercurianArchivePlanInput,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
+  MercurianDeletePlanInput,
   MercurianGetPlanTextAtInput,
   MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
@@ -76,8 +78,10 @@ import {
   MercurianSavePlanRevisionInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
-  MercurianVisitAcknowledged,
+  MercurianPlanAcknowledged,
+  MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
+  PlanDeleteBlockedError,
   PlanDetail,
   PlanMessage,
   PlanNotFoundError,
@@ -886,14 +890,40 @@ export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
 // subscription group — they are unary acts, not streams.
 export const WsMercurianVisitPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.visitPlan, {
   payload: MercurianVisitPlanInput,
-  success: MercurianVisitAcknowledged,
+  success: MercurianPlanAcknowledged,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
 export const WsMercurianMarkPlanUnreadRpc = Rpc.make(MERCURIAN_WS_METHODS.markPlanUnread, {
   payload: MercurianMarkPlanUnreadInput,
-  success: MercurianVisitAcknowledged,
+  success: MercurianPlanAcknowledged,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+// The plan lifecycle, answering the same way and for the same reason. Archive
+// is every plan's disappearance and is reversible; delete exists only while a
+// plan is fully private, and refuses once anything it holds has been published.
+export const WsMercurianArchivePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.archivePlan, {
+  payload: MercurianArchivePlanInput,
+  success: MercurianPlanAcknowledged,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianUnarchivePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.unarchivePlan, {
+  payload: MercurianUnarchivePlanInput,
+  success: MercurianPlanAcknowledged,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianDeletePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.deletePlan, {
+  payload: MercurianDeletePlanInput,
+  success: MercurianPlanAcknowledged,
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanDeleteBlockedError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
 });
 
 // The planning space's read path. Unlike the tree, a plan carries sequenced
@@ -1147,6 +1177,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSavePlanRevisionRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
+  WsMercurianArchivePlanRpc,
+  WsMercurianUnarchivePlanRpc,
+  WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
   WsMercurianSubscribeRepositoriesRpc,

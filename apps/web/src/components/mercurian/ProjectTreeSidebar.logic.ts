@@ -9,6 +9,12 @@ interface PlanRowFields {
   readonly updatedAt: string;
 }
 
+/** What a plan's lifecycle state is, as any listing of plans reads it. */
+export interface PlanLifecycleFields {
+  readonly archivedAt: string | null;
+  readonly hasPublishedCommits: boolean;
+}
+
 interface ProjectRowFields {
   readonly projectId: string;
   readonly createdAt: string;
@@ -55,6 +61,44 @@ export function sortPlansNewestFirst<T extends Pick<PlanRowFields, "updatedAt" |
     }
     return left.updatedAt < right.updatedAt ? 1 : -1;
   });
+}
+
+/**
+ * Active plans and archived ones, split the one way every surface needs them.
+ *
+ * The tree, the palette's recents, and any later listing all render `active`;
+ * the Archived page in Settings renders `archived`. Keeping the split here
+ * rather than in each caller is what makes "archiving removes the plan from
+ * every listing" hold for listings that do not exist yet.
+ */
+export function partitionPlansByLifecycle<T extends Pick<PlanLifecycleFields, "archivedAt">>(
+  plans: readonly T[],
+): { readonly active: T[]; readonly archived: T[] } {
+  const active: T[] = [];
+  const archived: T[] = [];
+  for (const plan of plans) {
+    if (plan.archivedAt === null) {
+      active.push(plan);
+    } else {
+      archived.push(plan);
+    }
+  }
+  return { active, archived };
+}
+
+/**
+ * Which verbs a plan row offers.
+ *
+ * Archive is always one of them — it is every plan's disappearance, and the
+ * only one a published plan has. Delete exists only while the plan is fully
+ * private: before anything crossed into shared history the work was the
+ * author's alone to destroy, and after it, it is not only theirs.
+ */
+export function resolvePlanRowActions(plan: Pick<PlanLifecycleFields, "hasPublishedCommits">): {
+  readonly canArchive: boolean;
+  readonly canDelete: boolean;
+} {
+  return { canArchive: true, canDelete: !plan.hasPublishedCommits };
 }
 
 export function groupPlansByProject<T extends PlanRowFields>(
@@ -222,13 +266,38 @@ export function resolveRollupStatus(
   return mostUrgent;
 }
 
+export type PlanRowMenuAction = "mark-unread" | "archive" | "delete";
+
 /**
- * A plan row's context menu. Mark unread only: renaming, archiving and deleting
- * a plan are their own feature, and an item that does nothing is worse than an
- * item that is not there.
+ * Everything a plan row can be told to do, in one list.
+ *
+ * Two surfaces render it — the native context menu on desktop, and the row's
+ * own popup everywhere — and they must not drift, so neither builds its own.
+ * Renaming is still absent for the reason the mark-unread menu gave for
+ * archive and delete: an item that does nothing is worse than an item that is
+ * not there.
+ *
+ * Delete is omitted rather than disabled once a plan has published work. The
+ * rule is that delete does not exist for such a plan, and a greyed-out verb
+ * says the opposite — that it exists and you are not allowed it.
  */
-export function buildPlanRowContextMenuItems(): readonly ContextMenuItem<"mark-unread">[] {
-  return [{ id: "mark-unread", label: "Mark unread" }];
+export function buildPlanRowMenuItems(
+  plan: Pick<PlanLifecycleFields, "hasPublishedCommits">,
+): readonly ContextMenuItem<PlanRowMenuAction>[] {
+  const { canDelete } = resolvePlanRowActions(plan);
+  return [
+    { id: "mark-unread", label: "Mark unread" },
+    { id: "archive", label: "Archive" },
+    ...(canDelete
+      ? [
+          {
+            id: "delete",
+            label: "Delete",
+            destructive: true,
+          } as const satisfies ContextMenuItem<PlanRowMenuAction>,
+        ]
+      : []),
+  ];
 }
 
 export function sortProjectsForTree<T extends ProjectRowFields>(projects: readonly T[]): T[] {
