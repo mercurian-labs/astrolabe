@@ -65,7 +65,7 @@ export function ConnectTrackerDialog({
       onOpenChange(false);
       return;
     }
-    setError(presentConnectFailure(outcome.failure as { readonly _tag?: string }, kind));
+    setError(presentConnectFailure(outcome.error as { readonly _tag?: string }, kind));
   }, [connectTracker, isConnecting, kind, onOpenChange, trimmedToken]);
 
   return (

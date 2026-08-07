@@ -11,14 +11,14 @@ const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 const toNames = (columns: ReadonlyArray<{ readonly name: string }>) =>
   new Set(columns.map((column) => column.name));
 
-layer("003_TrackerConnections", (it) => {
+layer("005_TrackerConnections", (it) => {
   // Asserted as an *exact* set, not a subset: what this table must not grow is
   // the point of it. A token column, a standing column, or anything
   // issue-shaped fails here before it can reach a review.
   it.effect("creates tracker_connections with exactly its five columns", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 5 });
 
       const columns = toNames(
         yield* sql<{ readonly name: string }>`PRAGMA table_info(tracker_connections)`,
@@ -36,7 +36,7 @@ layer("003_TrackerConnections", (it) => {
   it.effect("keeps issues and credentials out of the schema entirely", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 5 });
 
       const tables = yield* sql<{
         readonly name: string;
@@ -53,7 +53,7 @@ layer("003_TrackerConnections", (it) => {
   it.effect("allows two connections of the same kind", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 3 });
+      yield* runMigrations({ toMigrationInclusive: 5 });
 
       const insert = (connectionId: string, label: string) => sql`
         INSERT INTO tracker_connections (connection_id, kind, label, created_at, updated_at)

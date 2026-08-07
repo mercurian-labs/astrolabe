@@ -15,8 +15,8 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
-import { useEnvironmentBoundCommand } from "./environmentBoundCommand";
 import { usePrimaryEnvironmentId } from "./environments";
+import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 

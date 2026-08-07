@@ -14,6 +14,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Planning history](#planning-history)
 - [Projects and plans](#projects-and-plans)
 - [Trackers](#trackers)
+- [Workspace settings](#workspace-settings)
 
 ## Concepts
 
@@ -23,7 +24,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 
 The top-level workspace record in the app. In [the orchestration contracts][1], a project has a `workspaceRoot` and a title. It does not contain threads: `OrchestrationProject` and `OrchestrationThread` are separate arrays on the read model, and a project can have zero threads. See [workspace-layout.md][2].
 
-Not to be confused with a **Mercurian project**, which contains plans and has no path on disk. Everything on Mercurian's side of that seam is `Mercurian`-prefixed on the wire — see [Projects and plans](#projects-and-plans).
+Not to be confused with a **Mercurian project**, which contains plans and has no path on disk, or a **[Mercurian repository](#mercurian-repository)**, which is a registered codebase. Everything on Mercurian's side of that seam is `Mercurian`-prefixed on the wire — see [Projects and plans](#projects-and-plans).
 
 #### Workspace root
 
@@ -167,7 +168,19 @@ Mercurian's planning layer, stored beside the commit graph in [PlanningStore.ts]
 
 #### Mercurian project
 
-A container of plans, and the context its plans ground in. It has a name and nothing else today: the set of repositories a project scopes is a default rather than a boundary, and the table that holds it arrives with the feature that manages it. Distinct from a t3code [Project](#project), which is a workspace root on disk.
+A container of plans, and the context its plans ground in. It has a name and a set of [Mercurian repositories](#mercurian-repository) — a default rather than a boundary, held in `project_repositories` and never a stamp: nothing is filed under a repository, and no table could file it. Distinct from a t3code [Project](#project), which is a workspace root on disk.
+
+#### Mercurian repository
+
+A registered codebase — the third thing this vocabulary calls a repository, beside t3code's `RepositoryIdentity` (a git-remote-derived fact about a workspace) and `SourceControlRepositoryInfo` (a provider's view of a remote). It has a name, a resolved path unique across the registry, and the scripts declared on it, in [RepositoryStore.ts][28] and crossing the wire through [mercurianRepositories.ts][29].
+
+Two things it does _not_ store, each on purpose. Its **git-ness** is probed live (`git rev-parse --show-toplevel`, short-TTL cached): a plain directory registers fine because grounding reads files either way, and the working-tree features light up on their own once the directory becomes a repository. Its **environment** is a fact about which server answered, not a column — the registry lives in one `mercurian.sqlite`, and environments stay plumbing.
+
+Removal disconnects: the row, its scripts, and its project memberships go, while the files and every grounding reference already written into a plan's history stay — those are content, not foreign keys. It is refused with `RepositoryHasLiveWorktreesError` when `git worktree list` names a linked worktree under `ServerConfig.worktreesDir`, and there is no force flag. When coding sessions land store-side worktree state, that check gains a second source behind the same refusal.
+
+#### Repository script
+
+A name and a command declared on a Mercurian repository, optionally carrying a preview address or flagged as setup. App-owned and per-machine: the declarations live in `mercurian.sqlite`, so nothing is ever written into the repository and there is no file format to design. The whole list is replaced on save and ids are minted server-side from names; a script that carries an existing id keeps it, which is what makes an edit an edit. Execution is the coding-session surface's.
 
 #### Plan
 
@@ -197,7 +210,7 @@ A direct edit of the plan, recorded as a `plan-revision` commit in the plan's on
 
 ### Trackers
 
-Mercurian's seam to external issue trackers, held in [TrackerStore.ts][28] and crossing the wire through [mercurianTrackers.ts][29]. Mercurian is where issues get planned, never a mirror of the tracker.
+Mercurian's seam to external issue trackers, held in [TrackerStore.ts][32] and crossing the wire through [mercurianTrackers.ts][33]. Mercurian is where issues get planned, never a mirror of the tracker.
 
 #### Tracker
 
@@ -214,6 +227,18 @@ The per-tracker adapter, `TrackerConnector`: a `probe` that validates a credenti
 #### Minimal common shape
 
 `TrackerIssue`: exactly `id`, `title`, `description`, `url`, `status`, all strings. Every connected tracker, whatever its API, produces this and nothing else. Labels, assignees, sprints and priorities have no field to land in — they stay in the tracker, one click away through `url`, which is the tracker's own canonical link. `id` is the tracker's human-facing key (`M-98`), and `status` is the tracker's own status word left uninterpreted; normalizing status vocabularies across trackers would be rebuilding tracker semantics. The narrowness enforces _don't rebuild the tracker_ structurally rather than by discipline, so adding a field here is a design decision about what Mercurian is, not a refactor. Issues are read live through `mercurian.listTrackerIssues` and never stored: import is selection, not synchronization, so no issue table exists for a stale copy to live in.
+
+### Workspace settings
+
+Settings that belong to the Mercurian workspace rather than to the machine reading it. They live in `mercurian.sqlite`'s `workspace_settings` key-value table behind [WorkspaceSettingsStore.ts][30] and cross the wire through [mercurianWorkspace.ts][31] — deliberately not in `settings.json`, which is machine state (binary paths, the provider-instance map, the machine's own model selections).
+
+#### Planning model
+
+The model the planning assistant runs under, named for the whole workspace as a **provider and a model** — never a [provider instance](#provider). The type has no field an instance id could occupy, which is what makes the rule structural: an instance is a connected account on one machine (signing in belongs to the provider's agent there, never to Mercurian), and a shared workspace naming one would resolve to nothing everywhere else.
+
+#### Planning-model resolution
+
+The mapping from the abstract pair to an instance, computed per machine by `resolvePlanningModel` and never stored — it is a fact about a machine at a moment. Candidates are that driver's snapshots which are available, enabled, and installed; among those offering the model the provider's default instance wins, otherwise the first in settings order. No candidate resolves `no-instance`; candidates without the model resolve `model-unavailable`, which is also how capability gating surfaces, since a model the installed agent is too old to run is already absent from the snapshot. Curation is deliberately not consulted: hiding a model is one client's picker preference, and the workspace setting has to keep resolving on a machine whose user hid it. An unresolved setting is shown as unresolved and left saved — the machine never rewrites what the workspace chose.
 
 ## Practical Shortcuts
 
@@ -257,5 +282,9 @@ The per-tracker adapter, `TrackerConnector`: a `probe` that validates a credenti
 [25]: ../../apps/server/src/mercurian/commitTree/CommitStore.ts
 [26]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
 [27]: ../../packages/contracts/src/mercurian.ts
-[28]: ../../apps/server/src/mercurian/trackers/TrackerStore.ts
-[29]: ../../packages/contracts/src/mercurianTrackers.ts
+[28]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
+[29]: ../../packages/contracts/src/mercurianRepositories.ts
+[30]: ../../apps/server/src/mercurian/workspace/WorkspaceSettingsStore.ts
+[31]: ../../packages/contracts/src/mercurianWorkspace.ts
+[32]: ../../apps/server/src/mercurian/trackers/TrackerStore.ts
+[33]: ../../packages/contracts/src/mercurianTrackers.ts

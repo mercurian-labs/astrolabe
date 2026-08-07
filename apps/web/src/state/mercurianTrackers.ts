@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianTrackerAtoms } from "@t3tools/client-runtime/state/mercurian-trackers";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   MercurianConnectTrackerInput,
   TrackerConnection,
@@ -13,9 +12,11 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
-import { useEnvironmentBoundCommand } from "./environmentBoundCommand";
 import { usePrimaryEnvironmentId } from "./environments";
-import { useAtomCommand } from "./use-atom-command";
+import {
+  useEnvironmentBoundCommand,
+  useEnvironmentBoundCommandResult,
+} from "./useEnvironmentBoundCommand";
 
 export const mercurianTrackers = createMercurianTrackerAtoms(connectionAtomRuntime);
 
@@ -60,34 +61,18 @@ export function useTrackers(): TrackersState {
   };
 }
 
-export type ConnectTrackerOutcome =
-  | { readonly ok: true; readonly connection: TrackerConnection }
-  /** The refusal itself, so the dialog can say which of the two it was. */
-  | { readonly ok: false; readonly failure: unknown };
-
 /**
  * Connect a tracker. The credential crosses once, on this call, and nothing
  * comes back carrying it — the answer is the connection's label and standing.
  *
- * Unlike the other commands this one hands back its refusal rather than a bare
- * `null`: a rejected key and an unreachable tracker are different sentences in
- * the dialog, and only one of them is the person's to fix.
+ * Bound through {@link useEnvironmentBoundCommandResult} rather than the plain
+ * bind: a rejected key and an unreachable tracker are different sentences in
+ * the dialog, and only one of them is the person's to fix. That bind also
+ * silences the toast, so a refusal the dialog renders is not also announced.
  */
 export function useConnectTracker() {
-  const environmentId = usePrimaryEnvironmentId();
-  const run = useAtomCommand(mercurianTrackers.connectTracker);
-  return useCallback(
-    async (input: MercurianConnectTrackerInput): Promise<ConnectTrackerOutcome> => {
-      if (environmentId === null) {
-        return { ok: false, failure: null };
-      }
-      const result = await run({ environmentId, input });
-      return result._tag === "Success"
-        ? { ok: true, connection: result.value }
-        : { ok: false, failure: squashAtomCommandFailure(result) };
-    },
-    [environmentId, run],
-  );
+  const run = useEnvironmentBoundCommandResult(mercurianTrackers.connectTracker);
+  return useCallback((input: MercurianConnectTrackerInput) => run(input), [run]);
 }
 
 /**

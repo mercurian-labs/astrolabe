@@ -17,7 +17,7 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { ConnectTrackerDialog } from "./ConnectTrackerDialog";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { SettingsPageContainer, SettingsRow, SettingsSection } from "../settings/settingsLayout";
 
 import { presentConnection, trackerName } from "./TrackersSettings.logic";
 
