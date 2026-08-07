@@ -32,9 +32,23 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   MERCURIAN_WS_METHODS,
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianPlanningError,
+  MercurianRepositoryError,
+  MercurianTrackerError,
+  MercurianWorkspaceError,
   isMercurianProjectNotFoundError,
+  isMercurianRepositoryNotFoundError,
+  isPlanDeleteBlockedError,
+  isRepositoryAlreadyRegisteredError,
+  isRepositoryHasLiveWorktreesError,
+  isRepositoryPathInvalidError,
   isPlanNotFoundError,
+  isTrackerAuthError,
+  isTrackerConnectionNotFoundError,
+  isTrackerUnreachableError,
   type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -79,7 +93,10 @@ import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
-import { normalizePlanAttachments } from "./mercurian/planning/attachments.ts";
+import {
+  normalizePlanAttachments,
+  removePlanAttachments,
+} from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import {
   toWirePlanCommitEvent,
@@ -90,6 +107,11 @@ import {
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
+import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
+import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
+import { toWireConnection, toWireTrackersSnapshot } from "./mercurian/trackers/wire.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -379,6 +401,9 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const repositoryStore = yield* RepositoryStore.RepositoryStore;
+      const trackerStore = yield* TrackerStore.TrackerStore;
+      const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -1051,6 +1076,36 @@ const makeWsRpcLayer = (
         ),
       );
 
+      const loadTrackersSnapshot = trackerStore.getSnapshot.pipe(
+        Effect.map(toWireTrackersSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian trackers snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianTrackerError({ operation: "subscribeTrackers", cause }),
+        ),
+      );
+
+      const loadRepositoriesSnapshot = repositoryStore.getSnapshot.pipe(
+        Effect.map(toWireRepositoriesSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian repositories snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianRepositoryError({ operation: "subscribeRepositories", cause }),
+        ),
+      );
+
+      const loadWorkspaceSettingsSnapshot = workspaceSettingsStore.getSnapshot.pipe(
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian workspace settings snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) =>
+            new MercurianWorkspaceError({ operation: "subscribeWorkspaceSettings", cause }),
+        ),
+      );
+
       return WsRpcGroup.of({
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
@@ -1534,6 +1589,83 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.visitPlan,
+            DateTime.now.pipe(
+              // The act names the plan; the moment is ours. A client clock
+              // could otherwise put a visit in the future and silence a row.
+              Effect.flatMap((visitedAt) =>
+                planningStore.recordPlanVisit({ planId: input.planId, visitedAt }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "visitPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.markPlanUnread]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.markPlanUnread,
+            planningStore.markPlanUnread({ planId: input.planId }).pipe(
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "markPlanUnread", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.archivePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.archivePlan,
+            DateTime.now.pipe(
+              // The stamp is the server's for the same reason a visit's is.
+              Effect.flatMap((archivedAt) =>
+                planningStore.archivePlan({ planId: input.planId, archivedAt }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "archivePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.unarchivePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.unarchivePlan,
+            planningStore.unarchivePlan({ planId: input.planId }).pipe(
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "unarchivePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.deletePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.deletePlan,
+            planningStore.deletePlan({ planId: input.planId }).pipe(
+              // Bytes go after the rows that named them, never before: a
+              // refused delete must leave the plan's images where they are.
+              Effect.tap((deletion) => removePlanAttachments(deletion)),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) || isPlanDeleteBlockedError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "deletePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.getPlanTextAt]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.getPlanTextAt,
@@ -1634,6 +1766,225 @@ const makeWsRpcLayer = (
                 liveStream,
               );
             }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // mutation landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                repositoryStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadRepositoriesSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value, so a burst of mutations is worth exactly
+                  // one re-send: the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadRepositoriesSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.addRepository,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                repositoryStore.addRepository({
+                  path: input.path,
+                  ...(input.name === undefined ? {} : { name: input.name }),
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWireRepository),
+              Effect.mapError((cause) =>
+                isRepositoryPathInvalidError(cause) || isRepositoryAlreadyRegisteredError(cause)
+                  ? cause
+                  : new MercurianRepositoryError({ operation: "addRepository", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.removeRepository,
+            repositoryStore
+              .removeRepository({ repositoryId: input.repositoryId })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isMercurianRepositoryNotFoundError(cause) ||
+                  isRepositoryHasLiveWorktreesError(cause)
+                    ? cause
+                    : new MercurianRepositoryError({ operation: "removeRepository", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts,
+            DateTime.now.pipe(
+              Effect.flatMap((updatedAt) =>
+                repositoryStore.saveScripts({
+                  repositoryId: input.repositoryId,
+                  scripts: input.scripts,
+                  updatedAt,
+                }),
+              ),
+              Effect.map(toWireRepository),
+              Effect.mapError((cause) =>
+                isMercurianRepositoryNotFoundError(cause)
+                  ? cause
+                  : new MercurianRepositoryError({ operation: "saveRepositoryScripts", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories,
+            DateTime.now.pipe(
+              Effect.flatMap((addedAt) =>
+                repositoryStore.setProjectRepositories({
+                  projectId: input.projectId,
+                  repositoryIds: input.repositoryIds,
+                  addedAt,
+                }),
+              ),
+              Effect.mapError((cause) =>
+                isMercurianProjectNotFoundError(cause) || isMercurianRepositoryNotFoundError(cause)
+                  ? cause
+                  : new MercurianRepositoryError({ operation: "setProjectRepositories", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // write landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                workspaceSettingsStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadWorkspaceSettingsSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value: a burst of writes is worth exactly one
+                  // re-send, the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadWorkspaceSettingsSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
+            workspaceSettingsStore
+              .setPlanningModel(input.planningModel)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new MercurianWorkspaceError({ operation: "setPlanningModel", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // connect landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                trackerStore.changes.pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadTrackersSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value, so a burst of mutations is worth exactly
+                  // one re-send: the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadTrackersSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.connectTracker,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                trackerStore.connect({ kind: input.kind, token: input.token, createdAt }),
+              ),
+              Effect.map(toWireConnection),
+              // The two refusals travel because the dialog says something
+              // different for each. Nothing else about the attempt does — in
+              // particular the payload, which held the credential, is never
+              // echoed into a cause.
+              Effect.mapError((cause) =>
+                isTrackerAuthError(cause) || isTrackerUnreachableError(cause)
+                  ? cause
+                  : new MercurianTrackerError({ operation: "connectTracker" }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.disconnectTracker,
+            trackerStore
+              .disconnect({ connectionId: input.connectionId })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isTrackerConnectionNotFoundError(cause)
+                    ? cause
+                    : new MercurianTrackerError({ operation: "disconnectTracker", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues,
+            trackerStore
+              .listIssues({
+                connectionId: input.connectionId,
+                ...(input.search === undefined ? {} : { search: input.search }),
+                ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+              })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isTrackerConnectionNotFoundError(cause) ||
+                  isTrackerAuthError(cause) ||
+                  isTrackerUnreachableError(cause)
+                    ? cause
+                    : new MercurianTrackerError({ operation: "listTrackerIssues", cause }),
+                ),
+              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>

@@ -28,6 +28,10 @@ export type MercurianProject = typeof MercurianProject.Type;
 /**
  * A plan: the unit of work, and the owner of exactly one planning space. The
  * history it names is the space — `history_id` is unique across plans.
+ *
+ * `archivedAt` is the whole of the plan's lifecycle state: null while the plan
+ * is in the tree, stamped once it has left it. Deletion stores nothing, having
+ * nothing left to store it on.
  */
 export const Plan = Schema.Struct({
   planId: PlanId,
@@ -36,5 +40,6 @@ export const Plan = Schema.Struct({
   title: TrimmedNonEmptyString,
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString,
+  archivedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
 });
 export type Plan = typeof Plan.Type;

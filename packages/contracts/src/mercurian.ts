@@ -34,6 +34,11 @@ export const MERCURIAN_WS_METHODS = {
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
   getPlanTextAt: "mercurian.getPlanTextAt",
+  visitPlan: "mercurian.visitPlan",
+  markPlanUnread: "mercurian.markPlanUnread",
+  archivePlan: "mercurian.archivePlan",
+  unarchivePlan: "mercurian.unarchivePlan",
+  deletePlan: "mercurian.deletePlan",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -61,7 +66,7 @@ export const MercurianProject = Schema.Struct({
 });
 export type MercurianProject = typeof MercurianProject.Type;
 
-/** What a plan looks like as a tree row: enough to render, nothing more. */
+/** What a plan is, at the size a surface needs to name it. */
 export const PlanShell = Schema.Struct({
   planId: PlanId,
   projectId: MercurianProjectId,
@@ -70,6 +75,47 @@ export const PlanShell = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 export type PlanShell = typeof PlanShell.Type;
+
+/**
+ * What a plan looks like as a tree row: the shell, plus the three facts a
+ * status is ranked from and the two its lifecycle is decided by.
+ *
+ * The split from {@link PlanShell} is deliberate. Status is the tree's
+ * business — the planning space renders none of it — so a `PlanDetail` never
+ * carries visit state it has no use for. Lifecycle is here for the same
+ * reason: the surfaces that offer archive and delete are the tree and the
+ * Archived page, and both read this snapshot.
+ *
+ * Every input here is a server-side fact and the client only ranks them
+ * (ADR 002 §4). "Unseen updates" is deliberately *not* a field: it is
+ * `updatedAt` against `visitedAt`, which is ranking rather than originating,
+ * and the palette needs both raw timestamps anyway for its own ordering.
+ */
+export const PlanTreeRow = Schema.Struct({
+  ...PlanShell.fields,
+  /**
+   * Something in this plan is waiting on a person: a structured question, or a
+   * coding session's approval request rolled up from below.
+   */
+  hasPendingInput: Schema.Boolean,
+  /** A reply is streaming in this plan right now. */
+  isWorking: Schema.Boolean,
+  /** When you last opened it. Absent means never — which reads as unseen. */
+  visitedAt: Schema.optional(IsoDateTime),
+  /**
+   * Null while the plan is in the tree, stamped once it has left it. Archived
+   * plans ride this snapshot rather than a second read, so the Archived page in
+   * Settings is live in every window with no refresh.
+   */
+  archivedAt: Schema.NullOr(IsoDateTime),
+  /**
+   * The lifecycle rule made renderable: delete exists only while a plan is
+   * fully private, so a `true` here is what takes the verb off every surface.
+   * Derived per read from the plan's commits, never stored.
+   */
+  hasPublishedCommits: Schema.Boolean,
+});
+export type PlanTreeRow = typeof PlanTreeRow.Type;
 
 /**
  * The commit facts every timeline item carries, whatever kind it is: where it
@@ -161,7 +207,7 @@ export type PlanStreamItem = typeof PlanStreamItem.Type;
  */
 export const PlanningTreeSnapshot = Schema.Struct({
   projects: Schema.Array(MercurianProject),
-  plans: Schema.Array(PlanShell),
+  plans: Schema.Array(PlanTreeRow),
 });
 export type PlanningTreeSnapshot = typeof PlanningTreeSnapshot.Type;
 
@@ -243,6 +289,47 @@ export type MercurianGetPlanTextAtInput = typeof MercurianGetPlanTextAtInput.Typ
 export const PlanTextAt = Schema.Struct({ planText: Schema.String });
 export type PlanTextAt = typeof PlanTextAt.Type;
 
+/**
+ * You opened this plan. The moment is the server's to mint — the act names the
+ * plan and nothing else, so no client's clock can put a visit in the future and
+ * silence a row forever.
+ */
+export const MercurianVisitPlanInput = Schema.Struct({ planId: PlanId });
+export type MercurianVisitPlanInput = typeof MercurianVisitPlanInput.Type;
+
+/** Put a plan back in front of you. Re-arms unseen in every open window. */
+export const MercurianMarkPlanUnreadInput = Schema.Struct({ planId: PlanId });
+export type MercurianMarkPlanUnreadInput = typeof MercurianMarkPlanUnreadInput.Type;
+
+/**
+ * The reversible disappearance, and its way back. Archive is every plan's —
+ * published or not — and destroys nothing: the plan leaves the tree, the
+ * listings, and the palette, and the Archived page in Settings restores it.
+ */
+export const MercurianArchivePlanInput = Schema.Struct({ planId: PlanId });
+export type MercurianArchivePlanInput = typeof MercurianArchivePlanInput.Type;
+
+export const MercurianUnarchivePlanInput = Schema.Struct({ planId: PlanId });
+export type MercurianUnarchivePlanInput = typeof MercurianUnarchivePlanInput.Type;
+
+/**
+ * The irreversible one, and the only one with a precondition. A plan that has
+ * never published a commit was never seen by anyone else, so destroying it
+ * leaves no trace and re-importing its origin issue starts fresh. Once
+ * anything is published this refuses with {@link PlanDeleteBlockedError}.
+ */
+export const MercurianDeletePlanInput = Schema.Struct({ planId: PlanId });
+export type MercurianDeletePlanInput = typeof MercurianDeletePlanInput.Type;
+
+/**
+ * What every act on a tree row answers: nothing to render. Visiting, marking
+ * unread, archiving, restoring and deleting all change state the tree
+ * subscription re-sends, which is the one place row state is read from — so
+ * there is one acknowledgement, not one per verb.
+ */
+export const MercurianPlanAcknowledged = Schema.Struct({});
+export type MercurianPlanAcknowledged = typeof MercurianPlanAcknowledged.Type;
+
 export const MercurianSubscribePlanInput = Schema.Struct({
   planId: PlanId,
   /** A cursor to resume from. Absent — or too far behind — means a fresh snapshot. */
@@ -272,8 +359,27 @@ export class PlanNotFoundError extends Schema.TaggedErrorClass<PlanNotFoundError
   }
 }
 
+/**
+ * The lifecycle rule as a refusal: publish is the one deliberate crossing into
+ * shared history, and after it the work is not only yours to destroy. Archive
+ * is what remains, and it destroys nothing.
+ *
+ * A surface should never render this — it hides delete for a published plan
+ * rather than offering it to fail. Reaching here means the plan crossed while
+ * the menu was open, which is exactly the race the server exists to lose well.
+ */
+export class PlanDeleteBlockedError extends Schema.TaggedErrorClass<PlanDeleteBlockedError>()(
+  "PlanDeleteBlockedError",
+  { planId: PlanId },
+) {
+  override get message(): string {
+    return "This plan has published work and can only be archived, not deleted.";
+  }
+}
+
 export const isMercurianProjectNotFoundError = Schema.is(MercurianProjectNotFoundError);
 export const isPlanNotFoundError = Schema.is(PlanNotFoundError);
+export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 
 /**
  * Everything below the planning surface that a client cannot act on: storage
@@ -291,6 +397,11 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "appendPlanMessage",
       "savePlanRevision",
       "getPlanTextAt",
+      "visitPlan",
+      "markPlanUnread",
+      "archivePlan",
+      "unarchivePlan",
+      "deletePlan",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

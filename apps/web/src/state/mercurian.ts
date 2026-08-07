@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
-  EnvironmentId,
   MercurianAppendPlanMessageInput,
   MercurianCommitId,
   MercurianCreatePlanInput,
@@ -17,7 +16,7 @@ import { useCallback } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { usePrimaryEnvironmentId } from "./environments";
-import { useAtomCommand } from "./use-atom-command";
+import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 
@@ -93,26 +92,6 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   };
 }
 
-function useEnvironmentBoundCommand<Input, Output>(
-  command: Parameters<
-    typeof useAtomCommand<Output, unknown, { environmentId: EnvironmentId; input: Input }>
-  >[0],
-) {
-  const environmentId = usePrimaryEnvironmentId();
-  const run = useAtomCommand(command);
-  return useCallback(
-    (input: Input) => {
-      if (environmentId === null) {
-        return Promise.resolve(null);
-      }
-      return run({ environmentId, input }).then((result) =>
-        result._tag === "Success" ? result.value : null,
-      );
-    },
-    [environmentId, run],
-  );
-}
-
 export function useCreateMercurianProject() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.createProject);
   return useCallback((name: string) => run({ name }), [run]);
@@ -146,6 +125,25 @@ export function useAppendPlanMessage() {
 export function useSavePlanRevision() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.savePlanRevision);
   return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
+}
+
+/**
+ * Record that you are looking at a plan. Unguarded on purpose: the server
+ * writes only when the visit changes seen-ness, so a redundant call costs
+ * nothing — no write, and no re-emit of the tree.
+ */
+export function useVisitPlan() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.visitPlan);
+  return useCallback((planId: PlanId) => run({ planId }), [run]);
+}
+
+/**
+ * Put a plan back in front of you. Server-side state, so it re-arms in every
+ * window at once rather than in the one you clicked in.
+ */
+export function useMarkPlanUnread() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.markPlanUnread);
+  return useCallback((planId: PlanId) => run({ planId }), [run]);
 }
 
 /**
