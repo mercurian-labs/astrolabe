@@ -22,6 +22,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { runMigrations } from "./Migrations.ts";
+import { guardFromEnvironment } from "./UpdateTrialBackup.ts";
 import { ServerConfig } from "../../config.ts";
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 
@@ -80,12 +81,21 @@ export const make = Effect.fn("mercurian.makeSqlitePersistenceLive")(function* (
  * The Mercurian store at `<stateDir>/mercurian.sqlite`. The path is derived
  * here rather than in `ServerConfig` — it is Mercurian-owned, so it lives in
  * the Mercurian module.
+ *
+ * The launcher's protocol-2 snapshot covers `state.sqlite` only, so this
+ * layer guards its own file across self-update trials before opening it
+ * (`UpdateTrialBackup.ts`): migrations still run unconditionally — a
+ * committed trial is promoted in place and must be fully migrated — but a
+ * rolled-back trial no longer leaves the previous server a forward-migrated
+ * database.
  */
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const { stateDir } = yield* ServerConfig;
     const { join } = yield* Path.Path;
-    return make(join(stateDir, MERCURIAN_DB_FILENAME));
+    const dbPath = join(stateDir, MERCURIAN_DB_FILENAME);
+    yield* guardFromEnvironment(dbPath);
+    return make(dbPath);
   }),
 );
 
