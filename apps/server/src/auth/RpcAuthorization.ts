@@ -7,6 +7,7 @@ import {
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
   MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
@@ -48,6 +49,13 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  // Tracker connections likewise: connecting and disconnecting are operations;
+  // seeing where a connection stands, and reading the issues it reaches, are
+  // reads.
+  [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: AuthOrchestrationReadScope,
+  [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: AuthOrchestrationReadScope,
+  [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: AuthOrchestrationOperateScope,
+  [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: AuthOrchestrationOperateScope,
   // Workspace settings likewise: the planning model is workspace configuration,
   // and it names no instance, so it carries no machine-scoped authority.
   [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: AuthOrchestrationReadScope,

@@ -27,6 +27,8 @@ import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -257,6 +259,16 @@ const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   // Mercurian service that needs a process runner.
   Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(ProcessRunner.layer))),
   Layer.provideMerge(WorkspaceSettingsStore.layer),
+  // Tracker connections share the database and nothing else — they know
+  // nothing about plans, by design. The connector registry rides along because
+  // it is the only thing here that reaches outside this process, and the secret
+  // store because a credential is a file rather than a row.
+  Layer.provideMerge(
+    TrackerStore.layer.pipe(
+      Layer.provide(TrackerConnectorRegistry.layer),
+      Layer.provide(ServerSecretStore.layer),
+    ),
+  ),
   Layer.provideMerge(CommitStore.layer),
   Layer.provide(MercurianSqlite.layer),
 );

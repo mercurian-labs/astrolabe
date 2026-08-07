@@ -99,6 +99,20 @@ import {
   RepositoryPathInvalidError,
 } from "./mercurianRepositories.ts";
 import {
+  MERCURIAN_TRACKER_WS_METHODS,
+  MercurianConnectTrackerInput,
+  MercurianDisconnectTrackerInput,
+  MercurianListTrackerIssuesInput,
+  MercurianSubscribeTrackersInput,
+  MercurianTrackerError,
+  TrackerAuthError,
+  TrackerConnection,
+  TrackerConnectionNotFoundError,
+  TrackerIssuePage,
+  TrackersStreamItem,
+  TrackerUnreachableError,
+} from "./mercurianTrackers.ts";
+import {
   MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianSetPlanningModelInput,
   MercurianSubscribeWorkspaceSettingsInput,
@@ -969,6 +983,64 @@ export const WsMercurianSetPlanningModelRpc = Rpc.make(
   },
 );
 
+// Mercurian trackers. Four methods and not one of them writes tracker-ward:
+// connections are pull-only by construction, so "no operation anywhere writes
+// to the tracker" is a property of this list rather than a rule to remember.
+export const WsMercurianSubscribeTrackersRpc = Rpc.make(
+  MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers,
+  {
+    payload: MercurianSubscribeTrackersInput,
+    success: TrackersStreamItem,
+    error: Schema.Union([MercurianTrackerError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+// The credential's one crossing, client→server. The answer is the connection —
+// label and standing — and never the token: there is nothing to redact because
+// nothing comes back.
+export const WsMercurianConnectTrackerRpc = Rpc.make(MERCURIAN_TRACKER_WS_METHODS.connectTracker, {
+  payload: MercurianConnectTrackerInput,
+  success: TrackerConnection,
+  error: Schema.Union([
+    TrackerAuthError,
+    TrackerUnreachableError,
+    MercurianTrackerError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianDisconnectTrackerRpc = Rpc.make(
+  MERCURIAN_TRACKER_WS_METHODS.disconnectTracker,
+  {
+    payload: MercurianDisconnectTrackerInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      TrackerConnectionNotFoundError,
+      MercurianTrackerError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+// Fetched live, never stored — no issue row exists anywhere in Mercurian's
+// schema, which is what "import is selection, not synchronization" is at this
+// layer. The page carries the minimal common shape and nothing else.
+export const WsMercurianListTrackerIssuesRpc = Rpc.make(
+  MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues,
+  {
+    payload: MercurianListTrackerIssuesInput,
+    success: TrackerIssuePage,
+    error: Schema.Union([
+      TrackerConnectionNotFoundError,
+      TrackerAuthError,
+      TrackerUnreachableError,
+      MercurianTrackerError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -1063,4 +1135,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSetProjectRepositoriesRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
   WsMercurianSetPlanningModelRpc,
+  WsMercurianSubscribeTrackersRpc,
+  WsMercurianConnectTrackerRpc,
+  WsMercurianDisconnectTrackerRpc,
+  WsMercurianListTrackerIssuesRpc,
 );

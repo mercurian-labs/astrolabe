@@ -172,6 +172,14 @@ transaction, and is refused while `git worktree list` names a linked worktree un
 same snapshot-re-emit shape as the tree, and project sets ride that snapshot rather than the tree's
 — including the cascade a removal leaves behind, whose signal is this store's.
 
+[`mercurian/trackers/`][trackers] holds the seam to external issue trackers, in the same database
+and knowing nothing about plans. `TrackerConnector` has a `probe` and a `listIssues` and no write
+method, so pull-only is a property of the type rather than a rule; every connector answers in the
+same five-field `TrackerIssue` — id, title, description, url, status — and nothing else crosses.
+Credentials are `ServerSecretStore` files keyed by connection id, never rows and never responses;
+standing is probed live behind a short-TTL cache, never stored; issues are read live and never
+stored at all.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and
@@ -207,3 +215,4 @@ already dispatch.
 [normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
 [repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
+[trackers]: ../../apps/server/src/mercurian/trackers/

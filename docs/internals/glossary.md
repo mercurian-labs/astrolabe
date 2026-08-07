@@ -13,6 +13,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Checkpointing](#checkpointing)
 - [Planning history](#planning-history)
 - [Projects and plans](#projects-and-plans)
+- [Trackers](#trackers)
 - [Workspace settings](#workspace-settings)
 
 ## Concepts
@@ -207,6 +208,26 @@ The plan's history as the right pane draws it, in two views. **Navigator** is th
 
 A direct edit of the plan, recorded as a `plan-revision` commit in the plan's one history, interleaved with messages at the same standing. Its payload is the plan's _whole_ text after the edit, not a diff, so the plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the plan anywhere else: the current text is derived from the history, which is why a plan born blank derives an empty artifact and an imported plan whose root is a revision renders from that root.
 
+### Trackers
+
+Mercurian's seam to external issue trackers, held in [TrackerStore.ts][32] and crossing the wire through [mercurianTrackers.ts][33]. Mercurian is where issues get planned, never a mirror of the tracker.
+
+#### Tracker
+
+An external system the backlog lives in — Linear today, with Jira and GitHub Issues the named family. Each one is a [connector](#tracker-connector): one file implementing `TrackerConnector`, one literal on `TrackerKind`, one registry entry. Nothing in the store, on the wire, or in the UI changes shape when a tracker is added, which is what keeps each additional one cheap.
+
+#### Tracker connection
+
+One workspace's link to one tracker, made and unmade in **Settings → Trackers**. The row holds a `connection_id`, a `kind`, and the `label` the tracker named at connect time; it deliberately holds nothing else. The **credential** is a file in the [`ServerSecretStore`](../../apps/server/src/auth/ServerSecretStore.ts) named `mercurian-tracker-<connectionId>`, never a column — it crosses the wire once, inbound, on `mercurian.connectTracker`, and nothing echoes it back. **Standing** (`connected | unauthorized | unreachable`) is a fact about the outside world, so it is probed live behind a one-minute cache rather than stored: a key revoked in the tracker decays on its own, with no refresh button and no column to go stale. Two workspaces of the same tracker are two connections; `kind` is not unique.
+
+#### Tracker connector
+
+The per-tracker adapter, `TrackerConnector`: a `probe` that validates a credential and names what it reaches, and a `listIssues` that reads live. It has **no write method**, which is what makes pull-only a property of the type rather than a rule to remember — reinforced by a test asserting every GraphQL document the connector can send is a `query`, and by a wire surface with no tracker-ward call. Write-back is resolved deferred (2026-07): it waits until finalized plans exist and users ask where they went.
+
+#### Minimal common shape
+
+`TrackerIssue`: exactly `id`, `title`, `description`, `url`, `status`, all strings. Every connected tracker, whatever its API, produces this and nothing else. Labels, assignees, sprints and priorities have no field to land in — they stay in the tracker, one click away through `url`, which is the tracker's own canonical link. `id` is the tracker's human-facing key (`M-98`), and `status` is the tracker's own status word left uninterpreted; normalizing status vocabularies across trackers would be rebuilding tracker semantics. The narrowness enforces _don't rebuild the tracker_ structurally rather than by discipline, so adding a field here is a design decision about what Mercurian is, not a refactor. Issues are read live through `mercurian.listTrackerIssues` and never stored: import is selection, not synchronization, so no issue table exists for a stale copy to live in.
+
 ### Workspace settings
 
 Settings that belong to the Mercurian workspace rather than to the machine reading it. They live in `mercurian.sqlite`'s `workspace_settings` key-value table behind [WorkspaceSettingsStore.ts][30] and cross the wire through [mercurianWorkspace.ts][31] — deliberately not in `settings.json`, which is machine state (binary paths, the provider-instance map, the machine's own model selections).
@@ -265,3 +286,5 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [29]: ../../packages/contracts/src/mercurianRepositories.ts
 [30]: ../../apps/server/src/mercurian/workspace/WorkspaceSettingsStore.ts
 [31]: ../../packages/contracts/src/mercurianWorkspace.ts
+[32]: ../../apps/server/src/mercurian/trackers/TrackerStore.ts
+[33]: ../../packages/contracts/src/mercurianTrackers.ts
