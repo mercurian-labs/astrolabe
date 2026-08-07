@@ -13,6 +13,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Checkpointing](#checkpointing)
 - [Planning history](#planning-history)
 - [Projects and plans](#projects-and-plans)
+- [Workspace settings](#workspace-settings)
 
 ## Concepts
 
@@ -206,6 +207,18 @@ The plan's history as the right pane draws it, in two views. **Navigator** is th
 
 A direct edit of the plan, recorded as a `plan-revision` commit in the plan's one history, interleaved with messages at the same standing. Its payload is the plan's _whole_ text after the edit, not a diff, so the plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the plan anywhere else: the current text is derived from the history, which is why a plan born blank derives an empty artifact and an imported plan whose root is a revision renders from that root.
 
+### Workspace settings
+
+Settings that belong to the Mercurian workspace rather than to the machine reading it. They live in `mercurian.sqlite`'s `workspace_settings` key-value table behind [WorkspaceSettingsStore.ts][30] and cross the wire through [mercurianWorkspace.ts][31] — deliberately not in `settings.json`, which is machine state (binary paths, the provider-instance map, the machine's own model selections).
+
+#### Planning model
+
+The model the planning assistant runs under, named for the whole workspace as a **provider and a model** — never a [provider instance](#provider). The type has no field an instance id could occupy, which is what makes the rule structural: an instance is a connected account on one machine (signing in belongs to the provider's agent there, never to Mercurian), and a shared workspace naming one would resolve to nothing everywhere else.
+
+#### Planning-model resolution
+
+The mapping from the abstract pair to an instance, computed per machine by `resolvePlanningModel` and never stored — it is a fact about a machine at a moment. Candidates are that driver's snapshots which are available, enabled, and installed; among those offering the model the provider's default instance wins, otherwise the first in settings order. No candidate resolves `no-instance`; candidates without the model resolve `model-unavailable`, which is also how capability gating surfaces, since a model the installed agent is too old to run is already absent from the snapshot. Curation is deliberately not consulted: hiding a model is one client's picker preference, and the workspace setting has to keep resolving on a machine whose user hid it. An unresolved setting is shown as unresolved and left saved — the machine never rewrites what the workspace chose.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -250,3 +263,5 @@ A direct edit of the plan, recorded as a `plan-revision` commit in the plan's on
 [27]: ../../packages/contracts/src/mercurian.ts
 [28]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
 [29]: ../../packages/contracts/src/mercurianRepositories.ts
+[30]: ../../apps/server/src/mercurian/workspace/WorkspaceSettingsStore.ts
+[31]: ../../packages/contracts/src/mercurianWorkspace.ts

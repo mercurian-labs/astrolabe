@@ -33,8 +33,10 @@ import {
   ORCHESTRATION_WS_METHODS,
   MERCURIAN_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianPlanningError,
   MercurianRepositoryError,
+  MercurianWorkspaceError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
   isRepositoryAlreadyRegisteredError,
@@ -97,6 +99,7 @@ import {
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
@@ -388,6 +391,7 @@ const makeWsRpcLayer = (
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
+      const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -1067,6 +1071,16 @@ const makeWsRpcLayer = (
         ),
         Effect.mapError(
           (cause) => new MercurianRepositoryError({ operation: "subscribeRepositories", cause }),
+        ),
+      );
+
+      const loadWorkspaceSettingsSnapshot = workspaceSettingsStore.getSnapshot.pipe(
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian workspace settings snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) =>
+            new MercurianWorkspaceError({ operation: "subscribeWorkspaceSettings", cause }),
         ),
       );
 
@@ -1754,6 +1768,45 @@ const makeWsRpcLayer = (
                   : new MercurianRepositoryError({ operation: "setProjectRepositories", cause }),
               ),
             ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // write landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                workspaceSettingsStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadWorkspaceSettingsSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value: a burst of writes is worth exactly one
+                  // re-send, the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadWorkspaceSettingsSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
+            workspaceSettingsStore
+              .setPlanningModel(input.planningModel)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new MercurianWorkspaceError({ operation: "setPlanningModel", cause }),
+                ),
+              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>

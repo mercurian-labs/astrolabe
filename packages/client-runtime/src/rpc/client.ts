@@ -1,5 +1,6 @@
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
   MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   WS_METHODS,
@@ -50,6 +51,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof MERCURIAN_WS_METHODS.subscribeTree
   | typeof MERCURIAN_WS_METHODS.subscribePlan
   | typeof MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories
+  | typeof MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
   | typeof WS_METHODS.subscribeAuthAccess
   | typeof WS_METHODS.subscribeServerConfig
   | typeof WS_METHODS.subscribeServerLifecycle

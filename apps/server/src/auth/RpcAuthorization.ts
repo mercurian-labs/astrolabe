@@ -7,6 +7,7 @@ import {
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
   MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
   MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
@@ -47,6 +48,10 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  // Workspace settings likewise: the planning model is workspace configuration,
+  // and it names no instance, so it carries no machine-scoped authority.
+  [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: AuthOrchestrationReadScope,
+  [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,
