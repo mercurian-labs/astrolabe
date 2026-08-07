@@ -144,8 +144,12 @@ const withStore = <A, E>(
     const connector = makeStubConnector();
     const secrets = makeStubSecrets();
     const store = yield* TrackerStore.make({ standingCacheTtl: Duration.zero }).pipe(
-      Effect.provide(TrackerConnectorRegistry.layerWith({ linear: connector.connector })),
-      Effect.provide(secrets.layer),
+      Effect.provide(
+        Layer.merge(
+          TrackerConnectorRegistry.layerWith({ linear: connector.connector }),
+          secrets.layer,
+        ),
+      ),
     );
     return yield* body(store, { connector, secrets });
   });
