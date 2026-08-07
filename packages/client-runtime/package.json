@@ -71,6 +71,10 @@
       "types": "./src/state/mercurianPlanning.ts",
       "default": "./src/state/mercurianPlanning.ts"
     },
+    "./state/mercurian-repositories": {
+      "types": "./src/state/mercurianRepositories.ts",
+      "default": "./src/state/mercurianRepositories.ts"
+    },
     "./state/orchestration": {
       "types": "./src/state/orchestration.ts",
       "default": "./src/state/orchestration.ts"
