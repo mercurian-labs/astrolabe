@@ -24,7 +24,7 @@ const planningModel = (provider: string, model: string): PlanningModelSelection 
   model,
 });
 
-const decodeStoredValue = Schema.decodeUnknownSync(Schema.UnknownFromJsonString);
+const decodeStoredValue = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 layer("WorkspaceSettingsStore", (it) => {
   it.effect("has no planning model until someone names one", () =>

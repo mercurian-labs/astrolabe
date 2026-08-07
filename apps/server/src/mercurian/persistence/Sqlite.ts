@@ -23,7 +23,6 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { runMigrations } from "./Migrations.ts";
 import { ServerConfig } from "../../config.ts";
-import * as ServiceLauncherClient from "../../cloud/serviceLauncherClient.ts";
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 
 export const MERCURIAN_DB_FILENAME = "mercurian.sqlite";
@@ -51,28 +50,22 @@ const makeRuntimeSqliteLayer = Effect.fn("mercurian.makeRuntimeSqliteLayer")(fun
   return clientModule.layer(config);
 }, Layer.unwrap);
 
-const setup = (trial: boolean) =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`PRAGMA foreign_keys = ON;`;
-      if (!trial) {
-        yield* sql`PRAGMA journal_mode = WAL;`;
-        yield* runMigrations();
-      }
-    }),
-  );
+const setup = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`PRAGMA foreign_keys = ON;`;
+    yield* sql`PRAGMA journal_mode = WAL;`;
+    yield* runMigrations();
+  }),
+);
 
-export const make = Effect.fn("mercurian.makeSqlitePersistenceLive")(function* (
-  dbPath: string,
-  options?: { readonly trial?: boolean },
-) {
+export const make = Effect.fn("mercurian.makeSqlitePersistenceLive")(function* (dbPath: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   yield* fs.makeDirectory(path.dirname(dbPath), { recursive: true });
 
   return Layer.provideMerge(
-    setup(options?.trial === true),
+    setup,
     makeRuntimeSqliteLayer({
       filename: dbPath,
       spanAttributes: {
@@ -92,12 +85,11 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const { stateDir } = yield* ServerConfig;
     const { join } = yield* Path.Path;
-    const launcher = yield* ServiceLauncherClient.resolveServiceLauncherMode();
-    return make(join(stateDir, MERCURIAN_DB_FILENAME), { trial: launcher.trial });
+    return make(join(stateDir, MERCURIAN_DB_FILENAME));
   }),
 );
 
 /**
  * In-memory Mercurian store with migrations applied — the test seam.
  */
-export const layerMemory = Layer.provideMerge(setup(false), NodeSqliteClient.layerMemory());
+export const layerMemory = Layer.provideMerge(setup, NodeSqliteClient.layerMemory());

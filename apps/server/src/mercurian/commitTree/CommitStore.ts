@@ -255,7 +255,7 @@ const CommitRow = Schema.Struct({
   authorKind: CommitAuthorKind,
   published: Schema.Number,
   createdAt: Schema.DateTimeUtcFromString,
-  payload: Schema.UnknownFromJsonString,
+  payload: Schema.fromJsonString(Schema.Unknown),
 });
 type CommitRow = typeof CommitRow.Type;
 
