@@ -68,6 +68,7 @@ import {
 } from "./orchestration.ts";
 import {
   MERCURIAN_WS_METHODS,
+  MercurianAnswerPlanningQuestionInput,
   MercurianAppendPlanMessageInput,
   MercurianArchivePlanInput,
   MercurianCreatePlanInput,
@@ -79,11 +80,13 @@ import {
   MercurianProject,
   MercurianProjectNotFoundError,
   MercurianSavePlanRevisionInput,
+  MercurianStopPlanningTurnInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
   MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
+  NoPendingQuestionError,
   PlanDeleteBlockedError,
   PlanDetail,
   PlanMessage,
@@ -92,6 +95,7 @@ import {
   PlanRevision,
   PlanStreamItem,
   PlanTextAt,
+  PlanTurnActiveError,
 } from "./mercurian.ts";
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
@@ -894,14 +898,47 @@ export const WsMercurianCreatePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.createPlan
 export const WsMercurianAppendPlanMessageRpc = Rpc.make(MERCURIAN_WS_METHODS.appendPlanMessage, {
   payload: MercurianAppendPlanMessageInput,
   success: PlanMessage,
-  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanTurnActiveError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
 });
 
 export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.savePlanRevision, {
   payload: MercurianSavePlanRevisionInput,
   success: PlanRevision,
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanTurnActiveError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+// The planning turn's two acts. Turns are never started by RPC — a turn
+// starts server-side when a human message commits — so the only verbs a
+// client holds are stopping the reply and answering its question.
+export const WsMercurianStopPlanningTurnRpc = Rpc.make(MERCURIAN_WS_METHODS.stopPlanningTurn, {
+  payload: MercurianStopPlanningTurnInput,
+  success: MercurianPlanAcknowledged,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
+
+export const WsMercurianAnswerPlanningQuestionRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.answerPlanningQuestion,
+  {
+    payload: MercurianAnswerPlanningQuestionInput,
+    success: MercurianPlanAcknowledged,
+    error: Schema.Union([
+      PlanNotFoundError,
+      NoPendingQuestionError,
+      MercurianPlanningError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
 
 // Attention, recorded. Both write one plan's visited-at and answer with
 // nothing: the change they made comes back on the tree subscription, where
@@ -1203,6 +1240,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
+  WsMercurianStopPlanningTurnRpc,
+  WsMercurianAnswerPlanningQuestionRpc,
   WsMercurianSubscribeRepositoriesRpc,
   WsMercurianAddRepositoryRpc,
   WsMercurianRemoveRepositoryRpc,

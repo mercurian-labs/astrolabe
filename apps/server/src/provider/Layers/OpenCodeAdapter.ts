@@ -1701,6 +1701,8 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        // Conservative until verified: nothing here plumbs extra roots yet.
+        groundingRoots: "cwd-only",
       },
       startSession,
       sendTurn,
