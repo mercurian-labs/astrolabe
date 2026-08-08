@@ -4,6 +4,7 @@ import type {
   MercurianAppendPlanMessageInput,
   MercurianCommitId,
   MercurianCreatePlanInput,
+  MercurianImportPlanInput,
   MercurianSavePlanRevisionInput,
   PlanDetail,
   PlanId,
@@ -122,6 +123,17 @@ export function useCreatePlan() {
  * that place: naming a commit that already has a child lands a fork whose
  * first commit is this message, which is the only way a fork is made.
  */
+/**
+ * Import a tracked issue as a plan. Idempotent by origin, so this never fails
+ * for having been done before: an issue already imported answers with the plan
+ * it already has, and an archived one comes back out of the archive. The
+ * outcome says which, so the surface can navigate and explain rather than error.
+ */
+export function useImportPlan() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.importPlan);
+  return useCallback((input: MercurianImportPlanInput) => run(input), [run]);
+}
+
 export function useAppendPlanMessage() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.appendPlanMessage);
   return useCallback((input: MercurianAppendPlanMessageInput) => run(input), [run]);

@@ -491,17 +491,19 @@ const SUMMARY_MAX_LENGTH = 60;
 
 /**
  * How a commit reads in one line of the explorer. A message says what it said;
- * a revision has no body to show, so it says what it did.
+ * a plan revision has no body to show, so it says what it did; an imported
+ * issue reads as its title, which is what a person would call it.
  */
 export function planCommitSummary(item: PlanTimelineItem): string {
   if (item._tag === "plan-revision") {
     return item.authorKind === "human" ? "You edited the plan" : "The assistant revised the plan";
   }
-  const firstLine = item.text
+  const isIssue = item._tag === "issue-revision";
+  const firstLine = (isIssue ? item.title : item.text)
     .split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0);
-  if (firstLine === undefined) return "Empty message";
+  if (firstLine === undefined) return isIssue ? "Imported issue" : "Empty message";
   return firstLine.length <= SUMMARY_MAX_LENGTH
     ? firstLine
     : `${firstLine.slice(0, SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;

@@ -6,7 +6,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ClockIcon, FileTextIcon, GitBranchIcon } from "lucide-react";
+import { CircleDotIcon, ClockIcon, FileTextIcon, GitBranchIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -42,6 +42,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import { DagExplorer } from "./DagExplorer";
+import { ImportIssueDialog } from "./ImportIssueDialog";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
@@ -444,6 +445,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   // same here: the plan can still be born, but the composer says up front
   // that no assistant will answer on this machine.
   const planningModel = usePlanningModel();
+  const [isImportOpen, setIsImportOpen] = useState(false);
   /**
    * The unborn plan's images. Held here rather than in `planDraftStore`
    * because there is no plan to key them by yet and the draft they belong to
@@ -504,7 +506,23 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
             The plan starts existing when you send the first message.
           </EmptyDescription>
         </EmptyHeader>
+        {/* All issues can form plans, but not all plans are formed by issues:
+            the two ways in stand side by side, and starting blank stays the
+            one you land on. */}
+        <Button className="mt-4" size="sm" variant="outline" onClick={() => setIsImportOpen(true)}>
+          <CircleDotIcon className="size-3.5" />
+          Import from a tracker
+        </Button>
       </Empty>
+      <ImportIssueDialog
+        open={isImportOpen}
+        projectId={draft.projectId as MercurianProjectId}
+        onOpenChange={setIsImportOpen}
+        // The draft's text is not consumed by an import and is not thrown away
+        // by one either: it stays in the one-draft-per-project store for the
+        // next plan born blank.
+        onImported={(planId) => void navigate({ to: "/plans/$planId", params: { planId } })}
+      />
       {mentions.sources}
       <PlanComposer
         attachments={attachments}

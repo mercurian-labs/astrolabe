@@ -26,6 +26,12 @@ if you navigate away without sending, nothing is left behind but the text you ty
 still there if you come back to the same project. Once the first message lands, the plan appears
 under its project, titled from that message's first line.
 
+A plan can also start from an issue you already track. The same empty composer offers **Import from
+a tracker**, which browses your connected trackers and starts the plan from the issue you pick — the
+plan's conversation then opens with that issue rather than with something you typed. See
+[Trackers](trackers.md#importing-an-issue). Both ways in are equally supported; blank is the one you
+land on.
+
 Opening a plan from the tree lands on its planning space: the conversation that evolves the plan,
 with a composer to add to it, and a pane on the right for the plan's two standing views. The plan
 you are looking at stays highlighted in the tree while you are anywhere inside it.

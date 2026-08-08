@@ -1,5 +1,5 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
-import { FileTextIcon, GitForkIcon, MessageSquareIcon } from "lucide-react";
+import { CircleDotIcon, FileTextIcon, GitForkIcon, MessageSquareIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
   useCallback,
@@ -378,7 +378,7 @@ function SpatialMap({
           {layout.nodes.map((node) => {
             const isCurrent = node.commitId === currentCommitId;
             const showLabel = isCurrent || node.commitId === hovered;
-            const Glyph = node.item._tag === "plan-revision" ? FileTextIcon : MessageSquareIcon;
+            const Glyph = commitGlyph(node.item);
             return (
               <g
                 // A node is a control, and a circle has no accessible name of
@@ -450,6 +450,16 @@ function SpatialMap({
 }
 
 /**
+ * What a commit looks like at a glance. One glyph per kind, shared by the map
+ * and the list so a commit reads the same in both.
+ */
+function commitGlyph(item: PlanTimelineItem) {
+  if (item._tag === "plan-revision") return FileTextIcon;
+  if (item._tag === "issue-revision") return CircleDotIcon;
+  return MessageSquareIcon;
+}
+
+/**
  * One commit, as the navigator shows it: what it was, what it said, and when.
  *
  * Published work reads solid and private work muted — the same distinction the
@@ -468,7 +478,7 @@ function CommitRow({
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly ref?: Ref<HTMLButtonElement> | undefined;
 }) {
-  const Glyph = item._tag === "plan-revision" ? FileTextIcon : MessageSquareIcon;
+  const Glyph = commitGlyph(item);
 
   return (
     <button
