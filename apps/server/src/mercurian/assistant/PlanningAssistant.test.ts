@@ -241,6 +241,41 @@ const subscribeFrames = Effect.fn("subscribeFrames")(function* (planId: PlanId) 
   return frames;
 });
 
+/**
+ * Two repositories in the project's set, returned in the set's own order —
+ * which is the store's to decide (links added in one batch tie on
+ * `added_at`), so the test reads it back rather than assuming insertion
+ * order.
+ */
+const seedTwoRepositories = Effect.fn("seedTwoRepositories")(function* (created: {
+  readonly plan: { readonly projectId: import("@t3tools/contracts").MercurianProjectId };
+}) {
+  const repositories = yield* RepositoryStore.RepositoryStore;
+  const alpha = yield* repositories.addRepository({
+    path: "/tmp",
+    name: "alpha",
+    createdAt: at("2026-08-08T00:00:00.000Z"),
+  });
+  const beta = yield* repositories.addRepository({
+    path: "/usr",
+    name: "beta",
+    createdAt: at("2026-08-08T00:00:00.000Z"),
+  });
+  yield* repositories.setProjectRepositories({
+    projectId: created.plan.projectId,
+    repositoryIds: [alpha.repositoryId, beta.repositoryId],
+    addedAt: at("2026-08-08T00:00:00.000Z"),
+  });
+  const snapshot = yield* repositories.getSnapshot;
+  const ordered = snapshot.projectRepositories
+    .filter((link) => link.projectId === created.plan.projectId)
+    .map(
+      (link) =>
+        snapshot.repositories.find((repository) => repository.repositoryId === link.repositoryId)!,
+    );
+  return { first: ordered[0]!, second: ordered[1]! };
+});
+
 describe("PlanningAssistant", () => {
   it.effect("streams a reply and settles it as the assistant's commit", () =>
     Effect.gen(function* () {
@@ -535,25 +570,9 @@ describe("PlanningAssistant", () => {
   it.effect("grounds every repository of the project for a multi-root provider", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
-      const repositories = yield* RepositoryStore.RepositoryStore;
       const harness = yield* ProviderHarness;
       const { created, root } = yield* seedPlan();
-
-      const first = yield* repositories.addRepository({
-        path: "/tmp",
-        name: "alpha",
-        createdAt: at("2026-08-08T00:00:00.000Z"),
-      });
-      const second = yield* repositories.addRepository({
-        path: "/usr",
-        name: "beta",
-        createdAt: at("2026-08-08T00:00:00.000Z"),
-      });
-      yield* repositories.setProjectRepositories({
-        projectId: created.plan.projectId,
-        repositoryIds: [first.repositoryId, second.repositoryId],
-        addedAt: at("2026-08-08T00:00:00.000Z"),
-      });
+      const { first, second } = yield* seedTwoRepositories(created);
 
       const frames = yield* subscribeFrames(created.plan.planId);
       yield* assistant.startTurn({
@@ -575,26 +594,10 @@ describe("PlanningAssistant", () => {
   it.effect("narrows visibly for a cwd-only provider", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
-      const repositories = yield* RepositoryStore.RepositoryStore;
       const harness = yield* ProviderHarness;
       const { created, root } = yield* seedPlan();
       yield* harness.setGroundingRoots("cwd-only");
-
-      const first = yield* repositories.addRepository({
-        path: "/tmp",
-        name: "alpha",
-        createdAt: at("2026-08-08T00:00:00.000Z"),
-      });
-      const second = yield* repositories.addRepository({
-        path: "/usr",
-        name: "beta",
-        createdAt: at("2026-08-08T00:00:00.000Z"),
-      });
-      yield* repositories.setProjectRepositories({
-        projectId: created.plan.projectId,
-        repositoryIds: [first.repositoryId, second.repositoryId],
-        addedAt: at("2026-08-08T00:00:00.000Z"),
-      });
+      const { first, second } = yield* seedTwoRepositories(created);
 
       const frames = yield* subscribeFrames(created.plan.planId);
       yield* assistant.startTurn({
@@ -610,7 +613,7 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(session.additionalDirectories, undefined);
       const startedFrame = yield* Queue.take(frames);
       assert.ok(startedFrame.kind === "turn-started");
-      assert.deepStrictEqual(startedFrame.groundingScope?.unreachableRepositories, ["beta"]);
+      assert.deepStrictEqual(startedFrame.groundingScope?.unreachableRepositories, [second.name]);
       const firstTurn = yield* Queue.take(harness.sendTurns);
       assert.ok(firstTurn.input?.includes("Out of reach in this session"));
 
@@ -623,7 +626,7 @@ describe("PlanningAssistant", () => {
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       const reply = snapshot.timeline.at(-1);
       assert.ok(reply !== undefined && reply._tag === "message");
-      assert.deepStrictEqual(reply.groundingScope?.unreachableRepositories, ["beta"]);
+      assert.deepStrictEqual(reply.groundingScope?.unreachableRepositories, [second.name]);
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
