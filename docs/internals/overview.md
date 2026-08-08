@@ -167,6 +167,13 @@ is server state in its own `plan_visits` table, written by `mercurian.visitPlan`
 changes seen-ness and re-armed by `mercurian.markPlanUnread`, so unseen agrees across windows rather
 than living in one of them (§5).
 
+[`assistant/PlanningAssistant.ts`][planning-assistant] runs planning turns on the provider-session
+runtime: a human message committing starts a turn under the workspace planning model, read-only
+(the most restrictive runtime mode plus an auto-answer approval policy), streaming transient frames
+over the same `mercurian.subscribePlan` subscription and landing exactly one assistant commit when
+it settles — marked interrupted when cut short. Its one write door is the planning MCP toolkit's
+`save_plan_revision`, and one-turn-per-plan is a store-enforced fact while a turn runs.
+
 [`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
 database: the registry of codebases the app can reach, the app-owned scripts declared on each, and
 the `project_repositories` join that gives a project its set. Two facts on the snapshot have no
@@ -222,5 +229,6 @@ already dispatch.
 [normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
 [planning-wire]: ../../apps/server/src/mercurian/planning/wire.ts
+[planning-assistant]: ../../apps/server/src/mercurian/assistant/PlanningAssistant.ts
 [repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
 [trackers]: ../../apps/server/src/mercurian/trackers/
