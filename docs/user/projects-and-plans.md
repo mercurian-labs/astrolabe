@@ -189,6 +189,42 @@ hidden, your ordering holds, and your favorites come first.
 A workspace with no projects yet says so, with the button to create the first one. An expanded
 project with no plans yet says so too. Neither one hides itself.
 
+## The search palette
+
+One shortcut opens the search palette from anywhere in the app, including with the sidebar
+collapsed. There is also a **Search…** row above the tree, which shows you the shortcut.
+
+With nothing typed, the palette shows what you can start — **New plan**, **New project**, **Open
+settings** — and then the plans that need you: the ones waiting on an answer first, then the ones
+that moved while you were away, padded out with your most recent plans to about a dozen rows. Each
+plan row carries its status dot and the project it belongs to.
+
+Start typing and everything is searched together: plans by title or project, projects by name, the
+workspace sections, and the actions. Better matches come first. Type `>` to see only the actions.
+
+Picking a result always takes you to work, never to a container:
+
+- a **plan** opens its planning space;
+- a **project** opens its most recently active plan — or, if it has none yet, drops you straight
+  into composing its first;
+- a **workspace section** goes to that page;
+- an **action** performs it.
+
+**New plan** asks which project first, unless you are already inside one of a project's plans — in
+which case it just starts one there.
+
+## Jumping around with the keyboard
+
+Hold the shortcut modifier and numbered keycaps appear on the tree's plan rows: press a digit to
+jump to that row. A bracket pair steps to the previous or next plan and stops at the ends rather
+than wrapping. The digits count only rows that open something — project rows expand instead, so
+they are never numbered, and a collapsed project's plans are not counted either.
+
+Inside the palette the same digits pick the numbered result rows.
+
+The palette, the sidebar toggle, and **New plan** all have shortcuts you can change under
+**Settings** → **Keybindings**.
+
 ## Collapsing and resizing the sidebar
 
 Drag the sidebar's right edge to resize it, or collapse it entirely with the toggle in its header
