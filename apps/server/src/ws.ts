@@ -45,7 +45,9 @@ import {
   isRepositoryAlreadyRegisteredError,
   isRepositoryHasLiveWorktreesError,
   isRepositoryPathInvalidError,
+  isNoPendingQuestionError,
   isPlanNotFoundError,
+  isPlanTurnActiveError,
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
@@ -92,6 +94,7 @@ import {
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
 import {
   normalizePlanAttachments,
@@ -402,6 +405,7 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const trackerStore = yield* TrackerStore.TrackerStore;
       const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
@@ -1077,8 +1081,14 @@ const makeWsRpcLayer = (
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
-      const loadPlanningTreeSnapshot = planningStore.getTreeSnapshot.pipe(
-        Effect.map(toWireTreeSnapshot),
+      // Status is composed at this read layer, never stored: the assistant
+      // runtime says which plans are streaming or waiting on input, and the
+      // rows carry it (ADR 002 §4).
+      const loadPlanningTreeSnapshot = Effect.all([
+        planningStore.getTreeSnapshot,
+        planningAssistant.status,
+      ]).pipe(
+        Effect.map(([snapshot, status]) => toWireTreeSnapshot(snapshot, status)),
         Effect.tapError((cause) =>
           Effect.logError("mercurian planning tree snapshot load failed", { cause }),
         ),
@@ -1086,6 +1096,15 @@ const makeWsRpcLayer = (
           (cause) => new MercurianPlanningError({ operation: "subscribeTree", cause }),
         ),
       );
+
+      /**
+       * A human message landed; the assistant replies. Forked and detached
+       * on purpose: the append's success was never conditional on the reply
+       * starting, and anything that prevents one arrives as a
+       * `turn-refused` frame on the plan's own stream.
+       */
+      const kickOffPlanningTurn = (input: PlanningAssistant.StartTurnInput) =>
+        planningAssistant.startTurn(input).pipe(Effect.forkDetach, Effect.asVoid);
 
       const loadTrackersSnapshot = trackerStore.getSnapshot.pipe(
         Effect.map(toWireTrackersSnapshot),
@@ -1489,11 +1508,14 @@ const makeWsRpcLayer = (
           observeRpcStreamEffect(
             MERCURIAN_WS_METHODS.subscribeTree,
             Effect.gen(function* () {
-              // Attach the change signal before the first snapshot query, so a
-              // mutation landing while that query is in flight still re-sends.
+              // Attach the change signals before the first snapshot query, so
+              // a mutation landing while that query is in flight still
+              // re-sends. The assistant's signal rides the same queue: a turn
+              // starting, pausing on a question, or settling repaints the
+              // tree's status facts within the same debounce.
               const changes = yield* Queue.unbounded<void>();
               yield* Effect.forkScoped(
-                planningStore.changes.pipe(
+                Stream.merge(planningStore.changes, planningAssistant.changes).pipe(
                   Stream.runForEach(() => Queue.offer(changes, undefined)),
                 ),
                 { startImmediately: true },
@@ -1539,12 +1561,23 @@ const makeWsRpcLayer = (
                     owner: input.projectId,
                     uploads: input.attachments,
                   });
-                  return yield* planningStore.createPlan({
+                  const created = yield* planningStore.createPlan({
                     projectId: input.projectId,
                     message: input.message,
                     attachments,
                     createdAt,
                   });
+                  // The birth message is a message: the assistant replies to
+                  // it like any other.
+                  const root = created.timeline[0];
+                  if (root !== undefined) {
+                    yield* kickOffPlanningTurn({
+                      planId: created.plan.planId,
+                      parentCommitId: root.commitId,
+                      text: input.message,
+                    });
+                  }
+                  return created;
                 }),
               ),
               Effect.map(toWirePlanDetail),
@@ -1566,7 +1599,7 @@ const makeWsRpcLayer = (
                     owner: input.planId,
                     uploads: input.attachments,
                   });
-                  return yield* planningStore.appendMessage({
+                  const appended = yield* planningStore.appendMessage({
                     planId: input.planId,
                     text: input.text,
                     // Where the sender stood. A commit that already has a
@@ -1577,11 +1610,17 @@ const makeWsRpcLayer = (
                     attachments,
                     createdAt,
                   });
+                  yield* kickOffPlanningTurn({
+                    planId: input.planId,
+                    parentCommitId: appended.commitId,
+                    text: input.text,
+                  });
+                  return appended;
                 }),
               ),
               Effect.map(toWirePlanMessage),
               Effect.mapError((cause) =>
-                isPlanNotFoundError(cause)
+                isPlanNotFoundError(cause) || isPlanTurnActiveError(cause)
                   ? cause
                   : new MercurianPlanningError({ operation: "appendPlanMessage", cause }),
               ),
@@ -1606,7 +1645,7 @@ const makeWsRpcLayer = (
               ),
               Effect.map(toWirePlanRevision),
               Effect.mapError((cause) =>
-                isPlanNotFoundError(cause)
+                isPlanNotFoundError(cause) || isPlanTurnActiveError(cause)
                   ? cause
                   : new MercurianPlanningError({ operation: "savePlanRevision", cause }),
               ),
@@ -1644,6 +1683,23 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.stopPlanningTurn]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.stopPlanningTurn,
+            // Idempotent by design: stopping a plan with nothing streaming is
+            // not an error a person caused. The interrupted settle arrives on
+            // the plan's own stream, not in this answer.
+            planningAssistant.stopTurn({ planId: input.planId }).pipe(Effect.as({})),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.answerPlanningQuestion]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.answerPlanningQuestion,
+            planningAssistant
+              .answerQuestion({ planId: input.planId, answers: input.answers })
+              .pipe(Effect.as({})),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.archivePlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.archivePlan,
@@ -1651,6 +1707,11 @@ const makeWsRpcLayer = (
               // The stamp is the server's for the same reason a visit's is.
               Effect.flatMap((archivedAt) =>
                 planningStore.archivePlan({ planId: input.planId, archivedAt }),
+              ),
+              // Archiving mid-reply keeps the record: the partial lands as an
+              // interrupted commit, then the plan's session stops.
+              Effect.tap(() =>
+                planningAssistant.teardownPlan({ planId: input.planId, commitPartial: true }),
               ),
               Effect.as({}),
               Effect.mapError((cause) =>
@@ -1681,6 +1742,11 @@ const makeWsRpcLayer = (
               // Bytes go after the rows that named them, never before: a
               // refused delete must leave the plan's images where they are.
               Effect.tap((deletion) => removePlanAttachments(deletion)),
+              // The history is gone; a partial reply has nothing to land in.
+              // Discard the turn and stop the plan's session.
+              Effect.tap(() =>
+                planningAssistant.teardownPlan({ planId: input.planId, commitPartial: false }),
+              ),
               Effect.as({}),
               Effect.mapError((cause) =>
                 isPlanNotFoundError(cause) || isPlanDeleteBlockedError(cause)
@@ -1730,6 +1796,18 @@ const makeWsRpcLayer = (
                 { startImmediately: true },
               );
 
+              // Turn frames attach with the same discipline: before the
+              // snapshot read, so a delta landing while that query runs is
+              // not lost. A delta the snapshot already contains replays with
+              // an offset below the snapshot's text and folds away.
+              const turnFrames = yield* Queue.unbounded<PlanStreamItem>();
+              yield* Effect.forkScoped(
+                planningAssistant
+                  .frames(input.planId)
+                  .pipe(Stream.runForEach((frame) => Queue.offer(turnFrames, frame))),
+                { startImmediately: true },
+              );
+
               const readSince = (afterSequence: number) =>
                 planningStore
                   .listTimelineSince({ planId: input.planId, afterSequence })
@@ -1750,12 +1828,25 @@ const makeWsRpcLayer = (
               const opening =
                 resume === null
                   ? yield* planningStore.getPlanSnapshot({ planId: input.planId }).pipe(
-                      Effect.map((detail) => ({
-                        cursor: detail.snapshotSequence,
-                        items: [
-                          { kind: "snapshot" as const, snapshot: toWirePlanDetail(detail) },
-                        ] satisfies ReadonlyArray<PlanStreamItem>,
-                      })),
+                      Effect.flatMap((detail) =>
+                        // The snapshot carries the partial turn, so a window
+                        // opened — or reconnected — mid-turn joins coherently
+                        // with no frame replay (ADR 002 §3).
+                        planningAssistant.inFlight(input.planId).pipe(
+                          Effect.map((inFlightTurn) => ({
+                            cursor: detail.snapshotSequence,
+                            items: [
+                              {
+                                kind: "snapshot" as const,
+                                snapshot: {
+                                  ...toWirePlanDetail(detail),
+                                  ...(inFlightTurn === undefined ? {} : { inFlightTurn }),
+                                },
+                              },
+                            ] satisfies ReadonlyArray<PlanStreamItem>,
+                          })),
+                        ),
+                      ),
                       Effect.mapError(toPlanStreamError),
                     )
                   : {
@@ -1787,7 +1878,10 @@ const makeWsRpcLayer = (
                   ...opening.items,
                   { kind: "synchronized" as const },
                 ]),
-                liveStream,
+                // Turn frames are transport beside the commit events: no
+                // sequence, never resumable, and `synchronized` keeps meaning
+                // caught-up-on-commits (ADR 002 §3).
+                Stream.merge(liveStream, Stream.fromQueue(turnFrames)),
               );
             }),
             { "rpc.aggregate": "mercurian" },

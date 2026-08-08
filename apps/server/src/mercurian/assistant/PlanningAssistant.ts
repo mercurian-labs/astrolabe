@@ -405,11 +405,15 @@ export const make = Effect.gen(function* () {
     switch (event.type) {
       case "content.delta": {
         if (event.payload.streamKind !== "assistant_text") return;
+        // The offset is what lets a joiner fold this idempotently against
+        // its snapshot's partial text.
+        const offset = turn.text.length;
         turn.text += event.payload.delta;
         yield* publishFrame(turn.planId, {
           kind: "turn-delta",
           turnId: turn.turnId,
           textDelta: event.payload.delta,
+          offset,
         });
         return;
       }

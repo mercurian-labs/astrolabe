@@ -323,6 +323,12 @@ export const PlanStreamItem = Schema.Union([
     kind: Schema.Literal("turn-delta"),
     turnId: PlanTurnId,
     textDelta: Schema.String,
+    /**
+     * Characters of the reply already streamed before this delta. A window
+     * joining mid-turn folds idempotently against its snapshot's partial
+     * text: a delta wholly below the text it already holds is a replay.
+     */
+    offset: Schema.optional(Schema.Number),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn-grounding"),
