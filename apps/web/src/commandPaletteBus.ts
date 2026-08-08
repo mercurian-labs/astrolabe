@@ -3,7 +3,12 @@
 const COMMAND_PALETTE_OPEN_EVENT = "t3code:open-command-palette";
 
 export interface CommandPaletteOpenDetail {
-  readonly open?: "add-project" | "new-thread-in";
+  /**
+   * Which question the palette should open on. `new-plan-in` is the Mercurian
+   * one: start a plan when there is no current project to assume, so the
+   * palette itself asks which project.
+   */
+  readonly open?: "add-project" | "new-thread-in" | "new-plan-in";
 }
 
 export function openCommandPalette(detail?: CommandPaletteOpenDetail): void {

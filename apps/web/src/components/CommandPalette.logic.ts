@@ -228,7 +228,8 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   });
 }
 
-function rankSearchFieldMatch(field: string, normalizedQuery: string): number {
+/** Exact beats prefix beats substring; no match at all sorts below everything. */
+export function rankSearchFieldMatch(field: string, normalizedQuery: string): number {
   const normalizedField = normalizeSearchText(field);
   if (normalizedField.length === 0 || !normalizedField.includes(normalizedQuery)) {
     return Number.NEGATIVE_INFINITY;
@@ -242,7 +243,11 @@ function rankSearchFieldMatch(field: string, normalizedQuery: string): number {
   return 1;
 }
 
-function rankCommandPaletteItemMatch(
+/**
+ * How well an item answers a query: earlier search terms outrank later ones,
+ * and within a term the field rank decides. Zero means "kept, but unranked".
+ */
+export function rankCommandPaletteItemMatch(
   item: CommandPaletteActionItem | CommandPaletteSubmenuItem,
   normalizedQuery: string,
 ): number {

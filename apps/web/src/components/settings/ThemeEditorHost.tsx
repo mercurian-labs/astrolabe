@@ -1,10 +1,13 @@
-import { useCallback } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { useCallback, useEffect } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
+import { resolveShortcutCommand } from "../../keybindings";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import { getThemeDefinition, type ThemeAppearance, type ThemeDefinition } from "../../themePalette";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { ThemeEditorPanel } from "./ThemeEditorPanel";
-import { useThemeEditorStore } from "./themeEditorStore";
+import { toggleThemeEditorForTheme, useThemeEditorStore } from "./themeEditorStore";
 
 /**
  * Renders the theme editor above the router. The editor paints its draft on
@@ -14,7 +17,23 @@ import { useThemeEditorStore } from "./themeEditorStore";
 export function ThemeEditorHost() {
   const session = useThemeEditorStore((store) => store.session);
   const closeThemeEditor = useThemeEditorStore((store) => store.closeThemeEditor);
-  const { theme, setTheme, themeHalves, refreshTheme } = useTheme();
+  const { theme, setTheme, themeHalves, refreshTheme, resolvedTheme } = useTheme();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+
+  // The editor owns its own chord. It used to ride the command palette's
+  // listener, which made a live feature a tenant of a surface it has nothing
+  // to do with.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (resolveShortcutCommand(event, keybindings) !== "themeEditor.toggle") return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleThemeEditorForTheme({ theme, themeHalves, initialAppearance: resolvedTheme });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [keybindings, resolvedTheme, theme, themeHalves]);
 
   // The panel reports which path it actually took: a theme removed while its
   // editor is open resolves to null there, so the save becomes a create even
