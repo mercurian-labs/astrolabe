@@ -60,6 +60,11 @@ export class PlanTurnRegistry extends Context.Service<
     readonly getByThread: (threadId: ThreadId) => Effect.Effect<Option.Option<ActivePlanTurn>>;
     /** An assistant commit landed; the turn's next write parents on it. */
     readonly advanceTip: (planId: PlanId, tipCommitId: CommitId) => Effect.Effect<void>;
+    /**
+     * The turn moved to a fresh provider session mid-open (a continuation
+     * whose live session turned out dead). The claim itself never lapses.
+     */
+    readonly reassignThread: (planId: PlanId, threadId: ThreadId) => Effect.Effect<void>;
   }
 >()("t3/mercurian/planning/PlanTurnRegistry") {}
 
@@ -110,7 +115,23 @@ export const make = Effect.gen(function* () {
       return next;
     });
 
-  return { open, close, get, getByThread, advanceTip } satisfies PlanTurnRegistry["Service"];
+  const reassignThread: PlanTurnRegistry["Service"]["reassignThread"] = (planId, threadId) =>
+    Ref.update(turns, (current) => {
+      const turn = current.get(planId);
+      if (turn === undefined) return current;
+      const next = new Map(current);
+      next.set(planId, { ...turn, threadId });
+      return next;
+    });
+
+  return {
+    open,
+    close,
+    get,
+    getByThread,
+    advanceTip,
+    reassignThread,
+  } satisfies PlanTurnRegistry["Service"];
 });
 
 export const layer = Layer.effect(PlanTurnRegistry, make);
