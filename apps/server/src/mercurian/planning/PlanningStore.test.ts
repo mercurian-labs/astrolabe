@@ -13,9 +13,11 @@ import * as CommitStore from "../commitTree/CommitStore.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as PlanningStore from "./PlanningStore.ts";
+import * as PlanTurnRegistry from "./PlanTurnRegistry.ts";
 
 const layer = it.layer(
   PlanningStore.layer.pipe(
+    Layer.provideMerge(PlanTurnRegistry.layer),
     Layer.provideMerge(CommitStore.layer),
     Layer.provideMerge(MercurianSqlite.layerMemory),
     Layer.provide(NodeServicesLayer),

@@ -37,8 +37,12 @@ import {
   MercurianProjectId,
   MercurianProjectNotFoundError,
   PlanDeleteBlockedError,
+  PlanGroundingItem,
+  PlanGroundingScope,
   PlanId,
   PlanNotFoundError,
+  PlanQuestionRecord,
+  PlanTurnActiveError,
 } from "@t3tools/contracts";
 
 import {
@@ -48,6 +52,7 @@ import {
 } from "../../persistence/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, CommitAuthorKind, CommitId, HistoryId } from "../commitTree/schema.ts";
+import { PlanTurnRegistry } from "./PlanTurnRegistry.ts";
 import { MercurianProject, Plan } from "./schema.ts";
 
 // ===============================
@@ -65,6 +70,16 @@ import { MercurianProject, Plan } from "./schema.ts";
 export const MessageCommitPayload = Schema.Struct({
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  /**
+   * The planning turn's facts, present only on assistant replies and all
+   * optional so every message written before turns existed keeps decoding:
+   * whether the reply was cut short, what it consulted (and what was out of
+   * reach), and the question it asked with whatever answers it got.
+   */
+  interrupted: Schema.optional(Schema.Boolean),
+  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
+  groundingScope: Schema.optional(PlanGroundingScope),
+  question: Schema.optional(PlanQuestionRecord),
 });
 export type MessageCommitPayload = typeof MessageCommitPayload.Type;
 
@@ -99,6 +114,10 @@ export const PlanMessage = Schema.Struct({
   ...PlanCommitFields,
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  interrupted: Schema.optional(Schema.Boolean),
+  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
+  groundingScope: Schema.optional(PlanGroundingScope),
+  question: Schema.optional(PlanQuestionRecord),
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -181,7 +200,8 @@ export interface PlanDeletion {
 export type PlanningStoreRefusal =
   | MercurianProjectNotFoundError
   | PlanNotFoundError
-  | PlanDeleteBlockedError;
+  | PlanDeleteBlockedError
+  | PlanTurnActiveError;
 
 export type PlanningStoreError =
   | PlanningStoreRefusal
@@ -231,6 +251,33 @@ export const SavePlanRevisionInput = Schema.Struct({
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type SavePlanRevisionInput = typeof SavePlanRevisionInput.Type;
+
+/**
+ * The assistant's settled reply. The parent is always named — the turn knows
+ * exactly where it stands, and tip-guessing is how a race would start — and
+ * the payload carries the turn's record: interruption, grounding, question.
+ */
+export const AppendAssistantMessageInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  text: Schema.String,
+  interrupted: Schema.optional(Schema.Boolean),
+  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
+  groundingScope: Schema.optional(PlanGroundingScope),
+  question: Schema.optional(PlanQuestionRecord),
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type AppendAssistantMessageInput = typeof AppendAssistantMessageInput.Type;
+
+/** The assistant's direct edit of the artifact, mid-turn, at equal standing. */
+export const SaveAssistantPlanRevisionInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  /** The artifact's whole text after the edit — same snapshot semantics as a human's. */
+  text: Schema.String,
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SaveAssistantPlanRevisionInput = typeof SaveAssistantPlanRevisionInput.Type;
 
 export const GetPlanInput = Schema.Struct({ planId: PlanId });
 export type GetPlanInput = typeof GetPlanInput.Type;
@@ -304,6 +351,22 @@ export class PlanningStore extends Context.Service<
      */
     readonly savePlanRevision: (
       input: SavePlanRevisionInput,
+    ) => Effect.Effect<PlanRevision, PlanningStoreError>;
+    /**
+     * The assistant's settled reply, landed where its turn stands. Passes
+     * `authorKind: "assistant"` through to the commit store, whose
+     * fork-and-merge refusals are the structural guarantee — this path
+     * inherits the law rather than restating it.
+     */
+    readonly appendAssistantMessage: (
+      input: AppendAssistantMessageInput,
+    ) => Effect.Effect<PlanMessage, PlanningStoreError>;
+    /**
+     * The assistant's direct edit of the plan mid-turn, at equal standing
+     * with a human's. Same snapshot semantics as {@link savePlanRevision}.
+     */
+    readonly saveAssistantPlanRevision: (
+      input: SaveAssistantPlanRevisionInput,
     ) => Effect.Effect<PlanRevision, PlanningStoreError>;
     /**
      * Take the plan out of the tree without destroying anything. Idempotent —
@@ -443,7 +506,12 @@ export function derivePlanTitle(message: string): string {
 }
 
 const isPlanningStoreRefusal = Schema.is(
-  Schema.Union([MercurianProjectNotFoundError, PlanNotFoundError, PlanDeleteBlockedError]),
+  Schema.Union([
+    MercurianProjectNotFoundError,
+    PlanNotFoundError,
+    PlanDeleteBlockedError,
+    PlanTurnActiveError,
+  ]),
 );
 
 function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
@@ -483,6 +551,7 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const commits = yield* CommitStore.CommitStore;
   const crypto = yield* Crypto.Crypto;
+  const turnRegistry = yield* PlanTurnRegistry;
   const changesPubSub = yield* PubSub.unbounded<void>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
@@ -712,6 +781,10 @@ export const make = Effect.gen(function* () {
       ...toPlanCommitFields(commit),
       text: payload.text,
       ...(payload.attachments === undefined ? {} : { attachments: payload.attachments }),
+      ...(payload.interrupted === undefined ? {} : { interrupted: payload.interrupted }),
+      ...(payload.grounding === undefined ? {} : { grounding: payload.grounding }),
+      ...(payload.groundingScope === undefined ? {} : { groundingScope: payload.groundingScope }),
+      ...(payload.question === undefined ? {} : { question: payload.question }),
     } satisfies PlanMessage;
   });
 
@@ -910,9 +983,25 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  /**
+   * The one-turn-at-a-time rule at the store boundary. While the assistant is
+   * replying, a human commit onto the same history would turn the turn's next
+   * commit into an illegal assistant fork — so the write refuses here, from
+   * every window at once, and stopping the reply is the way to act now.
+   */
+  const requireNoActiveTurn = Effect.fn("PlanningStore.requireNoActiveTurn")(function* (
+    planId: PlanId,
+  ) {
+    const active = yield* turnRegistry.get(planId);
+    if (Option.isSome(active)) {
+      return yield* new PlanTurnActiveError({ planId });
+    }
+  });
+
   const appendMessage: PlanningStore["Service"]["appendMessage"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const appended = yield* appendAt({
         plan,
@@ -942,6 +1031,7 @@ export const make = Effect.gen(function* () {
   const savePlanRevision: PlanningStore["Service"]["savePlanRevision"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const appended = yield* appendAt({
         plan,
@@ -960,6 +1050,97 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.savePlanRevision:query",
           "PlanningStore.savePlanRevision:encodeRequest",
+        ),
+      ),
+    );
+
+  /**
+   * The assistant's write path: explicit parent, assistant attribution, and
+   * nothing else different from a human's. The commit store's
+   * `AssistantForkError`/`AssistantMergeError` are what make the structural
+   * invariants — never a fork, never a merge — refusals rather than habits.
+   */
+  const appendAssistantAt = Effect.fn("PlanningStore.appendAssistantAt")(function* (input: {
+    readonly plan: Plan;
+    readonly parentCommitId: CommitId;
+    readonly commitId: CommitId;
+    readonly kind: "message" | "plan-revision";
+    readonly payload: unknown;
+    readonly createdAt: Commit["createdAt"];
+  }) {
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const commit = yield* commits.append({
+          historyId: input.plan.historyId,
+          commitId: input.commitId,
+          kind: input.kind,
+          authorKind: "assistant",
+          parents: [input.parentCommitId],
+          createdAt: input.createdAt,
+          payload: input.payload,
+        });
+        // Assistant activity is activity: the tree's recency and the unseen
+        // comparison both read `updated_at`.
+        yield* touchPlanRow({ planId: input.plan.planId, updatedAt: input.createdAt });
+        return commit;
+      }),
+    );
+  });
+
+  const appendAssistantMessage: PlanningStore["Service"]["appendAssistantMessage"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const appended = yield* appendAssistantAt({
+        plan,
+        parentCommitId: input.parentCommitId,
+        commitId,
+        kind: "message",
+        payload: {
+          text: input.text,
+          ...(input.interrupted === undefined ? {} : { interrupted: input.interrupted }),
+          ...(input.grounding === undefined || input.grounding.length === 0
+            ? {}
+            : { grounding: input.grounding }),
+          ...(input.groundingScope === undefined ? {} : { groundingScope: input.groundingScope }),
+          ...(input.question === undefined ? {} : { question: input.question }),
+        } satisfies MessageCommitPayload,
+        createdAt: input.createdAt,
+      });
+
+      yield* announceChange;
+      return yield* toPlanMessage(appended);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.appendAssistantMessage:query",
+          "PlanningStore.appendAssistantMessage:encodeRequest",
+        ),
+      ),
+    );
+
+  const saveAssistantPlanRevision: PlanningStore["Service"]["saveAssistantPlanRevision"] = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const appended = yield* appendAssistantAt({
+        plan,
+        parentCommitId: input.parentCommitId,
+        commitId,
+        kind: "plan-revision",
+        payload: { text: input.text } satisfies PlanRevisionCommitPayload,
+        createdAt: input.createdAt,
+      });
+
+      yield* announceChange;
+      return toPlanRevision(appended);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.saveAssistantPlanRevision:query",
+          "PlanningStore.saveAssistantPlanRevision:encodeRequest",
         ),
       ),
     );
@@ -1200,6 +1381,8 @@ export const make = Effect.gen(function* () {
     createPlan,
     appendMessage,
     savePlanRevision,
+    appendAssistantMessage,
+    saveAssistantPlanRevision,
     archivePlan,
     unarchivePlan,
     deletePlan,
