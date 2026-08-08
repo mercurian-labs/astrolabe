@@ -4,7 +4,9 @@ import {
   MercurianCommitId,
   MercurianProjectId,
   PlanId,
+  PlanTurnId,
   type PlanDetail,
+  type PlanQuestion,
   type PlanStreamItem,
   type PlanTimelineItem,
 } from "@t3tools/contracts";
@@ -118,5 +120,160 @@ describe("applyPlanStreamItem", () => {
     ]);
     expect(state.detail).toEqual(replacement);
     expect(state.synchronized).toBe(true);
+  });
+});
+
+const turnId = PlanTurnId.make("turn-1");
+const started: PlanStreamItem = {
+  kind: "turn-started",
+  turnId,
+  parentCommitId: MercurianCommitId.make("commit-1"),
+};
+const delta = (textDelta: string, offset?: number): PlanStreamItem => ({
+  kind: "turn-delta",
+  turnId,
+  textDelta,
+  ...(offset === undefined ? {} : { offset }),
+});
+const question: PlanQuestion = {
+  id: "q1",
+  header: "Scope",
+  question: "Which surface first?",
+  options: [
+    { label: "Web", description: "The browser app" },
+    { label: "Mobile", description: "The phone app" },
+  ],
+};
+
+describe("applyPlanStreamItem turn frames", () => {
+  it("opens the in-flight turn and streams deltas into it", () => {
+    const state = fold([{ kind: "snapshot", snapshot }, started, delta("Hel", 0), delta("lo", 3)]);
+    expect(state.detail?.inFlightTurn?.text).toBe("Hello");
+    expect(state.detail?.inFlightTurn?.parentCommitId).toBe("commit-1");
+  });
+
+  it("folds away a delta replayed across the snapshot join", () => {
+    // The server attaches its frame feed before it reads the snapshot, so a
+    // delta the snapshot's partial text already contains can arrive again.
+    const midTurn: PlanDetail = {
+      ...snapshot,
+      inFlightTurn: {
+        turnId,
+        parentCommitId: MercurianCommitId.make("commit-1"),
+        text: "Hel",
+        grounding: [],
+      },
+    };
+    const state = fold([{ kind: "snapshot", snapshot: midTurn }, delta("Hel", 0), delta("lo", 3)]);
+    expect(state.detail?.inFlightTurn?.text).toBe("Hello");
+  });
+
+  it("collects grounding once per item", () => {
+    const item = { kind: "file-read" as const, label: "apps/server/src/ws.ts" };
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      { kind: "turn-grounding", turnId, item },
+      { kind: "turn-grounding", turnId, item },
+    ]);
+    expect(state.detail?.inFlightTurn?.grounding).toEqual([item]);
+  });
+
+  it("raises the question and clears it when answered", () => {
+    const asked = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      { kind: "turn-question", turnId, questions: [question] },
+    ]);
+    expect(asked.detail?.inFlightTurn?.questions).toEqual([question]);
+
+    const answered = applyPlanStreamItem(asked, { kind: "turn-question-answered", turnId });
+    expect(answered.detail?.inFlightTurn?.questions).toBeUndefined();
+    expect(answered.detail?.inFlightTurn?.text).toBe("");
+  });
+
+  it("closes the turn on turn-settled and appends the commit as the record", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      delta("Partial", 0),
+      { kind: "turn-settled", turnId },
+      {
+        kind: "commit",
+        sequence: 2,
+        item: {
+          _tag: "message",
+          ...commitFields("commit-2", 2, ["commit-1"]),
+          authorKind: "assistant",
+          text: "Partial",
+          interrupted: true,
+        },
+      },
+    ]);
+    expect(state.detail?.inFlightTurn).toBeUndefined();
+    expect(state.detail?.timeline).toHaveLength(2);
+  });
+
+  it("lets the settled commit close the turn when it outruns turn-settled", () => {
+    // Frames and commit events ride different feeds; either order must
+    // converge. A mid-turn plan revision is an assistant commit too and
+    // closes nothing.
+    const midRevision = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      {
+        kind: "commit",
+        sequence: 2,
+        item: {
+          _tag: "plan-revision",
+          ...commitFields("commit-2", 2, ["commit-1"]),
+          authorKind: "assistant",
+        },
+        planText: "# Plan",
+      },
+    ]);
+    expect(midRevision.detail?.inFlightTurn).toBeDefined();
+
+    const settledByCommit = applyPlanStreamItem(midRevision, {
+      kind: "commit",
+      sequence: 3,
+      item: {
+        _tag: "message",
+        ...commitFields("commit-3", 3, ["commit-2"]),
+        authorKind: "assistant",
+        text: "Done",
+      },
+    });
+    expect(settledByCommit.detail?.inFlightTurn).toBeUndefined();
+
+    const idempotent = applyPlanStreamItem(settledByCommit, { kind: "turn-settled", turnId });
+    expect(idempotent.detail?.inFlightTurn).toBeUndefined();
+    expect(idempotent.detail?.timeline).toHaveLength(3);
+  });
+
+  it("surfaces a refusal and clears it when a turn starts", () => {
+    const refused = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "turn-refused", reason: "no-instance" },
+    ]);
+    expect(refused.turnRefusal).toBe("no-instance");
+
+    const cleared = applyPlanStreamItem(refused, started);
+    expect(cleared.turnRefusal).toBeNull();
+  });
+
+  it("joins mid-turn from the snapshot's own in-flight state", () => {
+    const midTurn: PlanDetail = {
+      ...snapshot,
+      inFlightTurn: {
+        turnId,
+        parentCommitId: MercurianCommitId.make("commit-1"),
+        text: "So far",
+        grounding: [{ kind: "search", label: "subscribeTree" }],
+      },
+    };
+    const state = fold([{ kind: "snapshot", snapshot: midTurn }]);
+    expect(state.detail?.inFlightTurn?.text).toBe("So far");
+    expect(state.detail?.inFlightTurn?.grounding).toHaveLength(1);
   });
 });
