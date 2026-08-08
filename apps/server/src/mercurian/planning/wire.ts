@@ -15,6 +15,8 @@ import { MercurianCommitId } from "@t3tools/contracts";
 import type { MercurianProject, Plan } from "./schema.ts";
 import type {
   PlanDetail,
+  PlanImport,
+  PlanIssueRevision,
   PlanMessage,
   PlanningTreeSnapshot,
   PlanRevision,
@@ -40,7 +42,7 @@ export const toWirePlanShell = (plan: Plan): Contracts.PlanShell => ({
   updatedAt: iso(plan.updatedAt),
 });
 
-const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision) => ({
+const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision | PlanIssueRevision) => ({
   commitId: MercurianCommitId.make(commit.commitId),
   sequence: commit.sequence,
   parents: commit.parents.map((parentId) => MercurianCommitId.make(parentId)),
@@ -65,10 +67,24 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
 export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision =>
   toWirePlanCommitFields(revision);
 
-export const toWirePlanTimelineItem = (item: PlanTimelineItem): Contracts.PlanTimelineItem =>
-  item._tag === "message"
-    ? { _tag: "message", ...toWirePlanMessage(item) }
-    : { _tag: "plan-revision", ...toWirePlanRevision(item) };
+/** Unlike a revision, this one carries its body: the space begins with it. */
+export const toWirePlanIssueRevision = (
+  revision: PlanIssueRevision,
+): Contracts.PlanIssueRevision => ({
+  ...toWirePlanCommitFields(revision),
+  title: revision.title,
+  description: revision.description,
+});
+
+export const toWirePlanTimelineItem = (item: PlanTimelineItem): Contracts.PlanTimelineItem => {
+  if (item._tag === "message") {
+    return { _tag: "message", ...toWirePlanMessage(item) };
+  }
+  if (item._tag === "issue-revision") {
+    return { _tag: "issue-revision", ...toWirePlanIssueRevision(item) };
+  }
+  return { _tag: "plan-revision", ...toWirePlanRevision(item) };
+};
 
 export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
   plan: toWirePlanShell(detail.plan),
@@ -82,6 +98,16 @@ export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanS
   sequence: event.item.sequence,
   item: toWirePlanTimelineItem(event.item),
   ...(event.planText === undefined ? {} : { planText: event.planText }),
+});
+
+/**
+ * What an import answered: the plan, and which of the three things happened to
+ * it. The outcome is not a status code — it is what the surface says out loud
+ * when re-importing lands you somewhere you already were.
+ */
+export const toWirePlanImport = (result: PlanImport): Contracts.PlanImportResult => ({
+  detail: toWirePlanDetail(result.detail),
+  outcome: result.outcome,
 });
 
 export const toWirePlanTextAt = (planText: string): Contracts.PlanTextAt => ({ planText });

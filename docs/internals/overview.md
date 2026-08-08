@@ -194,6 +194,18 @@ Credentials are `ServerSecretStore` files keyed by connection id, never rows and
 standing is probed live behind a short-TTL cache, never stored; issues are read live and never
 stored at all.
 
+Issue import is the one path that turns an issue into something Mercurian keeps, and it lands in
+`PlanningStore` rather than a service of its own: `mercurian.importPlan` creates a plan whose root
+commit is the issue's content, of kind `issue-revision` and written with `rootPublished: true` — the
+one caller of that seam, so an imported plan is published from birth while `append` keeps every
+later commit private. The link back lives in `plan_origins`, keyed `(connection_id, issue_id)` with
+a `UNIQUE` on the pair: re-importing an origin returns the existing plan, or unarchives it, and the
+wire's `created | existing | resurfaced` outcome says which, so idempotency reads as navigation
+rather than a refusal. `connection_id` is not a foreign key — origins are content, and disconnecting
+a tracker must not dangle a plan — and the origin row joins the delete walk so a deleted plan leaves
+nothing for a later import to find. The issue's content arrives on the call rather than being
+re-fetched: no connector has a by-id read, and its `status` is stored nowhere.
+
 ## Startup
 
 [`serverRuntimeStartup.ts`][startup] runs a fixed lifecycle: start keybindings, settings, and

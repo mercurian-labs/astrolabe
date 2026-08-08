@@ -75,6 +75,7 @@ import {
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
   MercurianGetPlanTextAtInput,
+  MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
   MercurianProject,
@@ -89,6 +90,7 @@ import {
   NoPendingQuestionError,
   PlanDeleteBlockedError,
   PlanDetail,
+  PlanImportResult,
   PlanMessage,
   PlanNotFoundError,
   PlanningTreeStreamItem,
@@ -895,6 +897,19 @@ export const WsMercurianCreatePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.createPlan
   ]),
 });
 
+// Import is selection, not synchronization: this is the only method that turns
+// an issue into anything Mercurian stores, and it is idempotent by origin — a
+// second import of one issue answers with the plan the first one made.
+export const WsMercurianImportPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.importPlan, {
+  payload: MercurianImportPlanInput,
+  success: PlanImportResult,
+  error: Schema.Union([
+    MercurianProjectNotFoundError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 export const WsMercurianAppendPlanMessageRpc = Rpc.make(MERCURIAN_WS_METHODS.appendPlanMessage, {
   payload: MercurianAppendPlanMessageInput,
   success: PlanMessage,
@@ -1231,6 +1246,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSubscribeTreeRpc,
   WsMercurianCreateProjectRpc,
   WsMercurianCreatePlanRpc,
+  WsMercurianImportPlanRpc,
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
   WsMercurianVisitPlanRpc,

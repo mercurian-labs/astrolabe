@@ -104,6 +104,7 @@ import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import {
   toWirePlanCommitEvent,
   toWirePlanDetail,
+  toWirePlanImport,
   toWirePlanMessage,
   toWirePlanRevision,
   toWirePlanTextAt,
@@ -1585,6 +1586,33 @@ const makeWsRpcLayer = (
                 isMercurianProjectNotFoundError(cause)
                   ? cause
                   : new MercurianPlanningError({ operation: "createPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.importPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.importPlan,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.importPlan({
+                  projectId: input.projectId,
+                  connectionId: input.connectionId,
+                  issueId: input.issue.id,
+                  issueUrl: input.issue.url,
+                  // The issue's content becomes the root commit. Its `status`
+                  // is deliberately not passed on: where an issue stands is a
+                  // live tracker fact, and import stores no copy of it.
+                  title: input.issue.title,
+                  description: input.issue.description,
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanImport),
+              Effect.mapError((cause) =>
+                isMercurianProjectNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "importPlan", cause }),
               ),
             ),
             { "rpc.aggregate": "mercurian" },
