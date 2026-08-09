@@ -442,12 +442,9 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(reply.interrupted, true);
     }).pipe(
       Effect.scoped,
-      // Deliberately chained (not one merged provide): the harness layer must
-      // be BUILT under the test clock so the grace sleep it schedules is
-      // virtual. Merging the two layers as siblings builds the harness on the
-      // wall clock and the test hangs.
-      Effect.provide(testLayer()),
-      Effect.provide(TestClock.layer()),
+      // provideMerge, not a sibling merge: the harness layer must be BUILT
+      // under the test clock so the grace sleep it schedules is virtual.
+      Effect.provide(testLayer().pipe(Layer.provideMerge(TestClock.layer()))),
     ),
   );
 
