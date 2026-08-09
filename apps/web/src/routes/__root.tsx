@@ -18,7 +18,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
-import { CommandPalette } from "../components/CommandPalette";
+import { SearchPalette } from "../components/mercurian/SearchPalette";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
@@ -122,12 +122,17 @@ function RootRouteView() {
     );
   }
 
+  // The palette is a sibling of the shell, not a wrapper around it: the fork's
+  // component wrapped the app only to hand its thread composer down, and the
+  // Mercurian palette has no such tenants. `CommandPalette` is parked in place
+  // beside the thread surfaces until coding sessions return.
   const appShell = (
-    <CommandPalette>
+    <>
       <AppSidebarLayout>
         <Outlet />
       </AppSidebarLayout>
-    </CommandPalette>
+      <SearchPalette />
+    </>
   );
 
   return (

@@ -1,0 +1,493 @@
+import { useAtomValue } from "@effect/atom-react";
+import type { MercurianProject, PlanTreeRow } from "@t3tools/contracts";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import {
+  ArrowLeftIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  ScrollTextIcon,
+  SettingsIcon,
+  SquarePenIcon,
+} from "lucide-react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
+
+import { onOpenCommandPalette } from "../../commandPaletteBus";
+import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../../keybindings";
+import { isTerminalFocused } from "../../lib/terminalFocus";
+import { randomUUID } from "../../lib/utils";
+import { usePlanDraftStore } from "../../planDraftStore";
+import { useMercurianTree } from "../../state/mercurian";
+import { primaryServerKeybindingsAtom } from "../../state/server";
+import { formatRelativeTimeLabel } from "../../timestampFormat";
+import {
+  ADDON_ICON_CLASS,
+  enumerateCommandPaletteItems,
+  ITEM_ICON_CLASS,
+  type CommandPaletteActionItem,
+  type CommandPaletteGroup,
+  type CommandPaletteSubmenuItem,
+} from "../CommandPalette.logic";
+import { CommandPaletteContent } from "../CommandPaletteContent";
+import { CommandPaletteResults } from "../CommandPaletteResults";
+import { CommandDialog, CommandDialogPopup } from "../ui/command";
+import { NewProjectDialog } from "./NewProjectDialog";
+import { PlanStatusDot } from "./PlanStatusDot";
+import {
+  partitionPlansByLifecycle,
+  resolvePlanRowStatus,
+  sortPlansNewestFirst,
+  sortProjectsForTree,
+} from "./ProjectTreeSidebar.logic";
+import {
+  buildSearchPaletteGroups,
+  composeEmptyQueryPlanRows,
+  filterSearchPaletteGroups,
+  planItemValue,
+  projectItemValue,
+  resolveCurrentProjectId,
+  resolveProjectPick,
+  SEARCH_PALETTE_SECTIONS,
+  type SearchPaletteResult,
+} from "./SearchPalette.logic";
+
+type PaletteResult = SearchPaletteResult<PlanTreeRow, MercurianProject>;
+
+/**
+ * The Search Palette: one chord, from anywhere, over everything you can go to
+ * and the three things you can start.
+ *
+ * It is an overlay rather than a panel, which is the whole reason it works with
+ * the sidebar collapsed — nothing about it lives in the tree except the search
+ * row that opens it. Picking always lands on work: a project resolves to a plan
+ * before it navigates, never to a container.
+ */
+export function SearchPalette() {
+  const [open, setOpen] = useState(false);
+  // The chord and the bus both mean "start a plan, ask me where" when there is
+  // no project to assume. The palette opens straight into the picker.
+  const [openInProjectPicker, setOpenInProjectPicker] = useState(false);
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { snapshot } = useMercurianTree();
+  const draftsById = usePlanDraftStore((state) => state.draftsById);
+  const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
+
+  const activePlans = useMemo(
+    () => partitionPlansByLifecycle(snapshot.plans).active,
+    [snapshot.plans],
+  );
+  const currentProjectId = useMemo(
+    () => resolveCurrentProjectId({ pathname, plans: activePlans, draftsById }),
+    [activePlans, draftsById, pathname],
+  );
+
+  const startPlanInProject = useCallback(
+    (projectId: string) => {
+      const draft = openDraftForProject(projectId, randomUUID(), new Date().toISOString());
+      void navigate({ to: "/plans/draft/$draftId", params: { draftId: draft.draftId } });
+    },
+    [navigate, openDraftForProject],
+  );
+
+  const startNewPlan = useCallback(() => {
+    if (currentProjectId !== null) {
+      setOpen(false);
+      startPlanInProject(currentProjectId);
+      return;
+    }
+    setOpenInProjectPicker(true);
+    setOpen(true);
+  }, [currentProjectId, startPlanInProject]);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: { terminalFocus: isTerminalFocused() },
+      });
+      if (command === "commandPalette.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpenInProjectPicker(false);
+        setOpen((wasOpen) => !wasOpen);
+        return;
+      }
+      if (command === "plan.new") {
+        event.preventDefault();
+        event.stopPropagation();
+        startNewPlan();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [keybindings, startNewPlan]);
+
+  useEffect(
+    () =>
+      onOpenCommandPalette((detail) => {
+        setOpenInProjectPicker(detail.open === "new-plan-in");
+        setOpen(true);
+      }),
+    [],
+  );
+
+  return (
+    <>
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        {open ? (
+          <CommandDialogPopup
+            aria-label="Search palette"
+            className="overflow-hidden p-0"
+            data-command-palette="true"
+            data-testid="search-palette"
+            onBackdropPointerDown={() => setOpen(false)}
+          >
+            <SearchPaletteDialog
+              openInProjectPicker={openInProjectPicker}
+              plans={activePlans}
+              projects={snapshot.projects}
+              currentProjectId={currentProjectId}
+              setOpen={setOpen}
+              startPlanInProject={startPlanInProject}
+              openNewProjectDialog={() => setIsNewProjectOpen(true)}
+            />
+          </CommandDialogPopup>
+        ) : null}
+      </CommandDialog>
+      <NewProjectDialog open={isNewProjectOpen} onOpenChange={setIsNewProjectOpen} />
+    </>
+  );
+}
+
+function SearchPaletteDialog(props: {
+  readonly openInProjectPicker: boolean;
+  readonly plans: ReadonlyArray<PlanTreeRow>;
+  readonly projects: ReadonlyArray<MercurianProject>;
+  readonly currentProjectId: string | null;
+  readonly setOpen: (open: boolean) => void;
+  readonly startPlanInProject: (projectId: string) => void;
+  readonly openNewProjectDialog: () => void;
+}) {
+  const { openNewProjectDialog, setOpen, startPlanInProject } = props;
+  const navigate = useNavigate();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
+  // One level deep is all this palette needs: the project picker behind "New
+  // plan". The stack shape is the fork's so a second view costs nothing.
+  const [pickerGroups, setPickerGroups] = useState<ReadonlyArray<CommandPaletteGroup> | null>(null);
+
+  const projectNameById = useMemo(
+    () =>
+      new Map<string, string>(
+        props.projects.map((project) => [project.projectId, project.name] as const),
+      ),
+    [props.projects],
+  );
+  const plansByProject = useMemo(() => {
+    const grouped = new Map<string, PlanTreeRow[]>();
+    for (const plan of props.plans) {
+      const existing = grouped.get(plan.projectId);
+      if (existing === undefined) {
+        grouped.set(plan.projectId, [plan]);
+      } else {
+        existing.push(plan);
+      }
+    }
+    return grouped;
+  }, [props.plans]);
+
+  const runResult = useCallback(
+    (result: PaletteResult): void => {
+      switch (result.kind) {
+        case "plan":
+          void navigate({ to: "/plans/$planId", params: { planId: result.plan.planId } });
+          return;
+        case "project": {
+          const pick = resolveProjectPick(plansByProject.get(result.project.projectId) ?? []);
+          if (pick.kind === "open-plan") {
+            void navigate({ to: "/plans/$planId", params: { planId: pick.planId } });
+            return;
+          }
+          startPlanInProject(result.project.projectId);
+          return;
+        }
+        case "section":
+          void navigate({ to: result.section === "repositories" ? "/repositories" : "/settings" });
+          return;
+        case "action":
+          if (result.action === "new-project") {
+            openNewProjectDialog();
+            return;
+          }
+          if (result.action === "open-settings") {
+            void navigate({ to: "/settings" });
+            return;
+          }
+          // "New plan" with a project in hand never asks; without one it does,
+          // which is the picker below rather than a run.
+          if (props.currentProjectId !== null) {
+            startPlanInProject(props.currentProjectId);
+          }
+          return;
+      }
+    },
+    [navigate, openNewProjectDialog, plansByProject, props.currentProjectId, startPlanInProject],
+  );
+
+  const projectPickerItems = useMemo<CommandPaletteActionItem[]>(
+    () =>
+      sortProjectsForTree(props.projects).map((project) => ({
+        kind: "action",
+        value: `new-plan-in:${project.projectId}`,
+        searchTerms: [project.name],
+        title: project.name,
+        icon: <FolderIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          startPlanInProject(project.projectId);
+        },
+      })),
+    [props.projects, startPlanInProject],
+  );
+
+  const projectPickerGroups = useMemo<ReadonlyArray<CommandPaletteGroup>>(
+    () => [{ value: "projects", label: "New plan in", items: projectPickerItems }],
+    [projectPickerItems],
+  );
+
+  const actionItems = useMemo<
+    ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>
+  >(() => {
+    const newPlanBase = {
+      value: "action:new-plan",
+      searchTerms: ["New plan", "create plan", "start"],
+      title: "New plan",
+      icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
+    } as const;
+
+    const newPlan: CommandPaletteActionItem | CommandPaletteSubmenuItem =
+      props.currentProjectId !== null
+        ? {
+            ...newPlanBase,
+            kind: "action",
+            description: projectNameById.get(props.currentProjectId),
+            run: async () => runResult({ kind: "action", action: "new-plan" }),
+          }
+        : {
+            ...newPlanBase,
+            kind: "submenu",
+            addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
+            groups: projectPickerGroups,
+            // Nowhere to put a plan yet: "New project" sits right beneath.
+            ...(props.projects.length === 0 ? { disabled: true } : {}),
+          };
+
+    return [
+      newPlan,
+      {
+        kind: "action",
+        value: "action:new-project",
+        searchTerms: ["New project", "create project", "add project"],
+        title: "New project",
+        icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+        run: async () => runResult({ kind: "action", action: "new-project" }),
+      },
+      {
+        kind: "action",
+        value: "action:open-settings",
+        searchTerms: ["Open settings", "preferences", "keybindings"],
+        title: "Open settings",
+        icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
+        run: async () => runResult({ kind: "action", action: "open-settings" }),
+      },
+    ];
+  }, [
+    projectNameById,
+    projectPickerGroups,
+    props.currentProjectId,
+    props.projects.length,
+    runResult,
+  ]);
+
+  const planItems = useMemo<CommandPaletteActionItem[]>(() => {
+    // The empty query's order is also the source order typing ranks against,
+    // so urgency stays the tiebreak between equally good matches.
+    const ordered =
+      query.trim().length === 0
+        ? composeEmptyQueryPlanRows(props.plans)
+        : sortPlansNewestFirst(props.plans);
+
+    return ordered.map((plan) => {
+      const projectName = projectNameById.get(plan.projectId) ?? "";
+      const status = resolvePlanRowStatus(plan);
+      return {
+        kind: "action",
+        value: planItemValue(plan.planId),
+        searchTerms: [plan.title, projectName],
+        title: plan.title,
+        description: projectName,
+        timestamp: formatRelativeTimeLabel(plan.updatedAt),
+        icon: <ScrollTextIcon className={ITEM_ICON_CLASS} />,
+        ...(status === null ? {} : { titleLeadingContent: <PlanStatusDot status={status} /> }),
+        run: async () => runResult({ kind: "plan", plan, projectName }),
+      };
+    });
+  }, [projectNameById, props.plans, query, runResult]);
+
+  const projectItems = useMemo<CommandPaletteActionItem[]>(
+    () =>
+      sortProjectsForTree(props.projects).map((project) => ({
+        kind: "action",
+        value: projectItemValue(project.projectId),
+        searchTerms: [project.name],
+        title: project.name,
+        icon: <FolderIcon className={ITEM_ICON_CLASS} />,
+        run: async () => runResult({ kind: "project", project }),
+      })),
+    [props.projects, runResult],
+  );
+
+  const sectionItems = useMemo<CommandPaletteActionItem[]>(
+    () =>
+      SEARCH_PALETTE_SECTIONS.map((section) => ({
+        kind: "action",
+        value: `section:${section.section}`,
+        searchTerms: [...section.searchTerms],
+        title: section.label,
+        icon:
+          section.section === "repositories" ? (
+            <GitBranchIcon className={ITEM_ICON_CLASS} />
+          ) : (
+            <SettingsIcon className={ITEM_ICON_CLASS} />
+          ),
+        run: async () => runResult({ kind: "section", section: section.section }),
+      })),
+    [runResult],
+  );
+
+  const rootGroups = useMemo(
+    () => buildSearchPaletteGroups({ actionItems, planItems, projectItems, sectionItems }),
+    [actionItems, planItems, projectItems, sectionItems],
+  );
+
+  const activeGroups = pickerGroups ?? rootGroups;
+  const displayedGroups = useMemo(() => {
+    const filtered = filterSearchPaletteGroups({ groups: activeGroups, query: deferredQuery });
+    // The digits name what you are looking at, so they are assigned after
+    // filtering — a hint that points at a row you cannot see is a lie.
+    return filtered.map((group) =>
+      group.value === "plans"
+        ? {
+            ...group,
+            items: enumerateCommandPaletteItems(
+              group.items.filter(
+                (item): item is CommandPaletteActionItem => item.kind === "action",
+              ),
+            ),
+          }
+        : group,
+    );
+  }, [activeGroups, deferredQuery]);
+
+  const openProjectPicker = useCallback(() => {
+    setPickerGroups(projectPickerGroups);
+    setHighlightedItemValue(null);
+    setQuery("");
+  }, [projectPickerGroups]);
+
+  // The chord that means "new plan" with no project in hand opens straight into
+  // the picker; the palette is the question.
+  useEffect(() => {
+    if (!props.openInProjectPicker || props.projects.length === 0) return;
+    openProjectPicker();
+  }, [openProjectPicker, props.openInProjectPicker, props.projects.length]);
+
+  const executeItem = useCallback(
+    (item: CommandPaletteActionItem | CommandPaletteSubmenuItem): void => {
+      if (item.disabled) return;
+      if (item.kind === "submenu") {
+        setPickerGroups(item.groups);
+        setHighlightedItemValue(null);
+        setQuery("");
+        return;
+      }
+      setOpen(false);
+      void item.run();
+    },
+    [setOpen],
+  );
+
+  const popView = useCallback(() => {
+    setPickerGroups(null);
+    setHighlightedItemValue(null);
+    setQuery("");
+  }, []);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    const command = resolveShortcutCommand(event, keybindings, {
+      platform: navigator.platform,
+    });
+    if (threadJumpIndexFromCommand(command ?? "") === null) return;
+    const matchingItem = displayedGroups
+      .flatMap((group) => group.items)
+      .find((item) => item.shortcutCommand === command);
+    if (!matchingItem) return;
+    event.preventDefault();
+    event.stopPropagation();
+    executeItem(matchingItem);
+  }
+
+  const isInPicker = pickerGroups !== null;
+
+  return (
+    <CommandPaletteContent
+      key={isInPicker ? "picker" : "root"}
+      aria-label="Search palette"
+      inputProps={{
+        placeholder: isInPicker
+          ? "Which project?"
+          : "Search plans, projects, and actions...  (> for actions)",
+        ...(isInPicker
+          ? {
+              wrapperClassName: "[&_[data-slot=autocomplete-start-addon]]:pointer-events-auto",
+              startAddon: (
+                <button
+                  type="button"
+                  className="flex cursor-pointer items-center"
+                  aria-label="Back"
+                  onClick={popView}
+                >
+                  <ArrowLeftIcon />
+                </button>
+              ),
+            }
+          : {}),
+        onKeyDown: handleKeyDown,
+      }}
+      mode="none"
+      onItemHighlighted={(value) => {
+        setHighlightedItemValue(typeof value === "string" ? value : null);
+      }}
+      onValueChange={setQuery}
+      panelClassName="max-h-[min(28rem,70vh)]"
+      showBackHint={isInPicker}
+      value={query}
+    >
+      <CommandPaletteResults
+        emptyStateMessage={
+          deferredQuery.startsWith(">") ? "No matching actions." : "Nothing matches that."
+        }
+        groups={displayedGroups}
+        highlightedItemValue={highlightedItemValue}
+        isActionsOnly={deferredQuery.startsWith(">")}
+        keybindings={keybindings}
+        onExecuteItem={executeItem}
+      />
+    </CommandPaletteContent>
+  );
+}

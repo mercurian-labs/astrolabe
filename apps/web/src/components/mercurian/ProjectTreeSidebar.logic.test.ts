@@ -2,7 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildPlanRowMenuItems,
+  enumerateJumpTargets,
   getVisiblePlansForProject,
+  resolveAdjacentId,
   groupPlansByProject,
   partitionPlansByLifecycle,
   resolvePlanRowActions,
@@ -241,5 +243,82 @@ describe("resolvePlanRowActions", () => {
       canArchive: true,
       canDelete: false,
     });
+  });
+});
+
+describe("enumerateJumpTargets", () => {
+  const projects = [
+    { projectId: "one", createdAt: "2026-08-01T00:00:00.000Z" },
+    { projectId: "two", createdAt: "2026-08-02T00:00:00.000Z" },
+  ];
+  const visiblePlansByProjectId = new Map([
+    ["one", [{ planId: "one-a" }, { planId: "one-b" }]],
+    ["two", [{ planId: "two-a" }]],
+  ]);
+
+  it("walks the visible plans of expanded projects, in render order", () => {
+    expect(
+      enumerateJumpTargets({
+        projects,
+        visiblePlansByProjectId,
+        isProjectExpanded: () => true,
+      }),
+    ).toEqual(["one-a", "one-b", "two-a"]);
+  });
+
+  it("skips a collapsed project entirely — its plans are not rows", () => {
+    expect(
+      enumerateJumpTargets({
+        projects,
+        visiblePlansByProjectId,
+        isProjectExpanded: (projectId) => projectId !== "one",
+      }),
+    ).toEqual(["two-a"]);
+  });
+
+  it("never enumerates a project row: those expand rather than open", () => {
+    const targets = enumerateJumpTargets({
+      projects,
+      visiblePlansByProjectId,
+      isProjectExpanded: () => true,
+    });
+    expect(targets).not.toContain("one");
+    expect(targets).not.toContain("two");
+  });
+
+  it("grows with Show more, because it reads what is actually drawn", () => {
+    const preview = enumerateJumpTargets({
+      projects,
+      visiblePlansByProjectId: new Map([["one", [{ planId: "one-a" }]]]),
+      isProjectExpanded: () => true,
+    });
+    const expanded = enumerateJumpTargets({
+      projects,
+      visiblePlansByProjectId: new Map([["one", [{ planId: "one-a" }, { planId: "one-b" }]]]),
+      isProjectExpanded: () => true,
+    });
+    expect(preview).toEqual(["one-a"]);
+    expect(expanded).toEqual(["one-a", "one-b"]);
+  });
+});
+
+describe("resolveAdjacentId", () => {
+  const ids = ["a", "b", "c"];
+
+  it("steps either way and clamps at the ends", () => {
+    expect(resolveAdjacentId({ ids, currentId: "b", direction: "next" })).toBe("c");
+    expect(resolveAdjacentId({ ids, currentId: "b", direction: "previous" })).toBe("a");
+    expect(resolveAdjacentId({ ids, currentId: "c", direction: "next" })).toBeNull();
+    expect(resolveAdjacentId({ ids, currentId: "a", direction: "previous" })).toBeNull();
+  });
+
+  it("enters from the near end when nothing is open", () => {
+    expect(resolveAdjacentId({ ids, currentId: null, direction: "next" })).toBe("a");
+    expect(resolveAdjacentId({ ids, currentId: null, direction: "previous" })).toBe("c");
+  });
+
+  it("has nowhere to go from a row that is not there", () => {
+    expect(resolveAdjacentId({ ids, currentId: "gone", direction: "next" })).toBeNull();
+    expect(resolveAdjacentId({ ids: [], currentId: null, direction: "next" })).toBeNull();
   });
 });

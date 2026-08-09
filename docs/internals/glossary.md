@@ -232,6 +232,16 @@ Its own table rather than a column on `plans`, so that reading a plan can never 
 
 **Mark unread** (`mercurian.markPlanUnread`) puts a plan back in front of you by standing its visit one millisecond before the plan's latest activity, so unseen falls out of the same comparison every row is read by rather than needing a second flag that could disagree with it. Per-user visited state is deferred until identity exists.
 
+#### Search palette
+
+The one overlay you reach everything from — plans, [Mercurian projects](#mercurian-project), the two workspace sections, and the three actions that start something new (new plan, new project, open settings). One chord opens it from anywhere, the sidebar's collapsed state included, because it is an overlay and only its entry row lives in the tree.
+
+Its whole search space is the client's live tree snapshot, so ranking is pure and synchronous and there is no round trip. An empty query answers "where am I needed, where was I": the actions, then plans whose [issue status](#issue-status) is awaiting-input, then unseen, padded with the most recently active plans to about a dozen rows. A `working` plan reaches the list through recency rather than urgency — something streaming is not waiting on you. Typing ranks every kind together on the fork's ladder (exact over prefix over substring, earlier search terms over later, ties keeping source order — which for plans is that same urgency order), and a `>` prefix restricts to actions.
+
+Picking always lands on work, never on a container: a plan opens its [planning space](#planning-space); a project opens its most recently active plan, or opens the composer for its first if it has none; a section is a page; an action runs. Archived plans are absent, since every listing renders the active partition. Results are modelled as a discriminated union by what picking them means, which is where coding-session results join without touching the existing arms.
+
+Its jump chords live with it: modifier-held digits over the tree rows that _open a place_ (project rows expand instead, so they are never targets, and a collapsed project contributes none), a bracket pair stepping between them, and the same digits picking the palette's own numbered rows while it is open. The commands are still named `thread.jump.*` / `thread.previous` / `thread.next` — stale vocabulary kept deliberately, so saved `keybindings.json` files and the whole helper chain keep working.
+
 ### Trackers
 
 Mercurian's seam to external issue trackers, held in [TrackerStore.ts][32] and crossing the wire through [mercurianTrackers.ts][33]. Mercurian is where issues get planned, never a mirror of the tracker.

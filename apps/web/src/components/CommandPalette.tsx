@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * The fork's command palette, parked in place.
+ *
+ * Nothing mounts this: the app's overlay is `mercurian/SearchPalette`, over
+ * projects, plans, and the workspace sections. What lived only here has been
+ * re-homed — `themeEditor.toggle` to `ThemeEditorHost`, palette-open to the
+ * new overlay — and what queries a thread's workspace (`filePicker.toggle`,
+ * `projectSearch.toggle`) is inert with the thread surfaces it belongs to,
+ * waiting here for the coding-session work to return.
+ */
+
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { canCreateProjectInEnvironment } from "@t3tools/client-runtime/operations/projects";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";

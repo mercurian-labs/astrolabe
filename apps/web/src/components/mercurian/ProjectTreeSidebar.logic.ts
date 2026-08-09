@@ -157,6 +157,61 @@ export function getVisiblePlansForProject<T extends Pick<PlanRowFields, "planId"
   };
 }
 
+/**
+ * The rows a jump shortcut can land on, in the order they are drawn.
+ *
+ * "Opens a place" is the whole rule: project rows expand rather than open, so
+ * they are never targets, and a collapsed project contributes nothing because
+ * its plans are not rows at all. Rendering and the digits read this same list,
+ * which is why the sidebar computes visibility once and passes it in — hints
+ * that disagree with the keys they promise are worse than no hints.
+ *
+ * Coding sessions are the level below; when the tree grows them they join this
+ * enumeration where they are drawn, and nothing else here changes.
+ */
+export function enumerateJumpTargets<
+  TProject extends ProjectRowFields,
+  TPlan extends Pick<PlanRowFields, "planId">,
+>(input: {
+  readonly projects: readonly TProject[];
+  readonly visiblePlansByProjectId: ReadonlyMap<string, readonly TPlan[]>;
+  readonly isProjectExpanded: (projectId: string) => boolean;
+}): string[] {
+  return sortProjectsForTree(input.projects).flatMap((project) =>
+    input.isProjectExpanded(project.projectId)
+      ? (input.visiblePlansByProjectId.get(project.projectId) ?? []).map((plan) => plan.planId)
+      : [],
+  );
+}
+
+/**
+ * The row before or after the current one, or nothing at the ends.
+ *
+ * Clamping rather than wrapping, and entering from the near end when nothing is
+ * open: the fork's traversal semantics, generalized off threads so the tree can
+ * use them unchanged.
+ */
+export function resolveAdjacentId<T>(input: {
+  readonly ids: readonly T[];
+  readonly currentId: T | null;
+  readonly direction: "previous" | "next";
+}): T | null {
+  const { currentId, direction, ids } = input;
+  if (ids.length === 0) return null;
+
+  if (currentId === null) {
+    return direction === "previous" ? (ids.at(-1) ?? null) : (ids[0] ?? null);
+  }
+
+  const currentIndex = ids.indexOf(currentId);
+  if (currentIndex === -1) return null;
+
+  if (direction === "previous") {
+    return currentIndex > 0 ? (ids[currentIndex - 1] ?? null) : null;
+  }
+  return currentIndex < ids.length - 1 ? (ids[currentIndex + 1] ?? null) : null;
+}
+
 const ROW_BASE_CLASS_NAME =
   "h-8 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left text-sm select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 

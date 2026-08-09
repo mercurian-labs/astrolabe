@@ -39,7 +39,10 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },
   { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
-  { key: "mod+n", command: "chat.new", when: "!terminalFocus" },
+  // The app's prime creation chord belongs to the thing you create here. It is
+  // deliberately not `chat.new`'s any more: that command is inert while coding
+  // sessions are parked, and it keeps `mod+shift+o` for when they return.
+  { key: "mod+n", command: "plan.new", when: "!terminalFocus" },
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "mod+shift+m", command: "modelPicker.toggle", when: "!terminalFocus" },
@@ -63,12 +66,19 @@ function normalizeKeyToken(token: string): string {
   return token;
 }
 
-export function parseKeybindingShortcut(value: string): KeybindingShortcut | null {
-  const rawTokens = value
+/**
+ * How a shortcut string breaks into tokens.
+ *
+ * `+` is both the separator and a legal key, so a trailing run of empty tokens
+ * *is* that key: `mod++` is mod plus `+`. Exported because the settings page
+ * draws one keycap per token — display and parsing have to agree on what the
+ * tokens are, or a binding renders as blank keycaps.
+ */
+export function splitKeybindingValue(value: string): string[] {
+  const tokens = value
     .toLowerCase()
     .split("+")
     .map((token) => token.trim());
-  const tokens = [...rawTokens];
   let trailingEmptyCount = 0;
   while (tokens[tokens.length - 1] === "") {
     trailingEmptyCount += 1;
@@ -77,6 +87,11 @@ export function parseKeybindingShortcut(value: string): KeybindingShortcut | nul
   if (trailingEmptyCount > 0) {
     tokens.push("+");
   }
+  return tokens;
+}
+
+export function parseKeybindingShortcut(value: string): KeybindingShortcut | null {
+  const tokens = splitKeybindingValue(value);
   if (tokens.some((token) => token.length === 0)) {
     return null;
   }

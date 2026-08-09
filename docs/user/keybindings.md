@@ -47,10 +47,14 @@ Use **Inspect** to pick an element in the app and reveal its color token. Inspec
 successful pick; its hover glow and badge preview the element and token that click will select.
 **Cancel** or `Escape` exits Inspect and clears its selection and spotlight.
 
-The command palette searches active thread titles, projects, branches, user messages, and final
-agent responses across connected environments. Message matches show one labeled excerpt while
-keeping the thread's project, branch, and machine context visible. Message search begins after two
-characters and uses SQLite's ASCII case-insensitive matching.
+`commandPalette.toggle` opens the search palette over your plans, projects, workspace sections, and
+the actions that start something new; pressing it again closes it. `plan.new` starts a plan and
+defaults to `mod+n`. See [Projects and plans](./projects-and-plans.md) for what the palette shows
+and how picking a result behaves.
+
+The `thread.jump.1` through `thread.jump.9` commands jump to the numbered rows of the project tree,
+and `thread.previous` / `thread.next` step between them. Holding a jump shortcut's modifier shows
+the numbered keycaps on the rows they would take you to.
 
 The full command list and the current defaults are shown in **Settings** → **Keybindings**, which
 always matches the build you are running. Use that rather than a copied list.

@@ -1,4 +1,9 @@
-import { PlanId, type MercurianProjectId } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import {
+  PlanId,
+  THREAD_JUMP_KEYBINDING_COMMANDS,
+  type MercurianProjectId,
+} from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArchiveIcon,
@@ -9,38 +14,35 @@ import {
   FolderPlusIcon,
   GitBranchIcon,
   MoreHorizontalIcon,
+  SearchIcon,
   SettingsIcon,
   SquarePenIcon,
   Trash2Icon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 
+import { isCommandPaletteOpen, openCommandPalette } from "../../commandPaletteBus";
 import { isElectron } from "../../env";
 import { usePlanLifecycleActions } from "../../hooks/usePlanLifecycleActions";
+import {
+  resolveShortcutCommand,
+  shortcutLabelForCommand,
+  shouldShowThreadJumpHintsForModifiers,
+  threadJumpIndexFromCommand,
+  threadTraversalDirectionFromCommand,
+} from "../../keybindings";
 import { readLocalApi } from "../../localApi";
 import { useClientSettings } from "../../hooks/useSettings";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore } from "../../planDraftStore";
-import {
-  useCreateMercurianProject,
-  useMarkPlanUnread,
-  useMercurianTree,
-} from "../../state/mercurian";
+import { useShortcutModifierState } from "../../shortcutModifierState";
+import { useMarkPlanUnread, useMercurianTree } from "../../state/mercurian";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { resolveMercurianProjectExpanded, useUiStateStore } from "../../uiStateStore";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
-import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
-import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import {
   SidebarContent,
@@ -57,9 +59,11 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   buildPlanRowMenuItems,
+  enumerateJumpTargets,
   getVisiblePlansForProject,
   groupPlansByProject,
   partitionPlansByLifecycle,
+  resolveAdjacentId,
   resolvePlanRowClassName,
   resolvePlanRowStatus,
   resolveProjectRowClassName,
@@ -68,64 +72,12 @@ import {
   resolveWorkspaceRowClassName,
   sortProjectsForTree,
   type PlanRowMenuAction,
-  type PlanRowStatus,
   type TreeSelection,
 } from "./ProjectTreeSidebar.logic";
 import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
+import { NewProjectDialog } from "./NewProjectDialog";
+import { PlanStatusDot } from "./PlanStatusDot";
 import { SettingsNav } from "./SettingsNav";
-
-/**
- * How each status reads. The urgency palette is the fork's, unchanged: amber
- * and indigo for what wants you, sky for what is moving, emerald for what
- * finished while you were away. Only working pulses — the dot moves when the
- * work does.
- */
-const PLAN_STATUS_PRESENTATION: Record<
-  PlanRowStatus,
-  { readonly label: string; readonly colorClass: string; readonly dotClass: string }
-> = {
-  "awaiting-input": {
-    label: "Awaiting your input",
-    colorClass: "text-indigo-600 dark:text-indigo-300/90",
-    dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
-  },
-  working: {
-    label: "Assistant working",
-    colorClass: "text-sky-600 dark:text-sky-300/80",
-    dotClass: "bg-sky-500 dark:bg-sky-300/80 animate-status-pulse",
-  },
-  unseen: {
-    label: "Unseen updates",
-    colorClass: "text-emerald-600 dark:text-emerald-300/90",
-    dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
-  },
-};
-
-/**
- * One status, one dot. No label on the row: a tree row's width belongs to the
- * plan's title, and the word is a hover away.
- */
-function PlanStatusDot({ status }: { readonly status: PlanRowStatus }) {
-  const presentation = PLAN_STATUS_PRESENTATION[status];
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            aria-label={presentation.label}
-            className={cn(
-              "inline-flex size-3.5 shrink-0 items-center justify-center",
-              presentation.colorClass,
-            )}
-          />
-        }
-      >
-        <span className={cn("size-[9px] rounded-full", presentation.dotClass)} />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{presentation.label}</TooltipPopup>
-    </Tooltip>
-  );
-}
 
 /**
  * The popup's icons, keyed by the same ids the native menu carries. The
@@ -153,6 +105,64 @@ const ICON_ACTION_BUTTON_CLASS =
 export default function ProjectTreeSidebar() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const selection = useMemo(() => resolveTreeSelection(pathname), [pathname]);
+  const { snapshot } = useMercurianTree();
+  const expandedById = useUiStateStore((state) => state.mercurianProjectExpandedById);
+  const planPreviewCount = useClientSettings(selectPlanPreviewCount);
+  // Lifted out of the rows: one computation feeds both what is drawn and what
+  // the digits jump to, so a keycap can never point at a row that is not there.
+  // Still deliberately forgotten between visits — a glance, not a preference.
+  const [planListExpandedByProjectId, setPlanListExpandedByProjectId] = useState<
+    Record<string, boolean>
+  >({});
+  const togglePlanList = useCallback((projectId: string) => {
+    setPlanListExpandedByProjectId((expanded) => ({
+      ...expanded,
+      [projectId]: !(expanded[projectId] ?? false),
+    }));
+  }, []);
+
+  const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
+  // The tree is the active listing. An archived plan is not destroyed, just
+  // gone from here — Settings → Archived is where it waits.
+  const plansByProject = useMemo(
+    () => groupPlansByProject(partitionPlansByLifecycle(snapshot.plans).active),
+    [snapshot.plans],
+  );
+
+  const { visiblePlansByProjectId, projectsWithHiddenPlans } = useMemo(() => {
+    const visible = new Map<string, ProjectTreePlan[]>();
+    const withHidden = new Set<string>();
+    for (const project of projects) {
+      const { visiblePlans, hasHiddenPlans } = getVisiblePlansForProject({
+        plans: plansByProject.get(project.projectId) ?? [],
+        activePlanId: selection.activePlanId,
+        isPlanListExpanded: planListExpandedByProjectId[project.projectId] ?? false,
+        previewLimit: planPreviewCount,
+      });
+      visible.set(project.projectId, visiblePlans);
+      if (hasHiddenPlans) withHidden.add(project.projectId);
+    }
+    return { visiblePlansByProjectId: visible, projectsWithHiddenPlans: withHidden };
+  }, [
+    planListExpandedByProjectId,
+    planPreviewCount,
+    plansByProject,
+    projects,
+    selection.activePlanId,
+  ]);
+
+  const jumpTargets = useMemo(
+    () =>
+      enumerateJumpTargets({
+        projects,
+        visiblePlansByProjectId,
+        isProjectExpanded: (projectId) => resolveMercurianProjectExpanded(expandedById, projectId),
+      }),
+    [expandedById, projects, visiblePlansByProjectId],
+  );
+
+  useTreeJumpShortcuts({ jumpTargets, activePlanId: selection.activePlanId });
+  const jumpLabelByPlanId = useJumpHintLabels(jumpTargets);
 
   return (
     <>
@@ -163,7 +173,17 @@ export default function ProjectTreeSidebar() {
         <SettingsNav pathname={pathname} />
       ) : (
         <SidebarContent>
-          <ProjectTree selection={selection} />
+          <SearchEntryRow />
+          <ProjectTree
+            selection={selection}
+            projects={projects}
+            plansByProject={plansByProject}
+            visiblePlansByProjectId={visiblePlansByProjectId}
+            projectsWithHiddenPlans={projectsWithHiddenPlans}
+            planListExpandedByProjectId={planListExpandedByProjectId}
+            onTogglePlanList={togglePlanList}
+            jumpLabelByPlanId={jumpLabelByPlanId}
+          />
           <WorkspaceGroup selection={selection} />
         </SidebarContent>
       )}
@@ -172,16 +192,147 @@ export default function ProjectTreeSidebar() {
   );
 }
 
-function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
-  const { snapshot } = useMercurianTree();
-  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
-  const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
-  // The tree is the active listing. An archived plan is not destroyed, just
-  // gone from here — Settings → Archived is where it waits.
-  const plansByProject = useMemo(
-    () => groupPlansByProject(partitionPlansByLifecycle(snapshot.plans).active),
-    [snapshot.plans],
+/**
+ * The digits and the bracket pair, over the rows that open a place.
+ *
+ * Mounted with the tree rather than with the rows, so it keeps working while
+ * Settings has taken the panel over and while the sidebar is collapsed off
+ * screen — the chords are muscle memory, not a property of what is visible.
+ * Events the palette has already claimed are left alone: with the overlay open,
+ * digits belong to its rows.
+ */
+function useTreeJumpShortcuts(input: {
+  readonly jumpTargets: readonly string[];
+  readonly activePlanId: string | null;
+}) {
+  const navigate = useNavigate();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const { activePlanId, jumpTargets } = input;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (isCommandPaletteOpen()) return;
+
+      const command = resolveShortcutCommand(event, keybindings, {
+        platform: navigator.platform,
+      });
+      const goTo = (planId: string | null) => {
+        if (planId === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void navigate({ to: "/plans/$planId", params: { planId } });
+      };
+
+      const direction = threadTraversalDirectionFromCommand(command);
+      if (direction !== null) {
+        goTo(resolveAdjacentId({ ids: jumpTargets, currentId: activePlanId, direction }));
+        return;
+      }
+
+      const jumpIndex = threadJumpIndexFromCommand(command ?? "");
+      if (jumpIndex === null) return;
+      goTo(jumpTargets[jumpIndex] ?? null);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activePlanId, jumpTargets, keybindings, navigate]);
+}
+
+/**
+ * The keycaps, while the modifier is held and only then. The predicate is the
+ * fork's: the held modifiers have to match a jump binding exactly, so adding
+ * Shift or Alt hides the overlay rather than promising a chord that does
+ * something else.
+ */
+function useJumpHintLabels(jumpTargets: readonly string[]): ReadonlyMap<string, string> {
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const modifiers = useShortcutModifierState();
+  const shouldShow = shouldShowThreadJumpHintsForModifiers(modifiers, keybindings, {
+    platform: navigator.platform,
+  });
+
+  return useMemo(
+    () =>
+      shouldShow
+        ? new Map(
+            jumpTargets
+              .slice(0, THREAD_JUMP_KEYBINDING_COMMANDS.length)
+              .map((planId, index) => [planId, String(index + 1)] as const),
+          )
+        : new Map<string, string>(),
+    [jumpTargets, shouldShow],
   );
+}
+
+/**
+ * Floats at the row's right edge while the modifier is held. An overlay pill,
+ * not an inline slot: the hint must not displace the timestamp or shift a
+ * single row when it appears.
+ */
+function JumpHintBadge({ label }: { readonly label: string }) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute end-1.5 top-1/2 z-10 inline-flex h-5 -translate-y-1/2 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+    >
+      {label}
+    </span>
+  );
+}
+
+/**
+ * The way into the palette for people who reach for the pointer. The overlay
+ * itself owes nothing to the sidebar — this row is an affordance, and the chord
+ * beside it says so.
+ */
+function SearchEntryRow() {
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcutLabel = shortcutLabelForCommand(keybindings, "commandPalette.toggle");
+
+  return (
+    <SidebarGroup className="pb-0">
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <button
+              type="button"
+              className={cn(
+                resolveWorkspaceRowClassName({ isActive: false }),
+                "flex items-center gap-2",
+              )}
+              onClick={() => openCommandPalette()}
+            >
+              <SearchIcon className="size-4 shrink-0 opacity-70" />
+              <span className="flex-1 truncate">Search…</span>
+              {shortcutLabel === null ? null : (
+                <span className="shrink-0 font-mono text-[11px] text-sidebar-muted-foreground/60">
+                  {shortcutLabel}
+                </span>
+              )}
+            </button>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+function ProjectTree(props: {
+  readonly selection: TreeSelection;
+  readonly projects: ReadonlyArray<{
+    readonly projectId: MercurianProjectId;
+    readonly name: string;
+  }>;
+  readonly plansByProject: ReadonlyMap<string, ProjectTreePlan[]>;
+  readonly visiblePlansByProjectId: ReadonlyMap<string, ProjectTreePlan[]>;
+  readonly projectsWithHiddenPlans: ReadonlySet<string>;
+  readonly planListExpandedByProjectId: Readonly<Record<string, boolean>>;
+  readonly onTogglePlanList: (projectId: string) => void;
+  readonly jumpLabelByPlanId: ReadonlyMap<string, string>;
+}) {
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
 
   return (
     <SidebarGroup>
@@ -204,7 +355,7 @@ function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
         </Tooltip>
       </div>
       <SidebarGroupContent>
-        {projects.length === 0 ? (
+        {props.projects.length === 0 ? (
           <Empty className="gap-2 p-4 text-left">
             <EmptyHeader>
               <EmptyTitle className="text-sm font-medium">No projects yet</EmptyTitle>
@@ -215,13 +366,18 @@ function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
           </Empty>
         ) : (
           <SidebarMenu>
-            {projects.map((project) => (
+            {props.projects.map((project) => (
               <ProjectTreeRow
                 key={project.projectId}
                 projectId={project.projectId}
                 name={project.name}
-                plans={plansByProject.get(project.projectId) ?? []}
-                activePlanId={selection.activePlanId}
+                plans={props.plansByProject.get(project.projectId) ?? EMPTY_PLANS}
+                visiblePlans={props.visiblePlansByProjectId.get(project.projectId) ?? EMPTY_PLANS}
+                hasHiddenPlans={props.projectsWithHiddenPlans.has(project.projectId)}
+                isPlanListExpanded={props.planListExpandedByProjectId[project.projectId] ?? false}
+                onTogglePlanList={props.onTogglePlanList}
+                activePlanId={props.selection.activePlanId}
+                jumpLabelByPlanId={props.jumpLabelByPlanId}
               />
             ))}
           </SidebarMenu>
@@ -231,6 +387,8 @@ function ProjectTree({ selection }: { readonly selection: TreeSelection }) {
     </SidebarGroup>
   );
 }
+
+const EMPTY_PLANS: ProjectTreePlan[] = [];
 
 interface ProjectTreePlan {
   readonly planId: string;
@@ -246,22 +404,29 @@ interface ProjectTreeRowProps {
   readonly projectId: MercurianProjectId;
   readonly name: string;
   readonly plans: ReadonlyArray<ProjectTreePlan>;
+  readonly visiblePlans: ReadonlyArray<ProjectTreePlan>;
+  readonly hasHiddenPlans: boolean;
+  readonly isPlanListExpanded: boolean;
+  readonly onTogglePlanList: (projectId: string) => void;
   readonly activePlanId: string | null;
+  readonly jumpLabelByPlanId: ReadonlyMap<string, string>;
 }
 
 const ProjectTreeRow = memo(function ProjectTreeRow({
   projectId,
   name,
   plans,
+  visiblePlans,
+  hasHiddenPlans,
+  isPlanListExpanded,
+  onTogglePlanList,
   activePlanId,
+  jumpLabelByPlanId,
 }: ProjectTreeRowProps) {
   const navigate = useNavigate();
   const expandedById = useUiStateStore((state) => state.mercurianProjectExpandedById);
   const setExpanded = useUiStateStore((state) => state.setMercurianProjectExpanded);
   const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
-  const planPreviewCount = useClientSettings(selectPlanPreviewCount);
-  // Deliberately forgotten between visits: show-more is a glance, not a preference.
-  const [isPlanListExpanded, setIsPlanListExpanded] = useState(false);
   const [isRepositoriesOpen, setIsRepositoriesOpen] = useState(false);
 
   const isExpanded = resolveMercurianProjectExpanded(expandedById, projectId);
@@ -276,17 +441,6 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
   const rollupStatus = useMemo(
     () => (isExpanded ? null : resolveRollupStatus(plans.map(resolvePlanRowStatus))),
     [isExpanded, plans],
-  );
-
-  const { visiblePlans, hasHiddenPlans } = useMemo(
-    () =>
-      getVisiblePlansForProject({
-        plans,
-        activePlanId,
-        isPlanListExpanded,
-        previewLimit: planPreviewCount,
-      }),
-    [activePlanId, isPlanListExpanded, planPreviewCount, plans],
   );
 
   const handleNewPlan = useCallback(
@@ -374,7 +528,12 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
             </SidebarMenuSubItem>
           ) : null}
           {visiblePlans.map((plan) => (
-            <PlanTreeRow key={plan.planId} plan={plan} isActive={plan.planId === activePlanId} />
+            <PlanTreeRow
+              key={plan.planId}
+              plan={plan}
+              isActive={plan.planId === activePlanId}
+              jumpLabel={jumpLabelByPlanId.get(plan.planId) ?? null}
+            />
           ))}
           {hasHiddenPlans ? (
             <SidebarMenuSubItem className="w-full">
@@ -382,7 +541,7 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
                 render={<button type="button" />}
                 size="sm"
                 className="h-8 w-full translate-x-0 justify-start px-2 text-left text-xs text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                onClick={() => setIsPlanListExpanded((expanded) => !expanded)}
+                onClick={() => onTogglePlanList(projectId)}
               >
                 <span>{isPlanListExpanded ? "Show less" : "Show more"}</span>
               </SidebarMenuSubButton>
@@ -407,9 +566,11 @@ const ProjectTreeRow = memo(function ProjectTreeRow({
 const PlanTreeRow = memo(function PlanTreeRow({
   plan,
   isActive,
+  jumpLabel,
 }: {
   readonly plan: ProjectTreePlan;
   readonly isActive: boolean;
+  readonly jumpLabel: string | null;
 }) {
   const navigate = useNavigate();
   const markPlanUnread = useMarkPlanUnread();
@@ -471,6 +632,7 @@ const PlanTreeRow = memo(function PlanTreeRow({
           {formatRelativeTimeLabel(plan.updatedAt)}
         </span>
       </SidebarMenuSubButton>
+      {jumpLabel === null ? null : <JumpHintBadge label={jumpLabel} />}
       <Menu>
         <MenuTrigger
           render={
@@ -551,72 +713,5 @@ function WorkspaceGroup({ selection }: { readonly selection: TreeSelection }) {
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
-  );
-}
-
-function NewProjectDialog({
-  open,
-  onOpenChange,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  const createProject = useCreateMercurianProject();
-  const [name, setName] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const submit = useCallback(async () => {
-    const trimmed = name.trim();
-    if (trimmed.length === 0 || isSubmitting) return;
-    setIsSubmitting(true);
-    const project = await createProject(trimmed);
-    setIsSubmitting(false);
-    if (project !== null) {
-      setName("");
-      onOpenChange(false);
-    }
-  }, [createProject, isSubmitting, name, onOpenChange]);
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          setName("");
-        }
-        onOpenChange(nextOpen);
-      }}
-    >
-      <DialogPopup className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
-        </DialogHeader>
-        <DialogPanel className="space-y-4">
-          <div className="grid gap-1.5">
-            <span className="text-xs font-medium text-foreground">Project name</span>
-            <Input
-              aria-label="Project name"
-              autoFocus
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void submit();
-                }
-              }}
-            />
-          </div>
-        </DialogPanel>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={name.trim().length === 0 || isSubmitting} onClick={() => void submit()}>
-            Create
-          </Button>
-        </DialogFooter>
-      </DialogPopup>
-    </Dialog>
   );
 }
