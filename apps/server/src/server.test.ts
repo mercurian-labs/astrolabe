@@ -105,9 +105,11 @@ const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import { makeRoutesLayer } from "./server.ts";
+import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
@@ -401,6 +403,7 @@ const buildAppUnderTest = (options?: {
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
+    planningAssistant?: Partial<PlanningAssistant.PlanningAssistant["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
     serverSettings?: Partial<ServerSettings.ServerSettingsService["Service"]>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncher["Service"]>;
@@ -966,6 +969,20 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
+      // The planning runtime, inert: the server suite is about the wire, and
+      // no test here streams a turn. The stores below stay real.
+      Layer.provide(
+        Layer.mock(PlanningAssistant.PlanningAssistant)({
+          startTurn: () => Effect.void,
+          stopTurn: () => Effect.void,
+          status: Effect.succeed(new Map()),
+          changes: Stream.empty,
+          frames: () => Stream.empty,
+          inFlight: () => Effect.succeed(undefined),
+          teardownPlan: () => Effect.void,
+          ...options?.layers?.planningAssistant,
+        }),
+      ),
       // Mercurian's stores, real but in-memory: they own their own database
       // file, so nothing here reaches t3code's store.
       Layer.provide(
@@ -980,6 +997,7 @@ const buildAppUnderTest = (options?: {
             Layer.provide(ServerSecretStore.layer),
           ),
         ).pipe(
+          Layer.provide(PlanTurnRegistry.layer),
           Layer.provide(CommitStore.layer),
           Layer.provide(MercurianSqlite.layerMemory),
           Layer.provide(ProcessRunner.layer),

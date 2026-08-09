@@ -66,8 +66,8 @@ Reused as-is: the upstream protocol whole (log, decider, projector, shell/thread
 
 ## Open questions
 
-- The exact frame shapes of `mercurian.subscribePlan` — snapshot fields, in-flight turn representation, grounding-visibility folding ("Assistant") — are M-100/M-104 contract design, bounded by §2–§3.
-- Whether planning turn frames want a bounded in-memory replay (join-mid-turn is covered by snapshot; reconnect-mid-turn may want a small buffer) — decide when M-104 makes turns real.
+- ~~The exact frame shapes of `mercurian.subscribePlan` — snapshot fields, in-flight turn representation, grounding-visibility folding ("Assistant") — are M-100/M-104 contract design, bounded by §2–§3.~~ Resolved by M-104: the `turn-*` members of `PlanStreamItem` (started/delta/grounding/question/question-answered/settled/refused), with `PlanDetail.inFlightTurn` carrying the partial turn on the snapshot. Deltas carry the offset of the text before them, so a frame replayed across the snapshot join folds away idempotently.
+- ~~Whether planning turn frames want a bounded in-memory replay (join-mid-turn is covered by snapshot; reconnect-mid-turn may want a small buffer) — decide when M-104 makes turns real.~~ Resolved by M-104 as _not built_: a reconnect re-subscribes from scratch and the snapshot carries the in-flight turn, so a replay buffer would duplicate what the snapshot already guarantees.
 - Per-user visited state and teammate-driven unseen when identity and publish transport arrive — explicitly deferred with ADR 001 §4, semantics owned by ADR 003 when written.
 - Whether upstream's persist-every-delta approach warrants pruning if any future surface adopts it — not adopted here; noted for the day session logs matter for storage.
 - Status rollup _priority order_ across planning-side and session-side signals (which "most urgent" wins when both stores signal) — M-99's design decision, inside §4's frame.

@@ -39,6 +39,8 @@ export const MERCURIAN_WS_METHODS = {
   archivePlan: "mercurian.archivePlan",
   unarchivePlan: "mercurian.unarchivePlan",
   deletePlan: "mercurian.deletePlan",
+  stopPlanningTurn: "mercurian.stopPlanningTurn",
+  answerPlanningQuestion: "mercurian.answerPlanningQuestion",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -54,9 +56,71 @@ export type PlanId = typeof PlanId.Type;
 export const MercurianCommitId = makeEntityId("MercurianCommitId");
 export type MercurianCommitId = typeof MercurianCommitId.Type;
 
-/** Mirrors the commit store's author axis. Only `human` is written today. */
+/** Mirrors the commit store's author axis. */
 export const PlanAuthorKind = Schema.Literals(["human", "assistant"]);
 export type PlanAuthorKind = typeof PlanAuthorKind.Type;
+
+/**
+ * A planning turn's identity while it is running. Transient — a turn id never
+ * lands in a commit; the settled message is the record and needs no handle.
+ */
+export const PlanTurnId = makeEntityId("PlanTurnId");
+export type PlanTurnId = typeof PlanTurnId.Type;
+
+/**
+ * One thing the assistant consulted while grounding a reply: a file it read, a
+ * search it ran, a directory it listed. Normalized at the server from each
+ * provider's own tool vocabulary, so every client renders one shape.
+ */
+export const PlanGroundingItem = Schema.Struct({
+  kind: Schema.Literals(["file-read", "search", "listing", "other"]),
+  /** What a person would recognize it by — a path, a query, a tool name. */
+  label: TrimmedNonEmptyString,
+  detail: Schema.optional(Schema.String),
+});
+export type PlanGroundingItem = typeof PlanGroundingItem.Type;
+
+/**
+ * Grounding that could not reach everything: the repositories the provider's
+ * session shape left out. Present only when narrowing actually happened —
+ * "grounding is visible" includes what was out of reach.
+ */
+export const PlanGroundingScope = Schema.Struct({
+  unreachableRepositories: Schema.Array(TrimmedNonEmptyString),
+});
+export type PlanGroundingScope = typeof PlanGroundingScope.Type;
+
+const PlanQuestionOption = Schema.Struct({
+  label: TrimmedNonEmptyString,
+  description: TrimmedNonEmptyString,
+});
+export type PlanQuestionOption = typeof PlanQuestionOption.Type;
+
+/**
+ * A structured question the assistant asked instead of guessing. Structurally
+ * a copy of the provider runtime's `UserInputQuestion`, deliberately not an
+ * import: the planning surface's contract must not couple to the provider
+ * contract's evolution.
+ */
+export const PlanQuestion = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  header: TrimmedNonEmptyString,
+  question: TrimmedNonEmptyString,
+  options: Schema.Array(PlanQuestionOption),
+  multiSelect: Schema.optional(Schema.Boolean),
+});
+export type PlanQuestion = typeof PlanQuestion.Type;
+
+/**
+ * The question-and-answer exchange as the settled commit records it. `answers`
+ * is absent when the turn ended — stopped, or failed — before anyone answered:
+ * a question stopped past stays in the record, honestly unanswered.
+ */
+export const PlanQuestionRecord = Schema.Struct({
+  questions: Schema.Array(PlanQuestion),
+  answers: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+export type PlanQuestionRecord = typeof PlanQuestionRecord.Type;
 
 export const MercurianProject = Schema.Struct({
   projectId: MercurianProjectId,
@@ -143,6 +207,18 @@ export const PlanMessage = Schema.Struct({
    * carry images has to keep decoding.
    */
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  /**
+   * The stopped-response mark: this reply was cut short and the partial text
+   * is what there was. Optional like every turn fact below — commits written
+   * before planning turns existed keep decoding, and absence means false.
+   */
+  interrupted: Schema.optional(Schema.Boolean),
+  /** What the assistant consulted to ground this reply, folded away until expanded. */
+  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
+  /** Present only when grounding was narrowed by the provider's session shape. */
+  groundingScope: Schema.optional(PlanGroundingScope),
+  /** The structured question this reply asked, and what it was answered. */
+  question: Schema.optional(PlanQuestionRecord),
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -168,6 +244,24 @@ export const PlanTimelineItem = Schema.Union([
 export type PlanTimelineItem = typeof PlanTimelineItem.Type;
 
 /**
+ * The turn currently streaming in a planning space, as a joining window needs
+ * it: the partial text so far, what has been consulted, and the question that
+ * is waiting, if one is. Carried on the snapshot so a window opened — or
+ * reconnected — mid-turn is coherent without any frame replay (ADR 002 §3).
+ */
+export const PlanInFlightTurn = Schema.Struct({
+  turnId: PlanTurnId,
+  /** The commit the reply will hang from when it settles. */
+  parentCommitId: MercurianCommitId,
+  text: Schema.String,
+  grounding: Schema.Array(PlanGroundingItem),
+  groundingScope: Schema.optional(PlanGroundingScope),
+  /** Present while a structured question waits on the person. */
+  questions: Schema.optional(Schema.Array(PlanQuestion)),
+});
+export type PlanInFlightTurn = typeof PlanInFlightTurn.Type;
+
+/**
  * A planning space: the plan artifact beside the history that evolves it.
  *
  * `planText` is derived, never stored — it is the last plan revision on the
@@ -180,12 +274,34 @@ export const PlanDetail = Schema.Struct({
   timeline: Schema.Array(PlanTimelineItem),
   /** The highest commit sequence this snapshot accounts for — the resume cursor. */
   snapshotSequence: Schema.Number,
+  /** The turn streaming right now, when one is. Runtime state, never stored. */
+  inFlightTurn: Schema.optional(PlanInFlightTurn),
 });
 export type PlanDetail = typeof PlanDetail.Type;
 
 /**
+ * Why nothing is streaming after a message landed: the append succeeded — the
+ * message is a commit regardless — and this frame says why no reply follows.
+ * The composer's gate makes these rare; they exist for the second window that
+ * raced a settings change or another send.
+ */
+export const PlanTurnRefusalReason = Schema.Literals([
+  "unset",
+  "no-instance",
+  "model-unavailable",
+  "turn-active",
+]);
+export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
+
+/**
  * The planning space's live read. The commit DAG is the durable log, so the
  * events are commits and the cursor is their sequence (ADR 002 §2).
+ *
+ * The `turn-*` members are transient frames (ADR 002 §3): transport, not
+ * record. They carry no sequence and never resume — a reconnect re-subscribes
+ * and the snapshot's `inFlightTurn` carries the partial turn. Only the
+ * settling commit is durable, and it arrives as an ordinary `commit` event
+ * right after `turn-settled`.
  */
 export const PlanStreamItem = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("snapshot"), snapshot: PlanDetail }),
@@ -197,6 +313,37 @@ export const PlanStreamItem = Schema.Union([
     planText: Schema.optional(Schema.String),
   }),
   Schema.Struct({ kind: Schema.Literal("synchronized") }),
+  Schema.Struct({
+    kind: Schema.Literal("turn-started"),
+    turnId: PlanTurnId,
+    parentCommitId: MercurianCommitId,
+    groundingScope: Schema.optional(PlanGroundingScope),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("turn-delta"),
+    turnId: PlanTurnId,
+    textDelta: Schema.String,
+    /**
+     * Characters of the reply already streamed before this delta. A window
+     * joining mid-turn folds idempotently against its snapshot's partial
+     * text: a delta wholly below the text it already holds is a replay.
+     */
+    offset: Schema.optional(Schema.Number),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("turn-grounding"),
+    turnId: PlanTurnId,
+    item: PlanGroundingItem,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("turn-question"),
+    turnId: PlanTurnId,
+    questions: Schema.Array(PlanQuestion),
+  }),
+  Schema.Struct({ kind: Schema.Literal("turn-question-answered"), turnId: PlanTurnId }),
+  /** The turn is over; the commit event that follows is the record arriving. */
+  Schema.Struct({ kind: Schema.Literal("turn-settled"), turnId: PlanTurnId }),
+  Schema.Struct({ kind: Schema.Literal("turn-refused"), reason: PlanTurnRefusalReason }),
 ]);
 export type PlanStreamItem = typeof PlanStreamItem.Type;
 
@@ -337,6 +484,26 @@ export const MercurianSubscribePlanInput = Schema.Struct({
 });
 export type MercurianSubscribePlanInput = typeof MercurianSubscribePlanInput.Type;
 
+/**
+ * Stop the reply streaming in this plan. The partial reply lands as a commit
+ * marked interrupted — stopping means "this happened and was cut short", and
+ * forking past it is the tree's own move. Idempotent when nothing is
+ * streaming: there is nothing to stop, and that is not an error a person
+ * caused.
+ */
+export const MercurianStopPlanningTurnInput = Schema.Struct({ planId: PlanId });
+export type MercurianStopPlanningTurnInput = typeof MercurianStopPlanningTurnInput.Type;
+
+/**
+ * Answer the structured question the plan is waiting on. Answers are keyed by
+ * question id; the shape of each answer is the question's own business.
+ */
+export const MercurianAnswerPlanningQuestionInput = Schema.Struct({
+  planId: PlanId,
+  answers: Schema.Record(Schema.String, Schema.Unknown),
+});
+export type MercurianAnswerPlanningQuestionInput = typeof MercurianAnswerPlanningQuestionInput.Type;
+
 // ===============================
 // Refusals
 // ===============================
@@ -377,9 +544,36 @@ export class PlanDeleteBlockedError extends Schema.TaggedErrorClass<PlanDeleteBl
   }
 }
 
+/**
+ * The one-turn-at-a-time rule as a refusal, from every window at once. While
+ * the assistant is replying, human acts that would land on the same history —
+ * a message, an edit — refuse rather than racing the settle into an illegal
+ * assistant fork. Stopping the reply is the way to act now.
+ */
+export class PlanTurnActiveError extends Schema.TaggedErrorClass<PlanTurnActiveError>()(
+  "PlanTurnActiveError",
+  { planId: PlanId },
+) {
+  override get message(): string {
+    return "The assistant is replying — stop it to act.";
+  }
+}
+
+/** Nothing is waiting for an answer on this plan. */
+export class NoPendingQuestionError extends Schema.TaggedErrorClass<NoPendingQuestionError>()(
+  "NoPendingQuestionError",
+  { planId: PlanId },
+) {
+  override get message(): string {
+    return "This plan has no unanswered question.";
+  }
+}
+
 export const isMercurianProjectNotFoundError = Schema.is(MercurianProjectNotFoundError);
 export const isPlanNotFoundError = Schema.is(PlanNotFoundError);
 export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
+export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
+export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
 
 /**
  * Everything below the planning surface that a client cannot act on: storage
@@ -402,6 +596,8 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "archivePlan",
       "unarchivePlan",
       "deletePlan",
+      "stopPlanningTurn",
+      "answerPlanningQuestion",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

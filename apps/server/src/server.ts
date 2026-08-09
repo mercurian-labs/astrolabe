@@ -24,7 +24,9 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
+import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
@@ -273,6 +275,10 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // exists: those settings belong to the workspace, and the workspace is what
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
+  // The turn registry is runtime state shared by the store (the active-turn
+  // refusal on human writes) and the assistant runtime (which opens and
+  // closes turns) — merged so both resolve the same instance.
+  Layer.provideMerge(PlanTurnRegistry.layer),
   // The registry probes git for facts it refuses to store, so it is the one
   // Mercurian service that needs a process runner.
   Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(ProcessRunner.layer))),
@@ -393,7 +399,13 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(OrchestrationLayerLive),
 );
 
+// The planning assistant straddles the two worlds by design: it drives
+// provider sessions (the core chain's runtime layers, which feed it from
+// below) and lands commits (the Mercurian stores, which feed it from the
+// outer composition). Piped before the chain so everything later provides it.
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+  Layer.provideMerge(PlanningAssistant.layer),
+).pipe(
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),

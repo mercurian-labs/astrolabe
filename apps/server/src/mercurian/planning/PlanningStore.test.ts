@@ -7,15 +7,17 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { MercurianProjectId, PlanId } from "@t3tools/contracts";
+import { MercurianProjectId, PlanId, PlanTurnId, ThreadId } from "@t3tools/contracts";
 
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as PlanningStore from "./PlanningStore.ts";
+import * as PlanTurnRegistry from "./PlanTurnRegistry.ts";
 
 const layer = it.layer(
   PlanningStore.layer.pipe(
+    Layer.provideMerge(PlanTurnRegistry.layer),
     Layer.provideMerge(CommitStore.layer),
     Layer.provideMerge(MercurianSqlite.layerMemory),
     Layer.provide(NodeServicesLayer),
@@ -1428,6 +1430,143 @@ layer("PlanningStore", (it) => {
 
       const unread = yield* Effect.flip(store.markPlanUnread({ planId: PlanId.make("nope") }));
       assert.strictEqual(unread._tag, "PlanNotFoundError");
+    }),
+  );
+
+  it.effect("lands the assistant's reply with its whole turn record", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      const root = created.timeline[0]!;
+
+      const message = yield* store.appendAssistantMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Here is how I would shape it",
+        interrupted: true,
+        grounding: [{ kind: "file-read", label: "apps/web/src/sidebar.tsx" }],
+        groundingScope: { unreachableRepositories: ["almagest"] },
+        question: {
+          questions: [
+            {
+              id: "q1",
+              header: "Scope",
+              question: "Web first?",
+              options: [{ label: "Yes", description: "Start narrow" }],
+            },
+          ],
+          answers: { q1: "Yes" },
+        },
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+
+      assert.strictEqual(message.authorKind, "assistant");
+      assert.deepStrictEqual([...message.parents], [root.commitId]);
+
+      // The record survives the round trip through the payload schemas.
+      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const landed = snapshot.timeline.at(-1);
+      assert.ok(landed !== undefined && landed._tag === "message");
+      assert.strictEqual(landed.interrupted, true);
+      assert.deepStrictEqual(landed.grounding?.[0]?.label, "apps/web/src/sidebar.tsx");
+      assert.deepStrictEqual(landed.groundingScope?.unreachableRepositories, ["almagest"]);
+      assert.deepStrictEqual(landed.question?.answers, { q1: "Yes" });
+    }),
+  );
+
+  it.effect("the assistant revises the plan at equal standing, on its named parent", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      const root = created.timeline[0]!;
+
+      const revision = yield* store.saveAssistantPlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "# Sidebar plan",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      assert.strictEqual(revision.authorKind, "assistant");
+
+      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(snapshot.planText, "# Sidebar plan");
+    }),
+  );
+
+  it.effect(
+    "an assistant write onto a parent with a child is the commit store's fork refusal",
+    () =>
+      Effect.gen(function* () {
+        const store = yield* PlanningStore.PlanningStore;
+        const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+        const root = created.timeline[0]!;
+
+        yield* store.appendMessage({
+          planId: created.plan.planId,
+          text: "A human continues",
+          createdAt: at("2026-08-03T00:01:00.000Z"),
+        });
+
+        const refused = yield* Effect.flip(
+          store.appendAssistantMessage({
+            planId: created.plan.planId,
+            parentCommitId: root.commitId,
+            text: "This would fork",
+            createdAt: at("2026-08-03T00:02:00.000Z"),
+          }),
+        );
+        assert.strictEqual(refused._tag, "AssistantForkError");
+      }),
+  );
+
+  it.effect("human writes refuse while a turn is active, and land after it closes", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      const root = created.timeline[0]!;
+
+      yield* registry.open({
+        planId: created.plan.planId,
+        turnId: PlanTurnId.make("turn-1"),
+        threadId: ThreadId.make("thread-1"),
+        parentCommitId: root.commitId,
+        tipCommitId: root.commitId,
+      });
+
+      const messageRefused = yield* Effect.flip(
+        store.appendMessage({
+          planId: created.plan.planId,
+          text: "Racing the settle",
+          createdAt: at("2026-08-03T00:01:00.000Z"),
+        }),
+      );
+      assert.strictEqual(messageRefused._tag, "PlanTurnActiveError");
+
+      const revisionRefused = yield* Effect.flip(
+        store.savePlanRevision({
+          planId: created.plan.planId,
+          text: "Racing edit",
+          createdAt: at("2026-08-03T00:01:00.000Z"),
+        }),
+      );
+      assert.strictEqual(revisionRefused._tag, "PlanTurnActiveError");
+
+      // The assistant's own path is not guarded — the turn is why it writes.
+      yield* store.saveAssistantPlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "# Mid-turn revision",
+        createdAt: at("2026-08-03T00:01:30.000Z"),
+      });
+
+      yield* registry.close(created.plan.planId);
+      const landed = yield* store.appendMessage({
+        planId: created.plan.planId,
+        text: "After the turn",
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      assert.strictEqual(landed.authorKind, "human");
     }),
   );
 });
