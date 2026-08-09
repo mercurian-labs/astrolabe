@@ -33,6 +33,8 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
+import { splitKeybindingValue } from "@t3tools/shared/keybindings";
+
 import { isElectron } from "../../env";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
 import { formatShortcutLabel } from "../../keybindings";
@@ -74,12 +76,26 @@ import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 
+/**
+ * One keycap per token of a shortcut.
+ *
+ * Tokenized by the parser's own rule, so a `+` key draws as a keycap rather
+ * than as the blank ones a plain split leaves behind. Tokens are numbered by
+ * how often each has appeared, because a shortcut may legitimately repeat one
+ * (`shift+shift+k`) and identical keys would collide.
+ */
 function KeybindingPill({ value }: { value: string }) {
-  const parts = value.split("+");
+  const seenCounts = new Map<string, number>();
+  const parts = splitKeybindingValue(value).map((part) => {
+    const occurrence = (seenCounts.get(part) ?? 0) + 1;
+    seenCounts.set(part, occurrence);
+    return { part, id: `${part}#${occurrence}` };
+  });
+
   return (
     <KbdGroup className="bg-transparent p-0 shadow-none">
-      {parts.map((part) => (
-        <Kbd key={part} className="min-w-6 justify-center px-1.5">
+      {parts.map(({ part, id }) => (
+        <Kbd key={id} className="min-w-6 justify-center px-1.5">
           {part === "mod"
             ? navigator.platform.toLowerCase().includes("mac")
               ? "⌘"

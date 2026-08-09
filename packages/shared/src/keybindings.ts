@@ -66,12 +66,19 @@ function normalizeKeyToken(token: string): string {
   return token;
 }
 
-export function parseKeybindingShortcut(value: string): KeybindingShortcut | null {
-  const rawTokens = value
+/**
+ * How a shortcut string breaks into tokens.
+ *
+ * `+` is both the separator and a legal key, so a trailing run of empty tokens
+ * *is* that key: `mod++` is mod plus `+`. Exported because the settings page
+ * draws one keycap per token — display and parsing have to agree on what the
+ * tokens are, or a binding renders as blank keycaps.
+ */
+export function splitKeybindingValue(value: string): string[] {
+  const tokens = value
     .toLowerCase()
     .split("+")
     .map((token) => token.trim());
-  const tokens = [...rawTokens];
   let trailingEmptyCount = 0;
   while (tokens[tokens.length - 1] === "") {
     trailingEmptyCount += 1;
@@ -80,6 +87,11 @@ export function parseKeybindingShortcut(value: string): KeybindingShortcut | nul
   if (trailingEmptyCount > 0) {
     tokens.push("+");
   }
+  return tokens;
+}
+
+export function parseKeybindingShortcut(value: string): KeybindingShortcut | null {
+  const tokens = splitKeybindingValue(value);
   if (tokens.some((token) => token.length === 0)) {
     return null;
   }
