@@ -2,11 +2,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import {
   EventId,
@@ -397,6 +399,46 @@ describe("PlanningAssistant", () => {
       // Stopping again is a no-op, not an error.
       yield* assistant.stopTurn({ planId: created.plan.planId });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("a stop the adapter never answers settles after the grace window", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Reshape the sidebar",
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(frames); // turn-started
+      yield* harness.emit(
+        runtimeEvent(session.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Stuck" },
+        }),
+      );
+      yield* Queue.take(frames);
+
+      // The interrupt is delivered — and the wedged provider never answers.
+      yield* assistant.stopTurn({ planId: created.plan.planId });
+      yield* Queue.take(harness.interrupts);
+
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust(Duration.seconds(6));
+
+      const settled = yield* Queue.take(frames);
+      assert.strictEqual(settled.kind, "turn-settled");
+      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const reply = snapshot.timeline.at(-1);
+      assert.ok(reply !== undefined && reply._tag === "message");
+      assert.strictEqual(reply.text, "Stuck");
+      assert.strictEqual(reply.interrupted, true);
+    }).pipe(Effect.scoped, Effect.provide(testLayer()), Effect.provide(TestClock.layer())),
   );
 
   it.effect("a question pauses the turn on the person, and the answer resumes it", () =>

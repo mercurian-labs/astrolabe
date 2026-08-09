@@ -29,6 +29,7 @@
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
@@ -242,6 +243,13 @@ const projectTranscript = Effect.fn("PlanningAssistant.projectTranscript")(funct
   }
   return { entries, planText };
 });
+
+/**
+ * How long a stop waits for the adapter's own `turn.aborted` before settling
+ * the interrupted commit itself. Long enough for a healthy abort round-trip;
+ * short enough that a wedged provider cannot hold the plan hostage.
+ */
+const STOP_SETTLE_GRACE = Duration.seconds(5);
 
 export const make = Effect.gen(function* () {
   const planningStore = yield* PlanningStore;
@@ -776,9 +784,29 @@ export const make = Effect.gen(function* () {
           cause: interrupted.failure,
         });
         yield* settleTurn(planId, { interrupted: true });
+        return;
       }
-      // On success the adapter emits turn.aborted (or turn.completed with an
-      // interrupted state), and the event pump settles exactly once.
+      // On success the adapter normally emits turn.aborted (or turn.completed
+      // with an interrupted state) and the event pump settles exactly once.
+      // A provider wedged mid-startup never answers, and the record must not
+      // hang on its cooperation — stopping means the cut-short reply lands.
+      // The grace window is only the polite wait for the adapter's own abort.
+      const stoppedTurnId = turn.turnId;
+      yield* Effect.sleep(STOP_SETTLE_GRACE).pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            const current = turns.get(planId);
+            if (current === undefined || current.turnId !== stoppedTurnId || current.settling) {
+              return;
+            }
+            yield* Effect.logWarning("planning turn abort unanswered; settling directly", {
+              planId,
+            });
+            yield* settleTurn(planId, { interrupted: true });
+          }),
+        ),
+        Effect.forkDetach,
+      );
     });
 
   const answerQuestion: PlanningAssistant["Service"]["answerQuestion"] = (input) =>
