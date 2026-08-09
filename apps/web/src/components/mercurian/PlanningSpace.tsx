@@ -26,12 +26,15 @@ import {
 } from "../../planComposerStore";
 import { usePlanDraftStore } from "../../planDraftStore";
 import {
+  useAnswerPlanningQuestion,
   useAppendPlanMessage,
   useCreatePlan,
   useGetPlanTextAt,
   usePlanDetail,
+  useStopPlanningTurn,
   useVisitPlan,
 } from "../../state/mercurian";
+import { usePlanningModel } from "../../state/mercurianWorkspace";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
@@ -42,6 +45,7 @@ import { DagExplorer } from "./DagExplorer";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
+import { planningModelGateNotice, turnRefusalNotice } from "./PlanComposer.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -86,10 +90,16 @@ const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error } = usePlanDetail(planId);
+  const { detail, isPending, error, turnRefusal } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const visitPlan = useVisitPlan();
+  const stopTurn = useStopPlanningTurn();
+  const answerQuestion = useAnswerPlanningQuestion();
+  // The same resolution the server runs, read here so sending gates with the
+  // reason stated instead of failing silently. The two can only disagree for
+  // the width of a race, which `turn-refused` covers.
+  const planningModel = usePlanningModel();
   const [pane, setPane] = useLocalStorage(
     RIGHT_PANE_STORAGE_KEY,
     DEFAULT_RIGHT_PANE,
@@ -164,6 +174,21 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     const closure = ancestorClosure(graph, head);
     return timeline.filter((item) => closure.has(item.commitId));
   }, [graph, head, timeline]);
+
+  /**
+   * The streaming reply belongs to one path: the one its human message is
+   * on. Standing on another branch — or in the past — shows the history you
+   * chose, not a reply landing somewhere else.
+   */
+  const inFlightTurn = detail?.inFlightTurn;
+  const visibleInFlight = useMemo(() => {
+    if (inFlightTurn === undefined) return undefined;
+    if (head === null) return inFlightTurn;
+    const closure = ancestorClosure(graph, head);
+    return closure.has(inFlightTurn.parentCommitId) ? inFlightTurn : undefined;
+  }, [graph, head, inFlightTurn]);
+
+  const gateNotice = planningModelGateNotice(planningModel.resolution);
 
   /**
    * The artifact's text along *this* path is the one fact the client cannot
@@ -250,7 +275,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           second surface to keep in step. */}
       <div className="flex min-h-0 flex-1 flex-col-reverse sm:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <PlanTimeline timeline={visibleTimeline} />
+          <PlanTimeline
+            inFlight={visibleInFlight}
+            timeline={visibleTimeline}
+            onAnswerQuestion={(answers) => void answerQuestion(planId, answers)}
+          />
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
           {mentions.sources}
@@ -259,14 +288,20 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             // Standing at an earlier point does not take the composer away —
             // it changes what sending means, and the banner says so.
             banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
+            gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
+            notice={turnRefusal === null ? null : turnRefusalNotice(turnRefusal)}
             placeholder="Message this plan"
             text={draft.text}
+            // The whole plan holds one turn at a time, wherever it streams —
+            // Stop is offered even when the reply is on another branch.
+            turnActive={inFlightTurn !== undefined}
             onAddAttachments={(added) => addDraftAttachments(planId, added)}
             onChangeText={(text) => setDraftText(planId, text)}
             onMentionQueryChange={mentions.onMentionQueryChange}
             onRemoveAttachment={(localId) => removeDraftAttachment(planId, localId)}
             onSend={send}
+            onStop={() => void stopTurn(planId)}
           />
         </div>
         {detail === null || !pane.open ? null : (
@@ -405,6 +440,10 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   const setDraftText = usePlanDraftStore((state) => state.setDraftText);
   const discardDraft = usePlanDraftStore((state) => state.discardDraft);
   const createPlan = useCreatePlan();
+  // The birth message starts a reply like any other, so the gate is the
+  // same here: the plan can still be born, but the composer says up front
+  // that no assistant will answer on this machine.
+  const planningModel = usePlanningModel();
   /**
    * The unborn plan's images. Held here rather than in `planDraftStore`
    * because there is no plan to key them by yet and the draft they belong to
@@ -470,6 +509,10 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
       <PlanComposer
         attachments={attachments}
         mentionCandidates={mentions.candidates}
+        // Informational, not blocking: a plan is born with its first message
+        // whether or not an assistant can reply, so the draft composer says
+        // what will happen rather than refusing to create the plan.
+        notice={planningModelGateNotice(planningModel.resolution)}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}

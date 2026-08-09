@@ -56,6 +56,12 @@ export const ProviderSessionStartInput = Schema.Struct({
   // See ProviderSession for the migration story.
   providerInstanceId: Schema.optional(ProviderInstanceId),
   cwd: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * Extra roots the session may read beyond `cwd` — multi-repository
+   * grounding's seam. Adapters whose capability declares `groundingRoots:
+   * "cwd-only"` ignore it; callers gate on the capability rather than failing.
+   */
+  additionalDirectories: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   modelSelection: Schema.optional(ModelSelection),
   resumeCursor: Schema.optional(Schema.Unknown),
   approvalPolicy: Schema.optional(ProviderApprovalPolicy),

@@ -69,6 +69,22 @@ export function createMercurianPlanningAtoms<R, E>(
       concurrency: serialPerPlan,
     }),
     /**
+     * The planning turn's two verbs. Same per-plan key as the writes: a stop
+     * pressed right after a send must land after it, not race it.
+     */
+    stopPlanningTurn: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:stop-planning-turn",
+      tag: MERCURIAN_WS_METHODS.stopPlanningTurn,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    answerPlanningQuestion: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:answer-planning-question",
+      tag: MERCURIAN_WS_METHODS.answerPlanningQuestion,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    /**
      * You opened a plan. A write: what it changes is read by every window off
      * the tree, so it shares the plan's key — a visit and a mark-unread on one
      * plan must not land out of the order they were made in.

@@ -8,6 +8,7 @@ import type {
   PlanDetail,
   PlanId,
   PlanningTreeSnapshot,
+  PlanTurnRefusalReason,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
@@ -33,7 +34,11 @@ const EMPTY_TREE_ATOM = Atom.make(
 );
 const EMPTY_PLAN_ATOM = Atom.make(
   AsyncResult.initial<
-    { readonly detail: PlanDetail | null; readonly synchronized: boolean },
+    {
+      readonly detail: PlanDetail | null;
+      readonly synchronized: boolean;
+      readonly turnRefusal: PlanTurnRefusalReason | null;
+    },
     never
   >(false),
 );
@@ -70,12 +75,15 @@ export interface PlanDetailState {
   readonly detail: PlanDetail | null;
   readonly isPending: boolean;
   readonly error: string | null;
+  /** Why the last message got no reply — transient, cleared as a turn starts. */
+  readonly turnRefusal: PlanTurnRefusalReason | null;
 }
 
 /**
  * The planning space, live. There is no refresh: the artifact and the history
  * are one subscription over the plan's commits, so an edit or a message —
- * from this window or another — arrives as it lands.
+ * from this window or another — arrives as it lands. The streaming turn rides
+ * the same subscription as `detail.inFlightTurn`.
  */
 export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const environmentId = usePrimaryEnvironmentId();
@@ -84,11 +92,13 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
       ? EMPTY_PLAN_ATOM
       : mercurianPlanning.plan({ environmentId, input: { planId } });
   const result = useAtomValue(atom);
-  const detail = Option.getOrNull(AsyncResult.value(result))?.detail ?? null;
+  const state = Option.getOrNull(AsyncResult.value(result));
+  const detail = state?.detail ?? null;
   return {
     detail,
     isPending: detail === null && environmentId !== null && planId !== null,
     error: errorMessage(result, "Could not load this plan."),
+    turnRefusal: state?.turnRefusal ?? null,
   };
 }
 
@@ -144,6 +154,25 @@ export function useVisitPlan() {
 export function useMarkPlanUnread() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.markPlanUnread);
   return useCallback((planId: PlanId) => run({ planId }), [run]);
+}
+
+/**
+ * Stop the reply streaming in a plan. The partial lands as a commit marked
+ * interrupted, arriving on the same subscription as everything else.
+ */
+export function useStopPlanningTurn() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.stopPlanningTurn);
+  return useCallback((planId: PlanId) => run({ planId }), [run]);
+}
+
+/** Answer the structured question a plan is waiting on, keyed by question id. */
+export function useAnswerPlanningQuestion() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.answerPlanningQuestion);
+  return useCallback(
+    (planId: PlanId, answers: Readonly<Record<string, unknown>>) =>
+      run({ planId, answers: answers as Record<string, unknown> }),
+    [run],
+  );
 }
 
 /**

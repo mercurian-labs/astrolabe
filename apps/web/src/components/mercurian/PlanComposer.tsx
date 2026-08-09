@@ -20,6 +20,7 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../Compos
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { resolveComposerControl, type PlanComposerFace } from "./PlanComposer.logic";
 import {
   formatMentionToken,
   moveMentionHighlight,
@@ -77,11 +78,15 @@ export function PlanComposer({
   attachments,
   banner,
   mentionCandidates = NO_MENTION_CANDIDATES,
+  turnActive = false,
+  gateNotice = null,
+  notice = null,
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
   onMentionQueryChange,
   onSend,
+  onStop,
 }: {
   readonly placeholder: string;
   readonly text: string;
@@ -94,6 +99,18 @@ export function PlanComposer({
    * offer, and the menu simply never opens.
    */
   readonly mentionCandidates?: ReadonlyArray<MentionCandidate>;
+  /**
+   * A reply is live in this plan. The send control becomes Stop, and send
+   * stays unavailable — no queueing, from any window.
+   */
+  readonly turnActive?: boolean;
+  /**
+   * Why sending is gated on this machine (no planning model, no instance),
+   * or `null` when it is not. Typing stays legal — drafts are drafts.
+   */
+  readonly gateNotice?: string | null;
+  /** A transient line under the gate's slot: the last turn refusal. */
+  readonly notice?: string | null;
   readonly onChangeText: (text: string) => void;
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
@@ -101,6 +118,8 @@ export function PlanComposer({
   readonly onMentionQueryChange?: (query: string | null) => void;
   /** `true` when the message landed — the surface clears the draft, not this. */
   readonly onSend: (submission: PlanComposerSubmission) => Promise<boolean>;
+  /** Stop the streaming reply. Only rendered while `turnActive`. */
+  readonly onStop?: () => void;
 }) {
   const [state, setState] = useState<PlanComposerState>("idle");
   const [cursor, setCursor] = useState(0);
@@ -113,6 +132,12 @@ export function PlanComposer({
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
   const isSending = state === "sending";
+  const control = resolveComposerControl({
+    turnActive,
+    hasContent,
+    isSending,
+    gateBlocked: gateNotice !== null,
+  });
 
   // The trigger is read from the prompt as written, not from the collapsed
   // view the editor renders: a mention's own grammar lives in the raw text.
@@ -166,14 +191,14 @@ export function PlanComposer({
 
   const submit = useCallback(async () => {
     const trimmed = text.trim();
-    if ((trimmed.length === 0 && attachments.length === 0) || isSending) return;
+    if ((trimmed.length === 0 && attachments.length === 0) || isSending || turnActive) return;
     setState("sending");
     const sent = await onSend({ text: trimmed, attachments: attachments.map(toUpload) });
     setState("idle");
     if (sent) {
       setCursor(0);
     }
-  }, [attachments, isSending, onSend, text]);
+  }, [attachments, isSending, onSend, text, turnActive]);
 
   return (
     <div className="px-3 pb-3 pt-2 sm:px-5">
@@ -220,6 +245,10 @@ export function PlanComposer({
           )}
         >
           {banner}
+          {/* The gate: sending is unavailable on this machine and the reason
+              is said out loud — never a silent failure. Typing stays live. */}
+          {gateNotice === null ? null : <ComposerNotice tone="gate" text={gateNotice} />}
+          {notice === null ? null : <ComposerNotice tone="refusal" text={notice} />}
           {isMentionMenuOpen ? (
             <MentionMenu
               candidates={mentionCandidates}
@@ -306,15 +335,43 @@ export function PlanComposer({
               <ImageIcon />
             </Button>
             <SendControl
-              // One control, one state. Held while a send is in flight, which
-              // is what "no queueing" means at the only concurrency there is.
-              disabled={!hasContent || isSending}
+              // One control, two faces. Held while a send is in flight or a
+              // reply streams, which is what "no queueing" means here.
+              disabled={!control.enabled}
+              face={control.face}
               isSending={isSending}
-              onSend={() => void submit()}
+              onPress={() => {
+                if (control.face === "stop") {
+                  onStop?.();
+                  return;
+                }
+                void submit();
+              }}
             />
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A quiet line docked inside the composer card, above the editor. */
+function ComposerNotice({
+  tone,
+  text,
+}: {
+  readonly tone: "gate" | "refusal";
+  readonly text: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 border-b border-border/65 px-3 py-2",
+        tone === "gate" ? "bg-muted/20" : "bg-amber-500/10",
+      )}
+    >
+      <CircleAlertIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+      <span className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">{text}</span>
     </div>
   );
 }
@@ -367,24 +424,24 @@ function MentionMenu({
 }
 
 /**
- * Send and stop as one control.
- *
- * Its face comes from the composer's state and nothing else, which is what
- * makes the Stop face a change of state rather than a second button when the
- * planning assistant lands.
+ * Send and stop as one control. Its face comes from the composer's derived
+ * control state and nothing else — the Stop face is a change of state, not
+ * a second button.
  */
 function SendControl({
   disabled,
+  face,
   isSending,
-  onSend,
+  onPress,
 }: {
   readonly disabled: boolean;
+  readonly face: PlanComposerFace;
   readonly isSending: boolean;
-  readonly onSend: () => void;
+  readonly onPress: () => void;
 }) {
   return (
     <button
-      aria-label={isSending ? "Sending" : "Send"}
+      aria-label={face === "stop" ? "Stop" : isSending ? "Sending" : "Send"}
       className={cn(
         "relative flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground shadow-xs transition-all duration-150 sm:size-8",
         "enabled:cursor-pointer hover:bg-primary hover:scale-105 active:shadow-none",
@@ -392,9 +449,13 @@ function SendControl({
       )}
       disabled={disabled}
       type="button"
-      onClick={onSend}
+      onClick={onPress}
     >
-      {isSending ? (
+      {face === "stop" ? (
+        <svg aria-hidden fill="currentColor" height="14" viewBox="0 0 14 14" width="14">
+          <rect height="8" rx="1.5" width="8" x="3" y="3" />
+        </svg>
+      ) : isSending ? (
         <Spinner aria-hidden className="size-3.5" />
       ) : (
         <svg aria-hidden fill="none" height="14" viewBox="0 0 14 14" width="14">

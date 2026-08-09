@@ -11,6 +11,7 @@ import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
+import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as MercurianSqlite from "./Sqlite.ts";
 
 const historyId = Schema.decodeUnknownSync(HistoryId)("coexist");
@@ -20,6 +21,7 @@ const rootCommitId = Schema.decodeUnknownSync(CommitId)("coexist-root");
 // t3code's store.
 const layer = it.layer(
   PlanningStore.layer.pipe(
+    Layer.provide(PlanTurnRegistry.layer),
     Layer.provideMerge(CommitStore.layer),
     Layer.provide(MercurianSqlite.layerMemory),
     Layer.provide(NodeServicesLayer),

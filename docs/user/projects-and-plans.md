@@ -76,6 +76,39 @@ set.
 **Enter** sends and **Shift+Enter** starts a new line. There is no queueing — while a message is
 going out the send button is held, and the next one waits.
 
+## The assistant
+
+Send a message and the assistant answers, streaming in below it as it thinks. It runs under the
+workspace's [planning model](#the-planning-model), and it grounds what it says in the project's
+repositories — reading, searching, listing, never changing a file.
+
+What it consulted is shown with each reply, folded away until you want it: a quiet **Consulted…**
+line expands into the files it read and the searches it ran. When a provider can only ground in one
+of the project's repositories, the reply says which ones were out of reach rather than pretending it
+looked. A project with no repositories is fine too — the assistant plans from the conversation
+alone.
+
+While a reply is coming in, the send button becomes **Stop**. Stopping does not erase anything:
+the partial reply stays in the conversation, marked **Interrupted**, because it happened and was
+cut short. Branching past it later works like branching past anything else.
+
+Instead of guessing, the assistant can ask you a structured question — a card with options right
+in the conversation. The plan shows **awaiting your input** in the tree until you answer, and the
+question and your answer stay in the record with the reply.
+
+The assistant can also edit the plan itself, mid-reply, at the same standing as your own edits: its
+revisions appear in the history like yours do, live in every window. What it never does is branch,
+merge, or touch anything outside the plan — branches are yours to open, and its replies only ever
+continue from where things left off.
+
+One reply at a time, for the whole plan: while the assistant is answering, sending — from any
+window — waits until you stop the reply or it finishes.
+
+If this machine cannot run the planning model — none is chosen yet, or no connected instance offers
+it — the composer says so right above where you type, instead of failing silently. Your message
+drafts still work; sending resumes as soon as the model resolves. See
+[the planning model](#the-planning-model) for how it is chosen.
+
 ## The right pane
 
 Two icons sit in the space's top-right corner: the **plan** and the **history**. Pressing one shows
