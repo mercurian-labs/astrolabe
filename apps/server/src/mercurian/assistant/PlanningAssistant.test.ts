@@ -76,7 +76,7 @@ interface ProviderHarnessShape {
 }
 
 class ProviderHarness extends Context.Service<ProviderHarness, ProviderHarnessShape>()(
-  "test/mercurian/ProviderHarness",
+  "t3/mercurian/assistant/PlanningAssistant.test/ProviderHarness",
 ) {}
 
 const makeHarness = Effect.gen(function* () {
@@ -205,12 +205,14 @@ const testLayer = () => {
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 
+let nextEventNumber = 0;
+
 const runtimeEvent = (
   threadId: ThreadId,
   event: Omit<ProviderRuntimeEvent, "eventId" | "provider" | "threadId" | "createdAt">,
 ): ProviderRuntimeEvent =>
   ({
-    eventId: EventId.make(`event-${Math.random().toString(36).slice(2)}`),
+    eventId: EventId.make(`event-${(nextEventNumber += 1)}`),
     provider: claude,
     threadId,
     createdAt: "2026-08-08T00:00:00.000Z",
@@ -438,7 +440,15 @@ describe("PlanningAssistant", () => {
       assert.ok(reply !== undefined && reply._tag === "message");
       assert.strictEqual(reply.text, "Stuck");
       assert.strictEqual(reply.interrupted, true);
-    }).pipe(Effect.scoped, Effect.provide(testLayer()), Effect.provide(TestClock.layer())),
+    }).pipe(
+      Effect.scoped,
+      // Deliberately chained (not one merged provide): the harness layer must
+      // be BUILT under the test clock so the grace sleep it schedules is
+      // virtual. Merging the two layers as siblings builds the harness on the
+      // wall clock and the test hangs.
+      Effect.provide(testLayer()),
+      Effect.provide(TestClock.layer()),
+    ),
   );
 
   it.effect("a question pauses the turn on the person, and the answer resumes it", () =>
