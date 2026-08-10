@@ -1,5 +1,12 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
-import { CircleDotIcon, FileTextIcon, GitForkIcon, MessageSquareIcon } from "lucide-react";
+import {
+  CircleDotIcon,
+  FileTextIcon,
+  GitForkIcon,
+  LocateFixedIcon,
+  Maximize2Icon,
+  MessageSquareIcon,
+} from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
   useCallback,
@@ -10,20 +17,37 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { Button } from "../ui/button";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
+  cameraTween,
+  centerOn,
+  detailFor,
+  edgeRibbon,
+  fitTransform,
+  labelVisible,
+  radiusFor,
+  wheelIntent,
+  zoomAtPoint,
+  type MapTransform,
+  type MapViewBox,
+} from "./DagExplorer.logic";
+import {
+  ancestorClosure,
+  descendantClosure,
   navigatorLayout,
   planCommitSummary,
   spatialLayout,
   type NavigatorLayout,
   type PlanGraph,
   type SpatialLayout,
+  type SpatialNode,
   type SpatialPoint,
 } from "./PlanGraph.logic";
 
@@ -38,9 +62,7 @@ const LANE_WIDTH = 16;
 const RAIL_INSET = 12;
 
 const MAP_PADDING = 64;
-const MAP_MIN_ZOOM = 0.3;
-const MAP_MAX_ZOOM = 3;
-const MAP_NODE_RADIUS = 6;
+const MAP_TWEEN_DURATION = 250;
 /** How far the pointer has to travel before a press counts as a pan. */
 const DRAG_THRESHOLD = 4;
 
@@ -234,14 +256,23 @@ function GraphView({
 
   // Deliberately not keyed on the layout: a commit landing must not throw away
   // the pan and zoom of whoever is reading the map.
-  return <SpatialMap currentCommitId={currentCommitId} layout={layout} onSelect={onSelect} />;
+  return (
+    <SpatialMap
+      currentCommitId={currentCommitId}
+      graph={graph}
+      layout={layout}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function SpatialMap({
+  graph,
   layout,
   currentCommitId,
   onSelect,
 }: {
+  readonly graph: PlanGraph;
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
   readonly onSelect: (commitId: MercurianCommitId) => void;
@@ -254,9 +285,38 @@ function SpatialMap({
     panning: boolean;
   } | null>(null);
   const [hovered, setHovered] = useState<MercurianCommitId | null>(null);
-  const [transform, setTransform] = useState({ x: 0, y: 0, zoom: 1 });
+  const [focused, setFocused] = useState<MercurianCommitId | null>(null);
+  const [transform, setTransform] = useState<MapTransform>({ x: 0, y: 0, zoom: 1 });
+  const transformRef = useRef(transform);
+  const [renderLayout, setRenderLayout] = useState(() => settledSpatialLayout(layout));
+  const renderLayoutRef = useRef(renderLayout);
+  const solvedLayoutRef = useRef(layout);
+  const [startTween, cancelTween] = useTween();
 
-  const viewBox = useMemo(
+  useEffect(() => {
+    transformRef.current = transform;
+  }, [transform]);
+
+  const applyTransform = useCallback((next: MapTransform) => {
+    transformRef.current = next;
+    setTransform(next);
+  }, []);
+
+  const applyRenderLayout = useCallback((next: AnimatedSpatialLayout) => {
+    renderLayoutRef.current = next;
+    setRenderLayout(next);
+  }, []);
+
+  useEffect(() => {
+    if (solvedLayoutRef.current === layout) return;
+    const from = renderLayoutRef.current;
+    solvedLayoutRef.current = layout;
+    startTween("layout", (progress) => {
+      applyRenderLayout(interpolateSpatialLayout(from, layout, progress));
+    });
+  }, [applyRenderLayout, layout, startTween]);
+
+  const viewBox = useMemo<MapViewBox>(
     () => ({
       x: layout.bounds.minX - MAP_PADDING,
       y: layout.bounds.minY - MAP_PADDING,
@@ -273,12 +333,10 @@ function SpatialMap({
   const hereY = here?.y;
   useEffect(() => {
     if (hereX === undefined || hereY === undefined) return;
-    setTransform((current) => ({
-      ...current,
-      x: viewBox.x + viewBox.width / 2 - hereX * current.zoom,
-      y: viewBox.y + viewBox.height / 2 - hereY * current.zoom,
-    }));
-  }, [hereX, hereY, viewBox]);
+    const from = transformRef.current;
+    const tween = cameraTween(from, centerOn({ x: hereX, y: hereY }, from, viewBox));
+    startTween("camera", (progress) => applyTransform(tween(progress)));
+  }, [applyTransform, hereX, hereY, startTween, viewBox]);
 
   const unitsPerPixel = useCallback(() => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -286,6 +344,25 @@ function SpatialMap({
     // `preserveAspectRatio` letterboxes, so the tighter axis sets the scale.
     return Math.max(viewBox.width / rect.width, viewBox.height / rect.height);
   }, [viewBox.height, viewBox.width]);
+
+  const clientToViewBox = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (rect === undefined || rect.width === 0 || rect.height === 0) {
+        return { x: viewBox.x + viewBox.width / 2, y: viewBox.y + viewBox.height / 2 };
+      }
+      const scale = Math.max(viewBox.width / rect.width, viewBox.height / rect.height);
+      const renderedWidth = viewBox.width / scale;
+      const renderedHeight = viewBox.height / scale;
+      const insetX = (rect.width - renderedWidth) / 2;
+      const insetY = (rect.height - renderedHeight) / 2;
+      return {
+        x: viewBox.x + (clientX - rect.left - insetX) * scale,
+        y: viewBox.y + (clientY - rect.top - insetY) * scale,
+      };
+    },
+    [viewBox],
+  );
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
@@ -334,50 +411,110 @@ function SpatialMap({
     dragRef.current = null;
   };
 
-  const onWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
-    setTransform((current) => {
-      const zoom = Math.min(
-        MAP_MAX_ZOOM,
-        Math.max(MAP_MIN_ZOOM, current.zoom * (event.deltaY < 0 ? 1.1 : 1 / 1.1)),
-      );
-      if (zoom === current.zoom) return current;
-      // Zoom about the middle of the frame, so what you were looking at is
-      // still what you are looking at.
-      const centerX = viewBox.x + viewBox.width / 2;
-      const centerY = viewBox.y + viewBox.height / 2;
-      const ratio = zoom / current.zoom;
-      return {
-        zoom,
-        x: centerX - (centerX - current.x) * ratio,
-        y: centerY - (centerY - current.y) * ratio,
-      };
-    });
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (svg === null) return;
+
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      cancelTween("camera");
+      const intent = wheelIntent({
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+      });
+      if (intent.kind === "pan") {
+        const scale = unitsPerPixel();
+        setTransform((current) => ({
+          ...current,
+          x: current.x - intent.dx * scale,
+          y: current.y - intent.dy * scale,
+        }));
+        return;
+      }
+
+      const point = clientToViewBox(event.clientX, event.clientY);
+      setTransform((current) => {
+        const next = zoomAtPoint(current, intent.factor, point, viewBox);
+        transformRef.current = next;
+        return next;
+      });
+    };
+
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [cancelTween, clientToViewBox, unitsPerPixel, viewBox]);
+
+  const emphasisId = hovered ?? focused;
+  const lineage = useMemo(() => {
+    if (emphasisId === null || !graph.byId.has(emphasisId)) return null;
+    return new Set([
+      ...ancestorClosure(graph, emphasisId),
+      ...descendantClosure(graph, emphasisId),
+    ]);
+  }, [emphasisId, graph]);
+  const currentPath = useMemo(
+    () => (currentCommitId === null ? new Set<string>() : ancestorClosure(graph, currentCommitId)),
+    [currentCommitId, graph],
+  );
+  const detail = detailFor(transform.zoom);
+
+  const fitToView = () => {
+    const from = transformRef.current;
+    const tween = cameraTween(from, fitTransform(layout.bounds, viewBox));
+    startTween("camera", (progress) => applyTransform(tween(progress)));
+  };
+
+  const jumpToCurrent = () => {
+    if (hereX === undefined || hereY === undefined) return;
+    const from = transformRef.current;
+    const tween = cameraTween(from, centerOn({ x: hereX, y: hereY }, from, viewBox));
+    startTween("camera", (progress) => applyTransform(tween(progress)));
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-hidden">
+    <div className="relative min-h-0 flex-1 overflow-hidden">
       <svg
         className="size-full cursor-grab touch-none active:cursor-grabbing"
         onPointerCancel={endDrag}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
-        onWheel={onWheel}
         ref={svgRef}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
       >
         <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.zoom})`}>
-          {layout.edges.map((edge) => (
-            <path
-              className="fill-none stroke-border"
-              d={mapPath(edge.fromX, edge.fromY, edge.toX, edge.toY)}
-              key={`${edge.fromCommitId}->${edge.toCommitId}`}
-              strokeWidth={1.5}
-            />
-          ))}
-          {layout.nodes.map((node) => {
+          {renderLayout.edges.map((edge) => {
+            const isCurrentPath =
+              currentPath.has(edge.fromCommitId) && currentPath.has(edge.toCommitId);
+            const isDimmed =
+              lineage !== null &&
+              (!lineage.has(edge.fromCommitId) || !lineage.has(edge.toCommitId));
+            return (
+              <path
+                className={cn(
+                  "transition-opacity duration-150",
+                  isCurrentPath ? "fill-primary" : "fill-border",
+                  isDimmed && "opacity-[0.18]",
+                )}
+                d={edgeRibbon(
+                  edge.fromX,
+                  edge.fromY,
+                  edge.toX,
+                  edge.toY,
+                  isCurrentPath ? 3.5 : 2.5,
+                  isCurrentPath ? 1.5 : 1,
+                )}
+                key={`${edge.fromCommitId}->${edge.toCommitId}`}
+              />
+            );
+          })}
+          {renderLayout.nodes.map((node) => {
             const isCurrent = node.commitId === currentCommitId;
-            const showLabel = isCurrent || node.commitId === hovered;
+            const radius = radiusFor(node);
+            const showLabel = labelVisible(transform.zoom, node, isCurrent);
+            const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const Glyph = commitGlyph(node.item);
             return (
               <g
@@ -386,13 +523,17 @@ function SpatialMap({
                 // reader and unreachable by keyboard.
                 aria-label={planCommitSummary(node.item)}
                 aria-current={isCurrent ? "true" : undefined}
-                className="cursor-pointer"
+                className="cursor-pointer transition-opacity duration-150"
                 key={node.commitId}
                 onClick={() => onSelect(node.commitId)}
+                onBlur={() => setFocused((at) => (at === node.commitId ? null : at))}
+                onFocus={() => setFocused(node.commitId)}
                 onPointerEnter={() => setHovered(node.commitId)}
                 onPointerLeave={() => setHovered((at) => (at === node.commitId ? null : at))}
                 role="button"
+                style={{ opacity: node.opacity * (isDimmed ? 0.18 : 1) }}
                 tabIndex={0}
+                transform={`translate(${node.x} ${node.y}) scale(${node.scale}) translate(${-node.x} ${-node.y})`}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
@@ -405,36 +546,43 @@ function SpatialMap({
                     className="fill-none stroke-primary"
                     cx={node.x}
                     cy={node.y}
-                    r={MAP_NODE_RADIUS + 5}
+                    r={radius + 4}
                     strokeWidth={2}
                   />
                 ) : null}
                 <circle
                   className={cn(
-                    "stroke-muted-foreground",
                     // Same distinction the navigator's dots draw: solid is
                     // shared history, hollow is private work still your own.
-                    node.item.published ? "fill-muted-foreground" : "fill-background",
+                    node.item.published
+                      ? "fill-muted-foreground stroke-none"
+                      : "fill-background stroke-muted-foreground",
                   )}
                   cx={node.x}
                   cy={node.y}
-                  r={MAP_NODE_RADIUS}
+                  r={radius}
                   strokeWidth={1.5}
                 />
-                <Glyph
-                  className={cn(
-                    "pointer-events-none",
-                    node.item.published ? "text-background" : "text-muted-foreground",
-                  )}
-                  height={9}
-                  width={9}
-                  x={node.x - 4.5}
-                  y={node.y - 4.5}
-                />
+                {detail === "dot" ? null : (
+                  <Glyph
+                    className={cn(
+                      "pointer-events-none",
+                      node.item.published ? "text-background" : "text-muted-foreground",
+                    )}
+                    height={radius}
+                    strokeWidth={3}
+                    width={radius}
+                    x={node.x - radius / 2}
+                    y={node.y - radius / 2}
+                  />
+                )}
                 {showLabel ? (
                   <text
-                    className="pointer-events-none fill-foreground text-[11px]"
-                    x={node.x + MAP_NODE_RADIUS + 8}
+                    className={cn(
+                      "pointer-events-none text-[11px]",
+                      detail === "labeled" ? "fill-foreground" : "fill-foreground/70",
+                    )}
+                    x={node.x + radius + 8}
                     y={node.y + 4}
                   >
                     {planCommitSummary(node.item)}
@@ -445,8 +593,156 @@ function SpatialMap({
           })}
         </g>
       </svg>
+      <div className="absolute right-2 bottom-2 flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label="Fit graph to view"
+                size="icon-xs"
+                type="button"
+                variant="ghost"
+                onClick={fitToView}
+              />
+            }
+          >
+            <Maximize2Icon />
+          </TooltipTrigger>
+          <TooltipPopup>Fit graph to view</TooltipPopup>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label="Jump to current commit"
+                disabled={hereX === undefined || hereY === undefined}
+                size="icon-xs"
+                type="button"
+                variant="ghost"
+                onClick={jumpToCurrent}
+              />
+            }
+          >
+            <LocateFixedIcon />
+          </TooltipTrigger>
+          <TooltipPopup>Jump to current commit</TooltipPopup>
+        </Tooltip>
+      </div>
     </div>
   );
+}
+
+interface ActiveTween {
+  readonly startedAt: number;
+  readonly duration: number;
+  readonly render: (progress: number) => void;
+}
+
+/** One finite frame loop shared by every map transition. */
+function useTween() {
+  const activeRef = useRef(new Map<string, ActiveTween>());
+  const frameRef = useRef<number | null>(null);
+
+  const tick = useCallback(function tick(now: number) {
+    for (const [key, tween] of activeRef.current) {
+      const progress = Math.min((now - tween.startedAt) / tween.duration, 1);
+      tween.render(progress);
+      if (progress >= 1) activeRef.current.delete(key);
+    }
+
+    if (activeRef.current.size === 0) {
+      frameRef.current = null;
+      return;
+    }
+    frameRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const start = useCallback(
+    (key: string, render: (progress: number) => void) => {
+      const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? 0
+        : MAP_TWEEN_DURATION;
+      activeRef.current.delete(key);
+      if (duration === 0) {
+        render(1);
+        return;
+      }
+
+      activeRef.current.set(key, { duration, render, startedAt: performance.now() });
+      if (frameRef.current === null) frameRef.current = requestAnimationFrame(tick);
+    },
+    [tick],
+  );
+
+  const cancel = useCallback((key: string) => {
+    activeRef.current.delete(key);
+    if (activeRef.current.size > 0 || frameRef.current === null) return;
+    cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      activeRef.current.clear();
+    },
+    [],
+  );
+
+  return [start, cancel] as const;
+}
+
+type AnimatedSpatialNode = SpatialNode & {
+  readonly opacity: number;
+  readonly scale: number;
+};
+
+type AnimatedSpatialLayout = Omit<SpatialLayout, "nodes"> & {
+  readonly nodes: ReadonlyArray<AnimatedSpatialNode>;
+};
+
+function settledSpatialLayout(layout: SpatialLayout): AnimatedSpatialLayout {
+  return {
+    ...layout,
+    nodes: layout.nodes.map((node) => ({ ...node, opacity: 1, scale: 1 })),
+  };
+}
+
+function interpolateSpatialLayout(
+  from: AnimatedSpatialLayout,
+  to: SpatialLayout,
+  progress: number,
+): AnimatedSpatialLayout {
+  if (progress >= 1) return settledSpatialLayout(to);
+  const eased = 1 - (1 - progress) ** 3;
+  const fromById = new Map(from.nodes.map((node) => [node.commitId as string, node]));
+  const positions = new Map<string, SpatialPoint>();
+  const nodes = to.nodes.map((node): AnimatedSpatialNode => {
+    const previous = fromById.get(node.commitId);
+    const x = previous === undefined ? node.x : previous.x + (node.x - previous.x) * eased;
+    const y = previous === undefined ? node.y : previous.y + (node.y - previous.y) * eased;
+    positions.set(node.commitId, { x, y });
+    return {
+      ...node,
+      x,
+      y,
+      opacity: previous === undefined ? eased : previous.opacity + (1 - previous.opacity) * eased,
+      scale: previous === undefined ? eased : previous.scale + (1 - previous.scale) * eased,
+    };
+  });
+  const edges = to.edges.map((edge) => {
+    const fromPoint = positions.get(edge.fromCommitId)!;
+    const toPoint = positions.get(edge.toCommitId)!;
+    return {
+      ...edge,
+      fromX: fromPoint.x,
+      fromY: fromPoint.y,
+      toX: toPoint.x,
+      toY: toPoint.y,
+    };
+  });
+  return { ...to, edges, nodes, positions };
 }
 
 /**
@@ -535,12 +831,6 @@ function useCurrentRowScroll(currentCommitId: MercurianCommitId | null) {
  */
 function railPath(fromX: number, fromY: number, toX: number, toY: number): string {
   if (fromX === toX) return `M ${fromX} ${fromY} L ${toX} ${toY}`;
-  const midY = (fromY + toY) / 2;
-  return `M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`;
-}
-
-/** Parent to child on the map: a gentle curve, so crossing edges stay legible. */
-function mapPath(fromX: number, fromY: number, toX: number, toY: number): string {
   const midY = (fromY + toY) / 2;
   return `M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`;
 }
