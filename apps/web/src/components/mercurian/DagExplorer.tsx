@@ -2,10 +2,13 @@ import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import {
   CheckIcon,
   CircleDotIcon,
+  Columns3Icon,
   FileTextIcon,
+  GitCommitVerticalIcon,
   GitForkIcon,
   GitMergeIcon,
   MessageSquareIcon,
+  WaypointsIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
@@ -14,6 +17,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
@@ -25,6 +29,8 @@ import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { columnLayout, defaultBranchChoices, type Pane } from "./PlanColumns.logic";
 import {
   planCommitSummary,
   spatialLayout,
@@ -40,7 +46,7 @@ import {
 } from "./PlanThread.logic";
 
 const EXPLORER_VIEW_STORAGE_KEY = "mercurian:dag-explorer-view:v1";
-const ExplorerView = Schema.Literals(["thread", "graph"]);
+const ExplorerView = Schema.Literals(["thread", "columns", "graph"]);
 type ExplorerView = typeof ExplorerView.Type;
 const DEFAULT_EXPLORER_VIEW: ExplorerView = "thread";
 
@@ -55,12 +61,14 @@ const MAP_NODE_RADIUS = 6;
 const DRAG_THRESHOLD = 4;
 
 /**
- * The DAG explorer: the plan's whole history, in the two readings the design
+ * The DAG explorer: the plan's whole history, in the three readings the design
  * settled on.
  *
  * The **Thread** is the checked-out root-to-tip path through where the planning
  * surface stands. Rows make that line easy to read and move through, while
  * always-visible switches reveal its sibling branches and merge parents. The
+ * **Columns** hold those same branch decisions open as standing segments, so
+ * changing a line replaces only the panes beyond its fork. The
  * **Graph** is the spatial map: every commit a node, every parent edge drawn,
  * the whole shape visible at once — for seeing structure, not for walking it.
  *
@@ -104,19 +112,31 @@ export function DagExplorer({
           variant="outline"
           onValueChange={(next) => {
             const chosen = next[0];
-            // The switch is a choice between two views, never a way to have
+            // The switch is a choice between three views, never a way to have
             // neither: re-pressing the active one leaves it pressed.
-            if (chosen === "thread" || chosen === "graph") {
+            if (chosen === "thread" || chosen === "columns" || chosen === "graph") {
               setView(chosen);
             }
           }}
         >
-          <Toggle aria-label="Thread view" value="thread">
-            Thread
-          </Toggle>
-          <Toggle aria-label="Graph view" value="graph">
-            Graph
-          </Toggle>
+          <Tooltip>
+            <TooltipTrigger render={<Toggle aria-label="Thread" value="thread" />}>
+              <GitCommitVerticalIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">Thread</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
+              <Columns3Icon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">Columns</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
+              <WaypointsIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">Graph</TooltipPopup>
+          </Tooltip>
         </ToggleGroup>
       </div>
       {graph.nodes.length === 0 ? (
@@ -125,6 +145,8 @@ export function DagExplorer({
         </div>
       ) : view === "thread" ? (
         <ThreadView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
+      ) : view === "columns" ? (
+        <ColumnsView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       ) : (
         <GraphView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       )}
@@ -284,6 +306,350 @@ function DivergenceBadge({
       </PopoverPopup>
     </Popover>
   );
+}
+
+interface ColumnFocusEntry {
+  readonly key: string;
+  readonly paneIndex: number;
+  readonly rowIndex: number;
+}
+
+/**
+ * The checked-out line as standing branch segments. A fork keeps its choices
+ * under the run that produced them; choosing one replaces only what follows.
+ *
+ * Earlier panes compress to their publication dots once the current pane has
+ * moved past them. Focus still moves through the semantic rows, expanding a
+ * strip before it enters, so keyboard movement and width allocation remain one
+ * small state machine with no layout measurements.
+ */
+function ColumnsView({
+  graph,
+  currentCommitId,
+  onSelect,
+}: {
+  readonly graph: PlanGraph;
+  readonly currentCommitId: MercurianCommitId | null;
+  readonly onSelect: (commitId: MercurianCommitId) => void;
+}) {
+  const [branchChoices, setBranchChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(() =>
+    defaultBranchChoices(graph, currentCommitId),
+  );
+  const layout = useMemo(
+    () => columnLayout(graph, currentCommitId, branchChoices),
+    [branchChoices, currentCommitId, graph],
+  );
+  const currentPaneIndex = layout.panes.findIndex((pane) =>
+    pane.rows.some((row) => row.commitId === currentCommitId),
+  );
+  const activePaneIndex = Math.max(
+    0,
+    currentPaneIndex >= 0 ? currentPaneIndex : layout.panes.length - 1,
+  );
+  const entriesByPane = useMemo(
+    () => layout.panes.map((pane, paneIndex) => columnFocusEntries(pane, paneIndex)),
+    [layout.panes],
+  );
+  const currentKey = currentCommitId === null ? undefined : commitFocusKey(currentCommitId);
+  const openingFocusKey =
+    (currentKey !== undefined && entriesByPane.flat().some((entry) => entry.key === currentKey)
+      ? currentKey
+      : entriesByPane.at(-1)?.at(-1)?.key) ?? "";
+  const [expandedPaneIndex, setExpandedPaneIndex] = useState(activePaneIndex);
+  const [focusedKey, setFocusedKey] = useState(openingFocusKey);
+  const interactiveRefs = useRef(new Map<string, HTMLButtonElement>());
+  const paneScrollOffsetsRef = useRef(new Map<string, number>());
+  const pendingFocusRef = useRef<{ readonly scroll: boolean } | null>(null);
+  const currentScrollRef = useCurrentRowScroll(currentCommitId);
+
+  useEffect(() => {
+    setExpandedPaneIndex(activePaneIndex);
+  }, [activePaneIndex, currentCommitId]);
+
+  useEffect(() => {
+    const entries = entriesByPane.flat();
+    if (entries.some((entry) => entry.key === focusedKey)) return;
+    setFocusedKey(openingFocusKey);
+  }, [entriesByPane, focusedKey, openingFocusKey]);
+
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (pending === null) return;
+    if (focusedKey === "") return;
+    const element = interactiveRefs.current.get(focusedKey);
+    if (element === undefined) return;
+    if (document.activeElement !== element) element.focus();
+    if (pending.scroll) {
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    pendingFocusRef.current = null;
+  }, [expandedPaneIndex, focusedKey, layout]);
+
+  const moveFocus = useCallback((entry: ColumnFocusEntry, scroll = false) => {
+    pendingFocusRef.current = { scroll };
+    setExpandedPaneIndex(entry.paneIndex);
+    setFocusedKey(entry.key);
+  }, []);
+
+  const onRovingKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>, entry: ColumnFocusEntry) => {
+      const verticalDelta = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (verticalDelta !== 0) {
+        const target = entriesByPane[entry.paneIndex]?.[entry.rowIndex + verticalDelta];
+        if (target === undefined) return;
+        event.preventDefault();
+        moveFocus(target, true);
+        return;
+      }
+
+      const horizontalDelta = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+      if (horizontalDelta === 0) return;
+      const targetPane = entriesByPane[entry.paneIndex + horizontalDelta];
+      if (targetPane === undefined || targetPane.length === 0) return;
+      event.preventDefault();
+      moveFocus(targetPane[Math.min(entry.rowIndex, targetPane.length - 1)]!, true);
+    },
+    [entriesByPane, moveFocus],
+  );
+
+  const registerRow = useCallback(
+    (key: string, isCurrent: boolean) => (element: HTMLButtonElement | null) => {
+      if (element === null) {
+        interactiveRefs.current.delete(key);
+      } else {
+        interactiveRefs.current.set(key, element);
+      }
+      if (isCurrent) currentScrollRef.current = element;
+    },
+    [currentScrollRef],
+  );
+
+  const jumpToMerge = useCallback(
+    (mergeCommitId: MercurianCommitId) => {
+      const key = commitFocusKey(mergeCommitId);
+      const entry = entriesByPane.flat().find((candidate) => candidate.key === key);
+      if (entry !== undefined) moveFocus(entry, true);
+    },
+    [entriesByPane, moveFocus],
+  );
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto">
+      {layout.panes.map((pane, paneIndex) => {
+        const compressed = paneIndex < activePaneIndex && paneIndex !== expandedPaneIndex;
+        const entries = entriesByPane[paneIndex] ?? [];
+        const paneKey = pane.rows[0]?.commitId ?? `pane-${paneIndex}`;
+        if (compressed) {
+          return (
+            <button
+              aria-label={paneSpanLabel(pane)}
+              className={cn(
+                "flex min-h-0 w-8 shrink-0 flex-col items-center gap-2 overflow-hidden py-3 outline-hidden",
+                paneIndex > 0 && "border-l border-border",
+                "hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              )}
+              key={paneKey}
+              tabIndex={-1}
+              type="button"
+              onClick={() => {
+                const target = entries[0];
+                if (target !== undefined) moveFocus(target, true);
+              }}
+            >
+              {pane.rows.map((row) => (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "size-2 shrink-0 rounded-full border border-muted-foreground/70",
+                    row.item.published && "bg-muted-foreground",
+                  )}
+                  key={row.commitId}
+                />
+              ))}
+            </button>
+          );
+        }
+
+        return (
+          <div
+            className={cn(
+              "min-h-0 w-56 shrink-0 overflow-y-auto py-2",
+              paneIndex > 0 && "border-l border-border",
+            )}
+            key={paneKey}
+            ref={(element) => {
+              if (element !== null)
+                element.scrollTop = paneScrollOffsetsRef.current.get(paneKey) ?? 0;
+            }}
+            onScroll={(event) => {
+              paneScrollOffsetsRef.current.set(paneKey, event.currentTarget.scrollTop);
+            }}
+          >
+            <ol className="flex flex-col">
+              {pane.rows.map((row, rowIndex) => {
+                const key = commitFocusKey(row.commitId);
+                const entry = entries[rowIndex]!;
+                const isCurrent = row.commitId === currentCommitId;
+                return (
+                  <li key={row.commitId}>
+                    <CommitRow
+                      isCurrent={isCurrent}
+                      item={row.item}
+                      ref={registerRow(key, isCurrent)}
+                      tabIndex={focusedKey === key ? 0 : -1}
+                      trailing={null}
+                      onFocus={() => setFocusedKey(key)}
+                      onKeyDown={(event) => onRovingKeyDown(event, entry)}
+                      onSelect={onSelect}
+                    />
+                  </li>
+                );
+              })}
+            </ol>
+            <ColumnTerminal
+              entries={entries}
+              focusedKey={focusedKey}
+              pane={pane}
+              paneIndex={paneIndex}
+              registerRow={registerRow}
+              onChoose={(forkId, childId) => {
+                setBranchChoices((current) => {
+                  if (current.get(forkId) === childId) return current;
+                  const next = new Map(current);
+                  next.set(forkId, childId);
+                  return next;
+                });
+              }}
+              onJumpToMerge={jumpToMerge}
+              onRovingKeyDown={onRovingKeyDown}
+              onFocusKey={setFocusedKey}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ColumnTerminal({
+  entries,
+  focusedKey,
+  pane,
+  paneIndex,
+  registerRow,
+  onChoose,
+  onJumpToMerge,
+  onRovingKeyDown,
+  onFocusKey,
+}: {
+  readonly entries: ReadonlyArray<ColumnFocusEntry>;
+  readonly focusedKey: string;
+  readonly pane: Pane;
+  readonly paneIndex: number;
+  readonly registerRow: (
+    key: string,
+    isCurrent: boolean,
+  ) => (element: HTMLButtonElement | null) => void;
+  readonly onChoose: (forkId: MercurianCommitId, childId: MercurianCommitId) => void;
+  readonly onJumpToMerge: (mergeCommitId: MercurianCommitId) => void;
+  readonly onRovingKeyDown: (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    entry: ColumnFocusEntry,
+  ) => void;
+  readonly onFocusKey: (key: string) => void;
+}) {
+  const terminal = pane.terminal;
+  if (terminal.kind === "leaf" || terminal.kind === "merge-entry") return null;
+
+  const forkId = pane.rows.at(-1)?.commitId;
+  if (forkId === undefined) return null;
+  return (
+    <div className="mt-1 flex flex-col gap-0.5 border-t border-border/65 px-1 pt-1">
+      {terminal.options.map((option, optionIndex) => {
+        const isChosen = option.branchRootId === terminal.chosenChildId;
+        const key = branchFocusKey(paneIndex, option.branchRootId);
+        const entry = entries[pane.rows.length + optionIndex]!;
+        if (option.onPathMerge && !isChosen) {
+          return (
+            <button
+              aria-label={`Jump to merge ${option.summary}`}
+              className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground outline-hidden hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              key={option.branchRootId}
+              ref={registerRow(key, false)}
+              tabIndex={focusedKey === key ? 0 : -1}
+              type="button"
+              onClick={() => onJumpToMerge(option.branchRootId)}
+              onFocus={() => onFocusKey(key)}
+              onKeyDown={(event) => onRovingKeyDown(event, entry)}
+            >
+              <GitMergeIcon aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{option.summary}</span>
+              <span className="shrink-0">merges ↗</span>
+            </button>
+          );
+        }
+        return (
+          <button
+            aria-current={isChosen ? "true" : undefined}
+            className={cn(
+              "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left outline-hidden",
+              "hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+              isChosen && "bg-accent/50",
+            )}
+            key={option.branchRootId}
+            ref={registerRow(key, false)}
+            tabIndex={focusedKey === key ? 0 : -1}
+            type="button"
+            onClick={() => onChoose(forkId, option.branchRootId)}
+            onFocus={() => onFocusKey(key)}
+            onKeyDown={(event) => onRovingKeyDown(event, entry)}
+          >
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-xs",
+                option.published ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {option.summary}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted-foreground/70">
+              {formatRelativeTimeLabel(option.lastActiveAt)}
+            </span>
+            {isChosen ? (
+              <CheckIcon aria-label="Current line" className="size-3.5 shrink-0" />
+            ) : (
+              <span className="size-3.5 shrink-0" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The semantic rows in one pane, in the same order the keyboard reads them. */
+function columnFocusEntries(pane: Pane, paneIndex: number): ReadonlyArray<ColumnFocusEntry> {
+  const keys = pane.rows.map((row) => commitFocusKey(row.commitId));
+  if (pane.terminal.kind === "fork") {
+    keys.push(
+      ...pane.terminal.options.map((option) => branchFocusKey(paneIndex, option.branchRootId)),
+    );
+  }
+  return keys.map((key, rowIndex) => ({ key, paneIndex, rowIndex }));
+}
+
+const commitFocusKey = (commitId: MercurianCommitId) => `commit:${commitId}`;
+const branchFocusKey = (paneIndex: number, commitId: MercurianCommitId) =>
+  `branch:${paneIndex}:${commitId}`;
+
+/** What a compressed pane says in place of the text it has folded away. */
+function paneSpanLabel(pane: Pane): string {
+  const first = pane.rows[0];
+  const last = pane.rows.at(-1);
+  if (first === undefined || last === undefined) return "Empty history pane";
+  const start = planCommitSummary(first.item);
+  const end = planCommitSummary(last.item);
+  return start === end ? `History pane: ${start}` : `History pane: ${start} to ${end}`;
 }
 
 /**
@@ -552,13 +918,19 @@ function CommitRow({
   isCurrent,
   trailing,
   onSelect,
+  onFocus,
+  onKeyDown,
   ref,
+  tabIndex,
 }: {
   readonly item: PlanTimelineItem;
   readonly isCurrent: boolean;
   readonly trailing: ReactNode;
   readonly onSelect: (commitId: MercurianCommitId) => void;
+  readonly onFocus?: () => void;
+  readonly onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   readonly ref?: Ref<HTMLButtonElement> | undefined;
+  readonly tabIndex?: number;
 }) {
   const Glyph = commitGlyph(item);
 
@@ -575,8 +947,11 @@ function CommitRow({
         aria-current={isCurrent ? "true" : undefined}
         className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md text-left ring-ring outline-hidden focus-visible:ring-2"
         ref={ref}
+        tabIndex={tabIndex}
         type="button"
         onClick={() => onSelect(item.commitId)}
+        onFocus={onFocus}
+        onKeyDown={onKeyDown}
       >
         <Glyph
           className={cn(
