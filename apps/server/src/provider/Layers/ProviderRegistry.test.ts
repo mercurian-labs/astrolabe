@@ -32,7 +32,7 @@ import { createModelCapabilities } from "@t3tools/shared/model";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 
 import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
-import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
+import { checkClaudeProviderStatus, makePendingClaudeProvider } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
@@ -769,6 +769,53 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
         assert.deepStrictEqual(afterFailure.models, [authoritativeProvider.models[0]!]);
       });
+
+      it.effect("drops version-gated Claude models seeded by the pending snapshot", () =>
+        Effect.gen(function* () {
+          const claudeIdentity = {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            driver: ProviderDriverKind.make("claudeAgent"),
+          } as const;
+          // The pending snapshot has no version yet, so it advertises every
+          // built-in — including the ones behind a Claude Code version floor.
+          const pendingProvider = {
+            ...claudeIdentity,
+            ...(yield* makePendingClaudeProvider(defaultClaudeSettings)),
+          } satisfies ServerProvider;
+          const probedProvider = {
+            ...claudeIdentity,
+            ...(yield* checkClaudeProviderStatus(defaultClaudeSettings, claudeCapabilities())),
+          } satisfies ServerProvider;
+
+          assert.strictEqual(
+            pendingProvider.models.some((model) => model.slug === "claude-opus-5"),
+            true,
+          );
+          assert.strictEqual(probedProvider.status, "ready");
+          assert.strictEqual(
+            probedProvider.models.some((model) => model.slug === "claude-opus-5"),
+            false,
+          );
+
+          assert.deepStrictEqual(mergeProviderSnapshot(pendingProvider, probedProvider).models, [
+            ...probedProvider.models,
+          ]);
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "2.1.210\n", stderr: "", code: 0 };
+              if (joined === "auth status")
+                return {
+                  stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',
+                  stderr: "",
+                  code: 0,
+                };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
 
       it("fills missing capabilities from the previous provider snapshot", () => {
         const previousProvider = {
@@ -1813,7 +1860,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               assert.strictEqual(cursorProvider?.status, "disabled");
               assert.strictEqual(
                 cursorProvider?.message,
-                "Cursor is disabled in T3 Code settings.",
+                "Cursor is disabled in Astrolabe settings.",
               );
               assert.strictEqual(cursorSpawned, false);
             }).pipe(Effect.provide(runtimeServices));
@@ -1828,7 +1875,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.enabled, false);
           assert.strictEqual(status.status, "disabled");
           assert.strictEqual(status.installed, false);
-          assert.strictEqual(status.message, "Codex is disabled in T3 Code settings.");
+          assert.strictEqual(status.message, "Codex is disabled in Astrolabe settings.");
         }),
       );
     });

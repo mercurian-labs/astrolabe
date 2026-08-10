@@ -1,20 +1,25 @@
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+
+import { navigateToParkedThreadRoute } from "../threadRoutes";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Outlet,
   createRootRoute,
   type ErrorComponentProps,
   useLocation,
-  useNavigate,
 } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
-import { CommandPalette } from "../components/CommandPalette";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
+import { SearchPalette } from "../components/mercurian/SearchPalette";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
@@ -118,12 +123,17 @@ function RootRouteView() {
     );
   }
 
+  // The palette is a sibling of the shell, not a wrapper around it: the fork's
+  // component wrapped the app only to hand its thread composer down, and the
+  // Mercurian palette has no such tenants. `CommandPalette` is parked in place
+  // beside the thread surfaces until coding sessions return.
   const appShell = (
-    <CommandPalette>
+    <>
       <AppSidebarLayout>
         <Outlet />
       </AppSidebarLayout>
-    </CommandPalette>
+      <SearchPalette />
+    </>
   );
 
   return (
@@ -317,7 +327,6 @@ function AuthenticatedTracingBootstrap() {
 }
 
 function EventRouter() {
-  const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const primaryEnvironment = usePrimaryEnvironment();
@@ -363,13 +372,11 @@ function EventRouter() {
       if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {
         return;
       }
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: {
-          environmentId: payload.environment.environmentId,
-          threadId: payload.bootstrapThreadId,
-        },
-        replace: true,
+      // Landing straight in a thread was the thread-first shell's behavior.
+      // Navigation is the project tree now, so bootstrap lands on the index.
+      await navigateToParkedThreadRoute({
+        kind: "server",
+        threadRef: scopeThreadRef(payload.environment.environmentId, payload.bootstrapThreadId),
       });
       handledBootstrapThreadIdRef.current = payload.bootstrapThreadId;
     })().catch(() => undefined);

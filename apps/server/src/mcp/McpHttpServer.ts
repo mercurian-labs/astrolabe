@@ -13,6 +13,8 @@ import packageJson from "../../package.json" with { type: "json" };
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
+import { PlanningToolkitHandlersLive } from "./toolkits/planning/handlers.ts";
+import { PlanningToolkit } from "./toolkits/planning/tools.ts";
 import {
   PreviewSnapshotToolkitHandlersLive,
   PreviewStandardToolkitHandlersLive,
@@ -216,11 +218,21 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
+// The planning write door (M-104). Registered for every session like the
+// rest of the `t3-code` toolkit; the handlers refuse any thread that is not
+// an active planning turn, so listing is universal and power is not.
+const PlanningToolkitRegistrationLive = McpServer.toolkit(PlanningToolkit).pipe(
+  Layer.provide(PlanningToolkitHandlersLive),
+);
+
 const McpTransportLive = McpServer.layerHttp({
-  name: "T3 Code",
+  name: "Astrolabe",
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
-export const layer = PreviewToolkitRegistrationLive.pipe(Layer.provideMerge(McpTransportLive));
+export const layer = Layer.mergeAll(
+  PreviewToolkitRegistrationLive,
+  PlanningToolkitRegistrationLive,
+).pipe(Layer.provideMerge(McpTransportLive));

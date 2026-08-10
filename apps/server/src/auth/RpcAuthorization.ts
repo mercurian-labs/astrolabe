@@ -6,6 +6,10 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
+  MERCURIAN_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
@@ -29,6 +33,46 @@ export const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_WS_METHODS.subscribeShell]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.subscribeThread]: AuthOrchestrationReadScope,
+  // Planning is workspace orchestration in the same trust domain; a
+  // Mercurian-specific scope would force re-pairing for a boundary that does
+  // not exist yet. Revisit with shared workspaces.
+  [MERCURIAN_WS_METHODS.subscribeTree]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
+  // Importing an issue creates a plan, so it is an operation on the same
+  // footing as creating one from a blank draft.
+  [MERCURIAN_WS_METHODS.importPlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
+  // A plan's disappearance, reversible or not.
+  [MERCURIAN_WS_METHODS.archivePlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.unarchivePlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.deletePlan]: AuthOrchestrationOperateScope,
+  // Attention is state every window reads, so recording it is a write.
+  [MERCURIAN_WS_METHODS.visitPlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.markPlanUnread]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.stopPlanningTurn]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.answerPlanningQuestion]: AuthOrchestrationOperateScope,
+  // The registry is the same trust domain by the same reasoning: reading what
+  // code the app can reach, and changing it, are workspace orchestration.
+  [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: AuthOrchestrationReadScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  // Tracker connections likewise: connecting and disconnecting are operations;
+  // seeing where a connection stands, and reading the issues it reaches, are
+  // reads.
+  [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: AuthOrchestrationReadScope,
+  [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: AuthOrchestrationReadScope,
+  [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: AuthOrchestrationOperateScope,
+  [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: AuthOrchestrationOperateScope,
+  // Workspace settings likewise: the planning model is workspace configuration,
+  // and it names no instance, so it carries no machine-scoped authority.
+  [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: AuthOrchestrationReadScope,
+  [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

@@ -1971,6 +1971,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      // The read-only sandbox does not confine reads to the cwd, so extra
+      // roots are reachable without a session-shape change.
+      groundingRoots: "multi",
     },
     startSession,
     sendTurn,

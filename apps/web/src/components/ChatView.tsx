@@ -192,7 +192,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
-import { buildDraftThreadRouteParams } from "../threadRoutes";
+import { navigateToParkedThreadRoute } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -1863,9 +1863,9 @@ function ChatViewContent(props: ChatViewProps) {
           },
         );
         if (routeKind !== "draft" || draftId !== storedDraftSession.draftId) {
-          await navigate({
-            to: "/draft/$draftId",
-            params: buildDraftThreadRouteParams(storedDraftSession.draftId),
+          await navigateToParkedThreadRoute({
+            kind: "draft",
+            draftId: storedDraftSession.draftId,
           });
         }
         return storedDraftSession.threadId;
@@ -1897,10 +1897,7 @@ function ChatViewContent(props: ChatViewProps) {
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
-      await navigate({
-        to: "/draft/$draftId",
-        params: buildDraftThreadRouteParams(nextDraftId),
-      });
+      await navigateToParkedThreadRoute({ kind: "draft", draftId: nextDraftId });
       return nextThreadId;
     },
     [
@@ -5676,12 +5673,9 @@ function ChatViewContent(props: ChatViewProps) {
 
     if (failure === null) {
       const navigateResult = await settlePromise(() =>
-        navigate({
-          to: "/$environmentId/$threadId",
-          params: {
-            environmentId: activeThread.environmentId,
-            threadId: nextThreadId,
-          },
+        navigateToParkedThreadRoute({
+          kind: "server",
+          threadRef: scopeThreadRef(activeThread.environmentId, nextThreadId),
         }),
       );
       failure = navigateResult._tag === "Failure" ? navigateResult : null;

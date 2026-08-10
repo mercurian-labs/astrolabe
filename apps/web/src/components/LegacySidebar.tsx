@@ -116,7 +116,7 @@ import { threadEnvironment, useEnvironmentThread } from "../state/threads";
 import { vcsEnvironment } from "../state/vcs";
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
-  buildThreadRouteParams,
+  navigateToParkedThreadRoute,
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
@@ -1691,10 +1691,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
@@ -1737,10 +1734,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
     },
     [
       clearSelection,
@@ -3188,10 +3182,7 @@ export default function LegacySidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
     },
     [clearSelection, isMobile, navigate, setOpenMobile, setSelectionAnchor],
   );

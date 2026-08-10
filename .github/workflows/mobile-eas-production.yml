@@ -70,7 +70,9 @@ concurrency:
 jobs:
   production:
     name: EAS Production ${{ github.event_name == 'push' && 'auto' || inputs.mode }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Submits to EAS with --no-wait; the build runs on Expo's infrastructure.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
     permissions:
       contents: read
     env:

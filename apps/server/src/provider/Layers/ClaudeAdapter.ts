@@ -4096,6 +4096,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // files; siblings like secrets/ and state.sqlite stay ungranted.
       const additionalDirectories = [
         ...(input.cwd ? [input.cwd] : []),
+        ...(input.additionalDirectories ?? []),
         serverConfig.attachmentsDir,
       ];
       const queryOptions: ClaudeQueryOptions = {
@@ -4572,6 +4573,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      groundingRoots: "multi",
     },
     startSession,
     sendTurn,

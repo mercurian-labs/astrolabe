@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * The fork's command palette, parked in place.
+ *
+ * Nothing mounts this: the app's overlay is `mercurian/SearchPalette`, over
+ * projects, plans, and the workspace sections. What lived only here has been
+ * re-homed — `themeEditor.toggle` to `ThemeEditorHost`, palette-open to the
+ * new overlay — and what queries a thread's workspace (`filePicker.toggle`,
+ * `projectSearch.toggle`) is inert with the thread surfaces it belongs to,
+ * waiting here for the coding-session work to return.
+ */
+
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { canCreateProjectInEnvironment } from "@t3tools/client-runtime/operations/projects";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
@@ -89,7 +100,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import { navigateToParkedThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
 import {
   applyWslEnvironmentConfiguration,
   parseWslUncPath,
@@ -920,11 +931,9 @@ function OpenCommandPaletteDialog(props: {
             clientSettings.sidebarThreadSortOrder,
           );
       if (latestThread) {
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(
-            scopeThreadRef(latestThread.environmentId, latestThread.id),
-          ),
+        await navigateToParkedThreadRoute({
+          kind: "server",
+          threadRef: scopeThreadRef(latestThread.environmentId, latestThread.id),
         });
         return;
       }
@@ -1016,9 +1025,9 @@ function OpenCommandPaletteDialog(props: {
             : undefined;
         },
         runThread: async (thread) => {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+          await navigateToParkedThreadRoute({
+            kind: "server",
+            threadRef: scopeThreadRef(thread.environmentId, thread.id),
           });
         },
       }),
@@ -1612,11 +1621,9 @@ function OpenCommandPaletteDialog(props: {
           clientSettings.sidebarThreadSortOrder,
         );
         if (latestThread) {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(
-              scopeThreadRef(latestThread.environmentId, latestThread.id),
-            ),
+          await navigateToParkedThreadRoute({
+            kind: "server",
+            threadRef: scopeThreadRef(latestThread.environmentId, latestThread.id),
           });
         } else {
           const navigationResult = await settlePromise(() =>

@@ -31,6 +31,27 @@ import {
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  MERCURIAN_WS_METHODS,
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
+  MercurianPlanningError,
+  MercurianRepositoryError,
+  MercurianTrackerError,
+  MercurianWorkspaceError,
+  isMercurianProjectNotFoundError,
+  isMercurianRepositoryNotFoundError,
+  isPlanDeleteBlockedError,
+  isRepositoryAlreadyRegisteredError,
+  isRepositoryHasLiveWorktreesError,
+  isRepositoryPathInvalidError,
+  isNoPendingQuestionError,
+  isPlanNotFoundError,
+  isPlanTurnActiveError,
+  isTrackerAuthError,
+  isTrackerConnectionNotFoundError,
+  isTrackerUnreachableError,
+  type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -73,6 +94,28 @@ import {
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
+import { CommitId } from "./mercurian/commitTree/schema.ts";
+import {
+  normalizePlanAttachments,
+  removePlanAttachments,
+} from "./mercurian/planning/attachments.ts";
+import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import {
+  toWirePlanCommitEvent,
+  toWirePlanDetail,
+  toWirePlanImport,
+  toWirePlanMessage,
+  toWirePlanRevision,
+  toWirePlanTextAt,
+  toWireProject,
+  toWireTreeSnapshot,
+} from "./mercurian/planning/wire.ts";
+import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
+import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
+import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
+import { toWireConnection, toWireTrackersSnapshot } from "./mercurian/trackers/wire.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -307,6 +350,12 @@ const SHELL_RESUME_MAX_GAP = 1_000;
 // databases. Past this gap the client is reset with a fresh thread snapshot.
 const THREAD_RESUME_MAX_GAP = 1_000;
 
+// Same bound for a planning space's resume. The replay here is already scoped
+// to one history by the cursor query, so the cost is bounded by that plan's own
+// commits — but a cursor further behind than this means the client has drifted
+// far enough that one snapshot of a human-scale plan is the simpler answer.
+const PLAN_RESUME_MAX_GAP = 1_000;
+
 function toAuthAccessStreamEvent(
   change: PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
   revision: number,
@@ -357,6 +406,11 @@ const makeWsRpcLayer = (
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const planningStore = yield* PlanningStore.PlanningStore;
+      const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
+      const repositoryStore = yield* RepositoryStore.RepositoryStore;
+      const trackerStore = yield* TrackerStore.TrackerStore;
+      const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -1030,6 +1084,61 @@ const makeWsRpcLayer = (
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
+      // Status is composed at this read layer, never stored: the assistant
+      // runtime says which plans are streaming or waiting on input, and the
+      // rows carry it (ADR 002 §4).
+      const loadPlanningTreeSnapshot = Effect.all([
+        planningStore.getTreeSnapshot,
+        planningAssistant.status,
+      ]).pipe(
+        Effect.map(([snapshot, status]) => toWireTreeSnapshot(snapshot, status)),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian planning tree snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianPlanningError({ operation: "subscribeTree", cause }),
+        ),
+      );
+
+      /**
+       * A human message landed; the assistant replies. Forked and detached
+       * on purpose: the append's success was never conditional on the reply
+       * starting, and anything that prevents one arrives as a
+       * `turn-refused` frame on the plan's own stream.
+       */
+      const kickOffPlanningTurn = (input: PlanningAssistant.StartTurnInput) =>
+        planningAssistant.startTurn(input).pipe(Effect.forkDetach, Effect.asVoid);
+
+      const loadTrackersSnapshot = trackerStore.getSnapshot.pipe(
+        Effect.map(toWireTrackersSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian trackers snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianTrackerError({ operation: "subscribeTrackers", cause }),
+        ),
+      );
+
+      const loadRepositoriesSnapshot = repositoryStore.getSnapshot.pipe(
+        Effect.map(toWireRepositoriesSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian repositories snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianRepositoryError({ operation: "subscribeRepositories", cause }),
+        ),
+      );
+
+      const loadWorkspaceSettingsSnapshot = workspaceSettingsStore.getSnapshot.pipe(
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian workspace settings snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) =>
+            new MercurianWorkspaceError({ operation: "subscribeWorkspaceSettings", cause }),
+        ),
+      );
+
       return WsRpcGroup.of({
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
@@ -1427,6 +1536,634 @@ const makeWsRpcLayer = (
               );
             }),
             { "rpc.aggregate": "orchestration" },
+          ),
+        [MERCURIAN_WS_METHODS.subscribeTree]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WS_METHODS.subscribeTree,
+            Effect.gen(function* () {
+              // Attach the change signals before the first snapshot query, so
+              // a mutation landing while that query is in flight still
+              // re-sends. The assistant's signal rides the same queue: a turn
+              // starting, pausing on a question, or settling repaints the
+              // tree's status facts within the same debounce.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                Stream.merge(planningStore.changes, planningAssistant.changes).pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadPlanningTreeSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // The tree is one small value, so a burst of mutations is
+                  // worth exactly one re-send: the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadPlanningTreeSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.createProject]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.createProject,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.createProject({ name: input.name, createdAt }),
+              ),
+              Effect.map(toWireProject),
+              Effect.mapError(
+                (cause) => new MercurianPlanningError({ operation: "createProject", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.createPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.createPlan,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                Effect.gen(function* () {
+                  // The bytes land before the history does: a commit records
+                  // what a file already is, never a promise of one. A plan
+                  // being born has no id yet, so its project names the files.
+                  const attachments = yield* normalizePlanAttachments({
+                    owner: input.projectId,
+                    uploads: input.attachments,
+                  });
+                  const created = yield* planningStore.createPlan({
+                    projectId: input.projectId,
+                    message: input.message,
+                    attachments,
+                    createdAt,
+                  });
+                  // The birth message is a message: the assistant replies to
+                  // it like any other.
+                  const root = created.timeline[0];
+                  if (root !== undefined) {
+                    yield* kickOffPlanningTurn({
+                      planId: created.plan.planId,
+                      parentCommitId: root.commitId,
+                      text: input.message,
+                    });
+                  }
+                  return created;
+                }),
+              ),
+              Effect.map(toWirePlanDetail),
+              Effect.mapError((cause) =>
+                isMercurianProjectNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "createPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.importPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.importPlan,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.importPlan({
+                  projectId: input.projectId,
+                  connectionId: input.connectionId,
+                  issueId: input.issue.id,
+                  issueUrl: input.issue.url,
+                  // The issue's content becomes the root commit. Its `status`
+                  // is deliberately not passed on: where an issue stands is a
+                  // live tracker fact, and import stores no copy of it.
+                  title: input.issue.title,
+                  description: input.issue.description,
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanImport),
+              Effect.mapError((cause) =>
+                isMercurianProjectNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "importPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.appendPlanMessage]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.appendPlanMessage,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                Effect.gen(function* () {
+                  const attachments = yield* normalizePlanAttachments({
+                    owner: input.planId,
+                    uploads: input.attachments,
+                  });
+                  const appended = yield* planningStore.appendMessage({
+                    planId: input.planId,
+                    text: input.text,
+                    // Where the sender stood. A commit that already has a
+                    // child is a legal parent — that append is the fork.
+                    ...(input.parentCommitId === undefined
+                      ? {}
+                      : { parentCommitId: CommitId.make(input.parentCommitId) }),
+                    attachments,
+                    createdAt,
+                  });
+                  yield* kickOffPlanningTurn({
+                    planId: input.planId,
+                    parentCommitId: appended.commitId,
+                    text: input.text,
+                  });
+                  return appended;
+                }),
+              ),
+              Effect.map(toWirePlanMessage),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) || isPlanTurnActiveError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "appendPlanMessage", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.savePlanRevision]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.savePlanRevision,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.savePlanRevision({
+                  planId: input.planId,
+                  text: input.text,
+                  // An edit lands on the branch its author was standing on,
+                  // not on whichever one last received a commit.
+                  ...(input.parentCommitId === undefined
+                    ? {}
+                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanRevision),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) || isPlanTurnActiveError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "savePlanRevision", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.visitPlan,
+            DateTime.now.pipe(
+              // The act names the plan; the moment is ours. A client clock
+              // could otherwise put a visit in the future and silence a row.
+              Effect.flatMap((visitedAt) =>
+                planningStore.recordPlanVisit({ planId: input.planId, visitedAt }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "visitPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.markPlanUnread]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.markPlanUnread,
+            planningStore.markPlanUnread({ planId: input.planId }).pipe(
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "markPlanUnread", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.stopPlanningTurn]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.stopPlanningTurn,
+            // Idempotent by design: stopping a plan with nothing streaming is
+            // not an error a person caused. The interrupted settle arrives on
+            // the plan's own stream, not in this answer.
+            planningAssistant.stopTurn({ planId: input.planId }).pipe(Effect.as({})),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.answerPlanningQuestion]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.answerPlanningQuestion,
+            planningAssistant
+              .answerQuestion({ planId: input.planId, answers: input.answers })
+              .pipe(Effect.as({})),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.archivePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.archivePlan,
+            DateTime.now.pipe(
+              // The stamp is the server's for the same reason a visit's is.
+              Effect.flatMap((archivedAt) =>
+                planningStore.archivePlan({ planId: input.planId, archivedAt }),
+              ),
+              // Archiving mid-reply keeps the record: the partial lands as an
+              // interrupted commit, then the plan's session stops.
+              Effect.tap(() =>
+                planningAssistant.teardownPlan({ planId: input.planId, commitPartial: true }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "archivePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.unarchivePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.unarchivePlan,
+            planningStore.unarchivePlan({ planId: input.planId }).pipe(
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "unarchivePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.deletePlan]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.deletePlan,
+            planningStore.deletePlan({ planId: input.planId }).pipe(
+              // Bytes go after the rows that named them, never before: a
+              // refused delete must leave the plan's images where they are.
+              Effect.tap((deletion) => removePlanAttachments(deletion)),
+              // The history is gone; a partial reply has nothing to land in.
+              // Discard the turn and stop the plan's session.
+              Effect.tap(() =>
+                planningAssistant.teardownPlan({ planId: input.planId, commitPartial: false }),
+              ),
+              Effect.as({}),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) || isPlanDeleteBlockedError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "deletePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.getPlanTextAt]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.getPlanTextAt,
+            planningStore
+              .getPlanTextAt({
+                planId: input.planId,
+                commitId: CommitId.make(input.commitId),
+              })
+              .pipe(
+                Effect.map(toWirePlanTextAt),
+                // A commit the client did not receive from this plan's own
+                // subscription is a planning bug, not something to render.
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause)
+                    ? cause
+                    : new MercurianPlanningError({ operation: "getPlanTextAt", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.subscribePlan]: (input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WS_METHODS.subscribePlan,
+            Effect.gen(function* () {
+              const toPlanStreamError = (cause: unknown) =>
+                isPlanNotFoundError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "subscribePlan", cause });
+
+              // Attach the change signal before reading anything, so a commit
+              // landing while the first query is in flight still reaches this
+              // subscriber — it lands after the cursor either way.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                planningStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+
+              // Turn frames attach with the same discipline: before the
+              // snapshot read, so a delta landing while that query runs is
+              // not lost. A delta the snapshot already contains replays with
+              // an offset below the snapshot's text and folds away.
+              const turnFrames = yield* Queue.unbounded<PlanStreamItem>();
+              yield* Effect.forkScoped(
+                planningAssistant
+                  .frames(input.planId)
+                  .pipe(Stream.runForEach((frame) => Queue.offer(turnFrames, frame))),
+                { startImmediately: true },
+              );
+
+              const readSince = (afterSequence: number) =>
+                planningStore
+                  .listTimelineSince({ planId: input.planId, afterSequence })
+                  .pipe(Effect.mapError(toPlanStreamError));
+
+              // Resume when the client carries a cursor and the replay is
+              // small enough to be worth sending as events. Unlike the thread
+              // stream's replay this query is already scoped to one history,
+              // so the cap is about wire payload, not about decoding an
+              // unbounded global range.
+              const resume =
+                input.afterSequence === undefined
+                  ? null
+                  : yield* readSince(input.afterSequence).pipe(
+                      Effect.map((events) => (events.length > PLAN_RESUME_MAX_GAP ? null : events)),
+                    );
+
+              const opening =
+                resume === null
+                  ? yield* planningStore.getPlanSnapshot({ planId: input.planId }).pipe(
+                      Effect.flatMap((detail) =>
+                        // The snapshot carries the partial turn, so a window
+                        // opened — or reconnected — mid-turn joins coherently
+                        // with no frame replay (ADR 002 §3).
+                        planningAssistant.inFlight(input.planId).pipe(
+                          Effect.map((inFlightTurn) => ({
+                            cursor: detail.snapshotSequence,
+                            items: [
+                              {
+                                kind: "snapshot" as const,
+                                snapshot: {
+                                  ...toWirePlanDetail(detail),
+                                  ...(inFlightTurn === undefined ? {} : { inFlightTurn }),
+                                },
+                              },
+                            ] satisfies ReadonlyArray<PlanStreamItem>,
+                          })),
+                        ),
+                      ),
+                      Effect.mapError(toPlanStreamError),
+                    )
+                  : {
+                      cursor: resume.at(-1)?.item.sequence ?? input.afterSequence ?? 0,
+                      items: resume.map(toWirePlanCommitEvent),
+                    };
+
+              const cursor = yield* Ref.make(opening.cursor);
+
+              // The change signal is not per-plan, so filtering *is* the
+              // cursor query: a mutation on some other plan reads zero rows
+              // for this history and emits nothing.
+              const liveStream = Stream.fromQueue(changes).pipe(
+                Stream.mapEffect(() =>
+                  Effect.gen(function* () {
+                    const events = yield* readSince(yield* Ref.get(cursor));
+                    const last = events.at(-1);
+                    if (last !== undefined) {
+                      yield* Ref.set(cursor, last.item.sequence);
+                    }
+                    return events.map(toWirePlanCommitEvent);
+                  }),
+                ),
+                Stream.flatMap(Stream.fromIterable),
+              );
+
+              return Stream.concat(
+                Stream.fromIterable<PlanStreamItem>([
+                  ...opening.items,
+                  { kind: "synchronized" as const },
+                ]),
+                // Turn frames are transport beside the commit events: no
+                // sequence, never resumable, and `synchronized` keeps meaning
+                // caught-up-on-commits (ADR 002 §3).
+                Stream.merge(liveStream, Stream.fromQueue(turnFrames)),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // mutation landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                repositoryStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadRepositoriesSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value, so a burst of mutations is worth exactly
+                  // one re-send: the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadRepositoriesSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.addRepository,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                repositoryStore.addRepository({
+                  path: input.path,
+                  ...(input.name === undefined ? {} : { name: input.name }),
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWireRepository),
+              Effect.mapError((cause) =>
+                isRepositoryPathInvalidError(cause) || isRepositoryAlreadyRegisteredError(cause)
+                  ? cause
+                  : new MercurianRepositoryError({ operation: "addRepository", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.removeRepository,
+            repositoryStore
+              .removeRepository({ repositoryId: input.repositoryId })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isMercurianRepositoryNotFoundError(cause) ||
+                  isRepositoryHasLiveWorktreesError(cause)
+                    ? cause
+                    : new MercurianRepositoryError({ operation: "removeRepository", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts,
+            DateTime.now.pipe(
+              Effect.flatMap((updatedAt) =>
+                repositoryStore.saveScripts({
+                  repositoryId: input.repositoryId,
+                  scripts: input.scripts,
+                  updatedAt,
+                }),
+              ),
+              Effect.map(toWireRepository),
+              Effect.mapError((cause) =>
+                isMercurianRepositoryNotFoundError(cause)
+                  ? cause
+                  : new MercurianRepositoryError({ operation: "saveRepositoryScripts", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories,
+            DateTime.now.pipe(
+              Effect.flatMap((addedAt) =>
+                repositoryStore.setProjectRepositories({
+                  projectId: input.projectId,
+                  repositoryIds: input.repositoryIds,
+                  addedAt,
+                }),
+              ),
+              Effect.mapError((cause) =>
+                isMercurianProjectNotFoundError(cause) || isMercurianRepositoryNotFoundError(cause)
+                  ? cause
+                  : new MercurianRepositoryError({ operation: "setProjectRepositories", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // write landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                workspaceSettingsStore.changes.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadWorkspaceSettingsSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value: a burst of writes is worth exactly one
+                  // re-send, the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadWorkspaceSettingsSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
+            workspaceSettingsStore
+              .setPlanningModel(input.planningModel)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new MercurianWorkspaceError({ operation: "setPlanningModel", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers,
+            Effect.gen(function* () {
+              // Attach the change signal before the first snapshot query, so a
+              // connect landing while that query is in flight still re-sends.
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                trackerStore.changes.pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadTrackersSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  // One small value, so a burst of mutations is worth exactly
+                  // one re-send: the latest.
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadTrackersSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.connectTracker,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                trackerStore.connect({ kind: input.kind, token: input.token, createdAt }),
+              ),
+              Effect.map(toWireConnection),
+              // The two refusals travel because the dialog says something
+              // different for each. Nothing else about the attempt does — in
+              // particular the payload, which held the credential, is never
+              // echoed into a cause.
+              Effect.mapError((cause) =>
+                isTrackerAuthError(cause) || isTrackerUnreachableError(cause)
+                  ? cause
+                  : new MercurianTrackerError({ operation: "connectTracker" }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.disconnectTracker,
+            trackerStore
+              .disconnect({ connectionId: input.connectionId })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isTrackerConnectionNotFoundError(cause)
+                    ? cause
+                    : new MercurianTrackerError({ operation: "disconnectTracker", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues,
+            trackerStore
+              .listIssues({
+                connectionId: input.connectionId,
+                ...(input.search === undefined ? {} : { search: input.search }),
+                ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+              })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isTrackerConnectionNotFoundError(cause) ||
+                  isTrackerAuthError(cause) ||
+                  isTrackerUnreachableError(cause)
+                    ? cause
+                    : new MercurianTrackerError({ operation: "listTrackerIssues", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>
           observeRpcEffect(WS_METHODS.serverProbe, Effect.succeed({}), {

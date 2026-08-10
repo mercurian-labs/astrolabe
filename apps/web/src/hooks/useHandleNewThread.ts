@@ -26,7 +26,7 @@ import { readThreadShell, useProjects, useThread } from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
-import { resolveThreadRouteTarget } from "../threadRoutes";
+import { navigateToParkedThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 
@@ -273,10 +273,9 @@ export function useNewThreadHandler() {
           ) {
             return;
           }
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: emptyStoredDraftThread.draftId },
-            replace: options?.replace ?? false,
+          await navigateToParkedThreadRoute({
+            kind: "draft",
+            draftId: emptyStoredDraftThread.draftId,
           });
         })();
       }
@@ -342,11 +341,7 @@ export function useNewThreadHandler() {
             interactionMode: racedDraft.interactionMode,
             ...pickExplicitWorkspaceOptions(options),
           });
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: racedDraft.draftId },
-            replace: options?.replace ?? false,
-          });
+          await navigateToParkedThreadRoute({ kind: "draft", draftId: racedDraft.draftId });
           return;
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
@@ -374,11 +369,7 @@ export function useNewThreadHandler() {
           setModelSelection(draftId, carryModelSelection, { replaceOptions: true });
         }
 
-        await router.navigate({
-          to: "/draft/$draftId",
-          params: { draftId },
-          replace: options?.replace ?? false,
-        });
+        await navigateToParkedThreadRoute({ kind: "draft", draftId });
       })();
     },
     [getCurrentRouteTarget, primaryServerSettings, projectGroupingSettings, projects, router],

@@ -25,11 +25,24 @@ import type * as Stream from "effect/Stream";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
+/**
+ * Whether a session can read beyond its `cwd`. `"multi"` means
+ * `ProviderSessionStartInput.additionalDirectories` is honored; `"cwd-only"`
+ * means it is ignored and callers must narrow — visibly — to the cwd.
+ */
+export type ProviderGroundingRoots = "multi" | "cwd-only";
+
 export interface ProviderAdapterCapabilities {
   /**
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /**
+   * Declares whether a session can ground across several directory roots.
+   * Conservative defaults: only adapters verified to honor extra roots
+   * declare `"multi"`.
+   */
+  readonly groundingRoots: ProviderGroundingRoots;
 }
 
 export interface ProviderThreadTurnSnapshot {

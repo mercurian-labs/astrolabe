@@ -209,6 +209,20 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }),
   );
 
+  it.effect("gives the creation chord to plan.new, not the parked chat.new", () =>
+    Effect.sync(() => {
+      const planNewKeys = Keybindings.DEFAULT_KEYBINDINGS.filter(
+        (binding) => binding.command === "plan.new",
+      ).map((binding) => binding.key);
+      const chatNewKeys = Keybindings.DEFAULT_KEYBINDINGS.filter(
+        (binding) => binding.command === "chat.new",
+      ).map((binding) => binding.key);
+
+      assert.deepEqual(planNewKeys, ["mod+n"]);
+      assert.deepEqual(chatNewKeys, ["mod+shift+o"]);
+    }),
+  );
+
   it.effect("uses defaults in runtime when config is malformed without overriding file", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

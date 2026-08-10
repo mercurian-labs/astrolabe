@@ -1,0 +1,151 @@
+name: Sync upstream t3code
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Open upstream sync pull request
+    # git + gh only, no dependency install, so arm64 is safe here.
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: app_token
+        name: Mint release app token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app_token.outputs.token }}
+          persist-credentials: true
+
+      - id: app_bot
+        name: Resolve GitHub App bot identity
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
+        run: |
+          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream and open pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          APP_BOT_NAME: ${{ steps.app_bot.outputs.name }}
+          APP_BOT_EMAIL: ${{ steps.app_bot.outputs.email }}
+        run: |
+          set -euo pipefail
+
+          git remote add upstream https://github.com/pingdotgg/t3code.git
+          git fetch --no-tags upstream main
+
+          if git merge-base --is-ancestor upstream/main main; then
+            echo "main already contains upstream/main; no sync pull request is needed."
+            exit 0
+          fi
+
+          open_sync_prs="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --state open \
+              --limit 100 \
+              --json headRefName \
+              --jq '[.[] | select(.headRefName | startswith("sync/upstream-"))] | length'
+          )"
+          if [[ "$open_sync_prs" != "0" ]]; then
+            echo "An upstream sync pull request is already open; skipping this run."
+            exit 0
+          fi
+
+          sync_date="$(date -u +%Y%m%d)"
+          branch_name="sync/upstream-$sync_date"
+          if git ls-remote --exit-code --heads origin "refs/heads/$branch_name" >/dev/null 2>&1; then
+            branch_name="$branch_name-$GITHUB_RUN_NUMBER"
+          fi
+
+          git config user.name "$APP_BOT_NAME"
+          git config user.email "$APP_BOT_EMAIL"
+          git switch -c "$branch_name" main
+
+          commits="$(
+            git log \
+              --format='- `%h` %s' \
+              --max-count=50 \
+              main..upstream/main
+          )"
+
+          if git merge --no-ff --no-edit upstream/main; then
+            git push --set-upstream origin "$branch_name"
+            {
+              echo "## Upstream sync"
+              echo
+              echo "This pull request merges \`pingdotgg/t3code:main\` into Mercurian's \`main\`."
+              echo
+              echo "CI runs against the combined result. Merge this pull request through the normal protected-branch flow."
+              echo
+              echo "### Incoming commits (up to 50)"
+              echo
+              echo "$commits"
+            } > "$RUNNER_TEMP/upstream-sync-pr.md"
+
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$branch_name" \
+              --title "Sync upstream t3code $sync_date" \
+              --body-file "$RUNNER_TEMP/upstream-sync-pr.md"
+            exit 0
+          fi
+
+          git merge --abort
+          git switch -C "$branch_name" upstream/main
+          git push --set-upstream origin "$branch_name"
+          {
+            echo "## CONFLICTS — manual resolution required"
+            echo
+            echo "Merging \`pingdotgg/t3code:main\` into Mercurian's \`main\` produced conflicts."
+            echo "This branch contains the upstream head unchanged; no conflicts were resolved automatically."
+            echo
+            echo "Resolve the pull request manually:"
+            echo
+            echo '```sh'
+            echo "git fetch origin"
+            echo "git switch $branch_name"
+            echo "git merge origin/main"
+            echo "# Resolve every conflict, run the required checks, commit, and push."
+            echo "git push origin $branch_name"
+            echo '```'
+            echo
+            echo "### Incoming commits (up to 50)"
+            echo
+            echo "$commits"
+          } > "$RUNNER_TEMP/upstream-sync-pr.md"
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$branch_name" \
+            --title "[CONFLICTS] Sync upstream t3code $sync_date" \
+            --body-file "$RUNNER_TEMP/upstream-sync-pr.md"

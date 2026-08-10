@@ -33,6 +33,8 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
+import { splitKeybindingValue } from "@t3tools/shared/keybindings";
+
 import { isElectron } from "../../env";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
 import { formatShortcutLabel } from "../../keybindings";
@@ -74,12 +76,26 @@ import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 
+/**
+ * One keycap per token of a shortcut.
+ *
+ * Tokenized by the parser's own rule, so a `+` key draws as a keycap rather
+ * than as the blank ones a plain split leaves behind. Tokens are numbered by
+ * how often each has appeared, because a shortcut may legitimately repeat one
+ * (`shift+shift+k`) and identical keys would collide.
+ */
 function KeybindingPill({ value }: { value: string }) {
-  const parts = value.split("+");
+  const seenCounts = new Map<string, number>();
+  const parts = splitKeybindingValue(value).map((part) => {
+    const occurrence = (seenCounts.get(part) ?? 0) + 1;
+    seenCounts.set(part, occurrence);
+    return { part, id: `${part}#${occurrence}` };
+  });
+
   return (
     <KbdGroup className="bg-transparent p-0 shadow-none">
-      {parts.map((part) => (
-        <Kbd key={part} className="min-w-6 justify-center px-1.5">
+      {parts.map(({ part, id }) => (
+        <Kbd key={id} className="min-w-6 justify-center px-1.5">
           {part === "mod"
             ? navigator.platform.toLowerCase().includes("mac")
               ? "⌘"
@@ -258,7 +274,7 @@ function UnknownWhenVariableWarning({
         }
       />
       <TooltipPopup side="top" className="max-w-72 whitespace-normal leading-relaxed">
-        T3 Code does not recognize this condition yet. It can still be saved, but it may not match
+        Astrolabe does not recognize this condition yet. It can still be saved, but it may not match
         unless the runtime provides it.
       </TooltipPopup>
     </Tooltip>
@@ -1284,8 +1300,8 @@ export function KeybindingsSettingsPanel() {
           <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-4">
             <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
             <p>
-              Some shortcuts may be claimed by the browser before T3 Code sees them. Use the desktop
-              app for better keybinding support.
+              Some shortcuts may be claimed by the browser before Astrolabe sees them. Use the
+              desktop app for better keybinding support.
             </p>
           </div>
         ) : null}

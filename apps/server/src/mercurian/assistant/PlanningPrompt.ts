@@ -1,0 +1,163 @@
+/**
+ * PlanningPrompt — pure assembly of what a planning turn says to its
+ * provider: who the assistant is, where it may look, how it writes, and — on
+ * a rebuilt session — what the conversation already was.
+ *
+ * The provider-session contract has no per-session system-prompt seam, so
+ * the appendix rides as the head of a fresh session's first turn input. A
+ * continued session already carries it in the provider's own context and
+ * receives only the new message.
+ *
+ * Everything here is a pure function of its inputs, tested without a
+ * provider — the `.logic.ts` temperament applied server-side.
+ *
+ * @module PlanningPrompt
+ */
+import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
+
+export interface PlanningRepositoryRoot {
+  readonly name: string;
+  readonly path: string;
+}
+
+export interface PlanningIdentityInput {
+  readonly planTitle: string;
+  /** The roots this session can actually read, cwd first. */
+  readonly repositories: ReadonlyArray<PlanningRepositoryRoot>;
+  /** Repositories of the project this session cannot reach (cwd-only provider). */
+  readonly unreachableRepositories: ReadonlyArray<string>;
+}
+
+/**
+ * The planning system appendix: identity, the read-only rule, the one write
+ * door, and the grounding roots by name and path. Naming the roots matters
+ * even for providers that honor `additionalDirectories` — access is granted
+ * by the session, awareness by the prompt.
+ */
+export function planningSystemAppendix(input: PlanningIdentityInput): string {
+  const lines: Array<string> = [
+    `You are the planning assistant for the plan "${input.planTitle}".`,
+    "You are in a planning conversation, not a coding session: you help think through and shape a plan document. There is no mode to enter and no implement step here.",
+    "",
+    "Ground your replies in the project's repositories. Your filesystem access is read-only — read, search, and list freely; never attempt to run commands or modify files, and do not propose doing so.",
+    "",
+    "The plan document is the one artifact you can change, through exactly one door: the `save_plan_revision` tool, which replaces the plan's whole text. Use `read_plan` first so you revise what is actually there. Never claim to have edited the plan without having called `save_plan_revision`.",
+    "When you need a decision from the person you are planning with, ask a structured question with the question tool available to you instead of guessing.",
+  ];
+
+  if (input.repositories.length === 0) {
+    lines.push(
+      "",
+      "This project has no repositories connected, so there is nothing to ground in — plan from the conversation alone.",
+    );
+  } else {
+    lines.push("", "Repositories to ground in:");
+    for (const repository of input.repositories) {
+      lines.push(`- ${repository.name}: ${repository.path}`);
+    }
+  }
+
+  if (input.unreachableRepositories.length > 0) {
+    lines.push(
+      "",
+      `Out of reach in this session (the provider grounds a single root): ${input.unreachableRepositories.join(", ")}. Say so if a question depends on them.`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * One entry of the history a rebuilt session has to be told about. Revisions
+ * carry the text they produced only when it is the current one — the final
+ * artifact travels once, at the end.
+ */
+export type TranscriptEntry =
+  | {
+      readonly kind: "message";
+      readonly author: "human" | "assistant";
+      readonly text: string;
+      readonly interrupted?: boolean;
+    }
+  | { readonly kind: "plan-revision"; readonly author: "human" | "assistant" };
+
+/**
+ * Room left for the transcript after the appendix and the current message
+ * are budgeted, against the provider send cap. The margin covers the framing
+ * lines this module adds around each part.
+ */
+const TRANSCRIPT_FRAMING_MARGIN = 2_000;
+
+/**
+ * The conversation so far, rendered as dialogue for a session that was not
+ * there. Oldest entries are elided first when the whole thing cannot fit the
+ * provider's input cap — the recent turns are what the next reply hangs on.
+ */
+export function transcriptPreamble(input: {
+  readonly entries: ReadonlyArray<TranscriptEntry>;
+  /** The plan artifact's current text along this path. `""` renders as empty. */
+  readonly planText: string;
+  /** Characters already spoken for: appendix + the current message. */
+  readonly reservedChars: number;
+}): string {
+  const rendered = input.entries.map((entry) => {
+    if (entry.kind === "plan-revision") {
+      return entry.author === "human"
+        ? "[The person edited the plan directly.]"
+        : "[You revised the plan.]";
+    }
+    const speaker = entry.author === "human" ? "Person" : "You";
+    const suffix = entry.interrupted === true ? "\n[This reply was stopped mid-response.]" : "";
+    return `${speaker}:\n${entry.text}${suffix}`;
+  });
+
+  const planSection =
+    input.planText.length === 0
+      ? "The plan document is currently empty."
+      : `The plan document currently reads:\n---\n${input.planText}\n---`;
+
+  const budget = Math.max(
+    0,
+    PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
+      input.reservedChars -
+      planSection.length -
+      TRANSCRIPT_FRAMING_MARGIN,
+  );
+
+  const kept: Array<string> = [];
+  let used = 0;
+  let elided = 0;
+  for (let index = rendered.length - 1; index >= 0; index -= 1) {
+    const entry = rendered[index]!;
+    if (used + entry.length > budget) {
+      elided = index + 1;
+      break;
+    }
+    kept.unshift(entry);
+    used += entry.length;
+  }
+
+  const header =
+    elided === 0
+      ? "You are resuming a planning conversation. Here is what has happened so far:"
+      : `You are resuming a planning conversation. Its first ${elided} entries are elided for length; here is the rest:`;
+
+  return [header, "", kept.join("\n\n"), "", planSection].join("\n");
+}
+
+/**
+ * A fresh session's first turn: appendix, then the transcript when the
+ * conversation predates this session, then the message being replied to. A
+ * continued session sends the message alone.
+ */
+export function composeFirstTurnInput(input: {
+  readonly appendix: string;
+  readonly preamble: string | null;
+  readonly message: string;
+}): string {
+  return [
+    input.appendix,
+    ...(input.preamble === null ? [] : [input.preamble]),
+    `Reply to this message:\n${input.message}`,
+  ].join("\n\n---\n\n");
+}

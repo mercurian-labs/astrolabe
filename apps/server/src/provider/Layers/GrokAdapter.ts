@@ -1446,7 +1446,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      // groundingRoots is conservative until someone verifies extra roots.
+      capabilities: { sessionModelSwitch: "in-session", groundingRoots: "cwd-only" },
       startSession,
       sendTurn,
       interruptTurn,

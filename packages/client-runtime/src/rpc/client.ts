@@ -1,4 +1,11 @@
-import { ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
+import {
+  MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
+  MERCURIAN_WS_METHODS,
+  ORCHESTRATION_WS_METHODS,
+  WS_METHODS,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
@@ -42,6 +49,11 @@ type RpcMethod<TTag extends EnvironmentRpcTag> = WsRpcProtocolClient[TTag];
 export type EnvironmentSubscriptionRpcTag =
   | typeof ORCHESTRATION_WS_METHODS.subscribeShell
   | typeof ORCHESTRATION_WS_METHODS.subscribeThread
+  | typeof MERCURIAN_WS_METHODS.subscribeTree
+  | typeof MERCURIAN_WS_METHODS.subscribePlan
+  | typeof MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories
+  | typeof MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers
+  | typeof MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
   | typeof WS_METHODS.subscribeAuthAccess
   | typeof WS_METHODS.subscribeServerConfig
   | typeof WS_METHODS.subscribeServerLifecycle
