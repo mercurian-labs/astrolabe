@@ -1,5 +1,5 @@
 import { ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { APP_BASE_NAME } from "../../branding";
@@ -92,14 +92,15 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-/**
- * `showSettingsRow` is false for the project tree, which puts Settings in its
- * Workspace group instead. Usage remains available from the shared footer.
- */
+/** Shared update chrome plus the navigation rows each sidebar opts into. */
 export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  extraRows,
   showSettingsRow = true,
+  showUsageRow = true,
 }: {
+  extraRows?: ReactNode;
   showSettingsRow?: boolean;
+  showUsageRow?: boolean;
 }) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -122,12 +123,15 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
       <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton onClick={handleUsageClick}>
-            <ChartNoAxesColumnIcon />
-            <span>Usage</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {showUsageRow ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={handleUsageClick}>
+              <ChartNoAxesColumnIcon />
+              <span>Usage</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
+        {extraRows}
         {showSettingsRow ? (
           <SidebarMenuItem>
             <SidebarMenuButton onClick={handleSettingsClick}>

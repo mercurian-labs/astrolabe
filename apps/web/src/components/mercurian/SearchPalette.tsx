@@ -39,7 +39,7 @@ import {
   resolvePlanRowStatus,
   sortPlansNewestFirst,
   sortProjectsForTree,
-} from "./ProjectTreeSidebar.logic";
+} from "./planListing.logic";
 import {
   buildSearchPaletteGroups,
   composeEmptyQueryPlanRows,
