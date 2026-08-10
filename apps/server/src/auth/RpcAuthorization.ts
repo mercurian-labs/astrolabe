@@ -58,6 +58,7 @@ export const RPC_REQUIRED_SCOPES = {
   // The registry is the same trust domain by the same reasoning: reading what
   // code the app can reach, and changing it, are workspace orchestration.
   [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: AuthOrchestrationReadScope,
+  [MERCURIAN_REPOSITORY_WS_METHODS.refreshRepositories]: AuthOrchestrationReadScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,

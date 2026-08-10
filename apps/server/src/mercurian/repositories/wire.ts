@@ -2,8 +2,8 @@
  * The repository store's values as the wire carries them.
  *
  * One thing changes at this boundary: rows hold `DateTime.Utc`, contracts hold
- * ISO strings. `hasGit` crosses as it was probed — a fact about the machine at
- * read time, which is the only kind of fact it is.
+ * ISO strings. `hasGit` and `hosting` cross as probed facts about the machine
+ * at read time, which is the only kind of fact they are.
  *
  * @module RepositoryWire
  */
@@ -29,6 +29,7 @@ export const toWireRepository = (repository: RepositoryView): Contracts.Mercuria
   name: repository.name,
   path: repository.path,
   hasGit: repository.hasGit,
+  hosting: repository.hosting,
   scripts: repository.scripts.map(toWireScript),
   createdAt: iso(repository.createdAt),
   updatedAt: iso(repository.updatedAt),
