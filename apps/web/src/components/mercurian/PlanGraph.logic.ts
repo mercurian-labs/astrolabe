@@ -9,6 +9,15 @@
  * anything can create them, and that is exactly what the tests pin.
  */
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
+import {
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceY,
+  type SimulationLinkDatum,
+  type SimulationNodeDatum,
+} from "d3-force";
 
 export interface PlanGraphNode {
   readonly commitId: MercurianCommitId;
@@ -98,6 +107,26 @@ export function ancestorClosure(
     closure.add(current);
     for (const parentId of graph.byId.get(current)?.parents ?? []) {
       pending.push(parentId);
+    }
+  }
+  return closure;
+}
+
+/** The commit itself and everything descended from it. */
+export function descendantClosure(
+  graph: PlanGraph,
+  commitId: MercurianCommitId,
+): ReadonlySet<string> {
+  const closure = new Set<string>();
+  if (!graph.byId.has(commitId)) return closure;
+
+  const pending: Array<string> = [commitId];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || closure.has(current)) continue;
+    closure.add(current);
+    for (const childId of graph.byId.get(current)?.childrenIds ?? []) {
+      pending.push(childId);
     }
   }
   return closure;
@@ -224,7 +253,6 @@ const SPATIAL_SPRING_K = 0.06;
 const SPATIAL_REPULSION = 9000;
 const SPATIAL_FLOW_K = 0.08;
 const SPATIAL_DAMPING = 0.82;
-const SPATIAL_MAX_STEP = 24;
 const SPATIAL_SEPARATION_PASSES = 32;
 
 export interface SpatialPoint {
@@ -289,6 +317,22 @@ function seedOf(value: string): number {
 const seededOffset = (value: string, salt: number) =>
   (seedOf(`${salt}:${value}`) % 20001) / 10000 - 1;
 
+/** d3's collision jiggle draws only from this timeline-derived sequence. */
+function seededRandom(value: string): () => number {
+  let state = seedOf(value);
+  return () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+}
+
+interface ForceNode extends SimulationNodeDatum {
+  readonly id: string;
+  readonly generation: number;
+  x: number;
+  y: number;
+}
+
 /**
  * The spatial map: every commit a node, every parent edge drawn, the whole
  * shape at once. For seeing structure — the navigator is for walking it.
@@ -298,11 +342,11 @@ const seededOffset = (value: string, salt: number) =>
  * function of `(graph, prior)` that tests like any other: same timeline, same
  * picture, every window.
  *
- * Three forces shape it — springs along parent edges, pairwise repulsion, and
- * a weak directional field pulling each commit down its generation. That third
+ * Four forces shape it — springs along parent edges, repulsion, collision, and
+ * a weak directional field pulling each commit down its generation. That last
  * one is what a DAG needs and a plain note-graph lacks: it keeps root→tips
- * reading as flow rather than as a hairball, while springs and repulsion still
- * let branches splay sideways.
+ * reading as flow rather than as a hairball, while the other forces still let
+ * branches splay sideways.
  *
  * Pass `prior` when the timeline has grown: new nodes start at their first
  * parent and the solve re-runs warm on a small budget, so the map drifts
@@ -355,64 +399,50 @@ export function spatialLayout(
 
   const simulated = count <= SPATIAL_MAX_SIMULATED_NODES;
   if (simulated) {
-    const velocityX = new Float64Array(count);
-    const velocityY = new Float64Array(count);
-    const forceX = new Float64Array(count);
-    const forceY = new Float64Array(count);
     const ticks = prior === undefined ? SPATIAL_COLD_TICKS : SPATIAL_WARM_TICKS;
+    const forceNodes = graph.nodes.map(
+      (node, index): ForceNode => ({
+        id: node.commitId,
+        generation: generation[index]!,
+        x: x[index]!,
+        y: y[index]!,
+      }),
+    );
+    const links = graph.nodes.flatMap((node) =>
+      node.parents.map(
+        (parentId): SimulationLinkDatum<ForceNode> => ({
+          source: parentId,
+          target: node.commitId,
+        }),
+      ),
+    );
+    const simulation = forceSimulation(forceNodes)
+      .stop()
+      .randomSource(seededRandom(graph.nodes.map((node) => node.commitId).join("\0")))
+      .velocityDecay(1 - SPATIAL_DAMPING)
+      .force(
+        "link",
+        forceLink<ForceNode, SimulationLinkDatum<ForceNode>>(links)
+          .id((node) => node.id)
+          .distance(SPATIAL_SPRING_LENGTH)
+          .strength(SPATIAL_SPRING_K),
+      )
+      .force(
+        "charge",
+        forceManyBody<ForceNode>().strength(-SPATIAL_REPULSION / SPATIAL_SPRING_LENGTH),
+      )
+      .force(
+        "flow",
+        forceY<ForceNode>((node) => node.generation * SPATIAL_FLOW_SPACING).strength(
+          SPATIAL_FLOW_K,
+        ),
+      )
+      .force("collide", forceCollide<ForceNode>(SPATIAL_MIN_SEPARATION / 2));
 
-    for (let tick = 0; tick < ticks; tick += 1) {
-      forceX.fill(0);
-      forceY.fill(0);
-
-      for (let a = 0; a < count; a += 1) {
-        for (let b = a + 1; b < count; b += 1) {
-          const dx = x[a]! - x[b]!;
-          const dy = y[a]! - y[b]!;
-          const distanceSquared = Math.max(dx * dx + dy * dy, 1);
-          const distance = Math.sqrt(distanceSquared);
-          const push = SPATIAL_REPULSION / distanceSquared;
-          forceX[a] = forceX[a]! + (dx / distance) * push;
-          forceY[a] = forceY[a]! + (dy / distance) * push;
-          forceX[b] = forceX[b]! - (dx / distance) * push;
-          forceY[b] = forceY[b]! - (dy / distance) * push;
-        }
-      }
-
-      for (const [index, node] of graph.nodes.entries()) {
-        for (const parentId of node.parents) {
-          const parentIndex = indexOf.get(parentId);
-          if (parentIndex === undefined) continue;
-          const dx = x[index]! - x[parentIndex]!;
-          const dy = y[index]! - y[parentIndex]!;
-          const distance = Math.max(Math.sqrt(dx * dx + dy * dy), 0.01);
-          const pull = SPATIAL_SPRING_K * (distance - SPATIAL_SPRING_LENGTH);
-          forceX[index] = forceX[index]! - (dx / distance) * pull;
-          forceY[index] = forceY[index]! - (dy / distance) * pull;
-          forceX[parentIndex] = forceX[parentIndex]! + (dx / distance) * pull;
-          forceY[parentIndex] = forceY[parentIndex]! + (dy / distance) * pull;
-        }
-        forceY[index] =
-          forceY[index]! + SPATIAL_FLOW_K * (generation[index]! * SPATIAL_FLOW_SPACING - y[index]!);
-      }
-
-      for (let index = 0; index < count; index += 1) {
-        velocityX[index] = (velocityX[index]! + forceX[index]!) * SPATIAL_DAMPING;
-        velocityY[index] = (velocityY[index]! + forceY[index]!) * SPATIAL_DAMPING;
-        x[index] = x[index]! + clampStep(velocityX[index]!);
-        y[index] = y[index]! + clampStep(velocityY[index]!);
-      }
-    }
-  }
-
-  // Flow, made true rather than merely encouraged: a child always sits beyond
-  // every parent. A soft force gets this right most of the time, and "most of
-  // the time" is how a graph view starts lying about which way time runs.
-  for (const [index, node] of graph.nodes.entries()) {
-    for (const parentId of node.parents) {
-      const parentIndex = indexOf.get(parentId);
-      if (parentIndex === undefined) continue;
-      y[index] = Math.max(y[index]!, y[parentIndex]! + SPATIAL_MIN_FLOW_GAP);
+    simulation.tick(ticks);
+    for (const [index, node] of forceNodes.entries()) {
+      x[index] = node.x;
+      y[index] = node.y;
     }
   }
 
@@ -435,6 +465,17 @@ export function spatialLayout(
       }
     }
     if (settled) break;
+  }
+
+  // Flow, made true rather than merely encouraged: a child always sits beyond
+  // every parent. A soft force gets this right most of the time, and "most of
+  // the time" is how a graph view starts lying about which way time runs.
+  for (const [index, node] of graph.nodes.entries()) {
+    for (const parentId of node.parents) {
+      const parentIndex = indexOf.get(parentId);
+      if (parentIndex === undefined) continue;
+      y[index] = Math.max(y[index]!, y[parentIndex]! + SPATIAL_MIN_FLOW_GAP);
+    }
   }
 
   const positions = new Map<string, SpatialPoint>();
@@ -481,8 +522,6 @@ export function spatialLayout(
     simulated,
   };
 }
-
-const clampStep = (value: number) => Math.max(-SPATIAL_MAX_STEP, Math.min(SPATIAL_MAX_STEP, value));
 
 /** Positions are rendered, compared, and carried between solves; keep them exact. */
 const round = (value: number) => Math.round(value * 100) / 100;

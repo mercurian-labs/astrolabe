@@ -5,6 +5,7 @@ import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 import {
   ancestorClosure,
   buildPlanGraph,
+  descendantClosure,
   navigatorLayout,
   planCommitSummary,
   spatialLayout,
@@ -141,6 +142,28 @@ describe("ancestorClosure", () => {
   });
 });
 
+describe("descendantClosure", () => {
+  it("is the commit itself at a leaf", () => {
+    expect([...descendantClosure(buildPlanGraph(chain), id("c"))]).toEqual(["c"]);
+  });
+
+  it("takes both arms below a branch point", () => {
+    expect([...descendantClosure(buildPlanGraph(fork), id("b"))].sort()).toEqual(["b", "l", "r"]);
+  });
+
+  it("flows through a merge and everything below it", () => {
+    expect([...descendantClosure(buildPlanGraph(merged), id("l"))].sort()).toEqual([
+      "after",
+      "l",
+      "m",
+    ]);
+  });
+
+  it("is empty for a commit the graph does not hold", () => {
+    expect(descendantClosure(buildPlanGraph(chain), id("nope")).size).toBe(0);
+  });
+});
+
 describe("navigatorLayout", () => {
   it("keeps a linear history in one lane", () => {
     const layout = navigatorLayout(buildPlanGraph(chain));
@@ -197,6 +220,17 @@ describe("spatialLayout", () => {
       const graph = buildPlanGraph(timeline);
       const first = spatialLayout(graph);
       const second = spatialLayout(graph);
+      expect(first.nodes, name).toEqual(second.nodes);
+      expect(first.bounds, name).toEqual(second.bounds);
+    }
+  });
+
+  it("draws the same warm-started picture every time it is asked", () => {
+    for (const [name, timeline] of shapes) {
+      const graph = buildPlanGraph(timeline);
+      const prior = spatialLayout(graph).positions;
+      const first = spatialLayout(graph, prior);
+      const second = spatialLayout(graph, prior);
       expect(first.nodes, name).toEqual(second.nodes);
       expect(first.bounds, name).toEqual(second.bounds);
     }
