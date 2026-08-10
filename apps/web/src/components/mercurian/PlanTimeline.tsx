@@ -68,32 +68,35 @@ export function PlanTimeline({
         {timeline.map((item) => {
           if (item._tag === "message") {
             return (
-            <li
-              key={item.commitId}
-              className={cn(
-                "rounded-lg border border-border/60 px-3 py-2",
-                item.authorKind === "human" ? "bg-card/40" : "bg-muted/30",
-              )}
-            >
-              <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-                <span>{item.authorKind === "human" ? "You" : "Assistant"}</span>
-                <span>{formatRelativeTimeLabel(item.createdAt)}</span>
-                {item.interrupted === true ? <InterruptedBadge /> : null}
-              </div>
-              {item.groundingScope === undefined ? null : (
-                <NarrowedGroundingNotice scope={item.groundingScope} />
-              )}
-              {item.grounding === undefined || item.grounding.length === 0 ? null : (
-                <GroundingFold items={item.grounding} />
-              )}
-              {item.attachments === undefined ||
-              item.attachments.length === 0 ||
-              environmentId === null ? null : (
-                <MessageAttachments attachments={item.attachments} environmentId={environmentId} />
-              )}
-              <MessageText text={item.text} />
-              {item.question === undefined ? null : <QuestionRecord record={item.question} />}
-            </li>
+              <li
+                key={item.commitId}
+                className={cn(
+                  "rounded-lg border border-border/60 px-3 py-2",
+                  item.authorKind === "human" ? "bg-card/40" : "bg-muted/30",
+                )}
+              >
+                <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                  <span>{item.authorKind === "human" ? "You" : "Assistant"}</span>
+                  <span>{formatRelativeTimeLabel(item.createdAt)}</span>
+                  {item.interrupted === true ? <InterruptedBadge /> : null}
+                </div>
+                {item.groundingScope === undefined ? null : (
+                  <NarrowedGroundingNotice scope={item.groundingScope} />
+                )}
+                {item.grounding === undefined || item.grounding.length === 0 ? null : (
+                  <GroundingFold items={item.grounding} />
+                )}
+                {item.attachments === undefined ||
+                item.attachments.length === 0 ||
+                environmentId === null ? null : (
+                  <MessageAttachments
+                    attachments={item.attachments}
+                    environmentId={environmentId}
+                  />
+                )}
+                <MessageText text={item.text} />
+                {item.question === undefined ? null : <QuestionRecord record={item.question} />}
+              </li>
             );
           }
           if (item._tag === "issue-revision") {
