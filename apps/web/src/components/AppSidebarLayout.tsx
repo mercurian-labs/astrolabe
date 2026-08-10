@@ -16,7 +16,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
-import ProjectTreeSidebar from "./mercurian/ProjectTreeSidebar";
+import PlanListSidebar from "./mercurian/PlanListSidebar";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import {
   resolveInitialThreadSidebarWidth,
@@ -221,7 +221,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           onResize: setSidebarWidth,
         }}
       >
-        <ProjectTreeSidebar />
+        <PlanListSidebar />
         <SidebarRail />
       </Sidebar>
       {children}

@@ -14,6 +14,12 @@ interface ArchivedPlanFields {
   readonly hasPublishedCommits: boolean;
 }
 
+interface ArchivedPlanSortFields {
+  readonly planId: string;
+  readonly createdAt: string;
+  readonly archivedAt: string | null;
+}
+
 interface ArchivedProjectFields {
   readonly projectId: string;
   readonly name: string;
@@ -70,7 +76,9 @@ export function groupArchivedPlansByProject<
  * Newest-archived first. `createdAt` is the tiebreak for a row whose stamp is
  * somehow absent, so an unstamped plan still sorts rather than jumping about.
  */
-function sortPlansNewestArchivedFirst<T extends ArchivedPlanFields>(plans: readonly T[]): T[] {
+export function sortPlansNewestArchivedFirst<T extends ArchivedPlanSortFields>(
+  plans: readonly T[],
+): T[] {
   return [...plans].sort((left, right) => {
     const leftKey = left.archivedAt ?? left.createdAt;
     const rightKey = right.archivedAt ?? right.createdAt;
