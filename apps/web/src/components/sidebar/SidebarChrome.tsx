@@ -1,4 +1,4 @@
-import { SettingsIcon } from "lucide-react";
+import { ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import { memo, useCallback } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 
@@ -94,7 +94,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 
 /**
  * `showSettingsRow` is false for the project tree, which puts Settings in its
- * Workspace group instead — the footer then carries only the update pills.
+ * Workspace group instead. Usage remains available from the shared footer.
  */
 export const SidebarChromeFooter = memo(function SidebarChromeFooter({
   showSettingsRow = true,
@@ -110,20 +110,33 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
     void navigate({ to: "/settings" });
   }, [isMobile, navigate, setOpenMobile]);
 
+  const handleUsageClick = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void navigate({ to: "/usage" });
+  }, [isMobile, navigate, setOpenMobile]);
+
   return (
     <SidebarFooter className="p-[var(--sidebar-content-inset)]">
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
-      {showSettingsRow ? (
-        <SidebarMenu>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={handleUsageClick}>
+            <ChartNoAxesColumnIcon />
+            <span>Usage</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        {showSettingsRow ? (
           <SidebarMenuItem>
             <SidebarMenuButton onClick={handleSettingsClick}>
               <SettingsIcon />
               <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-        </SidebarMenu>
-      ) : null}
+        ) : null}
+      </SidebarMenu>
     </SidebarFooter>
   );
 });

@@ -3,7 +3,6 @@ import {
   ArrowLeftIcon,
   BotIcon,
   CircleDotIcon,
-  FlaskConicalIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -41,7 +40,6 @@ const SECTION_ICONS: Readonly<Record<SettingsSectionPath, ComponentType<{ classN
     "/settings/keybindings": KeyboardIcon,
     "/settings/source-control": GitBranchIcon,
     "/settings/connections": Link2Icon,
-    "/settings/beta": FlaskConicalIcon,
   };
 
 /**
