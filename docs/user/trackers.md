@@ -35,6 +35,44 @@ Whatever the tracker, an issue arrives as exactly five things:
 Labels, assignees, sprints, priorities and everything else stay in the tracker, one click away
 through the link. Mercurian is where issues get planned; it is not a second copy of your tracker.
 
+## Importing an issue
+
+Importing happens where plans start, not in Settings. Hover a project in the sidebar, press
+**new plan**, and the empty composer offers **Import from a tracker**.
+
+The dialog browses your connected trackers. Pick a connection if you have more than one, type to
+search, and press **Load more** to page further — the search goes to the tracker, which is the only
+thing that knows how to search its own backlog. Every issue on screen was fetched just now and is
+kept nowhere: close the dialog and it is gone. Nothing is stored until you import.
+
+Select an issue and press **Import**. The plan exists immediately, appears under its project, and
+takes the issue's title. Its conversation opens with the issue itself — the title and description
+as they read at import — because that is what the plan begins from.
+
+Three things follow from importing rather than starting blank:
+
+- **The plan is shared from the start.** The issue having a plan is not a private fact, so the plan
+  and the imported issue are published as soon as they exist. Everything you add afterwards is a
+  private draft until you publish it. Because something is published from birth, an imported plan
+  can only be archived, never deleted.
+- **The plan is empty.** The issue is what you plan _from_, not the plan itself, so the plan
+  document starts blank and you fill it in.
+- **The plan has no repositories yet.** Which code the work touches is something planning works
+  out, not something importing decides.
+
+### Importing the same issue twice
+
+You cannot end up with two plans for one issue. Importing an issue you have already imported takes
+you to the plan it already has and says so. If that plan had been archived, importing brings it
+back out of the archive, in the place in the list it had before.
+
+That link is to a specific connection. If you disconnect a tracker and connect the same workspace
+again, the new connection is a new starting point, and importing an issue through it starts a new
+plan.
+
+Issues are not kept in step with the tracker. What you imported is what the plan begins with, and
+it stays that way.
+
 ## Connection status
 
 Each connection shows where it stands right now:

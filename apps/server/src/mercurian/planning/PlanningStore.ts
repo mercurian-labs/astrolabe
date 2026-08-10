@@ -43,6 +43,7 @@ import {
   PlanNotFoundError,
   PlanQuestionRecord,
   PlanTurnActiveError,
+  TrackerConnectionId,
 } from "@t3tools/contracts";
 
 import {
@@ -95,6 +96,22 @@ export const PlanRevisionCommitPayload = Schema.Struct({ text: Schema.String });
 export type PlanRevisionCommitPayload = typeof PlanRevisionCommitPayload.Type;
 
 /**
+ * What an issue-revision commit carries: the issue's content as it read when it
+ * was imported. This is the *content*, and nothing else — the link back to the
+ * origin is origin metadata and lives in `plan_origins`, and the issue's status
+ * is a live fact about the tracker that nothing here stores.
+ *
+ * An imported plan's root commit is one of these: the planning space literally
+ * begins with the issue. Upstream changes land later as more commits of the
+ * same kind, which is why the root is not merely a message.
+ */
+export const IssueRevisionCommitPayload = Schema.Struct({
+  title: Schema.String,
+  description: Schema.String,
+});
+export type IssueRevisionCommitPayload = typeof IssueRevisionCommitPayload.Type;
+
+/**
  * What every projected commit carries whatever its kind: its place in the
  * order, its edges, its attribution, and whether it is shared yet. The last
  * two are the DAG explorer's whole input — it draws the history from these
@@ -130,13 +147,28 @@ export const PlanRevision = Schema.Struct(PlanCommitFields);
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
- * One item of the space's history. Messages and plan revisions interleave in a
- * single ordered list, because that is what they are in the store: commits of
- * the same standing in one history. There is no separate edit log.
+ * The imported issue, as the conversation renders it. Unlike a plan revision
+ * this carries its content: there is exactly one per history, its body is
+ * human-scale, and the space "begins with the issue" only if the issue is
+ * visible in it.
+ */
+export const PlanIssueRevision = Schema.Struct({
+  ...PlanCommitFields,
+  title: Schema.String,
+  description: Schema.String,
+});
+export type PlanIssueRevision = typeof PlanIssueRevision.Type;
+
+/**
+ * One item of the space's history. Messages, plan revisions and an imported
+ * issue interleave in a single ordered list, because that is what they are in
+ * the store: commits of the same standing in one history. There is no separate
+ * edit log, and no separate place the issue lives.
  */
 export type PlanTimelineItem =
   | ({ readonly _tag: "message" } & PlanMessage)
-  | ({ readonly _tag: "plan-revision" } & PlanRevision);
+  | ({ readonly _tag: "plan-revision" } & PlanRevision)
+  | ({ readonly _tag: "issue-revision" } & PlanIssueRevision);
 
 /**
  * A projected commit, ready to emit as an event. `planText` rides along only
@@ -197,6 +229,18 @@ export interface PlanDeletion {
   readonly attachmentIds: ReadonlyArray<string>;
 }
 
+/**
+ * What an import did. Import is idempotent by origin, so "nothing happened" is
+ * a success rather than a refusal: the caller is taken to the plan either way,
+ * and the outcome is what lets the surface say which of the three it was.
+ */
+export type PlanImportOutcome = "created" | "existing" | "resurfaced";
+
+export interface PlanImport {
+  readonly detail: PlanDetail;
+  readonly outcome: PlanImportOutcome;
+}
+
 export type PlanningStoreRefusal =
   | MercurianProjectNotFoundError
   | PlanNotFoundError
@@ -227,6 +271,27 @@ export const CreatePlanInput = Schema.Struct({
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type CreatePlanInput = typeof CreatePlanInput.Type;
+
+/**
+ * An issue, and where it came from. The content arrives with the act rather
+ * than being re-fetched: the caller just read this issue live, and there is no
+ * by-id read on a connector to read it again with — that seam belongs to issue
+ * refresh.
+ *
+ * `connectionId` and `issueId` together are the origin. Connection identity,
+ * not tracker kind: two Linear workspaces are two connections whose issue keys
+ * may collide.
+ */
+export const ImportPlanInput = Schema.Struct({
+  projectId: MercurianProjectId,
+  connectionId: TrackerConnectionId,
+  issueId: Schema.String,
+  issueUrl: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type ImportPlanInput = typeof ImportPlanInput.Type;
 
 /**
  * `parentCommitId` is the commit this act continues from — where the sender
@@ -335,6 +400,22 @@ export class PlanningStore extends Context.Service<
      * then the plan row naming it.
      */
     readonly createPlan: (input: CreatePlanInput) => Effect.Effect<PlanDetail, PlanningStoreError>;
+    /**
+     * Create a plan from a tracked issue: a history rooted at the issue's
+     * content, published from the start, and an origin row naming where it came
+     * from.
+     *
+     * Idempotent by origin. An issue already imported into this workspace goes
+     * to the plan it already has (`existing`), and an archived one comes back
+     * out of the archive (`resurfaced`) rather than being imported twice —
+     * including when two windows import it in the same instant, which the
+     * `UNIQUE (connection_id, issue_id)` on `plan_origins` decides.
+     *
+     * The plan is born ungrounded by construction: plans carry no repository
+     * columns anywhere, because grounding is a project-level fact that planning
+     * derives.
+     */
+    readonly importPlan: (input: ImportPlanInput) => Effect.Effect<PlanImport, PlanningStoreError>;
     /**
      * Append a message onto the commit the sender named, or onto the space's
      * tip when they named none. A commit that already has a child is a legal
@@ -471,6 +552,25 @@ const toPlanTreeRow = (row: typeof PlanTreeRowResult.Type): PlanTreeRow => {
   return visitedAt === null ? published : { ...published, visitedAt };
 };
 
+/**
+ * An imported plan's origin. `issueUrl` is captured at import so a surface can
+ * offer "open in the tracker" without a live read; there is deliberately no
+ * status and no content — the one is a live tracker fact, the other is the
+ * root commit.
+ */
+const PlanOriginRow = Schema.Struct({
+  planId: PlanId,
+  connectionId: TrackerConnectionId,
+  issueId: Schema.String,
+  issueUrl: Schema.String,
+  importedAt: Schema.DateTimeUtcFromString,
+});
+
+const OriginRequest = Schema.Struct({
+  connectionId: TrackerConnectionId,
+  issueId: Schema.String,
+});
+
 const ProjectIdRequest = Schema.Struct({ projectId: MercurianProjectId });
 const PlanIdRequest = Schema.Struct({ planId: PlanId });
 const HistoryIdRequest = Schema.Struct({ historyId: HistoryId });
@@ -527,6 +627,7 @@ function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
 
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
+const decodeIssuePayload = Schema.decodeUnknownEffect(IssueRevisionCommitPayload);
 
 /**
  * The artifact at the end of a path: the text of the last revision on it, or
@@ -721,6 +822,35 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  const insertOriginRow = SqlSchema.void({
+    Request: PlanOriginRow,
+    execute: (row) => sql`
+      INSERT INTO plan_origins (plan_id, connection_id, issue_id, issue_url, imported_at)
+      VALUES (
+        ${row.planId},
+        ${row.connectionId},
+        ${row.issueId},
+        ${row.issueUrl},
+        ${row.importedAt}
+      )
+    `,
+  });
+
+  const findOriginRow = SqlSchema.findOneOption({
+    Request: OriginRequest,
+    Result: PlanOriginRow,
+    execute: ({ connectionId, issueId }) => sql`
+      SELECT
+        plan_id AS "planId",
+        connection_id AS "connectionId",
+        issue_id AS "issueId",
+        issue_url AS "issueUrl",
+        imported_at AS "importedAt"
+      FROM plan_origins
+      WHERE connection_id = ${connectionId} AND issue_id = ${issueId}
+    `,
+  });
+
   // Edges before commits before the history they hang from: the delete walks
   // the foreign keys inwards so nothing is ever momentarily orphaned.
   const deleteCommitParentRows = SqlSchema.void({
@@ -753,6 +883,16 @@ export const make = Effect.gen(function* () {
   const deleteVisitRow = SqlSchema.void({
     Request: PlanIdRequest,
     execute: ({ planId }) => sql`DELETE FROM plan_visits WHERE plan_id = ${planId}`,
+  });
+
+  /**
+   * And its origin, for the same reason and one more: delete leaves no trace,
+   * so re-importing the issue afterwards starts fresh rather than finding a row
+   * pointing at a plan that no longer exists.
+   */
+  const deleteOriginRow = SqlSchema.void({
+    Request: PlanIdRequest,
+    execute: ({ planId }) => sql`DELETE FROM plan_origins WHERE plan_id = ${planId}`,
   });
 
   const mintId = <Id extends string>(brand: { readonly make: (value: string) => Id }) =>
@@ -793,8 +933,8 @@ export const make = Effect.gen(function* () {
   /**
    * A commit as the planning space sees it, or nothing when the space has no
    * rendering for that kind. Skipping the unknown rather than failing is what
-   * lets coding-session and issue-revision commits land later without breaking
-   * every reader of this surface.
+   * let issue-revision commits land without breaking every reader of this
+   * surface, and is what lets coding-session commits land later the same way.
    */
   const toTimelineEvent = Effect.fn("PlanningStore.toTimelineEvent")(function* (commit: Commit) {
     if (commit.kind === "message") {
@@ -806,6 +946,19 @@ export const make = Effect.gen(function* () {
       return Option.some<PlanTimelineEvent>({
         item: { _tag: "plan-revision", ...toPlanRevision(commit) },
         planText: payload.text,
+      });
+    }
+    if (commit.kind === "issue-revision") {
+      const payload = yield* decodeIssuePayload(commit.payload);
+      // No `planText`: an issue is what you plan *from*, so an imported plan's
+      // artifact is born empty rather than pre-filled with the issue.
+      return Option.some<PlanTimelineEvent>({
+        item: {
+          _tag: "issue-revision",
+          ...toPlanCommitFields(commit),
+          title: payload.title,
+          description: payload.description,
+        },
       });
     }
     return Option.none<PlanTimelineEvent>();
@@ -922,6 +1075,109 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.createPlan:query",
           "PlanningStore.createPlan:encodeRequest",
+        ),
+      ),
+    );
+
+  /**
+   * One attempt at an import, whole: find the origin, or mint the plan.
+   *
+   * Written to be safe to run twice. The found branch writes at most the
+   * unarchive, so a caller that lost the race on the origin insert can simply
+   * ask again and get the winner's plan.
+   */
+  const attemptImport = Effect.fn("PlanningStore.attemptImport")(function* (
+    input: ImportPlanInput,
+  ) {
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const origin = yield* findOriginRow({
+          connectionId: input.connectionId,
+          issueId: input.issueId,
+        });
+        if (Option.isSome(origin)) {
+          const plan = yield* requirePlan(origin.value.planId);
+          if (plan.archivedAt === null) {
+            return { planId: plan.planId, outcome: "existing" as const };
+          }
+          // `updated_at` untouched on purpose: the plan returns to its old
+          // place in the newest-first order. Resurfacing is not activity.
+          yield* unarchivePlanRow({ planId: plan.planId });
+          return { planId: plan.planId, outcome: "resurfaced" as const };
+        }
+
+        const planId = yield* mintId(PlanId);
+        const historyId = yield* mintId(HistoryId);
+        const rootCommitId = yield* mintId(CommitId);
+
+        yield* commits.createHistory({
+          historyId,
+          rootCommit: {
+            commitId: rootCommitId,
+            kind: "issue-revision",
+            // Import is a human act, and opening a history is one.
+            authorKind: "human",
+            createdAt: input.createdAt,
+            payload: {
+              title: input.title,
+              description: input.description,
+            } satisfies IssueRevisionCommitPayload,
+          },
+          // The carve-out this whole feature turns on: the issue having a plan
+          // is shared truth, so the plan and its root are published from the
+          // start. Everything appended after it starts private.
+          rootPublished: true,
+        });
+        yield* insertPlanRow({
+          planId,
+          projectId: input.projectId,
+          historyId,
+          // The issue's title, through the store's one title discipline.
+          title: derivePlanTitle(input.title),
+          createdAt: input.createdAt,
+          updatedAt: input.createdAt,
+          archivedAt: null,
+        });
+        yield* insertOriginRow({
+          planId,
+          connectionId: input.connectionId,
+          issueId: input.issueId,
+          issueUrl: input.issueUrl,
+          importedAt: input.createdAt,
+        });
+        return { planId, outcome: "created" as const };
+      }),
+    );
+  });
+
+  const importPlan: PlanningStore["Service"]["importPlan"] = (input) =>
+    Effect.gen(function* () {
+      const project = yield* findProjectRow({ projectId: input.projectId });
+      if (Option.isNone(project)) {
+        return yield* new MercurianProjectNotFoundError({ projectId: input.projectId });
+      }
+
+      const attempt = yield* Effect.result(attemptImport(input));
+      const landed = yield* attempt._tag === "Success"
+        ? Effect.succeed(attempt.success)
+        : // Two windows importing one issue: the `UNIQUE (connection_id,
+          // issue_id)` refuses the loser's insert and rolls its transaction
+          // back, so asking again finds the winner's plan. Anything that is not
+          // that race fails the same way the second time and surfaces here.
+          attemptImport(input).pipe(Effect.catch(() => Effect.fail(attempt.failure)));
+
+      const detail = yield* getPlanSnapshot({ planId: landed.planId });
+      // `existing` changed nothing any window renders; the other two changed
+      // the tree.
+      if (landed.outcome !== "existing") {
+        yield* announceChange;
+      }
+      return { detail, outcome: landed.outcome } satisfies PlanImport;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.importPlan:query",
+          "PlanningStore.importPlan:encodeRequest",
         ),
       ),
     );
@@ -1215,6 +1471,7 @@ export const make = Effect.gen(function* () {
 
           yield* deleteCommitParentRows({ historyId: plan.historyId });
           yield* deleteVisitRow({ planId: input.planId });
+          yield* deleteOriginRow({ planId: input.planId });
           yield* deletePlanRow({ planId: input.planId });
           yield* deleteCommitRows({ historyId: plan.historyId });
           yield* deleteHistoryRow({ historyId: plan.historyId });
@@ -1379,6 +1636,7 @@ export const make = Effect.gen(function* () {
     createProject,
     getTreeSnapshot,
     createPlan,
+    importPlan,
     appendMessage,
     savePlanRevision,
     appendAssistantMessage,

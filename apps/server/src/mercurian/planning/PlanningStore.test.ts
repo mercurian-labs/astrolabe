@@ -7,7 +7,13 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { MercurianProjectId, PlanId, PlanTurnId, ThreadId } from "@t3tools/contracts";
+import {
+  MercurianProjectId,
+  PlanId,
+  PlanTurnId,
+  ThreadId,
+  TrackerConnectionId,
+} from "@t3tools/contracts";
 
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
@@ -1567,6 +1573,321 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       assert.strictEqual(landed.authorKind, "human");
+    }),
+  );
+
+  // ===============================
+  // Issue import
+  // ===============================
+
+  const CONNECTION = TrackerConnectionId.make("connection-1");
+
+  const seedProject = Effect.fn("seedProject")(function* (createdAt: string) {
+    const store = yield* PlanningStore.PlanningStore;
+    return yield* store.createProject({ name: "Astrolabe", createdAt: at(createdAt) });
+  });
+
+  /**
+   * The store's database outlives each test in this suite, so every import
+   * test names its own issue: the whole point of an origin is that the same one
+   * twice is the same plan.
+   */
+  const importIssue = Effect.fn("importIssue")(function* (input: {
+    readonly projectId: MercurianProjectId;
+    readonly issueId: string;
+    readonly connectionId?: string;
+    readonly title?: string;
+    readonly description?: string;
+    readonly createdAt?: string;
+  }) {
+    const store = yield* PlanningStore.PlanningStore;
+    return yield* store.importPlan({
+      projectId: input.projectId,
+      connectionId:
+        input.connectionId === undefined
+          ? CONNECTION
+          : TrackerConnectionId.make(input.connectionId),
+      issueId: input.issueId,
+      issueUrl: `https://linear.app/mercurian/issue/${input.issueId}`,
+      title: input.title ?? "Issue Import",
+      description: input.description ?? "Import an issue as the root of a plan.",
+      createdAt: at(input.createdAt ?? "2026-08-08T00:01:00.000Z"),
+    });
+  });
+
+  const originRows = Effect.fn("originRows")(function* (issueId: string) {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<{
+      readonly plan_id: string;
+      readonly connection_id: string;
+      readonly issue_id: string;
+      readonly issue_url: string;
+      readonly imported_at: string;
+    }>`SELECT * FROM plan_origins WHERE issue_id = ${issueId}`;
+  });
+
+  it.effect("imports an issue as a plan rooted at the issue itself", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      const imported = yield* importIssue({ projectId: project.projectId, issueId: "M-101" });
+      assert.strictEqual((yield* Fiber.join(changes)).length, 1);
+
+      assert.strictEqual(imported.outcome, "created");
+      assert.strictEqual(imported.detail.plan.title, "Issue Import");
+      assert.strictEqual(imported.detail.plan.archivedAt, null);
+      // The issue is what you plan from, not the plan: the artifact is born
+      // empty, and only a plan revision fills it.
+      assert.strictEqual(imported.detail.planText, "");
+
+      const path = yield* commits.listCommits({
+        historyId: imported.detail.plan.historyId,
+        visibility: "all",
+      });
+      assert.strictEqual(path.length, 1);
+      const root = path[0]!;
+      assert.deepStrictEqual([...root.parents], []);
+      assert.strictEqual(root.kind, "issue-revision");
+      assert.strictEqual(root.authorKind, "human");
+      assert.strictEqual(root.published, true);
+
+      assert.deepStrictEqual(
+        imported.detail.timeline.map((item) => item._tag),
+        ["issue-revision"],
+      );
+      const item = imported.detail.timeline[0]!;
+      assert.ok(item._tag === "issue-revision");
+      assert.strictEqual(item.title, "Issue Import");
+      assert.strictEqual(item.description, "Import an issue as the root of a plan.");
+
+      const origins = yield* originRows("M-101");
+      assert.deepStrictEqual(origins, [
+        {
+          plan_id: imported.detail.plan.planId,
+          connection_id: CONNECTION,
+          issue_id: "M-101",
+          issue_url: "https://linear.app/mercurian/issue/M-101",
+          imported_at: "2026-08-08T00:01:00.000Z",
+        },
+      ]);
+
+      // The plan appears in the tree, published from birth.
+      const row = yield* treeRow(imported.detail.plan.planId);
+      assert.strictEqual(row?.hasPublishedCommits, true);
+    }),
+  );
+
+  it.effect("caps a long issue title the way every other plan title is capped", () =>
+    Effect.gen(function* () {
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+      const imported = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-long",
+        title: "x".repeat(120),
+      });
+      assert.strictEqual(imported.detail.plan.title.length, 80);
+      assert.ok(imported.detail.plan.title.endsWith("…"));
+    }),
+  );
+
+  it.effect("is born published, and everything after the root is a private draft", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+      const imported = yield* importIssue({ projectId: project.projectId, issueId: "M-published" });
+
+      const appended = yield* store.appendMessage({
+        planId: imported.detail.plan.planId,
+        text: "Here is how I would approach it",
+        createdAt: at("2026-08-08T00:02:00.000Z"),
+      });
+      assert.strictEqual(appended.published, false);
+
+      // Published from the first second means archive-only from the first
+      // second: delete is gone from every surface, and refused underneath.
+      const refused = yield* Effect.flip(store.deletePlan({ planId: imported.detail.plan.planId }));
+      assert.strictEqual(refused._tag, "PlanDeleteBlockedError");
+    }),
+  );
+
+  it.effect("born blank still roots private: the carve-out cuts one way", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Born blank",
+        createdAt: at("2026-08-08T00:01:00.000Z"),
+      });
+      const path = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      assert.strictEqual(path[0]?.published, false);
+    }),
+  );
+
+  it.effect("re-importing an origin goes to the plan it already has", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const sql = yield* SqlClient.SqlClient;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+      const first = yield* importIssue({ projectId: project.projectId, issueId: "M-idempotent" });
+
+      // The receipt is the *next* signal: a re-import that changed nothing must
+      // not cost the tree a re-emit.
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      const again = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-idempotent",
+        createdAt: "2026-08-08T00:05:00.000Z",
+      });
+      yield* store.appendMessage({
+        planId: first.detail.plan.planId,
+        text: "Something happened",
+        createdAt: at("2026-08-08T00:06:00.000Z"),
+      });
+      yield* Fiber.join(changes);
+
+      assert.strictEqual(again.outcome, "existing");
+      assert.strictEqual(again.detail.plan.planId, first.detail.plan.planId);
+
+      const [counts] = yield* sql<{
+        readonly plans: number;
+        readonly commits: number;
+        readonly origins: number;
+      }>`
+        SELECT
+          (SELECT COUNT(*) FROM plans WHERE project_id = ${project.projectId}) AS "plans",
+          (SELECT COUNT(*) FROM commits
+             WHERE history_id = ${first.detail.plan.historyId}) AS "commits",
+          (SELECT COUNT(*) FROM plan_origins WHERE issue_id = 'M-idempotent') AS "origins"
+      `;
+      // One plan, one origin, and the re-import wrote no second root.
+      assert.deepStrictEqual(counts, { plans: 1, commits: 2, origins: 1 });
+    }),
+  );
+
+  it.effect("re-importing an archived plan's origin resurfaces it", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+      const first = yield* importIssue({ projectId: project.projectId, issueId: "M-archived" });
+      yield* store.archivePlan({
+        planId: first.detail.plan.planId,
+        archivedAt: at("2026-08-08T00:03:00.000Z"),
+      });
+
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      const again = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-archived",
+        createdAt: "2026-08-08T00:04:00.000Z",
+      });
+      assert.strictEqual((yield* Fiber.join(changes)).length, 1);
+
+      assert.strictEqual(again.outcome, "resurfaced");
+      assert.strictEqual(again.detail.plan.planId, first.detail.plan.planId);
+      assert.strictEqual(again.detail.plan.archivedAt, null);
+      // Resurfacing is not activity: the plan returns to its old place rather
+      // than jumping to the top of the tree.
+      assert.strictEqual(
+        DateTime.formatIso(again.detail.plan.updatedAt),
+        DateTime.formatIso(first.detail.plan.updatedAt),
+      );
+    }),
+  );
+
+  it.effect("two windows importing one issue land on one plan", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+
+      const [left, right] = yield* Effect.all(
+        [
+          importIssue({ projectId: project.projectId, issueId: "M-race" }),
+          importIssue({
+            projectId: project.projectId,
+            issueId: "M-race",
+            createdAt: "2026-08-08T00:01:01.000Z",
+          }),
+        ],
+        { concurrency: 2 },
+      );
+
+      assert.strictEqual(left.detail.plan.planId, right.detail.plan.planId);
+      assert.deepStrictEqual([left.outcome, right.outcome].sort(), ["created", "existing"]);
+
+      const [counts] = yield* sql<{ readonly plans: number; readonly origins: number }>`
+        SELECT
+          (SELECT COUNT(*) FROM plans WHERE project_id = ${project.projectId}) AS "plans",
+          (SELECT COUNT(*) FROM plan_origins WHERE issue_id = 'M-race') AS "origins"
+      `;
+      assert.deepStrictEqual(counts, { plans: 1, origins: 1 });
+    }),
+  );
+
+  it.effect("the same issue key through another connection is another origin", () =>
+    Effect.gen(function* () {
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+      const first = yield* importIssue({ projectId: project.projectId, issueId: "M-shared-key" });
+      const second = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-shared-key",
+        connectionId: "connection-2",
+        createdAt: "2026-08-08T00:02:00.000Z",
+      });
+
+      assert.strictEqual(second.outcome, "created");
+      assert.notStrictEqual(second.detail.plan.planId, first.detail.plan.planId);
+    }),
+  );
+
+  it.effect("refuses to import into a project that does not exist", () =>
+    Effect.gen(function* () {
+      const refused = yield* Effect.flip(
+        importIssue({ projectId: MercurianProjectId.make("nope"), issueId: "M-nowhere" }),
+      );
+      assert.strictEqual(refused._tag, "MercurianProjectNotFoundError");
+    }),
+  );
+
+  it.effect("deleting a plan takes its origin with it, so re-import starts fresh", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* seedProject("2026-08-08T00:00:00.000Z");
+      const first = yield* importIssue({ projectId: project.projectId, issueId: "M-deleted" });
+
+      // Delete is refused while anything is published, and an imported plan is
+      // published from birth. Stripping the flag is what lets this test reach
+      // the delete walk at all — the point under test is that the walk takes
+      // the origin row with it.
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`
+        UPDATE commits SET published = 0 WHERE history_id = ${first.detail.plan.historyId}
+      `;
+
+      yield* store.deletePlan({ planId: first.detail.plan.planId });
+      assert.deepStrictEqual(yield* originRows("M-deleted"), []);
+
+      const again = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-deleted",
+        createdAt: "2026-08-08T00:07:00.000Z",
+      });
+      assert.strictEqual(again.outcome, "created");
+      assert.notStrictEqual(again.detail.plan.planId, first.detail.plan.planId);
     }),
   );
 });

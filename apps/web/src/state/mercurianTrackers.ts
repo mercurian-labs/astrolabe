@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianTrackerAtoms } from "@t3tools/client-runtime/state/mercurian-trackers";
 import type {
   MercurianConnectTrackerInput,
+  MercurianListTrackerIssuesInput,
   TrackerConnection,
   TrackerConnectionId,
   TrackersSnapshot,
@@ -91,8 +92,5 @@ export function useDisconnectTracker() {
  */
 export function useListTrackerIssues() {
   const run = useEnvironmentBoundCommand(mercurianTrackers.listTrackerIssues);
-  return useCallback(
-    (input: { connectionId: TrackerConnectionId; search?: string; cursor?: string }) => run(input),
-    [run],
-  );
+  return useCallback((input: MercurianListTrackerIssuesInput) => run(input), [run]);
 }

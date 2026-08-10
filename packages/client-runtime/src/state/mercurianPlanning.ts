@@ -53,6 +53,16 @@ export function createMercurianPlanningAtoms<R, E>(
       tag: MERCURIAN_WS_METHODS.createPlan,
       scheduler: writeScheduler,
     }),
+    /**
+     * Import an issue as a plan. On the write scheduler with no concurrency key
+     * of its own: it names no plan yet, and the server's origin uniqueness — not
+     * client ordering — is what makes importing one issue twice idempotent.
+     */
+    importPlan: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:import-plan",
+      tag: MERCURIAN_WS_METHODS.importPlan,
+      scheduler: writeScheduler,
+    }),
     appendPlanMessage: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:append-plan-message",
       tag: MERCURIAN_WS_METHODS.appendPlanMessage,

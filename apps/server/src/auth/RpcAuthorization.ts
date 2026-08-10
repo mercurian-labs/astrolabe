@@ -41,6 +41,9 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
+  // Importing an issue creates a plan, so it is an operation on the same
+  // footing as creating one from a blank draft.
+  [MERCURIAN_WS_METHODS.importPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
   // A plan's disappearance, reversible or not.

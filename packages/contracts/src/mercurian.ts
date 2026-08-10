@@ -24,6 +24,9 @@
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+// Import creates a plan, so it belongs to the planning surface — but the issue
+// it creates one from is the tracker surface's own shape, passed back verbatim.
+import { TrackerConnectionId, TrackerIssue } from "./mercurianTrackers.ts";
 import { ChatAttachment, UploadChatAttachment } from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
@@ -31,6 +34,7 @@ export const MERCURIAN_WS_METHODS = {
   subscribePlan: "mercurian.subscribePlan",
   createProject: "mercurian.createProject",
   createPlan: "mercurian.createPlan",
+  importPlan: "mercurian.importPlan",
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
   getPlanTextAt: "mercurian.getPlanTextAt",
@@ -234,12 +238,30 @@ export const PlanRevision = Schema.Struct(PlanCommitFields);
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
- * One commit on the planning space's path. Messages and plan revisions are the
- * same kind of thing here — one list, in commit order, at equal standing.
+ * The imported issue, as the conversation renders it — the root commit of an
+ * imported plan's history.
+ *
+ * This one carries its content, where {@link PlanRevision} deliberately does
+ * not: there is exactly one per history, so it cannot grow with activity, and a
+ * planning space that "begins with the issue" has to show what was imported.
+ */
+export const PlanIssueRevision = Schema.Struct({
+  ...PlanCommitFields,
+  title: Schema.String,
+  /** `""` is a real state: an issue with no description imported as one. */
+  description: Schema.String,
+});
+export type PlanIssueRevision = typeof PlanIssueRevision.Type;
+
+/**
+ * One commit on the planning space's path. Messages, plan revisions and an
+ * imported issue are the same kind of thing here — one list, in commit order,
+ * at equal standing.
  */
 export const PlanTimelineItem = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("message"), ...PlanMessage.fields }),
   Schema.Struct({ _tag: Schema.Literal("plan-revision"), ...PlanRevision.fields }),
+  Schema.Struct({ _tag: Schema.Literal("issue-revision"), ...PlanIssueRevision.fields }),
 ]);
 export type PlanTimelineItem = typeof PlanTimelineItem.Type;
 
@@ -387,6 +409,37 @@ export const MercurianCreatePlanInput = Schema.Struct({
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
 });
 export type MercurianCreatePlanInput = typeof MercurianCreatePlanInput.Type;
+
+/**
+ * Import an issue as a plan. The issue travels whole, exactly as the live
+ * browse read it: the caller just fetched it, and no connector has a by-id read
+ * to fetch it again with — that seam belongs to issue refresh.
+ *
+ * The server takes the issue's id, url, title and description and mints
+ * everything else itself. `status` is ignored on purpose: where an issue stands
+ * is a live tracker fact, and importing one stores no copy of it.
+ */
+export const MercurianImportPlanInput = Schema.Struct({
+  projectId: MercurianProjectId,
+  /** Which connection the issue was read through — half of the plan's origin. */
+  connectionId: TrackerConnectionId,
+  issue: TrackerIssue,
+});
+export type MercurianImportPlanInput = typeof MercurianImportPlanInput.Type;
+
+/**
+ * What an import did, beside the plan it landed on.
+ *
+ * Import is idempotent by origin, so re-importing is a success rather than a
+ * refusal — you are taken to the plan either way. The outcome is what lets the
+ * surface say which of the three happened without inventing an error for two of
+ * them.
+ */
+export const PlanImportResult = Schema.Struct({
+  detail: PlanDetail,
+  outcome: Schema.Literals(["created", "existing", "resurfaced"]),
+});
+export type PlanImportResult = typeof PlanImportResult.Type;
 
 /**
  * `parentCommitId` is where the sender stood: the composer acts from wherever
@@ -588,6 +641,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "subscribePlan",
       "createProject",
       "createPlan",
+      "importPlan",
       "appendPlanMessage",
       "savePlanRevision",
       "getPlanTextAt",

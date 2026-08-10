@@ -34,6 +34,8 @@ import {
   MERCURIAN_WS_METHODS,
   MercurianProjectId,
   type PlanId,
+  TrackerConnectionId,
+  TrimmedNonEmptyString,
   EditorId,
 } from "@t3tools/contracts";
 import {
@@ -4628,6 +4630,86 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Delete is the other kind of disappearance, and leaves nothing to find.
       assert.equal(result.deleted, undefined);
       assert.equal(result.secondDelete._tag, "PlanNotFoundError");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("routes websocket rpc mercurian issue import, idempotent by origin", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const issue = {
+        id: TrimmedNonEmptyString.make("M-101"),
+        title: "Issue Import",
+        description: "The tracker keeps the backlog; Mercurian keeps the plans.",
+        url: TrimmedNonEmptyString.make("https://linear.app/mercurian/issue/M-101"),
+        // A live tracker fact. It crosses on the way in and is stored nowhere.
+        status: "In Progress",
+      };
+      const connectionId = TrackerConnectionId.make("connection-1");
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const imported = yield* client[MERCURIAN_WS_METHODS.importPlan]({
+              projectId: project.projectId,
+              connectionId,
+              issue,
+            });
+            const again = yield* client[MERCURIAN_WS_METHODS.importPlan]({
+              projectId: project.projectId,
+              connectionId,
+              issue,
+            });
+            yield* client[MERCURIAN_WS_METHODS.archivePlan]({
+              planId: imported.detail.plan.planId,
+            });
+            const resurfaced = yield* client[MERCURIAN_WS_METHODS.importPlan]({
+              projectId: project.projectId,
+              connectionId,
+              issue,
+            });
+            const tree = yield* client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+              Stream.take(1),
+              Stream.runCollect,
+            );
+            return { imported, again, resurfaced, tree };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      assert.equal(result.imported.outcome, "created");
+      assert.equal(result.imported.detail.plan.title, "Issue Import");
+      // The issue is what you plan from: the artifact is born empty.
+      assert.equal(result.imported.detail.planText, "");
+
+      // The root commit *is* the issue, and it is published from the start.
+      const root = result.imported.detail.timeline[0];
+      assert.equal(root?._tag, "issue-revision");
+      assert.equal(root?.published, true);
+      assert.equal(root?.authorKind, "human");
+      assert.deepEqual([...(root?.parents ?? [])], []);
+      if (root?._tag === "issue-revision") {
+        assert.equal(root.title, "Issue Import");
+        assert.equal(root.description, issue.description);
+      }
+
+      // Re-importing never duplicates: it goes to the plan that exists, and
+      // brings it back out of the archive when it has left the tree.
+      assert.equal(result.again.outcome, "existing");
+      assert.equal(result.again.detail.plan.planId, result.imported.detail.plan.planId);
+      assert.equal(result.resurfaced.outcome, "resurfaced");
+      assert.equal(result.resurfaced.detail.plan.planId, result.imported.detail.plan.planId);
+
+      const plans = result.tree[0]?.snapshot.plans ?? [];
+      assert.equal(plans.length, 1);
+      assert.equal(plans[0]?.archivedAt, null);
+      // Published from birth, so delete is off the surface from the first
+      // second and archive is this plan's only disappearance.
+      assert.equal(plans[0]?.hasPublishedCommits, true);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

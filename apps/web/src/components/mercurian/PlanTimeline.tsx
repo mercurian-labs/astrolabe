@@ -12,6 +12,7 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
 import {
   ChevronRightIcon,
   CircleAlertIcon,
+  CircleDotIcon,
   FileSearchIcon,
   FileTextIcon,
   FolderOpenIcon,
@@ -28,10 +29,11 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 
 /**
- * The planning space's history: messages and plan revisions in one ordered
- * list, because that is what they are in the store — commits of the same
- * standing in one history. Revisions are not a system-message ghetto; they sit
- * in the same flow, rendered compactly because they have no body to show.
+ * The planning space's history: messages, plan revisions and an imported issue
+ * in one ordered list, because that is what they are in the store — commits of
+ * the same standing in one history. Revisions are not a system-message ghetto;
+ * they sit in the same flow, rendered compactly because they have no body to
+ * show. An imported issue does have one, and it opens the list it begins.
  *
  * Below the last commit, the reply streaming right now — the same shapes the
  * settled message will keep: live text, the grounding fold growing as items
@@ -63,35 +65,64 @@ export function PlanTimeline({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">
       <ol className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        {timeline.map((item) =>
-          item._tag === "message" ? (
-            <li
-              key={item.commitId}
-              className={cn(
-                "rounded-lg border border-border/60 px-3 py-2",
-                item.authorKind === "human" ? "bg-card/40" : "bg-muted/30",
-              )}
-            >
-              <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-                <span>{item.authorKind === "human" ? "You" : "Assistant"}</span>
-                <span>{formatRelativeTimeLabel(item.createdAt)}</span>
-                {item.interrupted === true ? <InterruptedBadge /> : null}
-              </div>
-              {item.groundingScope === undefined ? null : (
-                <NarrowedGroundingNotice scope={item.groundingScope} />
-              )}
-              {item.grounding === undefined || item.grounding.length === 0 ? null : (
-                <GroundingFold items={item.grounding} />
-              )}
-              {item.attachments === undefined ||
-              item.attachments.length === 0 ||
-              environmentId === null ? null : (
-                <MessageAttachments attachments={item.attachments} environmentId={environmentId} />
-              )}
-              <MessageText text={item.text} />
-              {item.question === undefined ? null : <QuestionRecord record={item.question} />}
-            </li>
-          ) : (
+        {timeline.map((item) => {
+          if (item._tag === "message") {
+            return (
+              <li
+                key={item.commitId}
+                className={cn(
+                  "rounded-lg border border-border/60 px-3 py-2",
+                  item.authorKind === "human" ? "bg-card/40" : "bg-muted/30",
+                )}
+              >
+                <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                  <span>{item.authorKind === "human" ? "You" : "Assistant"}</span>
+                  <span>{formatRelativeTimeLabel(item.createdAt)}</span>
+                  {item.interrupted === true ? <InterruptedBadge /> : null}
+                </div>
+                {item.groundingScope === undefined ? null : (
+                  <NarrowedGroundingNotice scope={item.groundingScope} />
+                )}
+                {item.grounding === undefined || item.grounding.length === 0 ? null : (
+                  <GroundingFold items={item.grounding} />
+                )}
+                {item.attachments === undefined ||
+                item.attachments.length === 0 ||
+                environmentId === null ? null : (
+                  <MessageAttachments
+                    attachments={item.attachments}
+                    environmentId={environmentId}
+                  />
+                )}
+                <MessageText text={item.text} />
+                {item.question === undefined ? null : <QuestionRecord record={item.question} />}
+              </li>
+            );
+          }
+          if (item._tag === "issue-revision") {
+            // The imported issue: a card rather than a one-liner, because it
+            // has a body — and because this is where the planning space
+            // literally begins.
+            return (
+              <li
+                key={item.commitId}
+                className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+              >
+                <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                  <CircleDotIcon className="size-3.5 shrink-0" />
+                  <span>Imported issue</span>
+                  <span>{formatRelativeTimeLabel(item.createdAt)}</span>
+                </div>
+                <p className="text-sm font-medium text-foreground">{item.title}</p>
+                {item.description.length === 0 ? null : (
+                  <div className="mt-1">
+                    <MessageText text={item.description} />
+                  </div>
+                )}
+              </li>
+            );
+          }
+          return (
             <li
               key={item.commitId}
               className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/70"
@@ -104,8 +135,8 @@ export function PlanTimeline({
               </span>
               <span>{formatRelativeTimeLabel(item.createdAt)}</span>
             </li>
-          ),
-        )}
+          );
+        })}
         {inFlight === undefined ? null : (
           <li className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
             <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
