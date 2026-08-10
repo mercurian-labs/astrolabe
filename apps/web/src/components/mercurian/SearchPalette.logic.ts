@@ -12,7 +12,7 @@ import {
   resolvePlanRowStatus,
   sortPlansNewestFirst,
   type PlanRowStatusFields,
-} from "./ProjectTreeSidebar.logic";
+} from "./planListing.logic";
 
 /** About a dozen rows, matching the fork's recents limit. */
 export const EMPTY_QUERY_PLAN_LIMIT = 12;

@@ -1,6 +1,6 @@
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import type { PlanRowStatus } from "./ProjectTreeSidebar.logic";
+import type { PlanRowStatus } from "./planListing.logic";
 
 /**
  * How each status reads. The urgency palette is the fork's, unchanged: amber

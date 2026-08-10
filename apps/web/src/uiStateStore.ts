@@ -19,7 +19,6 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 
 export interface PersistedUiState {
   projectExpandedById?: Record<string, boolean>;
-  mercurianProjectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
   collapsedProjectCwds?: string[];
@@ -32,12 +31,6 @@ export interface PersistedUiState {
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
-  /**
-   * Expansion of Mercurian project rows in the project tree. Kept apart from
-   * `projectExpandedById`, which is keyed by t3code logical-project keys and
-   * carries a legacy fallback ladder that Mercurian ids must not enter.
-   */
-  mercurianProjectExpandedById: Record<string, boolean>;
   projectOrder: string[];
 }
 
@@ -54,7 +47,6 @@ export interface UiState extends UiProjectState, UiThreadState, UiEndpointState 
 
 const initialState: UiState = {
   projectExpandedById: {},
-  mercurianProjectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
@@ -132,7 +124,6 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
 
   return {
     projectExpandedById,
-    mercurianProjectExpandedById: sanitizeBooleanRecord(parsed.mercurianProjectExpandedById),
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
     threadChangedFilesExpandedById:
@@ -211,7 +202,6 @@ export function persistState(state: UiState): void {
       PERSISTED_STATE_KEY,
       JSON.stringify({
         projectExpandedById,
-        mercurianProjectExpandedById: state.mercurianProjectExpandedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
@@ -347,31 +337,6 @@ export function setProjectExpanded(
   };
 }
 
-/** Mercurian project rows default to expanded — a collapsed tree hides the work. */
-export function resolveMercurianProjectExpanded(
-  mercurianProjectExpandedById: Readonly<Record<string, boolean>>,
-  projectId: string,
-): boolean {
-  return mercurianProjectExpandedById[projectId] ?? true;
-}
-
-export function setMercurianProjectExpanded(
-  state: UiState,
-  projectId: string,
-  expanded: boolean,
-): UiState {
-  if (state.mercurianProjectExpandedById[projectId] === expanded) {
-    return state;
-  }
-  return {
-    ...state,
-    mercurianProjectExpandedById: {
-      ...state.mercurianProjectExpandedById,
-      [projectId]: expanded,
-    },
-  };
-}
-
 export function reorderProjects(
   state: UiState,
   currentProjectOrder: readonly string[],
@@ -422,7 +387,6 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
-  setMercurianProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
     currentProjectOrder: readonly string[],
     draggedProjectIds: readonly string[],
@@ -442,8 +406,6 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
   setProjectExpanded: (projectIds, expanded) =>
     set((state) => setProjectExpanded(state, projectIds, expanded)),
-  setMercurianProjectExpanded: (projectId, expanded) =>
-    set((state) => setMercurianProjectExpanded(state, projectId, expanded)),
   reorderProjects: (currentProjectOrder, draggedProjectIds, targetProjectIds) =>
     set((state) =>
       reorderProjects(state, currentProjectOrder, draggedProjectIds, targetProjectIds),
