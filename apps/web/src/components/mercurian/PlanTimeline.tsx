@@ -22,11 +22,19 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAssetUrl } from "../../assets/assetUrls";
+import { useClientSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePrimaryEnvironmentId } from "../../state/environments";
-import { formatRelativeTimeLabel } from "../../timestampFormat";
+import {
+  formatChatTimestampTooltip,
+  formatRelativeTimeLabel,
+  formatShortTimestamp,
+} from "../../timestampFormat";
+import ChatMarkdown from "../ChatMarkdown";
+import { MessageCopyButton } from "../chat/MessageCopyButton";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /**
  * The planning space's history: messages, plan revisions and an imported issue
@@ -52,6 +60,7 @@ export function PlanTimeline({
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const environmentId = usePrimaryEnvironmentId();
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
 
   const streamedLength = inFlight?.text.length ?? 0;
   useEffect(() => {
@@ -67,35 +76,63 @@ export function PlanTimeline({
       <ol className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         {timeline.map((item) => {
           if (item._tag === "message") {
+            if (item.authorKind === "human") {
+              return (
+                // Mirrors UserTimelineRow in MessagesTimeline.tsx; keep this shell in sync.
+                <li key={item.commitId} className="group flex flex-col items-end gap-1">
+                  <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
+                    {item.attachments === undefined ||
+                    item.attachments.length === 0 ||
+                    environmentId === null ? null : (
+                      <MessageAttachments
+                        attachments={item.attachments}
+                        environmentId={environmentId}
+                      />
+                    )}
+                    <MessageText text={item.text} />
+                  </div>
+                  <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<p className="text-muted-foreground text-xs tabular-nums" />}
+                      >
+                        {formatShortTimestamp(item.createdAt, timestampFormat)}
+                      </TooltipTrigger>
+                      <TooltipPopup>
+                        {formatChatTimestampTooltip(item.createdAt, timestampFormat)}
+                      </TooltipPopup>
+                    </Tooltip>
+                  </div>
+                </li>
+              );
+            }
             return (
-              <li
-                key={item.commitId}
-                className={cn(
-                  "rounded-lg border border-border/60 px-3 py-2",
-                  item.authorKind === "human" ? "bg-card/40" : "bg-muted/30",
-                )}
-              >
-                <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-                  <span>{item.authorKind === "human" ? "You" : "Assistant"}</span>
-                  <span>{formatRelativeTimeLabel(item.createdAt)}</span>
-                  {item.interrupted === true ? <InterruptedBadge /> : null}
-                </div>
+              // Mirrors AssistantTimelineRow in MessagesTimeline.tsx; keep this shell in sync.
+              <li key={item.commitId} className="group/assistant relative min-w-0 px-1 py-0.5">
                 {item.groundingScope === undefined ? null : (
                   <NarrowedGroundingNotice scope={item.groundingScope} />
                 )}
                 {item.grounding === undefined || item.grounding.length === 0 ? null : (
                   <GroundingFold items={item.grounding} />
                 )}
-                {item.attachments === undefined ||
-                item.attachments.length === 0 ||
-                environmentId === null ? null : (
-                  <MessageAttachments
-                    attachments={item.attachments}
-                    environmentId={environmentId}
-                  />
-                )}
-                <MessageText text={item.text} />
+                <ChatMarkdown text={item.text} cwd={undefined} isStreaming={false} />
                 {item.question === undefined ? null : <QuestionRecord record={item.question} />}
+                <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums">
+                  <div className="flex items-center gap-2 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
+                    <MessageCopyButton text={item.text} variant="ghost" />
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<p className="text-muted-foreground text-xs tabular-nums" />}
+                      >
+                        {formatShortTimestamp(item.createdAt, timestampFormat)}
+                      </TooltipTrigger>
+                      <TooltipPopup>
+                        {formatChatTimestampTooltip(item.createdAt, timestampFormat)}
+                      </TooltipPopup>
+                    </Tooltip>
+                  </div>
+                  {item.interrupted === true ? <InterruptedBadge /> : null}
+                </div>
               </li>
             );
           }
@@ -138,9 +175,9 @@ export function PlanTimeline({
           );
         })}
         {inFlight === undefined ? null : (
-          <li className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+          // Mirrors AssistantTimelineRow in MessagesTimeline.tsx; keep this shell in sync.
+          <li className="relative min-w-0 px-1 py-0.5">
             <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-              <span>Assistant</span>
               {inFlight.questions === undefined ? (
                 <span className="inline-flex items-center gap-1">
                   <Spinner aria-hidden className="size-2.5" />
@@ -156,7 +193,9 @@ export function PlanTimeline({
             {inFlight.grounding.length === 0 ? null : (
               <GroundingFold items={inFlight.grounding} live />
             )}
-            {inFlight.text.length === 0 ? null : <MessageText text={inFlight.text} />}
+            {inFlight.text.length === 0 ? null : (
+              <ChatMarkdown text={inFlight.text} cwd={undefined} isStreaming />
+            )}
             {inFlight.questions === undefined || inFlight.questions.length === 0 ? null : (
               <QuestionCard questions={inFlight.questions} onSubmit={onAnswerQuestion} />
             )}
@@ -415,7 +454,7 @@ function MessageAttachments({
   readonly environmentId: EnvironmentId;
 }) {
   return (
-    <ul className="mb-2 flex flex-wrap gap-2">
+    <ul className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
       {attachments.map((attachment) => (
         <li key={attachment.id}>
           <MessageAttachment attachment={attachment} environmentId={environmentId} />
