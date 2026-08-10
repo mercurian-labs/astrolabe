@@ -7,7 +7,7 @@ import {
   type PlanLifecycleFields,
   type PlanRowStatusFields,
   type TreeSelection,
-} from "./ProjectTreeSidebar.logic";
+} from "./planListing.logic";
 
 export const ARCHIVED_PLAN_INITIAL_COUNT = 10;
 export const ARCHIVED_PLAN_PAGE_COUNT = 25;

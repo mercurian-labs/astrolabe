@@ -2,7 +2,7 @@ import {
   partitionPlansByLifecycle,
   resolvePlanRowActions,
   sortProjectsForTree,
-} from "./ProjectTreeSidebar.logic";
+} from "./planListing.logic";
 
 /** Structural shapes, not the wire types: the page reads ids, titles, and stamps. */
 interface ArchivedPlanFields {

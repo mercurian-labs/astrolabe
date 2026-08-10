@@ -70,7 +70,7 @@ import {
   resolvePlanRowActions,
   sortProjectsForTree,
   type PlanRowMenuAction,
-} from "./ProjectTreeSidebar.logic";
+} from "./planListing.logic";
 import {
   listJumpTargets,
   pageArchivedPlans,

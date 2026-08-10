@@ -2,24 +2,17 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildPlanRowMenuItems,
-  enumerateJumpTargets,
-  getVisiblePlansForProject,
-  resolveAdjacentId,
-  groupPlansByProject,
   partitionPlansByLifecycle,
+  resolveAdjacentId,
   resolvePlanRowActions,
   resolvePlanRowStatus,
   resolveRollupStatus,
   resolveTreeSelection,
   sortPlansNewestFirst,
   sortProjectsForTree,
-} from "./ProjectTreeSidebar.logic";
+} from "./planListing.logic";
 
-const plan = (planId: string, updatedAt: string, projectId = "project-a") => ({
-  planId,
-  projectId,
-  updatedAt,
-});
+const plan = (planId: string, updatedAt: string) => ({ planId, updatedAt });
 
 describe("resolveTreeSelection", () => {
   it("selects a plan and keeps it selected on its subpages", () => {
@@ -52,71 +45,6 @@ describe("sortPlansNewestFirst", () => {
   });
 });
 
-describe("groupPlansByProject", () => {
-  it("groups plans under their project, newest first", () => {
-    const grouped = groupPlansByProject([
-      plan("a", "2026-08-01T00:00:00.000Z", "one"),
-      plan("b", "2026-08-02T00:00:00.000Z", "one"),
-      plan("c", "2026-08-02T00:00:00.000Z", "two"),
-    ]);
-    expect(grouped.get("one")?.map((entry) => entry.planId)).toEqual(["b", "a"]);
-    expect(grouped.get("two")?.map((entry) => entry.planId)).toEqual(["c"]);
-  });
-});
-
-describe("getVisiblePlansForProject", () => {
-  const plans = ["a", "b", "c", "d"].map((id, index) =>
-    plan(id, `2026-08-0${4 - index}T00:00:00.000Z`),
-  );
-
-  it("shows everything when the project fits under the limit", () => {
-    const result = getVisiblePlansForProject({
-      plans,
-      activePlanId: null,
-      isPlanListExpanded: false,
-      previewLimit: 6,
-    });
-    expect(result.hasHiddenPlans).toBe(false);
-    expect(result.visiblePlans).toHaveLength(4);
-    expect(result.hiddenPlans).toHaveLength(0);
-  });
-
-  it("slices to the preview limit and reports the overflow", () => {
-    const result = getVisiblePlansForProject({
-      plans,
-      activePlanId: null,
-      isPlanListExpanded: false,
-      previewLimit: 2,
-    });
-    expect(result.hasHiddenPlans).toBe(true);
-    expect(result.visiblePlans.map((entry) => entry.planId)).toEqual(["a", "b"]);
-    expect(result.hiddenPlans.map((entry) => entry.planId)).toEqual(["c", "d"]);
-  });
-
-  it("keeps the open plan visible even past the limit", () => {
-    const result = getVisiblePlansForProject({
-      plans,
-      activePlanId: "d",
-      isPlanListExpanded: false,
-      previewLimit: 2,
-    });
-    expect(result.visiblePlans.map((entry) => entry.planId)).toEqual(["a", "b", "d"]);
-    expect(result.hiddenPlans.map((entry) => entry.planId)).toEqual(["c"]);
-  });
-
-  it("shows everything once the list is expanded", () => {
-    const result = getVisiblePlansForProject({
-      plans,
-      activePlanId: null,
-      isPlanListExpanded: true,
-      previewLimit: 2,
-    });
-    expect(result.hasHiddenPlans).toBe(true);
-    expect(result.hiddenPlans).toHaveLength(0);
-    expect(result.visiblePlans).toHaveLength(4);
-  });
-});
-
 describe("sortProjectsForTree", () => {
   it("orders projects by creation, oldest first", () => {
     const sorted = sortProjectsForTree([
@@ -127,11 +55,6 @@ describe("sortProjectsForTree", () => {
   });
 });
 
-/**
- * The producer facts stand in synthetically here. No user act can raise them
- * until planning turns and session approvals ship, so the ladder they will feed
- * is exercised at the shape of the contract they will feed it through.
- */
 const row = (fields: {
   readonly hasPendingInput?: boolean;
   readonly isWorking?: boolean;
@@ -173,9 +96,7 @@ describe("resolvePlanRowStatus", () => {
   });
 
   it("does not let a malformed timestamp decide anything it should not", () => {
-    // Activity we cannot read is not evidence that anything happened.
     expect(resolvePlanRowStatus(row({ updatedAt: "not a date", visitedAt: undefined }))).toBeNull();
-    // A visit we cannot read is not evidence that you have seen it.
     expect(resolvePlanRowStatus(row({ visitedAt: "not a date" }))).toBe("unseen");
   });
 });
@@ -195,7 +116,7 @@ describe("resolveRollupStatus", () => {
 });
 
 describe("buildPlanRowMenuItems", () => {
-  it("offers the way back to unseen beside the two ways out of the tree", () => {
+  it("offers mark-unread beside the two ways out of the listing", () => {
     expect(buildPlanRowMenuItems({ hasPublishedCommits: false })).toEqual([
       { id: "mark-unread", label: "Mark unread" },
       { id: "archive", label: "Archive" },
@@ -204,8 +125,6 @@ describe("buildPlanRowMenuItems", () => {
   });
 
   it("drops delete entirely once the plan has published work", () => {
-    // Omitted rather than disabled: for a published plan delete does not
-    // exist, and a greyed-out verb would say it does.
     expect(buildPlanRowMenuItems({ hasPublishedCommits: true })).toEqual([
       { id: "mark-unread", label: "Mark unread" },
       { id: "archive", label: "Archive" },
@@ -220,16 +139,16 @@ describe("partitionPlansByLifecycle", () => {
       { planId: "b", archivedAt: "2026-08-04T00:00:00.000Z" },
       { planId: "c", archivedAt: null },
     ]);
-    expect(active.map((plan) => plan.planId)).toEqual(["a", "c"]);
-    expect(archived.map((plan) => plan.planId)).toEqual(["b"]);
+    expect(active.map((entry) => entry.planId)).toEqual(["a", "c"]);
+    expect(archived.map((entry) => entry.planId)).toEqual(["b"]);
   });
 
-  it("keeps the order it was given, so callers stay in charge of sorting", () => {
+  it("keeps source order so callers stay in charge of sorting", () => {
     const { active } = partitionPlansByLifecycle([
       { planId: "z", archivedAt: null },
       { planId: "a", archivedAt: null },
     ]);
-    expect(active.map((plan) => plan.planId)).toEqual(["z", "a"]);
+    expect(active.map((entry) => entry.planId)).toEqual(["z", "a"]);
   });
 });
 
@@ -243,62 +162,6 @@ describe("resolvePlanRowActions", () => {
       canArchive: true,
       canDelete: false,
     });
-  });
-});
-
-describe("enumerateJumpTargets", () => {
-  const projects = [
-    { projectId: "one", createdAt: "2026-08-01T00:00:00.000Z" },
-    { projectId: "two", createdAt: "2026-08-02T00:00:00.000Z" },
-  ];
-  const visiblePlansByProjectId = new Map([
-    ["one", [{ planId: "one-a" }, { planId: "one-b" }]],
-    ["two", [{ planId: "two-a" }]],
-  ]);
-
-  it("walks the visible plans of expanded projects, in render order", () => {
-    expect(
-      enumerateJumpTargets({
-        projects,
-        visiblePlansByProjectId,
-        isProjectExpanded: () => true,
-      }),
-    ).toEqual(["one-a", "one-b", "two-a"]);
-  });
-
-  it("skips a collapsed project entirely — its plans are not rows", () => {
-    expect(
-      enumerateJumpTargets({
-        projects,
-        visiblePlansByProjectId,
-        isProjectExpanded: (projectId) => projectId !== "one",
-      }),
-    ).toEqual(["two-a"]);
-  });
-
-  it("never enumerates a project row: those expand rather than open", () => {
-    const targets = enumerateJumpTargets({
-      projects,
-      visiblePlansByProjectId,
-      isProjectExpanded: () => true,
-    });
-    expect(targets).not.toContain("one");
-    expect(targets).not.toContain("two");
-  });
-
-  it("grows with Show more, because it reads what is actually drawn", () => {
-    const preview = enumerateJumpTargets({
-      projects,
-      visiblePlansByProjectId: new Map([["one", [{ planId: "one-a" }]]]),
-      isProjectExpanded: () => true,
-    });
-    const expanded = enumerateJumpTargets({
-      projects,
-      visiblePlansByProjectId: new Map([["one", [{ planId: "one-a" }, { planId: "one-b" }]]]),
-      isProjectExpanded: () => true,
-    });
-    expect(preview).toEqual(["one-a"]);
-    expect(expanded).toEqual(["one-a", "one-b"]);
   });
 });
 
