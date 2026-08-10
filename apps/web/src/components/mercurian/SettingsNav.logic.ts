@@ -15,8 +15,7 @@ export type SettingsSectionPath =
   | "/settings/appearance"
   | "/settings/keybindings"
   | "/settings/source-control"
-  | "/settings/connections"
-  | "/settings/beta";
+  | "/settings/connections";
 
 export interface SettingsNavSection {
   readonly to: SettingsSectionPath;
@@ -49,7 +48,6 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
       { to: "/settings/keybindings", label: "Keybindings" },
       { to: "/settings/source-control", label: "Source Control" },
       { to: "/settings/connections", label: "Connections" },
-      { to: "/settings/beta", label: "Beta" },
     ],
   },
 ];

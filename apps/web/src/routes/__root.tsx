@@ -18,6 +18,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { SearchPalette } from "../components/mercurian/SearchPalette";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
@@ -145,6 +146,7 @@ function RootRouteView() {
         <RelayClientInstallDialog />
         <ConnectOnboardingDialog />
         <SshPasswordPromptDialog />
+        <ConfirmDialogHost />
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}

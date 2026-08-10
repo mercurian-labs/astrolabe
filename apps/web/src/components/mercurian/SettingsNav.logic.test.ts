@@ -26,7 +26,6 @@ describe("SETTINGS_NAV_GROUPS", () => {
       "/settings/keybindings",
       "/settings/source-control",
       "/settings/connections",
-      "/settings/beta",
     ]);
   });
 
