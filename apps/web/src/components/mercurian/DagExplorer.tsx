@@ -495,7 +495,7 @@ function SpatialMap({
               <path
                 className={cn(
                   "transition-opacity duration-150",
-                  isCurrentPath ? "fill-primary" : "fill-border",
+                  isCurrentPath ? "fill-foreground" : "fill-border",
                   isDimmed && "opacity-[0.18]",
                 )}
                 d={edgeRibbon(
