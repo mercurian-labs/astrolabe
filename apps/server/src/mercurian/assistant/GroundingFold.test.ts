@@ -71,6 +71,8 @@ describe("foldGroundingEvent", () => {
 
   it("never folds the planning write door as grounding", () => {
     expect(foldGroundingEvent(toolProgress("mcp__t3-code__save_plan_revision"))).toBeNull();
+    expect(foldGroundingEvent(toolProgress("save_technical_plan"))).toBeNull();
+    expect(foldGroundingEvent(item("mcp_tool_call", "save_technical_plan"))).toBeNull();
   });
 
   // The lifecycle vocabulary (Codex, MCP tool calls).

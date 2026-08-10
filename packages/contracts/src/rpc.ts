@@ -74,7 +74,9 @@ import {
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
+  MercurianDeriveTechnicalPlanInput,
   MercurianGetPlanTextAtInput,
+  MercurianGetTechnicalPlanAtInput,
   MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
@@ -98,6 +100,8 @@ import {
   PlanStreamItem,
   PlanTextAt,
   PlanTurnActiveError,
+  TechnicalPlanAt,
+  TechnicalPlanDerivationBlockedError,
 } from "./mercurian.ts";
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
@@ -941,6 +945,21 @@ export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
   ]),
 });
 
+export const WsMercurianDeriveTechnicalPlanRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.deriveTechnicalPlan,
+  {
+    payload: MercurianDeriveTechnicalPlanInput,
+    success: MercurianPlanAcknowledged,
+    error: Schema.Union([
+      PlanNotFoundError,
+      PlanTurnActiveError,
+      TechnicalPlanDerivationBlockedError,
+      MercurianPlanningError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 // The planning turn's two acts. Turns are never started by RPC — a turn
 // starts server-side when a human message commits — so the only verbs a
 // client holds are stopping the reply and answering its question.
@@ -1022,6 +1041,12 @@ export const WsMercurianSubscribePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.subscri
 export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlanTextAt, {
   payload: MercurianGetPlanTextAtInput,
   success: PlanTextAt,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianGetTechnicalPlanAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getTechnicalPlanAt, {
+  payload: MercurianGetTechnicalPlanAtInput,
+  success: TechnicalPlanAt,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
@@ -1268,6 +1293,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianImportPlanRpc,
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
+  WsMercurianDeriveTechnicalPlanRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
@@ -1275,6 +1301,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
+  WsMercurianGetTechnicalPlanAtRpc,
   WsMercurianStopPlanningTurnRpc,
   WsMercurianAnswerPlanningQuestionRpc,
   WsMercurianSubscribeRepositoriesRpc,

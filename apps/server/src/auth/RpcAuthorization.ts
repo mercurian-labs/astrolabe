@@ -39,6 +39,7 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.subscribeTree]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.getTechnicalPlanAt]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   // Importing an issue creates a plan, so it is an operation on the same
@@ -46,6 +47,7 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.importPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.deriveTechnicalPlan]: AuthOrchestrationOperateScope,
   // A plan's disappearance, reversible or not.
   [MERCURIAN_WS_METHODS.archivePlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.unarchivePlan]: AuthOrchestrationOperateScope,

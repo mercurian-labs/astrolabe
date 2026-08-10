@@ -161,3 +161,21 @@ export function composeFirstTurnInput(input: {
     `Reply to this message:\n${input.message}`,
   ].join("\n\n---\n\n");
 }
+
+/**
+ * A derivation is a one-shot compile, not another conversational reply. The
+ * repository is already the session's sole root; this input names the target
+ * and makes the MCP document door the only successful output.
+ */
+export function derivationTurnInput(input: {
+  readonly repositoryName: string;
+  readonly planText: string;
+}): string {
+  return [
+    `Derive a technical plan for the repository "${input.repositoryName}" from the plan below.`,
+    "Ground the result in the code actually present in this repository. Produce a self-contained implementation plan with concrete files, behavior, risks, and tests.",
+    "Your filesystem access is read-only. Do not edit files, do not edit the source plan, and do not ask questions. Make reasonable assumptions and record them in the document.",
+    "The only way to produce the technical plan is to call `save_technical_plan` with the complete document. Do not treat narration or your final reply as the document.",
+    `Source plan:\n---\n${input.planText}\n---`,
+  ].join("\n\n");
+}

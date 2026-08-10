@@ -4,6 +4,7 @@ import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 
 import {
   composeFirstTurnInput,
+  derivationTurnInput,
   planningSystemAppendix,
   transcriptPreamble,
   type TranscriptEntry,
@@ -40,6 +41,22 @@ describe("planningSystemAppendix", () => {
     });
     expect(appendix).toContain("Out of reach in this session");
     expect(appendix).toContain("almagest, aurora");
+  });
+});
+
+describe("derivationTurnInput", () => {
+  it("makes derivation a repository-grounded, one-shot document compile", () => {
+    const input = derivationTurnInput({
+      repositoryName: "astrolabe",
+      planText: "# Build technical plans",
+    });
+    expect(input).toContain('repository "astrolabe"');
+    expect(input).toContain("code actually present");
+    expect(input).toContain("read-only");
+    expect(input).toContain("do not ask questions");
+    expect(input).toContain("save_technical_plan");
+    expect(input).toContain("# Build technical plans");
+    expect(input).not.toContain("save_plan_revision");
   });
 });
 

@@ -31,6 +31,8 @@ import type { CommitId } from "../commitTree/schema.ts";
  * what other services need to compose with the turn safely.
  */
 export interface ActivePlanTurn {
+  /** Reply turns may revise the plan; derivations may only save their document. */
+  readonly flavor: "reply" | "derivation";
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
   /** The provider session thread this turn is running on. */

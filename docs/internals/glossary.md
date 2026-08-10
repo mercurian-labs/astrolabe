@@ -152,7 +152,7 @@ Mercurian's planning state, stored separately from t3code's threads in [CommitSt
 
 #### Commit
 
-One entry in a planning space's history. A commit has a `kind` (message, plan revision, issue revision, coding session), an author (human or assistant), a payload the store treats as opaque, and an ordered list of parents that is unbounded: none for a root, one for a continuation, two or more for a merge. Forks and merges are refused for assistant-authored commits, and nothing may be committed onto a coding session — those are leaves.
+One entry in a planning space's history. A commit has a `kind` (message, plan revision, issue revision, technical plan, coding session), an author (human or assistant), a payload the store treats as opaque, and an ordered list of parents that is unbounded: none for a root, one for a continuation, two or more for a merge. Forks and merges are refused for assistant-authored commits, and nothing may be committed onto a coding session — those are leaves.
 
 #### History
 
@@ -211,6 +211,14 @@ The plan's history as the right pane draws it, in two views. **Navigator** is th
 #### Plan revision
 
 A direct edit of the plan, recorded as a `plan-revision` commit in the plan's one history, interleaved with messages at the same standing. Its payload is the plan's _whole_ text after the edit, not a diff, so the plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the plan anywhere else: the current text is derived from the history, which is why a plan born blank derives an empty artifact and an imported plan whose root is a revision renders from that root.
+
+#### Technical plan
+
+A plan projected onto one repository as a self-contained implementation document, recorded as a human-authored `technical-plan` commit in the plan's one history. Its payload is a frozen snapshot: document text, recorded repository identity, grounding, and the `sourceRevisionCommitId` of the plan revision it derives from. The text stays off timeline events and is read on demand through `mercurian.getTechnicalPlanAt`. Technical plans have no update path; re-deriving lands a new commit. Staleness is never stored or reconciled server-side — a client compares the stamp with the latest plan revision on the path it is rendering.
+
+#### Derivation
+
+The on-demand act that compiles a [plan](#plan) into a [technical plan](#technical-plan) for one repository. It is the second flavor of [planning turn](#planning-turn), holding the same one-turn-per-plan claim and the same read-only runtime enforcement, but opening a fresh single-root provider session and producing no conversational deltas. The provider can only supply the document through `save_technical_plan`; questions are auto-answered empty. Settlement is all-or-nothing: a completed turn with a pending document lands exactly one stamped, human-authored commit, while a stop, provider failure, or completion without the tool lands nothing.
 
 #### Planning turn
 

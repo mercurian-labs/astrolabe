@@ -22,6 +22,16 @@ const handlers = {
       });
       return { saved: true as const };
     }),
+  save_technical_plan: (input) =>
+    Effect.gen(function* () {
+      const invocation = yield* McpInvocationContext.McpInvocationContext;
+      const assistant = yield* PlanningAssistant;
+      yield* assistant.saveTechnicalPlanFromThread({
+        threadId: invocation.threadId,
+        text: input.text,
+      });
+      return { saved: true as const };
+    }),
   read_plan: () =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;

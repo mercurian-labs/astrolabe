@@ -9,6 +9,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
   MercurianProjectId,
+  MercurianRepositoryId,
   PlanId,
   PlanTurnId,
   ThreadId,
@@ -1533,6 +1534,7 @@ layer("PlanningStore", (it) => {
       const root = created.timeline[0]!;
 
       yield* registry.open({
+        flavor: "reply",
         planId: created.plan.planId,
         turnId: PlanTurnId.make("turn-1"),
         threadId: ThreadId.make("thread-1"),
@@ -1888,6 +1890,192 @@ layer("PlanningStore", (it) => {
       });
       assert.strictEqual(again.outcome, "created");
       assert.notStrictEqual(again.detail.plan.planId, first.detail.plan.planId);
+    }),
+  );
+
+  // ===============================
+  // Technical-plan derivation facts
+  // ===============================
+
+  it.effect("lands one frozen, stamped technical-plan commit and never reconciles it", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+      const project = yield* seedProject("2026-08-10T00:00:00.000Z");
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Build technical plans",
+        createdAt: at("2026-08-10T00:01:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      const source = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "# Source plan",
+        createdAt: at("2026-08-10T00:02:00.000Z"),
+      });
+      const before = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      const changes = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+
+      const technical = yield* store.saveTechnicalPlan({
+        planId: created.plan.planId,
+        parentCommitId: source.commitId,
+        repositoryId: MercurianRepositoryId.make("repository-a"),
+        repositoryName: "astrolabe",
+        sourceRevisionCommitId: source.commitId,
+        text: "# Frozen technical plan",
+        grounding: [{ kind: "file-read", label: "apps/server/src/ws.ts" }],
+        createdAt: at("2026-08-10T00:03:00.000Z"),
+      });
+      assert.strictEqual((yield* Fiber.join(changes)).length, 1);
+      assert.strictEqual(technical.authorKind, "human");
+      assert.deepStrictEqual([...technical.parents], [source.commitId]);
+      assert.strictEqual(technical.sourceRevisionCommitId, source.commitId);
+
+      const after = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      assert.strictEqual(after.length, before.length + 1);
+      assert.strictEqual(after.at(-1)?.kind, "technical-plan");
+
+      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const projected = snapshot.timeline.at(-1);
+      assert.ok(projected !== undefined && projected._tag === "technical-plan");
+      assert.ok(!("text" in projected));
+      assert.strictEqual(snapshot.planText, "# Source plan");
+      assert.strictEqual(
+        DateTime.toEpochMillis(snapshot.plan.updatedAt),
+        DateTime.toEpochMillis(technical.createdAt),
+      );
+
+      const frozen = yield* store.getTechnicalPlanAt({
+        planId: created.plan.planId,
+        commitId: technical.commitId,
+      });
+      assert.strictEqual(frozen.text, "# Frozen technical plan");
+      assert.deepStrictEqual(frozen.grounding, [
+        { kind: "file-read", label: "apps/server/src/ws.ts" },
+      ]);
+
+      yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: technical.commitId,
+        text: "# Source plan moved on",
+        createdAt: at("2026-08-10T00:04:00.000Z"),
+      });
+      assert.strictEqual(
+        (yield* store.getTechnicalPlanAt({
+          planId: created.plan.planId,
+          commitId: technical.commitId,
+        })).text,
+        "# Frozen technical plan",
+      );
+    }),
+  );
+
+  it.effect("derives context at a position and keeps repository history path-scoped", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* seedProject("2026-08-10T01:00:00.000Z");
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Branch derivations",
+        createdAt: at("2026-08-10T01:01:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+
+      const empty = yield* store.getDerivationContext({
+        planId: created.plan.planId,
+        atCommitId: root.commitId,
+      });
+      assert.strictEqual(empty.planText, "");
+      assert.strictEqual(empty.sourceRevisionCommitId, undefined);
+
+      const source = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "# Shared source",
+        createdAt: at("2026-08-10T01:02:00.000Z"),
+      });
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: source.commitId,
+        text: "Left",
+        createdAt: at("2026-08-10T01:03:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: source.commitId,
+        text: "Right",
+        createdAt: at("2026-08-10T01:04:00.000Z"),
+      });
+      const repositoryA = MercurianRepositoryId.make("repository-left");
+      const repositoryB = MercurianRepositoryId.make("repository-second");
+      const leftPlan = yield* store.saveTechnicalPlan({
+        planId: created.plan.planId,
+        parentCommitId: left.commitId,
+        repositoryId: repositoryA,
+        repositoryName: "left-repo",
+        sourceRevisionCommitId: source.commitId,
+        text: "Left technical plan",
+        createdAt: at("2026-08-10T01:05:00.000Z"),
+      });
+      const secondPlan = yield* store.saveTechnicalPlan({
+        planId: created.plan.planId,
+        parentCommitId: leftPlan.commitId,
+        repositoryId: repositoryB,
+        repositoryName: "second-repo",
+        sourceRevisionCommitId: source.commitId,
+        text: "Second technical plan",
+        createdAt: at("2026-08-10T01:06:00.000Z"),
+      });
+
+      const leftContext = yield* store.getDerivationContext({
+        planId: created.plan.planId,
+        atCommitId: secondPlan.commitId,
+      });
+      assert.strictEqual(leftContext.atCommitId, secondPlan.commitId);
+      assert.strictEqual(leftContext.planText, "# Shared source");
+      assert.strictEqual(leftContext.sourceRevisionCommitId, source.commitId);
+      assert.strictEqual(
+        leftContext.latestTechnicalPlans.get(repositoryA)?.commitId,
+        leftPlan.commitId,
+      );
+      assert.strictEqual(
+        leftContext.latestTechnicalPlans.get(repositoryB)?.commitId,
+        secondPlan.commitId,
+      );
+
+      const rightContext = yield* store.getDerivationContext({
+        planId: created.plan.planId,
+        atCommitId: right.commitId,
+      });
+      assert.strictEqual(rightContext.sourceRevisionCommitId, source.commitId);
+      assert.strictEqual(rightContext.latestTechnicalPlans.size, 0);
+
+      const nonTechnical = yield* Effect.flip(
+        store.getTechnicalPlanAt({ planId: created.plan.planId, commitId: right.commitId }),
+      );
+      assert.strictEqual(nonTechnical._tag, "CommitNotFoundError");
+
+      const imported = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-technical-context",
+        createdAt: "2026-08-10T01:07:00.000Z",
+      });
+      const issueRoot = imported.detail.timeline[0]!;
+      const issueContext = yield* store.getDerivationContext({
+        planId: imported.detail.plan.planId,
+        atCommitId: issueRoot.commitId,
+      });
+      assert.strictEqual(issueContext.planText, "");
+      assert.strictEqual(issueContext.sourceRevisionCommitId, undefined);
     }),
   );
 });

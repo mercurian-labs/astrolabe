@@ -144,6 +144,23 @@ history adds up to.
 Nothing here needs refreshing. An edit or a message appears as it lands — including one made in
 another window open on the same plan.
 
+## Technical plans
+
+The **Derive** menu in the plan header turns the plan into an implementation-ready technical plan
+for one repository in the project. Deriving is always on demand: pick the repository when the plan
+is ready to project onto its codebase. Each repository gets its own technical plan, grounded only
+in that repository and kept in the plan's same history.
+
+A technical plan remembers exactly which plan revision it came from. If the plan changes later,
+the earlier derivation stays frozen and gains a **Stale** badge; nothing silently rewrites or
+regenerates it. Open its row in the conversation to read the document and the code it consulted.
+There is no editor: re-deriving after the plan changes creates the updated technical plan and keeps
+the earlier one in history.
+
+Derivation is all-or-nothing. While it runs, the conversation shows which repository it is working
+on and what it consults, and the composer offers **Stop**. A stopped or failed derivation leaves no
+partial document behind.
+
 ## The history
 
 The history view shows every commit in the plan: your messages, the assistant's, and every edit of

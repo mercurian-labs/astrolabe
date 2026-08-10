@@ -25,15 +25,12 @@ export type HistoryId = typeof HistoryId.Type;
 export const CommitId = makeEntityId("CommitId");
 export type CommitId = typeof CommitId.Type;
 
-/**
- * What a commit is. `message` is the only kind anything writes today; the
- * other three are representable now so the features that write them land
- * without schema surgery.
- */
+/** The durable kinds that may share one planning-space history. */
 export const CommitKind = Schema.Literals([
   "message",
   "plan-revision",
   "issue-revision",
+  "technical-plan",
   "coding-session",
 ]);
 export type CommitKind = typeof CommitKind.Type;

@@ -27,6 +27,15 @@ export const SavePlanRevisionResult = Schema.Struct({
   saved: Schema.Literal(true),
 });
 
+export const SaveTechnicalPlanInput = Schema.Struct({
+  /** The complete derived document. Last call wins until the turn settles. */
+  text: Schema.String,
+});
+
+export const SaveTechnicalPlanResult = Schema.Struct({
+  saved: Schema.Literal(true),
+});
+
 export const ReadPlanResult = Schema.Struct({
   /** The plan document's current text. Empty is a real state. */
   text: Schema.String,
@@ -44,6 +53,18 @@ export const SavePlanRevisionTool = Tool.make("save_plan_revision", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.OpenWorld, false);
 
+export const SaveTechnicalPlanTool = Tool.make("save_technical_plan", {
+  description:
+    "Save the complete technical plan produced by this derivation. This is the derivation's only output door: pass the whole document, not a diff. Calling it again replaces the pending document until the turn completes.",
+  parameters: SaveTechnicalPlanInput,
+  success: SaveTechnicalPlanResult,
+  failure: PlanningTurnNotFoundError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Save technical plan")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const ReadPlanTool = Tool.make("read_plan", {
   description:
     "Read the plan document's current text, as of this conversation's tip. Use before save_plan_revision so the revision builds on what is actually there.",
@@ -58,4 +79,8 @@ export const ReadPlanTool = Tool.make("read_plan", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
-export const PlanningToolkit = Toolkit.make(SavePlanRevisionTool, ReadPlanTool);
+export const PlanningToolkit = Toolkit.make(
+  SavePlanRevisionTool,
+  SaveTechnicalPlanTool,
+  ReadPlanTool,
+);

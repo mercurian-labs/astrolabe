@@ -140,6 +140,9 @@ publishes its unpublished ancestors along every parent path. See
 one history and is created together with its root commit, so a plan without a first message cannot
 exist. The plan artifact has no table: a direct edit lands as a `plan-revision` commit carrying the
 whole new text, and the plan's current text is derived from the revisions along the history's path.
+Repository-scoped technical plans form a derived layer in that same history: an on-demand
+derivation lands one `technical-plan` commit carrying a frozen document and the source-revision
+stamp clients compare for staleness; failed derivations land nothing.
 The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
 re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
 planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
