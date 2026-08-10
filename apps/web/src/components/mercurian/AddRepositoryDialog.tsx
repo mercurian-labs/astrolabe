@@ -26,14 +26,14 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
+import { deriveCloneDestination } from "./AddRepositoryDialog.logic";
 import {
   buildProviderReadiness,
-  deriveCloneDestination,
   providerLabel,
   providerPathHint,
   sortProviderKinds,
   type RepositoryProviderKind,
-} from "./AddRepositoryDialog.logic";
+} from "./hostingProviders.logic";
 
 /**
  * The three ways a repository enters.

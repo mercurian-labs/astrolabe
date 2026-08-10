@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Option from "effect/Option";
 
 import {
   describeScriptDeclarations,
   projectsForRepository,
   repositoryIdsForProject,
+  repositoryHostingPresentation,
   sortRepositoriesForPage,
 } from "./RepositoriesPage.logic";
 
@@ -46,6 +48,67 @@ describe("describeScriptDeclarations", () => {
       [],
     ]);
     expect(described[0]?.command).toBe("pnpm dev");
+  });
+});
+
+describe("repository hosting presentation", () => {
+  const discovery = {
+    versionControlSystems: [],
+    sourceControlProviders: [
+      {
+        kind: "github" as const,
+        label: "GitHub",
+        executable: "gh",
+        status: "available" as const,
+        version: Option.none<string>(),
+        installHint: "Install gh.",
+        detail: Option.none<string>(),
+        auth: {
+          status: "authenticated" as const,
+          account: Option.some("venk"),
+          host: Option.some("github.com"),
+          detail: Option.none<string>(),
+        },
+      },
+    ],
+  };
+
+  it("presents a derived provider and its account standing", () => {
+    expect(
+      repositoryHostingPresentation({
+        hasGit: true,
+        hosting: {
+          provider: "github",
+          providerName: "GitHub",
+          remoteName: "origin",
+          remoteUrl: "https://github.com/owner/repo.git",
+        },
+        discovery,
+      }),
+    ).toEqual({
+      kind: "hosting",
+      standing: {
+        provider: "github",
+        label: "GitHub",
+        detail: "authenticated as",
+        account: "venk",
+      },
+    });
+  });
+
+  it("chooses a publish affordance only when a provider is ready", () => {
+    expect(repositoryHostingPresentation({ hasGit: true, hosting: null, discovery })).toEqual({
+      kind: "publish",
+      label: "No remote yet — publish repository…",
+    });
+    expect(
+      repositoryHostingPresentation({
+        hasGit: true,
+        hosting: null,
+        discovery: { versionControlSystems: [], sourceControlProviders: [] },
+      }),
+    ).toEqual({ kind: "no-remote", label: "No remote" });
+    expect(repositoryHostingPresentation({ hasGit: false, hosting: null, discovery })).toBeNull();
   });
 });
 

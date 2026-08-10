@@ -3,6 +3,19 @@
 **Repositories** in the Workspace group is where the codebases Mercurian can reach are added,
 seen, and managed. One page answers what code Mercurian can reach, and how.
 
+## Hosting providers
+
+The **Hosting providers** section reports what this machine can use. Each provider has one of three
+standings:
+
+- **Authenticated**, including the account when the provider reports it.
+- **Present but not signed in**, with the provider tool and the exact next step named.
+- **Not installed**, with the provider's installation guidance.
+
+These are detected facts, not settings. There are no enable switches, and Mercurian does not sign
+in on a provider's behalf. Complete the stated step with the provider's own tool, then press
+**Rescan**. Rescan refreshes both the provider standings and the repository remotes shown below.
+
 ## Adding a repository
 
 **Add repository** opens three ways in:
@@ -33,6 +46,16 @@ up on its own.
 
 Each row carries the repository's name, its path, and the environment its files are on. The
 environment is a fact about where the repository lives, not somewhere to navigate to.
+
+For a git repository with a remote, the row also names the hosting provider derived from that
+remote and joins it to the machine's current account standing. It cannot be assigned or overridden.
+An unrecognized host is shown as a plain remote fact without provider actions.
+
+For a git repository without a remote, **Publish repository…** appears only when at least one
+hosting provider is authenticated. Publishing creates the hosted repository, adds the remote, and
+pushes when the local repository has commits. Choose the ready provider, repository path, and
+visibility in the dialog. If no provider is ready, the row simply says **No remote**; the hosting
+section above names the remedy.
 
 Below that are the scripts declared on it, and the projects it is context for.
 
