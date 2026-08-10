@@ -174,9 +174,13 @@ A container of plans, and the context its plans ground in. It has a name and a s
 
 A registered codebase — the third thing this vocabulary calls a repository, beside t3code's `RepositoryIdentity` (a git-remote-derived fact about a workspace) and `SourceControlRepositoryInfo` (a provider's view of a remote). It has a name, a resolved path unique across the registry, and the scripts declared on it, in [RepositoryStore.ts][28] and crossing the wire through [mercurianRepositories.ts][29].
 
-Two things it does _not_ store, each on purpose. Its **git-ness** is probed live (`git rev-parse --show-toplevel`, short-TTL cached): a plain directory registers fine because grounding reads files either way, and the working-tree features light up on their own once the directory becomes a repository. Its **environment** is a fact about which server answered, not a column — the registry lives in one `mercurian.sqlite`, and environments stay plumbing.
+Three things it does _not_ store, each on purpose. Its **git-ness** is probed live (`git rev-parse --show-toplevel`, short-TTL cached): a plain directory registers fine because grounding reads files either way, and the working-tree features light up on their own once the directory becomes a repository. Its **hosting provider** is derived from the primary fetch remote. Its **environment** is a fact about which server answered, not a column — the registry lives in one `mercurian.sqlite`, and environments stay plumbing.
 
 Removal disconnects: the row, its scripts, and its project memberships go, while the files and every grounding reference already written into a plan's history stay — those are content, not foreign keys. It is refused with `RepositoryHasLiveWorktreesError` when `git worktree list` names a linked worktree under `ServerConfig.worktreesDir`, and there is no force flag. When coding sessions land store-side worktree state, that check gains a second source behind the same refusal.
+
+#### Hosting provider
+
+The service that hosts a repository's git remote, such as GitHub, GitLab, Bitbucket, or Azure DevOps. Mercurian detects provider presence and authentication standing from the machine, and derives a repository's provider from its fetch remotes; it never configures, assigns, or stores either fact. Unknown remote hosts remain plain hosting facts and acquire no provider affordances.
 
 #### Repository script
 

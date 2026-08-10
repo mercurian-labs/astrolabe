@@ -1,4 +1,8 @@
-import type { MercurianProjectId, MercurianRepository } from "@t3tools/contracts";
+import type {
+  MercurianProjectId,
+  MercurianRepository,
+  SourceControlDiscoveryResult,
+} from "@t3tools/contracts";
 import {
   FolderGit2Icon,
   GitBranchIcon,
@@ -9,13 +13,15 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
-import { usePrimaryEnvironment } from "../../state/environments";
+import { usePrimaryEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
 import { useMercurianTree } from "../../state/mercurian";
 import {
   useRemoveRepository,
   useRepositories,
   useSetProjectRepositories,
 } from "../../state/mercurianRepositories";
+import { useEnvironmentQuery } from "../../state/query";
+import { sourceControlEnvironment } from "../../state/sourceControl";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -38,14 +44,18 @@ import {
 } from "../ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { AddRepositoryDialog } from "./AddRepositoryDialog";
+import { HostingProviderMark, HostingProvidersSection } from "./HostingProvidersSection";
 import {
   describeScriptDeclarations,
   NOT_A_GIT_REPOSITORY_NOTE,
   projectsForRepository,
   repositoryIdsForProject,
+  repositoryHostingPresentation,
   sortRepositoriesForPage,
 } from "./RepositoriesPage.logic";
+import { PublishRepositoryDialog } from "./PublishRepositoryDialog";
 import { RepositoryScriptsDialog } from "./RepositoryScriptsDialog";
 
 /**
@@ -57,9 +67,16 @@ import { RepositoryScriptsDialog } from "./RepositoryScriptsDialog";
  */
 export function RepositoriesPage() {
   const { snapshot, isPending, error } = useRepositories();
+  const environmentId = usePrimaryEnvironmentId();
+  const providerDiscovery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : sourceControlEnvironment.discovery({ environmentId, input: {} }),
+  );
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [scriptsFor, setScriptsFor] = useState<MercurianRepository | null>(null);
   const [removing, setRemoving] = useState<MercurianRepository | null>(null);
+  const [publishing, setPublishing] = useState<MercurianRepository | null>(null);
 
   const repositories = useMemo(
     () => sortRepositoriesForPage(snapshot.repositories),
@@ -69,6 +86,7 @@ export function RepositoriesPage() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <HostingProvidersSection />
         {error !== null ? (
           <p className="px-3 py-3 text-sm text-destructive sm:px-5">{error}</p>
         ) : null}
@@ -104,7 +122,9 @@ export function RepositoriesPage() {
                   repository.repositoryId,
                 )}
                 onEditScripts={() => setScriptsFor(repository)}
+                onPublish={() => setPublishing(repository)}
                 onRemove={() => setRemoving(repository)}
+                discovery={providerDiscovery.data}
               />
             ))}
           </ul>
@@ -112,6 +132,14 @@ export function RepositoriesPage() {
       </div>
 
       <AddRepositoryDialog open={isAddOpen} onOpenChange={setIsAddOpen} />
+      <PublishRepositoryDialog
+        open={publishing !== null}
+        repository={publishing}
+        discovery={providerDiscovery.data}
+        onOpenChange={(open) => {
+          if (!open) setPublishing(null);
+        }}
+      />
       <RepositoryScriptsDialog
         open={scriptsFor !== null}
         repository={scriptsFor}
@@ -147,12 +175,16 @@ function RepositoryRow({
   repository,
   projectIds,
   onEditScripts,
+  onPublish,
   onRemove,
+  discovery,
 }: {
   readonly repository: MercurianRepository;
   readonly projectIds: ReadonlyArray<string>;
   readonly onEditScripts: () => void;
+  readonly onPublish: () => void;
   readonly onRemove: () => void;
+  readonly discovery: SourceControlDiscoveryResult | null;
 }) {
   const environment = usePrimaryEnvironment();
   const { snapshot: tree } = useMercurianTree();
@@ -160,6 +192,15 @@ function RepositoryRow({
   const scripts = useMemo(
     () => describeScriptDeclarations(repository.scripts),
     [repository.scripts],
+  );
+  const hosting = useMemo(
+    () =>
+      repositoryHostingPresentation({
+        hasGit: repository.hasGit,
+        hosting: repository.hosting,
+        discovery,
+      }),
+    [discovery, repository.hasGit, repository.hosting],
   );
   const projectNames = useMemo(
     () =>
@@ -186,6 +227,42 @@ function RepositoryRow({
           {repository.hasGit ? null : (
             <p className="mt-1.5 text-xs text-muted-foreground/80">{NOT_A_GIT_REPOSITORY_NOTE}</p>
           )}
+
+          {hosting?.kind === "hosting" ? (
+            <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground/80">
+              <HostingProviderMark
+                provider={hosting.standing.provider}
+                tone={
+                  hosting.standing.provider === "unknown"
+                    ? "neutral"
+                    : hosting.standing.detail.startsWith("authenticated")
+                      ? "ready"
+                      : "warning"
+                }
+              />
+              <span className="font-medium text-foreground/85">{hosting.standing.label}</span>
+              <span aria-hidden>·</span>
+              <span>{hosting.standing.detail}</span>
+              {hosting.standing.account === null ? null : (
+                <RedactedSensitiveText
+                  value={hosting.standing.account}
+                  ariaLabel={`Toggle ${hosting.standing.label} account visibility`}
+                  revealTooltip="Click to reveal account"
+                  hideTooltip="Click to hide account"
+                />
+              )}
+            </p>
+          ) : hosting?.kind === "publish" ? (
+            <button
+              type="button"
+              className="mt-1.5 text-xs font-medium text-primary hover:underline"
+              onClick={onPublish}
+            >
+              {hosting.label}
+            </button>
+          ) : hosting?.kind === "no-remote" ? (
+            <p className="mt-1.5 text-xs text-muted-foreground/80">{hosting.label}</p>
+          ) : null}
 
           {scripts.length === 0 ? null : (
             <ul className="mt-2 space-y-1">
@@ -230,6 +307,9 @@ function RepositoryRow({
           <MenuPopup align="end" side="bottom" sideOffset={4} className="min-w-48">
             <MenuItem onClick={onEditScripts}>Edit scripts…</MenuItem>
             <MenuItem onClick={() => setIsManageOpen(true)}>Manage in projects…</MenuItem>
+            {hosting?.kind === "publish" ? (
+              <MenuItem onClick={onPublish}>Publish repository…</MenuItem>
+            ) : null}
             <MenuItem onClick={onRemove}>Remove…</MenuItem>
           </MenuPopup>
         </Menu>

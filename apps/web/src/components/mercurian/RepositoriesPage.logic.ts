@@ -4,6 +4,13 @@
  * These read structural shapes rather than the wire types: everything here is
  * about presentation order and the words on a row, so nothing needs a schema.
  */
+import type { MercurianRepositoryHosting, SourceControlDiscoveryResult } from "@t3tools/contracts";
+
+import {
+  readyProviderKinds,
+  repositoryHostingStanding,
+  type RepositoryHostingStanding,
+} from "./hostingProviders.logic";
 
 interface ScriptFields {
   readonly scriptId: string;
@@ -30,6 +37,30 @@ interface RepositoryFields {
  */
 export const NOT_A_GIT_REPOSITORY_NOTE =
   "Not a git repository — grounding reads its files. Worktrees, diffs, and coding sessions arrive when it is one.";
+
+export type RepositoryHostingPresentation =
+  | { readonly kind: "hosting"; readonly standing: RepositoryHostingStanding }
+  | { readonly kind: "publish"; readonly label: "No remote yet — publish repository…" }
+  | { readonly kind: "no-remote"; readonly label: "No remote" }
+  | null;
+
+/** Hosting is a fact; only a remote-less repository can turn the line into an act. */
+export function repositoryHostingPresentation(input: {
+  readonly hasGit: boolean;
+  readonly hosting: MercurianRepositoryHosting | null;
+  readonly discovery: SourceControlDiscoveryResult | null;
+}): RepositoryHostingPresentation {
+  if (!input.hasGit) return null;
+  if (input.hosting !== null) {
+    return {
+      kind: "hosting",
+      standing: repositoryHostingStanding(input.hosting, input.discovery),
+    };
+  }
+  return readyProviderKinds(input.discovery).length > 0
+    ? { kind: "publish", label: "No remote yet — publish repository…" }
+    : { kind: "no-remote", label: "No remote" };
+}
 
 /** Alphabetical, because a management page is something you scan by name. */
 export function sortRepositoriesForPage<T extends RepositoryFields>(
