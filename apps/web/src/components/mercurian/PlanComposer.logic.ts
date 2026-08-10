@@ -1,8 +1,14 @@
 import type {
   PlanInFlightTurn,
+  PlanStreamItem,
   PlanningModelResolution,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
+
+type DerivationFailureReason = Extract<
+  PlanStreamItem,
+  { readonly kind: "derivation-failed" }
+>["reason"];
 
 /**
  * The send↔stop↔gate state machine, kept pure so the composer component
@@ -77,6 +83,20 @@ export function turnRefusalNotice(reason: PlanTurnRefusalReason): string {
       return "The assistant is already replying in this plan.";
     default:
       return "The message was sent, but the assistant could not reply.";
+  }
+}
+
+/** A failed derivation never leaves a partial artifact, so the notice says so. */
+export function derivationFailureNotice(reason: DerivationFailureReason): string {
+  switch (reason) {
+    case "no-technical-plan":
+      return "The assistant finished without producing a technical plan; no artifact was saved.";
+    case "stopped":
+      return "Technical plan derivation was stopped; no artifact was saved.";
+    case "provider-error":
+      return "Technical plan derivation failed; no artifact was saved.";
+    default:
+      return "Technical plan derivation ended without an artifact.";
   }
 }
 

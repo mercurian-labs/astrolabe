@@ -1,11 +1,14 @@
 import type {
   ChatAttachment,
   EnvironmentId,
+  PlanId,
   PlanGroundingItem,
   PlanGroundingScope,
+  PlanInFlightDerivation,
   PlanInFlightTurn,
   PlanQuestion,
   PlanQuestionRecord,
+  PlanTechnicalPlan,
   PlanTimelineItem,
 } from "@t3tools/contracts";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
@@ -13,6 +16,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CircleDotIcon,
+  FileCode2Icon,
   FileSearchIcon,
   FileTextIcon,
   FolderOpenIcon,
@@ -35,13 +39,15 @@ import { MessageCopyButton } from "../chat/MessageCopyButton";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { TechnicalPlanDialog } from "./TechnicalPlanDialog";
+import { isStale } from "./technicalPlans.logic";
 
 /**
- * The planning space's history: messages, plan revisions and an imported issue
- * in one ordered list, because that is what they are in the store — commits of
- * the same standing in one history. Revisions are not a system-message ghetto;
- * they sit in the same flow, rendered compactly because they have no body to
- * show. An imported issue does have one, and it opens the list it begins.
+ * The planning space's history: messages, revisions, imported issues, and
+ * technical plans in one ordered list, because that is what they are in the
+ * store — commits of the same standing in one history. Body-less timeline
+ * projections stay compact; issue and message bodies render in the flow, and
+ * a technical plan opens its immutable document on demand.
  *
  * Below the last commit, the reply streaming right now — the same shapes the
  * settled message will keep: live text, the grounding fold growing as items
@@ -49,25 +55,41 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  * it seamlessly because both render from the same facts.
  */
 export function PlanTimeline({
+  planId,
   timeline,
   inFlight,
+  inFlightDerivation,
   onAnswerQuestion,
+  onStop,
 }: {
+  readonly planId: PlanId;
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The turn streaming on this path right now, when one is. */
   readonly inFlight?: PlanInFlightTurn | undefined;
+  /** The repository compilation streaming on this path right now, when one is. */
+  readonly inFlightDerivation?: PlanInFlightDerivation | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
+  readonly onStop?: () => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const environmentId = usePrimaryEnvironmentId();
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const [selectedTechnicalPlan, setSelectedTechnicalPlan] = useState<PlanTechnicalPlan | null>(
+    null,
+  );
 
   const streamedLength = inFlight?.text.length ?? 0;
+  const derivationGroundingLength = inFlightDerivation?.grounding.length ?? 0;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [timeline.length, streamedLength > 0, inFlight?.questions !== undefined]);
+  }, [
+    timeline.length,
+    streamedLength > 0,
+    inFlight?.questions !== undefined,
+    derivationGroundingLength,
+  ]);
 
-  if (timeline.length === 0 && inFlight === undefined) {
+  if (timeline.length === 0 && inFlight === undefined && inFlightDerivation === undefined) {
     return <div className="min-h-0 flex-1" />;
   }
 
@@ -159,6 +181,26 @@ export function PlanTimeline({
               </li>
             );
           }
+          if (item._tag === "technical-plan") {
+            return (
+              <li key={item.commitId}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-[11px] text-muted-foreground/70 hover:bg-muted/40 hover:text-muted-foreground"
+                  onClick={() => setSelectedTechnicalPlan(item)}
+                >
+                  <FileCode2Icon className="size-3.5 shrink-0" />
+                  <span className="min-w-0 truncate">
+                    You derived a technical plan for {item.repositoryName}
+                  </span>
+                  {isStale(item, timeline) ? <StaleBadge /> : null}
+                  <span className="ms-auto shrink-0">
+                    {formatRelativeTimeLabel(item.createdAt)}
+                  </span>
+                </button>
+              </li>
+            );
+          }
           return (
             <li
               key={item.commitId}
@@ -174,6 +216,24 @@ export function PlanTimeline({
             </li>
           );
         })}
+        {inFlightDerivation === undefined ? null : (
+          <li className="relative min-w-0 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <Spinner aria-hidden className="size-3" />
+              <span className="min-w-0 flex-1 truncate">
+                Deriving technical plan for {inFlightDerivation.repositoryName}…
+              </span>
+              <Button size="xs" variant="ghost" onClick={onStop}>
+                Stop
+              </Button>
+            </div>
+            {inFlightDerivation.grounding.length === 0 ? null : (
+              <div className="mt-2">
+                <GroundingFold items={inFlightDerivation.grounding} live />
+              </div>
+            )}
+          </li>
+        )}
         {inFlight === undefined ? null : (
           // Mirrors AssistantTimelineRow in MessagesTimeline.tsx; keep this shell in sync.
           <li className="relative min-w-0 px-1 py-0.5">
@@ -203,7 +263,26 @@ export function PlanTimeline({
         )}
       </ol>
       <div ref={bottomRef} />
+      {selectedTechnicalPlan === null ? null : (
+        <TechnicalPlanDialog
+          open
+          path={timeline}
+          planId={planId}
+          technicalPlan={selectedTechnicalPlan}
+          onOpenChange={(open) => {
+            if (!open) setSelectedTechnicalPlan(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function StaleBadge() {
+  return (
+    <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
+      Stale
+    </span>
   );
 }
 
@@ -270,11 +349,11 @@ function GroundingFold({
       </button>
       {expanded ? (
         <ul className="mt-1 flex flex-col gap-0.5 border-l border-border/60 pl-3">
-          {items.map((item, index) => {
+          {items.map((item) => {
             const Icon = GROUNDING_KIND_ICONS[item.kind];
             return (
               <li
-                key={`${item.kind}-${item.label}-${index}`}
+                key={`${item.kind}-${item.label}-${item.detail ?? ""}`}
                 className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground/80"
               >
                 <Icon className="size-3 shrink-0 opacity-70" />

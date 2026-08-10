@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   MercurianCommitId,
   MercurianProjectId,
+  MercurianRepositoryId,
   PlanId,
   PlanTurnId,
   type PlanDetail,
@@ -34,6 +35,18 @@ const revision = (
   sequence: number,
   parents: ReadonlyArray<string> = [],
 ): PlanTimelineItem => ({ _tag: "plan-revision", ...commitFields(id, sequence, parents) });
+
+const technicalPlan = (
+  id: string,
+  sequence: number,
+  parents: ReadonlyArray<string> = [],
+): PlanTimelineItem => ({
+  _tag: "technical-plan",
+  ...commitFields(id, sequence, parents),
+  repositoryId: MercurianRepositoryId.make("repository-1"),
+  repositoryName: "astrolabe",
+  sourceRevisionCommitId: MercurianCommitId.make("revision-1"),
+});
 
 const snapshot: PlanDetail = {
   plan: {
@@ -275,5 +288,79 @@ describe("applyPlanStreamItem turn frames", () => {
     const state = fold([{ kind: "snapshot", snapshot: midTurn }]);
     expect(state.detail?.inFlightTurn?.text).toBe("So far");
     expect(state.detail?.inFlightTurn?.grounding).toHaveLength(1);
+  });
+});
+
+const derivationTurnId = PlanTurnId.make("derivation-1");
+const derivationStarted: PlanStreamItem = {
+  kind: "derivation-started",
+  derivation: {
+    turnId: derivationTurnId,
+    parentCommitId: MercurianCommitId.make("commit-1"),
+    repositoryId: MercurianRepositoryId.make("repository-1"),
+    repositoryName: "astrolabe",
+    grounding: [],
+  },
+};
+
+describe("applyPlanStreamItem derivation frames", () => {
+  it("opens a derivation and routes grounding by turn id", () => {
+    const replyGrounding = { kind: "search" as const, label: "reply search" };
+    const derivationGrounding = { kind: "file-read" as const, label: "src/technical.ts" };
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      derivationStarted,
+      { kind: "turn-grounding", turnId, item: replyGrounding },
+      {
+        kind: "turn-grounding",
+        turnId: derivationTurnId,
+        item: derivationGrounding,
+      },
+    ]);
+    expect(state.detail?.inFlightTurn?.grounding).toEqual([replyGrounding]);
+    expect(state.detail?.inFlightDerivation?.grounding).toEqual([derivationGrounding]);
+  });
+
+  it("clears on settle and carries a failure reason on failure", () => {
+    const settled = fold([
+      { kind: "snapshot", snapshot },
+      derivationStarted,
+      { kind: "derivation-settled", turnId: derivationTurnId },
+    ]);
+    expect(settled.detail?.inFlightDerivation).toBeUndefined();
+    expect(settled.derivationFailure).toBeNull();
+
+    const failed = fold([
+      { kind: "snapshot", snapshot },
+      derivationStarted,
+      { kind: "derivation-failed", turnId: derivationTurnId, reason: "stopped" },
+    ]);
+    expect(failed.detail?.inFlightDerivation).toBeUndefined();
+    expect(failed.derivationFailure).toBe("stopped");
+  });
+
+  it("appends the technical-plan record without changing plan text", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, planText: "# Plan" } },
+      derivationStarted,
+      {
+        kind: "commit",
+        sequence: 2,
+        item: technicalPlan("technical-1", 2, ["commit-1"]),
+      },
+    ]);
+    expect(state.detail?.planText).toBe("# Plan");
+    expect(state.detail?.timeline.at(-1)?._tag).toBe("technical-plan");
+    expect(state.detail?.inFlightDerivation).toBeUndefined();
+  });
+
+  it("joins a derivation already present on the snapshot", () => {
+    const midDerivation: PlanDetail = {
+      ...snapshot,
+      inFlightDerivation: derivationStarted.derivation,
+    };
+    const state = fold([{ kind: "snapshot", snapshot: midDerivation }]);
+    expect(state.detail?.inFlightDerivation?.repositoryName).toBe("astrolabe");
   });
 });

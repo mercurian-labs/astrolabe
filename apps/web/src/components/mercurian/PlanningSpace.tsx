@@ -46,7 +46,11 @@ import { ImportIssueDialog } from "./ImportIssueDialog";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
-import { planningModelGateNotice, turnRefusalNotice } from "./PlanComposer.logic";
+import {
+  derivationFailureNotice,
+  planningModelGateNotice,
+  turnRefusalNotice,
+} from "./PlanComposer.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -91,7 +95,7 @@ const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error, turnRefusal } = usePlanDetail(planId);
+  const { detail, isPending, error, turnRefusal, derivationFailure } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const visitPlan = useVisitPlan();
@@ -189,6 +193,15 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     return closure.has(inFlightTurn.parentCommitId) ? inFlightTurn : undefined;
   }, [graph, head, inFlightTurn]);
 
+  const inFlightDerivation = detail?.inFlightDerivation;
+  const visibleInFlightDerivation = useMemo(() => {
+    if (inFlightDerivation === undefined) return undefined;
+    if (head === null) return inFlightDerivation;
+    const closure = ancestorClosure(graph, head);
+    return closure.has(inFlightDerivation.parentCommitId) ? inFlightDerivation : undefined;
+  }, [graph, head, inFlightDerivation]);
+  const turnActive = inFlightTurn !== undefined || inFlightDerivation !== undefined;
+
   const gateNotice = planningModelGateNotice(planningModel.resolution);
 
   /**
@@ -278,8 +291,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <PlanTimeline
             inFlight={visibleInFlight}
+            inFlightDerivation={visibleInFlightDerivation}
+            planId={planId}
             timeline={visibleTimeline}
             onAnswerQuestion={(answers) => void answerQuestion(planId, answers)}
+            onStop={() => void stopTurn(planId)}
           />
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
@@ -291,12 +307,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
-            notice={turnRefusal === null ? null : turnRefusalNotice(turnRefusal)}
+            notice={
+              derivationFailure !== null
+                ? derivationFailureNotice(derivationFailure)
+                : turnRefusal === null
+                  ? null
+                  : turnRefusalNotice(turnRefusal)
+            }
             placeholder="Message this plan"
             text={draft.text}
             // The whole plan holds one turn at a time, wherever it streams —
             // Stop is offered even when the reply is on another branch.
-            turnActive={inFlightTurn !== undefined}
+            turnActive={turnActive}
             onAddAttachments={(added) => addDraftAttachments(planId, added)}
             onChangeText={(text) => setDraftText(planId, text)}
             onMentionQueryChange={mentions.onMentionQueryChange}
@@ -342,6 +364,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   {...(head === null ? {} : { parentCommitId: head })}
                   planId={planId}
                   planText={artifactText}
+                  projectId={detail.plan.projectId}
                   readOnly={viewingPast}
                   readOnlyAction={
                     <Button size="sm" variant="ghost" onClick={backToNow}>
@@ -349,6 +372,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                     </Button>
                   }
                   timeline={visibleTimeline}
+                  turnActive={turnActive}
+                  onDerivationStarted={() => {
+                    if (head !== null) {
+                      setPosition({ _tag: "at", commitId: head, live: true });
+                    }
+                  }}
                 />
               )}
             </div>

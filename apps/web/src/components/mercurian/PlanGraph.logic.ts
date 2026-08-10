@@ -498,6 +498,9 @@ export function planCommitSummary(item: PlanTimelineItem): string {
   if (item._tag === "plan-revision") {
     return item.authorKind === "human" ? "You edited the plan" : "The assistant revised the plan";
   }
+  if (item._tag === "technical-plan") {
+    return `Technical plan for ${item.repositoryName}`;
+  }
   const isIssue = item._tag === "issue-revision";
   const firstLine = (isIssue ? item.title : item.text)
     .split("\n")

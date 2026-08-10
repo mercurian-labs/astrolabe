@@ -1,5 +1,11 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
-import { CircleDotIcon, FileTextIcon, GitForkIcon, MessageSquareIcon } from "lucide-react";
+import {
+  CircleDotIcon,
+  FileCode2Icon,
+  FileTextIcon,
+  GitForkIcon,
+  MessageSquareIcon,
+} from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
   useCallback,
@@ -455,6 +461,7 @@ function SpatialMap({
  */
 function commitGlyph(item: PlanTimelineItem) {
   if (item._tag === "plan-revision") return FileTextIcon;
+  if (item._tag === "technical-plan") return FileCode2Icon;
   if (item._tag === "issue-revision") return CircleDotIcon;
   return MessageSquareIcon;
 }

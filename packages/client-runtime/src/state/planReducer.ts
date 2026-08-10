@@ -2,6 +2,7 @@ import * as Arr from "effect/Array";
 import type {
   PlanDetail,
   PlanGroundingItem,
+  PlanInFlightDerivation,
   PlanInFlightTurn,
   PlanStreamItem,
   PlanTurnRefusalReason,
@@ -21,12 +22,20 @@ export interface PlanSubscriptionState {
    * the honest backstop for the window that raced a settings change.
    */
   readonly turnRefusal: PlanTurnRefusalReason | null;
+  /** The last derivation that ended without an artifact. */
+  readonly derivationFailure: DerivationFailureReason | null;
 }
+
+export type DerivationFailureReason = Extract<
+  PlanStreamItem,
+  { readonly kind: "derivation-failed" }
+>["reason"];
 
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   detail: null,
   synchronized: false,
   turnRefusal: null,
+  derivationFailure: null,
 };
 
 const sameGroundingItem = (left: PlanGroundingItem, right: PlanGroundingItem): boolean =>
@@ -41,6 +50,21 @@ function withInFlightTurn(
   return {
     ...state,
     detail: { ...rest, ...(inFlightTurn === undefined ? {} : { inFlightTurn }) },
+  };
+}
+
+function withInFlightDerivation(
+  state: PlanSubscriptionState,
+  inFlightDerivation: PlanInFlightDerivation | undefined,
+): PlanSubscriptionState {
+  if (state.detail === null) return state;
+  const { inFlightDerivation: _previous, ...rest } = state.detail;
+  return {
+    ...state,
+    detail: {
+      ...rest,
+      ...(inFlightDerivation === undefined ? {} : { inFlightDerivation }),
+    },
   };
 }
 
@@ -65,7 +89,12 @@ export function applyPlanStreamItem(
 ): PlanSubscriptionState {
   switch (item.kind) {
     case "snapshot":
-      return { detail: item.snapshot, synchronized: state.synchronized, turnRefusal: null };
+      return {
+        detail: item.snapshot,
+        synchronized: state.synchronized,
+        turnRefusal: null,
+        derivationFailure: null,
+      };
     case "synchronized":
       return { ...state, synchronized: true };
     case "commit": {
@@ -79,12 +108,15 @@ export function applyPlanStreamItem(
         detail.inFlightTurn !== undefined &&
         item.item._tag === "message" &&
         item.item.authorKind === "assistant";
-      const { inFlightTurn, ...rest } = detail;
+      const closesDerivation =
+        detail.inFlightDerivation !== undefined && item.item._tag === "technical-plan";
+      const { inFlightTurn, inFlightDerivation, ...rest } = detail;
       return {
         ...state,
         detail: {
           ...rest,
           ...(closesTurn || inFlightTurn === undefined ? {} : { inFlightTurn }),
+          ...(closesDerivation || inFlightDerivation === undefined ? {} : { inFlightDerivation }),
           // Text arrives only on commits that changed the artifact; a message
           // leaves the plan exactly as it was.
           planText: item.planText ?? detail.planText,
@@ -103,6 +135,7 @@ export function applyPlanStreamItem(
           ...(item.groundingScope === undefined ? {} : { groundingScope: item.groundingScope }),
         }),
         turnRefusal: null,
+        derivationFailure: null,
       };
     case "turn-delta": {
       const turn = state.detail?.inFlightTurn;
@@ -114,11 +147,21 @@ export function applyPlanStreamItem(
     }
     case "turn-grounding": {
       const turn = state.detail?.inFlightTurn;
-      if (turn === undefined || turn.turnId !== item.turnId) return state;
-      if (turn.grounding.some((existing) => sameGroundingItem(existing, item.item))) return state;
-      return withInFlightTurn(state, {
-        ...turn,
-        grounding: Arr.append(turn.grounding, item.item),
+      if (turn !== undefined && turn.turnId === item.turnId) {
+        if (turn.grounding.some((existing) => sameGroundingItem(existing, item.item))) return state;
+        return withInFlightTurn(state, {
+          ...turn,
+          grounding: Arr.append(turn.grounding, item.item),
+        });
+      }
+      const derivation = state.detail?.inFlightDerivation;
+      if (derivation === undefined || derivation.turnId !== item.turnId) return state;
+      if (derivation.grounding.some((existing) => sameGroundingItem(existing, item.item))) {
+        return state;
+      }
+      return withInFlightDerivation(state, {
+        ...derivation,
+        grounding: Arr.append(derivation.grounding, item.item),
       });
     }
     case "turn-question": {
@@ -139,6 +182,24 @@ export function applyPlanStreamItem(
     }
     case "turn-refused":
       return { ...state, turnRefusal: item.reason };
+    case "derivation-started":
+      return {
+        ...withInFlightDerivation(state, item.derivation),
+        derivationFailure: null,
+      };
+    case "derivation-settled": {
+      const derivation = state.detail?.inFlightDerivation;
+      if (derivation === undefined || derivation.turnId !== item.turnId) return state;
+      return withInFlightDerivation(state, undefined);
+    }
+    case "derivation-failed": {
+      const derivation = state.detail?.inFlightDerivation;
+      if (derivation === undefined || derivation.turnId !== item.turnId) return state;
+      return {
+        ...withInFlightDerivation(state, undefined),
+        derivationFailure: item.reason,
+      };
+    }
     default:
       return state;
   }

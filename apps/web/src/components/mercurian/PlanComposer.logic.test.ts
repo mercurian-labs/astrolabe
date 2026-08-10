@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { PlanningModelResolution } from "@t3tools/contracts";
 
 import {
+  derivationFailureNotice,
   planningModelGateNotice,
   resolveComposerControl,
   turnRefusalNotice,
@@ -69,6 +70,14 @@ describe("turnRefusalNotice", () => {
   it("has a sentence for every refusal the stream can carry", () => {
     for (const reason of ["unset", "no-instance", "model-unavailable", "turn-active"] as const) {
       expect(turnRefusalNotice(reason).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("derivationFailureNotice", () => {
+  it("states that every failure leaves no partial artifact", () => {
+    for (const reason of ["no-technical-plan", "stopped", "provider-error"] as const) {
+      expect(derivationFailureNotice(reason)).toContain("no artifact");
     }
   });
 });

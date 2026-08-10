@@ -1,5 +1,7 @@
 import {
   MercurianCommitId,
+  MercurianRepositoryId,
+  PlanId,
   PlanTurnId,
   type ChatAttachment,
   type PlanInFlightTurn,
@@ -23,6 +25,7 @@ type PlanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
 const CREATED_AT = "2026-08-03T12:34:56.000Z";
 const id = (value: string) => MercurianCommitId.make(value);
+const PLAN_ID = PlanId.make("plan-1");
 
 function message(
   commitId: string,
@@ -74,6 +77,7 @@ describe("PlanTimeline", () => {
     };
     const markup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[
           message("human-1", "human", "Inspect @README.md next", {
             attachments: [attachment],
@@ -98,6 +102,7 @@ describe("PlanTimeline", () => {
   it("renders assistant messages as full-width markdown with grounding before the body", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[
           message("assistant-1", "assistant", "A **bold** answer", {
             groundingScope: { unreachableRepositories: ["mobile"] },
@@ -121,6 +126,7 @@ describe("PlanTimeline", () => {
   it("keeps interrupted marks visible outside the hover-only assistant controls", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[
           message("assistant-interrupted", "assistant", "Partial reply", {
             interrupted: true,
@@ -142,6 +148,7 @@ describe("PlanTimeline", () => {
   it("keeps plan revisions and imported issues in their existing shapes", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[
           {
             _tag: "issue-revision",
@@ -179,6 +186,7 @@ describe("PlanTimeline", () => {
   it("distinguishes settled question records from in-flight question cards", () => {
     const settledMarkup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[
           message("assistant-question", "assistant", "I need a choice.", {
             question: { questions: [question], answers: { surface: "Web" } },
@@ -187,7 +195,11 @@ describe("PlanTimeline", () => {
       />,
     );
     const inFlightMarkup = renderToStaticMarkup(
-      <PlanTimeline timeline={[]} inFlight={inFlight({ questions: [question] })} />,
+      <PlanTimeline
+        planId={PLAN_ID}
+        timeline={[]}
+        inFlight={inFlight({ questions: [question] })}
+      />,
     );
 
     expect(settledMarkup).toContain("Which surface first?");
@@ -201,6 +213,7 @@ describe("PlanTimeline", () => {
   it("renders the streaming status, live markdown, and collapsed live grounding fold", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[]}
         inFlight={inFlight({
           text: "Streaming **now**",
@@ -219,6 +232,7 @@ describe("PlanTimeline", () => {
   it("does not add thread-only affordances", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
+        planId={PLAN_ID}
         timeline={[message("assistant-plain", "assistant", "Plain reply")]}
         inFlight={inFlight({ text: "Live reply" })}
       />,
@@ -231,5 +245,69 @@ describe("PlanTimeline", () => {
     expect(markup).not.toContain('aria-label="Runtime mode"');
     expect(markup).not.toContain("data-chat-provider-model-picker");
     expect(markup).not.toContain("data-model-picker-content");
+  });
+
+  it("renders technical-plan rows with path-relative staleness", () => {
+    const revisionId = id("revision-1");
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        planId={PLAN_ID}
+        timeline={[
+          {
+            _tag: "plan-revision",
+            commitId: revisionId,
+            sequence: 1,
+            parents: [],
+            published: false,
+            authorKind: "human",
+            createdAt: CREATED_AT,
+          },
+          {
+            _tag: "technical-plan",
+            commitId: id("technical-1"),
+            sequence: 2,
+            parents: [revisionId],
+            published: false,
+            authorKind: "human",
+            createdAt: CREATED_AT,
+            repositoryId: MercurianRepositoryId.make("repository-1"),
+            repositoryName: "web",
+            sourceRevisionCommitId: revisionId,
+          },
+          {
+            _tag: "plan-revision",
+            commitId: id("revision-2"),
+            sequence: 3,
+            parents: [id("technical-1")],
+            published: false,
+            authorKind: "human",
+            createdAt: CREATED_AT,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("You derived a technical plan for web");
+    expect(markup).toContain(">Stale</span>");
+  });
+
+  it("renders a stoppable deriving card with live grounding", () => {
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        planId={PLAN_ID}
+        timeline={[]}
+        inFlightDerivation={{
+          turnId: PlanTurnId.make("derivation-1"),
+          parentCommitId: id("revision-1"),
+          repositoryId: MercurianRepositoryId.make("repository-1"),
+          repositoryName: "web",
+          grounding: [{ kind: "file-read", label: "apps/web/src/App.tsx" }],
+        }}
+      />,
+    );
+
+    expect(markup).toContain("Deriving technical plan for web…");
+    expect(markup).toContain("Consulted 1 item…");
+    expect(markup).toContain(">Stop</button>");
   });
 });
