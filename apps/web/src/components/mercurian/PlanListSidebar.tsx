@@ -12,9 +12,11 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  CalendarIcon,
   ChevronDownIcon,
   CircleDashedIcon,
   CircleDotIcon,
+  ClockIcon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -63,7 +65,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import {
   buildPlanRowMenuItems,
   resolveAdjacentId,
@@ -102,6 +104,34 @@ const ARCHIVED_ROW_MENU_ICONS: Record<ArchivedPlanRowAction, ReactNode> = {
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
+}
+
+function SidebarPlanTooltip(props: { readonly title: string; readonly children: ReactNode }) {
+  return (
+    <TooltipPopup
+      side="right"
+      align="start"
+      sideOffset={4}
+      variant="glass"
+      className="max-w-80 text-left whitespace-normal [&_[data-slot=tooltip-viewport]]:p-0"
+    >
+      <div className="flex min-w-0 max-w-80 flex-col gap-2 p-[var(--floating-content-inset)]">
+        <div className="min-w-0 truncate text-xs leading-none font-medium text-foreground">
+          {props.title}
+        </div>
+        <div className="grid gap-1.5 pl-0.5 text-xs text-muted-foreground">{props.children}</div>
+      </div>
+    </TooltipPopup>
+  );
+}
+
+function SidebarPlanTooltipRow(props: { readonly icon: ReactNode; readonly children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {props.icon}
+      <div className="min-w-0 truncate text-foreground/75">{props.children}</div>
+    </div>
+  );
 }
 
 /** Mercurian's flat plan list, scoped across projects rather than nested under them. */
@@ -175,61 +205,68 @@ export default function PlanListSidebar() {
           }
         >
           <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
-            <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
-              <PlanDraftBlock
-                activeDraftId={selection.activeDraftId}
-                projectNameById={projectNameById}
-                projectScopeId={projectScopeId}
-              />
-              {active.map((plan) => (
-                <PlanCard
-                  key={plan.planId}
-                  plan={plan}
-                  projectName={projectNameById.get(plan.projectId) ?? "Unknown project"}
-                  isActive={selection.activePlanId === plan.planId}
-                  jumpLabel={jumpLabelByPlanId.get(plan.planId) ?? null}
+            <TooltipProvider
+              key="plan-sidebar-tooltips-150"
+              delay={150}
+              closeDelay={0}
+              timeout={400}
+            >
+              <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
+                <PlanDraftBlock
+                  activeDraftId={selection.activeDraftId}
+                  projectNameById={projectNameById}
+                  projectScopeId={projectScopeId}
                 />
-              ))}
-              {archived.length > 0 ? (
-                <ArchivedShelfHeader
-                  count={archived.length}
-                  expanded={isArchivedExpanded}
-                  onToggle={() => setIsArchivedExpanded((expanded) => !expanded)}
-                />
-              ) : null}
-              {isArchivedExpanded
-                ? archivedPageRows.visible.map((plan) => (
-                    <ArchivedPlanRow
-                      key={plan.planId}
-                      plan={plan}
-                      isActive={selection.activePlanId === plan.planId}
-                    />
-                  ))
-                : null}
-              {isArchivedExpanded && archivedPageRows.hiddenCount > 0 ? (
-                <li className="list-none">
-                  <button
-                    type="button"
-                    onClick={() => setArchivedPage((page) => page + 1)}
-                    className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  >
-                    <PlusIcon aria-hidden className="size-4 shrink-0" />
-                    Show {archivedPageRows.nextPageCount} more
-                  </button>
-                </li>
-              ) : null}
-              {projects.length === 0 ? (
-                <SidebarEmptyState onAddProject={() => setIsNewProjectOpen(true)}>
-                  No projects yet
-                </SidebarEmptyState>
-              ) : investedDraftCount + active.length + archived.length === 0 ? (
-                <SidebarEmptyState>
-                  {scopedProject === null
-                    ? "No plans yet"
-                    : `No plans in ${scopedProject.name} yet`}
-                </SidebarEmptyState>
-              ) : null}
-            </ul>
+                {active.map((plan) => (
+                  <PlanCard
+                    key={plan.planId}
+                    plan={plan}
+                    projectName={projectNameById.get(plan.projectId) ?? "Unknown project"}
+                    isActive={selection.activePlanId === plan.planId}
+                    jumpLabel={jumpLabelByPlanId.get(plan.planId) ?? null}
+                  />
+                ))}
+                {archived.length > 0 ? (
+                  <ArchivedShelfHeader
+                    count={archived.length}
+                    expanded={isArchivedExpanded}
+                    onToggle={() => setIsArchivedExpanded((expanded) => !expanded)}
+                  />
+                ) : null}
+                {isArchivedExpanded
+                  ? archivedPageRows.visible.map((plan) => (
+                      <ArchivedPlanRow
+                        key={plan.planId}
+                        plan={plan}
+                        isActive={selection.activePlanId === plan.planId}
+                      />
+                    ))
+                  : null}
+                {isArchivedExpanded && archivedPageRows.hiddenCount > 0 ? (
+                  <li className="list-none">
+                    <button
+                      type="button"
+                      onClick={() => setArchivedPage((page) => page + 1)}
+                      className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                    >
+                      <PlusIcon aria-hidden className="size-4 shrink-0" />
+                      Show {archivedPageRows.nextPageCount} more
+                    </button>
+                  </li>
+                ) : null}
+                {projects.length === 0 ? (
+                  <SidebarEmptyState onAddProject={() => setIsNewProjectOpen(true)}>
+                    No projects yet
+                  </SidebarEmptyState>
+                ) : investedDraftCount + active.length + archived.length === 0 ? (
+                  <SidebarEmptyState>
+                    {scopedProject === null
+                      ? "No plans yet"
+                      : `No plans in ${scopedProject.name} yet`}
+                  </SidebarEmptyState>
+                ) : null}
+              </ul>
+            </TooltipProvider>
           </SidebarGroup>
         </SidebarContent>
       )}
@@ -464,49 +501,59 @@ const PlanDraftRow = memo(function PlanDraftRow(props: {
   }, [navigate, props.draft.draftId]);
 
   return (
-    <li className="list-none py-0.5">
-      <div
-        role="button"
-        tabIndex={0}
-        data-testid="plan-sidebar-draft-row"
-        className={cn(
-          "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none",
-          props.isActive
-            ? "bg-sidebar-row-active"
-            : "bg-amber-400/[0.04] hover:bg-amber-400/[0.08]",
-        )}
-        onClick={activate}
-        onKeyDown={(event) => activateRowFromKeyboard(event, activate)}
-      >
-        <div className="relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
-          <div className="flex h-5 min-w-0 items-center gap-1.5">
-            <SquarePenIcon
-              aria-hidden
-              className="size-3 shrink-0 text-amber-600 dark:text-amber-300/80"
+    <li className="list-none">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <div
+              role="button"
+              tabIndex={0}
+              data-testid="plan-sidebar-draft-row"
+              className={cn(
+                "group/sidebar-row relative flex h-9 w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-2.5 text-left text-sidebar-foreground outline-none select-none",
+                props.isActive
+                  ? "bg-sidebar-row-active"
+                  : "bg-amber-400/[0.04] hover:bg-amber-400/[0.08]",
+              )}
+              onClick={activate}
+              onKeyDown={(event) => activateRowFromKeyboard(event, activate)}
             />
-            <FolderIcon className="size-4 shrink-0 text-muted-foreground/60" />
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectName}
-            </span>
-            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
-              <button
-                type="button"
-                aria-label={`Discard draft in ${props.projectName}`}
-                title="Discard draft"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  props.onDiscard(props.draft.draftId);
-                }}
-                className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 max-sm:pointer-events-auto max-sm:opacity-100"
-              >
-                <XIcon className="size-3" />
-              </button>
-            </span>
-          </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground/90">{preview}</div>
-        </div>
-      </div>
+          }
+        >
+          <SquarePenIcon
+            aria-hidden
+            className="size-3 shrink-0 text-amber-600 dark:text-amber-300/80"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground/90">
+            {preview}
+          </span>
+          <button
+            type="button"
+            aria-label={`Discard draft in ${props.projectName}`}
+            title="Discard draft"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              props.onDiscard(props.draft.draftId);
+            }}
+            className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 max-sm:pointer-events-auto max-sm:opacity-100"
+          >
+            <XIcon className="size-3" />
+          </button>
+        </TooltipTrigger>
+        <SidebarPlanTooltip title={preview}>
+          <SidebarPlanTooltipRow
+            icon={<FolderIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
+          >
+            {props.projectName}
+          </SidebarPlanTooltipRow>
+          <SidebarPlanTooltipRow
+            icon={<CalendarIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
+          >
+            Created {formatRelativeTimeLabel(props.draft.createdAt)}
+          </SidebarPlanTooltipRow>
+        </SidebarPlanTooltip>
+      </Tooltip>
     </li>
   );
 });
@@ -557,67 +604,113 @@ const PlanCard = memo(function PlanCard(props: {
   );
 
   return (
-    <li className="list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_64px]">
-      <div
-        role="button"
-        tabIndex={0}
-        data-testid="plan-sidebar-card"
-        className={cn(
-          "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
-          props.isActive
-            ? "bg-sidebar-row-active text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-        )}
-        onClick={activate}
-        onKeyDown={(event) => activateRowFromKeyboard(event, activate)}
-        onContextMenu={handleContextMenu}
-      >
-        <div className="relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
-          <div className="flex h-5 min-w-0 items-center gap-1.5">
-            <FolderIcon className="size-4 shrink-0 text-muted-foreground/60" />
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectName}
-            </span>
-            <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
-              <span className="pointer-events-none self-center justify-self-end tabular-nums text-secondary-label transition-opacity group-focus-within/sidebar-row:absolute group-focus-within/sidebar-row:right-0 group-focus-within/sidebar-row:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0 max-sm:absolute max-sm:right-0 max-sm:opacity-0">
-                <PlanCardStatusLabel status={cardStatus.slot} updatedAt={props.plan.updatedAt} />
-              </span>
-              <span className="pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity group-focus-within/sidebar-row:pointer-events-auto group-focus-within/sidebar-row:static group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:static group-hover/sidebar-row:opacity-100 max-sm:pointer-events-auto max-sm:static max-sm:opacity-100">
-                <button
-                  type="button"
-                  aria-label={`Archive ${props.plan.title}`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void runAction("archive");
-                  }}
-                  className="-mr-0.5 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <ArchiveIcon className="size-3.5" />
-                  Archive
-                </button>
-                <PlanRowMenu title={props.plan.title} items={items} runAction={runAction} />
-              </span>
-            </span>
-          </div>
-          <div className="mt-1 flex min-w-0">
-            <span
+    <li className="list-none [content-visibility:auto] [contain-intrinsic-size:auto_34px]">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <div
+              role="button"
+              tabIndex={0}
+              data-testid="plan-sidebar-card"
               className={cn(
-                "min-w-0 flex-1 truncate text-sm",
-                cardStatus.unread
-                  ? "font-semibold text-foreground"
-                  : "font-medium text-foreground/90",
+                "group/sidebar-row relative flex h-9 w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-2.5 text-left outline-none select-none",
+                props.isActive
+                  ? "bg-sidebar-row-active text-sidebar-foreground"
+                  : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
               )}
-            >
-              {props.plan.title}
+              onClick={activate}
+              onKeyDown={(event) => activateRowFromKeyboard(event, activate)}
+              onContextMenu={handleContextMenu}
+            />
+          }
+        >
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-sm",
+              cardStatus.unread
+                ? "font-semibold text-foreground"
+                : "font-medium text-foreground/90",
+            )}
+          >
+            {props.plan.title}
+          </span>
+          <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
+            <span className="pointer-events-none self-center justify-self-end tabular-nums text-secondary-label transition-opacity group-focus-within/sidebar-row:absolute group-focus-within/sidebar-row:right-0 group-focus-within/sidebar-row:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0 max-sm:absolute max-sm:right-0 max-sm:opacity-0">
+              <PlanCardStatusLabel status={cardStatus.slot} updatedAt={props.plan.updatedAt} />
             </span>
-          </div>
-        </div>
-        {props.jumpLabel === null ? null : <JumpHintBadge label={props.jumpLabel} />}
-      </div>
+            <span className="pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity group-focus-within/sidebar-row:pointer-events-auto group-focus-within/sidebar-row:static group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:static group-hover/sidebar-row:opacity-100 max-sm:pointer-events-auto max-sm:static max-sm:opacity-100">
+              <button
+                type="button"
+                aria-label={`Archive ${props.plan.title}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void runAction("archive");
+                }}
+                className="-mr-0.5 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <ArchiveIcon className="size-3.5" />
+                Archive
+              </button>
+              <PlanRowMenu title={props.plan.title} items={items} runAction={runAction} />
+            </span>
+          </span>
+          {props.jumpLabel === null ? null : <JumpHintBadge label={props.jumpLabel} />}
+        </TooltipTrigger>
+        <SidebarPlanTooltip title={props.plan.title}>
+          <SidebarPlanTooltipRow
+            icon={<FolderIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
+          >
+            {props.projectName}
+          </SidebarPlanTooltipRow>
+          <SidebarPlanTooltipRow
+            icon={<CalendarIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
+          >
+            Created {formatRelativeTimeLabel(props.plan.createdAt)}
+          </SidebarPlanTooltipRow>
+          <SidebarPlanTooltipRow
+            icon={<ClockIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
+          >
+            Updated {formatRelativeTimeLabel(props.plan.updatedAt)}
+          </SidebarPlanTooltipRow>
+          {cardStatus.slot === null ? null : <PlanTooltipStatusRow status={cardStatus.slot} />}
+        </SidebarPlanTooltip>
+      </Tooltip>
     </li>
   );
 });
+
+function PlanTooltipStatusRow(props: { readonly status: "awaiting-input" | "working" }) {
+  const isWorking = props.status === "working";
+  return (
+    <SidebarPlanTooltipRow
+      icon={
+        isWorking ? (
+          <CircleDashedIcon
+            aria-hidden
+            className="size-3 shrink-0 stroke-sky-600 opacity-75 dark:stroke-sky-400"
+          />
+        ) : (
+          <CircleDotIcon
+            aria-hidden
+            className="size-3 shrink-0 stroke-indigo-600 dark:stroke-indigo-300"
+          />
+        )
+      }
+    >
+      <span
+        className={cn(
+          "font-medium",
+          isWorking
+            ? "text-sky-600 opacity-75 dark:text-sky-400"
+            : "text-indigo-600 dark:text-indigo-300",
+        )}
+      >
+        {isWorking ? "Working" : "Input"}
+      </span>
+    </SidebarPlanTooltipRow>
+  );
+}
 
 function PlanCardStatusLabel(props: {
   readonly status: "awaiting-input" | "working" | null;
