@@ -54,7 +54,8 @@ const SEARCH_TOOL_NAMES = new Set([
 
 const LISTING_TOOL_NAMES = new Set(["glob", "ls", "list", "list_dir", "listdirectory", "tree"]);
 
-const isPlanningWriteTool = (toolName: string) => toolName.includes("save_plan_revision");
+const isPlanningWriteTool = (toolName: string) =>
+  toolName.includes("save_plan_revision") || toolName.includes("save_implement_proposal");
 
 function classifyToolName(toolName: string): PlanGroundingItem["kind"] {
   const normalized = toolName.trim().toLowerCase();

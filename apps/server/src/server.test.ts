@@ -991,8 +991,7 @@ const buildAppUnderTest = (options?: {
       // file, so nothing here reaches t3code's store.
       Layer.provide(
         Layer.mergeAll(
-          PlanningStore.layer,
-          RepositoryStore.layer,
+          PlanningStore.layer.pipe(Layer.provideMerge(RepositoryStore.layer)),
           WorkspaceSettingsStore.layer,
           // Over a connector that reaches no network: the server suite is about
           // the wire, not about Linear.

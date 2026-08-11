@@ -27,6 +27,21 @@ export const SavePlanRevisionResult = Schema.Struct({
   saved: Schema.Literal(true),
 });
 
+export const SaveImplementProposalInput = Schema.Struct({
+  repositories: Schema.Array(Schema.String),
+  rationale: Schema.optional(Schema.String),
+  splits: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        repository: Schema.String,
+        text: Schema.String,
+      }),
+    ),
+  ),
+});
+
+export const SaveImplementProposalResult = Schema.Struct({ saved: Schema.Literal(true) });
+
 export const ReadPlanResult = Schema.Struct({
   /** The plan document's current text. Empty is a real state. */
   text: Schema.String,
@@ -47,6 +62,18 @@ export const SavePlanRevisionTool = Tool.make("save_plan_revision", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.OpenWorld, false);
 
+export const SaveImplementProposalTool = Tool.make("save_implement_proposal", {
+  description:
+    "Save the complete implement analysis. Name every repository the plan requires; when several are required, include one complete plan projection per repository. Calling again replaces the pending proposal until analysis completes.",
+  parameters: SaveImplementProposalInput,
+  success: SaveImplementProposalResult,
+  failure: PlanningTurnNotFoundError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Save implement proposal")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const ReadPlanTool = Tool.make("read_plan", {
   description:
     "Read the plan document's current text, as of this conversation's tip. Use before save_plan_revision so the revision builds on what is actually there.",
@@ -61,4 +88,8 @@ export const ReadPlanTool = Tool.make("read_plan", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
-export const PlanningToolkit = Toolkit.make(SavePlanRevisionTool, ReadPlanTool);
+export const PlanningToolkit = Toolkit.make(
+  SavePlanRevisionTool,
+  SaveImplementProposalTool,
+  ReadPlanTool,
+);

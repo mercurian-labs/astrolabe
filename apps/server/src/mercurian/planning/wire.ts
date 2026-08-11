@@ -64,8 +64,10 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
   ...(message.question === undefined ? {} : { question: message.question }),
 });
 
-export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision =>
-  toWirePlanCommitFields(revision);
+export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision => ({
+  ...toWirePlanCommitFields(revision),
+  ...(revision.split === undefined ? {} : { split: revision.split }),
+});
 
 /** Unlike a revision, this one carries its body: the space begins with it. */
 export const toWirePlanIssueRevision = (

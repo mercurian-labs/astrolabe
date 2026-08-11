@@ -34,8 +34,10 @@ import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
   ChatAttachment,
+  ConfirmSplitsBlockedError,
   MercurianProjectId,
   MercurianProjectNotFoundError,
+  MercurianRepositoryId,
   PlanDeleteBlockedError,
   PlanGroundingItem,
   PlanGroundingScope,
@@ -44,6 +46,7 @@ import {
   PlanQuestionRecord,
   PlanTurnActiveError,
   TrackerConnectionId,
+  TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 
 import {
@@ -53,6 +56,7 @@ import {
 } from "../../persistence/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, CommitAuthorKind, CommitId, HistoryId } from "../commitTree/schema.ts";
+import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import { PlanTurnRegistry } from "./PlanTurnRegistry.ts";
 import { MercurianProject, Plan } from "./schema.ts";
 
@@ -92,7 +96,16 @@ export type MessageCommitPayload = typeof MessageCommitPayload.Type;
  * and a fork's text is just its own path's latest snapshot. Plans are
  * human-scale documents; the storage this costs is not scarce.
  */
-export const PlanRevisionCommitPayload = Schema.Struct({ text: Schema.String });
+const PlanSplitStamp = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+});
+export type PlanSplitStamp = typeof PlanSplitStamp.Type;
+
+export const PlanRevisionCommitPayload = Schema.Struct({
+  text: Schema.String,
+  split: Schema.optional(PlanSplitStamp),
+});
 export type PlanRevisionCommitPayload = typeof PlanRevisionCommitPayload.Type;
 
 /**
@@ -143,7 +156,10 @@ export type PlanMessage = typeof PlanMessage.Type;
  * in the order; the text it produced is the artifact, read as {@link PlanDetail.planText}
  * at the tip and as {@link PlanningStore.getPlanTextAt} anywhere earlier.
  */
-export const PlanRevision = Schema.Struct(PlanCommitFields);
+export const PlanRevision = Schema.Struct({
+  ...PlanCommitFields,
+  split: Schema.optional(PlanSplitStamp),
+});
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
@@ -245,7 +261,8 @@ export type PlanningStoreRefusal =
   | MercurianProjectNotFoundError
   | PlanNotFoundError
   | PlanDeleteBlockedError
-  | PlanTurnActiveError;
+  | PlanTurnActiveError
+  | ConfirmSplitsBlockedError;
 
 export type PlanningStoreError =
   | PlanningStoreRefusal
@@ -317,6 +334,20 @@ export const SavePlanRevisionInput = Schema.Struct({
 });
 export type SavePlanRevisionInput = typeof SavePlanRevisionInput.Type;
 
+export const SaveSplitInput = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  text: Schema.String,
+});
+export type SaveSplitInput = typeof SaveSplitInput.Type;
+
+export const SaveSplitsInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  splits: Schema.Array(SaveSplitInput),
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SaveSplitsInput = typeof SaveSplitsInput.Type;
+
 /**
  * The assistant's settled reply. The parent is always named — the turn knows
  * exactly where it stands, and tip-guessing is how a race would start — and
@@ -372,6 +403,17 @@ export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
 export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
+
+export const GetImplementContextInput = Schema.Struct({
+  planId: PlanId,
+  atCommitId: Schema.optional(CommitId),
+});
+export type GetImplementContextInput = typeof GetImplementContextInput.Type;
+
+export interface ImplementContext {
+  readonly atCommitId: CommitId;
+  readonly planText: string;
+}
 
 export const RecordPlanVisitInput = Schema.Struct({
   planId: PlanId,
@@ -433,6 +475,10 @@ export class PlanningStore extends Context.Service<
     readonly savePlanRevision: (
       input: SavePlanRevisionInput,
     ) => Effect.Effect<PlanRevision, PlanningStoreError>;
+    /** Land repository projections as sibling human revisions at one parent. */
+    readonly saveSplits: (
+      input: SaveSplitsInput,
+    ) => Effect.Effect<ReadonlyArray<PlanRevision>, PlanningStoreError>;
     /**
      * The assistant's settled reply, landed where its turn stands. Passes
      * `authorKind: "assistant"` through to the commit store, whose
@@ -487,6 +533,10 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
+    /** The artifact and exact history point an implement analysis starts from. */
+    readonly getImplementContext: (
+      input: GetImplementContextInput,
+    ) => Effect.Effect<ImplementContext, PlanningStoreError>;
     /**
      * You looked at this plan. Writes — and announces — only when the visit
      * changes seen-ness: advancing an already-current visit changes nothing any
@@ -611,6 +661,7 @@ const isPlanningStoreRefusal = Schema.is(
     PlanNotFoundError,
     PlanDeleteBlockedError,
     PlanTurnActiveError,
+    ConfirmSplitsBlockedError,
   ]),
 );
 
@@ -653,6 +704,7 @@ export const make = Effect.gen(function* () {
   const commits = yield* CommitStore.CommitStore;
   const crypto = yield* Crypto.Crypto;
   const turnRegistry = yield* PlanTurnRegistry;
+  const repositoryStore = yield* RepositoryStore.RepositoryStore;
   const changesPubSub = yield* PubSub.unbounded<void>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
@@ -928,7 +980,10 @@ export const make = Effect.gen(function* () {
     } satisfies PlanMessage;
   });
 
-  const toPlanRevision = (commit: Commit): PlanRevision => toPlanCommitFields(commit);
+  const toPlanRevision = (commit: Commit, split?: PlanSplitStamp): PlanRevision => ({
+    ...toPlanCommitFields(commit),
+    ...(split === undefined ? {} : { split }),
+  });
 
   /**
    * A commit as the planning space sees it, or nothing when the space has no
@@ -944,8 +999,8 @@ export const make = Effect.gen(function* () {
     if (commit.kind === "plan-revision") {
       const payload = yield* decodeRevisionPayload(commit.payload);
       return Option.some<PlanTimelineEvent>({
-        item: { _tag: "plan-revision", ...toPlanRevision(commit) },
-        planText: payload.text,
+        item: { _tag: "plan-revision", ...toPlanRevision(commit, payload.split) },
+        ...(payload.split === undefined ? { planText: payload.text } : {}),
       });
     }
     if (commit.kind === "issue-revision") {
@@ -1310,6 +1365,73 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const saveSplits: PlanningStore["Service"]["saveSplits"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
+      if (input.splits.length === 0) {
+        return yield* new ConfirmSplitsBlockedError({ reason: "no-splits" });
+      }
+      const repositoryIds = new Set(input.splits.map((split) => split.repositoryId));
+      if (repositoryIds.size !== input.splits.length) {
+        return yield* new ConfirmSplitsBlockedError({ reason: "duplicate-repository" });
+      }
+
+      const repositorySnapshot = yield* repositoryStore.getSnapshot;
+      const linkedIds = new Set(
+        repositorySnapshot.projectRepositories
+          .filter((link) => link.projectId === plan.projectId)
+          .map((link) => link.repositoryId),
+      );
+      const repositoriesById = new Map(
+        repositorySnapshot.repositories.map((repository) => [repository.repositoryId, repository]),
+      );
+      const resolved = input.splits.map((split) => ({
+        ...split,
+        repository: repositoriesById.get(split.repositoryId),
+      }));
+      if (
+        resolved.some(
+          ({ repositoryId, repository }) =>
+            repository === undefined || !linkedIds.has(repositoryId),
+        )
+      ) {
+        return yield* new ConfirmSplitsBlockedError({ reason: "repository-not-in-project" });
+      }
+
+      const landed = yield* sql.withTransaction(
+        Effect.forEach(resolved, ({ text, repository }) =>
+          Effect.gen(function* () {
+            const stampedRepository = repository!;
+            const split = {
+              repositoryId: stampedRepository.repositoryId,
+              repositoryName: stampedRepository.name,
+            } satisfies PlanSplitStamp;
+            const commitId = yield* mintId(CommitId);
+            const appended = yield* appendAt({
+              plan,
+              parentCommitId: input.parentCommitId,
+              commitId,
+              kind: "plan-revision",
+              payload: { text, split } satisfies PlanRevisionCommitPayload,
+              createdAt: input.createdAt,
+            });
+            return toPlanRevision(appended, split);
+          }),
+        ),
+      );
+
+      yield* announceChange;
+      return landed;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.saveSplits:query",
+          "PlanningStore.saveSplits:encodeRequest",
+        ),
+      ),
+    );
+
   /**
    * The assistant's write path: explicit parent, assistant attribution, and
    * nothing else different from a human's. The commit store's
@@ -1573,6 +1695,27 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const getImplementContext: PlanningStore["Service"]["getImplementContext"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const tip = input.atCommitId === undefined ? yield* readTip(plan.historyId) : undefined;
+      const atCommitId = input.atCommitId ?? tip?.commitId;
+      if (atCommitId === undefined) {
+        return yield* new CommitStore.CommitNotFoundError({
+          commitId: CommitId.make(`missing-tip-${input.planId}`),
+        });
+      }
+      const planText = yield* getPlanTextAt({ planId: input.planId, commitId: atCommitId });
+      return { atCommitId, planText } satisfies ImplementContext;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.getImplementContext:query",
+          "PlanningStore.getImplementContext:decodeRows",
+        ),
+      ),
+    );
+
   /**
    * A visit is worth writing only when it changes what a window would draw:
    * the plan has never been visited, or the visit lands at or after activity
@@ -1639,6 +1782,7 @@ export const make = Effect.gen(function* () {
     importPlan,
     appendMessage,
     savePlanRevision,
+    saveSplits,
     appendAssistantMessage,
     saveAssistantPlanRevision,
     archivePlan,
@@ -1647,6 +1791,7 @@ export const make = Effect.gen(function* () {
     getPlanSnapshot,
     listTimelineSince,
     getPlanTextAt,
+    getImplementContext,
     recordPlanVisit,
     markPlanUnread,
     get changes() {

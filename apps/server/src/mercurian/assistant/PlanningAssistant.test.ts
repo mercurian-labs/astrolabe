@@ -12,6 +12,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import {
   EventId,
+  MercurianCommitId,
   PlanId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -172,7 +173,7 @@ const stubProcessRunner = Layer.succeed(
  * because the harness's call queues are receipts, and receipts shared between
  * concurrently running tests would answer the wrong caller.
  */
-const testLayer = () => {
+const testLayer = (providers: ReadonlyArray<ServerProvider> = [providerSnapshot]) => {
   const harnessContext = Layer.unwrap(
     Effect.map(makeHarness, ({ harness, service }) =>
       Layer.mergeAll(
@@ -184,8 +185,9 @@ const testLayer = () => {
   return PlanningAssistant.layer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
-        PlanningStore.layer,
-        RepositoryStore.layer.pipe(Layer.provide(stubProcessRunner)),
+        PlanningStore.layer.pipe(
+          Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(stubProcessRunner))),
+        ),
         WorkspaceSettingsStore.layer,
       ),
     ),
@@ -194,7 +196,7 @@ const testLayer = () => {
     Layer.provideMerge(harnessContext),
     Layer.provideMerge(
       Layer.mock(ProviderRegistry.ProviderRegistry)({
-        getProviders: Effect.succeed([providerSnapshot]),
+        getProviders: Effect.succeed(providers),
       }),
     ),
     Layer.provideMerge(MercurianSqlite.layerMemory),
@@ -829,4 +831,362 @@ describe("PlanningAssistant", () => {
       assert.ok(!resumeInput.includes("Answer one"));
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
+
+  it.effect("an implement turn publishes an atomic proposal without writing history", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created } = yield* seedPlan();
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Implement the service boundary",
+        createdAt: at("2026-08-08T01:00:00.000Z"),
+      });
+      const { first, second } = yield* seedTwoRepositories(created);
+      const before = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline
+        .length;
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      const unknownThread = yield* Effect.flip(
+        assistant.saveImplementProposalFromThread({
+          threadId: ThreadId.make("coding-thread"),
+          repositories: [first.name],
+        }),
+      );
+      assert.strictEqual(unknownThread._tag, "PlanningTurnNotFoundError");
+
+      yield* assistant.tryImplement({ planId: created.plan.planId });
+      const session = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(session.runtimeMode, "approval-required");
+      assert.strictEqual(session.cwd, first.path);
+      assert.deepStrictEqual(session.additionalDirectories, [second.path]);
+      const prompt = (yield* Queue.take(harness.sendTurns)).input ?? "";
+      assert.ok(prompt.includes("save_implement_proposal"));
+      assert.ok(prompt.includes("# Implement the service boundary"));
+      const started = yield* Queue.take(frames);
+      assert.strictEqual(started.kind, "implement-started");
+      assert.deepStrictEqual(
+        yield* assistant.status,
+        new Map([[created.plan.planId, { isWorking: true, hasPendingInput: false }]]),
+      );
+
+      yield* harness.emit(
+        runtimeEvent(session.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "hidden analysis" },
+        }),
+      );
+      yield* harness.emit({
+        ...runtimeEvent(session.threadId, {
+          type: "user-input.requested",
+          payload: { questions: [] },
+        }),
+        requestId: "implement-question" as never,
+      });
+      assert.deepStrictEqual(yield* Queue.take(harness.userInputs), {
+        requestId: "implement-question",
+        answers: {},
+      });
+      const revisionRefused = yield* Effect.flip(
+        assistant.saveRevisionFromThread({ threadId: session.threadId, text: "Must not land" }),
+      );
+      assert.strictEqual(revisionRefused._tag, "PlanningTurnNotFoundError");
+      yield* assistant.saveImplementProposalFromThread({
+        threadId: session.threadId,
+        repositories: ["wrong-first-call"],
+      });
+      yield* assistant.saveImplementProposalFromThread({
+        threadId: session.threadId,
+        repositories: [first.name],
+      });
+      yield* harness.emit(
+        runtimeEvent(session.threadId, { type: "turn.completed", payload: { state: "completed" } }),
+      );
+      const analyzed = yield* Queue.take(frames);
+      if (analyzed.kind !== "implement-analyzed") {
+        assert.fail(`expected implement-analyzed, received ${analyzed.kind}`);
+      }
+      assert.deepStrictEqual(analyzed.proposal.verdict, {
+        kind: "atomic",
+        repositoryId: first.repositoryId,
+        repositoryName: first.name,
+      });
+      assert.strictEqual(
+        analyzed.proposal.parentCommitId,
+        MercurianCommitId.make(revision.commitId),
+      );
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        before,
+      );
+      assert.strictEqual(yield* Queue.take(harness.stops), session.threadId);
+      assert.ok((yield* assistant.implementProposal(created.plan.planId)) !== undefined);
+      yield* assistant.cancelImplementProposal(created.plan.planId);
+      assert.deepStrictEqual(yield* Queue.take(frames), {
+        kind: "implement-cancelled",
+        turnId: analyzed.proposal.turnId,
+      });
+      assert.strictEqual(yield* assistant.implementProposal(created.plan.planId), undefined);
+      yield* assistant.cancelImplementProposal(created.plan.planId);
+      assert.strictEqual(yield* Queue.size(frames), 0);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("validates multi-repository proposals and reports every failure without commits", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created } = yield* seedPlan();
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Change both packages",
+        createdAt: at("2026-08-08T02:00:00.000Z"),
+      });
+      const { first, second } = yield* seedTwoRepositories(created);
+      const frames = yield* subscribeFrames(created.plan.planId);
+      const before = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline
+        .length;
+
+      const analyze = Effect.fn("test.analyze")(function* (
+        proposal?: PlanningAssistant.PendingImplementProposal,
+      ) {
+        yield* assistant.tryImplement({ planId: created.plan.planId });
+        const session = yield* Queue.take(harness.startSessions);
+        yield* Queue.take(harness.sendTurns);
+        yield* Queue.take(frames);
+        if (proposal !== undefined) {
+          yield* assistant.saveImplementProposalFromThread({
+            threadId: session.threadId,
+            ...proposal,
+          });
+        }
+        yield* harness.emit(
+          runtimeEvent(session.threadId, {
+            type: "turn.completed",
+            payload: { state: "completed" },
+          }),
+        );
+        const result = yield* Queue.take(frames);
+        yield* Queue.take(harness.stops);
+        return result;
+      });
+
+      const absent = yield* analyze();
+      assert.ok(absent.kind === "implement-failed" && absent.reason === "no-proposal");
+      const unknown = yield* analyze({ repositories: ["not-a-project-repository"] });
+      assert.ok(unknown.kind === "implement-failed" && unknown.reason === "invalid-proposal");
+      const mismatch = yield* analyze({
+        repositories: [first.name, second.name],
+        splits: [{ repository: first.name, text: "Only one" }],
+      });
+      assert.ok(mismatch.kind === "implement-failed" && mismatch.reason === "invalid-proposal");
+      const valid = yield* analyze({
+        repositories: [first.name, second.name],
+        rationale: "The protocol and implementation move together.",
+        splits: [
+          { repository: first.name, text: "First projection" },
+          { repository: second.name, text: "Second projection" },
+        ],
+      });
+      assert.ok(
+        valid.kind === "implement-analyzed" && valid.proposal.verdict.kind === "needs-split",
+      );
+      assert.strictEqual(
+        valid.kind === "implement-analyzed" && valid.proposal.verdict.kind === "needs-split"
+          ? valid.proposal.verdict.splits.length
+          : 0,
+        2,
+      );
+      assert.ok((yield* assistant.implementProposal(created.plan.planId)) !== undefined);
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        text: "Revisit the plan",
+      });
+      yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      assert.strictEqual(yield* assistant.implementProposal(created.plan.planId), undefined);
+      yield* assistant.teardownPlan({ planId: created.plan.planId, commitPartial: false });
+      yield* Queue.take(frames);
+      yield* Queue.take(harness.stops);
+
+      const repositories = yield* RepositoryStore.RepositoryStore;
+      const duplicate = yield* repositories.addRepository({
+        path: "/var",
+        name: first.name,
+        createdAt: at("2026-08-08T02:10:00.000Z"),
+      });
+      yield* repositories.setProjectRepositories({
+        projectId: created.plan.projectId,
+        repositoryIds: [first.repositoryId, second.repositoryId, duplicate.repositoryId],
+        addedAt: at("2026-08-08T02:11:00.000Z"),
+      });
+      const ambiguous = yield* analyze({ repositories: [first.name] });
+      assert.ok(ambiguous.kind === "implement-failed" && ambiguous.reason === "invalid-proposal");
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        before,
+      );
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("stops and tears down implement turns without landing history", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created } = yield* seedPlan();
+      yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Implement me",
+        createdAt: at("2026-08-08T03:00:00.000Z"),
+      });
+      yield* seedTwoRepositories(created);
+      const before = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline
+        .length;
+      const frames = yield* subscribeFrames(created.plan.planId);
+      yield* assistant.tryImplement({ planId: created.plan.planId });
+      const session = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      yield* assistant.stopTurn({ planId: created.plan.planId });
+      yield* Queue.take(harness.interrupts);
+      yield* harness.emit(
+        runtimeEvent(session.threadId, { type: "turn.aborted", payload: { reason: "interrupt" } }),
+      );
+      const stopped = yield* Queue.take(frames);
+      assert.ok(stopped.kind === "implement-failed" && stopped.reason === "stopped");
+      yield* Queue.take(harness.stops);
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        before,
+      );
+
+      yield* assistant.tryImplement({ planId: created.plan.planId });
+      yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      yield* assistant.teardownPlan({ planId: created.plan.planId, commitPartial: false });
+      const tornDown = yield* Queue.take(frames);
+      assert.ok(tornDown.kind === "implement-failed" && tornDown.reason === "stopped");
+      yield* Queue.take(harness.stops);
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        before,
+      );
+
+      yield* assistant.tryImplement({ planId: created.plan.planId });
+      const failedSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(failedSession.threadId, {
+          type: "session.exited",
+          payload: { reason: "provider exited" },
+        }),
+      );
+      const providerFailure = yield* Queue.take(frames);
+      assert.ok(
+        providerFailure.kind === "implement-failed" && providerFailure.reason === "provider-error",
+      );
+      yield* Queue.take(harness.stops);
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        before,
+      );
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("refuses empty plans and conflicting reply/implement turns synchronously", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const empty = yield* Effect.flip(assistant.tryImplement({ planId: created.plan.planId }));
+      assert.ok(empty._tag === "ImplementBlockedError" && empty.reason === "plan-empty");
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Ready",
+        createdAt: at("2026-08-08T04:00:00.000Z"),
+      });
+      yield* seedTwoRepositories(created);
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        text: "Reply",
+      });
+      yield* Queue.take(harness.startSessions);
+      const conflict = yield* Effect.flip(assistant.tryImplement({ planId: created.plan.planId }));
+      assert.strictEqual(conflict._tag, "PlanTurnActiveError");
+      yield* assistant.teardownPlan({ planId: created.plan.planId, commitPartial: false });
+
+      const frames = yield* subscribeFrames(created.plan.planId);
+      yield* assistant.tryImplement({ planId: created.plan.planId });
+      yield* Queue.take(harness.startSessions);
+      yield* Queue.take(frames);
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Reply while analyzing",
+      });
+      const refused = yield* Queue.take(frames);
+      assert.ok(refused.kind === "turn-refused" && refused.reason === "turn-active");
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("refuses an implement turn when the planning model is unset", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T04:30:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Ready plan",
+        createdAt: at("2026-08-08T04:30:00.000Z"),
+      });
+      yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Ready",
+        createdAt: at("2026-08-08T04:31:00.000Z"),
+      });
+      const refused = yield* Effect.flip(assistant.tryImplement({ planId: created.plan.planId }));
+      assert.ok(refused._tag === "ImplementBlockedError" && refused.reason === "model-unset");
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  for (const [label, providers, expected] of [
+    ["no provider instance", [], "no-instance"],
+    [
+      "unavailable model",
+      [
+        {
+          ...providerSnapshot,
+          models: [{ slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null }],
+        },
+      ],
+      "model-unavailable",
+    ],
+  ] as const) {
+    it.effect(`refuses an implement turn for ${label}`, () =>
+      Effect.gen(function* () {
+        const assistant = yield* PlanningAssistant.PlanningAssistant;
+        const store = yield* PlanningStore.PlanningStore;
+        const { created } = yield* seedPlan();
+        yield* store.savePlanRevision({
+          planId: created.plan.planId,
+          text: "# Ready",
+          createdAt: at("2026-08-08T05:00:00.000Z"),
+        });
+        const refused = yield* Effect.flip(assistant.tryImplement({ planId: created.plan.planId }));
+        assert.ok(refused._tag === "ImplementBlockedError" && refused.reason === expected);
+      }).pipe(Effect.scoped, Effect.provide(testLayer(providers))),
+    );
+  }
 });

@@ -9,6 +9,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
   MercurianProjectId,
+  MercurianRepositoryId,
   PlanId,
   PlanTurnId,
   ThreadId,
@@ -16,16 +17,22 @@ import {
 } from "@t3tools/contracts";
 
 import * as CommitStore from "../commitTree/CommitStore.ts";
+import * as Config from "../../config.ts";
+import * as ProcessRunner from "../../processRunner.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
+import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as PlanningStore from "./PlanningStore.ts";
 import * as PlanTurnRegistry from "./PlanTurnRegistry.ts";
 
 const layer = it.layer(
   PlanningStore.layer.pipe(
+    Layer.provideMerge(RepositoryStore.layer),
     Layer.provideMerge(PlanTurnRegistry.layer),
     Layer.provideMerge(CommitStore.layer),
     Layer.provideMerge(MercurianSqlite.layerMemory),
+    Layer.provideMerge(ProcessRunner.layer),
+    Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "planning-store-" })),
     Layer.provide(NodeServicesLayer),
   ),
 );
@@ -1889,6 +1896,135 @@ layer("PlanningStore", (it) => {
       });
       assert.strictEqual(again.outcome, "created");
       assert.notStrictEqual(again.detail.plan.planId, first.detail.plan.planId);
+    }),
+  );
+
+  it.effect("lands repository-stamped split siblings without changing the parent artifact", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const repositories = yield* RepositoryStore.RepositoryStore;
+      const created = yield* seedPlan("2026-08-09T00:00:00.000Z");
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Shared implementation plan",
+        createdAt: at("2026-08-09T00:01:00.000Z"),
+      });
+      const serverRepository = yield* repositories.addRepository({
+        path: process.cwd(),
+        createdAt: at("2026-08-09T00:02:00.000Z"),
+      });
+      const contractsRepository = yield* repositories.addRepository({
+        path: new URL("../../../../../packages/contracts", import.meta.url).pathname,
+        createdAt: at("2026-08-09T00:02:00.000Z"),
+      });
+      yield* repositories.setProjectRepositories({
+        projectId: created.plan.projectId,
+        repositoryIds: [serverRepository.repositoryId, contractsRepository.repositoryId],
+        addedAt: at("2026-08-09T00:03:00.000Z"),
+      });
+
+      const landed = yield* store.saveSplits({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        splits: [
+          { repositoryId: serverRepository.repositoryId, text: "Server projection" },
+          { repositoryId: contractsRepository.repositoryId, text: "Contracts projection" },
+        ],
+        createdAt: at("2026-08-09T00:04:00.000Z"),
+      });
+
+      assert.strictEqual(landed.length, 2);
+      assert.deepStrictEqual(
+        landed.map((split) => split.parents),
+        [[revision.commitId], [revision.commitId]],
+      );
+      assert.deepStrictEqual(
+        landed.map((split) => split.split?.repositoryName),
+        [serverRepository.name, contractsRepository.name],
+      );
+      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(snapshot.planText, "# Shared implementation plan");
+      const events = yield* store.listTimelineSince({
+        planId: created.plan.planId,
+        afterSequence: 0,
+      });
+      const splitEvents = events.filter(
+        (event) => event.item._tag === "plan-revision" && event.item.split !== undefined,
+      );
+      assert.strictEqual(splitEvents.length, 2);
+      assert.ok(splitEvents.every((event) => event.planText === undefined));
+      assert.strictEqual(
+        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: landed[0]!.commitId }),
+        "Server projection",
+      );
+      assert.deepStrictEqual(yield* store.getImplementContext({ planId: created.plan.planId }), {
+        atCommitId: landed[1]!.commitId,
+        planText: "Contracts projection",
+      });
+      assert.deepStrictEqual(
+        yield* store.getImplementContext({
+          planId: created.plan.planId,
+          atCommitId: revision.commitId,
+        }),
+        { atCommitId: revision.commitId, planText: "# Shared implementation plan" },
+      );
+    }),
+  );
+
+  it.effect("refuses invalid split confirmations atomically and while a turn is active", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
+      const created = yield* seedPlan("2026-08-09T01:00:00.000Z");
+      const parent = created.timeline[0]!.commitId;
+      const unknown = MercurianRepositoryId.make("unknown-repository");
+
+      for (const [splits, reason] of [
+        [[], "no-splits"],
+        [
+          [
+            { repositoryId: unknown, text: "one" },
+            { repositoryId: unknown, text: "two" },
+          ],
+          "duplicate-repository",
+        ],
+        [[{ repositoryId: unknown, text: "one" }], "repository-not-in-project"],
+      ] as const) {
+        const refused = yield* Effect.flip(
+          store.saveSplits({
+            planId: created.plan.planId,
+            parentCommitId: parent,
+            splits,
+            createdAt: at("2026-08-09T01:01:00.000Z"),
+          }),
+        );
+        assert.strictEqual(refused._tag, "ConfirmSplitsBlockedError");
+        if (refused._tag === "ConfirmSplitsBlockedError") {
+          assert.strictEqual(refused.reason, reason);
+        }
+      }
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        1,
+      );
+
+      yield* registry.open({
+        flavor: "implement",
+        planId: created.plan.planId,
+        turnId: PlanTurnId.make("implement-turn"),
+        threadId: ThreadId.make("implement-thread"),
+        parentCommitId: parent,
+        tipCommitId: parent,
+      });
+      const activeRefusal = yield* Effect.flip(
+        store.saveSplits({
+          planId: created.plan.planId,
+          parentCommitId: parent,
+          splits: [],
+          createdAt: at("2026-08-09T01:02:00.000Z"),
+        }),
+      );
+      assert.strictEqual(activeRefusal._tag, "PlanTurnActiveError");
     }),
   );
 });

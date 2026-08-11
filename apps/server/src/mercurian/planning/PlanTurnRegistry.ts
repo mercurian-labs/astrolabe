@@ -32,7 +32,7 @@ import type { CommitId } from "../commitTree/schema.ts";
  */
 export interface ActivePlanTurn {
   /** Keeps tool permissions explicit as additional one-shot turn shapes are introduced. */
-  readonly flavor: "reply";
+  readonly flavor: "reply" | "implement";
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
   /** The provider session thread this turn is running on. */
