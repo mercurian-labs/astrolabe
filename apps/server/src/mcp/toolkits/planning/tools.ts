@@ -41,6 +41,9 @@ export const ReadPlanResult = Schema.Struct({
   text: Schema.String,
 });
 
+// Unlike an empty Struct, this emits the object-root inputSchema MCP clients require.
+const ReadPlanInput = Schema.Record(Schema.String, Schema.Never);
+
 export const SavePlanRevisionTool = Tool.make("save_plan_revision", {
   description:
     "Replace the plan document's whole text with the given text. This is the only way to change the plan — a revision is a snapshot of the entire document, not a diff, so pass the complete text you want the plan to contain. Call read_plan first so you revise what is actually there.",
@@ -68,7 +71,7 @@ export const SaveTechnicalPlanTool = Tool.make("save_technical_plan", {
 export const ReadPlanTool = Tool.make("read_plan", {
   description:
     "Read the plan document's current text, as of this conversation's tip. Use before save_plan_revision so the revision builds on what is actually there.",
-  parameters: Schema.Struct({}),
+  parameters: ReadPlanInput,
   success: ReadPlanResult,
   failure: PlanningTurnNotFoundError,
   dependencies,

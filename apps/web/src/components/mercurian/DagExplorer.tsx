@@ -1,9 +1,11 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import {
+  CheckIcon,
   CircleDotIcon,
   FileCode2Icon,
   FileTextIcon,
   GitForkIcon,
+  GitMergeIcon,
   MessageSquareIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
@@ -22,26 +24,29 @@ import {
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
-  navigatorLayout,
   planCommitSummary,
   spatialLayout,
-  type NavigatorLayout,
   type PlanGraph,
   type SpatialLayout,
   type SpatialPoint,
 } from "./PlanGraph.logic";
+import {
+  branchOption,
+  threadLayout,
+  type BranchOption,
+  type ThreadSwitch,
+} from "./PlanThread.logic";
 
 const EXPLORER_VIEW_STORAGE_KEY = "mercurian:dag-explorer-view:v1";
-const ExplorerView = Schema.Literals(["navigator", "graph"]);
+const ExplorerView = Schema.Literals(["thread", "graph"]);
 type ExplorerView = typeof ExplorerView.Type;
-const DEFAULT_EXPLORER_VIEW: ExplorerView = "navigator";
+const DEFAULT_EXPLORER_VIEW: ExplorerView = "thread";
 
-/** One navigator row, so the rail's geometry and the list's agree. */
+/** One thread row, shared by the list and its current-row scrolling. */
 const ROW_HEIGHT = 34;
-const LANE_WIDTH = 16;
-const RAIL_INSET = 12;
 
 const MAP_PADDING = 64;
 const MAP_MIN_ZOOM = 0.3;
@@ -54,15 +59,15 @@ const DRAG_THRESHOLD = 4;
  * The DAG explorer: the plan's whole history, in the two readings the design
  * settled on.
  *
- * The **Navigator** is the git-graph — commit rows in append order with a rail
- * drawing lanes and edges. Rows in time order are the easier reading to move
- * through, and rows are the thing you pick. The **Graph** is the spatial map:
- * every commit a node, every parent edge drawn, the whole shape visible at
- * once — for seeing structure, not for walking it.
+ * The **Thread** is the checked-out root-to-tip path through where the planning
+ * surface stands. Rows make that line easy to read and move through, while
+ * always-visible switches reveal its sibling branches and merge parents. The
+ * **Graph** is the spatial map: every commit a node, every parent edge drawn,
+ * the whole shape visible at once — for seeing structure, not for walking it.
  *
- * Neither view renders a commit twice. A merge is drawn once in both: in the
- * navigator where its lanes reunite, in the map as one node with an edge from
- * each parent.
+ * Neither view renders a commit twice. A merge is one row in the thread and
+ * one node in the map, with its alternate incoming lines available from the
+ * row's switch.
  *
  * The explorer carries no subscription of its own. Every commit it draws comes
  * from the timeline the planning space already holds, which is why a commit
@@ -102,13 +107,13 @@ export function DagExplorer({
             const chosen = next[0];
             // The switch is a choice between two views, never a way to have
             // neither: re-pressing the active one leaves it pressed.
-            if (chosen === "navigator" || chosen === "graph") {
+            if (chosen === "thread" || chosen === "graph") {
               setView(chosen);
             }
           }}
         >
-          <Toggle aria-label="Navigator view" value="navigator">
-            Navigator
+          <Toggle aria-label="Thread view" value="thread">
+            Thread
           </Toggle>
           <Toggle aria-label="Graph view" value="graph">
             Graph
@@ -119,12 +124,8 @@ export function DagExplorer({
         <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
           <p className="text-sm text-muted-foreground/70">Nothing has happened here yet.</p>
         </div>
-      ) : view === "navigator" ? (
-        <NavigatorView
-          currentCommitId={currentCommitId}
-          layout={navigatorLayout(graph)}
-          onSelect={onSelect}
-        />
+      ) : view === "thread" ? (
+        <ThreadView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       ) : (
         <GraphView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       )}
@@ -133,80 +134,156 @@ export function DagExplorer({
 }
 
 /**
- * The navigator: the git-graph, as rows plus an inline SVG rail behind them.
- * Lanes and edges are drawn once from `navigatorLayout` — no canvas, no
- * animation loop, and no graph dependency for a history a person can read.
+ * The checked-out thread: one plain root-to-tip list, with switches only where
+ * that line diverges from siblings or converges at a merge.
  */
-function NavigatorView({
-  layout,
+function ThreadView({
+  graph,
   currentCommitId,
   onSelect,
 }: {
-  readonly layout: NavigatorLayout;
+  readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
+  const [parentChoices, setParentChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(
+    () => new Map(),
+  );
+  const layout = useMemo(
+    () => threadLayout(graph, currentCommitId, parentChoices),
+    [currentCommitId, graph, parentChoices],
+  );
   const scrollRef = useCurrentRowScroll(currentCommitId);
-  const railWidth = RAIL_INSET * 2 + Math.max(0, layout.laneCount - 1) * LANE_WIDTH;
-  const laneX = (lane: number) => RAIL_INSET + lane * LANE_WIDTH;
-  const rowY = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   return (
     <div className="min-h-0 flex-1 overflow-auto py-2">
-      <div className="relative">
-        <svg
-          aria-hidden
-          className="pointer-events-none absolute top-0 left-0"
-          height={layout.rows.length * ROW_HEIGHT}
-          width={railWidth}
-        >
-          {layout.edges.map((edge) => (
-            <path
-              className="fill-none stroke-border"
-              d={railPath(
-                laneX(edge.fromLane),
-                rowY(edge.fromRow),
-                laneX(edge.toLane),
-                rowY(edge.toRow),
-              )}
-              key={`${edge.fromCommitId}->${edge.toCommitId}`}
-              strokeWidth={1.5}
+      <ol className="flex flex-col">
+        {layout.rows.map((row) => (
+          <li key={row.commitId}>
+            <CommitRow
+              isCurrent={row.commitId === currentCommitId}
+              item={row.item}
+              ref={row.commitId === currentCommitId ? scrollRef : undefined}
+              trailing={
+                row.siblings !== undefined || row.parentLines !== undefined ? (
+                  <span className="flex shrink-0 items-center gap-1">
+                    {row.siblings !== undefined ? (
+                      <DivergenceBadge
+                        graph={graph}
+                        kind="siblings"
+                        selection={row.siblings}
+                        onChoose={(option) => onSelect(option.tipId)}
+                      />
+                    ) : null}
+                    {row.parentLines !== undefined ? (
+                      <DivergenceBadge
+                        graph={graph}
+                        kind="parent-lines"
+                        selection={row.parentLines}
+                        onChoose={(option) => {
+                          setParentChoices((current) => {
+                            if (current.get(row.commitId) === option.branchRootId) return current;
+                            const next = new Map(current);
+                            next.set(row.commitId, option.branchRootId);
+                            return next;
+                          });
+                        }}
+                      />
+                    ) : null}
+                  </span>
+                ) : null
+              }
+              onSelect={onSelect}
             />
-          ))}
-          {layout.rows.map((row) => (
-            <circle
-              // Solid is shared history, hollow is private work still your own.
-              className={cn(
-                "stroke-muted-foreground",
-                row.item.published ? "fill-muted-foreground" : "fill-background",
-              )}
-              cx={laneX(row.lane)}
-              cy={rowY(row.row)}
-              key={row.commitId}
-              r={4}
-              strokeWidth={1.5}
-            />
-          ))}
-        </svg>
-        <ol className="flex flex-col">
-          {layout.rows.map((row) => (
-            <li key={row.commitId} style={{ paddingLeft: `${railWidth}px` }}>
-              <CommitRow
-                isCurrent={row.commitId === currentCommitId}
-                item={row.item}
-                ref={row.commitId === currentCommitId ? scrollRef : undefined}
-                trailing={
-                  row.isBranchPoint ? (
-                    <GitForkIcon className="size-3 shrink-0 text-muted-foreground/70" />
-                  ) : null
-                }
-                onSelect={onSelect}
-              />
-            </li>
-          ))}
-        </ol>
-      </div>
+          </li>
+        ))}
+      </ol>
     </div>
+  );
+}
+
+function DivergenceBadge({
+  graph,
+  kind,
+  selection,
+  onChoose,
+}: {
+  readonly graph: PlanGraph;
+  readonly kind: "siblings" | "parent-lines";
+  readonly selection: ThreadSwitch;
+  readonly onChoose: (option: BranchOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const options = useMemo(
+    () => selection.options.map((optionId) => branchOption(graph, optionId)),
+    [graph, selection.options],
+  );
+  const isSiblingSwitch = kind === "siblings";
+  const Icon = isSiblingSwitch ? GitForkIcon : GitMergeIcon;
+  const position = `${selection.index + 1}/${selection.options.length}`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        closeDelay={0}
+        delay={150}
+        openOnHover
+        render={
+          <button
+            aria-label={`${isSiblingSwitch ? "Switch branch" : "Choose parent line"}, ${position}`}
+            className={cn(
+              "inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums text-muted-foreground outline-hidden",
+              "hover:bg-accent data-[pressed]:bg-accent",
+              "focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+            type="button"
+          />
+        }
+      >
+        <Icon aria-hidden className="size-3" />
+        <span>{position}</span>
+      </PopoverTrigger>
+      <PopoverPopup align="end" className="w-72 max-w-none" side="right" viewportClassName="p-1">
+        <div className="flex flex-col gap-0.5">
+          {options.map((option, index) => {
+            const isCurrent = index === selection.index;
+            return (
+              <button
+                aria-current={isCurrent ? "true" : undefined}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-hidden",
+                  "hover:bg-accent focus-visible:bg-accent disabled:cursor-default disabled:bg-accent/50",
+                )}
+                disabled={isCurrent}
+                key={option.branchRootId}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onChoose(option);
+                }}
+              >
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-xs",
+                    option.published ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {option.summary}
+                </span>
+                <span className="shrink-0 text-[11px] text-muted-foreground/70">
+                  {formatRelativeTimeLabel(option.lastActiveAt)}
+                </span>
+                {isCurrent ? (
+                  <CheckIcon aria-label="Current line" className="size-3.5 shrink-0" />
+                ) : (
+                  <span className="size-3.5 shrink-0" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 }
 
@@ -467,7 +544,7 @@ function commitGlyph(item: PlanTimelineItem) {
 }
 
 /**
- * One commit, as the navigator shows it: what it was, what it said, and when.
+ * One commit, as the thread shows it: what it was, what it said, and when.
  *
  * Published work reads solid and private work muted — the same distinction the
  * dots draw, carried into the row so the text makes it too.
@@ -488,42 +565,46 @@ function CommitRow({
   const Glyph = commitGlyph(item);
 
   return (
-    <button
-      aria-current={isCurrent ? "true" : undefined}
+    <div
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 text-left ring-ring outline-hidden focus-visible:ring-2",
+        "flex w-full items-center gap-2 rounded-md px-2",
         "hover:bg-accent/50",
         isCurrent && "bg-accent",
       )}
-      ref={ref}
       style={{ height: `${ROW_HEIGHT}px` }}
-      type="button"
-      onClick={() => onSelect(item.commitId)}
     >
-      <Glyph
-        className={cn(
-          "size-3.5 shrink-0",
-          item.published ? "text-foreground" : "text-muted-foreground/70",
-        )}
-      />
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-[13px]",
-          item.published ? "text-foreground" : "text-muted-foreground",
-        )}
+      <button
+        aria-current={isCurrent ? "true" : undefined}
+        className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md text-left ring-ring outline-hidden focus-visible:ring-2"
+        ref={ref}
+        type="button"
+        onClick={() => onSelect(item.commitId)}
       >
-        {planCommitSummary(item)}
-      </span>
+        <Glyph
+          className={cn(
+            "size-3.5 shrink-0",
+            item.published ? "text-foreground" : "text-muted-foreground/70",
+          )}
+        />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[13px]",
+            item.published ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {planCommitSummary(item)}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground/70">
+          {formatRelativeTimeLabel(item.createdAt)}
+        </span>
+      </button>
       {trailing}
-      <span className="shrink-0 text-[11px] text-muted-foreground/70">
-        {formatRelativeTimeLabel(item.createdAt)}
-      </span>
-    </button>
+    </div>
   );
 }
 
 /**
- * Bring where you stand into view when the navigator opens and whenever the
+ * Bring where you stand into view when the thread opens and whenever the
  * position moves. One scroll, not a smooth-scrolling loop.
  */
 function useCurrentRowScroll(currentCommitId: MercurianCommitId | null) {
@@ -534,16 +615,6 @@ function useCurrentRowScroll(currentCommitId: MercurianCommitId | null) {
   }, [currentCommitId]);
 
   return ref;
-}
-
-/**
- * Parent to child on the rail: straight down its own lane, and a curve across
- * when the child sits on another one.
- */
-function railPath(fromX: number, fromY: number, toX: number, toY: number): string {
-  if (fromX === toX) return `M ${fromX} ${fromY} L ${toX} ${toY}`;
-  const midY = (fromY + toY) / 2;
-  return `M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`;
 }
 
 /** Parent to child on the map: a gentle curve, so crossing edges stay legible. */
