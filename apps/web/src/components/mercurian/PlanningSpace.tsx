@@ -10,6 +10,7 @@ import { CircleDotIcon, ClockIcon, FileTextIcon, GitBranchIcon } from "lucide-re
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -121,28 +122,32 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     ExplorerView,
   );
   const [columnsWidthCap, setColumnsWidthCap] = useState(0);
+  const planningSpaceRef = useRef<HTMLDivElement>(null);
+  const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
   const rightPaneViewCap =
     pane.view === "artifact" || explorerView === "graph"
       ? RIGHT_PANE_MAX_WIDTH
       : explorerView === "thread"
         ? RIGHT_PANE_THREAD_MAX_WIDTH
         : columnsWidthCap;
+  const rightPaneMaxWidth = Math.max(
+    RIGHT_PANE_MIN_WIDTH,
+    Math.min(rightPaneViewCap, planningSpaceWidth ?? rightPaneViewCap),
+  );
   const { width, handlers } = useResizableWidth({
     storageKey: RIGHT_PANE_WIDTH_STORAGE_KEY,
     defaultWidth: RIGHT_PANE_DEFAULT_WIDTH,
     minWidth: RIGHT_PANE_MIN_WIDTH,
-    // The columns model reports after its first layout. Until then the pane's
-    // ordinary minimum is still a usable drag range.
-    maxWidth: Math.max(RIGHT_PANE_MIN_WIDTH, rightPaneViewCap),
+    // The columns model and root measurement report after their first layout.
+    // Until then the pane's ordinary minimum is still a usable drag range.
+    maxWidth: rightPaneMaxWidth,
     // Right-anchored: the handle is on the pane's left edge, and dragging it
     // leftward grows the pane.
     edge: "left",
   });
-  const planningSpaceRef = useRef<HTMLDivElement>(null);
-  const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
   const usesSideBySideLayout = useMediaQuery("sm");
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = planningSpaceRef.current;
     if (element === null) return;
 
@@ -376,7 +381,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             </div>
             <div
               className={cn(
-                "flex min-h-0 min-w-0 flex-1 flex-col border-b border-border bg-background sm:w-(--plan-pane-width) sm:flex-none sm:border-b-0 sm:border-l",
+                "flex min-h-0 min-w-0 flex-1 flex-col border-b border-border bg-background sm:w-(--plan-pane-width) sm:max-w-full sm:flex-none sm:border-b-0 sm:border-l",
                 rightPaneOverlays && "absolute inset-y-0 right-0 z-20 shadow-lg",
               )}
               style={

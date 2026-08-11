@@ -1,7 +1,7 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import {
+  ArrowDownIcon,
   CheckIcon,
-  ChevronDownIcon,
   CircleDotIcon,
   Columns3Icon,
   FileTextIcon,
@@ -636,9 +636,13 @@ function ColumnTerminal({
   if (forkId === undefined) return null;
   return (
     <div className="mt-1 flex flex-col gap-0.5 px-1">
-      <div className="mb-0.5 flex h-6 items-center gap-1 border-y border-border/65 bg-muted/15 px-2 text-[11px] text-muted-foreground/70">
-        <span>forks</span>
-        <ChevronDownIcon aria-hidden className="size-3" />
+      <div className="mb-0.5 flex h-6 items-center gap-2 px-1 text-[11px] text-muted-foreground/70">
+        <span aria-hidden className="h-px flex-1 bg-border/65" />
+        <span className="flex items-center gap-1">
+          <span>forks</span>
+          <ArrowDownIcon aria-hidden className="size-3" />
+        </span>
+        <span aria-hidden className="h-px flex-1 bg-border/65" />
       </div>
       {terminal.options.map((option, optionIndex) => {
         const isChosen = option.branchRootId === terminal.chosenChildId;
