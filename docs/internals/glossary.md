@@ -212,6 +212,18 @@ The plan's history as the right pane draws it, in two views. **Navigator** is th
 
 A direct edit of the plan, recorded as a `plan-revision` commit in the plan's one history, interleaved with messages at the same standing. Its payload is the plan's _whole_ text after the edit, not a diff, so the plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the plan anywhere else: the current text is derived from the history, which is why a plan born blank derives an empty artifact and an imported plan whose root is a revision renders from that root.
 
+#### Atomic plan
+
+A plan whose implementation belongs in exactly one repository. The [implement gate](#implement-gate) identifies the repository but does not write history or start a coding session.
+
+#### Split
+
+A plan projection for one repository, landed as a human-authored `plan-revision` branch from the commit where the implement gate ran. Its payload stamps the repository id and name beside the projected text. A split changes the artifact on its own branch, never the parent line; it remains readable even if the repository is later disconnected.
+
+#### Implement gate
+
+The read-only analysis between a finished plan and implementation. It grounds across the project's repository set and produces either an [atomic plan](#atomic-plan) verdict or editable split proposals. Analysis and cancellation write no commits. Only explicit confirmation lands splits, as sibling plan-revision branches at the analyzed commit.
+
 #### Planning turn
 
 One reply of the planning assistant: from a human message committing to exactly one assistant `message` commit landing. Driven by [PlanningAssistant.ts][35] on the fork's provider-session runtime — never by a client RPC; a turn starts server-side when a human message commits, because the assistant responds and is never invoked. In flight it is transport, not record (ADR 002 §3): transient `turn-*` frames on `mercurian.subscribePlan` — deltas carrying the offset of the text before them so a joiner folds replays away, grounding items, the structured question — with the partial turn on the snapshot for join-mid-turn, and nothing persisted until the settle. Every ending lands one commit: full text on completion; partial text marked **interrupted** on a stop, an abnormal session end, or an archive mid-reply — stopping means "this happened and was cut short", and forking past it is the tree's own move. One turn per plan at a time is a server fact held in `PlanTurnRegistry`: while it is claimed, human writes refuse (`PlanTurnActiveError`) so the settle can never be raced into an illegal assistant fork. Planning stays mode-free — sessions open at the most restrictive runtime mode with every approval auto-answered (reads approved, everything else declined), no mode is user-visible anywhere, and the assistant's one write door is the planning MCP toolkit's `save_plan_revision`, resolved to the live turn by the calling session's thread.

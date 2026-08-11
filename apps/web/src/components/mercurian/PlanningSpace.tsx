@@ -31,10 +31,13 @@ import { usePlanDraftStore } from "../../planDraftStore";
 import {
   useAnswerPlanningQuestion,
   useAppendPlanMessage,
+  useCancelImplementProposal,
+  useConfirmSplits,
   useCreatePlan,
   useGetPlanTextAt,
   usePlanDetail,
   useStopPlanningTurn,
+  useTryImplement,
   useVisitPlan,
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
@@ -54,7 +57,11 @@ import { ImportIssueDialog } from "./ImportIssueDialog";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
-import { planningModelGateNotice, turnRefusalNotice } from "./PlanComposer.logic";
+import {
+  implementFailureNotice,
+  planningModelGateNotice,
+  turnRefusalNotice,
+} from "./PlanComposer.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -66,6 +73,8 @@ import {
   type PlanPosition,
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
+import { SplitSheet } from "./SplitSheet";
+import { existingSplitsAt, implementDisabledReason } from "./splits.logic";
 
 const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
 const RIGHT_PANE_DEFAULT_WIDTH = 480;
@@ -101,12 +110,16 @@ const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error, turnRefusal } = usePlanDetail(planId);
+  const { detail, isPending, error, turnRefusal, implementFailure } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const visitPlan = useVisitPlan();
   const stopTurn = useStopPlanningTurn();
   const answerQuestion = useAnswerPlanningQuestion();
+  const tryImplement = useTryImplement();
+  const confirmSplits = useConfirmSplits();
+  const cancelImplementProposal = useCancelImplementProposal();
+  const [splitSheetOpen, setSplitSheetOpen] = useState(false);
   // The same resolution the server runs, read here so sending gates with the
   // reason stated instead of failing silently. The two can only disagree for
   // the width of a race, which `turn-refused` covers.
@@ -198,6 +211,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const proposal = detail?.implementProposal;
+  const existingSplits = useMemo(
+    () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
+    [graph, proposal],
+  );
 
   /**
    * Standing somewhere live means riding that branch forward: a commit landing
@@ -241,6 +259,19 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     const closure = ancestorClosure(graph, head);
     return closure.has(inFlightTurn.parentCommitId) ? inFlightTurn : undefined;
   }, [graph, head, inFlightTurn]);
+
+  const inFlightImplement = detail?.inFlightImplement;
+  const visibleInFlightImplement = useMemo(() => {
+    if (inFlightImplement === undefined) return undefined;
+    if (head === null) return inFlightImplement;
+    return ancestorClosure(graph, head).has(inFlightImplement.parentCommitId)
+      ? inFlightImplement
+      : undefined;
+  }, [graph, head, inFlightImplement]);
+
+  useEffect(() => {
+    if (detail?.implementProposal !== undefined) setSplitSheetOpen(true);
+  }, [detail?.implementProposal]);
 
   const gateNotice = planningModelGateNotice(planningModel.resolution);
 
@@ -317,6 +348,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   }
 
   const artifactText = needsPathText ? pathText : (detail?.planText ?? null);
+  const implementReason = implementDisabledReason({
+    turnActive: inFlightTurn !== undefined || inFlightImplement !== undefined,
+    planTextEmpty: artifactText === null || artifactText.trim().length === 0,
+    isDraft: false,
+  });
+  const implementNotice =
+    implementFailure === null ? null : implementFailureNotice(implementFailure);
 
   return (
     <PlanningSurface
@@ -334,8 +372,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <PlanTimeline
             inFlight={visibleInFlight}
+            inFlightImplement={visibleInFlightImplement}
             timeline={visibleTimeline}
             onAnswerQuestion={(answers) => void answerQuestion(planId, answers)}
+            onStopImplement={() => void stopTurn(planId)}
           />
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
@@ -347,18 +387,25 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
-            notice={turnRefusal === null ? null : turnRefusalNotice(turnRefusal)}
+            implementDisabledReason={implementReason}
+            notice={turnRefusal === null ? implementNotice : turnRefusalNotice(turnRefusal)}
             placeholder="Message this plan"
             text={draft.text}
             // The whole plan holds one turn at a time, wherever it streams —
             // Stop is offered even when the reply is on another branch.
-            turnActive={inFlightTurn !== undefined}
+            turnActive={inFlightTurn !== undefined || inFlightImplement !== undefined}
             onAddAttachments={(added) => addDraftAttachments(planId, added)}
             onChangeText={(text) => setDraftText(planId, text)}
             onMentionQueryChange={mentions.onMentionQueryChange}
             onRemoveAttachment={(localId) => removeDraftAttachment(planId, localId)}
             onSend={send}
             onStop={() => void stopTurn(planId)}
+            onImplement={() =>
+              void tryImplement({
+                planId,
+                ...(head === null ? {} : { parentCommitId: head }),
+              })
+            }
           />
         </div>
         {detail === null || !pane.open ? null : (
@@ -427,6 +474,28 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           </>
         )}
       </div>
+      {proposal === undefined ? null : (
+        <SplitSheet
+          existingSplits={existingSplits}
+          open={splitSheetOpen}
+          proposal={proposal}
+          onCancel={() => void cancelImplementProposal(planId)}
+          onConfirm={(splits) => {
+            void confirmSplits({
+              planId,
+              parentCommitId: proposal.parentCommitId,
+              splits,
+            }).then((result) => {
+              if (result !== null) setSplitSheetOpen(false);
+            });
+          }}
+          onOpenChange={setSplitSheetOpen}
+          onSelect={(commitId) => {
+            select(commitId);
+            setSplitSheetOpen(false);
+          }}
+        />
+      )}
     </PlanningSurface>
   );
 }
@@ -598,6 +667,11 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
       {mentions.sources}
       <PlanComposer
         attachments={attachments}
+        implementDisabledReason={implementDisabledReason({
+          turnActive: false,
+          planTextEmpty: true,
+          isDraft: true,
+        })}
         mentionCandidates={mentions.candidates}
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says

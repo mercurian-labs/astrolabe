@@ -78,6 +78,24 @@ export function createMercurianPlanningAtoms<R, E>(
       // serializing them per plan is what keeps the local history linear.
       concurrency: serialPerPlan,
     }),
+    tryImplement: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:try-implement",
+      tag: MERCURIAN_WS_METHODS.tryImplement,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    confirmSplits: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:confirm-splits",
+      tag: MERCURIAN_WS_METHODS.confirmSplits,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    cancelImplementProposal: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:cancel-implement-proposal",
+      tag: MERCURIAN_WS_METHODS.cancelImplementProposal,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
     /**
      * The planning turn's two verbs. Same per-plan key as the writes: a stop
      * pressed right after a send must land after it, not race it.

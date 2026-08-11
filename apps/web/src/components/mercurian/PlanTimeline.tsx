@@ -4,6 +4,7 @@ import type {
   PlanGroundingItem,
   PlanGroundingScope,
   PlanInFlightTurn,
+  PlanInFlightImplement,
   PlanQuestion,
   PlanQuestionRecord,
   PlanTimelineItem,
@@ -51,12 +52,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 export function PlanTimeline({
   timeline,
   inFlight,
+  inFlightImplement,
   onAnswerQuestion,
+  onStopImplement,
 }: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The turn streaming on this path right now, when one is. */
   readonly inFlight?: PlanInFlightTurn | undefined;
+  readonly inFlightImplement?: PlanInFlightImplement | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
+  readonly onStopImplement?: (() => void) | undefined;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const environmentId = usePrimaryEnvironmentId();
@@ -67,7 +72,7 @@ export function PlanTimeline({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [timeline.length, streamedLength > 0, inFlight?.questions !== undefined]);
 
-  if (timeline.length === 0 && inFlight === undefined) {
+  if (timeline.length === 0 && inFlight === undefined && inFlightImplement === undefined) {
     return <div className="min-h-0 flex-1" />;
   }
 
@@ -166,9 +171,11 @@ export function PlanTimeline({
             >
               <FileTextIcon className="size-3.5 shrink-0" />
               <span>
-                {item.authorKind === "human"
-                  ? "You edited the plan"
-                  : "The assistant revised the plan"}
+                {item.split !== undefined
+                  ? `You split the plan for ${item.split.repositoryName}`
+                  : item.authorKind === "human"
+                    ? "You edited the plan"
+                    : "The assistant revised the plan"}
               </span>
               <span>{formatRelativeTimeLabel(item.createdAt)}</span>
             </li>
@@ -198,6 +205,27 @@ export function PlanTimeline({
             )}
             {inFlight.questions === undefined || inFlight.questions.length === 0 ? null : (
               <QuestionCard questions={inFlight.questions} onSubmit={onAnswerQuestion} />
+            )}
+          </li>
+        )}
+        {inFlightImplement === undefined ? null : (
+          <li className="rounded-lg border border-border/70 bg-muted/15 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner aria-hidden className="size-3.5" />
+                Working out where this plan implements…
+              </span>
+              <Button size="sm" variant="ghost" onClick={onStopImplement}>
+                Stop
+              </Button>
+            </div>
+            {inFlightImplement.groundingScope === undefined ? null : (
+              <NarrowedGroundingNotice scope={inFlightImplement.groundingScope} />
+            )}
+            {inFlightImplement.grounding.length === 0 ? null : (
+              <div className="mt-2">
+                <GroundingFold items={inFlightImplement.grounding} live />
+              </div>
             )}
           </li>
         )}

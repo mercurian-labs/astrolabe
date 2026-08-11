@@ -1,5 +1,6 @@
 import {
   MercurianCommitId,
+  MercurianRepositoryId,
   PlanTurnId,
   type ChatAttachment,
   type PlanInFlightTurn,
@@ -231,5 +232,45 @@ describe("PlanTimeline", () => {
     expect(markup).not.toContain('aria-label="Runtime mode"');
     expect(markup).not.toContain("data-chat-provider-model-picker");
     expect(markup).not.toContain("data-model-picker-content");
+  });
+
+  it("labels split revisions with their repository", () => {
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        timeline={[
+          {
+            _tag: "plan-revision",
+            commitId: id("split-1"),
+            sequence: 1,
+            parents: [],
+            published: false,
+            authorKind: "human",
+            createdAt: CREATED_AT,
+            split: {
+              repositoryId: MercurianRepositoryId.make("repo-server"),
+              repositoryName: "server",
+            },
+          },
+        ]}
+      />,
+    );
+    expect(markup).toContain("You split the plan for server");
+  });
+
+  it("renders the implement analyzing card with grounding and Stop", () => {
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        inFlightImplement={{
+          turnId: PlanTurnId.make("implement-turn"),
+          parentCommitId: id("parent-1"),
+          grounding: [{ kind: "search", label: "repository coverage" }],
+        }}
+        timeline={[]}
+        onStopImplement={() => undefined}
+      />,
+    );
+    expect(markup).toContain("Working out where this plan implements…");
+    expect(markup).toContain("Consulted 1 item…");
+    expect(markup).toContain(">Stop</button>");
   });
 });

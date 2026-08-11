@@ -144,6 +144,24 @@ history adds up to.
 Nothing here needs refreshing. An edit or a message appears as it lands — including one made in
 another window open on the same plan.
 
+## Implementing a plan
+
+When the plan is ready, choose **Implement** beside the composer. The assistant reads the plan and
+the project's repositories, then works out where the implementation belongs. This analysis is a
+gate: it does not edit the plan, start a coding session, or add anything to history.
+
+If all of the work belongs in one repository, the result says the plan is **atomic** and names that
+repository. Coding sessions will build on this decision in a later release.
+
+If the work crosses repositories, a split sheet proposes one self-contained plan for each one and
+explains the cut. You can edit every projected plan or remove a card before confirming. A repository
+already split from this point appears as a jump row instead of another editable card. **Cancel**
+lands nothing; **Land split** or **Land N splits** is the only act that writes.
+
+Confirmed splits are ordinary branches of the plan's history, all starting at the commit where you
+pressed Implement. Each is labelled with its repository. Open one to keep planning and revising its
+projection like any other branch; the plan on the original line stays unchanged.
+
 ## The history
 
 The history view shows every commit in the plan: your messages, the assistant's, and every edit of

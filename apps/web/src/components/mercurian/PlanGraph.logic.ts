@@ -288,6 +288,7 @@ const SUMMARY_MAX_LENGTH = 60;
  */
 export function planCommitSummary(item: PlanTimelineItem): string {
   if (item._tag === "plan-revision") {
+    if (item.split !== undefined) return `Split for ${item.split.repositoryName}`;
     return item.authorKind === "human" ? "You edited the plan" : "The assistant revised the plan";
   }
   const isIssue = item._tag === "issue-revision";

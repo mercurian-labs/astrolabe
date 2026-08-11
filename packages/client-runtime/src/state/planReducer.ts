@@ -2,7 +2,9 @@ import * as Arr from "effect/Array";
 import type {
   PlanDetail,
   PlanGroundingItem,
+  PlanInFlightImplement,
   PlanInFlightTurn,
+  PlanImplementProposal,
   PlanStreamItem,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
@@ -21,12 +23,16 @@ export interface PlanSubscriptionState {
    * the honest backstop for the window that raced a settings change.
    */
   readonly turnRefusal: PlanTurnRefusalReason | null;
+  readonly implementFailure:
+    | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
+    | null;
 }
 
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   detail: null,
   synchronized: false,
   turnRefusal: null,
+  implementFailure: null,
 };
 
 const sameGroundingItem = (left: PlanGroundingItem, right: PlanGroundingItem): boolean =>
@@ -41,6 +47,30 @@ function withInFlightTurn(
   return {
     ...state,
     detail: { ...rest, ...(inFlightTurn === undefined ? {} : { inFlightTurn }) },
+  };
+}
+
+function withInFlightImplement(
+  state: PlanSubscriptionState,
+  inFlightImplement: PlanInFlightImplement | undefined,
+): PlanSubscriptionState {
+  if (state.detail === null) return state;
+  const { inFlightImplement: _previous, ...rest } = state.detail;
+  return {
+    ...state,
+    detail: { ...rest, ...(inFlightImplement === undefined ? {} : { inFlightImplement }) },
+  };
+}
+
+function withImplementProposal(
+  state: PlanSubscriptionState,
+  implementProposal: PlanImplementProposal | undefined,
+): PlanSubscriptionState {
+  if (state.detail === null) return state;
+  const { implementProposal: _previous, ...rest } = state.detail;
+  return {
+    ...state,
+    detail: { ...rest, ...(implementProposal === undefined ? {} : { implementProposal }) },
   };
 }
 
@@ -65,7 +95,12 @@ export function applyPlanStreamItem(
 ): PlanSubscriptionState {
   switch (item.kind) {
     case "snapshot":
-      return { detail: item.snapshot, synchronized: state.synchronized, turnRefusal: null };
+      return {
+        detail: item.snapshot,
+        synchronized: state.synchronized,
+        turnRefusal: null,
+        implementFailure: null,
+      };
     case "synchronized":
       return { ...state, synchronized: true };
     case "commit": {
@@ -79,12 +114,17 @@ export function applyPlanStreamItem(
         detail.inFlightTurn !== undefined &&
         item.item._tag === "message" &&
         item.item.authorKind === "assistant";
-      const { inFlightTurn, ...rest } = detail;
+      const closesImplementProposal =
+        item.item._tag === "plan-revision" && item.item.split !== undefined;
+      const { inFlightTurn, implementProposal, ...rest } = detail;
       return {
         ...state,
         detail: {
           ...rest,
           ...(closesTurn || inFlightTurn === undefined ? {} : { inFlightTurn }),
+          ...(closesImplementProposal || implementProposal === undefined
+            ? {}
+            : { implementProposal }),
           // Text arrives only on commits that changed the artifact; a message
           // leaves the plan exactly as it was.
           planText: item.planText ?? detail.planText,
@@ -95,7 +135,7 @@ export function applyPlanStreamItem(
     }
     case "turn-started":
       return {
-        ...withInFlightTurn(state, {
+        ...withInFlightTurn(withImplementProposal(state, undefined), {
           turnId: item.turnId,
           parentCommitId: item.parentCommitId,
           text: "",
@@ -103,6 +143,11 @@ export function applyPlanStreamItem(
           ...(item.groundingScope === undefined ? {} : { groundingScope: item.groundingScope }),
         }),
         turnRefusal: null,
+      };
+    case "implement-started":
+      return {
+        ...withInFlightImplement(withImplementProposal(state, undefined), item.implement),
+        implementFailure: null,
       };
     case "turn-delta": {
       const turn = state.detail?.inFlightTurn;
@@ -114,11 +159,21 @@ export function applyPlanStreamItem(
     }
     case "turn-grounding": {
       const turn = state.detail?.inFlightTurn;
-      if (turn === undefined || turn.turnId !== item.turnId) return state;
-      if (turn.grounding.some((existing) => sameGroundingItem(existing, item.item))) return state;
-      return withInFlightTurn(state, {
-        ...turn,
-        grounding: Arr.append(turn.grounding, item.item),
+      if (turn !== undefined && turn.turnId === item.turnId) {
+        if (turn.grounding.some((existing) => sameGroundingItem(existing, item.item))) return state;
+        return withInFlightTurn(state, {
+          ...turn,
+          grounding: Arr.append(turn.grounding, item.item),
+        });
+      }
+      const implement = state.detail?.inFlightImplement;
+      if (implement === undefined || implement.turnId !== item.turnId) return state;
+      if (implement.grounding.some((existing) => sameGroundingItem(existing, item.item))) {
+        return state;
+      }
+      return withInFlightImplement(state, {
+        ...implement,
+        grounding: Arr.append(implement.grounding, item.item),
       });
     }
     case "turn-question": {
@@ -139,6 +194,24 @@ export function applyPlanStreamItem(
     }
     case "turn-refused":
       return { ...state, turnRefusal: item.reason };
+    case "implement-analyzed": {
+      const implement = state.detail?.inFlightImplement;
+      if (implement === undefined || implement.turnId !== item.proposal.turnId) return state;
+      return withImplementProposal(withInFlightImplement(state, undefined), item.proposal);
+    }
+    case "implement-cancelled": {
+      const proposal = state.detail?.implementProposal;
+      if (proposal === undefined || proposal.turnId !== item.turnId) return state;
+      return withImplementProposal(state, undefined);
+    }
+    case "implement-failed": {
+      const implement = state.detail?.inFlightImplement;
+      if (implement === undefined || implement.turnId !== item.turnId) return state;
+      return {
+        ...withInFlightImplement(state, undefined),
+        implementFailure: item.reason,
+      };
+    }
     default:
       return state;
   }

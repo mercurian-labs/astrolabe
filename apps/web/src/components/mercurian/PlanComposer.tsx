@@ -4,7 +4,7 @@ import {
   type UploadChatAttachment,
 } from "@t3tools/contracts";
 import type { ServerProviderSkill } from "@t3tools/contracts";
-import { CircleAlertIcon, FileIcon, ImageIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, FileIcon, HammerIcon, ImageIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -81,12 +81,14 @@ export function PlanComposer({
   turnActive = false,
   gateNotice = null,
   notice = null,
+  implementDisabledReason = null,
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
   onMentionQueryChange,
   onSend,
   onStop,
+  onImplement,
 }: {
   readonly placeholder: string;
   readonly text: string;
@@ -111,6 +113,7 @@ export function PlanComposer({
   readonly gateNotice?: string | null;
   /** A transient line under the gate's slot: the last turn refusal. */
   readonly notice?: string | null;
+  readonly implementDisabledReason?: string | null;
   readonly onChangeText: (text: string) => void;
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
@@ -120,6 +123,7 @@ export function PlanComposer({
   readonly onSend: (submission: PlanComposerSubmission) => Promise<boolean>;
   /** Stop the streaming reply. Only rendered while `turnActive`. */
   readonly onStop?: () => void;
+  readonly onImplement?: (() => void) | undefined;
 }) {
   const [state, setState] = useState<PlanComposerState>("idle");
   const [cursor, setCursor] = useState(0);
@@ -324,16 +328,37 @@ export function PlanComposer({
                 event.target.value = "";
               }}
             />
-            <Button
-              aria-label="Attach images"
-              className="shrink-0 text-muted-foreground"
-              disabled={isSending || attachments.length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS}
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <ImageIcon />
-            </Button>
+            <div className="flex min-w-0 items-center gap-1">
+              <Button
+                aria-label="Attach images"
+                className="shrink-0 text-muted-foreground"
+                disabled={isSending || attachments.length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS}
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImageIcon />
+              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      className="text-muted-foreground"
+                      disabled={implementDisabledReason !== null || onImplement === undefined}
+                      size="sm"
+                      variant="ghost"
+                      onClick={onImplement}
+                    />
+                  }
+                >
+                  <HammerIcon />
+                  Implement
+                </TooltipTrigger>
+                {implementDisabledReason === null ? null : (
+                  <TooltipPopup>{implementDisabledReason}</TooltipPopup>
+                )}
+              </Tooltip>
+            </div>
             <SendControl
               // One control, two faces. Held while a send is in flight or a
               // reply streams, which is what "no queueing" means here.
