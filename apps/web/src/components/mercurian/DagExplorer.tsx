@@ -41,6 +41,7 @@ import {
   mapOverflows,
   minimapPointToWorld,
   minimapProjection,
+  minimapSize,
   proximityScale,
   radiusFor,
   visibleWorldRect,
@@ -50,6 +51,7 @@ import {
   type MapPoint,
   type MapTransform,
   type MapViewBox,
+  type MinimapSize,
 } from "./DagExplorer.logic";
 import {
   ancestorClosure,
@@ -77,8 +79,6 @@ const RAIL_INSET = 12;
 
 const MAP_PADDING = 64;
 const MAP_TWEEN_DURATION = 250;
-const MINIMAP_WIDTH = 160;
-const MINIMAP_HEIGHT = 110;
 /** How far the pointer has to travel before a press counts as a pan. */
 const DRAG_THRESHOLD = 4;
 
@@ -397,6 +397,7 @@ function SpatialMap({
   readonly settings: DagExplorerDisplaySettingsValue;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -410,11 +411,27 @@ function SpatialMap({
     (SpatialPoint & { readonly viewBoxUnitsPerPixel: number }) | null
   >(null);
   const [transform, setTransform] = useState<MapTransform>({ x: 0, y: 0, zoom: 1 });
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const transformRef = useRef(transform);
   const [renderLayout, setRenderLayout] = useState(() => settledSpatialLayout(layout));
   const renderLayoutRef = useRef(renderLayout);
   const solvedLayoutRef = useRef(layout);
   const [startTween, cancelTween] = useTween();
+
+  useEffect(() => {
+    const container = mapContainerRef.current;
+    if (container === null) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry === undefined) return;
+      const { width, height } = entry.contentRect;
+      setMapSize((current) =>
+        current.width === width && current.height === height ? current : { width, height },
+      );
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     transformRef.current = transform;
@@ -617,9 +634,13 @@ function SpatialMap({
   };
 
   const showMinimap = mapOverflows(layout.bounds, transform, viewBox);
+  const overviewSize = useMemo(
+    () => minimapSize(mapSize.width, mapSize.height),
+    [mapSize.height, mapSize.width],
+  );
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden">
+    <div className="relative min-h-0 flex-1 overflow-hidden" ref={mapContainerRef}>
       <svg
         className="size-full cursor-grab touch-none active:cursor-grabbing"
         onPointerCancel={endDrag}
@@ -780,6 +801,7 @@ function SpatialMap({
           <Minimap
             currentCommitId={currentCommitId}
             layout={renderLayout}
+            size={overviewSize}
             transform={transform}
             viewBox={viewBox}
             onCenter={recenterFromMinimap}
@@ -794,12 +816,14 @@ function SpatialMap({
 function Minimap({
   layout,
   currentCommitId,
+  size,
   transform,
   viewBox,
   onCenter,
 }: {
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly size: MinimapSize;
   readonly transform: MapTransform;
   readonly viewBox: MapViewBox;
   readonly onCenter: (point: MapPoint, animate: boolean) => void;
@@ -811,10 +835,7 @@ function Minimap({
     readonly startY: number;
     moved: boolean;
   } | null>(null);
-  const projection = useMemo(
-    () => minimapProjection(layout.bounds, { width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }),
-    [layout.bounds],
-  );
+  const projection = useMemo(() => minimapProjection(layout.bounds, size), [layout.bounds, size]);
   const visible = visibleWorldRect(transform, viewBox);
   const visibleTopLeft = projection.project({ x: visible.minX, y: visible.minY });
   const visibleBottomRight = projection.project({ x: visible.maxX, y: visible.maxY });
@@ -822,11 +843,11 @@ function Minimap({
   const clientToMinimap = (clientX: number, clientY: number): MapPoint => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (rect === undefined || rect.width === 0 || rect.height === 0) {
-      return { x: MINIMAP_WIDTH / 2, y: MINIMAP_HEIGHT / 2 };
+      return { x: size.width / 2, y: size.height / 2 };
     }
     return {
-      x: ((clientX - rect.left) / rect.width) * MINIMAP_WIDTH,
-      y: ((clientY - rect.top) / rect.height) * MINIMAP_HEIGHT,
+      x: ((clientX - rect.left) / rect.width) * size.width,
+      y: ((clientY - rect.top) / rect.height) * size.height,
     };
   };
 
@@ -884,10 +905,10 @@ function Minimap({
     <svg
       aria-label="Map overview"
       className="cursor-crosshair rounded-md border border-border bg-background/90 shadow-sm"
-      height={MINIMAP_HEIGHT}
+      height={size.height}
       ref={svgRef}
-      viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`}
-      width={MINIMAP_WIDTH}
+      viewBox={`0 0 ${size.width} ${size.height}`}
+      width={size.width}
       onPointerCancel={(event) => finishDrag(event, false)}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

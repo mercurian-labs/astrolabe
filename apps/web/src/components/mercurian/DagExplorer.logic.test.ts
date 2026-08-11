@@ -23,6 +23,7 @@ import {
   MAP_PROXIMITY_MAX_SCALE,
   minimapPointToWorld,
   minimapProjection,
+  minimapSize,
   proximityScale,
   radiusFor,
   visibleWorldRect,
@@ -276,6 +277,20 @@ describe("map sizing", () => {
 describe("minimap geometry", () => {
   const bounds = { minX: -200, minY: 50, maxX: 600, maxY: 250 };
   const frame = { x: 0, y: 0, width: 400, height: 300 };
+
+  it("follows the canvas aspect ratio", () => {
+    expect(minimapSize(1_000, 500)).toEqual({ width: 200, height: 100 });
+  });
+
+  it("clamps its width at both ends", () => {
+    expect(minimapSize(500, 500).width).toBe(140);
+    expect(minimapSize(2_000, 1_000).width).toBe(260);
+  });
+
+  it("falls back for degenerate canvas dimensions", () => {
+    expect(minimapSize(0, 500)).toEqual({ width: 160, height: 110 });
+    expect(minimapSize(500, -1)).toEqual({ width: 160, height: 110 });
+  });
 
   it("round-trips points through an aspect-preserving projection", () => {
     const projection = minimapProjection(bounds, { width: 160, height: 110 });

@@ -201,6 +201,24 @@ export interface MinimapSize {
   readonly height: number;
 }
 
+/** Keep the overview proportional to its canvas while bounding its footprint. */
+export function minimapSize(canvasWidth: number, canvasHeight: number): MinimapSize {
+  if (
+    !Number.isFinite(canvasWidth) ||
+    !Number.isFinite(canvasHeight) ||
+    canvasWidth <= 0 ||
+    canvasHeight <= 0
+  ) {
+    return { width: 160, height: 110 };
+  }
+
+  const width = clamp(canvasWidth * 0.2, 140, 260);
+  return {
+    width,
+    height: clamp(width * (canvasHeight / canvasWidth), 90, 200),
+  };
+}
+
 export interface MinimapProjection {
   readonly scale: number;
   readonly offsetX: number;
