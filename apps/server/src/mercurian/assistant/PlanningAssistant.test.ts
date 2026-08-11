@@ -522,7 +522,7 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
-  it.effect("auto-answers approvals: reads for the session, everything else declined", () =>
+  it.effect("auto-answers approvals for reads and the planning MCP door", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const harness = yield* ProviderHarness;
@@ -549,6 +549,48 @@ describe("PlanningAssistant", () => {
       // The approved read is grounding, and no approval frame ever exists.
       const groundingFrame = yield* Queue.take(frames);
       assert.ok(groundingFrame.kind === "turn-grounding");
+
+      yield* harness.emit({
+        ...runtimeEvent(session.threadId, {
+          type: "request.opened",
+          payload: {
+            requestType: "dynamic_tool_call",
+            detail: "mcp__t3-code__save_plan_revision: {}",
+            args: {
+              toolName: "mcp__t3-code__save_plan_revision",
+              input: {},
+              toolUseId: "tool-save-plan",
+            },
+          },
+        }),
+        requestId: "req-save-plan" as never,
+      });
+      const approvedPlanningTool = yield* Queue.take(harness.approvals);
+      assert.deepStrictEqual(approvedPlanningTool, {
+        requestId: "req-save-plan",
+        decision: "acceptForSession",
+      });
+
+      yield* harness.emit({
+        ...runtimeEvent(session.threadId, {
+          type: "request.opened",
+          payload: {
+            requestType: "dynamic_tool_call",
+            detail: "mcp__t3-code__preview_click: {}",
+            args: {
+              toolName: "mcp__t3-code__preview_click",
+              input: {},
+              toolUseId: "tool-preview-click",
+            },
+          },
+        }),
+        requestId: "req-preview" as never,
+      });
+      const declinedDynamicTool = yield* Queue.take(harness.approvals);
+      assert.deepStrictEqual(declinedDynamicTool, {
+        requestId: "req-preview",
+        decision: "decline",
+      });
 
       yield* harness.emit({
         ...runtimeEvent(session.threadId, {

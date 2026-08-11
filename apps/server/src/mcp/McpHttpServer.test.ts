@@ -220,14 +220,23 @@ it.effect("accepts session requests that omit the negotiated protocol version", 
       });
       expect(toolsListResponse.status).toBe(200);
       const toolsListResult = (yield* toolsListResponse.json) as {
-        readonly result: { readonly tools: ReadonlyArray<{ readonly name: string }> };
+        readonly result: {
+          readonly tools: ReadonlyArray<{
+            readonly name: string;
+            readonly inputSchema: { readonly type?: unknown };
+          }>;
+        };
       };
-      const toolNames = toolsListResult.result.tools.map(({ name }) => name);
+      const tools = toolsListResult.result.tools;
+      const toolNames = tools.map(({ name }) => name);
       expect(toolNames.length).toBeGreaterThan(0);
       expect(toolNames).toContain("save_plan_revision");
       expect(toolNames).toContain("read_plan");
       expect(toolNames).toContain("preview_status");
       expect(toolNames).toContain("preview_snapshot");
+      for (const tool of tools) {
+        expect(tool.inputSchema.type, `${tool.name} input schema must be an object`).toBe("object");
+      }
 
       const explicitVersionResponse = yield* postMcp(toolsListBody, {
         "mcp-session-id": sessionId!,
