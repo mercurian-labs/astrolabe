@@ -871,6 +871,46 @@ describe("PlanningAssistant", () => {
         new Map([[created.plan.planId, { isWorking: true, hasPendingInput: false }]]),
       );
 
+      yield* harness.emit({
+        ...runtimeEvent(session.threadId, {
+          type: "request.opened",
+          payload: {
+            requestType: "dynamic_tool_call",
+            detail: "t3-code_save_implement_proposal: {}",
+            args: {
+              toolName: "t3-code_save_implement_proposal",
+              input: {},
+              toolUseId: "tool-save-implement-proposal",
+            },
+          },
+        }),
+        requestId: "req-opencode-save-implement" as never,
+      });
+      assert.deepStrictEqual(yield* Queue.take(harness.approvals), {
+        requestId: "req-opencode-save-implement",
+        decision: "acceptForSession",
+      });
+
+      yield* harness.emit({
+        ...runtimeEvent(session.threadId, {
+          type: "request.opened",
+          payload: {
+            requestType: "dynamic_tool_call",
+            detail: "other-server_save_plan_revision_helper: {}",
+            args: {
+              toolName: "other-server_save_plan_revision_helper",
+              input: {},
+              toolUseId: "tool-unrelated-plan-helper",
+            },
+          },
+        }),
+        requestId: "req-unrelated-plan-helper" as never,
+      });
+      assert.deepStrictEqual(yield* Queue.take(harness.approvals), {
+        requestId: "req-unrelated-plan-helper",
+        decision: "decline",
+      });
+
       yield* harness.emit(
         runtimeEvent(session.threadId, {
           type: "content.delta",

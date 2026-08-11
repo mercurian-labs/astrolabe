@@ -180,7 +180,6 @@ interface TurnRuntime {
  */
 const MAX_GROUNDING_ITEMS = 200;
 
-const T3_CODE_MCP_TOOL_PREFIX = "mcp__t3-code__";
 type PlanningMcpToolName =
   | typeof SavePlanRevisionTool.name
   | typeof SaveImplementProposalTool.name
@@ -190,9 +189,20 @@ const APPROVED_PLANNING_MCP_TOOLS = [
   "save_implement_proposal",
   "read_plan",
 ] as const satisfies ReadonlyArray<PlanningMcpToolName>;
-const APPROVED_PLANNING_MCP_TOOL_NAMES = new Set(
-  APPROVED_PLANNING_MCP_TOOLS.map((name) => `${T3_CODE_MCP_TOOL_PREFIX}${name}`),
-);
+const PLANNING_MCP_TOOL_PREFIXES = ["mcp__t3-code__", "t3-code_"] as const;
+
+const normalizePlanningMcpToolName = (toolName: string): string | undefined => {
+  const prefix = PLANNING_MCP_TOOL_PREFIXES.find((candidate) => toolName.startsWith(candidate));
+  return prefix === undefined ? undefined : toolName.slice(prefix.length);
+};
+
+const isApprovedPlanningMcpToolName = (toolName: string): boolean => {
+  const normalized = normalizePlanningMcpToolName(toolName);
+  return (
+    normalized !== undefined &&
+    APPROVED_PLANNING_MCP_TOOLS.some((approved) => approved === normalized)
+  );
+};
 
 export class PlanningAssistant extends Context.Service<
   PlanningAssistant,
@@ -564,7 +574,7 @@ export const make = Effect.gen(function* () {
     const approvesPlanningMcpTool =
       event.payload.requestType === "dynamic_tool_call" &&
       dynamicToolName !== undefined &&
-      APPROVED_PLANNING_MCP_TOOL_NAMES.has(dynamicToolName);
+      isApprovedPlanningMcpToolName(dynamicToolName);
     const decision =
       event.payload.requestType === "file_read_approval" || approvesPlanningMcpTool
         ? "acceptForSession"
