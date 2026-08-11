@@ -38,6 +38,21 @@ export interface PlanGraph {
 
 const EMPTY_GRAPH: PlanGraph = { nodes: [], byId: new Map(), roots: [], latest: null };
 
+export type PlanExplorerView = "thread" | "columns" | "graph";
+
+/** Columns explain branch choices, so a linear history has nothing for them to show. */
+export function hasFork(graph: PlanGraph): boolean {
+  return graph.nodes.some((node) => node.isBranchPoint);
+}
+
+/** A stored columns preference becomes active again if this plan later grows a fork. */
+export function effectivePlanExplorerView(
+  graph: PlanGraph,
+  storedView: PlanExplorerView,
+): PlanExplorerView {
+  return storedView === "columns" && !hasFork(graph) ? "thread" : storedView;
+}
+
 export function buildPlanGraph(timeline: ReadonlyArray<PlanTimelineItem>): PlanGraph {
   if (timeline.length === 0) return EMPTY_GRAPH;
 
