@@ -256,11 +256,10 @@ describe("columnLayout", () => {
 });
 
 describe("columnViewWidthCap", () => {
-  it("counts strips, reopened panes, the flexible final pane, and separators", () => {
+  it("caps at every pane expanded plus the final pane's flexible room", () => {
     const graph = buildPlanGraph(nestedFork);
     const panes = columnLayout(graph, id("end"), defaultBranchChoices(graph, id("end"))).panes;
 
-    expect(columnViewWidthCap(panes, 2, 2)).toBe(32 + 32 + 336 + 2);
-    expect(columnViewWidthCap(panes, 2, 0)).toBe(224 + 32 + 336 + 2);
+    expect(columnViewWidthCap(panes)).toBe(224 + 224 + 336 + 2);
   });
 });

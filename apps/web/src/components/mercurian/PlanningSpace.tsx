@@ -120,16 +120,24 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
+  const [columnsWidthCap, setColumnsWidthCap] = useState(0);
+  const rightPaneViewCap =
+    pane.view === "artifact" || explorerView === "graph"
+      ? RIGHT_PANE_MAX_WIDTH
+      : explorerView === "thread"
+        ? RIGHT_PANE_THREAD_MAX_WIDTH
+        : columnsWidthCap;
   const { width, handlers } = useResizableWidth({
     storageKey: RIGHT_PANE_WIDTH_STORAGE_KEY,
     defaultWidth: RIGHT_PANE_DEFAULT_WIDTH,
     minWidth: RIGHT_PANE_MIN_WIDTH,
-    maxWidth: RIGHT_PANE_MAX_WIDTH,
+    // The columns model reports after its first layout. Until then the pane's
+    // ordinary minimum is still a usable drag range.
+    maxWidth: Math.max(RIGHT_PANE_MIN_WIDTH, rightPaneViewCap),
     // Right-anchored: the handle is on the pane's left edge, and dragging it
     // leftward grows the pane.
     edge: "left",
   });
-  const [columnsWidthCap, setColumnsWidthCap] = useState(0);
   const planningSpaceRef = useRef<HTMLDivElement>(null);
   const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
   const usesSideBySideLayout = useMediaQuery("sm");
@@ -195,13 +203,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const head = resolveHead(graph, position);
   const viewingPast = isViewingPast(graph, position);
-  const rightPaneViewCap =
-    pane.view === "artifact" || explorerView === "graph"
-      ? RIGHT_PANE_MAX_WIDTH
-      : explorerView === "thread"
-        ? RIGHT_PANE_THREAD_MAX_WIDTH
-        : columnsWidthCap;
-  const effectiveRightPaneWidth = Math.max(RIGHT_PANE_MIN_WIDTH, Math.min(width, rightPaneViewCap));
+  const effectiveRightPaneWidth = width;
   const rightPaneOverlays =
     usesSideBySideLayout &&
     planningSpaceWidth !== null &&

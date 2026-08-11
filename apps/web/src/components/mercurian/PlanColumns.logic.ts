@@ -46,33 +46,21 @@ export interface ColumnLayout {
 
 const EMPTY_COLUMN_LAYOUT: ColumnLayout = { panes: [] };
 
-const COLUMN_STRIP_WIDTH = 32;
-const COLUMN_PANE_WIDTH = 224;
-const COLUMN_LAST_PANE_MAX_WIDTH = 336;
-const COLUMN_SEPARATOR_WIDTH = 1;
+export const COLUMN_STRIP_WIDTH = 32;
+export const COLUMN_PANE_WIDTH = 224;
+export const COLUMN_LAST_PANE_MAX_WIDTH = 336;
+export const COLUMN_SEPARATOR_WIDTH = 1;
 
 /**
- * The most horizontal space the visible pane model can use. Earlier panes are
- * strips except for the one a user reopened; the final pane takes the spare
- * room up to its reading width. Separators are counted independently so this
- * remains a description of the layout rather than its Tailwind box model.
+ * The width at which every pane is open and the final reading pane has taken
+ * all of its flexible room. This is the useful end of a columns resize: wider
+ * than this has no pane left to reopen and no reading space left to absorb it.
  */
-export function columnViewWidthCap(
-  panes: ReadonlyArray<Pane>,
-  activePaneIndex: number,
-  expandedPaneIndex: number,
-): number {
+export function columnViewWidthCap(panes: ReadonlyArray<Pane>): number {
   if (panes.length === 0) return 0;
-
-  const paneWidths = panes.map((_, paneIndex) => {
-    const compressed = paneIndex < activePaneIndex && paneIndex !== expandedPaneIndex;
-    if (compressed) return COLUMN_STRIP_WIDTH;
-    if (paneIndex === panes.length - 1) return COLUMN_LAST_PANE_MAX_WIDTH;
-    return COLUMN_PANE_WIDTH;
-  });
-
   return (
-    paneWidths.reduce((total, paneWidth) => total + paneWidth, 0) +
+    (panes.length - 1) * COLUMN_PANE_WIDTH +
+    COLUMN_LAST_PANE_MAX_WIDTH +
     (panes.length - 1) * COLUMN_SEPARATOR_WIDTH
   );
 }

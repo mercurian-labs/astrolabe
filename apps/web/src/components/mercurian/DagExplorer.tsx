@@ -33,6 +33,9 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
+  COLUMN_PANE_WIDTH,
+  COLUMN_SEPARATOR_WIDTH,
+  COLUMN_STRIP_WIDTH,
   columnLayout,
   columnViewWidthCap,
   defaultBranchChoices,
@@ -332,10 +335,9 @@ interface ColumnFocusEntry {
  * The checked-out line as standing branch segments. A fork keeps its choices
  * under the run that produced them; choosing one replaces only what follows.
  *
- * Earlier panes compress to their publication dots once the current pane has
- * moved past them. Focus still moves through the semantic rows, expanding a
- * strip before it enters, so keyboard movement and width allocation remain one
- * small state machine with no layout measurements.
+ * Panes reopen from right to left as the container grows. Focus and a manual
+ * strip click may hold one extra pane open beyond what fits, preserving the
+ * semantic keyboard path without making width allocation navigation state.
  */
 function ColumnsView({
   graph,
@@ -377,11 +379,35 @@ function ColumnsView({
   const paneScrollOffsetsRef = useRef(new Map<string, number>());
   const pendingFocusRef = useRef<{ readonly scroll: boolean } | null>(null);
   const currentScrollRef = useCurrentRowScroll(currentCommitId);
+  const columnsContainerRef = useRef<HTMLDivElement>(null);
+  const [columnsContainerWidth, setColumnsContainerWidth] = useState(0);
 
-  const widthCap = columnViewWidthCap(layout.panes, activePaneIndex, expandedPaneIndex);
+  const widthCap = columnViewWidthCap(layout.panes);
   useLayoutEffect(() => {
     onWidthCapChange(widthCap);
   }, [onWidthCapChange, widthCap]);
+
+  useLayoutEffect(() => {
+    const element = columnsContainerRef.current;
+    if (element === null) return;
+
+    const updateWidth = (nextWidth: number) => {
+      setColumnsContainerWidth((current) => (current === nextWidth ? current : nextWidth));
+    };
+    updateWidth(element.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry !== undefined) updateWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const firstAutoExpandedPaneIndex = autoExpandedPaneStart(
+    layout.panes.length,
+    columnsContainerWidth,
+  );
 
   useEffect(() => {
     setExpandedPaneIndex(activePaneIndex);
@@ -455,9 +481,10 @@ function ColumnsView({
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto" ref={columnsContainerRef}>
       {layout.panes.map((pane, paneIndex) => {
-        const compressed = paneIndex < activePaneIndex && paneIndex !== expandedPaneIndex;
+        const compressed =
+          paneIndex < firstAutoExpandedPaneIndex && paneIndex !== expandedPaneIndex;
         const entries = entriesByPane[paneIndex] ?? [];
         const paneKey = pane.rows[0]?.commitId ?? `pane-${paneIndex}`;
         if (compressed) {
@@ -555,6 +582,24 @@ function ColumnsView({
       })}
     </div>
   );
+}
+
+/** The first pane that fits at reading width when reopening from the right. */
+function autoExpandedPaneStart(paneCount: number, containerWidth: number): number {
+  if (paneCount <= 1) return 0;
+
+  const separatorWidth = (paneCount - 1) * COLUMN_SEPARATOR_WIDTH;
+  let occupiedWidth = COLUMN_PANE_WIDTH + (paneCount - 1) * COLUMN_STRIP_WIDTH + separatorWidth;
+  let firstExpandedPaneIndex = paneCount - 1;
+  const paneExpansionWidth = COLUMN_PANE_WIDTH - COLUMN_STRIP_WIDTH;
+
+  for (let paneIndex = paneCount - 2; paneIndex >= 0; paneIndex -= 1) {
+    if (occupiedWidth + paneExpansionWidth > containerWidth) break;
+    occupiedWidth += paneExpansionWidth;
+    firstExpandedPaneIndex = paneIndex;
+  }
+
+  return firstExpandedPaneIndex;
 }
 
 function ColumnTerminal({
