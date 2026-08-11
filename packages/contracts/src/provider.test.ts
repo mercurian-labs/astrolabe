@@ -9,6 +9,7 @@ import {
 } from "./provider.ts";
 
 const decodeProviderSessionStartInput = Schema.decodeUnknownSync(ProviderSessionStartInput);
+const encodeProviderSessionStartInput = Schema.encodeSync(ProviderSessionStartInput);
 const decodeProviderSendTurnInput = Schema.decodeUnknownSync(ProviderSendTurnInput);
 const decodeProviderSession = Schema.decodeUnknownSync(ProviderSession);
 const decodeProviderEvent = Schema.decodeUnknownSync(ProviderEvent);
@@ -21,6 +22,19 @@ function getOptionValue(
 }
 
 describe("ProviderSessionStartInput", () => {
+  it("round-trips provider settings isolation", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "claudeAgent",
+      isolateProviderSettings: true,
+      runtimeMode: "approval-required",
+    });
+    const encoded = encodeProviderSessionStartInput(parsed);
+
+    expect(encoded.isolateProviderSettings).toBe(true);
+    expect(decodeProviderSessionStartInput(encoded)).toEqual(parsed);
+  });
+
   it("accepts codex-compatible payloads", () => {
     const parsed = decodeProviderSessionStartInput({
       threadId: "thread-1",
