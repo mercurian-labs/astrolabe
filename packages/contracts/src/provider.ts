@@ -66,6 +66,8 @@ export const ProviderSessionStartInput = Schema.Struct({
   resumeCursor: Schema.optional(Schema.Unknown),
   approvalPolicy: Schema.optional(ProviderApprovalPolicy),
   sandboxMode: Schema.optional(ProviderSandboxMode),
+  /** Start without loading provider user, project, or local settings when supported. */
+  isolateProviderSettings: Schema.optional(Schema.Boolean),
   runtimeMode: RuntimeMode,
 });
 export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;

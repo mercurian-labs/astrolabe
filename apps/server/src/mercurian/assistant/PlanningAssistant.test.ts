@@ -300,6 +300,7 @@ describe("PlanningAssistant", () => {
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.runtimeMode, "approval-required");
       assert.strictEqual(session.modelSelection?.model, "opus");
+      assert.strictEqual(session.isolateProviderSettings, true);
       const firstTurn = yield* Queue.take(harness.sendTurns);
       assert.ok(firstTurn.input?.includes("planning assistant"));
       assert.ok(firstTurn.input?.includes("Reply to this message:\nReshape the sidebar"));

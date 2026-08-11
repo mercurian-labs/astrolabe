@@ -53,6 +53,11 @@ type McpAuthMiddleware = (
   HttpServerRequest.HttpServerRequest
 >;
 
+const MCP_PROTOCOL = McpProtocol.v2025_06_18;
+
+const isRejectedMcpResponse = (status: number): boolean =>
+  status === 400 || status === 404 || status === 406 || status === 415;
+
 export const normalizeMcpHttpResponse = (
   response: HttpServerResponse.HttpServerResponse,
 ): HttpServerResponse.HttpServerResponse => {
@@ -85,10 +90,32 @@ const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
           });
           return unauthorized;
         }
-        return yield* httpEffect.pipe(
+        const sessionId = request.headers["mcp-session-id"];
+        const protocolVersion = request.headers["mcp-protocol-version"];
+        const injectedDefaultProtocolVersion =
+          request.method === "POST" && sessionId !== undefined && protocolVersion === undefined;
+        const downstreamRequest = injectedDefaultProtocolVersion
+          ? request.modify({
+              headers: {
+                ...request.headers,
+                "mcp-protocol-version": MCP_PROTOCOL.protocolVersion,
+              },
+            })
+          : request;
+        const response = yield* httpEffect.pipe(
+          Effect.provideService(HttpServerRequest.HttpServerRequest, downstreamRequest),
           Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
           Effect.map(normalizeMcpHttpResponse),
         );
+        if (isRejectedMcpResponse(response.status)) {
+          yield* Effect.logWarning("rejected authenticated MCP request", {
+            status: response.status,
+            hasSessionId: sessionId !== undefined,
+            protocolVersion: protocolVersion ?? "absent",
+            injectedDefaultProtocolVersion,
+          });
+        }
+        return response;
       }),
   ),
   Effect.withSpan("McpHttpServer.makeAuthMiddleware"),
@@ -229,7 +256,7 @@ const McpTransportLive = McpServer.layerHttp({
   name: "Astrolabe",
   version: packageJson.version,
   path: "/mcp",
-  protocols: [McpProtocol.v2025_06_18],
+  protocols: [MCP_PROTOCOL],
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
 export const layer = Layer.mergeAll(

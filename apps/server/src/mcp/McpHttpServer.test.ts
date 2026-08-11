@@ -10,7 +10,9 @@ import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/uns
 
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
+import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
+import * as PlanningAssistant from "../mercurian/assistant/PlanningAssistant.ts";
 
 const environmentId = EnvironmentId.make("environment-mcp-test");
 const threadId = ThreadId.make("thread-mcp-test");
@@ -37,6 +39,33 @@ const client = McpSchema.McpServerClient.of({
 const TestLayer = McpHttpServer.PreviewToolkitRegistrationLive.pipe(
   Layer.provideMerge(McpServer.McpServer.layer),
   Layer.provideMerge(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
+);
+
+const bearerToken = "mcp-http-test-token";
+const authenticatedMcpDependencies = Layer.mergeAll(
+  Layer.succeed(
+    McpSessionRegistry.McpSessionRegistry,
+    McpSessionRegistry.McpSessionRegistry.of({
+      issue: () => Effect.die("unused MCP credential issue"),
+      resolve: (token) => Effect.succeed(token === bearerToken ? invocation : undefined),
+      touch: () => Effect.void,
+      revokeProviderSession: () => Effect.void,
+      revokeThread: () => Effect.void,
+      revokeAll: Effect.void,
+    }),
+  ),
+  Layer.mock(PlanningAssistant.PlanningAssistant)({
+    startTurn: () => Effect.void,
+    stopTurn: () => Effect.void,
+    answerQuestion: () => Effect.die("unused planning answer"),
+    frames: () => Stream.empty,
+    status: Effect.succeed(new Map()),
+    changes: Stream.empty,
+    teardownPlan: () => Effect.void,
+    saveRevisionFromThread: () => Effect.void,
+    readPlanFromThread: () => Effect.succeed(""),
+  }),
+  PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer)),
 );
 
 it("normalizes empty successful notification responses to accepted", () => {
@@ -147,6 +176,75 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
         ),
       });
       expect(reusedSessionResponse.status).toBe(404);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect("accepts session requests that omit the negotiated protocol version", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      yield* HttpRouter.serve(
+        McpHttpServer.layer.pipe(Layer.provide(authenticatedMcpDependencies)),
+        {
+          disableListenLog: true,
+          disableLogger: true,
+        },
+      ).pipe(Layer.build);
+      const httpClient = yield* HttpClient.HttpClient;
+      const postMcp = (body: string, headers: Readonly<Record<string, string>> = {}) =>
+        httpClient.post("/mcp", {
+          headers: {
+            accept: "application/json, text/event-stream",
+            authorization: `Bearer ${bearerToken}`,
+            ...headers,
+          },
+          body: HttpBody.text(body, "application/json"),
+        });
+
+      const initializeResponse = yield* postMcp(
+        `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"mcp-test","version":"1.0.0"}}}`,
+      );
+      const sessionId = initializeResponse.headers["mcp-session-id"];
+      expect(initializeResponse.status).toBe(200);
+      expect(sessionId).toBeDefined();
+
+      const initializedResponse = yield* postMcp(
+        `{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
+        { "mcp-session-id": sessionId! },
+      );
+      expect(initializedResponse.status).toBe(202);
+
+      const toolsListBody = `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`;
+      const toolsListResponse = yield* postMcp(toolsListBody, {
+        "mcp-session-id": sessionId!,
+      });
+      expect(toolsListResponse.status).toBe(200);
+      const toolsListResult = (yield* toolsListResponse.json) as {
+        readonly result: { readonly tools: ReadonlyArray<{ readonly name: string }> };
+      };
+      const toolNames = toolsListResult.result.tools.map(({ name }) => name);
+      expect(toolNames.length).toBeGreaterThan(0);
+      expect(toolNames).toContain("save_plan_revision");
+      expect(toolNames).toContain("read_plan");
+      expect(toolNames).toContain("preview_status");
+      expect(toolNames).toContain("preview_snapshot");
+
+      const explicitVersionResponse = yield* postMcp(toolsListBody, {
+        "mcp-session-id": sessionId!,
+        "mcp-protocol-version": McpProtocol.v2025_06_18.protocolVersion,
+      });
+      expect(explicitVersionResponse.status).toBe(200);
+
+      const wrongVersionResponse = yield* postMcp(toolsListBody, {
+        "mcp-session-id": sessionId!,
+        "mcp-protocol-version": "1999-01-01",
+      });
+      expect(wrongVersionResponse.status).toBe(400);
+
+      const unknownSessionResponse = yield* postMcp(toolsListBody, {
+        "mcp-session-id": "unknown-session",
+      });
+      expect(unknownSessionResponse.status).toBe(404);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

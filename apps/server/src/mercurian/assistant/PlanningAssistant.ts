@@ -590,6 +590,7 @@ export const make = Effect.gen(function* () {
         ? {}
         : { additionalDirectories: materials.additionalDirectories }),
       modelSelection: { instanceId: input.instanceId, model: input.model },
+      isolateProviderSettings: true,
       // The most restrictive tier the contract has; combined with the
       // approval auto-policy this is the read-only guarantee (Design §3).
       runtimeMode: "approval-required",
