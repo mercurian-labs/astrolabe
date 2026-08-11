@@ -36,7 +36,6 @@ import {
   ChatAttachment,
   MercurianProjectId,
   MercurianProjectNotFoundError,
-  MercurianRepositoryId,
   PlanDeleteBlockedError,
   PlanGroundingItem,
   PlanGroundingScope,
@@ -45,7 +44,6 @@ import {
   PlanQuestionRecord,
   PlanTurnActiveError,
   TrackerConnectionId,
-  TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 
 import {
@@ -114,20 +112,6 @@ export const IssueRevisionCommitPayload = Schema.Struct({
 export type IssueRevisionCommitPayload = typeof IssueRevisionCommitPayload.Type;
 
 /**
- * A plan projected onto one repository, whole. The repository name is a
- * record rather than a link so history survives repository removal.
- */
-export const TechnicalPlanCommitPayload = Schema.Struct({
-  text: Schema.String,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-  /** The plan revision this document derives from — its staleness stamp. */
-  sourceRevisionCommitId: CommitId,
-  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
-});
-export type TechnicalPlanCommitPayload = typeof TechnicalPlanCommitPayload.Type;
-
-/**
  * What every projected commit carries whatever its kind: its place in the
  * order, its edges, its attribution, and whether it is shared yet. The last
  * two are the DAG explorer's whole input — it draws the history from these
@@ -162,15 +146,6 @@ export type PlanMessage = typeof PlanMessage.Type;
 export const PlanRevision = Schema.Struct(PlanCommitFields);
 export type PlanRevision = typeof PlanRevision.Type;
 
-/** A derived document's constant-size facts; its text is read on demand. */
-export const PlanTechnicalPlan = Schema.Struct({
-  ...PlanCommitFields,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-  sourceRevisionCommitId: CommitId,
-});
-export type PlanTechnicalPlan = typeof PlanTechnicalPlan.Type;
-
 /**
  * The imported issue, as the conversation renders it. Unlike a plan revision
  * this carries its content: there is exactly one per history, its body is
@@ -193,8 +168,7 @@ export type PlanIssueRevision = typeof PlanIssueRevision.Type;
 export type PlanTimelineItem =
   | ({ readonly _tag: "message" } & PlanMessage)
   | ({ readonly _tag: "plan-revision" } & PlanRevision)
-  | ({ readonly _tag: "issue-revision" } & PlanIssueRevision)
-  | ({ readonly _tag: "technical-plan" } & PlanTechnicalPlan);
+  | ({ readonly _tag: "issue-revision" } & PlanIssueRevision);
 
 /**
  * A projected commit, ready to emit as an event. `planText` rides along only
@@ -370,19 +344,6 @@ export const SaveAssistantPlanRevisionInput = Schema.Struct({
 });
 export type SaveAssistantPlanRevisionInput = typeof SaveAssistantPlanRevisionInput.Type;
 
-/** The all-or-nothing derivation settle. No RPC exposes this write. */
-export const SaveTechnicalPlanInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: CommitId,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-  sourceRevisionCommitId: CommitId,
-  text: Schema.String,
-  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
-  createdAt: Schema.DateTimeUtcFromString,
-});
-export type SaveTechnicalPlanInput = typeof SaveTechnicalPlanInput.Type;
-
 export const GetPlanInput = Schema.Struct({ planId: PlanId });
 export type GetPlanInput = typeof GetPlanInput.Type;
 
@@ -411,30 +372,6 @@ export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
 export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
-
-export const GetDerivationContextInput = Schema.Struct({
-  planId: PlanId,
-  atCommitId: Schema.optional(CommitId),
-});
-export type GetDerivationContextInput = typeof GetDerivationContextInput.Type;
-
-export interface DerivationContext {
-  readonly atCommitId: CommitId;
-  readonly planText: string;
-  readonly sourceRevisionCommitId?: CommitId;
-  readonly latestTechnicalPlans: ReadonlyMap<
-    MercurianRepositoryId,
-    { readonly commitId: CommitId; readonly sourceRevisionCommitId: CommitId }
-  >;
-}
-
-export const GetTechnicalPlanAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
-export type GetTechnicalPlanAtInput = typeof GetTechnicalPlanAtInput.Type;
-
-export interface TechnicalPlanAt {
-  readonly text: string;
-  readonly grounding?: ReadonlyArray<PlanGroundingItem>;
-}
 
 export const RecordPlanVisitInput = Schema.Struct({
   planId: PlanId,
@@ -512,10 +449,6 @@ export class PlanningStore extends Context.Service<
     readonly saveAssistantPlanRevision: (
       input: SaveAssistantPlanRevisionInput,
     ) => Effect.Effect<PlanRevision, PlanningStoreError>;
-    /** Land one frozen derivation; exempt from the active-turn guard by design. */
-    readonly saveTechnicalPlan: (
-      input: SaveTechnicalPlanInput,
-    ) => Effect.Effect<PlanTechnicalPlan, PlanningStoreError>;
     /**
      * Take the plan out of the tree without destroying anything. Idempotent —
      * a second archive keeps the first timestamp — and total for every plan,
@@ -554,14 +487,6 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
-    /** Facts needed to decide and stamp a derivation at one point. */
-    readonly getDerivationContext: (
-      input: GetDerivationContextInput,
-    ) => Effect.Effect<DerivationContext, PlanningStoreError>;
-    /** Read one immutable technical-plan payload on demand. */
-    readonly getTechnicalPlanAt: (
-      input: GetTechnicalPlanAtInput,
-    ) => Effect.Effect<TechnicalPlanAt, PlanningStoreError>;
     /**
      * You looked at this plan. Writes — and announces — only when the visit
      * changes seen-ness: advancing an already-current visit changes nothing any
@@ -703,7 +628,6 @@ function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
 const decodeIssuePayload = Schema.decodeUnknownEffect(IssueRevisionCommitPayload);
-const decodeTechnicalPlanPayload = Schema.decodeUnknownEffect(TechnicalPlanCommitPayload);
 
 /**
  * The artifact at the end of a path: the text of the last revision on it, or
@@ -1006,16 +930,6 @@ export const make = Effect.gen(function* () {
 
   const toPlanRevision = (commit: Commit): PlanRevision => toPlanCommitFields(commit);
 
-  const toTechnicalPlan = Effect.fn("PlanningStore.toTechnicalPlan")(function* (commit: Commit) {
-    const payload = yield* decodeTechnicalPlanPayload(commit.payload);
-    return {
-      ...toPlanCommitFields(commit),
-      repositoryId: payload.repositoryId,
-      repositoryName: payload.repositoryName,
-      sourceRevisionCommitId: payload.sourceRevisionCommitId,
-    } satisfies PlanTechnicalPlan;
-  });
-
   /**
    * A commit as the planning space sees it, or nothing when the space has no
    * rendering for that kind. Skipping the unknown rather than failing is what
@@ -1045,12 +959,6 @@ export const make = Effect.gen(function* () {
           title: payload.title,
           description: payload.description,
         },
-      });
-    }
-    if (commit.kind === "technical-plan") {
-      const technicalPlan = yield* toTechnicalPlan(commit);
-      return Option.some<PlanTimelineEvent>({
-        item: { _tag: "technical-plan", ...technicalPlan },
       });
     }
     return Option.none<PlanTimelineEvent>();
@@ -1307,7 +1215,7 @@ export const make = Effect.gen(function* () {
     readonly plan: Plan;
     readonly parentCommitId: CommitId | undefined;
     readonly commitId: CommitId;
-    readonly kind: "message" | "plan-revision" | "technical-plan";
+    readonly kind: "message" | "plan-revision";
     readonly payload: unknown;
     readonly createdAt: Commit["createdAt"];
   }) {
@@ -1493,38 +1401,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const saveTechnicalPlan: PlanningStore["Service"]["saveTechnicalPlan"] = (input) =>
-    Effect.gen(function* () {
-      const plan = yield* requirePlan(input.planId);
-      const commitId = yield* mintId(CommitId);
-      const appended = yield* appendAt({
-        plan,
-        parentCommitId: input.parentCommitId,
-        commitId,
-        kind: "technical-plan",
-        payload: {
-          text: input.text,
-          repositoryId: input.repositoryId,
-          repositoryName: input.repositoryName,
-          sourceRevisionCommitId: input.sourceRevisionCommitId,
-          ...(input.grounding === undefined || input.grounding.length === 0
-            ? {}
-            : { grounding: input.grounding }),
-        } satisfies TechnicalPlanCommitPayload,
-        createdAt: input.createdAt,
-      });
-
-      yield* announceChange;
-      return yield* toTechnicalPlan(appended);
-    }).pipe(
-      Effect.mapError(
-        toPlanningStoreError(
-          "PlanningStore.saveTechnicalPlan:query",
-          "PlanningStore.saveTechnicalPlan:encodeRequest",
-        ),
-      ),
-    );
-
   const archivePlan: PlanningStore["Service"]["archivePlan"] = (input) =>
     Effect.gen(function* () {
       yield* requirePlan(input.planId);
@@ -1697,75 +1573,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const getDerivationContext: PlanningStore["Service"]["getDerivationContext"] = (input) =>
-    Effect.gen(function* () {
-      const plan = yield* requirePlan(input.planId);
-      const at = yield* resolveParent(plan, input.atCommitId);
-      if (at === undefined) {
-        return yield* new PlanNotFoundError({ planId: input.planId });
-      }
-      const ancestry = yield* commits.ancestors({ commitId: at.commitId, visibility: "all" });
-      const path = [...ancestry, at];
-      let planText = "";
-      let sourceRevisionCommitId: CommitId | undefined;
-      const latestTechnicalPlans = new Map<
-        MercurianRepositoryId,
-        { readonly commitId: CommitId; readonly sourceRevisionCommitId: CommitId }
-      >();
-
-      for (const commit of path) {
-        if (commit.kind === "plan-revision") {
-          planText = (yield* decodeRevisionPayload(commit.payload)).text;
-          sourceRevisionCommitId = commit.commitId;
-        } else if (commit.kind === "technical-plan") {
-          const payload = yield* decodeTechnicalPlanPayload(commit.payload);
-          latestTechnicalPlans.set(payload.repositoryId, {
-            commitId: commit.commitId,
-            sourceRevisionCommitId: payload.sourceRevisionCommitId,
-          });
-        }
-      }
-
-      return {
-        atCommitId: at.commitId,
-        planText,
-        ...(sourceRevisionCommitId === undefined ? {} : { sourceRevisionCommitId }),
-        latestTechnicalPlans,
-      } satisfies DerivationContext;
-    }).pipe(
-      Effect.mapError(
-        toPlanningStoreError(
-          "PlanningStore.getDerivationContext:query",
-          "PlanningStore.getDerivationContext:decodeRows",
-        ),
-      ),
-    );
-
-  const getTechnicalPlanAt: PlanningStore["Service"]["getTechnicalPlanAt"] = (input) =>
-    Effect.gen(function* () {
-      const plan = yield* requirePlan(input.planId);
-      const found = yield* commits.getCommit({ commitId: input.commitId, visibility: "all" });
-      if (
-        Option.isNone(found) ||
-        found.value.historyId !== plan.historyId ||
-        found.value.kind !== "technical-plan"
-      ) {
-        return yield* new CommitStore.CommitNotFoundError({ commitId: input.commitId });
-      }
-      const payload = yield* decodeTechnicalPlanPayload(found.value.payload);
-      return {
-        text: payload.text,
-        ...(payload.grounding === undefined ? {} : { grounding: payload.grounding }),
-      } satisfies TechnicalPlanAt;
-    }).pipe(
-      Effect.mapError(
-        toPlanningStoreError(
-          "PlanningStore.getTechnicalPlanAt:query",
-          "PlanningStore.getTechnicalPlanAt:decodePayload",
-        ),
-      ),
-    );
-
   /**
    * A visit is worth writing only when it changes what a window would draw:
    * the plan has never been visited, or the visit lands at or after activity
@@ -1834,15 +1641,12 @@ export const make = Effect.gen(function* () {
     savePlanRevision,
     appendAssistantMessage,
     saveAssistantPlanRevision,
-    saveTechnicalPlan,
     archivePlan,
     unarchivePlan,
     deletePlan,
     getPlanSnapshot,
     listTimelineSince,
     getPlanTextAt,
-    getDerivationContext,
-    getTechnicalPlanAt,
     recordPlanVisit,
     markPlanUnread,
     get changes() {

@@ -4,7 +4,6 @@ import {
   CheckIcon,
   CircleDotIcon,
   Columns3Icon,
-  FileCode2Icon,
   FileTextIcon,
   GitCommitVerticalIcon,
   GitForkIcon,
@@ -1746,7 +1745,6 @@ function interpolateSpatialLayout(
  */
 function commitGlyph(item: PlanTimelineItem) {
   if (item._tag === "plan-revision") return FileTextIcon;
-  if (item._tag === "technical-plan") return FileCode2Icon;
   if (item._tag === "issue-revision") return CircleDotIcon;
   return MessageSquareIcon;
 }

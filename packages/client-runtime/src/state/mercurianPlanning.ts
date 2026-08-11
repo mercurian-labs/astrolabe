@@ -5,7 +5,7 @@ import type { Atom } from "effect/unstable/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { applyPlanStreamItem, EMPTY_PLAN_STATE } from "./planReducer.ts";
 
-export type { DerivationFailureReason, PlanSubscriptionState } from "./planReducer.ts";
+export type { PlanSubscriptionState } from "./planReducer.ts";
 import {
   createAtomCommandScheduler,
   createEnvironmentRpcCommand,
@@ -78,12 +78,6 @@ export function createMercurianPlanningAtoms<R, E>(
       // serializing them per plan is what keeps the local history linear.
       concurrency: serialPerPlan,
     }),
-    deriveTechnicalPlan: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:derive-technical-plan",
-      tag: MERCURIAN_WS_METHODS.deriveTechnicalPlan,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
     /**
      * The planning turn's two verbs. Same per-plan key as the writes: a stop
      * pressed right after a send must land after it, not race it.
@@ -148,11 +142,6 @@ export function createMercurianPlanningAtoms<R, E>(
     getPlanTextAt: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:get-plan-text-at",
       tag: MERCURIAN_WS_METHODS.getPlanTextAt,
-      scheduler: writeScheduler,
-    }),
-    getTechnicalPlanAt: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:get-technical-plan-at",
-      tag: MERCURIAN_WS_METHODS.getTechnicalPlanAt,
       scheduler: writeScheduler,
     }),
   };

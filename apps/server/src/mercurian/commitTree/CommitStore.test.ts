@@ -150,7 +150,6 @@ layer("CommitStore", (it) => {
         ["axes-3", "plan-revision", "assistant"],
         ["axes-4", "issue-revision", "human"],
         ["axes-5", "issue-revision", "assistant"],
-        ["axes-technical", "technical-plan", "human"],
       ];
       let parent = "axes-root";
       for (const [id, kind, authorKind] of chain) {
@@ -178,7 +177,6 @@ layer("CommitStore", (it) => {
           ["plan-revision", "assistant"],
           ["issue-revision", "human"],
           ["issue-revision", "assistant"],
-          ["technical-plan", "human"],
           ["coding-session", "assistant"],
           ["coding-session", "human"],
         ],
@@ -257,41 +255,6 @@ layer("CommitStore", (it) => {
 
       // A coding session hangs off any branch, it just cannot be built upon.
       yield* append(store, "leaf", "leaf-session-2", ["leaf-c"], { kind: "coding-session" });
-    }),
-  );
-
-  it.effect("keeps technical plans interior-capable under the existing fork laws", () =>
-    Effect.gen(function* () {
-      const store = yield* CommitStore.CommitStore;
-
-      yield* store.createHistory({
-        historyId: historyId("technical"),
-        rootCommit: newCommit("technical-root"),
-        rootPublished: false,
-      });
-      yield* append(store, "technical", "technical-existing", ["technical-root"]);
-
-      // A human derivation from an interior point is the legal fork.
-      const technical = yield* append(store, "technical", "technical-plan", ["technical-root"], {
-        kind: "technical-plan",
-        authorKind: "human",
-      });
-      assert.strictEqual(technical.kind, "technical-plan");
-
-      // Planning and later session leaves may build on the derived artifact.
-      yield* append(store, "technical", "technical-next", ["technical-plan"]);
-      yield* append(store, "technical", "technical-session", ["technical-next"], {
-        kind: "coding-session",
-      });
-
-      const refused = yield* append(
-        store,
-        "technical",
-        "technical-assistant-fork",
-        ["technical-root"],
-        { kind: "technical-plan", authorKind: "assistant" },
-      ).pipe(Effect.flip);
-      assert.strictEqual(refused._tag, "AssistantForkError");
     }),
   );
 

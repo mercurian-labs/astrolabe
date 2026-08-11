@@ -37,9 +37,7 @@ export const MERCURIAN_WS_METHODS = {
   importPlan: "mercurian.importPlan",
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
-  deriveTechnicalPlan: "mercurian.deriveTechnicalPlan",
   getPlanTextAt: "mercurian.getPlanTextAt",
-  getTechnicalPlanAt: "mercurian.getTechnicalPlanAt",
   visitPlan: "mercurian.visitPlan",
   markPlanUnread: "mercurian.markPlanUnread",
   archivePlan: "mercurian.archivePlan",
@@ -61,10 +59,6 @@ export type PlanId = typeof PlanId.Type;
 /** A commit id as the planning surface sees it — one message in the space. */
 export const MercurianCommitId = makeEntityId("MercurianCommitId");
 export type MercurianCommitId = typeof MercurianCommitId.Type;
-
-// Repository contracts import this module for project identity, so repeat the
-// same brand schema locally instead of introducing a runtime import cycle.
-const MercurianRepositoryId = makeEntityId("MercurianRepositoryId");
 
 /** Mirrors the commit store's author axis. */
 export const PlanAuthorKind = Schema.Literals(["human", "assistant"]);
@@ -243,15 +237,6 @@ export type PlanMessage = typeof PlanMessage.Type;
 export const PlanRevision = Schema.Struct(PlanCommitFields);
 export type PlanRevision = typeof PlanRevision.Type;
 
-/** A repository-scoped projection of one stamped plan revision. */
-export const PlanTechnicalPlan = Schema.Struct({
-  ...PlanCommitFields,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-  sourceRevisionCommitId: MercurianCommitId,
-});
-export type PlanTechnicalPlan = typeof PlanTechnicalPlan.Type;
-
 /**
  * The imported issue, as the conversation renders it — the root commit of an
  * imported plan's history.
@@ -277,7 +262,6 @@ export const PlanTimelineItem = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("message"), ...PlanMessage.fields }),
   Schema.Struct({ _tag: Schema.Literal("plan-revision"), ...PlanRevision.fields }),
   Schema.Struct({ _tag: Schema.Literal("issue-revision"), ...PlanIssueRevision.fields }),
-  Schema.Struct({ _tag: Schema.Literal("technical-plan"), ...PlanTechnicalPlan.fields }),
 ]);
 export type PlanTimelineItem = typeof PlanTimelineItem.Type;
 
@@ -299,16 +283,6 @@ export const PlanInFlightTurn = Schema.Struct({
 });
 export type PlanInFlightTurn = typeof PlanInFlightTurn.Type;
 
-/** A repository-scoped derivation currently compiling its document. */
-export const PlanInFlightDerivation = Schema.Struct({
-  turnId: PlanTurnId,
-  parentCommitId: MercurianCommitId,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-  grounding: Schema.Array(PlanGroundingItem),
-});
-export type PlanInFlightDerivation = typeof PlanInFlightDerivation.Type;
-
 /**
  * A planning space: the plan artifact beside the history that evolves it.
  *
@@ -324,8 +298,6 @@ export const PlanDetail = Schema.Struct({
   snapshotSequence: Schema.Number,
   /** The turn streaming right now, when one is. Runtime state, never stored. */
   inFlightTurn: Schema.optional(PlanInFlightTurn),
-  /** A technical plan being derived, when one is. Runtime state, never stored. */
-  inFlightDerivation: Schema.optional(PlanInFlightDerivation),
 });
 export type PlanDetail = typeof PlanDetail.Type;
 
@@ -394,16 +366,6 @@ export const PlanStreamItem = Schema.Union([
   /** The turn is over; the commit event that follows is the record arriving. */
   Schema.Struct({ kind: Schema.Literal("turn-settled"), turnId: PlanTurnId }),
   Schema.Struct({ kind: Schema.Literal("turn-refused"), reason: PlanTurnRefusalReason }),
-  Schema.Struct({
-    kind: Schema.Literal("derivation-started"),
-    derivation: PlanInFlightDerivation,
-  }),
-  Schema.Struct({ kind: Schema.Literal("derivation-settled"), turnId: PlanTurnId }),
-  Schema.Struct({
-    kind: Schema.Literal("derivation-failed"),
-    turnId: PlanTurnId,
-    reason: Schema.Literals(["no-technical-plan", "stopped", "provider-error"]),
-  }),
 ]);
 export type PlanStreamItem = typeof PlanStreamItem.Type;
 
@@ -511,14 +473,6 @@ export const MercurianSavePlanRevisionInput = Schema.Struct({
 });
 export type MercurianSavePlanRevisionInput = typeof MercurianSavePlanRevisionInput.Type;
 
-/** Compile the plan at one point into a technical plan for one repository. */
-export const MercurianDeriveTechnicalPlanInput = Schema.Struct({
-  planId: PlanId,
-  repositoryId: MercurianRepositoryId,
-  parentCommitId: Schema.optional(MercurianCommitId),
-});
-export type MercurianDeriveTechnicalPlanInput = typeof MercurianDeriveTechnicalPlanInput.Type;
-
 /**
  * The plan as of one commit — what the artifact showed when that commit
  * landed. Only the client's own subscription can name a commit here, so a
@@ -534,19 +488,6 @@ export type MercurianGetPlanTextAtInput = typeof MercurianGetPlanTextAtInput.Typ
 /** History above a commit cannot change, so this answer never goes stale. */
 export const PlanTextAt = Schema.Struct({ planText: Schema.String });
 export type PlanTextAt = typeof PlanTextAt.Type;
-
-export const MercurianGetTechnicalPlanAtInput = Schema.Struct({
-  planId: PlanId,
-  commitId: MercurianCommitId,
-});
-export type MercurianGetTechnicalPlanAtInput = typeof MercurianGetTechnicalPlanAtInput.Type;
-
-/** A frozen derived document, read on demand from its commit payload. */
-export const TechnicalPlanAt = Schema.Struct({
-  text: Schema.String,
-  grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
-});
-export type TechnicalPlanAt = typeof TechnicalPlanAt.Type;
 
 /**
  * You opened this plan. The moment is the server's to mint — the act names the
@@ -671,26 +612,6 @@ export class PlanTurnActiveError extends Schema.TaggedErrorClass<PlanTurnActiveE
   }
 }
 
-export const TechnicalPlanDerivationBlockedReason = Schema.Literals([
-  "plan-empty",
-  "repository-not-in-project",
-  "up-to-date",
-  "model-unset",
-  "no-instance",
-  "model-unavailable",
-]);
-export type TechnicalPlanDerivationBlockedReason = typeof TechnicalPlanDerivationBlockedReason.Type;
-
-/** The derivation was validly requested, but cannot start from these facts. */
-export class TechnicalPlanDerivationBlockedError extends Schema.TaggedErrorClass<TechnicalPlanDerivationBlockedError>()(
-  "TechnicalPlanDerivationBlockedError",
-  { reason: TechnicalPlanDerivationBlockedReason },
-) {
-  override get message(): string {
-    return `Technical plan derivation is blocked: ${this.reason}`;
-  }
-}
-
 /** Nothing is waiting for an answer on this plan. */
 export class NoPendingQuestionError extends Schema.TaggedErrorClass<NoPendingQuestionError>()(
   "NoPendingQuestionError",
@@ -705,7 +626,6 @@ export const isMercurianProjectNotFoundError = Schema.is(MercurianProjectNotFoun
 export const isPlanNotFoundError = Schema.is(PlanNotFoundError);
 export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
-export const isTechnicalPlanDerivationBlockedError = Schema.is(TechnicalPlanDerivationBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
 
 /**
@@ -724,9 +644,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "importPlan",
       "appendPlanMessage",
       "savePlanRevision",
-      "deriveTechnicalPlan",
       "getPlanTextAt",
-      "getTechnicalPlanAt",
       "visitPlan",
       "markPlanUnread",
       "archivePlan",

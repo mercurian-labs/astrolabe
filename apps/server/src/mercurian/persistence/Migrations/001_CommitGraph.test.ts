@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { runMigrations } from "../Migrations.ts";
+import { migrationEntries, runMigrations } from "../Migrations.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
@@ -12,6 +12,23 @@ const toNames = (columns: ReadonlyArray<{ readonly name: string }>) =>
   new Set(columns.map((column) => column.name));
 
 layer("001_CommitGraph", (it) => {
+  it.effect("keeps the migration manifest and commit kinds at the pre-derived surface", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      assert.strictEqual(migrationEntries.length, 8);
+      yield* runMigrations();
+
+      const rows = yield* sql<{ readonly sql: string | null }>`
+        SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'commits'
+      `;
+      const kindCheck = /kind IN \(([^)]+)\)/.exec(rows[0]?.sql ?? "");
+      assert.strictEqual(
+        kindCheck?.[1],
+        "'message', 'plan-revision', 'issue-revision', 'coding-session'",
+      );
+    }),
+  );
+
   it.effect("creates the commit graph tables", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

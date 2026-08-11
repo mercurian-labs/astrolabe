@@ -47,7 +47,6 @@ import {
   isRepositoryPathInvalidError,
   isPlanNotFoundError,
   isPlanTurnActiveError,
-  isTechnicalPlanDerivationBlockedError,
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
@@ -108,7 +107,6 @@ import {
   toWirePlanMessage,
   toWirePlanRevision,
   toWirePlanTextAt,
-  toWireTechnicalPlanAt,
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
@@ -1713,31 +1711,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.deriveTechnicalPlan]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.deriveTechnicalPlan,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                planningAssistant.startDerivation({
-                  planId: input.planId,
-                  repositoryId: input.repositoryId,
-                  ...(input.parentCommitId === undefined
-                    ? {}
-                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
-                  createdAt,
-                }),
-              ),
-              Effect.as({}),
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) ||
-                isPlanTurnActiveError(cause) ||
-                isTechnicalPlanDerivationBlockedError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "deriveTechnicalPlan", cause }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.visitPlan,
@@ -1862,24 +1835,6 @@ const makeWsRpcLayer = (
               ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.getTechnicalPlanAt]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.getTechnicalPlanAt,
-            planningStore
-              .getTechnicalPlanAt({
-                planId: input.planId,
-                commitId: CommitId.make(input.commitId),
-              })
-              .pipe(
-                Effect.map(toWireTechnicalPlanAt),
-                Effect.mapError((cause) =>
-                  isPlanNotFoundError(cause)
-                    ? cause
-                    : new MercurianPlanningError({ operation: "getTechnicalPlanAt", cause }),
-                ),
-              ),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.subscribePlan]: (input) =>
           observeRpcStreamEffect(
             MERCURIAN_WS_METHODS.subscribePlan,
@@ -1936,21 +1891,16 @@ const makeWsRpcLayer = (
                         // The snapshot carries the partial turn, so a window
                         // opened — or reconnected — mid-turn joins coherently
                         // with no frame replay (ADR 002 §3).
-                        Effect.all({
-                          inFlightTurn: planningAssistant.inFlight(input.planId),
-                          inFlightDerivation: planningAssistant.inFlightDerivation(input.planId),
-                        }).pipe(
-                          Effect.map(({ inFlightTurn, inFlightDerivation }) => ({
+                        planningAssistant.inFlight(input.planId).pipe(
+                          Effect.map((inFlightTurn) => ({
                             cursor: detail.snapshotSequence,
                             items: [
                               {
                                 kind: "snapshot" as const,
-                                snapshot: toWirePlanDetail(detail, {
+                                snapshot: {
+                                  ...toWirePlanDetail(detail),
                                   ...(inFlightTurn === undefined ? {} : { inFlightTurn }),
-                                  ...(inFlightDerivation === undefined
-                                    ? {}
-                                    : { inFlightDerivation }),
-                                }),
+                                },
                               },
                             ] satisfies ReadonlyArray<PlanStreamItem>,
                           })),

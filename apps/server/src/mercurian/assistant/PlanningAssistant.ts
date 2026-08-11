@@ -35,7 +35,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 
@@ -43,12 +42,10 @@ import {
   ApprovalRequestId,
   MercurianCommitId,
   type MercurianProjectId,
-  type MercurianRepositoryId,
   NoPendingQuestionError,
   type PlanGroundingItem,
   type PlanGroundingScope,
   type PlanId,
-  type PlanInFlightDerivation,
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanStreamItem,
@@ -57,36 +54,26 @@ import {
   type ProviderInstanceId,
   type ProviderRuntimeEvent,
   resolvePlanningModel,
-  TechnicalPlanDerivationBlockedError,
   ThreadId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
 
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
-import type {
-  ReadPlanTool,
-  SavePlanRevisionTool,
-  SaveTechnicalPlanTool,
-} from "../../mcp/toolkits/planning/tools.ts";
+import type { ReadPlanTool, SavePlanRevisionTool } from "../../mcp/toolkits/planning/tools.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, type CommitId } from "../commitTree/schema.ts";
 import {
   MessageCommitPayload,
   PlanningStore,
   PlanRevisionCommitPayload,
-  type PlanningStoreError,
 } from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
-import {
-  WorkspaceSettingsStore,
-  type WorkspaceSettingsStoreError,
-} from "../workspace/WorkspaceSettingsStore.ts";
+import { WorkspaceSettingsStore } from "../workspace/WorkspaceSettingsStore.ts";
 import { foldGroundingEvent } from "./GroundingFold.ts";
 import {
   composeFirstTurnInput,
-  derivationTurnInput,
   planningSystemAppendix,
   transcriptPreamble,
   type TranscriptEntry,
@@ -107,21 +94,6 @@ export interface StartTurnInput {
   readonly text: string;
 }
 
-export interface StartDerivationInput {
-  readonly planId: PlanId;
-  readonly repositoryId: MercurianRepositoryId;
-  /** Where the person stood; absent means the history's current tip. */
-  readonly parentCommitId?: CommitId;
-  readonly createdAt: DateTime.Utc;
-}
-
-export type StartDerivationError =
-  | PlanningStoreError
-  | RepositoryStore.RepositoryStoreError
-  | WorkspaceSettingsStoreError
-  | PlatformError.PlatformError
-  | TechnicalPlanDerivationBlockedError;
-
 export interface AnswerQuestionInput {
   readonly planId: PlanId;
   readonly answers: Readonly<Record<string, unknown>>;
@@ -138,7 +110,8 @@ interface PlanSession {
 
 /** The conversational state of one running turn. Mutated in place; single process. */
 interface TurnRuntime {
-  readonly flavor: "reply" | "derivation";
+  /** Keeps tool permissions explicit as additional one-shot turn shapes are introduced. */
+  readonly flavor: "reply";
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
   /** Mutable: a continuation whose session turned out dead moves threads. */
@@ -157,14 +130,6 @@ interface TurnRuntime {
   answers: Record<string, unknown> | undefined;
   /** Guards double settles: a stop racing the provider's own completion. */
   settling: boolean;
-  /** Distinguishes a requested derivation stop from an abnormal abort. */
-  stopRequested: boolean;
-  /** Derivation-only facts. Replies leave these absent. */
-  readonly repositoryId?: MercurianRepositoryId;
-  readonly repositoryName?: string;
-  readonly sourceRevisionCommitId?: CommitId;
-  readonly createdAt?: DateTime.Utc;
-  pendingTechnicalPlan?: string;
 }
 
 /**
@@ -175,15 +140,9 @@ interface TurnRuntime {
 const MAX_GROUNDING_ITEMS = 200;
 
 const T3_CODE_MCP_TOOL_PREFIX = "mcp__t3-code__";
-type PlanningMcpToolName =
-  | typeof SavePlanRevisionTool.name
-  | typeof SaveTechnicalPlanTool.name
-  | typeof ReadPlanTool.name;
-// Flavor enforcement lives in the handlers (thread→turn routing), not here:
-// a reply turn calling save_technical_plan is still refused server-side.
+type PlanningMcpToolName = typeof SavePlanRevisionTool.name | typeof ReadPlanTool.name;
 const APPROVED_PLANNING_MCP_TOOLS = [
   "save_plan_revision",
-  "save_technical_plan",
   "read_plan",
 ] as const satisfies ReadonlyArray<PlanningMcpToolName>;
 const APPROVED_PLANNING_MCP_TOOL_NAMES = new Set(
@@ -201,10 +160,6 @@ export class PlanningAssistant extends Context.Service<
      * on the assistant being able to answer it.
      */
     readonly startTurn: (input: StartTurnInput) => Effect.Effect<void>;
-    /** Start an on-demand, repository-scoped derivation after synchronous preflight. */
-    readonly startDerivation: (
-      input: StartDerivationInput,
-    ) => Effect.Effect<void, StartDerivationError>;
     /**
      * Stop the streaming reply; the partial lands as a commit marked
      * interrupted. Idempotent when nothing is streaming.
@@ -221,9 +176,6 @@ export class PlanningAssistant extends Context.Service<
     readonly frames: (planId: PlanId) => Stream.Stream<PlanStreamItem>;
     /** The partial turn for snapshot composition — join-mid-turn's source. */
     readonly inFlight: (planId: PlanId) => Effect.Effect<PlanInFlightTurn | undefined>;
-    readonly inFlightDerivation: (
-      planId: PlanId,
-    ) => Effect.Effect<PlanInFlightDerivation | undefined>;
     /** The tree's two status inputs, for every plan with a live turn. */
     readonly status: Effect.Effect<ReadonlyMap<PlanId, PlanTurnStatus>>;
     /** Fires when any turn starts, pauses on a question, or settles. */
@@ -244,11 +196,6 @@ export class PlanningAssistant extends Context.Service<
      * plan-revision powers.
      */
     readonly saveRevisionFromThread: (input: {
-      readonly threadId: ThreadId;
-      readonly text: string;
-    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
-    /** The derivation MCP door: last complete document wins until settlement. */
-    readonly saveTechnicalPlanFromThread: (input: {
       readonly threadId: ThreadId;
       readonly text: string;
     }) => Effect.Effect<void, PlanningTurnNotFoundError>;
@@ -415,69 +362,6 @@ export const make = Effect.gen(function* () {
     yield* announceChange;
   });
 
-  /**
-   * Finish the one-shot derivation. Only a completed turn that called the MCP
-   * document door lands anything; every other outcome releases the claim and
-   * leaves the history untouched.
-   */
-  const settleDerivation = Effect.fn("PlanningAssistant.settleDerivation")(function* (
-    planId: PlanId,
-    outcome: "completed" | "stopped" | "provider-error",
-  ) {
-    const turn = turns.get(planId);
-    if (turn === undefined || turn.flavor !== "derivation" || turn.settling) return;
-    turn.settling = true;
-
-    let failureReason: "no-technical-plan" | "stopped" | "provider-error" | undefined;
-    if (outcome === "stopped") {
-      failureReason = "stopped";
-    } else if (outcome === "provider-error") {
-      failureReason = "provider-error";
-    } else if (turn.pendingTechnicalPlan === undefined) {
-      failureReason = "no-technical-plan";
-    } else if (
-      turn.repositoryId === undefined ||
-      turn.repositoryName === undefined ||
-      turn.sourceRevisionCommitId === undefined ||
-      turn.createdAt === undefined
-    ) {
-      failureReason = "provider-error";
-    } else {
-      const landed = yield* planningStore
-        .saveTechnicalPlan({
-          planId,
-          parentCommitId: turn.parentCommitId,
-          repositoryId: turn.repositoryId,
-          repositoryName: turn.repositoryName,
-          sourceRevisionCommitId: turn.sourceRevisionCommitId,
-          text: turn.pendingTechnicalPlan,
-          ...(turn.grounding.length === 0 ? {} : { grounding: turn.grounding }),
-          createdAt: turn.createdAt,
-        })
-        .pipe(Effect.result);
-      if (Result.isFailure(landed)) {
-        failureReason = "provider-error";
-        yield* Effect.logError("technical plan derivation failed to commit", {
-          planId,
-          cause: landed.failure,
-        });
-      }
-    }
-
-    turns.delete(planId);
-    yield* registry.close(planId);
-    yield* publishFrame(
-      planId,
-      failureReason === undefined
-        ? { kind: "derivation-settled", turnId: turn.turnId }
-        : { kind: "derivation-failed", turnId: turn.turnId, reason: failureReason },
-    );
-    yield* providerService
-      .stopSession({ threadId: turn.threadId })
-      .pipe(Effect.catch(() => Effect.void));
-    yield* announceChange;
-  });
-
   /** The auto-answer policy: reads and the planning artifact door approved, all else declined. */
   const respondToApproval = Effect.fn("PlanningAssistant.respondToApproval")(function* (
     turn: TurnRuntime,
@@ -556,9 +440,6 @@ export const make = Effect.gen(function* () {
 
     switch (event.type) {
       case "content.delta": {
-        // A derivation's narration is not the document and never reaches the
-        // plan stream. The complete document arrives through its MCP tool.
-        if (turn.flavor === "derivation") return;
         if (event.payload.streamKind !== "assistant_text") return;
         // The offset is what lets a joiner fold this idempotently against
         // its snapshot's partial text.
@@ -573,25 +454,6 @@ export const make = Effect.gen(function* () {
         return;
       }
       case "user-input.requested": {
-        if (turn.flavor === "derivation") {
-          if (event.requestId !== undefined) {
-            yield* providerService
-              .respondToUserInput({
-                threadId: turn.threadId,
-                requestId: ApprovalRequestId.make(String(event.requestId)),
-                answers: {},
-              })
-              .pipe(
-                Effect.catch((cause) =>
-                  Effect.logWarning("derivation question auto-answer failed", {
-                    planId: turn.planId,
-                    cause,
-                  }),
-                ),
-              );
-          }
-          return;
-        }
         const questions = event.payload.questions.map(toPlanQuestion);
         turn.pendingQuestions = questions;
         turn.pendingRequestId =
@@ -627,33 +489,18 @@ export const make = Effect.gen(function* () {
         return;
       }
       case "turn.completed": {
-        if (turn.flavor === "derivation") {
-          yield* settleDerivation(
-            turn.planId,
-            event.payload.state === "completed" ? "completed" : "provider-error",
-          );
-        } else {
-          yield* settleTurn(turn.planId, { interrupted: event.payload.state !== "completed" });
-        }
+        yield* settleTurn(turn.planId, { interrupted: event.payload.state !== "completed" });
         return;
       }
       case "turn.aborted": {
-        if (turn.flavor === "derivation") {
-          yield* settleDerivation(turn.planId, turn.stopRequested ? "stopped" : "provider-error");
-        } else {
-          yield* settleTurn(turn.planId, { interrupted: true });
-        }
+        yield* settleTurn(turn.planId, { interrupted: true });
         return;
       }
       case "session.exited": {
         // The session died under a live turn: the partial reply is what
         // there was, and the record says it was cut short.
-        if (turn.flavor === "derivation") {
-          yield* settleDerivation(turn.planId, turn.stopRequested ? "stopped" : "provider-error");
-        } else {
-          sessions.delete(turn.planId);
-          yield* settleTurn(turn.planId, { interrupted: true });
-        }
+        sessions.delete(turn.planId);
+        yield* settleTurn(turn.planId, { interrupted: true });
         return;
       }
       default: {
@@ -864,7 +711,6 @@ export const make = Effect.gen(function* () {
         askedQuestions: [],
         answers: undefined,
         settling: false,
-        stopRequested: false,
       };
       turns.set(input.planId, turn);
 
@@ -953,123 +799,11 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const startDerivation: PlanningAssistant["Service"]["startDerivation"] = (input) =>
-    Effect.gen(function* () {
-      const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
-      const context = yield* planningStore.getDerivationContext({
-        planId: input.planId,
-        ...(input.parentCommitId === undefined ? {} : { atCommitId: input.parentCommitId }),
-      });
-      const repositories = yield* repositoryStore.getSnapshot;
-      const inProject = repositories.projectRepositories.some(
-        (link) =>
-          link.projectId === snapshot.plan.projectId && link.repositoryId === input.repositoryId,
-      );
-      const repository = repositories.repositories.find(
-        (candidate) => candidate.repositoryId === input.repositoryId,
-      );
-      if (!inProject || repository === undefined) {
-        return yield* new TechnicalPlanDerivationBlockedError({
-          reason: "repository-not-in-project",
-        });
-      }
-      if (context.planText.length === 0 || context.sourceRevisionCommitId === undefined) {
-        return yield* new TechnicalPlanDerivationBlockedError({ reason: "plan-empty" });
-      }
-      const latest = context.latestTechnicalPlans.get(input.repositoryId);
-      if (latest?.sourceRevisionCommitId === context.sourceRevisionCommitId) {
-        return yield* new TechnicalPlanDerivationBlockedError({ reason: "up-to-date" });
-      }
-
-      const settings = yield* workspaceSettings.getSnapshot;
-      const providers = yield* providerRegistry.getProviders;
-      const resolution = resolvePlanningModel(settings.planningModel, providers);
-      if (resolution._tag === "unset") {
-        return yield* new TechnicalPlanDerivationBlockedError({ reason: "model-unset" });
-      }
-      if (resolution._tag === "unresolved") {
-        return yield* new TechnicalPlanDerivationBlockedError({ reason: resolution.reason });
-      }
-
-      const turnId = yield* mintTurnId;
-      const threadId = yield* mintThreadId;
-      yield* registry.open({
-        flavor: "derivation",
-        planId: input.planId,
-        turnId,
-        threadId,
-        parentCommitId: context.atCommitId,
-        tipCommitId: context.atCommitId,
-      });
-
-      const turn: TurnRuntime = {
-        flavor: "derivation",
-        planId: input.planId,
-        turnId,
-        threadId,
-        parentCommitId: context.atCommitId,
-        text: "",
-        grounding: [],
-        groundingKeys: new Set(),
-        groundingScope: undefined,
-        pendingQuestions: undefined,
-        pendingRequestId: undefined,
-        askedQuestions: [],
-        answers: undefined,
-        settling: false,
-        stopRequested: false,
-        repositoryId: repository.repositoryId,
-        repositoryName: repository.name,
-        sourceRevisionCommitId: context.sourceRevisionCommitId,
-        createdAt: input.createdAt,
-      };
-      turns.set(input.planId, turn);
-
-      yield* publishFrame(input.planId, {
-        kind: "derivation-started",
-        derivation: {
-          turnId,
-          parentCommitId: MercurianCommitId.make(context.atCommitId),
-          repositoryId: repository.repositoryId,
-          repositoryName: repository.name,
-          grounding: [],
-        },
-      });
-      yield* announceChange;
-
-      const opened = yield* Effect.gen(function* () {
-        yield* providerService.startSession(threadId, {
-          threadId,
-          providerInstanceId: resolution.instanceId,
-          cwd: repository.path,
-          modelSelection: { instanceId: resolution.instanceId, model: resolution.model },
-          isolateProviderSettings: true,
-          runtimeMode: "approval-required",
-        });
-        yield* providerService.sendTurn({
-          threadId,
-          input: derivationTurnInput({
-            repositoryName: repository.name,
-            planText: context.planText,
-          }),
-        });
-      }).pipe(Effect.result);
-
-      if (Result.isFailure(opened)) {
-        yield* Effect.logError("technical plan derivation failed to start", {
-          planId: input.planId,
-          cause: opened.failure,
-        });
-        yield* settleDerivation(input.planId, "provider-error");
-      }
-    });
-
   const stopTurn: PlanningAssistant["Service"]["stopTurn"] = ({ planId }) =>
     Effect.gen(function* () {
       const turn = turns.get(planId);
       // Nothing to stop is not an error a person caused.
       if (turn === undefined || turn.settling) return;
-      turn.stopRequested = true;
       const interrupted = yield* providerService
         .interruptTurn({ threadId: turn.threadId })
         .pipe(Effect.result);
@@ -1080,11 +814,7 @@ export const make = Effect.gen(function* () {
           planId,
           cause: interrupted.failure,
         });
-        if (turn.flavor === "derivation") {
-          yield* settleDerivation(planId, "stopped");
-        } else {
-          yield* settleTurn(planId, { interrupted: true });
-        }
+        yield* settleTurn(planId, { interrupted: true });
         return;
       }
       // On success the adapter normally emits turn.aborted (or turn.completed
@@ -1103,11 +833,7 @@ export const make = Effect.gen(function* () {
             yield* Effect.logWarning("planning turn abort unanswered; settling directly", {
               planId,
             });
-            if (current.flavor === "derivation") {
-              yield* settleDerivation(planId, "stopped");
-            } else {
-              yield* settleTurn(planId, { interrupted: true });
-            }
+            yield* settleTurn(planId, { interrupted: true });
           }),
         ),
         Effect.forkDetach,
@@ -1170,32 +896,11 @@ export const make = Effect.gen(function* () {
       } satisfies PlanInFlightTurn;
     });
 
-  const inFlightDerivation: PlanningAssistant["Service"]["inFlightDerivation"] = (planId) =>
-    Effect.sync(() => {
-      const turn = turns.get(planId);
-      if (
-        turn === undefined ||
-        turn.flavor !== "derivation" ||
-        turn.settling ||
-        turn.repositoryId === undefined ||
-        turn.repositoryName === undefined
-      ) {
-        return undefined;
-      }
-      return {
-        turnId: turn.turnId,
-        parentCommitId: MercurianCommitId.make(turn.parentCommitId),
-        repositoryId: turn.repositoryId,
-        repositoryName: turn.repositoryName,
-        grounding: [...turn.grounding],
-      } satisfies PlanInFlightDerivation;
-    });
-
   const status: PlanningAssistant["Service"]["status"] = Effect.sync(() => {
     const result = new Map<PlanId, PlanTurnStatus>();
     for (const turn of turns.values()) {
       if (turn.settling) continue;
-      const waiting = turn.flavor === "reply" && turn.pendingQuestions !== undefined;
+      const waiting = turn.pendingQuestions !== undefined;
       result.set(turn.planId, { isWorking: !waiting, hasPendingInput: waiting });
     }
     return result;
@@ -1205,9 +910,7 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const turn = turns.get(input.planId);
       if (turn !== undefined && !turn.settling) {
-        if (turn.flavor === "derivation") {
-          yield* settleDerivation(input.planId, "stopped");
-        } else if (input.commitPartial) {
+        if (input.commitPartial) {
           yield* settleTurn(input.planId, { interrupted: true });
         } else {
           turns.delete(input.planId);
@@ -1252,24 +955,6 @@ export const make = Effect.gen(function* () {
       yield* registry.advanceTip(turn.planId, revision.commitId);
     });
 
-  const saveTechnicalPlanFromThread: PlanningAssistant["Service"]["saveTechnicalPlanFromThread"] = (
-    input,
-  ) =>
-    Effect.gen(function* () {
-      const claimed = yield* registry.getByThread(input.threadId);
-      const runtime = findTurnByThread(input.threadId);
-      if (
-        Option.isNone(claimed) ||
-        claimed.value.flavor !== "derivation" ||
-        runtime === undefined ||
-        runtime.flavor !== "derivation" ||
-        runtime.settling
-      ) {
-        return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
-      }
-      runtime.pendingTechnicalPlan = input.text;
-    });
-
   const readPlanFromThread: PlanningAssistant["Service"]["readPlanFromThread"] = (input) =>
     Effect.gen(function* () {
       const claimed = yield* registry.getByThread(input.threadId);
@@ -1290,16 +975,13 @@ export const make = Effect.gen(function* () {
 
   return {
     startTurn,
-    startDerivation,
     stopTurn,
     answerQuestion,
     frames,
     inFlight,
-    inFlightDerivation,
     status,
     teardownPlan,
     saveRevisionFromThread,
-    saveTechnicalPlanFromThread,
     readPlanFromThread,
     get changes() {
       return Stream.fromPubSub(changesPubSub);

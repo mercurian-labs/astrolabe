@@ -20,7 +20,6 @@ import type {
   PlanMessage,
   PlanningTreeSnapshot,
   PlanRevision,
-  PlanTechnicalPlan,
   PlanTimelineEvent,
   PlanTimelineItem,
   PlanTreeRow,
@@ -43,9 +42,7 @@ export const toWirePlanShell = (plan: Plan): Contracts.PlanShell => ({
   updatedAt: iso(plan.updatedAt),
 });
 
-const toWirePlanCommitFields = (
-  commit: PlanMessage | PlanRevision | PlanIssueRevision | PlanTechnicalPlan,
-) => ({
+const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision | PlanIssueRevision) => ({
   commitId: MercurianCommitId.make(commit.commitId),
   sequence: commit.sequence,
   parents: commit.parents.map((parentId) => MercurianCommitId.make(parentId)),
@@ -70,15 +67,6 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
 export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision =>
   toWirePlanCommitFields(revision);
 
-export const toWirePlanTechnicalPlan = (
-  technicalPlan: PlanTechnicalPlan,
-): Contracts.PlanTechnicalPlan => ({
-  ...toWirePlanCommitFields(technicalPlan),
-  repositoryId: technicalPlan.repositoryId,
-  repositoryName: technicalPlan.repositoryName,
-  sourceRevisionCommitId: MercurianCommitId.make(technicalPlan.sourceRevisionCommitId),
-});
-
 /** Unlike a revision, this one carries its body: the space begins with it. */
 export const toWirePlanIssueRevision = (
   revision: PlanIssueRevision,
@@ -95,27 +83,14 @@ export const toWirePlanTimelineItem = (item: PlanTimelineItem): Contracts.PlanTi
   if (item._tag === "issue-revision") {
     return { _tag: "issue-revision", ...toWirePlanIssueRevision(item) };
   }
-  if (item._tag === "technical-plan") {
-    return { _tag: "technical-plan", ...toWirePlanTechnicalPlan(item) };
-  }
   return { _tag: "plan-revision", ...toWirePlanRevision(item) };
 };
 
-export const toWirePlanDetail = (
-  detail: PlanDetail,
-  inFlight?: {
-    readonly inFlightTurn?: Contracts.PlanInFlightTurn;
-    readonly inFlightDerivation?: Contracts.PlanInFlightDerivation;
-  },
-): Contracts.PlanDetail => ({
+export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
   plan: toWirePlanShell(detail.plan),
   planText: detail.planText,
   timeline: detail.timeline.map(toWirePlanTimelineItem),
   snapshotSequence: detail.snapshotSequence,
-  ...(inFlight?.inFlightTurn === undefined ? {} : { inFlightTurn: inFlight.inFlightTurn }),
-  ...(inFlight?.inFlightDerivation === undefined
-    ? {}
-    : { inFlightDerivation: inFlight.inFlightDerivation }),
 });
 
 export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanStreamItem => ({
@@ -136,13 +111,6 @@ export const toWirePlanImport = (result: PlanImport): Contracts.PlanImportResult
 });
 
 export const toWirePlanTextAt = (planText: string): Contracts.PlanTextAt => ({ planText });
-
-export const toWireTechnicalPlanAt = (
-  technicalPlan: import("./PlanningStore.ts").TechnicalPlanAt,
-): Contracts.TechnicalPlanAt => ({
-  text: technicalPlan.text,
-  ...(technicalPlan.grounding === undefined ? {} : { grounding: technicalPlan.grounding }),
-});
 
 /** The two live status facts a row composes in, from the planning runtime. */
 export interface PlanRowStatus {

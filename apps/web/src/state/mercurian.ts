@@ -1,13 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
-import {
-  createMercurianPlanningAtoms,
-  type DerivationFailureReason,
-} from "@t3tools/client-runtime/state/mercurian-planning";
+import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
   MercurianAppendPlanMessageInput,
   MercurianCommitId,
   MercurianCreatePlanInput,
-  MercurianDeriveTechnicalPlanInput,
   MercurianImportPlanInput,
   MercurianSavePlanRevisionInput,
   PlanDetail,
@@ -43,7 +39,6 @@ const EMPTY_PLAN_ATOM = Atom.make(
       readonly detail: PlanDetail | null;
       readonly synchronized: boolean;
       readonly turnRefusal: PlanTurnRefusalReason | null;
-      readonly derivationFailure: DerivationFailureReason | null;
     },
     never
   >(false),
@@ -83,7 +78,6 @@ export interface PlanDetailState {
   readonly error: string | null;
   /** Why the last message got no reply — transient, cleared as a turn starts. */
   readonly turnRefusal: PlanTurnRefusalReason | null;
-  readonly derivationFailure: DerivationFailureReason | null;
 }
 
 /**
@@ -106,7 +100,6 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
     isPending: detail === null && environmentId !== null && planId !== null,
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,
-    derivationFailure: state?.derivationFailure ?? null,
   };
 }
 
@@ -156,12 +149,6 @@ export function useSavePlanRevision() {
   return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
 }
 
-/** Compile the plan at the named position for one repository. */
-export function useDeriveTechnicalPlan() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.deriveTechnicalPlan);
-  return useCallback((input: MercurianDeriveTechnicalPlanInput) => run(input), [run]);
-}
-
 /**
  * Record that you are looking at a plan. Unguarded on purpose: the server
  * writes only when the visit changes seen-ness, so a redundant call costs
@@ -208,15 +195,6 @@ export function useAnswerPlanningQuestion() {
  */
 export function useGetPlanTextAt() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.getPlanTextAt);
-  return useCallback(
-    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
-    [run],
-  );
-}
-
-/** A frozen technical plan's document, cached safely by its immutable commit id. */
-export function useGetTechnicalPlanAt() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.getTechnicalPlanAt);
   return useCallback(
     (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
     [run],

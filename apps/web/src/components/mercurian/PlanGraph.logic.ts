@@ -290,9 +290,6 @@ export function planCommitSummary(item: PlanTimelineItem): string {
   if (item._tag === "plan-revision") {
     return item.authorKind === "human" ? "You edited the plan" : "The assistant revised the plan";
   }
-  if (item._tag === "technical-plan") {
-    return `Technical plan for ${item.repositoryName}`;
-  }
   const isIssue = item._tag === "issue-revision";
   const firstLine = (isIssue ? item.title : item.text)
     .split("\n")
@@ -307,8 +304,6 @@ export function planCommitSummary(item: PlanTimelineItem): string {
 /** The complete commit content shown when a map node is emphasized. */
 export function planCommitDetail(item: PlanTimelineItem): string {
   if (item._tag === "message") return item.text;
-  if (item._tag === "plan-revision" || item._tag === "technical-plan") {
-    return planCommitSummary(item);
-  }
+  if (item._tag === "plan-revision") return planCommitSummary(item);
   return item.description.length === 0 ? item.title : `${item.title}\n\n${item.description}`;
 }

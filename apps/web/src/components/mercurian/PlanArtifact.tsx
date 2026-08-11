@@ -1,24 +1,15 @@
-import type {
-  MercurianCommitId,
-  MercurianProjectId,
-  MercurianRepositoryId,
-  PlanId,
-  PlanTimelineItem,
-} from "@t3tools/contracts";
-import { ChevronDownIcon, FileCode2Icon, PencilIcon, RotateCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { MercurianCommitId, PlanId, PlanTimelineItem } from "@t3tools/contracts";
+import { PencilIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "../../lib/utils";
-import { useDeriveTechnicalPlan, useSavePlanRevision } from "../../state/mercurian";
-import { useProjectRepositories } from "../../state/mercurianRepositories";
+import { useSavePlanRevision } from "../../state/mercurian";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { lastPlanRevision } from "./PlanArtifact.logic";
-import { deriveMenuItems } from "./technicalPlans.logic";
 
 /**
  * The plan artifact: the standing object the planning space orbits.
@@ -29,17 +20,13 @@ import { deriveMenuItems } from "./technicalPlans.logic";
  */
 export function PlanArtifact({
   planId,
-  projectId,
   planText,
   parentCommitId,
   timeline,
-  turnActive = false,
   readOnly = false,
   readOnlyAction,
-  onDerivationStarted,
 }: {
   readonly planId: PlanId;
-  readonly projectId: MercurianProjectId;
   readonly planText: string;
   /**
    * Where the surface is standing. An edit is a commit like any other, so it
@@ -48,8 +35,6 @@ export function PlanArtifact({
    */
   readonly parentCommitId?: MercurianCommitId;
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
-  /** Replies and derivations share the plan's one active-turn claim. */
-  readonly turnActive?: boolean;
   /**
    * Set while the surface is looking at an earlier commit. Editing there is
    * not a smaller version of editing — it is a fork — so the affordance goes
@@ -58,8 +43,6 @@ export function PlanArtifact({
   readonly readOnly?: boolean;
   /** What takes Edit's place while read-only: the way back to now. */
   readonly readOnlyAction?: ReactNode;
-  /** Makes an earlier position live so the settling commit is followed. */
-  readonly onDerivationStarted?: () => void;
 }) {
   const savePlanRevision = useSavePlanRevision();
   const [draft, setDraft] = useState<string | null>(null);
@@ -87,15 +70,6 @@ export function PlanArtifact({
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
           {lastRevisionLabel(timeline)}
         </span>
-        <DeriveMenu
-          {...(parentCommitId === undefined ? {} : { parentCommitId })}
-          planId={planId}
-          planText={planText}
-          projectId={projectId}
-          timeline={timeline}
-          turnActive={turnActive}
-          {...(onDerivationStarted === undefined ? {} : { onStarted: onDerivationStarted })}
-        />
         {readOnly ? (
           readOnlyAction
         ) : draft === null ? (
@@ -120,103 +94,11 @@ export function PlanArtifact({
         )}
       </div>
       {draft === null || readOnly ? (
-        <PlanMarkdown planText={planText} />
+        <PlanArtifactBody planText={planText} />
       ) : (
         <PlanArtifactEditor value={draft} onChange={setDraft} onSave={() => void save()} />
       )}
     </section>
-  );
-}
-
-/** The sole client entry point for compiling this plan into a repository. */
-function DeriveMenu({
-  planId,
-  projectId,
-  parentCommitId,
-  timeline,
-  planText,
-  turnActive,
-  onStarted,
-}: {
-  readonly planId: PlanId;
-  readonly projectId: MercurianProjectId;
-  readonly parentCommitId?: MercurianCommitId;
-  readonly timeline: ReadonlyArray<PlanTimelineItem>;
-  readonly planText: string;
-  readonly turnActive: boolean;
-  readonly onStarted?: () => void;
-}) {
-  const repositories = useProjectRepositories(projectId);
-  const deriveTechnicalPlan = useDeriveTechnicalPlan();
-  const [startingRepositoryId, setStartingRepositoryId] = useState<MercurianRepositoryId | null>(
-    null,
-  );
-  const items = useMemo(
-    () => deriveMenuItems(repositories, timeline, planText, turnActive),
-    [planText, repositories, timeline, turnActive],
-  );
-  const triggerDisabled =
-    repositories.length === 0 ||
-    turnActive ||
-    startingRepositoryId !== null ||
-    items.some((item) => item.disabledReason === "plan-empty");
-
-  const derive = useCallback(
-    async (repositoryId: MercurianRepositoryId) => {
-      if (startingRepositoryId !== null) return;
-      setStartingRepositoryId(repositoryId);
-      const started = await deriveTechnicalPlan({
-        planId,
-        repositoryId,
-        ...(parentCommitId === undefined ? {} : { parentCommitId }),
-      });
-      setStartingRepositoryId(null);
-      if (started !== null) onStarted?.();
-    },
-    [deriveTechnicalPlan, onStarted, parentCommitId, planId, startingRepositoryId],
-  );
-
-  return (
-    <Menu>
-      <MenuTrigger
-        disabled={triggerDisabled}
-        render={<Button size="sm" variant="ghost" aria-label="Derive technical plan" />}
-      >
-        <FileCode2Icon className="size-3.5" />
-        Derive
-        <ChevronDownIcon className="size-3" />
-      </MenuTrigger>
-      <MenuPopup align="end" className="w-72">
-        {items.map((item) => {
-          const starting = startingRepositoryId === item.repository.repositoryId;
-          const stateLabel =
-            item.state === "up-to-date"
-              ? "Derived from the current plan"
-              : item.state === "stale"
-                ? "Plan changed — re-derive"
-                : "Create a technical plan";
-          return (
-            <MenuItem
-              key={item.repository.repositoryId}
-              disabled={item.disabled || startingRepositoryId !== null}
-              onClick={() => void derive(item.repository.repositoryId)}
-            >
-              {item.state === "stale" ? (
-                <RotateCwIcon className="size-4" />
-              ) : (
-                <FileCode2Icon className="size-4" />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{item.repository.name}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {starting ? "Starting…" : stateLabel}
-                </span>
-              </span>
-            </MenuItem>
-          );
-        })}
-      </MenuPopup>
-    </Menu>
   );
 }
 
@@ -227,7 +109,7 @@ function DeriveMenu({
  * surface — scoped thread refs, the right panel, workspace file links — and
  * mounting it here would drag that machinery into the planning space.
  */
-export function PlanMarkdown({ planText }: { readonly planText: string }) {
+function PlanArtifactBody({ planText }: { readonly planText: string }) {
   if (planText.length === 0) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-6 sm:px-4">
