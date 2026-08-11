@@ -11,12 +11,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
 import {
@@ -41,7 +43,12 @@ import { SidebarInset } from "../ui/sidebar";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
-import { DagExplorer } from "./DagExplorer";
+import {
+  DagExplorer,
+  DEFAULT_EXPLORER_VIEW,
+  EXPLORER_VIEW_STORAGE_KEY,
+  ExplorerView,
+} from "./DagExplorer";
 import { ImportIssueDialog } from "./ImportIssueDialog";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
@@ -63,6 +70,8 @@ const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
 const RIGHT_PANE_DEFAULT_WIDTH = 480;
 const RIGHT_PANE_MIN_WIDTH = 280;
 const RIGHT_PANE_MAX_WIDTH = 900;
+const RIGHT_PANE_THREAD_MAX_WIDTH = 560;
+const CONVERSATION_MIN_WIDTH = 480;
 
 const RIGHT_PANE_STORAGE_KEY = "mercurian:plan-right-pane:v1";
 const RightPaneState = Schema.Struct({
@@ -106,6 +115,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     DEFAULT_RIGHT_PANE,
     RightPaneState,
   );
+  const [explorerView] = useLocalStorage(
+    EXPLORER_VIEW_STORAGE_KEY,
+    DEFAULT_EXPLORER_VIEW,
+    ExplorerView,
+  );
   const { width, handlers } = useResizableWidth({
     storageKey: RIGHT_PANE_WIDTH_STORAGE_KEY,
     defaultWidth: RIGHT_PANE_DEFAULT_WIDTH,
@@ -115,6 +129,27 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     // leftward grows the pane.
     edge: "left",
   });
+  const [columnsWidthCap, setColumnsWidthCap] = useState(0);
+  const planningSpaceRef = useRef<HTMLDivElement>(null);
+  const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
+  const usesSideBySideLayout = useMediaQuery("sm");
+
+  useEffect(() => {
+    const element = planningSpaceRef.current;
+    if (element === null) return;
+
+    const updateWidth = (nextWidth: number) => {
+      setPlanningSpaceWidth((current) => (current === nextWidth ? current : nextWidth));
+    };
+    updateWidth(element.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry !== undefined) updateWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const [position, setPosition] = useState<PlanPosition>(LATEST);
   const [pathText, setPathText] = useState<string | null>(null);
@@ -160,6 +195,17 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const head = resolveHead(graph, position);
   const viewingPast = isViewingPast(graph, position);
+  const rightPaneViewCap =
+    pane.view === "artifact" || explorerView === "graph"
+      ? RIGHT_PANE_MAX_WIDTH
+      : explorerView === "thread"
+        ? RIGHT_PANE_THREAD_MAX_WIDTH
+        : columnsWidthCap;
+  const effectiveRightPaneWidth = Math.max(RIGHT_PANE_MIN_WIDTH, Math.min(width, rightPaneViewCap));
+  const rightPaneOverlays =
+    usesSideBySideLayout &&
+    planningSpaceWidth !== null &&
+    planningSpaceWidth - effectiveRightPaneWidth < CONVERSATION_MIN_WIDTH;
 
   /**
    * The conversation is always one path, never the whole history: the commits
@@ -274,7 +320,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     >
       {/* Below `sm` the two stack, pane above conversation — same content, no
           second surface to keep in step. */}
-      <div className="flex min-h-0 flex-1 flex-col-reverse sm:flex-row">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col-reverse sm:flex-row"
+        ref={planningSpaceRef}
+      >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <PlanTimeline
             inFlight={visibleInFlight}
@@ -310,7 +359,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             <div
               role="separator"
               aria-orientation="vertical"
-              className="group relative hidden w-0 shrink-0 select-none sm:block"
+              className={cn(
+                "group relative hidden w-0 shrink-0 select-none sm:block",
+                rightPaneOverlays && "absolute inset-y-0 z-30",
+              )}
+              style={rightPaneOverlays ? { right: effectiveRightPaneWidth } : undefined}
             >
               <div className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize" {...handlers}>
                 <span
@@ -320,13 +373,25 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               </div>
             </div>
             <div
-              className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-border sm:w-(--plan-pane-width) sm:flex-none sm:border-b-0 sm:border-l"
-              style={{ "--plan-pane-width": `${width}px` } as CSSProperties}
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1 flex-col border-b border-border bg-background sm:w-(--plan-pane-width) sm:flex-none sm:border-b-0 sm:border-l",
+                rightPaneOverlays && "absolute inset-y-0 right-0 z-20 shadow-lg",
+              )}
+              style={
+                {
+                  "--plan-pane-width": `${effectiveRightPaneWidth}px`,
+                } as CSSProperties
+              }
             >
               {pane.view === "explorer" ? (
                 // The highlight is wherever the composer acts from, so
                 // following a branch shows in the explorer as it happens.
-                <DagExplorer anchoredCommitId={head} graph={graph} onSelect={select} />
+                <DagExplorer
+                  anchoredCommitId={head}
+                  graph={graph}
+                  onColumnsWidthCapChange={setColumnsWidthCap}
+                  onSelect={select}
+                />
               ) : artifactText === null ? (
                 // The plan as of then is still on its way. An empty artifact
                 // and an unread one look alike, and saying nothing is better

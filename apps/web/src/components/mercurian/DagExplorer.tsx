@@ -1,6 +1,7 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import {
   CheckIcon,
+  ChevronDownIcon,
   CircleDotIcon,
   Columns3Icon,
   FileTextIcon,
@@ -14,6 +15,7 @@ import * as Schema from "effect/Schema";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,7 +32,12 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { columnLayout, defaultBranchChoices, type Pane } from "./PlanColumns.logic";
+import {
+  columnLayout,
+  columnViewWidthCap,
+  defaultBranchChoices,
+  type Pane,
+} from "./PlanColumns.logic";
 import {
   planCommitSummary,
   spatialLayout,
@@ -45,10 +52,10 @@ import {
   type ThreadSwitch,
 } from "./PlanThread.logic";
 
-const EXPLORER_VIEW_STORAGE_KEY = "mercurian:dag-explorer-view:v1";
-const ExplorerView = Schema.Literals(["thread", "columns", "graph"]);
-type ExplorerView = typeof ExplorerView.Type;
-const DEFAULT_EXPLORER_VIEW: ExplorerView = "thread";
+export const EXPLORER_VIEW_STORAGE_KEY = "mercurian:dag-explorer-view:v1";
+export const ExplorerView = Schema.Literals(["thread", "columns", "graph"]);
+export type ExplorerView = typeof ExplorerView.Type;
+export const DEFAULT_EXPLORER_VIEW: ExplorerView = "thread";
 
 /** One thread row, shared by the list and its current-row scrolling. */
 const ROW_HEIGHT = 34;
@@ -84,11 +91,13 @@ const DRAG_THRESHOLD = 4;
 export function DagExplorer({
   graph,
   anchoredCommitId,
+  onColumnsWidthCapChange,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   /** Where the surface is looking, or `null` when it is looking at now. */
   readonly anchoredCommitId: MercurianCommitId | null;
+  readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [view, setView] = useLocalStorage(
@@ -146,7 +155,12 @@ export function DagExplorer({
       ) : view === "thread" ? (
         <ThreadView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       ) : view === "columns" ? (
-        <ColumnsView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
+        <ColumnsView
+          currentCommitId={currentCommitId}
+          graph={graph}
+          onSelect={onSelect}
+          onWidthCapChange={onColumnsWidthCapChange}
+        />
       ) : (
         <GraphView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       )}
@@ -327,10 +341,12 @@ function ColumnsView({
   graph,
   currentCommitId,
   onSelect,
+  onWidthCapChange,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly onSelect: (commitId: MercurianCommitId) => void;
+  readonly onWidthCapChange: (width: number) => void;
 }) {
   const [branchChoices, setBranchChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(() =>
     defaultBranchChoices(graph, currentCommitId),
@@ -361,6 +377,11 @@ function ColumnsView({
   const paneScrollOffsetsRef = useRef(new Map<string, number>());
   const pendingFocusRef = useRef<{ readonly scroll: boolean } | null>(null);
   const currentScrollRef = useCurrentRowScroll(currentCommitId);
+
+  const widthCap = columnViewWidthCap(layout.panes, activePaneIndex, expandedPaneIndex);
+  useLayoutEffect(() => {
+    onWidthCapChange(widthCap);
+  }, [onWidthCapChange, widthCap]);
 
   useEffect(() => {
     setExpandedPaneIndex(activePaneIndex);
@@ -445,6 +466,7 @@ function ColumnsView({
               aria-label={paneSpanLabel(pane)}
               className={cn(
                 "flex min-h-0 w-8 shrink-0 flex-col items-center gap-2 overflow-hidden py-3 outline-hidden",
+                paneIndex === 0 && "ml-auto",
                 paneIndex > 0 && "border-l border-border",
                 "hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               )}
@@ -473,7 +495,11 @@ function ColumnsView({
         return (
           <div
             className={cn(
-              "min-h-0 w-56 shrink-0 overflow-y-auto py-2",
+              "min-h-0 overflow-y-auto py-2",
+              paneIndex === layout.panes.length - 1
+                ? "w-56 min-w-56 max-w-84 grow shrink-0"
+                : "w-56 shrink-0",
+              paneIndex === 0 && "ml-auto",
               paneIndex > 0 && "border-l border-border",
             )}
             key={paneKey}
@@ -485,7 +511,7 @@ function ColumnsView({
               paneScrollOffsetsRef.current.set(paneKey, event.currentTarget.scrollTop);
             }}
           >
-            <ol className="flex flex-col">
+            <ol className="flex flex-col px-1">
               {pane.rows.map((row, rowIndex) => {
                 const key = commitFocusKey(row.commitId);
                 const entry = entries[rowIndex]!;
@@ -564,7 +590,11 @@ function ColumnTerminal({
   const forkId = pane.rows.at(-1)?.commitId;
   if (forkId === undefined) return null;
   return (
-    <div className="mt-1 flex flex-col gap-0.5 border-t border-border/65 px-1 pt-1">
+    <div className="mt-1 flex flex-col gap-0.5 px-1">
+      <div className="mb-0.5 flex h-6 items-center gap-1 border-y border-border/65 bg-muted/15 px-2 text-[11px] text-muted-foreground/70">
+        <span>forks</span>
+        <ChevronDownIcon aria-hidden className="size-3" />
+      </div>
       {terminal.options.map((option, optionIndex) => {
         const isChosen = option.branchRootId === terminal.chosenChildId;
         const key = branchFocusKey(paneIndex, option.branchRootId);

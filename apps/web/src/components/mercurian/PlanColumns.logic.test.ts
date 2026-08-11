@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 
-import { columnLayout, defaultBranchChoices } from "./PlanColumns.logic";
+import { columnLayout, columnViewWidthCap, defaultBranchChoices } from "./PlanColumns.logic";
 import { buildPlanGraph, type PlanGraph } from "./PlanGraph.logic";
 
 const id = (value: string) => MercurianCommitId.make(value);
@@ -252,5 +252,15 @@ describe("columnLayout", () => {
     const partial = buildPlanGraph([commit("b", 2, ["missing"]), commit("c", 3, ["b"])]);
     expect(paneIds(partial, "c")).toEqual([["b", "c"]]);
     expect(columnLayout(buildPlanGraph([]), null, new Map()).panes).toEqual([]);
+  });
+});
+
+describe("columnViewWidthCap", () => {
+  it("counts strips, reopened panes, the flexible final pane, and separators", () => {
+    const graph = buildPlanGraph(nestedFork);
+    const panes = columnLayout(graph, id("end"), defaultBranchChoices(graph, id("end"))).panes;
+
+    expect(columnViewWidthCap(panes, 2, 2)).toBe(32 + 32 + 336 + 2);
+    expect(columnViewWidthCap(panes, 2, 0)).toBe(224 + 32 + 336 + 2);
   });
 });
