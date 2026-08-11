@@ -895,6 +895,22 @@ describe("PlanningAssistant", () => {
         ...runtimeEvent(session.threadId, {
           type: "request.opened",
           payload: {
+            requestType: "unknown",
+            detail: "*",
+            args: {},
+          },
+        }),
+        requestId: "req-opencode-anonymous" as never,
+      });
+      assert.deepStrictEqual(yield* Queue.take(harness.approvals), {
+        requestId: "req-opencode-anonymous",
+        decision: "decline",
+      });
+
+      yield* harness.emit({
+        ...runtimeEvent(session.threadId, {
+          type: "request.opened",
+          payload: {
             requestType: "dynamic_tool_call",
             detail: "other-server_save_plan_revision_helper: {}",
             args: {

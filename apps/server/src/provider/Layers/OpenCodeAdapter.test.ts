@@ -1150,6 +1150,146 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  it.effect("identifies tool-linked permission requests and preserves permission mappings", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-opencode-permission-tools");
+      const sessionID = "http://127.0.0.1:9999/session";
+      const messageID = "msg-permission-tool";
+      const callID = "call-save-implement-proposal";
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "message.part.updated",
+          properties: {
+            sessionID,
+            part: {
+              id: "part-save-implement-proposal",
+              sessionID,
+              messageID,
+              type: "tool",
+              callID,
+              tool: "t3-code_save_implement_proposal",
+              state: {
+                status: "pending",
+                input: { planId: "plan-1" },
+                raw: "",
+              },
+            },
+          },
+        },
+        {
+          type: "permission.asked",
+          properties: {
+            id: "permission-dynamic-tool",
+            sessionID,
+            permission: "mcp",
+            patterns: ["*"],
+            metadata: { source: "planning-mcp" },
+            always: [],
+            tool: { messageID, callID },
+          },
+        },
+        {
+          type: "permission.replied",
+          properties: {
+            sessionID,
+            requestID: "permission-dynamic-tool",
+            reply: "once",
+          },
+        },
+        {
+          type: "permission.asked",
+          properties: {
+            id: "permission-bash",
+            sessionID,
+            permission: "bash",
+            patterns: ["pnpm test"],
+            metadata: { source: "shell" },
+            always: [],
+            tool: { messageID, callID },
+          },
+        },
+        {
+          type: "permission.replied",
+          properties: {
+            sessionID,
+            requestID: "permission-bash",
+            reply: "reject",
+          },
+        },
+        {
+          type: "permission.asked",
+          properties: {
+            id: "permission-anonymous",
+            sessionID,
+            permission: "external_directory",
+            patterns: ["*"],
+            metadata: { path: "/tmp/example" },
+            always: [],
+          },
+        },
+        {
+          type: "permission.replied",
+          properties: {
+            sessionID,
+            requestID: "permission-anonymous",
+            reply: "once",
+          },
+        },
+      ];
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId),
+        Stream.take(9),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "approval-required",
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const opened = events.filter((event) => event.type === "request.opened");
+      const dynamicTool = opened.find((event) => event.requestId === "permission-dynamic-tool");
+      NodeAssert.ok(dynamicTool);
+      NodeAssert.equal(dynamicTool.payload.requestType, "dynamic_tool_call");
+      NodeAssert.deepEqual(dynamicTool.payload.args, {
+        source: "planning-mcp",
+        toolName: "t3-code_save_implement_proposal",
+        input: { planId: "plan-1" },
+        toolUseId: callID,
+      });
+
+      const bash = opened.find((event) => event.requestId === "permission-bash");
+      NodeAssert.ok(bash);
+      NodeAssert.equal(bash.payload.requestType, "command_execution_approval");
+      NodeAssert.deepEqual(bash.payload.args, {
+        source: "shell",
+        toolName: "t3-code_save_implement_proposal",
+        input: { planId: "plan-1" },
+        toolUseId: callID,
+      });
+
+      const anonymous = opened.find((event) => event.requestId === "permission-anonymous");
+      NodeAssert.ok(anonymous);
+      NodeAssert.equal(anonymous.payload.requestType, "unknown");
+      NodeAssert.deepEqual(anonymous.payload.args, { path: "/tmp/example" });
+
+      NodeAssert.deepEqual(
+        events
+          .filter((event) => event.type === "request.resolved")
+          .map((event) => [event.requestId, event.payload.requestType]),
+        [
+          ["permission-dynamic-tool", "dynamic_tool_call"],
+          ["permission-bash", "command_execution_approval"],
+          ["permission-anonymous", "unknown"],
+        ],
+      );
+    }),
+  );
+
   it.effect("lets OpenCode own session title generation and emits title metadata updates", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
