@@ -334,7 +334,7 @@ function SpatialMap({
   useEffect(() => {
     if (hereX === undefined || hereY === undefined) return;
     const from = transformRef.current;
-    const tween = cameraTween(from, centerOn({ x: hereX, y: hereY }, from, viewBox));
+    const tween = cameraTween(from, centerOn({ x: hereX, y: hereY }, from, viewBox), viewBox);
     startTween("camera", (progress) => applyTransform(tween(progress)));
   }, [applyTransform, hereX, hereY, startTween, viewBox]);
 
@@ -462,14 +462,14 @@ function SpatialMap({
 
   const fitToView = () => {
     const from = transformRef.current;
-    const tween = cameraTween(from, fitTransform(layout.bounds, viewBox));
+    const tween = cameraTween(from, fitTransform(layout.bounds, viewBox), viewBox);
     startTween("camera", (progress) => applyTransform(tween(progress)));
   };
 
   const jumpToCurrent = () => {
     if (hereX === undefined || hereY === undefined) return;
     const from = transformRef.current;
-    const tween = cameraTween(from, centerOn({ x: hereX, y: hereY }, from, viewBox));
+    const tween = cameraTween(from, centerOn({ x: hereX, y: hereY }, from, viewBox), viewBox);
     startTween("camera", (progress) => applyTransform(tween(progress)));
   };
 

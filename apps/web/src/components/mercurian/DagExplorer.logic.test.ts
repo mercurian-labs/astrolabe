@@ -128,21 +128,42 @@ describe("cameraTween", () => {
   it("lands exactly on both endpoints", () => {
     const from = { x: 0, y: 20, zoom: 1 };
     const to = { x: 120, y: -60, zoom: 2 };
-    const tween = cameraTween(from, to);
+    const tween = cameraTween(from, to, viewBox);
     expect(tween(0)).toBe(from);
     expect(tween(1)).toBe(to);
   });
 
   it("handles a stationary camera and a zoom-only flight", () => {
     const same = { x: 12, y: 14, zoom: 1.5 };
-    expect(cameraTween(same, same)(0.5)).toEqual(same);
+    expect(cameraTween(same, same, viewBox)(0.5)).toEqual(same);
 
     const zoomed = { x: 12, y: 14, zoom: 2.5 };
-    const tween = cameraTween(same, zoomed);
+    const tween = cameraTween(same, zoomed, viewBox);
     expect(tween(0)).toEqual(same);
     expect(tween(1)).toEqual(zoomed);
     expect(tween(0.5).x).toBe(12);
     expect(tween(0.5).y).toBe(14);
+  });
+
+  it("keeps zoom fixed throughout an equal-zoom pan", () => {
+    const from = { x: -400, y: 300, zoom: 1.25 };
+    const to = { x: 500, y: -250, zoom: 1.25 };
+    const tween = cameraTween(from, to, viewBox);
+
+    for (const progress of [0.25, 0.5, 0.75]) {
+      expect(tween(progress).zoom).toBe(from.zoom);
+    }
+  });
+
+  it("keeps zoom-changing flights within a sane intermediate range", () => {
+    const from = { x: 0, y: 20, zoom: 1 };
+    const to = { x: 120, y: -60, zoom: 2 };
+    const tween = cameraTween(from, to, viewBox);
+    const minimumZoom = Math.min(from.zoom, to.zoom) / 4;
+
+    for (const progress of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      expect(tween(progress).zoom).toBeGreaterThanOrEqual(minimumZoom);
+    }
   });
 });
 

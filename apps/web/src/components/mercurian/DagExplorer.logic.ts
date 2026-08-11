@@ -30,6 +30,7 @@ export const MAP_MAX_ZOOM = 3;
 export const MAP_GLYPH_ZOOM = 0.65;
 export const MAP_LABEL_ZOOM = 1.15;
 export const MAP_FIT_PADDING = 64;
+const CAMERA_EPSILON = 0.001;
 
 export function zoomAtPoint(
   transform: MapTransform,
@@ -96,18 +97,30 @@ export function centerOn(
 export function cameraTween(
   from: MapTransform,
   to: MapTransform,
+  viewBox: MapViewBox,
 ): (progress: number) => MapTransform {
-  const samePosition = Math.hypot(to.x - from.x, to.y - from.y) < 0.001;
-  if (samePosition || from.zoom <= 0 || to.zoom <= 0) {
+  const samePosition = Math.hypot(to.x - from.x, to.y - from.y) < CAMERA_EPSILON;
+  const sameZoom = Math.abs(to.zoom - from.zoom) < CAMERA_EPSILON;
+  if (samePosition || sameZoom || from.zoom <= 0 || to.zoom <= 0) {
     return (progress) => plainTransformInterpolation(from, to, easeOut(progress));
   }
 
-  const interpolate = interpolateZoom([from.x, from.y, 1 / from.zoom], [to.x, to.y, 1 / to.zoom]);
+  const screenX = viewBox.x + viewBox.width / 2;
+  const screenY = viewBox.y + viewBox.height / 2;
+  const interpolate = interpolateZoom(
+    [(screenX - from.x) / from.zoom, (screenY - from.y) / from.zoom, viewBox.width / from.zoom],
+    [(screenX - to.x) / to.zoom, (screenY - to.y) / to.zoom, viewBox.width / to.zoom],
+  );
   return (progress) => {
     if (progress <= 0) return from;
     if (progress >= 1) return to;
-    const [x, y, inverseZoom] = interpolate(easeOut(progress));
-    return { x, y, zoom: 1 / inverseZoom };
+    const [centerX, centerY, width] = interpolate(easeOut(progress));
+    const zoom = viewBox.width / width;
+    return {
+      x: screenX - centerX * zoom,
+      y: screenY - centerY * zoom,
+      zoom,
+    };
   };
 }
 
