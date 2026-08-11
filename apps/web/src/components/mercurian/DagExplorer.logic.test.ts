@@ -260,7 +260,8 @@ describe("map sizing", () => {
 
 describe("minimap geometry", () => {
   const bounds = { minX: -200, minY: 50, maxX: 600, maxY: 250 };
-  const frame = { x: 0, y: 0, width: 400, height: 300 };
+  const mapViewBox = { x: 0, y: 0, width: 400, height: 300 };
+  const matchingFrame = { width: 400, height: 300 };
 
   it("follows the canvas aspect ratio", () => {
     expect(minimapSize(1_000, 500)).toEqual({ width: 200, height: 100 });
@@ -291,20 +292,39 @@ describe("minimap geometry", () => {
     expect(xScale).toBeCloseTo(yScale, 12);
   });
 
+  it("matches the rendered frame aspect through letterboxing", () => {
+    const renderedFrame = { width: 800, height: 300 };
+    const visible = visibleWorldRect({ x: 0, y: 0, zoom: 1 }, mapViewBox, renderedFrame);
+    const visibleWidth = visible.maxX - visible.minX;
+    const visibleHeight = visible.maxY - visible.minY;
+    expect(visibleWidth / visibleHeight).toBeCloseTo(
+      renderedFrame.width / renderedFrame.height,
+      12,
+    );
+  });
+
+  it("halves the visible world span when zoom doubles", () => {
+    const renderedFrame = { width: 800, height: 300 };
+    const once = visibleWorldRect({ x: 20, y: -10, zoom: 1 }, mapViewBox, renderedFrame);
+    const twice = visibleWorldRect({ x: 20, y: -10, zoom: 2 }, mapViewBox, renderedFrame);
+    expect(twice.maxX - twice.minX).toBeCloseTo((once.maxX - once.minX) / 2, 12);
+    expect(twice.maxY - twice.minY).toBeCloseTo((once.maxY - once.minY) / 2, 12);
+  });
+
   it("shows that a fit camera covers all bounds without overflowing", () => {
-    const fit = fitTransform(bounds, frame);
-    const visible = visibleWorldRect(fit, frame);
+    const fit = fitTransform(bounds, mapViewBox);
+    const visible = visibleWorldRect(fit, mapViewBox, matchingFrame);
     expect(visible.minX).toBeLessThanOrEqual(bounds.minX);
     expect(visible.minY).toBeLessThanOrEqual(bounds.minY);
     expect(visible.maxX).toBeGreaterThanOrEqual(bounds.maxX);
     expect(visible.maxY).toBeGreaterThanOrEqual(bounds.maxY);
-    expect(mapOverflows(bounds, fit, frame)).toBe(false);
+    expect(mapOverflows(bounds, fit, mapViewBox, matchingFrame)).toBe(false);
   });
 
   it("overflows once the fitted camera zooms in past the graph", () => {
-    const fit = fitTransform(bounds, frame);
+    const fit = fitTransform(bounds, mapViewBox);
     const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
-    const zoomed = centerOn(center, { ...fit, zoom: fit.zoom * 2 }, frame);
-    expect(mapOverflows(bounds, zoomed, frame)).toBe(true);
+    const zoomed = centerOn(center, { ...fit, zoom: fit.zoom * 2 }, mapViewBox);
+    expect(mapOverflows(bounds, zoomed, mapViewBox, matchingFrame)).toBe(true);
   });
 });

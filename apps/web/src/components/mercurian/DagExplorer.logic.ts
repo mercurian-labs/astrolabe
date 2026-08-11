@@ -47,6 +47,11 @@ export interface MapViewBox extends MapPoint {
   readonly height: number;
 }
 
+export interface MapFrameSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface MapBounds {
   readonly minX: number;
   readonly minY: number;
@@ -234,13 +239,25 @@ export function minimapProjection(bounds: MapBounds, size: MinimapSize): Minimap
   };
 }
 
-/** The graph-space rectangle currently visible through the SVG frame. */
-export function visibleWorldRect(transform: MapTransform, viewBox: MapViewBox): MapBounds {
+/** The graph-space rectangle visible through the rendered, possibly letterboxed SVG frame. */
+export function visibleWorldRect(
+  transform: MapTransform,
+  viewBox: MapViewBox,
+  frame: MapFrameSize,
+): MapBounds {
+  const frameWidth = Number.isFinite(frame.width) && frame.width > 0 ? frame.width : viewBox.width;
+  const frameHeight =
+    Number.isFinite(frame.height) && frame.height > 0 ? frame.height : viewBox.height;
+  const scale = Math.max(viewBox.width / frameWidth, viewBox.height / frameHeight);
+  const renderedWidth = frameWidth * scale;
+  const renderedHeight = frameHeight * scale;
+  const minX = viewBox.x + (viewBox.width - renderedWidth) / 2;
+  const minY = viewBox.y + (viewBox.height - renderedHeight) / 2;
   return {
-    minX: (viewBox.x - transform.x) / transform.zoom,
-    minY: (viewBox.y - transform.y) / transform.zoom,
-    maxX: (viewBox.x + viewBox.width - transform.x) / transform.zoom,
-    maxY: (viewBox.y + viewBox.height - transform.y) / transform.zoom,
+    minX: (minX - transform.x) / transform.zoom,
+    minY: (minY - transform.y) / transform.zoom,
+    maxX: (minX + renderedWidth - transform.x) / transform.zoom,
+    maxY: (minY + renderedHeight - transform.y) / transform.zoom,
   };
 }
 
@@ -256,8 +273,9 @@ export function mapOverflows(
   bounds: MapBounds,
   transform: MapTransform,
   viewBox: MapViewBox,
+  frame: MapFrameSize,
 ): boolean {
-  const visible = visibleWorldRect(transform, viewBox);
+  const visible = visibleWorldRect(transform, viewBox, frame);
   return (
     bounds.minX < visible.minX - CAMERA_EPSILON ||
     bounds.minY < visible.minY - CAMERA_EPSILON ||

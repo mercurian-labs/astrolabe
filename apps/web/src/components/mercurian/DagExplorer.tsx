@@ -47,6 +47,7 @@ import {
   wheelIntent,
   zoomAtPoint,
   type DagExplorerDisplaySettings as DagExplorerDisplaySettingsValue,
+  type MapFrameSize,
   type MapPoint,
   type MapTransform,
   type MapViewBox,
@@ -714,7 +715,17 @@ function SpatialMap({
     startTween("camera", (progress) => applyTransform(tween(progress)));
   };
 
-  const showMinimap = mapOverflows(layout.bounds, transform, viewBox);
+  const pickNode = (commitId: MercurianCommitId) => {
+    setHovered(null);
+    setFocused(null);
+    onSelect(commitId);
+  };
+
+  const renderedFrame = useMemo<MapFrameSize>(
+    () => ({ width: mapFrame.svgWidth, height: mapFrame.svgHeight }),
+    [mapFrame.svgHeight, mapFrame.svgWidth],
+  );
+  const showMinimap = mapOverflows(layout.bounds, transform, viewBox, renderedFrame);
   const overviewSize = useMemo(
     () => minimapSize(mapFrame.width, mapFrame.height),
     [mapFrame.height, mapFrame.width],
@@ -763,6 +774,7 @@ function SpatialMap({
                   pointerWorld.viewBoxUnitsPerPixel;
             const radius = radiusFor(graphNode, settings) * proximityScale(distanceToPointer);
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
+            const hasDetailOverlay = detailOverlay !== null && node.commitId === emphasisId;
             const Glyph = commitGlyph(node.item);
             return (
               <g
@@ -771,14 +783,10 @@ function SpatialMap({
                 // reader and unreachable by keyboard.
                 aria-label={planCommitSummary(node.item)}
                 aria-current={isCurrent ? "true" : undefined}
-                aria-describedby={
-                  detailOverlay !== null && node.commitId === emphasisId
-                    ? DETAIL_OVERLAY_ID
-                    : undefined
-                }
+                aria-describedby={hasDetailOverlay ? DETAIL_OVERLAY_ID : undefined}
                 className="cursor-pointer transition-opacity duration-150"
                 key={node.commitId}
-                onClick={() => onSelect(node.commitId)}
+                onClick={() => pickNode(node.commitId)}
                 onBlur={() => setFocused((at) => (at === node.commitId ? null : at))}
                 onFocus={() => setFocused(node.commitId)}
                 onPointerEnter={() => setHovered(node.commitId)}
@@ -790,7 +798,7 @@ function SpatialMap({
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    onSelect(node.commitId);
+                    pickNode(node.commitId);
                   }
                 }}
               >
@@ -829,7 +837,7 @@ function SpatialMap({
                     y={node.y - radius / 2}
                   />
                 )}
-                {isCurrent ? (
+                {isCurrent && !hasDetailOverlay ? (
                   <text
                     className="pointer-events-none fill-foreground text-[11px]"
                     x={node.x + radius + 8}
@@ -897,6 +905,7 @@ function SpatialMap({
         {showMinimap ? (
           <Minimap
             currentCommitId={currentCommitId}
+            frame={renderedFrame}
             layout={renderLayout}
             size={overviewSize}
             transform={transform}
@@ -913,6 +922,7 @@ function SpatialMap({
 function Minimap({
   layout,
   currentCommitId,
+  frame,
   size,
   transform,
   viewBox,
@@ -920,6 +930,7 @@ function Minimap({
 }: {
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly frame: MapFrameSize;
   readonly size: MinimapSize;
   readonly transform: MapTransform;
   readonly viewBox: MapViewBox;
@@ -933,7 +944,7 @@ function Minimap({
     moved: boolean;
   } | null>(null);
   const projection = useMemo(() => minimapProjection(layout.bounds, size), [layout.bounds, size]);
-  const visible = visibleWorldRect(transform, viewBox);
+  const visible = visibleWorldRect(transform, viewBox, frame);
   const visibleTopLeft = projection.project({ x: visible.minX, y: visible.minY });
   const visibleBottomRight = projection.project({ x: visible.maxX, y: visible.maxY });
 
