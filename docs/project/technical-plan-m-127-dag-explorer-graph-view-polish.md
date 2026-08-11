@@ -153,3 +153,7 @@ Persistence follows the `EXPLORER_VIEW_STORAGE_KEY` idiom: one Schema-validated 
 - [ ] `dagLayout`: deterministic per layout; flow-monotone per layout; layout option respected; polyline endpoints coincide with endpoint nodes. Drops: warm-start locality, over-cap fallback, separation tolerance.
 - [ ] Display settings: schema decode round-trip; malformed/out-of-range → defaults; multipliers of 0 honored.
 - [ ] `radiusFor`: monotone in degree; linear in nodeSize. `proximityScale`: 1.0 beyond falloff; max at 0; monotone non-increasing.
+
+### Addendum 2 (2026-08-11) — hover popover, click-only labels
+
+_Maintainer-decided on the browser pass. Supersedes the zoom-tier labeling: `labelVisible`'s junction/current tiers retire — the only inline label is the clicked (current) commit's, at any zoom. Hovering any node opens a popover carrying the commit's full message (untruncated), anchored at the node and dismissed on pointer-leave; it repaints only on hover changes, so the at-rest invariant holds. LOD keeps governing dot→glyph simplification only._
