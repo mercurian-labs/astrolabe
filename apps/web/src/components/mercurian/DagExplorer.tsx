@@ -34,7 +34,6 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   COLUMN_PANE_WIDTH,
-  COLUMN_SEPARATOR_WIDTH,
   COLUMN_STRIP_WIDTH,
   columnLayout,
   columnViewWidthCap,
@@ -408,6 +407,10 @@ function ColumnsView({
     layout.panes.length,
     columnsContainerWidth,
   );
+  const manuallyExpandedBeyondAuto =
+    expandedPaneIndex >= 0 && expandedPaneIndex < firstAutoExpandedPaneIndex;
+  const expandedPaneCount =
+    layout.panes.length - firstAutoExpandedPaneIndex + (manuallyExpandedBeyondAuto ? 1 : 0);
 
   useEffect(() => {
     setExpandedPaneIndex(activePaneIndex);
@@ -523,9 +526,8 @@ function ColumnsView({
           <div
             className={cn(
               "min-h-0 overflow-y-auto py-2",
-              paneIndex === layout.panes.length - 1
-                ? "w-56 min-w-56 max-w-84 grow shrink-0"
-                : "w-56 shrink-0",
+              "w-56 min-w-56 grow shrink-0",
+              expandedPaneCount === 1 ? "max-w-104" : "max-w-84",
               paneIndex === 0 && "ml-auto",
               paneIndex > 0 && "border-l border-border",
             )}
@@ -588,8 +590,10 @@ function ColumnsView({
 function autoExpandedPaneStart(paneCount: number, containerWidth: number): number {
   if (paneCount <= 1) return 0;
 
-  const separatorWidth = (paneCount - 1) * COLUMN_SEPARATOR_WIDTH;
-  let occupiedWidth = COLUMN_PANE_WIDTH + (paneCount - 1) * COLUMN_STRIP_WIDTH + separatorWidth;
+  // With k panes open, base(k) = k*224 + (n-k)*32; the next pane opens
+  // at base+192. Flex capacity is 112*k, or 192 for k=1, so every band
+  // reaches the next threshold without leaving room for an empty margin.
+  let occupiedWidth = COLUMN_PANE_WIDTH + (paneCount - 1) * COLUMN_STRIP_WIDTH;
   let firstExpandedPaneIndex = paneCount - 1;
   const paneExpansionWidth = COLUMN_PANE_WIDTH - COLUMN_STRIP_WIDTH;
 

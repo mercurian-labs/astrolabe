@@ -49,20 +49,15 @@ const EMPTY_COLUMN_LAYOUT: ColumnLayout = { panes: [] };
 export const COLUMN_STRIP_WIDTH = 32;
 export const COLUMN_PANE_WIDTH = 224;
 export const COLUMN_LAST_PANE_MAX_WIDTH = 336;
-export const COLUMN_SEPARATOR_WIDTH = 1;
 
 /**
- * The width at which every pane is open and the final reading pane has taken
- * all of its flexible room. This is the useful end of a columns resize: wider
- * than this has no pane left to reopen and no reading space left to absorb it.
+ * The width at which every pane is open and their shared flexible room is
+ * filled. This is the useful end of a columns resize: wider than this has no
+ * pane left to reopen and no reading space left to absorb it.
  */
 export function columnViewWidthCap(panes: ReadonlyArray<Pane>): number {
   if (panes.length === 0) return 0;
-  return (
-    (panes.length - 1) * COLUMN_PANE_WIDTH +
-    COLUMN_LAST_PANE_MAX_WIDTH +
-    (panes.length - 1) * COLUMN_SEPARATOR_WIDTH
-  );
+  return (panes.length - 1) * COLUMN_PANE_WIDTH + COLUMN_LAST_PANE_MAX_WIDTH;
 }
 
 /**

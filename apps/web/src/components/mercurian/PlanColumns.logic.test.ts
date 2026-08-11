@@ -256,10 +256,10 @@ describe("columnLayout", () => {
 });
 
 describe("columnViewWidthCap", () => {
-  it("caps at every pane expanded plus the final pane's flexible room", () => {
+  it("caps at every pane expanded plus their shared flexible room", () => {
     const graph = buildPlanGraph(nestedFork);
     const panes = columnLayout(graph, id("end"), defaultBranchChoices(graph, id("end"))).panes;
 
-    expect(columnViewWidthCap(panes)).toBe(224 + 224 + 336 + 2);
+    expect(columnViewWidthCap(panes)).toBe(224 + 224 + 336);
   });
 });
