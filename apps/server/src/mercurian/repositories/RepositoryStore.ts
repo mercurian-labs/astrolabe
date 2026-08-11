@@ -7,7 +7,8 @@
  *   because grounding reads files either way; `hasGit` is probed live on every
  *   read, so everything working-tree-shaped lights up on its own the moment
  *   someone runs `git init` and goes dark again if the directory stops being a
- *   repository. Nothing about it is stored, so nothing about it can go stale;
+ *   repository. Its hosting provider is likewise derived from fetch remotes,
+ *   never configured or stored;
  * - removal disconnects rather than erases. The row, its scripts, and its
  *   project memberships go; the files stay, and grounding references already
  *   written into plan histories stay with them — they are content, not foreign
@@ -47,6 +48,7 @@ import {
   RepositoryPathInvalidError,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
+import { detectSourceControlProviderFromRemoteUrl } from "@t3tools/shared/sourceControl";
 
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
@@ -56,7 +58,12 @@ import {
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
 import * as ProcessRunner from "../../processRunner.ts";
-import type { ProjectRepositoryLink, Repository, RepositoryView } from "./schema.ts";
+import type {
+  ProjectRepositoryLink,
+  Repository,
+  RepositoryHosting,
+  RepositoryView,
+} from "./schema.ts";
 
 // ===============================
 // Domain
@@ -134,6 +141,8 @@ export class RepositoryStore extends Context.Service<
     ) => Effect.Effect<RepositoryView, RepositoryStoreError>;
     /** Every repository and every project membership, in one value. */
     readonly getSnapshot: Effect.Effect<RepositoriesSnapshot, RepositoryStoreError>;
+    /** Re-answer every live repository fact and notify snapshot subscribers. */
+    readonly refreshRepositories: Effect.Effect<void>;
     /**
      * Disconnect a repository: its row, its scripts, and its project
      * memberships. Refused while the app holds live worktrees on it.
@@ -263,6 +272,28 @@ export function isUnderDirectory(candidate: string, directory: string, separator
   );
 }
 
+function parseRemoteFetchUrls(stdout: string): Map<string, string> {
+  const remotes = new Map<string, string>();
+  for (const line of stdout.split("\n")) {
+    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)$/.exec(line.trim());
+    if (match?.[3] !== "fetch") continue;
+    const remoteName = match[1];
+    const remoteUrl = match[2];
+    if (remoteName && remoteUrl) remotes.set(remoteName, remoteUrl);
+  }
+  return remotes;
+}
+
+function pickPrimaryRemote(
+  remotes: ReadonlyMap<string, string>,
+): { readonly remoteName: string; readonly remoteUrl: string } | null {
+  const origin = remotes.get("origin");
+  if (origin) return { remoteName: "origin", remoteUrl: origin };
+  const [remoteName, remoteUrl] =
+    [...remotes.entries()].toSorted(([left], [right]) => left.localeCompare(right))[0] ?? [];
+  return remoteName && remoteUrl ? { remoteName, remoteUrl } : null;
+}
+
 const isRepositoryStoreRefusal = Schema.is(
   Schema.Union([
     MercurianProjectNotFoundError,
@@ -326,6 +357,31 @@ export const make = Effect.gen(function* () {
   });
 
   const hasGit = (repositoryPath: string) => Cache.get(gitProbeCache, repositoryPath);
+
+  const probeHosting = Effect.fn("RepositoryStore.probeHosting")(function* (
+    repositoryPath: string,
+  ) {
+    if (!(yield* hasGit(repositoryPath))) return null;
+    const result = yield* runGit(repositoryPath, ["remote", "-v"]);
+    if (Option.isNone(result) || result.value.code !== 0) return null;
+    const remote = pickPrimaryRemote(parseRemoteFetchUrls(result.value.stdout));
+    if (remote === null) return null;
+    const provider = detectSourceControlProviderFromRemoteUrl(remote.remoteUrl);
+    if (provider === null) return null;
+    return {
+      provider: provider.kind,
+      providerName: provider.name,
+      remoteName: remote.remoteName,
+      remoteUrl: remote.remoteUrl,
+    } satisfies RepositoryHosting;
+  });
+
+  const hostingProbeCache = yield* Cache.makeWith<string, RepositoryHosting | null>(probeHosting, {
+    capacity: GIT_PROBE_CACHE_CAPACITY,
+    timeToLive: Exit.match({ onSuccess: () => GIT_PROBE_TTL, onFailure: () => Duration.zero }),
+  });
+
+  const hosting = (repositoryPath: string) => Cache.get(hostingProbeCache, repositoryPath);
 
   /**
    * The teardown floor's live source today. Coding sessions have no table yet,
@@ -534,6 +590,7 @@ export const make = Effect.gen(function* () {
         scripts.filter((script) => script.repositoryId === repositoryId),
       ),
       hasGit: yield* hasGit(row.value.path),
+      hosting: yield* hosting(row.value.path),
     } satisfies RepositoryView;
   });
 
@@ -606,6 +663,7 @@ export const make = Effect.gen(function* () {
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
         hasGit: yield* hasGit(resolved),
+        hosting: yield* hosting(resolved),
       } satisfies RepositoryView;
     }).pipe(
       Effect.mapError(
@@ -623,15 +681,15 @@ export const make = Effect.gen(function* () {
       listLinkRows({}),
     ]);
     const repositories = yield* Effect.forEach(repositoryRows, (row) =>
-      hasGit(row.path).pipe(
+      Effect.all({ hasGit: hasGit(row.path), hosting: hosting(row.path) }).pipe(
         Effect.map(
-          (rowHasGit) =>
+          (live) =>
             ({
               ...toRepository(
                 row,
                 scriptRows.filter((script) => script.repositoryId === row.repositoryId),
               ),
-              hasGit: rowHasGit,
+              ...live,
             }) satisfies RepositoryView,
         ),
       ),
@@ -644,6 +702,14 @@ export const make = Effect.gen(function* () {
         "RepositoryStore.getSnapshot:decodeRows",
       ),
     ),
+  );
+
+  const refreshRepositories: RepositoryStore["Service"]["refreshRepositories"] = Effect.gen(
+    function* () {
+      yield* Cache.invalidateAll(gitProbeCache);
+      yield* Cache.invalidateAll(hostingProbeCache);
+      yield* announceChange;
+    },
   );
 
   const removeRepository: RepositoryStore["Service"]["removeRepository"] = (input) =>
@@ -774,6 +840,7 @@ export const make = Effect.gen(function* () {
   return {
     addRepository,
     getSnapshot,
+    refreshRepositories,
     removeRepository,
     saveScripts,
     setProjectRepositories,

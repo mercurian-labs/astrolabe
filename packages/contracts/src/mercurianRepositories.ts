@@ -8,12 +8,14 @@
  * `SourceControlRepositoryInfo` (a provider's view of a remote), so it carries
  * the `Mercurian` prefix the fork's seam rule gives every Mercurian-side name.
  *
- * Two facts are deliberately derived rather than stored, and so travel on the
+ * Three facts are deliberately derived rather than stored, and so travel on the
  * snapshot without a column behind them:
  *
  * - `hasGit`, probed live. Git is expected but not demanded at add time —
  *   grounding reads files regardless, and everything working-tree-shaped
  *   lights up when the directory actually becomes a repository;
+ * - `hosting`, derived from the repository's fetch remotes. Hosting is detected,
+ *   never configured or assigned;
  * - a repository's *environment*, which is a fact about which server answered,
  *   not data. Environments are plumbing and never navigational.
  *
@@ -28,9 +30,11 @@ import * as Schema from "effect/Schema";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { MercurianProjectId } from "./mercurian.ts";
+import { SourceControlProviderKind } from "./sourceControl.ts";
 
 export const MERCURIAN_REPOSITORY_WS_METHODS = {
   subscribeRepositories: "mercurian.subscribeRepositories",
+  refreshRepositories: "mercurian.refreshRepositories",
   addRepository: "mercurian.addRepository",
   removeRepository: "mercurian.removeRepository",
   saveRepositoryScripts: "mercurian.saveRepositoryScripts",
@@ -78,6 +82,15 @@ export const MercurianRepositoryScriptInput = Schema.Struct({
 });
 export type MercurianRepositoryScriptInput = typeof MercurianRepositoryScriptInput.Type;
 
+/** A hosting fact derived from the repository's primary fetch remote. */
+export const MercurianRepositoryHosting = Schema.Struct({
+  provider: SourceControlProviderKind,
+  providerName: TrimmedNonEmptyString,
+  remoteName: TrimmedNonEmptyString,
+  remoteUrl: TrimmedNonEmptyString,
+});
+export type MercurianRepositoryHosting = typeof MercurianRepositoryHosting.Type;
+
 /**
  * A registered codebase. `path` is where its files are on the environment that
  * holds it; `hasGit` is probed live at read time, so it flips on its own once
@@ -88,6 +101,7 @@ export const MercurianRepository = Schema.Struct({
   name: TrimmedNonEmptyString,
   path: TrimmedNonEmptyString,
   hasGit: Schema.Boolean,
+  hosting: Schema.NullOr(MercurianRepositoryHosting),
   scripts: Schema.Array(MercurianRepositoryScript),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -124,6 +138,9 @@ export type MercurianRepositoriesStreamItem = typeof MercurianRepositoriesStream
 
 export const MercurianSubscribeRepositoriesInput = Schema.Struct({});
 export type MercurianSubscribeRepositoriesInput = typeof MercurianSubscribeRepositoriesInput.Type;
+
+export const MercurianRefreshRepositoriesInput = Schema.Struct({});
+export type MercurianRefreshRepositoriesInput = typeof MercurianRefreshRepositoriesInput.Type;
 
 /**
  * Register a directory. Git is deliberately not required: a directory that is
@@ -240,6 +257,7 @@ export class MercurianRepositoryError extends Schema.TaggedErrorClass<MercurianR
   {
     operation: Schema.Literals([
       "subscribeRepositories",
+      "refreshRepositories",
       "addRepository",
       "removeRepository",
       "saveRepositoryScripts",

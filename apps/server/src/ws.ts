@@ -1973,6 +1973,17 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_REPOSITORY_WS_METHODS.refreshRepositories]: (_input) =>
+          observeRpcEffect(
+            MERCURIAN_REPOSITORY_WS_METHODS.refreshRepositories,
+            repositoryStore.refreshRepositories.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new MercurianRepositoryError({ operation: "refreshRepositories", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_REPOSITORY_WS_METHODS.addRepository]: (input) =>
           observeRpcEffect(
             MERCURIAN_REPOSITORY_WS_METHODS.addRepository,

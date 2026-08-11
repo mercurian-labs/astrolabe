@@ -13,9 +13,10 @@
  *
  * - planning is mode-free and read-only. Sessions open at the most
  *   restrictive runtime mode, `interactionMode` is never passed, and every
- *   approval request is auto-answered — file reads approved for the session,
- *   commands and file changes declined — so no approval ever surfaces and no
- *   write ever lands, whatever a provider tries;
+ *   approval request is auto-answered — file reads and the two planning MCP
+ *   artifact tools approved for the session, commands, file changes, and all
+ *   other dynamic tools declined — so no approval ever surfaces and no
+ *   filesystem write ever lands, whatever a provider tries;
  * - the assistant only ever continues from where things left off. A turn on
  *   the session's own tip rides the live session; a fork, a model change, or
  *   a dead session rebuilds a fresh session whose first turn carries the
@@ -59,6 +60,7 @@ import {
 
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
+import type { ReadPlanTool, SavePlanRevisionTool } from "../../mcp/toolkits/planning/tools.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, type CommitId } from "../commitTree/schema.ts";
 import {
@@ -134,6 +136,16 @@ interface TurnRuntime {
  * honest without an unbounded wire payload.
  */
 const MAX_GROUNDING_ITEMS = 200;
+
+const T3_CODE_MCP_TOOL_PREFIX = "mcp__t3-code__";
+type PlanningMcpToolName = typeof SavePlanRevisionTool.name | typeof ReadPlanTool.name;
+const APPROVED_PLANNING_MCP_TOOLS = [
+  "save_plan_revision",
+  "read_plan",
+] as const satisfies ReadonlyArray<PlanningMcpToolName>;
+const APPROVED_PLANNING_MCP_TOOL_NAMES = new Set(
+  APPROVED_PLANNING_MCP_TOOLS.map((name) => `${T3_CODE_MCP_TOOL_PREFIX}${name}`),
+);
 
 export class PlanningAssistant extends Context.Service<
   PlanningAssistant,
@@ -348,7 +360,7 @@ export const make = Effect.gen(function* () {
     yield* announceChange;
   });
 
-  /** The auto-answer policy: reads approved for the session, all else declined. */
+  /** The auto-answer policy: reads and the planning artifact door approved, all else declined. */
   const respondToApproval = Effect.fn("PlanningAssistant.respondToApproval")(function* (
     turn: TurnRuntime,
     event: ProviderRuntimeEvent & { readonly type: "request.opened" },
@@ -356,8 +368,22 @@ export const make = Effect.gen(function* () {
     if (event.requestId === undefined) return;
     // Token refreshes are the adapter's own plumbing, not a permission ask.
     if (event.payload.requestType === "auth_tokens_refresh") return;
+    const args = event.payload.args;
+    const dynamicToolName =
+      typeof args === "object" &&
+      args !== null &&
+      "toolName" in args &&
+      typeof args.toolName === "string"
+        ? args.toolName
+        : undefined;
+    const approvesPlanningMcpTool =
+      event.payload.requestType === "dynamic_tool_call" &&
+      dynamicToolName !== undefined &&
+      APPROVED_PLANNING_MCP_TOOL_NAMES.has(dynamicToolName);
     const decision =
-      event.payload.requestType === "file_read_approval" ? "acceptForSession" : "decline";
+      event.payload.requestType === "file_read_approval" || approvesPlanningMcpTool
+        ? "acceptForSession"
+        : "decline";
     yield* providerService
       .respondToRequest({
         threadId: turn.threadId,
@@ -590,6 +616,7 @@ export const make = Effect.gen(function* () {
         ? {}
         : { additionalDirectories: materials.additionalDirectories }),
       modelSelection: { instanceId: input.instanceId, model: input.model },
+      isolateProviderSettings: true,
       // The most restrictive tier the contract has; combined with the
       // approval auto-policy this is the read-only guarantee (Design §3).
       runtimeMode: "approval-required",

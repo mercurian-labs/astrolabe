@@ -10,7 +10,7 @@ import {
 
 /**
  * Mercurian's repository registry: what code the app can reach, live, plus the
- * four acts that change it.
+ * four acts that change it, plus the explicit re-probe act.
  *
  * The registry arrives as a whole snapshot each time it changes rather than as
  * sequenced deltas — repositories are few, and they move only when a person
@@ -30,6 +30,11 @@ export function createMercurianRepositoryAtoms<R, E>(
     repositories: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:mercurian:repositories",
       tag: MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories,
+    }),
+    refreshRepositories: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:refresh-repositories",
+      tag: MERCURIAN_REPOSITORY_WS_METHODS.refreshRepositories,
+      scheduler: writeScheduler,
     }),
     addRepository: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:add-repository",

@@ -102,6 +102,7 @@ import {
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
   MercurianAddRepositoryInput,
+  MercurianRefreshRepositoriesInput,
   MercurianRemoveRepositoryInput,
   MercurianRepositoriesStreamItem,
   MercurianRepository,
@@ -1038,6 +1039,15 @@ export const WsMercurianSubscribeRepositoriesRpc = Rpc.make(
   },
 );
 
+export const WsMercurianRefreshRepositoriesRpc = Rpc.make(
+  MERCURIAN_REPOSITORY_WS_METHODS.refreshRepositories,
+  {
+    payload: MercurianRefreshRepositoriesInput,
+    success: Schema.Void,
+    error: Schema.Union([MercurianRepositoryError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsMercurianAddRepositoryRpc = Rpc.make(MERCURIAN_REPOSITORY_WS_METHODS.addRepository, {
   payload: MercurianAddRepositoryInput,
   success: MercurianRepository,
@@ -1268,6 +1278,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianStopPlanningTurnRpc,
   WsMercurianAnswerPlanningQuestionRpc,
   WsMercurianSubscribeRepositoriesRpc,
+  WsMercurianRefreshRepositoriesRpc,
   WsMercurianAddRepositoryRpc,
   WsMercurianRemoveRepositoryRpc,
   WsMercurianSaveRepositoryScriptsRpc,

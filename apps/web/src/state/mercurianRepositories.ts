@@ -93,6 +93,12 @@ export function useAddRepository() {
   return useCallback((input: MercurianAddRepositoryInput) => run(input), [run]);
 }
 
+/** Re-probe git and hosting facts, then re-emit the repository snapshot. */
+export function useRefreshRepositories() {
+  const run = useEnvironmentBoundCommand(mercurianRepositories.refreshRepositories);
+  return useCallback(() => run({}), [run]);
+}
+
 /**
  * Disconnect a repository. Refused while the app holds live worktrees on it,
  * and the confirm dialog says so in place — there is no force path.

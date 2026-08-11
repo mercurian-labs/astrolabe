@@ -7,7 +7,6 @@ import {
   buildPlanGraph,
   dagLayout,
   descendantClosure,
-  navigatorLayout,
   planCommitDetail,
   planCommitSummary,
   type DagLayoutName,
@@ -102,7 +101,6 @@ describe("buildPlanGraph", () => {
     const graph = buildPlanGraph([]);
     expect(graph.nodes).toEqual([]);
     expect(graph.latest).toBeNull();
-    expect(navigatorLayout(graph)).toEqual({ rows: [], edges: [], laneCount: 0 });
     expect(dagLayout(graph, { layout: "sugiyama" }).nodes).toEqual([]);
   });
 });
@@ -161,48 +159,6 @@ describe("descendantClosure", () => {
 
   it("is empty for a commit the graph does not hold", () => {
     expect(descendantClosure(buildPlanGraph(chain), id("nope")).size).toBe(0);
-  });
-});
-
-describe("navigatorLayout", () => {
-  it("keeps a linear history in one lane", () => {
-    const layout = navigatorLayout(buildPlanGraph(chain));
-    expect(layout.laneCount).toBe(1);
-    expect(layout.rows.map((row) => [row.commitId, row.row, row.lane])).toEqual([
-      ["a", 0, 0],
-      ["b", 1, 0],
-      ["c", 2, 0],
-    ]);
-    expect(layout.edges.map((edge) => [edge.fromCommitId, edge.toCommitId])).toEqual([
-      ["a", "b"],
-      ["b", "c"],
-    ]);
-  });
-
-  it("opens a lane at a fork", () => {
-    const layout = navigatorLayout(buildPlanGraph(fork));
-    const lane = (commitId: string) => layout.rows.find((row) => row.commitId === commitId)?.lane;
-    expect(lane("l")).toBe(lane("b"));
-    expect(lane("r")).not.toBe(lane("b"));
-    expect(layout.laneCount).toBe(2);
-  });
-
-  it("draws a merge once, and closes the lanes that reached it", () => {
-    const layout = navigatorLayout(buildPlanGraph(merged));
-    expect(layout.rows.filter((row) => row.commitId === "m")).toHaveLength(1);
-    // Three parents converge, so three edges land on the one row.
-    expect(layout.edges.filter((edge) => edge.toCommitId === "m")).toHaveLength(3);
-    // The lanes the branches opened are free again below the merge: what
-    // follows sits back on the merge's own lane.
-    const lane = (commitId: string) => layout.rows.find((row) => row.commitId === commitId)?.lane;
-    expect(lane("after")).toBe(lane("m"));
-    expect(layout.laneCount).toBe(3);
-  });
-
-  it("gives every commit a row in append order", () => {
-    const layout = navigatorLayout(buildPlanGraph(merged));
-    expect(layout.rows.map((row) => row.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    expect(layout.rows.map((row) => row.commitId)).toEqual(["a", "b", "l", "r", "x", "m", "after"]);
   });
 });
 

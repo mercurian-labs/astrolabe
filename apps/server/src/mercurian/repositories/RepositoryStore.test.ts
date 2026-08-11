@@ -29,16 +29,26 @@ interface GitScript {
   readonly repositories: ReadonlySet<string>;
   /** Worktree paths `git worktree list --porcelain` reports, per repository. */
   readonly worktreesByPath: ReadonlyMap<string, ReadonlyArray<string>>;
+  /** `git remote -v` output, per repository. */
+  readonly remotesByPath: ReadonlyMap<string, string>;
 }
 
-const emptyGitScript: GitScript = { repositories: new Set(), worktreesByPath: new Map() };
+const emptyGitScript: GitScript = {
+  repositories: new Set(),
+  worktreesByPath: new Map(),
+  remotesByPath: new Map(),
+};
 
 let gitScript: GitScript = emptyGitScript;
+let remoteProbeRuns = new Map<string, number>();
 
 const setGitScript = (next: Partial<GitScript>) =>
   Effect.sync(() => {
     gitScript = { ...emptyGitScript, ...next };
+    remoteProbeRuns = new Map();
   });
+
+const remoteProbeCount = (repositoryPath: string) => remoteProbeRuns.get(repositoryPath) ?? 0;
 
 const stubProcessRunner = Layer.succeed(
   ProcessRunner.ProcessRunner,
@@ -52,6 +62,17 @@ const stubProcessRunner = Layer.succeed(
           stdout: isRepository ? `${cwd}\n` : "",
           stderr: isRepository ? "" : "fatal: not a git repository",
           code: (isRepository ? 0 : 128) as never,
+          timedOut: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
+      }
+      if (verb === "remote") {
+        remoteProbeRuns.set(cwd, remoteProbeCount(cwd) + 1);
+        return Effect.succeed({
+          stdout: gitScript.remotesByPath.get(cwd) ?? "",
+          stderr: "",
+          code: 0 as never,
           timedOut: false,
           stdoutTruncated: false,
           stderrTruncated: false,
@@ -157,6 +178,8 @@ layer("RepositoryStore", (it) => {
 
       const added = yield* store.addRepository({ path: directory, createdAt: at });
       assert.strictEqual(added.hasGit, false);
+      assert.strictEqual(added.hosting, null);
+      assert.strictEqual(remoteProbeCount(directory), 0);
 
       const snapshot = yield* store.getSnapshot;
       assert.strictEqual(findRepository(snapshot, added.repositoryId)?.hasGit, false);
@@ -165,6 +188,146 @@ layer("RepositoryStore", (it) => {
       const sql = yield* SqlClient.SqlClient;
       const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(repositories)`;
       assert.ok(!columns.some((column) => column.name.includes("git")));
+    }),
+  );
+
+  it.effect("derives hosting from fetch remotes, preferring origin", () =>
+    Effect.gen(function* () {
+      const store = yield* RepositoryStore.RepositoryStore;
+      const directory = yield* makeDirectory("origin-wins");
+      yield* setGitScript({
+        repositories: new Set([directory]),
+        remotesByPath: new Map([
+          [
+            directory,
+            [
+              "fork\tgit@gitlab.com:someone/fork.git (fetch)",
+              "fork\tgit@gitlab.com:someone/fork.git (push)",
+              "origin\thttps://github.com/mercurian-labs/astrolabe.git (fetch)",
+              "origin\thttps://github.com/mercurian-labs/astrolabe.git (push)",
+            ].join("\n"),
+          ],
+        ]),
+      });
+
+      const repository = yield* store.addRepository({ path: directory, createdAt: at });
+      assert.deepStrictEqual(repository.hosting, {
+        provider: "github",
+        providerName: "GitHub",
+        remoteName: "origin",
+        remoteUrl: "https://github.com/mercurian-labs/astrolabe.git",
+      });
+    }),
+  );
+
+  it.effect("uses the single non-origin fetch remote", () =>
+    Effect.gen(function* () {
+      const store = yield* RepositoryStore.RepositoryStore;
+      const directory = yield* makeDirectory("single-remote");
+      yield* setGitScript({
+        repositories: new Set([directory]),
+        remotesByPath: new Map([[directory, "upstream\tgit@gitlab.com:group/project.git (fetch)"]]),
+      });
+
+      const repository = yield* store.addRepository({ path: directory, createdAt: at });
+      assert.strictEqual(repository.hosting?.provider, "gitlab");
+      assert.strictEqual(repository.hosting?.remoteName, "upstream");
+    }),
+  );
+
+  it.effect("classifies supported hosting URL shapes and preserves unknown hosts", () =>
+    Effect.gen(function* () {
+      const store = yield* RepositoryStore.RepositoryStore;
+      const cases = [
+        ["github", "git@github.com:owner/repo.git", "github", "GitHub"],
+        ["gitlab", "https://gitlab.com/group/repo.git", "gitlab", "GitLab"],
+        ["bitbucket", "ssh://git@bitbucket.org/workspace/repo.git", "bitbucket", "Bitbucket"],
+        ["azure", "https://dev.azure.com/org/project/_git/repo", "azure-devops", "Azure DevOps"],
+        ["unknown", "ssh://git@git.example.test/team/repo.git", "unknown", "git.example.test"],
+      ] as const;
+
+      for (const [name, remoteUrl, provider, providerName] of cases) {
+        const directory = yield* makeDirectory(name);
+        yield* setGitScript({
+          repositories: new Set([directory]),
+          remotesByPath: new Map([[directory, `origin\t${remoteUrl} (fetch)`]]),
+        });
+        const repository = yield* store.addRepository({ path: directory, createdAt: at });
+        assert.strictEqual(repository.hosting?.provider, provider);
+        assert.strictEqual(repository.hosting?.providerName, providerName);
+      }
+    }),
+  );
+
+  it.effect("returns no hosting for a git repository without remotes", () =>
+    Effect.gen(function* () {
+      const store = yield* RepositoryStore.RepositoryStore;
+      const directory = yield* makeDirectory("no-remotes");
+      yield* setGitScript({ repositories: new Set([directory]) });
+
+      const repository = yield* store.addRepository({ path: directory, createdAt: at });
+      assert.strictEqual(repository.hasGit, true);
+      assert.strictEqual(repository.hosting, null);
+      assert.strictEqual(remoteProbeCount(directory), 1);
+    }),
+  );
+
+  it.effect("carries hosting in snapshots without storing provider or auth columns", () =>
+    Effect.gen(function* () {
+      const store = yield* RepositoryStore.RepositoryStore;
+      const sql = yield* SqlClient.SqlClient;
+      const directory = yield* makeDirectory("derived-hosting");
+      yield* setGitScript({
+        repositories: new Set([directory]),
+        remotesByPath: new Map([[directory, "origin\thttps://github.com/owner/repo.git (fetch)"]]),
+      });
+      const repository = yield* store.addRepository({ path: directory, createdAt: at });
+
+      const snapshot = yield* store.getSnapshot;
+      assert.strictEqual(
+        findRepository(snapshot, repository.repositoryId)?.hosting?.provider,
+        "github",
+      );
+      const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(repositories)`;
+      assert.ok(!columns.some((column) => /provider|auth|hosting/u.test(column.name)));
+    }),
+  );
+
+  it.effect("refreshes cached repository facts and signals the snapshot stream", () =>
+    Effect.gen(function* () {
+      const store = yield* RepositoryStore.RepositoryStore;
+      const directory = yield* makeDirectory("refresh-hosting");
+      yield* setGitScript({
+        repositories: new Set([directory]),
+        remotesByPath: new Map([[directory, "origin\thttps://github.com/owner/repo.git (fetch)"]]),
+      });
+      const repository = yield* store.addRepository({ path: directory, createdAt: at });
+      assert.strictEqual(repository.hosting?.provider, "github");
+      assert.strictEqual(remoteProbeCount(directory), 1);
+
+      gitScript = {
+        ...gitScript,
+        remotesByPath: new Map([[directory, "origin\thttps://gitlab.com/group/repo.git (fetch)"]]),
+      };
+      const cached = yield* store.getSnapshot;
+      assert.strictEqual(
+        findRepository(cached, repository.repositoryId)?.hosting?.provider,
+        "github",
+      );
+      assert.strictEqual(remoteProbeCount(directory), 1);
+
+      const change = yield* Effect.forkChild(Stream.runCollect(Stream.take(store.changes, 1)), {
+        startImmediately: true,
+      });
+      yield* store.refreshRepositories;
+      assert.strictEqual((yield* Fiber.join(change)).length, 1);
+
+      const refreshed = yield* store.getSnapshot;
+      assert.strictEqual(
+        findRepository(refreshed, repository.repositoryId)?.hosting?.provider,
+        "gitlab",
+      );
+      assert.strictEqual(remoteProbeCount(directory), 2);
     }),
   );
 

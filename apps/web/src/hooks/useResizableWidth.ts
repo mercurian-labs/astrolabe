@@ -49,24 +49,27 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     [defaultWidth, maxWidth, minWidth],
   );
 
-  // No cross-tab subscription: panel width is per-window state.
-  const [width, setWidth] = useState<number>(() => {
+  // Keep the unrendered value so changing a view cap does not itself discard
+  // or persist a wider choice. The current bounds are applied below on every
+  // render and again at each drag boundary.
+  const [rawWidth, setRawWidth] = useState<number>(() => {
     if (typeof window === "undefined") return defaultWidth;
     try {
       const stored = getLocalStorageItem(storageKey, WidthSchema);
-      return clamp(stored ?? defaultWidth);
+      return stored ?? defaultWidth;
     } catch (error) {
       console.error("Could not read persisted panel width.", error);
       return defaultWidth;
     }
   });
 
-  const clampedWidth = clamp(width);
+  const clampedWidth = clamp(rawWidth);
 
   const dragStateRef = useRef<{
     pointerId: number;
     startX: number;
     startWidth: number;
+    startRawWidth: number;
     pending: number;
     rafId: number | null;
     target: HTMLElement;
@@ -107,12 +110,13 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
         pointerId: event.pointerId,
         startX: event.clientX,
         startWidth: clampedWidth,
+        startRawWidth: rawWidth,
         pending: clampedWidth,
         rafId: null,
         target,
       };
     },
-    [clampedWidth],
+    [clampedWidth, rawWidth],
   );
 
   const onPointerMove = useCallback(
@@ -127,7 +131,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
         const active = dragStateRef.current;
         if (!active) return;
         active.rafId = null;
-        setWidth(active.pending);
+        setRawWidth(active.pending);
       });
     },
     [clamp, edge],
@@ -145,7 +149,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       } catch (error) {
         console.error("Could not persist panel width.", error);
       }
-      setWidth(finalWidth);
+      setRawWidth(finalWidth);
     },
     [clamp, releasePointer, storageKey],
   );
@@ -154,9 +158,9 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     (event: ReactPointerEvent<HTMLElement>) => {
       const state = dragStateRef.current;
       if (!state || state.pointerId !== event.pointerId) return;
-      // Don't persist a cancelled drag; revert to the start width.
+      // Don't persist a cancelled drag or discard a wider capped value.
       releasePointer(event.pointerId);
-      setWidth(state.startWidth);
+      setRawWidth(state.startRawWidth);
     },
     [releasePointer],
   );
