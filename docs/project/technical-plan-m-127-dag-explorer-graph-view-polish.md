@@ -157,3 +157,5 @@ Persistence follows the `EXPLORER_VIEW_STORAGE_KEY` idiom: one Schema-validated 
 ### Addendum 2 (2026-08-11) — hover popover, click-only labels
 
 _Maintainer-decided on the browser pass. Supersedes the zoom-tier labeling: `labelVisible`'s junction/current tiers retire — the only inline label is the clicked (current) commit's, at any zoom. Hovering any node opens a popover carrying the commit's full message (untruncated), anchored at the node and dismissed on pointer-leave; it repaints only on hover changes, so the at-rest invariant holds. LOD keeps governing dot→glyph simplification only._
+
+_Also decided: the display-settings button moves off the History bar into the upper-right corner of the graph canvas, rendered only with the Graph view — placement says scope. The fit/jump controls keep the bottom-right corner._
