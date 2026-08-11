@@ -6,6 +6,7 @@ import {
   LocateFixedIcon,
   Maximize2Icon,
   MessageSquareIcon,
+  Settings2Icon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
@@ -23,27 +24,39 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack } from "../ui/slider";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   cameraTween,
   centerOn,
+  DagExplorerDisplaySettings,
+  DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
   detailFor,
-  edgeRibbon,
+  edgeWidthFor,
   fitTransform,
   labelVisible,
+  mapOverflows,
+  minimapPointToWorld,
+  minimapProjection,
+  proximityScale,
   radiusFor,
+  visibleWorldRect,
   wheelIntent,
   zoomAtPoint,
+  type DagExplorerDisplaySettings as DagExplorerDisplaySettingsValue,
+  type MapPoint,
   type MapTransform,
   type MapViewBox,
 } from "./DagExplorer.logic";
 import {
   ancestorClosure,
+  dagLayout,
   descendantClosure,
   navigatorLayout,
   planCommitSummary,
-  spatialLayout,
   type NavigatorLayout,
   type PlanGraph,
   type SpatialLayout,
@@ -52,6 +65,7 @@ import {
 } from "./PlanGraph.logic";
 
 const EXPLORER_VIEW_STORAGE_KEY = "mercurian:dag-explorer-view:v1";
+const DISPLAY_SETTINGS_STORAGE_KEY = "mercurian:dag-explorer-display:v1";
 const ExplorerView = Schema.Literals(["navigator", "graph"]);
 type ExplorerView = typeof ExplorerView.Type;
 const DEFAULT_EXPLORER_VIEW: ExplorerView = "navigator";
@@ -63,6 +77,8 @@ const RAIL_INSET = 12;
 
 const MAP_PADDING = 64;
 const MAP_TWEEN_DURATION = 250;
+const MINIMAP_WIDTH = 160;
+const MINIMAP_HEIGHT = 110;
 /** How far the pointer has to travel before a press counts as a pan. */
 const DRAG_THRESHOLD = 4;
 
@@ -100,6 +116,11 @@ export function DagExplorer({
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
+  const [displaySettings, setDisplaySettings] = useLocalStorage(
+    DISPLAY_SETTINGS_STORAGE_KEY,
+    DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
+    DagExplorerDisplaySettings,
+  );
   // Standing at the tip is standing at the latest commit; an anchor is what
   // moves the highlight anywhere else.
   const currentCommitId = anchoredCommitId ?? graph.latest;
@@ -130,6 +151,7 @@ export function DagExplorer({
             Graph
           </Toggle>
         </ToggleGroup>
+        <DisplaySettingsPopover settings={displaySettings} onSettingsChange={setDisplaySettings} />
       </div>
       {graph.nodes.length === 0 ? (
         <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
@@ -142,9 +164,108 @@ export function DagExplorer({
           onSelect={onSelect}
         />
       ) : (
-        <GraphView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
+        <GraphView
+          currentCommitId={currentCommitId}
+          graph={graph}
+          settings={displaySettings}
+          onSelect={onSelect}
+        />
       )}
     </section>
+  );
+}
+
+function DisplaySettingsPopover({
+  settings,
+  onSettingsChange,
+}: {
+  readonly settings: DagExplorerDisplaySettingsValue;
+  readonly onSettingsChange: (
+    value:
+      | DagExplorerDisplaySettingsValue
+      | ((current: DagExplorerDisplaySettingsValue) => DagExplorerDisplaySettingsValue),
+  ) => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            aria-label="Graph display settings"
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          />
+        }
+      >
+        <Settings2Icon />
+      </PopoverTrigger>
+      <PopoverPopup align="end" className="w-64">
+        <div className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
+            Display layout
+            <Select
+              value={settings.layout}
+              onValueChange={(layout) => {
+                if (layout === "sugiyama" || layout === "grid" || layout === "zherebko") {
+                  onSettingsChange((current) => ({ ...current, layout }));
+                }
+              }}
+            >
+              <SelectTrigger aria-label="Display layout" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="sugiyama">Sugiyama</SelectItem>
+                <SelectItem value="grid">Grid</SelectItem>
+                <SelectItem value="zherebko">Zherebko</SelectItem>
+              </SelectPopup>
+            </Select>
+          </label>
+          <DisplaySlider
+            label="Node size"
+            value={settings.nodeSize}
+            onValueChange={(nodeSize) => onSettingsChange((current) => ({ ...current, nodeSize }))}
+          />
+          <DisplaySlider
+            label="Line thickness"
+            value={settings.lineThickness}
+            onValueChange={(lineThickness) =>
+              onSettingsChange((current) => ({ ...current, lineThickness }))
+            }
+          />
+        </div>
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+function DisplaySlider({
+  label,
+  value,
+  onValueChange,
+}: {
+  readonly label: string;
+  readonly value: number;
+  readonly onValueChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3 text-xs font-medium text-foreground">
+        <span>{label}</span>
+        <output className="font-mono text-[11px] text-muted-foreground tabular-nums">
+          {value.toFixed(2)}
+        </output>
+      </div>
+      <Slider max={5} min={0} step={0.05} value={value} onValueChange={onValueChange}>
+        <SliderControl>
+          <SliderTrack>
+            <SliderIndicator />
+          </SliderTrack>
+          <SliderThumb getAriaLabel={() => label} />
+        </SliderControl>
+      </Slider>
+    </div>
   );
 }
 
@@ -227,32 +348,28 @@ function NavigatorView({
 }
 
 /**
- * The spatial map: the whole DAG at once, laid out by `spatialLayout` and drawn
- * as one static SVG.
+ * The spatial map: the whole DAG at once, laid out by the selected d3-dag
+ * engine and drawn as one static SVG.
  *
- * The layout is solved synchronously to a fixed budget and rendered once —
- * nothing repaints at rest, and there is no simulation ticking in the
- * background. Pan and zoom are a single transform on one `<g>`, so a gesture
- * moves the map without re-solving it.
- *
- * `prior` positions live here, in per-window state like the position anchor
- * itself: when a commit lands the map drifts locally instead of rearranging
- * itself under someone who was reading it.
+ * The layout is solved synchronously and rendered once — nothing repaints at
+ * rest. Pan and zoom are a single transform on one `<g>`, so a gesture moves
+ * the map without re-solving it.
  */
 function GraphView({
   graph,
   currentCommitId,
+  settings,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly settings: DagExplorerDisplaySettingsValue;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
-  const priorRef = useRef<ReadonlyMap<string, SpatialPoint> | undefined>(undefined);
-  const layout = useMemo(() => spatialLayout(graph, priorRef.current), [graph]);
-  useEffect(() => {
-    priorRef.current = layout.positions;
-  }, [layout]);
+  const layout = useMemo(
+    () => dagLayout(graph, { layout: settings.layout }),
+    [graph, settings.layout],
+  );
 
   // Deliberately not keyed on the layout: a commit landing must not throw away
   // the pan and zoom of whoever is reading the map.
@@ -261,6 +378,7 @@ function GraphView({
       currentCommitId={currentCommitId}
       graph={graph}
       layout={layout}
+      settings={settings}
       onSelect={onSelect}
     />
   );
@@ -270,11 +388,13 @@ function SpatialMap({
   graph,
   layout,
   currentCommitId,
+  settings,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly settings: DagExplorerDisplaySettingsValue;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -286,6 +406,9 @@ function SpatialMap({
   } | null>(null);
   const [hovered, setHovered] = useState<MercurianCommitId | null>(null);
   const [focused, setFocused] = useState<MercurianCommitId | null>(null);
+  const [pointerWorld, setPointerWorld] = useState<
+    (SpatialPoint & { readonly viewBoxUnitsPerPixel: number }) | null
+  >(null);
   const [transform, setTransform] = useState<MapTransform>({ x: 0, y: 0, zoom: 1 });
   const transformRef = useRef(transform);
   const [renderLayout, setRenderLayout] = useState(() => settledSpatialLayout(layout));
@@ -378,6 +501,14 @@ function SpatialMap({
   };
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const pointer = clientToViewBox(event.clientX, event.clientY);
+    const currentTransform = transformRef.current;
+    setPointerWorld({
+      x: (pointer.x - currentTransform.x) / currentTransform.zoom,
+      y: (pointer.y - currentTransform.y) / currentTransform.zoom,
+      viewBoxUnitsPerPixel: unitsPerPixel(),
+    });
+
     const drag = dragRef.current;
     if (drag === null || drag.pointerId !== event.pointerId) return;
     if (!drag.panning) {
@@ -473,12 +604,27 @@ function SpatialMap({
     startTween("camera", (progress) => applyTransform(tween(progress)));
   };
 
+  const recenterFromMinimap = (point: MapPoint, animate: boolean) => {
+    const from = transformRef.current;
+    const target = centerOn(point, from, viewBox);
+    if (!animate) {
+      cancelTween("camera");
+      applyTransform(target);
+      return;
+    }
+    const tween = cameraTween(from, target, viewBox);
+    startTween("camera", (progress) => applyTransform(tween(progress)));
+  };
+
+  const showMinimap = mapOverflows(layout.bounds, transform, viewBox);
+
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
       <svg
         className="size-full cursor-grab touch-none active:cursor-grabbing"
         onPointerCancel={endDrag}
         onPointerDown={onPointerDown}
+        onPointerLeave={() => setPointerWorld(null)}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         ref={svgRef}
@@ -492,27 +638,28 @@ function SpatialMap({
               lineage !== null &&
               (!lineage.has(edge.fromCommitId) || !lineage.has(edge.toCommitId));
             return (
-              <path
+              <polyline
                 className={cn(
-                  "transition-opacity duration-150",
-                  isCurrentPath ? "fill-foreground" : "fill-border",
+                  "fill-none transition-opacity duration-150",
+                  isCurrentPath ? "stroke-foreground" : "stroke-border",
                   isDimmed && "opacity-[0.18]",
                 )}
-                d={edgeRibbon(
-                  edge.fromX,
-                  edge.fromY,
-                  edge.toX,
-                  edge.toY,
-                  isCurrentPath ? 3.5 : 2.5,
-                  isCurrentPath ? 1.5 : 1,
-                )}
                 key={`${edge.fromCommitId}->${edge.toCommitId}`}
+                points={polylinePoints(edge.points)}
+                strokeWidth={edgeWidthFor(isCurrentPath, settings)}
               />
             );
           })}
           {renderLayout.nodes.map((node) => {
             const isCurrent = node.commitId === currentCommitId;
-            const radius = radiusFor(node);
+            const graphNode = graph.byId.get(node.commitId);
+            if (graphNode === undefined) return null;
+            const distanceToPointer =
+              pointerWorld === null
+                ? Number.POSITIVE_INFINITY
+                : (Math.hypot(node.x - pointerWorld.x, node.y - pointerWorld.y) * transform.zoom) /
+                  pointerWorld.viewBoxUnitsPerPixel;
+            const radius = radiusFor(graphNode, settings) * proximityScale(distanceToPointer);
             const showLabel = labelVisible(transform.zoom, node, isCurrent);
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const Glyph = commitGlyph(node.item);
@@ -593,42 +740,188 @@ function SpatialMap({
           })}
         </g>
       </svg>
-      <div className="absolute right-2 bottom-2 flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label="Fit graph to view"
-                size="icon-xs"
-                type="button"
-                variant="ghost"
-                onClick={fitToView}
-              />
-            }
-          >
-            <Maximize2Icon />
-          </TooltipTrigger>
-          <TooltipPopup>Fit graph to view</TooltipPopup>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label="Jump to current commit"
-                disabled={hereX === undefined || hereY === undefined}
-                size="icon-xs"
-                type="button"
-                variant="ghost"
-                onClick={jumpToCurrent}
-              />
-            }
-          >
-            <LocateFixedIcon />
-          </TooltipTrigger>
-          <TooltipPopup>Jump to current commit</TooltipPopup>
-        </Tooltip>
+      <div className="absolute right-2 bottom-2 flex flex-col items-end gap-1">
+        <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label="Fit graph to view"
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                  onClick={fitToView}
+                />
+              }
+            >
+              <Maximize2Icon />
+            </TooltipTrigger>
+            <TooltipPopup>Fit graph to view</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label="Jump to current commit"
+                  disabled={hereX === undefined || hereY === undefined}
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                  onClick={jumpToCurrent}
+                />
+              }
+            >
+              <LocateFixedIcon />
+            </TooltipTrigger>
+            <TooltipPopup>Jump to current commit</TooltipPopup>
+          </Tooltip>
+        </div>
+        {showMinimap ? (
+          <Minimap
+            currentCommitId={currentCommitId}
+            layout={renderLayout}
+            transform={transform}
+            viewBox={viewBox}
+            onCenter={recenterFromMinimap}
+          />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+/** The map in miniature: the same polylines, plus the frame currently visible. */
+function Minimap({
+  layout,
+  currentCommitId,
+  transform,
+  viewBox,
+  onCenter,
+}: {
+  readonly layout: SpatialLayout;
+  readonly currentCommitId: MercurianCommitId | null;
+  readonly transform: MapTransform;
+  readonly viewBox: MapViewBox;
+  readonly onCenter: (point: MapPoint, animate: boolean) => void;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{
+    readonly pointerId: number;
+    readonly startX: number;
+    readonly startY: number;
+    moved: boolean;
+  } | null>(null);
+  const projection = useMemo(
+    () => minimapProjection(layout.bounds, { width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }),
+    [layout.bounds],
+  );
+  const visible = visibleWorldRect(transform, viewBox);
+  const visibleTopLeft = projection.project({ x: visible.minX, y: visible.minY });
+  const visibleBottomRight = projection.project({ x: visible.maxX, y: visible.maxY });
+
+  const clientToMinimap = (clientX: number, clientY: number): MapPoint => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (rect === undefined || rect.width === 0 || rect.height === 0) {
+      return { x: MINIMAP_WIDTH / 2, y: MINIMAP_HEIGHT / 2 };
+    }
+    return {
+      x: ((clientX - rect.left) / rect.width) * MINIMAP_WIDTH,
+      y: ((clientY - rect.top) / rect.height) * MINIMAP_HEIGHT,
+    };
+  };
+
+  const centerAtPointer = (event: ReactPointerEvent<SVGSVGElement>, animate: boolean) => {
+    const point = clientToMinimap(event.clientX, event.clientY);
+    onCenter(minimapPointToWorld(point, projection), animate);
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // No active pointer to capture; a clean click still works without it.
+    }
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const drag = dragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved) {
+      drag.moved =
+        Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= DRAG_THRESHOLD;
+    }
+    if (drag.moved) centerAtPointer(event, false);
+  };
+
+  const finishDrag = (event: ReactPointerEvent<SVGSVGElement>, flyOnClick: boolean) => {
+    const drag = dragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    if (drag.moved) {
+      centerAtPointer(event, false);
+    } else if (flyOnClick) {
+      centerAtPointer(event, true);
+    }
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Already released; harmless.
+    }
+    dragRef.current = null;
+  };
+
+  return (
+    <svg
+      aria-label="Map overview"
+      className="cursor-crosshair rounded-md border border-border bg-background/90 shadow-sm"
+      height={MINIMAP_HEIGHT}
+      ref={svgRef}
+      viewBox={`0 0 ${MINIMAP_WIDTH} ${MINIMAP_HEIGHT}`}
+      width={MINIMAP_WIDTH}
+      onPointerCancel={(event) => finishDrag(event, false)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(event) => finishDrag(event, true)}
+    >
+      {layout.edges.map((edge) => (
+        <polyline
+          className="fill-none stroke-border"
+          key={`${edge.fromCommitId}->${edge.toCommitId}`}
+          points={polylinePoints(edge.points.map(projection.project))}
+          strokeWidth={0.75}
+        />
+      ))}
+      {layout.nodes.map((node) => {
+        const point = projection.project(node);
+        return (
+          <circle
+            className={node.commitId === currentCommitId ? "fill-primary" : "fill-muted-foreground"}
+            cx={point.x}
+            cy={point.y}
+            key={node.commitId}
+            r={2}
+          />
+        );
+      })}
+      <rect
+        className="fill-primary/10 stroke-primary"
+        height={visibleBottomRight.y - visibleTopLeft.y}
+        width={visibleBottomRight.x - visibleTopLeft.x}
+        x={visibleTopLeft.x}
+        y={visibleTopLeft.y}
+        strokeWidth={1}
+      />
+    </svg>
   );
 }
 
@@ -731,15 +1024,28 @@ function interpolateSpatialLayout(
       scale: previous === undefined ? eased : previous.scale + (1 - previous.scale) * eased,
     };
   });
+  const fromEdgesById = new Map(
+    from.edges.map((edge) => [`${edge.fromCommitId}\0${edge.toCommitId}`, edge]),
+  );
   const edges = to.edges.map((edge) => {
     const fromPoint = positions.get(edge.fromCommitId)!;
     const toPoint = positions.get(edge.toCommitId)!;
+    const previous = fromEdgesById.get(`${edge.fromCommitId}\0${edge.toCommitId}`);
+    const points =
+      previous !== undefined && previous.points.length === edge.points.length
+        ? edge.points.map((point, index) => {
+            if (index === 0) return fromPoint;
+            if (index === edge.points.length - 1) return toPoint;
+            const oldPoint = previous.points[index]!;
+            return {
+              x: oldPoint.x + (point.x - oldPoint.x) * eased,
+              y: oldPoint.y + (point.y - oldPoint.y) * eased,
+            };
+          })
+        : [fromPoint, toPoint];
     return {
       ...edge,
-      fromX: fromPoint.x,
-      fromY: fromPoint.y,
-      toX: toPoint.x,
-      toY: toPoint.y,
+      points,
     };
   });
   return { ...to, edges, nodes, positions };
@@ -834,3 +1140,6 @@ function railPath(fromX: number, fromY: number, toX: number, toY: number): strin
   const midY = (fromY + toY) / 2;
   return `M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`;
 }
+
+const polylinePoints = (points: ReadonlyArray<SpatialPoint>) =>
+  points.map(({ x, y }) => `${x},${y}`).join(" ");

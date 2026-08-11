@@ -1,20 +1,31 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 import {
   cameraTween,
   centerOn,
+  DagExplorerDisplaySettings,
+  decodeDagExplorerDisplaySettings,
+  DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
   detailFor,
-  edgeRibbon,
+  edgeWidthFor,
   fitTransform,
   labelVisible,
+  mapOverflows,
   MAP_FIT_PADDING,
   MAP_GLYPH_ZOOM,
   MAP_LABEL_ZOOM,
   MAP_MAX_ZOOM,
   MAP_MIN_ZOOM,
+  MAP_PROXIMITY_FALLOFF,
+  MAP_PROXIMITY_MAX_SCALE,
+  minimapPointToWorld,
+  minimapProjection,
+  proximityScale,
   radiusFor,
+  visibleWorldRect,
   wheelIntent,
   zoomAtPoint,
 } from "./DagExplorer.logic";
@@ -187,35 +198,114 @@ describe("map detail", () => {
     expect(labelVisible(middleTier, ordinary, true)).toBe(true);
     expect(labelVisible(MAP_LABEL_ZOOM, ordinary, false)).toBe(true);
   });
+});
 
-  it("gives branch points and merges larger badges", () => {
-    expect(radiusFor(ordinary)).toBe(10);
-    expect(radiusFor(branch)).toBe(12);
-    expect(radiusFor(merge)).toBe(12);
+describe("display settings", () => {
+  const graph = buildPlanGraph(timeline);
+
+  it("round-trips a valid persisted value", () => {
+    const settings = { layout: "grid", nodeSize: 2.25, lineThickness: 0.75 } as const;
+    const encoded = Schema.encodeSync(DagExplorerDisplaySettings)(settings);
+    expect(Schema.decodeUnknownSync(DagExplorerDisplaySettings)(encoded)).toEqual(settings);
+  });
+
+  it("falls back as a whole for malformed or out-of-range values", () => {
+    expect(
+      decodeDagExplorerDisplaySettings({ layout: "force", nodeSize: 1, lineThickness: 1 }),
+    ).toBe(DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS);
+    expect(
+      decodeDagExplorerDisplaySettings({ layout: "grid", nodeSize: 5.01, lineThickness: 1 }),
+    ).toBe(DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS);
+    expect(
+      decodeDagExplorerDisplaySettings({ layout: "grid", nodeSize: 1, lineThickness: -0.01 }),
+    ).toBe(DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS);
+  });
+
+  it("honors zero-sized nodes and zero-width lines", () => {
+    expect(radiusFor(graph.byId.get("a")!, { nodeSize: 0 })).toBe(0);
+    expect(edgeWidthFor(false, { lineThickness: 0 })).toBe(0);
+    expect(edgeWidthFor(true, { lineThickness: 0 })).toBe(0);
   });
 });
 
-describe("edgeRibbon", () => {
-  it("tapers from the parent width to the child width around the endpoints", () => {
-    const path = edgeRibbon(10, 20, 100, 200, 4, 2);
-    const values = [...path.matchAll(/-?\d+(?:\.\d+)?/g)].map(([value]) => Number(value));
+describe("map sizing", () => {
+  const graph = buildPlanGraph(timeline);
 
-    const [startLeftX, startLeftY] = values;
-    const endLeftX = values[6];
-    const endLeftY = values[7];
-    const endRightX = values[8];
-    const endRightY = values[9];
-    const startRightX = values[14];
-    const startRightY = values[15];
+  it("grows monotonically with connected degree", () => {
+    const leaf = buildPlanGraph([commit("leaf", 1, [])]).byId.get("leaf")!;
+    const oneConnection = buildPlanGraph([commit("a", 1, []), commit("b", 2, ["a"])]).byId.get(
+      "a",
+    )!;
+    const twoConnections = graph.byId.get("l")!;
+    const threeConnections = buildPlanGraph([
+      commit("root", 1, []),
+      commit("left", 2, ["root"]),
+      commit("middle", 3, ["root"]),
+      commit("right", 4, ["root"]),
+    ]).byId.get("root")!;
+    const radii = [leaf, oneConnection, twoConnections, threeConnections].map((node) =>
+      radiusFor(node, { nodeSize: 1 }),
+    );
 
-    expect(((startLeftX ?? 0) + (startRightX ?? 0)) / 2).toBe(10);
-    expect(startLeftY).toBe(20);
-    expect(startRightY).toBe(20);
-    expect((startRightX ?? 0) - (startLeftX ?? 0)).toBe(4);
-    expect(((endLeftX ?? 0) + (endRightX ?? 0)) / 2).toBe(100);
-    expect(endLeftY).toBe(200);
-    expect(endRightY).toBe(200);
-    expect((endRightX ?? 0) - (endLeftX ?? 0)).toBe(2);
-    expect(path.endsWith("Z")).toBe(true);
+    expect(radii[0]).toBeLessThanOrEqual(radii[1]!);
+    expect(radii[1]).toBeLessThan(radii[2]!);
+    expect(radii[2]).toBeLessThan(radii[3]!);
+  });
+
+  it("is linear in the node-size setting", () => {
+    const node = graph.byId.get("a")!;
+    expect(radiusFor(node, { nodeSize: 2.5 })).toBeCloseTo(
+      radiusFor(node, { nodeSize: 1 }) * 2.5,
+      10,
+    );
+  });
+
+  it("eases monotonically from its maximum to one at the falloff", () => {
+    expect(proximityScale(0)).toBe(MAP_PROXIMITY_MAX_SCALE);
+    expect(proximityScale(MAP_PROXIMITY_FALLOFF)).toBe(1);
+    expect(proximityScale(MAP_PROXIMITY_FALLOFF * 2)).toBe(1);
+
+    const samples = [0, 12, 24, 36, 48, 60, 72].map(proximityScale);
+    for (const [index, scale] of samples.entries()) {
+      if (index === 0) continue;
+      expect(scale).toBeLessThanOrEqual(samples[index - 1]!);
+    }
+  });
+});
+
+describe("minimap geometry", () => {
+  const bounds = { minX: -200, minY: 50, maxX: 600, maxY: 250 };
+  const frame = { x: 0, y: 0, width: 400, height: 300 };
+
+  it("round-trips points through an aspect-preserving projection", () => {
+    const projection = minimapProjection(bounds, { width: 160, height: 110 });
+    const world = { x: 173, y: 121 };
+    const roundTripped = minimapPointToWorld(projection.project(world), projection);
+    expect(roundTripped.x).toBeCloseTo(world.x, 12);
+    expect(roundTripped.y).toBeCloseTo(world.y, 12);
+
+    const projectedMin = projection.project({ x: bounds.minX, y: bounds.minY });
+    const projectedX = projection.project({ x: bounds.maxX, y: bounds.minY });
+    const projectedY = projection.project({ x: bounds.minX, y: bounds.maxY });
+    const xScale = (projectedX.x - projectedMin.x) / (bounds.maxX - bounds.minX);
+    const yScale = (projectedY.y - projectedMin.y) / (bounds.maxY - bounds.minY);
+    expect(xScale).toBeCloseTo(yScale, 12);
+  });
+
+  it("shows that a fit camera covers all bounds without overflowing", () => {
+    const fit = fitTransform(bounds, frame);
+    const visible = visibleWorldRect(fit, frame);
+    expect(visible.minX).toBeLessThanOrEqual(bounds.minX);
+    expect(visible.minY).toBeLessThanOrEqual(bounds.minY);
+    expect(visible.maxX).toBeGreaterThanOrEqual(bounds.maxX);
+    expect(visible.maxY).toBeGreaterThanOrEqual(bounds.maxY);
+    expect(mapOverflows(bounds, fit, frame)).toBe(false);
+  });
+
+  it("overflows once the fitted camera zooms in past the graph", () => {
+    const fit = fitTransform(bounds, frame);
+    const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+    const zoomed = centerOn(center, { ...fit, zoom: fit.zoom * 2 }, frame);
+    expect(mapOverflows(bounds, zoomed, frame)).toBe(true);
   });
 });

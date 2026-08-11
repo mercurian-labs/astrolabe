@@ -5,12 +5,11 @@ import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 import {
   ancestorClosure,
   buildPlanGraph,
+  dagLayout,
   descendantClosure,
   navigatorLayout,
   planCommitSummary,
-  spatialLayout,
-  SPATIAL_MAX_SIMULATED_NODES,
-  SPATIAL_MIN_SEPARATION,
+  type DagLayoutName,
 } from "./PlanGraph.logic";
 
 const id = (value: string) => MercurianCommitId.make(value);
@@ -103,7 +102,7 @@ describe("buildPlanGraph", () => {
     expect(graph.nodes).toEqual([]);
     expect(graph.latest).toBeNull();
     expect(navigatorLayout(graph)).toEqual({ rows: [], edges: [], laneCount: 0 });
-    expect(spatialLayout(graph).nodes).toEqual([]);
+    expect(dagLayout(graph, { layout: "sugiyama" }).nodes).toEqual([]);
   });
 });
 
@@ -206,99 +205,71 @@ describe("navigatorLayout", () => {
   });
 });
 
-describe("spatialLayout", () => {
+describe("dagLayout", () => {
   const shapes = [
     ["a chain", chain],
     ["a fork", fork],
     ["an n-ary merge", merged],
   ] as const;
+  const layouts: ReadonlyArray<DagLayoutName> = ["sugiyama", "grid", "zherebko"];
 
-  it("draws the same picture every time it is asked", () => {
-    // The whole reason positions are seeded from commit ids: a map that
-    // rearranged itself on every open would be a different map every time.
-    for (const [name, timeline] of shapes) {
-      const graph = buildPlanGraph(timeline);
-      const first = spatialLayout(graph);
-      const second = spatialLayout(graph);
-      expect(first.nodes, name).toEqual(second.nodes);
-      expect(first.bounds, name).toEqual(second.bounds);
+  it("draws the same picture on two runs of every engine", () => {
+    for (const layoutName of layouts) {
+      for (const [name, timeline] of shapes) {
+        const graph = buildPlanGraph(timeline);
+        const first = dagLayout(graph, { layout: layoutName });
+        const second = dagLayout(graph, { layout: layoutName });
+        expect(first, `${layoutName}: ${name}`).toEqual(second);
+      }
     }
   });
 
-  it("draws the same warm-started picture every time it is asked", () => {
-    for (const [name, timeline] of shapes) {
-      const graph = buildPlanGraph(timeline);
-      const prior = spatialLayout(graph).positions;
-      const first = spatialLayout(graph, prior);
-      const second = spatialLayout(graph, prior);
-      expect(first.nodes, name).toEqual(second.nodes);
-      expect(first.bounds, name).toEqual(second.bounds);
+  it("orients every engine with each child strictly below every parent", () => {
+    for (const layoutName of layouts) {
+      for (const [name, timeline] of shapes) {
+        const graph = buildPlanGraph(timeline);
+        const layout = dagLayout(graph, { layout: layoutName });
+        for (const node of graph.nodes) {
+          const here = layout.positions.get(node.commitId)!;
+          for (const parentId of node.parents) {
+            expect(
+              here.y,
+              `${layoutName}: ${name}: ${node.commitId} below ${parentId}`,
+            ).toBeGreaterThan(layout.positions.get(parentId)!.y);
+          }
+        }
+      }
     }
   });
 
-  it("orders the flow axis along ancestry, strictly", () => {
-    // Every child beyond every parent — this is what keeps the map reading as
-    // root-to-tips flow instead of a hairball.
-    for (const [name, timeline] of shapes) {
-      const graph = buildPlanGraph(timeline);
-      const layout = spatialLayout(graph);
-      for (const node of graph.nodes) {
-        const here = layout.positions.get(node.commitId)!;
-        for (const parentId of node.parents) {
-          expect(here.y, `${name}: ${node.commitId} below ${parentId}`).toBeGreaterThan(
-            layout.positions.get(parentId)!.y,
+  it("keeps each native polyline attached to its endpoint nodes", () => {
+    for (const layoutName of layouts) {
+      for (const [name, timeline] of shapes) {
+        const layout = dagLayout(buildPlanGraph(timeline), { layout: layoutName });
+        for (const edge of layout.edges) {
+          expect(edge.points[0], `${layoutName}: ${name}: source`).toEqual(
+            layout.positions.get(edge.fromCommitId),
+          );
+          expect(edge.points.at(-1), `${layoutName}: ${name}: target`).toEqual(
+            layout.positions.get(edge.toCommitId),
           );
         }
       }
     }
   });
 
-  it("keeps every pair of nodes apart", () => {
-    for (const [name, timeline] of shapes) {
-      const layout = spatialLayout(buildPlanGraph(timeline));
-      for (const [index, node] of layout.nodes.entries()) {
-        for (const other of layout.nodes.slice(index + 1)) {
-          const distance = Math.hypot(node.x - other.x, node.y - other.y);
-          expect(distance, `${name}: ${node.commitId} vs ${other.commitId}`).toBeGreaterThanOrEqual(
-            SPATIAL_MIN_SEPARATION - 0.01,
-          );
-        }
-      }
-    }
-  });
-
-  it("drifts locally when a commit lands, instead of re-solving the map", () => {
-    const before = spatialLayout(buildPlanGraph(merged));
-    const grown = spatialLayout(
-      buildPlanGraph([...merged, commit("leaf", 8, ["after"])]),
-      before.positions,
+  it("runs the selected engine", () => {
+    const graph = buildPlanGraph(merged);
+    const arrangements = layouts.map((layoutName) =>
+      JSON.stringify(
+        dagLayout(graph, { layout: layoutName }).nodes.map(({ commitId, x, y }) => [
+          commitId,
+          x,
+          y,
+        ]),
+      ),
     );
-
-    for (const node of before.nodes) {
-      const moved = grown.positions.get(node.commitId)!;
-      expect(
-        Math.hypot(moved.x - node.x, moved.y - node.y),
-        `${node.commitId} stayed put`,
-      ).toBeLessThan(SPATIAL_MIN_SEPARATION);
-    }
-    // And the newcomer landed near where it came from, not off in the seed field.
-    const anchor = grown.positions.get(id("after"))!;
-    const leaf = grown.positions.get(id("leaf"))!;
-    expect(Math.hypot(leaf.x - anchor.x, leaf.y - anchor.y)).toBeLessThan(200);
-  });
-
-  it("falls back to the time axis past the simulation cap", () => {
-    const long = Array.from({ length: SPATIAL_MAX_SIMULATED_NODES + 1 }, (_, index) =>
-      commit(`c${index}`, index + 1, index === 0 ? [] : [`c${index - 1}`]),
-    );
-    const layout = spatialLayout(buildPlanGraph(long));
-    expect(layout.simulated).toBe(false);
-    expect(layout.nodes).toHaveLength(long.length);
-    // Degraded to a legible column, not to a stall or a pile.
-    for (const [index, node] of layout.nodes.entries()) {
-      if (index === 0) continue;
-      expect(node.y).toBeGreaterThan(layout.nodes[index - 1]!.y);
-    }
+    expect(new Set(arrangements).size).toBe(layouts.length);
   });
 });
 
