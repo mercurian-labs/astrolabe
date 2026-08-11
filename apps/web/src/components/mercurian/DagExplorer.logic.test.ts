@@ -12,11 +12,9 @@ import {
   detailFor,
   edgeWidthFor,
   fitTransform,
-  labelVisible,
   mapOverflows,
   MAP_FIT_PADDING,
   MAP_GLYPH_ZOOM,
-  MAP_LABEL_ZOOM,
   MAP_MAX_ZOOM,
   MAP_MIN_ZOOM,
   MAP_PROXIMITY_FALLOFF,
@@ -180,24 +178,10 @@ describe("cameraTween", () => {
 });
 
 describe("map detail", () => {
-  const graph = buildPlanGraph(timeline);
-  const ordinary = graph.byId.get("l")!;
-  const branch = graph.byId.get("a")!;
-  const merge = graph.byId.get("m")!;
-
-  it("moves through monotone detail tiers", () => {
+  it("switches once from dots to glyphs", () => {
     expect(detailFor(MAP_GLYPH_ZOOM - 0.01)).toBe("dot");
     expect(detailFor(MAP_GLYPH_ZOOM)).toBe("glyph");
-    expect(detailFor(MAP_LABEL_ZOOM)).toBe("labeled");
-  });
-
-  it("labels junctions and the current commit one tier earlier", () => {
-    const middleTier = (MAP_GLYPH_ZOOM + MAP_LABEL_ZOOM) / 2;
-    expect(labelVisible(middleTier, ordinary, false)).toBe(false);
-    expect(labelVisible(middleTier, branch, false)).toBe(true);
-    expect(labelVisible(middleTier, merge, false)).toBe(true);
-    expect(labelVisible(middleTier, ordinary, true)).toBe(true);
-    expect(labelVisible(MAP_LABEL_ZOOM, ordinary, false)).toBe(true);
+    expect(detailFor(MAP_MAX_ZOOM)).toBe("glyph");
   });
 });
 

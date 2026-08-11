@@ -396,3 +396,10 @@ export function planCommitSummary(item: PlanTimelineItem): string {
     ? firstLine
     : `${firstLine.slice(0, SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;
 }
+
+/** The complete commit content shown when a map node is emphasized. */
+export function planCommitDetail(item: PlanTimelineItem): string {
+  if (item._tag === "message") return item.text;
+  if (item._tag === "plan-revision") return planCommitSummary(item);
+  return item.description.length === 0 ? item.title : `${item.title}\n\n${item.description}`;
+}

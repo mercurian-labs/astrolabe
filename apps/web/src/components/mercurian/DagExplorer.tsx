@@ -37,7 +37,6 @@ import {
   detailFor,
   edgeWidthFor,
   fitTransform,
-  labelVisible,
   mapOverflows,
   minimapPointToWorld,
   minimapProjection,
@@ -58,6 +57,7 @@ import {
   dagLayout,
   descendantClosure,
   navigatorLayout,
+  planCommitDetail,
   planCommitSummary,
   type NavigatorLayout,
   type PlanGraph,
@@ -79,8 +79,19 @@ const RAIL_INSET = 12;
 
 const MAP_PADDING = 64;
 const MAP_TWEEN_DURATION = 250;
+const DETAIL_OVERLAY_ID = "dag-explorer-node-detail";
+const DETAIL_OVERLAY_INSET = 8;
+const DETAIL_OVERLAY_GAP = 12;
+const DETAIL_OVERLAY_MAX_WIDTH = 288;
+const DETAIL_OVERLAY_MAX_HEIGHT = 186;
 /** How far the pointer has to travel before a press counts as a pan. */
 const DRAG_THRESHOLD = 4;
+
+type DisplaySettingsUpdater = (
+  value:
+    | DagExplorerDisplaySettingsValue
+    | ((current: DagExplorerDisplaySettingsValue) => DagExplorerDisplaySettingsValue),
+) => void;
 
 /**
  * The DAG explorer: the plan's whole history, in the two readings the design
@@ -116,11 +127,6 @@ export function DagExplorer({
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
-  const [displaySettings, setDisplaySettings] = useLocalStorage(
-    DISPLAY_SETTINGS_STORAGE_KEY,
-    DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
-    DagExplorerDisplaySettings,
-  );
   // Standing at the tip is standing at the latest commit; an anchor is what
   // moves the highlight anywhere else.
   const currentCommitId = anchoredCommitId ?? graph.latest;
@@ -151,7 +157,6 @@ export function DagExplorer({
             Graph
           </Toggle>
         </ToggleGroup>
-        <DisplaySettingsPopover settings={displaySettings} onSettingsChange={setDisplaySettings} />
       </div>
       {graph.nodes.length === 0 ? (
         <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
@@ -164,12 +169,7 @@ export function DagExplorer({
           onSelect={onSelect}
         />
       ) : (
-        <GraphView
-          currentCommitId={currentCommitId}
-          graph={graph}
-          settings={displaySettings}
-          onSelect={onSelect}
-        />
+        <GraphView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
       )}
     </section>
   );
@@ -180,11 +180,7 @@ function DisplaySettingsPopover({
   onSettingsChange,
 }: {
   readonly settings: DagExplorerDisplaySettingsValue;
-  readonly onSettingsChange: (
-    value:
-      | DagExplorerDisplaySettingsValue
-      | ((current: DagExplorerDisplaySettingsValue) => DagExplorerDisplaySettingsValue),
-  ) => void;
+  readonly onSettingsChange: DisplaySettingsUpdater;
 }) {
   return (
     <Popover>
@@ -358,14 +354,17 @@ function NavigatorView({
 function GraphView({
   graph,
   currentCommitId,
-  settings,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
-  readonly settings: DagExplorerDisplaySettingsValue;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
+  const [settings, setSettings] = useLocalStorage(
+    DISPLAY_SETTINGS_STORAGE_KEY,
+    DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
+    DagExplorerDisplaySettings,
+  );
   const layout = useMemo(
     () => dagLayout(graph, { layout: settings.layout }),
     [graph, settings.layout],
@@ -379,6 +378,7 @@ function GraphView({
       graph={graph}
       layout={layout}
       settings={settings}
+      onSettingsChange={setSettings}
       onSelect={onSelect}
     />
   );
@@ -389,12 +389,14 @@ function SpatialMap({
   layout,
   currentCommitId,
   settings,
+  onSettingsChange,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
   readonly settings: DagExplorerDisplaySettingsValue;
+  readonly onSettingsChange: DisplaySettingsUpdater;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -411,7 +413,14 @@ function SpatialMap({
     (SpatialPoint & { readonly viewBoxUnitsPerPixel: number }) | null
   >(null);
   const [transform, setTransform] = useState<MapTransform>({ x: 0, y: 0, zoom: 1 });
-  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
+  const [mapFrame, setMapFrame] = useState({
+    width: 0,
+    height: 0,
+    svgLeft: 0,
+    svgTop: 0,
+    svgWidth: 0,
+    svgHeight: 0,
+  });
   const transformRef = useRef(transform);
   const [renderLayout, setRenderLayout] = useState(() => settledSpatialLayout(layout));
   const renderLayoutRef = useRef(renderLayout);
@@ -423,10 +432,28 @@ function SpatialMap({
     if (container === null) return;
 
     const observer = new ResizeObserver(([entry]) => {
-      if (entry === undefined) return;
+      const svg = svgRef.current;
+      if (entry === undefined || svg === null) return;
       const { width, height } = entry.contentRect;
-      setMapSize((current) =>
-        current.width === width && current.height === height ? current : { width, height },
+      const containerRect = container.getBoundingClientRect();
+      const svgRect = svg.getBoundingClientRect();
+      const next = {
+        width,
+        height,
+        svgLeft: svgRect.left - containerRect.left,
+        svgTop: svgRect.top - containerRect.top,
+        svgWidth: svgRect.width,
+        svgHeight: svgRect.height,
+      };
+      setMapFrame((current) =>
+        current.width === next.width &&
+        current.height === next.height &&
+        current.svgLeft === next.svgLeft &&
+        current.svgTop === next.svgTop &&
+        current.svgWidth === next.svgWidth &&
+        current.svgHeight === next.svgHeight
+          ? current
+          : next,
       );
     });
     observer.observe(container);
@@ -502,6 +529,27 @@ function SpatialMap({
       };
     },
     [viewBox],
+  );
+
+  const viewBoxToMap = useCallback(
+    (point: MapPoint): MapPoint => {
+      if (mapFrame.svgWidth === 0 || mapFrame.svgHeight === 0) {
+        return { x: mapFrame.width / 2, y: mapFrame.height / 2 };
+      }
+      const scale = Math.max(
+        viewBox.width / mapFrame.svgWidth,
+        viewBox.height / mapFrame.svgHeight,
+      );
+      const renderedWidth = viewBox.width / scale;
+      const renderedHeight = viewBox.height / scale;
+      const insetX = (mapFrame.svgWidth - renderedWidth) / 2;
+      const insetY = (mapFrame.svgHeight - renderedHeight) / 2;
+      return {
+        x: mapFrame.svgLeft + insetX + (point.x - viewBox.x) / scale,
+        y: mapFrame.svgTop + insetY + (point.y - viewBox.y) / scale,
+      };
+    },
+    [mapFrame, viewBox],
   );
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -607,6 +655,39 @@ function SpatialMap({
     [currentCommitId, graph],
   );
   const detail = detailFor(transform.zoom);
+  const emphasizedNode = useMemo(
+    () =>
+      emphasisId === null
+        ? undefined
+        : renderLayout.nodes.find((node) => node.commitId === emphasisId),
+    [emphasisId, renderLayout.nodes],
+  );
+  const detailOverlay = useMemo(() => {
+    if (
+      emphasizedNode === undefined ||
+      mapFrame.width <= DETAIL_OVERLAY_INSET * 2 ||
+      mapFrame.height <= DETAIL_OVERLAY_INSET * 2
+    ) {
+      return null;
+    }
+
+    const anchor = viewBoxToMap({
+      x: transform.x + emphasizedNode.x * transform.zoom,
+      y: transform.y + emphasizedNode.y * transform.zoom,
+    });
+    const width = Math.min(DETAIL_OVERLAY_MAX_WIDTH, mapFrame.width - DETAIL_OVERLAY_INSET * 2);
+    const height = Math.min(DETAIL_OVERLAY_MAX_HEIGHT, mapFrame.height - DETAIL_OVERLAY_INSET * 2);
+    const right = anchor.x + DETAIL_OVERLAY_GAP;
+    const preferredLeft =
+      right + width <= mapFrame.width - DETAIL_OVERLAY_INSET
+        ? right
+        : anchor.x - DETAIL_OVERLAY_GAP - width;
+    return {
+      item: emphasizedNode.item,
+      left: clampOverlayCoordinate(preferredLeft, width, mapFrame.width),
+      top: clampOverlayCoordinate(anchor.y - DETAIL_OVERLAY_GAP, height, mapFrame.height),
+    };
+  }, [emphasizedNode, mapFrame.height, mapFrame.width, transform, viewBoxToMap]);
 
   const fitToView = () => {
     const from = transformRef.current;
@@ -635,8 +716,8 @@ function SpatialMap({
 
   const showMinimap = mapOverflows(layout.bounds, transform, viewBox);
   const overviewSize = useMemo(
-    () => minimapSize(mapSize.width, mapSize.height),
-    [mapSize.height, mapSize.width],
+    () => minimapSize(mapFrame.width, mapFrame.height),
+    [mapFrame.height, mapFrame.width],
   );
 
   return (
@@ -681,7 +762,6 @@ function SpatialMap({
                 : (Math.hypot(node.x - pointerWorld.x, node.y - pointerWorld.y) * transform.zoom) /
                   pointerWorld.viewBoxUnitsPerPixel;
             const radius = radiusFor(graphNode, settings) * proximityScale(distanceToPointer);
-            const showLabel = labelVisible(transform.zoom, node, isCurrent);
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const Glyph = commitGlyph(node.item);
             return (
@@ -691,6 +771,11 @@ function SpatialMap({
                 // reader and unreachable by keyboard.
                 aria-label={planCommitSummary(node.item)}
                 aria-current={isCurrent ? "true" : undefined}
+                aria-describedby={
+                  detailOverlay !== null && node.commitId === emphasisId
+                    ? DETAIL_OVERLAY_ID
+                    : undefined
+                }
                 className="cursor-pointer transition-opacity duration-150"
                 key={node.commitId}
                 onClick={() => onSelect(node.commitId)}
@@ -744,12 +829,9 @@ function SpatialMap({
                     y={node.y - radius / 2}
                   />
                 )}
-                {showLabel ? (
+                {isCurrent ? (
                   <text
-                    className={cn(
-                      "pointer-events-none text-[11px]",
-                      detail === "labeled" ? "fill-foreground" : "fill-foreground/70",
-                    )}
+                    className="pointer-events-none fill-foreground text-[11px]"
                     x={node.x + radius + 8}
                     y={node.y + 4}
                   >
@@ -761,7 +843,22 @@ function SpatialMap({
           })}
         </g>
       </svg>
-      <div className="absolute right-2 bottom-2 flex flex-col items-end gap-1">
+      <div className="absolute right-2 top-2 z-20 flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
+        <DisplaySettingsPopover settings={settings} onSettingsChange={onSettingsChange} />
+      </div>
+      {detailOverlay === null ? null : (
+        <div
+          className="pointer-events-none absolute z-10 w-72 max-w-[calc(100%-1rem)] rounded-md border border-border bg-popover p-3 text-popover-foreground text-xs shadow-md/5"
+          id={DETAIL_OVERLAY_ID}
+          role="tooltip"
+          style={{ left: detailOverlay.left, top: detailOverlay.top }}
+        >
+          <p className="line-clamp-10 whitespace-pre-wrap break-words leading-4">
+            {planCommitDetail(detailOverlay.item)}
+          </p>
+        </div>
+      )}
+      <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
         <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
           <Tooltip>
             <TooltipTrigger
@@ -1164,3 +1261,8 @@ function railPath(fromX: number, fromY: number, toX: number, toY: number): strin
 
 const polylinePoints = (points: ReadonlyArray<SpatialPoint>) =>
   points.map(({ x, y }) => `${x},${y}`).join(" ");
+
+function clampOverlayCoordinate(value: number, size: number, containerSize: number): number {
+  const maximum = Math.max(DETAIL_OVERLAY_INSET, containerSize - size - DETAIL_OVERLAY_INSET);
+  return Math.max(DETAIL_OVERLAY_INSET, Math.min(value, maximum));
+}

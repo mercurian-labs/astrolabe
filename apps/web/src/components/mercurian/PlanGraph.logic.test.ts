@@ -8,6 +8,7 @@ import {
   dagLayout,
   descendantClosure,
   navigatorLayout,
+  planCommitDetail,
   planCommitSummary,
   type DagLayoutName,
 } from "./PlanGraph.logic";
@@ -299,5 +300,42 @@ describe("planCommitSummary", () => {
       createdAt: "2026-08-03T00:00:00.000Z",
     };
     expect(planCommitSummary(revision)).toBe("The assistant revised the plan");
+  });
+});
+
+describe("planCommitDetail", () => {
+  it("keeps a message's complete text", () => {
+    const text = `First line\n\n${"full detail ".repeat(20)}`;
+    expect(planCommitDetail(commit("a", 1, [], { text }))).toBe(text);
+  });
+
+  it("includes an imported issue's title and description", () => {
+    const issue: PlanTimelineItem = {
+      _tag: "issue-revision",
+      commitId: id("issue"),
+      sequence: 1,
+      parents: [],
+      published: true,
+      authorKind: "human",
+      title: "Keep both parts",
+      description: "The complete issue description.\nIncluding its second line.",
+      createdAt: "2026-08-03T00:00:00.000Z",
+    };
+    expect(planCommitDetail(issue)).toBe(
+      "Keep both parts\n\nThe complete issue description.\nIncluding its second line.",
+    );
+  });
+
+  it("uses the existing summary line for a plan revision", () => {
+    const revision: PlanTimelineItem = {
+      _tag: "plan-revision",
+      commitId: id("rev"),
+      sequence: 2,
+      parents: [id("a")],
+      published: false,
+      authorKind: "assistant",
+      createdAt: "2026-08-03T00:00:00.000Z",
+    };
+    expect(planCommitDetail(revision)).toBe("The assistant revised the plan");
   });
 });

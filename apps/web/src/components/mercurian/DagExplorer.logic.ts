@@ -57,7 +57,6 @@ export interface MapBounds {
 export const MAP_MIN_ZOOM = 0.3;
 export const MAP_MAX_ZOOM = 3;
 export const MAP_GLYPH_ZOOM = 0.65;
-export const MAP_LABEL_ZOOM = 1.15;
 export const MAP_FIT_PADDING = 64;
 export const MAP_PROXIMITY_FALLOFF = 72;
 export const MAP_PROXIMITY_MAX_SCALE = 1.35;
@@ -156,22 +155,11 @@ export function cameraTween(
   };
 }
 
-export type MapDetail = "dot" | "glyph" | "labeled";
+export type MapDetail = "dot" | "glyph";
 
 export function detailFor(zoom: number): MapDetail {
   if (zoom < MAP_GLYPH_ZOOM) return "dot";
-  if (zoom < MAP_LABEL_ZOOM) return "glyph";
-  return "labeled";
-}
-
-export function labelVisible(
-  zoom: number,
-  node: Pick<PlanGraphNode, "isBranchPoint" | "isMerge">,
-  isCurrent: boolean,
-): boolean {
-  const threshold =
-    node.isBranchPoint || node.isMerge || isCurrent ? MAP_GLYPH_ZOOM : MAP_LABEL_ZOOM;
-  return zoom >= threshold;
+  return "glyph";
 }
 
 export function radiusFor(
