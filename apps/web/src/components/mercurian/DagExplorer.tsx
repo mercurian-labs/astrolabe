@@ -112,6 +112,12 @@ type DisplaySettingsUpdater = (
     | ((current: DagExplorerDisplaySettingsValue) => DagExplorerDisplaySettingsValue),
 ) => void;
 
+interface MeasuredDetailOverlay {
+  readonly commitId: MercurianCommitId;
+  readonly width: number;
+  readonly height: number;
+}
+
 /**
  * The DAG explorer: the plan's whole history, in the three readings the design
  * settled on.
@@ -934,6 +940,9 @@ function SpatialMap({
   } | null>(null);
   const [hovered, setHovered] = useState<MercurianCommitId | null>(null);
   const [focused, setFocused] = useState<MercurianCommitId | null>(null);
+  const [measuredDetailOverlay, setMeasuredDetailOverlay] = useState<MeasuredDetailOverlay | null>(
+    null,
+  );
   const [pointerWorld, setPointerWorld] = useState<
     (SpatialPoint & { readonly viewBoxUnitsPerPixel: number }) | null
   >(null);
@@ -1168,6 +1177,18 @@ function SpatialMap({
   }, [cancelTween, clientToViewBox, unitsPerPixel, viewBox]);
 
   const emphasisId = hovered ?? focused;
+  const measureDetailOverlay = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element === null || emphasisId === null) return;
+      const { width, height } = element.getBoundingClientRect();
+      setMeasuredDetailOverlay((current) =>
+        current?.commitId === emphasisId && current.width === width && current.height === height
+          ? current
+          : { commitId: emphasisId, width, height },
+      );
+    },
+    [emphasisId],
+  );
   const lineage = useMemo(() => {
     if (emphasisId === null || !graph.byId.has(emphasisId)) return null;
     return new Set([
@@ -1200,8 +1221,12 @@ function SpatialMap({
       x: transform.x + emphasizedNode.x * transform.zoom,
       y: transform.y + emphasizedNode.y * transform.zoom,
     });
-    const width = Math.min(DETAIL_OVERLAY_MAX_WIDTH, mapFrame.width - DETAIL_OVERLAY_INSET * 2);
-    const height = Math.min(DETAIL_OVERLAY_MAX_HEIGHT, mapFrame.height - DETAIL_OVERLAY_INSET * 2);
+    const maximumWidth = mapFrame.width - DETAIL_OVERLAY_INSET * 2;
+    const maximumHeight = mapFrame.height - DETAIL_OVERLAY_INSET * 2;
+    const measured =
+      measuredDetailOverlay?.commitId === emphasizedNode.commitId ? measuredDetailOverlay : null;
+    const width = Math.min(measured?.width ?? DETAIL_OVERLAY_MAX_WIDTH, maximumWidth);
+    const height = Math.min(measured?.height ?? DETAIL_OVERLAY_MAX_HEIGHT, maximumHeight);
     const right = anchor.x + DETAIL_OVERLAY_GAP;
     const preferredLeft =
       right + width <= mapFrame.width - DETAIL_OVERLAY_INSET
@@ -1212,7 +1237,14 @@ function SpatialMap({
       left: clampOverlayCoordinate(preferredLeft, width, mapFrame.width),
       top: clampOverlayCoordinate(anchor.y - DETAIL_OVERLAY_GAP, height, mapFrame.height),
     };
-  }, [emphasizedNode, mapFrame.height, mapFrame.width, transform, viewBoxToMap]);
+  }, [
+    emphasizedNode,
+    mapFrame.height,
+    mapFrame.width,
+    measuredDetailOverlay,
+    transform,
+    viewBoxToMap,
+  ]);
 
   const fitToView = () => {
     const from = transformRef.current;
@@ -1249,7 +1281,7 @@ function SpatialMap({
     () => ({ width: mapFrame.svgWidth, height: mapFrame.svgHeight }),
     [mapFrame.svgHeight, mapFrame.svgWidth],
   );
-  const showMinimap = mapOverflows(layout.bounds, transform, viewBox, renderedFrame);
+  const mapIsOverflowing = mapOverflows(layout.bounds, transform, viewBox, renderedFrame);
   const overviewSize = useMemo(
     () => minimapSize(mapFrame.width, mapFrame.height),
     [mapFrame.height, mapFrame.width],
@@ -1382,6 +1414,7 @@ function SpatialMap({
         <div
           className="pointer-events-none absolute z-10 w-72 max-w-[calc(100%-1rem)] rounded-md border border-border bg-popover p-3 text-popover-foreground text-xs shadow-md/5"
           id={DETAIL_OVERLAY_ID}
+          ref={measureDetailOverlay}
           role="tooltip"
           style={{ left: detailOverlay.left, top: detailOverlay.top }}
         >
@@ -1392,22 +1425,24 @@ function SpatialMap({
       )}
       <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
         <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-label="Fit graph to view"
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                  onClick={fitToView}
-                />
-              }
-            >
-              <Maximize2Icon />
-            </TooltipTrigger>
-            <TooltipPopup>Fit graph to view</TooltipPopup>
-          </Tooltip>
+          {mapIsOverflowing ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label="Fit graph to view"
+                    size="icon-xs"
+                    type="button"
+                    variant="ghost"
+                    onClick={fitToView}
+                  />
+                }
+              >
+                <Maximize2Icon />
+              </TooltipTrigger>
+              <TooltipPopup>Fit graph to view</TooltipPopup>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1426,7 +1461,7 @@ function SpatialMap({
             <TooltipPopup>Jump to current commit</TooltipPopup>
           </Tooltip>
         </div>
-        {showMinimap ? (
+        {mapIsOverflowing ? (
           <Minimap
             currentCommitId={currentCommitId}
             frame={renderedFrame}
