@@ -162,6 +162,52 @@ it.effect("emits a tool-shaped revision preview without an MCP call", () =>
   }).pipe(Effect.scoped),
 );
 
+it.effect("ignores trigger tokens in a rebuilt session's transcript preamble", () =>
+  Effect.gen(function* () {
+    const adapter = yield* makeMockAdapter({ interChunkDelay: Duration.zero });
+    const threadId = ThreadId.make("mock-rebuilt-session-thread");
+    yield* startSession(adapter, threadId);
+    const eventsFiber = yield* collectUntil(
+      adapter,
+      (event) => event.type === "turn.completed" || event.type === "user-input.requested",
+    ).pipe(Effect.forkChild);
+
+    yield* adapter.sendTurn({
+      threadId,
+      input: [
+        "Earlier transcript requested /question, /ground, and /revise.",
+        "Reply to this message:\nVerbose streaming and stop probe",
+      ].join("\n\n---\n\n"),
+    });
+    const events = yield* Fiber.join(eventsFiber);
+
+    assert.strictEqual(events.at(-1)?.type, "turn.completed");
+    assert.ok(!events.some((event) => event.type === "user-input.requested"));
+    assert.ok(
+      !events.some(
+        (event) =>
+          event.type === "item.completed" &&
+          (event.payload.itemType === "dynamic_tool_call" ||
+            event.payload.itemType === "mcp_tool_call"),
+      ),
+    );
+  }).pipe(Effect.scoped),
+);
+
+it.effect("honors trigger tokens in a rebuilt session's final message", () =>
+  Effect.gen(function* () {
+    const events = yield* runTurn(
+      "Earlier transcript without triggers.\n\n---\n\nReply to this message:\nUse /ground now",
+    );
+    const grounding = events.filter(
+      (event) => event.type === "item.completed" && event.payload.itemType === "dynamic_tool_call",
+    );
+
+    assert.strictEqual(grounding.length, 2);
+    assert.strictEqual(events.at(-1)?.type, "turn.completed");
+  }).pipe(Effect.scoped),
+);
+
 it.effect("interrupts an active turn with turn.aborted", () =>
   Effect.gen(function* () {
     const adapter = yield* makeMockAdapter({ interChunkDelay: Duration.hours(1) });

@@ -30,6 +30,10 @@ import type {
 const PROVIDER = ProviderDriverKind.make("mock");
 const CREATED_AT = "2026-01-01T00:00:00.000Z";
 const QUESTION_ID = "mock_direction";
+// Coupled to composeFirstTurnInput in PlanningPrompt.ts. Rebuilt sessions put
+// prior transcript content before this marker; only the final message may
+// steer mock behavior.
+const FIRST_TURN_MESSAGE_MARKER = "Reply to this message:";
 
 export const MOCK_QUESTION = {
   id: QUESTION_ID,
@@ -52,6 +56,7 @@ const REVISE_REPLY =
 interface ActiveTurn {
   readonly turnId: TurnId;
   input: string;
+  readonly steeringText: string;
   readonly model: string;
   readonly chunks: Array<string>;
   pendingRequestId?: ApprovalRequestId | undefined;
@@ -92,6 +97,11 @@ const chunksFor = (text: string): Array<string> => {
 const assistantTextFor = (input: string, model: string): string => {
   if (input.includes("/revise")) return REVISE_REPLY;
   return model === "mock-verbose" ? VERBOSE_REPLY : DEFAULT_REPLY;
+};
+
+const steeringTextFor = (input: string): string => {
+  const markerIndex = input.lastIndexOf(FIRST_TURN_MESSAGE_MARKER);
+  return markerIndex === -1 ? input : input.slice(markerIndex + FIRST_TURN_MESSAGE_MARKER.length);
 };
 
 const chosenAnswer = (answers: Readonly<Record<string, unknown>>): string => {
@@ -200,7 +210,7 @@ export const makeMockAdapter = Effect.fn("makeMockAdapter")(function* (
     startOrdinal: number,
     replyOverride?: string,
   ) {
-    const reply = replyOverride ?? assistantTextFor(active.input, active.model);
+    const reply = replyOverride ?? assistantTextFor(active.steeringText, active.model);
     const chunks = chunksFor(reply);
     for (let index = 0; index < chunks.length; index += 1) {
       const delta = chunks[index]!;
@@ -311,6 +321,7 @@ export const makeMockAdapter = Effect.fn("makeMockAdapter")(function* (
       const active: ActiveTurn = {
         turnId,
         input: input.input ?? "",
+        steeringText: steeringTextFor(input.input ?? ""),
         model: input.modelSelection?.model ?? state.session.model ?? "mock-default",
         chunks: [],
       };
@@ -330,15 +341,15 @@ export const makeMockAdapter = Effect.fn("makeMockAdapter")(function* (
       });
 
       let replyOrdinal = 2;
-      if (active.input.includes("/ground")) {
+      if (active.steeringText.includes("/ground")) {
         yield* emitGrounding(input.threadId, turnId);
         replyOrdinal = 4;
       }
-      if (active.input.includes("/revise")) {
+      if (active.steeringText.includes("/revise")) {
         yield* emitRevision(input.threadId, turnId);
         replyOrdinal = 5;
       }
-      if (active.input.includes("/question")) {
+      if (active.steeringText.includes("/question")) {
         const requestId = ApprovalRequestId.make(`mock-question-${state.turnCount}`);
         active.pendingRequestId = requestId;
         yield* emit({
