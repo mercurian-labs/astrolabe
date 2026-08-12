@@ -35,17 +35,19 @@ import {
   MERCURIAN_REPOSITORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
+  MercurianCommitId,
   MercurianPlanningError,
   MercurianRepositoryError,
   MercurianTrackerError,
   MercurianWorkspaceError,
+  isConfirmSplitsBlockedError,
+  isImplementBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
   isPlanDeleteBlockedError,
   isRepositoryAlreadyRegisteredError,
   isRepositoryHasLiveWorktreesError,
   isRepositoryPathInvalidError,
-  isNoPendingQuestionError,
   isPlanNotFoundError,
   isPlanTurnActiveError,
   isTrackerAuthError,
@@ -1712,6 +1714,76 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.tryImplement]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.tryImplement,
+            planningAssistant
+              .tryImplement({
+                planId: input.planId,
+                ...(input.parentCommitId === undefined
+                  ? {}
+                  : { parentCommitId: CommitId.make(input.parentCommitId) }),
+              })
+              .pipe(
+                Effect.as({}),
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause) ||
+                  isPlanTurnActiveError(cause) ||
+                  isImplementBlockedError(cause)
+                    ? cause
+                    : new MercurianPlanningError({ operation: "tryImplement", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.confirmSplits]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.confirmSplits,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.saveSplits({
+                  planId: input.planId,
+                  parentCommitId: CommitId.make(input.parentCommitId),
+                  splits: input.splits,
+                  createdAt,
+                }),
+              ),
+              Effect.tap((revisions) =>
+                Effect.forEach(
+                  revisions,
+                  (revision) =>
+                    revision.split === undefined
+                      ? Effect.void
+                      : planningAssistant.publishImplementReady({
+                          planId: input.planId,
+                          ready: {
+                            commitId: MercurianCommitId.make(revision.commitId),
+                            ...revision.split,
+                          },
+                        }),
+                  { discard: true },
+                ),
+              ),
+              Effect.tap(() => planningAssistant.clearImplementProposal(input.planId)),
+              Effect.map((revisions) =>
+                revisions.map((revision) => MercurianCommitId.make(revision.commitId)),
+              ),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) ||
+                isPlanTurnActiveError(cause) ||
+                isConfirmSplitsBlockedError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "confirmSplits", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.cancelImplementProposal]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.cancelImplementProposal,
+            planningAssistant.cancelImplementProposal(input.planId).pipe(Effect.as({})),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.visitPlan,
@@ -1892,8 +1964,12 @@ const makeWsRpcLayer = (
                         // The snapshot carries the partial turn, so a window
                         // opened — or reconnected — mid-turn joins coherently
                         // with no frame replay (ADR 002 §3).
-                        planningAssistant.inFlight(input.planId).pipe(
-                          Effect.map((inFlightTurn) => ({
+                        Effect.all({
+                          inFlightTurn: planningAssistant.inFlight(input.planId),
+                          inFlightImplement: planningAssistant.inFlightImplement(input.planId),
+                          implementProposal: planningAssistant.implementProposal(input.planId),
+                        }).pipe(
+                          Effect.map(({ inFlightTurn, inFlightImplement, implementProposal }) => ({
                             cursor: detail.snapshotSequence,
                             items: [
                               {
@@ -1901,6 +1977,8 @@ const makeWsRpcLayer = (
                                 snapshot: {
                                   ...toWirePlanDetail(detail),
                                   ...(inFlightTurn === undefined ? {} : { inFlightTurn }),
+                                  ...(inFlightImplement === undefined ? {} : { inFlightImplement }),
+                                  ...(implementProposal === undefined ? {} : { implementProposal }),
                                 },
                               },
                             ] satisfies ReadonlyArray<PlanStreamItem>,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { PlanningModelResolution } from "@t3tools/contracts";
 
 import {
+  implementFailureNotice,
   planningModelGateNotice,
   resolveComposerControl,
   turnRefusalNotice,
@@ -38,6 +39,19 @@ describe("resolveComposerControl", () => {
       { turnActive: true, hasContent: true, isSending: false, gateBlocked: true },
     ]) {
       expect(resolveComposerControl(input)).toEqual({ face: "stop", enabled: true });
+    }
+  });
+});
+
+describe("implementFailureNotice", () => {
+  it("states that every analysis failure landed nothing", () => {
+    for (const reason of [
+      "no-proposal",
+      "invalid-proposal",
+      "stopped",
+      "provider-error",
+    ] as const) {
+      expect(implementFailureNotice(reason)).toContain("nothing landed");
     }
   });
 });

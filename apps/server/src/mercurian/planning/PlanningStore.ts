@@ -34,8 +34,10 @@ import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
   ChatAttachment,
+  ConfirmSplitsBlockedError,
   MercurianProjectId,
   MercurianProjectNotFoundError,
+  MercurianRepositoryId,
   PlanDeleteBlockedError,
   PlanGroundingItem,
   PlanGroundingScope,
@@ -44,6 +46,7 @@ import {
   PlanQuestionRecord,
   PlanTurnActiveError,
   TrackerConnectionId,
+  TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 
 import {
@@ -53,6 +56,7 @@ import {
 } from "../../persistence/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, CommitAuthorKind, CommitId, HistoryId } from "../commitTree/schema.ts";
+import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import { PlanTurnRegistry } from "./PlanTurnRegistry.ts";
 import { MercurianProject, Plan } from "./schema.ts";
 
@@ -92,8 +96,59 @@ export type MessageCommitPayload = typeof MessageCommitPayload.Type;
  * and a fork's text is just its own path's latest snapshot. Plans are
  * human-scale documents; the storage this costs is not scarce.
  */
-export const PlanRevisionCommitPayload = Schema.Struct({ text: Schema.String });
+const PlanSplitStamp = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+});
+export type PlanSplitStamp = typeof PlanSplitStamp.Type;
+
+export const PlanRevisionCommitPayload = Schema.Struct({
+  text: Schema.String,
+  split: Schema.optional(PlanSplitStamp),
+});
 export type PlanRevisionCommitPayload = typeof PlanRevisionCommitPayload.Type;
+
+const PlanImplementVerdictRepository = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+});
+
+/** The opaque payload of a verdict that needs no repository projection. */
+export const PlanImplementReadyVerdictPayload = PlanImplementVerdictRepository;
+export type PlanImplementReadyVerdictPayload = typeof PlanImplementReadyVerdictPayload.Type;
+
+/** The opaque payload of a verdict whose recorded coverage spans repositories. */
+export const PlanImplementNeedsSplitVerdictPayload = Schema.Struct({
+  repositories: Schema.NonEmptyArray(PlanImplementVerdictRepository),
+  rationale: Schema.optional(Schema.String),
+});
+export type PlanImplementNeedsSplitVerdictPayload =
+  typeof PlanImplementNeedsSplitVerdictPayload.Type;
+
+export const StoredPlanImplementVerdict = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ready"),
+    payload: PlanImplementReadyVerdictPayload,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("needs-split"),
+    payload: PlanImplementNeedsSplitVerdictPayload,
+  }),
+]);
+export type StoredPlanImplementVerdict = typeof StoredPlanImplementVerdict.Type;
+
+export interface PlanImplementVerdictRecord {
+  readonly commitId: CommitId;
+  readonly planId: PlanId;
+  readonly verdict: StoredPlanImplementVerdict;
+  readonly recordedAt: DateTime.Utc;
+}
+
+export interface PlanImplementReady {
+  readonly commitId: CommitId;
+  readonly repositoryId: MercurianRepositoryId;
+  readonly repositoryName: string;
+}
 
 /**
  * What an issue-revision commit carries: the issue's content as it read when it
@@ -143,7 +198,10 @@ export type PlanMessage = typeof PlanMessage.Type;
  * in the order; the text it produced is the artifact, read as {@link PlanDetail.planText}
  * at the tip and as {@link PlanningStore.getPlanTextAt} anywhere earlier.
  */
-export const PlanRevision = Schema.Struct(PlanCommitFields);
+export const PlanRevision = Schema.Struct({
+  ...PlanCommitFields,
+  split: Schema.optional(PlanSplitStamp),
+});
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
@@ -187,6 +245,8 @@ export interface PlanDetail {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The highest commit sequence this snapshot accounts for; `0` for none. */
   readonly snapshotSequence: number;
+  /** Ready verdicts are side-facts keyed by commit, not timeline content. */
+  readonly readyCommits: ReadonlyArray<PlanImplementReady>;
 }
 
 /**
@@ -245,7 +305,8 @@ export type PlanningStoreRefusal =
   | MercurianProjectNotFoundError
   | PlanNotFoundError
   | PlanDeleteBlockedError
-  | PlanTurnActiveError;
+  | PlanTurnActiveError
+  | ConfirmSplitsBlockedError;
 
 export type PlanningStoreError =
   | PlanningStoreRefusal
@@ -317,6 +378,20 @@ export const SavePlanRevisionInput = Schema.Struct({
 });
 export type SavePlanRevisionInput = typeof SavePlanRevisionInput.Type;
 
+export const SaveSplitInput = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  text: Schema.String,
+});
+export type SaveSplitInput = typeof SaveSplitInput.Type;
+
+export const SaveSplitsInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  splits: Schema.Array(SaveSplitInput),
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SaveSplitsInput = typeof SaveSplitsInput.Type;
+
 /**
  * The assistant's settled reply. The parent is always named — the turn knows
  * exactly where it stands, and tip-guessing is how a race would start — and
@@ -372,6 +447,28 @@ export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
 export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
+
+export const GetImplementContextInput = Schema.Struct({
+  planId: PlanId,
+  atCommitId: Schema.optional(CommitId),
+});
+export type GetImplementContextInput = typeof GetImplementContextInput.Type;
+
+export interface ImplementContext {
+  readonly atCommitId: CommitId;
+  readonly planText: string;
+}
+
+export const RecordImplementVerdictInput = Schema.Struct({
+  planId: PlanId,
+  commitId: CommitId,
+  verdict: StoredPlanImplementVerdict,
+  recordedAt: Schema.DateTimeUtcFromString,
+});
+export type RecordImplementVerdictInput = typeof RecordImplementVerdictInput.Type;
+
+export const ListImplementVerdictsInput = Schema.Struct({ planId: PlanId });
+export type ListImplementVerdictsInput = typeof ListImplementVerdictsInput.Type;
 
 export const RecordPlanVisitInput = Schema.Struct({
   planId: PlanId,
@@ -434,6 +531,14 @@ export class PlanningStore extends Context.Service<
       input: SavePlanRevisionInput,
     ) => Effect.Effect<PlanRevision, PlanningStoreError>;
     /**
+     * Land repository projections as sibling human revisions at one parent.
+     * Narrowing a multi-repository proposal to one card still lands a node:
+     * that card is projected content and therefore differs from its parent.
+     */
+    readonly saveSplits: (
+      input: SaveSplitsInput,
+    ) => Effect.Effect<ReadonlyArray<PlanRevision>, PlanningStoreError>;
+    /**
      * The assistant's settled reply, landed where its turn stands. Passes
      * `authorKind: "assistant"` through to the commit store, whose
      * fork-and-merge refusals are the structural guarantee — this path
@@ -487,6 +592,18 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
+    /** The artifact and exact history point an implement analysis starts from. */
+    readonly getImplementContext: (
+      input: GetImplementContextInput,
+    ) => Effect.Effect<ImplementContext, PlanningStoreError>;
+    /** Record the first implementation answer for a commit; later answers are no-ops. */
+    readonly recordImplementVerdict: (
+      input: RecordImplementVerdictInput,
+    ) => Effect.Effect<void, PlanningStoreError>;
+    /** Every durable implementation answer belonging to one plan. */
+    readonly listImplementVerdicts: (
+      input: ListImplementVerdictsInput,
+    ) => Effect.Effect<ReadonlyArray<PlanImplementVerdictRecord>, PlanningStoreError>;
     /**
      * You looked at this plan. Writes — and announces — only when the visit
      * changes seen-ness: advancing an already-current visit changes nothing any
@@ -544,6 +661,25 @@ const PlanTreeRowResult = Schema.Struct({
   ...PlanRow.fields,
   visitedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   hasPublishedCommits: Schema.Number,
+});
+
+const PlanImplementVerdictKind = Schema.Literals(["ready", "needs-split"]);
+
+const PlanImplementVerdictRow = Schema.Struct({
+  commitId: CommitId,
+  planId: PlanId,
+  kind: PlanImplementVerdictKind,
+  payload: Schema.fromJsonString(Schema.Unknown),
+  recordedAt: Schema.DateTimeUtcFromString,
+});
+type PlanImplementVerdictRow = typeof PlanImplementVerdictRow.Type;
+
+const InsertPlanImplementVerdictRow = Schema.Struct({
+  commitId: CommitId,
+  planId: PlanId,
+  kind: PlanImplementVerdictKind,
+  payload: Schema.Unknown,
+  recordedAt: Schema.DateTimeUtcFromString,
 });
 
 const toPlanTreeRow = (row: typeof PlanTreeRowResult.Type): PlanTreeRow => {
@@ -611,6 +747,7 @@ const isPlanningStoreRefusal = Schema.is(
     PlanNotFoundError,
     PlanDeleteBlockedError,
     PlanTurnActiveError,
+    ConfirmSplitsBlockedError,
   ]),
 );
 
@@ -628,6 +765,10 @@ function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
 const decodeIssuePayload = Schema.decodeUnknownEffect(IssueRevisionCommitPayload);
+const decodeReadyVerdictPayload = Schema.decodeUnknownEffect(PlanImplementReadyVerdictPayload);
+const decodeNeedsSplitVerdictPayload = Schema.decodeUnknownEffect(
+  PlanImplementNeedsSplitVerdictPayload,
+);
 
 /**
  * The artifact at the end of a path: the text of the last revision on it, or
@@ -653,6 +794,7 @@ export const make = Effect.gen(function* () {
   const commits = yield* CommitStore.CommitStore;
   const crypto = yield* Crypto.Crypto;
   const turnRegistry = yield* PlanTurnRegistry;
+  const repositoryStore = yield* RepositoryStore.RepositoryStore;
   const changesPubSub = yield* PubSub.unbounded<void>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
@@ -806,6 +948,39 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  const insertImplementVerdictRow = SqlSchema.void({
+    Request: InsertPlanImplementVerdictRow,
+    execute: (row) => sql`
+      INSERT INTO plan_implement_verdicts (
+        commit_id, plan_id, kind, payload_json, recorded_at
+      )
+      VALUES (
+        ${row.commitId},
+        ${row.planId},
+        ${row.kind},
+        ${JSON.stringify(row.payload)},
+        ${row.recordedAt}
+      )
+      ON CONFLICT(commit_id) DO NOTHING
+    `,
+  });
+
+  const listImplementVerdictRows = SqlSchema.findAll({
+    Request: PlanIdRequest,
+    Result: PlanImplementVerdictRow,
+    execute: ({ planId }) => sql`
+      SELECT
+        commit_id AS "commitId",
+        plan_id AS "planId",
+        kind AS "kind",
+        payload_json AS "payload",
+        recorded_at AS "recordedAt"
+      FROM plan_implement_verdicts
+      WHERE plan_id = ${planId}
+      ORDER BY recorded_at ASC, commit_id ASC
+    `,
+  });
+
   const archivePlanRow = SqlSchema.void({
     Request: ArchivePlanInput,
     execute: ({ planId, archivedAt }) => sql`
@@ -885,6 +1060,12 @@ export const make = Effect.gen(function* () {
     execute: ({ planId }) => sql`DELETE FROM plan_visits WHERE plan_id = ${planId}`,
   });
 
+  // Verdicts are side records of the plan's commits and must leave with them.
+  const deleteImplementVerdictRows = SqlSchema.void({
+    Request: PlanIdRequest,
+    execute: ({ planId }) => sql`DELETE FROM plan_implement_verdicts WHERE plan_id = ${planId}`,
+  });
+
   /**
    * And its origin, for the same reason and one more: delete leaves no trace,
    * so re-importing the issue afterwards starts fresh rather than finding a row
@@ -928,7 +1109,31 @@ export const make = Effect.gen(function* () {
     } satisfies PlanMessage;
   });
 
-  const toPlanRevision = (commit: Commit): PlanRevision => toPlanCommitFields(commit);
+  const toPlanRevision = (commit: Commit, split?: PlanSplitStamp): PlanRevision => ({
+    ...toPlanCommitFields(commit),
+    ...(split === undefined ? {} : { split }),
+  });
+
+  const toImplementVerdictRecord = Effect.fn("PlanningStore.toImplementVerdictRecord")(function* (
+    row: PlanImplementVerdictRow,
+  ) {
+    const verdict =
+      row.kind === "ready"
+        ? ({
+            kind: "ready",
+            payload: yield* decodeReadyVerdictPayload(row.payload),
+          } as const)
+        : ({
+            kind: "needs-split",
+            payload: yield* decodeNeedsSplitVerdictPayload(row.payload),
+          } as const);
+    return {
+      commitId: row.commitId,
+      planId: row.planId,
+      verdict,
+      recordedAt: row.recordedAt,
+    } satisfies PlanImplementVerdictRecord;
+  });
 
   /**
    * A commit as the planning space sees it, or nothing when the space has no
@@ -944,8 +1149,8 @@ export const make = Effect.gen(function* () {
     if (commit.kind === "plan-revision") {
       const payload = yield* decodeRevisionPayload(commit.payload);
       return Option.some<PlanTimelineEvent>({
-        item: { _tag: "plan-revision", ...toPlanRevision(commit) },
-        planText: payload.text,
+        item: { _tag: "plan-revision", ...toPlanRevision(commit, payload.split) },
+        ...(payload.split === undefined ? { planText: payload.text } : {}),
       });
     }
     if (commit.kind === "issue-revision") {
@@ -1069,6 +1274,7 @@ export const make = Effect.gen(function* () {
         planText: "",
         timeline: [{ _tag: "message", ...(yield* toPlanMessage(root)) }],
         snapshotSequence: root.sequence,
+        readyCommits: [],
       } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
@@ -1310,6 +1516,80 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const saveSplits: PlanningStore["Service"]["saveSplits"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
+      if (input.splits.length === 0) {
+        return yield* new ConfirmSplitsBlockedError({ reason: "no-splits" });
+      }
+      const repositoryIds = new Set(input.splits.map((split) => split.repositoryId));
+      if (repositoryIds.size !== input.splits.length) {
+        return yield* new ConfirmSplitsBlockedError({ reason: "duplicate-repository" });
+      }
+
+      const repositorySnapshot = yield* repositoryStore.getSnapshot;
+      const linkedIds = new Set(
+        repositorySnapshot.projectRepositories
+          .filter((link) => link.projectId === plan.projectId)
+          .map((link) => link.repositoryId),
+      );
+      const repositoriesById = new Map(
+        repositorySnapshot.repositories.map((repository) => [repository.repositoryId, repository]),
+      );
+      const resolved = input.splits.map((split) => ({
+        ...split,
+        repository: repositoriesById.get(split.repositoryId),
+      }));
+      if (
+        resolved.some(
+          ({ repositoryId, repository }) =>
+            repository === undefined || !linkedIds.has(repositoryId),
+        )
+      ) {
+        return yield* new ConfirmSplitsBlockedError({ reason: "repository-not-in-project" });
+      }
+
+      const landed = yield* sql.withTransaction(
+        Effect.forEach(resolved, ({ text, repository }) =>
+          Effect.gen(function* () {
+            const stampedRepository = repository!;
+            const split = {
+              repositoryId: stampedRepository.repositoryId,
+              repositoryName: stampedRepository.name,
+            } satisfies PlanSplitStamp;
+            const commitId = yield* mintId(CommitId);
+            const appended = yield* appendAt({
+              plan,
+              parentCommitId: input.parentCommitId,
+              commitId,
+              kind: "plan-revision",
+              payload: { text, split } satisfies PlanRevisionCommitPayload,
+              createdAt: input.createdAt,
+            });
+            yield* insertImplementVerdictRow({
+              planId: input.planId,
+              commitId: appended.commitId,
+              kind: "ready",
+              payload: split satisfies PlanImplementReadyVerdictPayload,
+              recordedAt: input.createdAt,
+            });
+            return toPlanRevision(appended, split);
+          }),
+        ),
+      );
+
+      yield* announceChange;
+      return landed;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.saveSplits:query",
+          "PlanningStore.saveSplits:encodeRequest",
+        ),
+      ),
+    );
+
   /**
    * The assistant's write path: explicit parent, assistant attribution, and
    * nothing else different from a human's. The commit store's
@@ -1471,6 +1751,7 @@ export const make = Effect.gen(function* () {
 
           yield* deleteCommitParentRows({ historyId: plan.historyId });
           yield* deleteVisitRow({ planId: input.planId });
+          yield* deleteImplementVerdictRows({ planId: input.planId });
           yield* deleteOriginRow({ planId: input.planId });
           yield* deletePlanRow({ planId: input.planId });
           yield* deleteCommitRows({ historyId: plan.historyId });
@@ -1495,9 +1776,12 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       // The author's own workspace sees its drafts, so every commit counts.
-      const path = yield* commits.listCommits({
-        historyId: plan.historyId,
-        visibility: "all",
+      const { path, verdicts } = yield* Effect.all({
+        path: commits.listCommits({
+          historyId: plan.historyId,
+          visibility: "all",
+        }),
+        verdicts: listImplementVerdicts({ planId: input.planId }),
       });
       const events = yield* projectCommits(path);
       return {
@@ -1505,6 +1789,9 @@ export const make = Effect.gen(function* () {
         planText: derivePlanText(events),
         timeline: events.map((event) => event.item),
         snapshotSequence: path.at(-1)?.sequence ?? 0,
+        readyCommits: verdicts.flatMap(({ commitId, verdict }) =>
+          verdict.kind === "ready" ? [{ commitId, ...verdict.payload }] : [],
+        ),
       } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
@@ -1569,6 +1856,64 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.getPlanTextAt:query",
           "PlanningStore.getPlanTextAt:decodeRows",
+        ),
+      ),
+    );
+
+  const getImplementContext: PlanningStore["Service"]["getImplementContext"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const tip = input.atCommitId === undefined ? yield* readTip(plan.historyId) : undefined;
+      const atCommitId = input.atCommitId ?? tip?.commitId;
+      if (atCommitId === undefined) {
+        return yield* new CommitStore.CommitNotFoundError({
+          commitId: CommitId.make(`missing-tip-${input.planId}`),
+        });
+      }
+      const planText = yield* getPlanTextAt({ planId: input.planId, commitId: atCommitId });
+      return { atCommitId, planText } satisfies ImplementContext;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.getImplementContext:query",
+          "PlanningStore.getImplementContext:decodeRows",
+        ),
+      ),
+    );
+
+  const recordImplementVerdict: PlanningStore["Service"]["recordImplementVerdict"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commit = yield* commits.getCommit({ commitId: input.commitId, visibility: "all" });
+      if (Option.isNone(commit) || commit.value.historyId !== plan.historyId) {
+        return yield* new CommitStore.CommitNotFoundError({ commitId: input.commitId });
+      }
+      yield* insertImplementVerdictRow({
+        planId: input.planId,
+        commitId: input.commitId,
+        kind: input.verdict.kind,
+        payload: input.verdict.payload,
+        recordedAt: input.recordedAt,
+      });
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.recordImplementVerdict:query",
+          "PlanningStore.recordImplementVerdict:encodeRequest",
+        ),
+      ),
+    );
+
+  const listImplementVerdicts: PlanningStore["Service"]["listImplementVerdicts"] = (input) =>
+    Effect.gen(function* () {
+      yield* requirePlan(input.planId);
+      const rows = yield* listImplementVerdictRows(input);
+      return yield* Effect.forEach(rows, toImplementVerdictRecord);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.listImplementVerdicts:query",
+          "PlanningStore.listImplementVerdicts:decodeRows",
         ),
       ),
     );
@@ -1639,6 +1984,7 @@ export const make = Effect.gen(function* () {
     importPlan,
     appendMessage,
     savePlanRevision,
+    saveSplits,
     appendAssistantMessage,
     saveAssistantPlanRevision,
     archivePlan,
@@ -1647,6 +1993,9 @@ export const make = Effect.gen(function* () {
     getPlanSnapshot,
     listTimelineSince,
     getPlanTextAt,
+    getImplementContext,
+    recordImplementVerdict,
+    listImplementVerdicts,
     recordPlanVisit,
     markPlanUnread,
     get changes() {

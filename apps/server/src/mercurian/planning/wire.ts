@@ -64,8 +64,10 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
   ...(message.question === undefined ? {} : { question: message.question }),
 });
 
-export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision =>
-  toWirePlanCommitFields(revision);
+export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision => ({
+  ...toWirePlanCommitFields(revision),
+  ...(revision.split === undefined ? {} : { split: revision.split }),
+});
 
 /** Unlike a revision, this one carries its body: the space begins with it. */
 export const toWirePlanIssueRevision = (
@@ -91,6 +93,10 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
   planText: detail.planText,
   timeline: detail.timeline.map(toWirePlanTimelineItem),
   snapshotSequence: detail.snapshotSequence,
+  readyCommits: detail.readyCommits.map((ready) => ({
+    ...ready,
+    commitId: MercurianCommitId.make(ready.commitId),
+  })),
 });
 
 export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanStreamItem => ({

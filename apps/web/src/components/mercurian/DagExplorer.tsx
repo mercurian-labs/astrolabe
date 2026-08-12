@@ -1,4 +1,4 @@
-import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
+import type { MercurianCommitId, PlanImplementReady, PlanTimelineItem } from "@t3tools/contracts";
 import {
   ArrowDownIcon,
   CheckIcon,
@@ -145,12 +145,14 @@ interface MeasuredDetailOverlay {
 export function DagExplorer({
   graph,
   anchoredCommitId,
+  readyCommits,
   onColumnsWidthCapChange,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   /** Where the surface is looking, or `null` when it is looking at now. */
   readonly anchoredCommitId: MercurianCommitId | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -211,16 +213,27 @@ export function DagExplorer({
           <p className="text-sm text-muted-foreground/70">Nothing has happened here yet.</p>
         </div>
       ) : view === "thread" ? (
-        <ThreadView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
+        <ThreadView
+          currentCommitId={currentCommitId}
+          graph={graph}
+          readyCommits={readyCommits}
+          onSelect={onSelect}
+        />
       ) : view === "columns" ? (
         <ColumnsView
           currentCommitId={currentCommitId}
           graph={graph}
+          readyCommits={readyCommits}
           onSelect={onSelect}
           onWidthCapChange={onColumnsWidthCapChange}
         />
       ) : (
-        <GraphView currentCommitId={currentCommitId} graph={graph} onSelect={onSelect} />
+        <GraphView
+          currentCommitId={currentCommitId}
+          graph={graph}
+          readyCommits={readyCommits}
+          onSelect={onSelect}
+        />
       )}
     </section>
   );
@@ -323,10 +336,12 @@ function DisplaySlider({
 function ThreadView({
   graph,
   currentCommitId,
+  readyCommits,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [parentChoices, setParentChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(
@@ -346,6 +361,7 @@ function ThreadView({
             <CommitRow
               isCurrent={row.commitId === currentCommitId}
               item={row.item}
+              ready={readyCommits.has(row.commitId)}
               ref={row.commitId === currentCommitId ? scrollRef : undefined}
               trailing={
                 row.siblings !== undefined || row.parentLines !== undefined ? (
@@ -487,11 +503,13 @@ interface ColumnFocusEntry {
 function ColumnsView({
   graph,
   currentCommitId,
+  readyCommits,
   onSelect,
   onWidthCapChange,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onWidthCapChange: (width: number) => void;
 }) {
@@ -696,6 +714,7 @@ function ColumnsView({
                     <CommitRow
                       isCurrent={isCurrent}
                       item={row.item}
+                      ready={readyCommits.has(row.commitId)}
                       ref={registerRow(key, isCurrent)}
                       tabIndex={focusedKey === key ? 0 : -1}
                       trailing={null}
@@ -892,10 +911,12 @@ function paneSpanLabel(pane: Pane): string {
 function GraphView({
   graph,
   currentCommitId,
+  readyCommits,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [settings, setSettings] = useLocalStorage(
@@ -915,6 +936,7 @@ function GraphView({
       currentCommitId={currentCommitId}
       graph={graph}
       layout={layout}
+      readyCommits={readyCommits}
       settings={settings}
       onSettingsChange={setSettings}
       onSelect={onSelect}
@@ -926,6 +948,7 @@ function SpatialMap({
   graph,
   layout,
   currentCommitId,
+  readyCommits,
   settings,
   onSettingsChange,
   onSelect,
@@ -933,6 +956,7 @@ function SpatialMap({
   readonly graph: PlanGraph;
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly settings: DagExplorerDisplaySettingsValue;
   readonly onSettingsChange: DisplaySettingsUpdater;
   readonly onSelect: (commitId: MercurianCommitId) => void;
@@ -1353,6 +1377,7 @@ function SpatialMap({
             const radius = radiusFor(graphNode, settings) * proximityScale(distanceToPointer);
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const hasDetailOverlay = detailOverlay !== null && node.commitId === emphasisId;
+            const isReady = readyCommits.has(node.commitId);
             const Glyph = commitGlyph(node.item);
             return (
               <g
@@ -1423,6 +1448,25 @@ function SpatialMap({
                   >
                     {planCommitSummary(node.item)}
                   </text>
+                ) : null}
+                {isReady ? (
+                  <g className="pointer-events-none">
+                    <rect
+                      className="fill-emerald-500/15"
+                      height={14}
+                      rx={3}
+                      width={92}
+                      x={node.x + radius + 6}
+                      y={node.y + (isCurrent && !hasDetailOverlay ? 8 : -7)}
+                    />
+                    <text
+                      className="fill-emerald-700 text-[9px] dark:fill-emerald-400"
+                      x={node.x + radius + 10}
+                      y={node.y + (isCurrent && !hasDetailOverlay ? 18 : 3)}
+                    >
+                      Ready to implement
+                    </text>
+                  </g>
                 ) : null}
               </g>
             );
@@ -1780,6 +1824,7 @@ function commitGlyph(item: PlanTimelineItem) {
 function CommitRow({
   item,
   isCurrent,
+  ready,
   trailing,
   onSelect,
   onFocus,
@@ -1789,6 +1834,7 @@ function CommitRow({
 }: {
   readonly item: PlanTimelineItem;
   readonly isCurrent: boolean;
+  readonly ready: boolean;
   readonly trailing: ReactNode;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onFocus?: () => void;
@@ -1831,6 +1877,11 @@ function CommitRow({
         >
           {planCommitSummary(item)}
         </span>
+        {ready ? (
+          <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+            Ready to implement
+          </span>
+        ) : null}
         <span className="shrink-0 text-[11px] text-muted-foreground/70">
           {formatRelativeTimeLabel(item.createdAt)}
         </span>

@@ -210,7 +210,7 @@ interface OpenCodeSessionContext {
   readonly server: OpenCodeServerConnection;
   readonly directory: string;
   readonly openCodeSessionId: string;
-  readonly pendingPermissions: Map<string, PermissionRequest>;
+  readonly pendingPermissions: Map<string, NormalizedPermissionRequest>;
   readonly pendingQuestions: Map<string, QuestionRequest>;
   readonly messageRoleById: Map<string, "user" | "assistant">;
   readonly partById: Map<string, Part>;
@@ -328,6 +328,49 @@ function mapPermissionToRequestType(
     default:
       return "unknown";
   }
+}
+
+type OpenCodePermissionRequestType =
+  | ReturnType<typeof mapPermissionToRequestType>
+  | "dynamic_tool_call";
+
+type NormalizedPermissionRequest = PermissionRequest & {
+  readonly requestType: OpenCodePermissionRequestType;
+};
+
+function normalizePermissionRequest(
+  context: OpenCodeSessionContext,
+  request: PermissionRequest,
+): {
+  readonly requestType: OpenCodePermissionRequestType;
+  readonly args: Record<string, unknown>;
+} {
+  const mappedRequestType = mapPermissionToRequestType(request.permission);
+  const toolPart = request.tool
+    ? Array.from(context.partById.values()).find(
+        (part): part is Extract<Part, { type: "tool" }> =>
+          part.type === "tool" &&
+          part.messageID === request.tool?.messageID &&
+          part.callID === request.tool.callID,
+      )
+    : undefined;
+
+  if (!toolPart) {
+    return {
+      requestType: mappedRequestType,
+      args: request.metadata,
+    };
+  }
+
+  return {
+    requestType: mappedRequestType === "unknown" ? "dynamic_tool_call" : mappedRequestType,
+    args: {
+      ...request.metadata,
+      toolName: toolPart.tool,
+      input: toolPart.state.input,
+      toolUseId: toolPart.callID,
+    },
+  };
 }
 
 function mapPermissionDecision(reply: "once" | "always" | "reject"): string {
@@ -939,7 +982,11 @@ export function makeOpenCodeAdapter(
         }
 
         case "permission.asked": {
-          context.pendingPermissions.set(event.properties.id, event.properties);
+          const normalized = normalizePermissionRequest(context, event.properties);
+          context.pendingPermissions.set(event.properties.id, {
+            ...event.properties,
+            requestType: normalized.requestType,
+          });
           yield* emit({
             ...(yield* buildEventBase({
               threadId: context.session.threadId,
@@ -949,18 +996,19 @@ export function makeOpenCodeAdapter(
             })),
             type: "request.opened",
             payload: {
-              requestType: mapPermissionToRequestType(event.properties.permission),
+              requestType: normalized.requestType,
               detail:
                 event.properties.patterns.length > 0
                   ? event.properties.patterns.join("\n")
                   : event.properties.permission,
-              args: event.properties.metadata,
+              args: normalized.args,
             },
           });
           break;
         }
 
         case "permission.replied": {
+          const pendingPermission = context.pendingPermissions.get(event.properties.requestID);
           context.pendingPermissions.delete(event.properties.requestID);
           yield* emit({
             ...(yield* buildEventBase({
@@ -971,7 +1019,7 @@ export function makeOpenCodeAdapter(
             })),
             type: "request.resolved",
             payload: {
-              requestType: "unknown",
+              requestType: pendingPermission?.requestType ?? "unknown",
               decision: mapPermissionDecision(event.properties.reply),
             },
           });

@@ -1,5 +1,6 @@
 import type {
   PlanInFlightTurn,
+  PlanStreamItem,
   PlanningModelResolution,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
@@ -77,6 +78,20 @@ export function turnRefusalNotice(reason: PlanTurnRefusalReason): string {
       return "The assistant is already replying in this plan.";
     default:
       return "The message was sent, but the assistant could not reply.";
+  }
+}
+
+export function implementFailureNotice(
+  reason: Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"],
+): string {
+  switch (reason) {
+    case "stopped":
+      return "The implement analysis was stopped; nothing landed.";
+    case "provider-error":
+      return "The assistant could not finish the implement analysis; nothing landed.";
+    case "no-proposal":
+    case "invalid-proposal":
+      return "The assistant couldn't produce a usable analysis; nothing landed.";
   }
 }
 

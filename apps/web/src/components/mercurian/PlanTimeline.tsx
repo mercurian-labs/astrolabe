@@ -1,9 +1,12 @@
 import type {
   ChatAttachment,
   EnvironmentId,
+  MercurianCommitId,
   PlanGroundingItem,
   PlanGroundingScope,
   PlanInFlightTurn,
+  PlanInFlightImplement,
+  PlanImplementReady,
   PlanQuestion,
   PlanQuestionRecord,
   PlanTimelineItem,
@@ -51,12 +54,18 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 export function PlanTimeline({
   timeline,
   inFlight,
+  inFlightImplement,
+  readyCommits = EMPTY_READY_COMMITS,
   onAnswerQuestion,
+  onStopImplement,
 }: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The turn streaming on this path right now, when one is. */
   readonly inFlight?: PlanInFlightTurn | undefined;
+  readonly inFlightImplement?: PlanInFlightImplement | undefined;
+  readonly readyCommits?: ReadonlyMap<MercurianCommitId, PlanImplementReady> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
+  readonly onStopImplement?: (() => void) | undefined;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const environmentId = usePrimaryEnvironmentId();
@@ -67,7 +76,7 @@ export function PlanTimeline({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [timeline.length, streamedLength > 0, inFlight?.questions !== undefined]);
 
-  if (timeline.length === 0 && inFlight === undefined) {
+  if (timeline.length === 0 && inFlight === undefined && inFlightImplement === undefined) {
     return <div className="min-h-0 flex-1" />;
   }
 
@@ -91,6 +100,7 @@ export function PlanTimeline({
                     )}
                     <MessageText text={item.text} />
                   </div>
+                  {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                   <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
                     <Tooltip>
                       <TooltipTrigger
@@ -132,6 +142,7 @@ export function PlanTimeline({
                     </Tooltip>
                   </div>
                   {item.interrupted === true ? <InterruptedBadge /> : null}
+                  {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                 </div>
               </li>
             );
@@ -166,11 +177,14 @@ export function PlanTimeline({
             >
               <FileTextIcon className="size-3.5 shrink-0" />
               <span>
-                {item.authorKind === "human"
-                  ? "You edited the plan"
-                  : "The assistant revised the plan"}
+                {item.split !== undefined
+                  ? `You added a plan for ${item.split.repositoryName}`
+                  : item.authorKind === "human"
+                    ? "You edited the plan"
+                    : "The assistant revised the plan"}
               </span>
               <span>{formatRelativeTimeLabel(item.createdAt)}</span>
+              {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
             </li>
           );
         })}
@@ -201,9 +215,41 @@ export function PlanTimeline({
             )}
           </li>
         )}
+        {inFlightImplement === undefined ? null : (
+          <li className="rounded-lg border border-border/70 bg-muted/15 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner aria-hidden className="size-3.5" />
+                Checking whether this plan is ready to implement. A coding session works in one
+                repository at a time.
+              </span>
+              <Button size="sm" variant="ghost" onClick={onStopImplement}>
+                Stop
+              </Button>
+            </div>
+            {inFlightImplement.groundingScope === undefined ? null : (
+              <NarrowedGroundingNotice scope={inFlightImplement.groundingScope} />
+            )}
+            {inFlightImplement.grounding.length === 0 ? null : (
+              <div className="mt-2">
+                <GroundingFold items={inFlightImplement.grounding} live />
+              </div>
+            )}
+          </li>
+        )}
       </ol>
       <div ref={bottomRef} />
     </div>
+  );
+}
+
+const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
+
+function ReadyBadge() {
+  return (
+    <span className="inline-flex shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+      Ready to implement
+    </span>
   );
 }
 
@@ -270,11 +316,11 @@ function GroundingFold({
       </button>
       {expanded ? (
         <ul className="mt-1 flex flex-col gap-0.5 border-l border-border/60 pl-3">
-          {items.map((item, index) => {
+          {items.map((item) => {
             const Icon = GROUNDING_KIND_ICONS[item.kind];
             return (
               <li
-                key={`${item.kind}-${item.label}-${index}`}
+                key={`${item.kind}-${item.label}-${item.detail ?? ""}`}
                 className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground/80"
               >
                 <Icon className="size-3 shrink-0 opacity-70" />

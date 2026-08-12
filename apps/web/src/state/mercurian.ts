@@ -5,11 +5,15 @@ import type {
   MercurianCommitId,
   MercurianCreatePlanInput,
   MercurianImportPlanInput,
+  MercurianConfirmSplitsInput,
   MercurianSavePlanRevisionInput,
+  MercurianTryImplementInput,
   PlanDetail,
   PlanId,
+  PlanImplementReady,
   PlanningTreeSnapshot,
   PlanTurnRefusalReason,
+  PlanStreamItem,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
@@ -37,12 +41,18 @@ const EMPTY_PLAN_ATOM = Atom.make(
   AsyncResult.initial<
     {
       readonly detail: PlanDetail | null;
+      readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
       readonly synchronized: boolean;
       readonly turnRefusal: PlanTurnRefusalReason | null;
+      readonly implementFailure:
+        | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
+        | null;
     },
     never
   >(false),
 );
+
+const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
 
 const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [] };
 
@@ -74,10 +84,14 @@ export function useMercurianTree(): MercurianTreeState {
 
 export interface PlanDetailState {
   readonly detail: PlanDetail | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly isPending: boolean;
   readonly error: string | null;
   /** Why the last message got no reply — transient, cleared as a turn starts. */
   readonly turnRefusal: PlanTurnRefusalReason | null;
+  readonly implementFailure:
+    | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
+    | null;
 }
 
 /**
@@ -97,9 +111,11 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const detail = state?.detail ?? null;
   return {
     detail,
+    readyCommits: state?.readyCommits ?? EMPTY_READY_COMMITS,
     isPending: detail === null && environmentId !== null && planId !== null,
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,
+    implementFailure: state?.implementFailure ?? null,
   };
 }
 
@@ -147,6 +163,21 @@ export function useAppendPlanMessage() {
 export function useSavePlanRevision() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.savePlanRevision);
   return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
+}
+
+export function useTryImplement() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.tryImplement);
+  return useCallback((input: MercurianTryImplementInput) => run(input), [run]);
+}
+
+export function useConfirmSplits() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.confirmSplits);
+  return useCallback((input: MercurianConfirmSplitsInput) => run(input), [run]);
+}
+
+export function useCancelImplementProposal() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.cancelImplementProposal);
+  return useCallback((planId: PlanId) => run({ planId }), [run]);
 }
 
 /**

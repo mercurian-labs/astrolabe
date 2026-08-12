@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   MercurianCommitId,
   MercurianProjectId,
+  MercurianRepositoryId,
   PlanId,
   PlanTurnId,
   type PlanDetail,
+  type PlanImplementReady,
   type PlanQuestion,
   type PlanStreamItem,
   type PlanTimelineItem,
@@ -46,6 +48,7 @@ const snapshot: PlanDetail = {
   planText: "",
   timeline: [message("commit-1", 1, "Reshape the sidebar")],
   snapshotSequence: 1,
+  readyCommits: [],
 };
 
 const fold = (items: ReadonlyArray<PlanStreamItem>) =>
@@ -275,5 +278,141 @@ describe("applyPlanStreamItem turn frames", () => {
     const state = fold([{ kind: "snapshot", snapshot: midTurn }]);
     expect(state.detail?.inFlightTurn?.text).toBe("So far");
     expect(state.detail?.inFlightTurn?.grounding).toHaveLength(1);
+  });
+});
+
+describe("applyPlanStreamItem implement frames", () => {
+  const implementTurnId = PlanTurnId.make("implement-1");
+  const implement = {
+    turnId: implementTurnId,
+    parentCommitId: MercurianCommitId.make("commit-1"),
+    grounding: [],
+  };
+  const proposal = {
+    turnId: implementTurnId,
+    parentCommitId: MercurianCommitId.make("commit-1"),
+    verdict: {
+      kind: "atomic" as const,
+      repositoryId: MercurianRepositoryId.make("repo-1"),
+      repositoryName: "server",
+    },
+  };
+
+  it("starts, routes grounding, and publishes the proposal", () => {
+    const item = { kind: "search" as const, label: "saveSplits" };
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "implement-started", implement },
+      { kind: "turn-grounding", turnId: implementTurnId, item },
+      { kind: "implement-analyzed", proposal },
+    ]);
+    expect(state.detail?.inFlightImplement).toBeUndefined();
+    expect(state.detail?.implementProposal).toEqual(proposal);
+    expect(state.implementFailure).toBeNull();
+  });
+
+  it("folds a short-circuited proposal with no in-flight analysis", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "implement-analyzed", proposal },
+    ]);
+    expect(state.detail?.implementProposal).toEqual(proposal);
+  });
+
+  it("rejects a proposal that contradicts a different live turn", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      { kind: "implement-analyzed", proposal },
+    ]);
+    expect(state.detail?.implementProposal).toBeUndefined();
+    expect(state.detail?.inFlightTurn?.turnId).toBe(turnId);
+  });
+
+  it("inserts readiness before its commit and replaces readiness on snapshot", () => {
+    const ready: PlanImplementReady = {
+      commitId: MercurianCommitId.make("commit-not-here-yet"),
+      repositoryId: MercurianRepositoryId.make("repo-1"),
+      repositoryName: "server",
+    };
+    const inserted = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "implement-ready", ready },
+    ]);
+    expect(inserted.readyCommits.get(ready.commitId)).toEqual(ready);
+    expect(inserted.detail?.timeline.some((item) => item.commitId === ready.commitId)).toBe(false);
+
+    const replacement: PlanImplementReady = {
+      ...ready,
+      commitId: MercurianCommitId.make("commit-replacement"),
+      repositoryName: "web",
+    };
+    const resnapshotted = applyPlanStreamItem(inserted, {
+      kind: "snapshot",
+      snapshot: { ...snapshot, readyCommits: [replacement] },
+    });
+    expect([...resnapshotted.readyCommits.values()]).toEqual([replacement]);
+  });
+
+  it("records failure and clears it on the next analysis", () => {
+    const failed = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "implement-started", implement },
+      { kind: "implement-failed", turnId: implementTurnId, reason: "invalid-proposal" },
+    ]);
+    expect(failed.detail?.inFlightImplement).toBeUndefined();
+    expect(failed.implementFailure).toBe("invalid-proposal");
+    const restarted = applyPlanStreamItem(failed, { kind: "implement-started", implement });
+    expect(restarted.implementFailure).toBeNull();
+  });
+
+  it("keeps proposal state through a snapshot join and clears stale proposals on turns", () => {
+    const joined = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, implementProposal: proposal } },
+    ]);
+    expect(joined.detail?.implementProposal).toEqual(proposal);
+    expect(applyPlanStreamItem(joined, started).detail?.implementProposal).toBeUndefined();
+    expect(
+      applyPlanStreamItem(joined, { kind: "implement-started", implement }).detail
+        ?.implementProposal,
+    ).toBeUndefined();
+  });
+
+  it("appends a split commit without changing plan text", () => {
+    const split = {
+      _tag: "plan-revision" as const,
+      ...commitFields("split-1", 2, ["commit-1"]),
+      split: {
+        repositoryId: MercurianRepositoryId.make("repo-1"),
+        repositoryName: "server",
+      },
+    };
+    const state = fold([
+      {
+        kind: "snapshot",
+        snapshot: { ...snapshot, planText: "# Parent plan", implementProposal: proposal },
+      },
+      { kind: "commit", sequence: 2, item: split },
+    ]);
+    expect(state.detail?.planText).toBe("# Parent plan");
+    expect(state.detail?.timeline.at(-1)).toEqual(split);
+    expect(state.detail?.implementProposal).toBeUndefined();
+  });
+
+  it("clears a matching cancelled proposal and ignores a stale cancellation", () => {
+    const joined = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, implementProposal: proposal } },
+    ]);
+    const unmatched = applyPlanStreamItem(joined, {
+      kind: "implement-cancelled",
+      turnId: PlanTurnId.make("other-implement"),
+    });
+    expect(unmatched.detail?.implementProposal).toEqual(proposal);
+
+    const cancelled = applyPlanStreamItem(unmatched, {
+      kind: "implement-cancelled",
+      turnId: implementTurnId,
+    });
+    expect(cancelled.detail?.implementProposal).toBeUndefined();
   });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
+import {
+  MercurianCommitId,
+  MercurianRepositoryId,
+  type PlanTimelineItem,
+} from "@t3tools/contracts";
 
 import {
   ancestorClosure,
@@ -280,6 +284,23 @@ describe("planCommitSummary", () => {
       createdAt: "2026-08-03T00:00:00.000Z",
     };
     expect(planCommitSummary(revision)).toBe("The assistant revised the plan");
+  });
+
+  it("names the repository on a split revision", () => {
+    const revision: PlanTimelineItem = {
+      _tag: "plan-revision",
+      commitId: id("split"),
+      sequence: 2,
+      parents: [id("a")],
+      published: false,
+      authorKind: "human",
+      createdAt: "2026-08-03T00:00:00.000Z",
+      split: {
+        repositoryId: MercurianRepositoryId.make("repo-server"),
+        repositoryName: "server",
+      },
+    };
+    expect(planCommitSummary(revision)).toBe("Plan for server");
   });
 });
 
