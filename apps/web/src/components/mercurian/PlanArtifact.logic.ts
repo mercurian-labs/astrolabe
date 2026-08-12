@@ -9,9 +9,12 @@ interface TimelineItemFields {
 interface RevisionIdentityFields {
   readonly _tag: "message" | "plan-revision" | "issue-revision";
   readonly commitId: string;
+  readonly split?: unknown;
 }
 
-function lastRevisionId(timeline: ReadonlyArray<RevisionIdentityFields>): string | null {
+function lastRevisionIdIncludingSplits(
+  timeline: ReadonlyArray<RevisionIdentityFields>,
+): string | null {
   for (let index = timeline.length - 1; index >= 0; index -= 1) {
     const item = timeline[index];
     if (item !== undefined && item._tag === "plan-revision") return item.commitId;
@@ -19,24 +22,37 @@ function lastRevisionId(timeline: ReadonlyArray<RevisionIdentityFields>): string
   return null;
 }
 
+function lastNonSplitRevisionId(timeline: ReadonlyArray<RevisionIdentityFields>): string | null {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const item = timeline[index];
+    if (item !== undefined && item._tag === "plan-revision" && item.split === undefined) {
+      return item.commitId;
+    }
+  }
+  return null;
+}
+
 /**
  * Whether the plan text riding the snapshot is *this path's* plan text.
  *
- * The server folds every revision in the history in sequence order, because it
- * has no idea which path a given window is standing on. While the history is
- * one line that is the same answer. Once it forks it is not: the newest
- * revision anywhere may belong to a branch this window is not on, and showing
- * it here would put another branch's plan beside this branch's conversation.
+ * The server folds every non-split revision in the history in sequence order,
+ * because it has no idea which path a given window is standing on. While the
+ * history is one line without a split that is the same answer. Once it forks
+ * it is not: the newest revision anywhere may belong to a branch this window
+ * is not on, and showing it here would put another branch's plan beside this
+ * branch's conversation.
  *
- * The two agree exactly when the last revision on this path is also the last
- * revision in the history — including when neither exists. When they disagree,
- * the path's text has to be read at its own head.
+ * Snapshot text skips split revisions, while path text does not: a split's
+ * projection is read at that path's head. The two agree exactly when the last
+ * revision on this path (including splits) is also the last non-split revision
+ * in the history — including when neither exists. When they disagree, the
+ * path's text has to be read at its own head.
  */
 export function snapshotTextIsForPath(
   timeline: ReadonlyArray<RevisionIdentityFields>,
   pathTimeline: ReadonlyArray<RevisionIdentityFields>,
 ): boolean {
-  return lastRevisionId(timeline) === lastRevisionId(pathTimeline);
+  return lastNonSplitRevisionId(timeline) === lastRevisionIdIncludingSplits(pathTimeline);
 }
 
 export interface PlanAttribution {
@@ -48,8 +64,9 @@ export interface PlanAttribution {
  * Who last changed the plan, and when — or nothing for a plan nobody has
  * edited yet.
  *
- * Read from the history rather than tracked beside it, the same way the plan's
- * text is: the last revision on the path *is* the attribution.
+ * Read from the path rather than tracked beside it: the last revision on the
+ * path *is* the attribution, including a split whose projection is the text
+ * this path shows.
  */
 export function lastPlanRevision(
   timeline: ReadonlyArray<TimelineItemFields>,
