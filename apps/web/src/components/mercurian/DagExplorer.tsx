@@ -43,6 +43,7 @@ import {
   DagExplorerDisplaySettings,
   DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
   detailFor,
+  detailOverlayPosition,
   edgeWidthFor,
   fitTransform,
   mapOverflows,
@@ -73,6 +74,8 @@ import {
   ancestorClosure,
   dagLayout,
   descendantClosure,
+  effectivePlanExplorerView,
+  hasFork,
   planCommitDetail,
   planCommitSummary,
   type PlanGraph,
@@ -151,11 +154,13 @@ export function DagExplorer({
   readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
-  const [view, setView] = useLocalStorage(
+  const [storedView, setView] = useLocalStorage(
     EXPLORER_VIEW_STORAGE_KEY,
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
+  const columnsAvailable = hasFork(graph);
+  const view = effectivePlanExplorerView(graph, storedView);
   // Standing at the tip is standing at the latest commit; an anchor is what
   // moves the highlight anywhere else.
   const currentCommitId = anchoredCommitId ?? graph.latest;
@@ -185,12 +190,14 @@ export function DagExplorer({
             </TooltipTrigger>
             <TooltipPopup side="bottom">Thread</TooltipPopup>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
-              <Columns3Icon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">Columns</TooltipPopup>
-          </Tooltip>
+          {columnsAvailable ? (
+            <Tooltip>
+              <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
+                <Columns3Icon className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">Columns</TooltipPopup>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
               <WaypointsIcon className="size-3.5" />
@@ -944,7 +951,11 @@ function SpatialMap({
     null,
   );
   const [pointerWorld, setPointerWorld] = useState<
-    (SpatialPoint & { readonly viewBoxUnitsPerPixel: number }) | null
+    | (SpatialPoint & {
+        readonly mapPosition: MapPoint;
+        readonly viewBoxUnitsPerPixel: number;
+      })
+    | null
   >(null);
   const [transform, setTransform] = useState<MapTransform>({ x: 0, y: 0, zoom: 1 });
   const [mapFrame, setMapFrame] = useState({
@@ -1105,6 +1116,7 @@ function SpatialMap({
     setPointerWorld({
       x: (pointer.x - currentTransform.x) / currentTransform.zoom,
       y: (pointer.y - currentTransform.y) / currentTransform.zoom,
+      mapPosition: viewBoxToMap(pointer),
       viewBoxUnitsPerPixel: unitsPerPixel(),
     });
 
@@ -1217,31 +1229,41 @@ function SpatialMap({
       return null;
     }
 
-    const anchor = viewBoxToMap({
-      x: transform.x + emphasizedNode.x * transform.zoom,
-      y: transform.y + emphasizedNode.y * transform.zoom,
-    });
+    const tracksCursor = hovered !== null && pointerWorld !== null;
+    const anchor = tracksCursor
+      ? pointerWorld.mapPosition
+      : viewBoxToMap({
+          x: transform.x + emphasizedNode.x * transform.zoom,
+          y: transform.y + emphasizedNode.y * transform.zoom,
+        });
     const maximumWidth = mapFrame.width - DETAIL_OVERLAY_INSET * 2;
     const maximumHeight = mapFrame.height - DETAIL_OVERLAY_INSET * 2;
     const measured =
       measuredDetailOverlay?.commitId === emphasizedNode.commitId ? measuredDetailOverlay : null;
     const width = Math.min(measured?.width ?? DETAIL_OVERLAY_MAX_WIDTH, maximumWidth);
     const height = Math.min(measured?.height ?? DETAIL_OVERLAY_MAX_HEIGHT, maximumHeight);
-    const right = anchor.x + DETAIL_OVERLAY_GAP;
-    const preferredLeft =
-      right + width <= mapFrame.width - DETAIL_OVERLAY_INSET
-        ? right
-        : anchor.x - DETAIL_OVERLAY_GAP - width;
+    const position = detailOverlayPosition({
+      anchor,
+      width,
+      height,
+      containerWidth: mapFrame.width,
+      containerHeight: mapFrame.height,
+      inset: DETAIL_OVERLAY_INSET,
+      gap: DETAIL_OVERLAY_GAP,
+      tracksCursor,
+    });
     return {
       item: emphasizedNode.item,
-      left: clampOverlayCoordinate(preferredLeft, width, mapFrame.width),
-      top: clampOverlayCoordinate(anchor.y - DETAIL_OVERLAY_GAP, height, mapFrame.height),
+      left: position.x,
+      top: position.y,
     };
   }, [
     emphasizedNode,
+    hovered,
     mapFrame.height,
     mapFrame.width,
     measuredDetailOverlay,
+    pointerWorld,
     transform,
     viewBoxToMap,
   ]);
@@ -1834,8 +1856,3 @@ function useCurrentRowScroll(currentCommitId: MercurianCommitId | null) {
 
 const polylinePoints = (points: ReadonlyArray<SpatialPoint>) =>
   points.map(({ x, y }) => `${x},${y}`).join(" ");
-
-function clampOverlayCoordinate(value: number, size: number, containerSize: number): number {
-  const maximum = Math.max(DETAIL_OVERLAY_INSET, containerSize - size - DETAIL_OVERLAY_INSET);
-  return Math.max(DETAIL_OVERLAY_INSET, Math.min(value, maximum));
-}

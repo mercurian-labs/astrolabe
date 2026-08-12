@@ -11,6 +11,8 @@ import {
   buildPlanGraph,
   dagLayout,
   descendantClosure,
+  effectivePlanExplorerView,
+  hasFork,
   planCommitDetail,
   planCommitSummary,
   type DagLayoutName,
@@ -106,6 +108,28 @@ describe("buildPlanGraph", () => {
     expect(graph.nodes).toEqual([]);
     expect(graph.latest).toBeNull();
     expect(dagLayout(graph, { layout: "sugiyama" }).nodes).toEqual([]);
+  });
+});
+
+describe("fork-dependent explorer views", () => {
+  it("finds no fork in an empty graph", () => {
+    expect(hasFork(buildPlanGraph([]))).toBe(false);
+  });
+
+  it("finds no fork in a linear graph", () => {
+    expect(hasFork(buildPlanGraph(chain))).toBe(false);
+  });
+
+  it("finds a node with at least two children", () => {
+    expect(hasFork(buildPlanGraph(fork))).toBe(true);
+  });
+
+  it("falls back from hidden columns without changing the other views", () => {
+    const linearGraph = buildPlanGraph(chain);
+    expect(effectivePlanExplorerView(linearGraph, "columns")).toBe("thread");
+    expect(effectivePlanExplorerView(linearGraph, "thread")).toBe("thread");
+    expect(effectivePlanExplorerView(linearGraph, "graph")).toBe("graph");
+    expect(effectivePlanExplorerView(buildPlanGraph(fork), "columns")).toBe("columns");
   });
 });
 

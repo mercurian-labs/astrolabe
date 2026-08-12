@@ -63,7 +63,7 @@ import {
   turnRefusalNotice,
 } from "./PlanComposer.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
-import { ancestorClosure, buildPlanGraph } from "./PlanGraph.logic";
+import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import {
   advance,
   isViewingPast,
@@ -134,13 +134,21 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
+  const timeline = detail?.timeline ?? EMPTY_TIMELINE;
+  const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const proposal = detail?.implementProposal;
+  const existingSplits = useMemo(
+    () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
+    [graph, proposal],
+  );
+  const effectiveExplorerView = effectivePlanExplorerView(graph, explorerView);
   const [columnsWidthCap, setColumnsWidthCap] = useState(0);
   const planningSpaceRef = useRef<HTMLDivElement>(null);
   const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
   const rightPaneViewCap =
-    pane.view === "artifact" || explorerView === "graph"
+    pane.view === "artifact" || effectiveExplorerView === "graph"
       ? RIGHT_PANE_MAX_WIDTH
-      : explorerView === "thread"
+      : effectiveExplorerView === "thread"
         ? RIGHT_PANE_THREAD_MAX_WIDTH
         : columnsWidthCap;
   const rightPaneMaxWidth = Math.max(
@@ -208,14 +216,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     if (planUpdatedAt === undefined) return;
     void visitPlan(planId);
   }, [planId, planUpdatedAt, visitPlan]);
-
-  const timeline = detail?.timeline ?? EMPTY_TIMELINE;
-  const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
-  const proposal = detail?.implementProposal;
-  const existingSplits = useMemo(
-    () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
-    [graph, proposal],
-  );
 
   /**
    * Standing somewhere live means riding that branch forward: a commit landing

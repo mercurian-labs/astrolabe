@@ -10,6 +10,7 @@ import {
   decodeDagExplorerDisplaySettings,
   DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
   detailFor,
+  detailOverlayPosition,
   edgeWidthFor,
   fitTransform,
   mapOverflows,
@@ -182,6 +183,44 @@ describe("map detail", () => {
     expect(detailFor(MAP_GLYPH_ZOOM - 0.01)).toBe("dot");
     expect(detailFor(MAP_GLYPH_ZOOM)).toBe("glyph");
     expect(detailFor(MAP_MAX_ZOOM)).toBe("glyph");
+  });
+});
+
+describe("detail overlay placement", () => {
+  const frame = {
+    width: 120,
+    height: 60,
+    containerWidth: 400,
+    containerHeight: 300,
+    inset: 8,
+    gap: 12,
+  };
+
+  it("offsets a cursor-tracked overlay below and to the right", () => {
+    expect(
+      detailOverlayPosition({ ...frame, anchor: { x: 100, y: 80 }, tracksCursor: true }),
+    ).toEqual({ x: 112, y: 92 });
+  });
+
+  it("flips away from the right and bottom edges", () => {
+    expect(
+      detailOverlayPosition({ ...frame, anchor: { x: 390, y: 290 }, tracksCursor: true }),
+    ).toEqual({ x: 258, y: 218 });
+  });
+
+  it("clamps both axes fully inside the container", () => {
+    expect(
+      detailOverlayPosition({ ...frame, anchor: { x: -20, y: -20 }, tracksCursor: true }),
+    ).toEqual({ x: 8, y: 8 });
+  });
+
+  it("keeps the node-anchored vertical fallback for keyboard focus", () => {
+    expect(
+      detailOverlayPosition({ ...frame, anchor: { x: 100, y: 80 }, tracksCursor: false }),
+    ).toEqual({ x: 112, y: 68 });
+    expect(
+      detailOverlayPosition({ ...frame, anchor: { x: 390, y: 290 }, tracksCursor: false }),
+    ).toEqual({ x: 258, y: 232 });
   });
 });
 
