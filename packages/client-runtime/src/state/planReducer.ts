@@ -1,10 +1,12 @@
 import * as Arr from "effect/Array";
 import type {
+  MercurianCommitId,
   PlanDetail,
   PlanGroundingItem,
   PlanInFlightImplement,
   PlanInFlightTurn,
   PlanImplementProposal,
+  PlanImplementReady,
   PlanStreamItem,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
@@ -16,6 +18,8 @@ import type {
  */
 export interface PlanSubscriptionState {
   readonly detail: PlanDetail | null;
+  /** Ready verdicts are side-facts keyed independently of timeline arrival. */
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly synchronized: boolean;
   /**
    * The last `turn-refused` reason, cleared the moment a turn starts or a
@@ -30,6 +34,7 @@ export interface PlanSubscriptionState {
 
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   detail: null,
+  readyCommits: new Map(),
   synchronized: false,
   turnRefusal: null,
   implementFailure: null,
@@ -97,6 +102,7 @@ export function applyPlanStreamItem(
     case "snapshot":
       return {
         detail: item.snapshot,
+        readyCommits: new Map(item.snapshot.readyCommits.map((ready) => [ready.commitId, ready])),
         synchronized: state.synchronized,
         turnRefusal: null,
         implementFailure: null,
@@ -195,9 +201,23 @@ export function applyPlanStreamItem(
     case "turn-refused":
       return { ...state, turnRefusal: item.reason };
     case "implement-analyzed": {
+      const turn = state.detail?.inFlightTurn;
       const implement = state.detail?.inFlightImplement;
-      if (implement === undefined || implement.turnId !== item.proposal.turnId) return state;
-      return withImplementProposal(withInFlightImplement(state, undefined), item.proposal);
+      if (
+        (turn !== undefined && turn.turnId !== item.proposal.turnId) ||
+        (implement !== undefined && implement.turnId !== item.proposal.turnId)
+      ) {
+        return state;
+      }
+      return {
+        ...withImplementProposal(withInFlightImplement(state, undefined), item.proposal),
+        implementFailure: null,
+      };
+    }
+    case "implement-ready": {
+      const readyCommits = new Map(state.readyCommits);
+      readyCommits.set(item.ready.commitId, item.ready);
+      return { ...state, readyCommits };
     }
     case "implement-cancelled": {
       const proposal = state.detail?.implementProposal;

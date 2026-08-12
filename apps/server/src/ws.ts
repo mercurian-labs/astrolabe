@@ -1748,6 +1748,22 @@ const makeWsRpcLayer = (
                   createdAt,
                 }),
               ),
+              Effect.tap((revisions) =>
+                Effect.forEach(
+                  revisions,
+                  (revision) =>
+                    revision.split === undefined
+                      ? Effect.void
+                      : planningAssistant.publishImplementReady({
+                          planId: input.planId,
+                          ready: {
+                            commitId: MercurianCommitId.make(revision.commitId),
+                            ...revision.split,
+                          },
+                        }),
+                  { discard: true },
+                ),
+              ),
               Effect.tap(() => planningAssistant.clearImplementProposal(input.planId)),
               Effect.map((revisions) =>
                 revisions.map((revision) => MercurianCommitId.make(revision.commitId)),

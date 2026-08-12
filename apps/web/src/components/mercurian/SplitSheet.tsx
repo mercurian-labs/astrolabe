@@ -2,6 +2,7 @@ import type {
   MercurianCommitId,
   MercurianRepositoryId,
   PlanImplementProposal,
+  PlanSplitProposal,
 } from "@t3tools/contracts";
 import { ArrowRightIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -21,12 +22,16 @@ import {
   confirmPayload,
   partitionProposal,
   type ExistingSplit,
+  type LandedPlan,
   type SplitCard,
 } from "./splits.logic";
+
+const EMPTY_LANDED_PLANS: ReadonlyArray<LandedPlan> = [];
 
 export function SplitSheet({
   open,
   proposal,
+  landedPlans = EMPTY_LANDED_PLANS,
   existingSplits,
   onOpenChange,
   onCancel,
@@ -35,13 +40,12 @@ export function SplitSheet({
   onOpenSessionDraft,
 }: {
   readonly open: boolean;
-  readonly proposal: PlanImplementProposal;
+  readonly proposal?: PlanImplementProposal | undefined;
+  readonly landedPlans?: ReadonlyArray<LandedPlan> | undefined;
   readonly existingSplits: ReadonlyMap<MercurianRepositoryId, ExistingSplit>;
   readonly onOpenChange: (open: boolean) => void;
   readonly onCancel: () => void;
-  readonly onConfirm: (
-    splits: ReadonlyArray<{ readonly repositoryId: MercurianRepositoryId; readonly text: string }>,
-  ) => void;
+  readonly onConfirm: (plans: ReadonlyArray<PlanSplitProposal>) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onOpenSessionDraft?: ((input: PlanImplementProposal) => void) | undefined;
 }) {
@@ -60,6 +64,7 @@ export function SplitSheet({
       <DialogPopup>
         <SplitSheetPanel
           existingSplits={existingSplits}
+          landedPlans={landedPlans}
           proposal={proposal}
           onCancel={dismiss}
           onConfirm={onConfirm}
@@ -73,23 +78,26 @@ export function SplitSheet({
 
 export function SplitSheetPanel({
   proposal,
+  landedPlans = EMPTY_LANDED_PLANS,
   existingSplits,
   onCancel,
   onConfirm,
   onSelect,
   onOpenSessionDraft,
 }: {
-  readonly proposal: PlanImplementProposal;
+  readonly proposal?: PlanImplementProposal | undefined;
+  readonly landedPlans?: ReadonlyArray<LandedPlan> | undefined;
   readonly existingSplits: ReadonlyMap<MercurianRepositoryId, ExistingSplit>;
   readonly onCancel: () => void;
-  readonly onConfirm: (
-    splits: ReadonlyArray<{ readonly repositoryId: MercurianRepositoryId; readonly text: string }>,
-  ) => void;
+  readonly onConfirm: (plans: ReadonlyArray<PlanSplitProposal>) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onOpenSessionDraft?: ((input: PlanImplementProposal) => void) | undefined;
 }) {
   const partitioned = useMemo(
-    () => partitionProposal(proposal, existingSplits),
+    () =>
+      proposal === undefined
+        ? { cards: [], alreadySplit: [] }
+        : partitionProposal(proposal, existingSplits),
     [existingSplits, proposal],
   );
   const [cards, setCards] = useState<ReadonlyArray<SplitCard>>(partitioned.cards);
@@ -103,22 +111,51 @@ export function SplitSheetPanel({
       <DialogHeader>
         <DialogTitle>Implement this plan</DialogTitle>
         <DialogDescription>
-          Review where the plan belongs. Nothing lands until you confirm.
+          {landedPlans.length > 0
+            ? "Choose a repository plan to go to it."
+            : "Review where the plan belongs. Nothing is added until you confirm."}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel className="flex flex-col gap-3">
-        {proposal.verdict.kind === "atomic" ? (
+        {landedPlans.length > 0 ? (
+          landedPlans.map((plan) => (
+            <button
+              key={plan.commitId}
+              className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-left"
+              type="button"
+              onClick={() => onSelect(plan.commitId)}
+            >
+              <span className="text-sm font-medium">
+                You added a plan for {plan.repositoryName}
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                Go to plan
+                <ArrowRightIcon className="size-4" />
+              </span>
+            </button>
+          ))
+        ) : proposal?.verdict.kind === "atomic" ? (
           <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
-            <p className="text-sm">
-              This plan is atomic — it implements in{" "}
-              <span className="font-medium">{proposal.verdict.repositoryName}</span>.
+            <p className="text-sm font-medium">This plan is ready to implement.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A coding session will run in{" "}
+              <span className="font-medium text-foreground">{proposal.verdict.repositoryName}</span>
+              .
             </p>
           </div>
-        ) : (
+        ) : proposal === undefined ? null : (
           <>
-            {proposal.verdict.rationale === undefined ? null : (
-              <p className="text-sm text-muted-foreground">{proposal.verdict.rationale}</p>
-            )}
+            {proposal.verdict.kind === "needs-split" ? (
+              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                <p>
+                  This plan covers work in more than one repository. A coding session works in one
+                  repository at a time.
+                </p>
+                {proposal.verdict.rationale === undefined ? null : (
+                  <p>{proposal.verdict.rationale}</p>
+                )}
+              </div>
+            ) : null}
             {partitioned.alreadySplit.map((split) => (
               <button
                 key={split.repositoryId}
@@ -128,9 +165,14 @@ export function SplitSheetPanel({
               >
                 <span>
                   <span className="block text-sm font-medium">{split.repositoryName}</span>
-                  <span className="text-xs text-muted-foreground">Already split — jump to it</span>
+                  <span className="text-xs text-muted-foreground">
+                    This repository already has its own plan
+                  </span>
                 </span>
-                <ArrowRightIcon className="size-4 text-muted-foreground" />
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  Go to plan
+                  <ArrowRightIcon className="size-4" />
+                </span>
               </button>
             ))}
             {cards.map((card, index) =>
@@ -142,7 +184,7 @@ export function SplitSheetPanel({
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <p className="text-sm font-medium">{card.repositoryName}</p>
                     <Button
-                      aria-label={`Remove ${card.repositoryName} split`}
+                      aria-label={`Remove plan for ${card.repositoryName}`}
                       size="icon-sm"
                       variant="ghost"
                       onClick={() =>
@@ -157,7 +199,7 @@ export function SplitSheetPanel({
                     </Button>
                   </div>
                   <Textarea
-                    aria-label={`${card.repositoryName} split plan`}
+                    aria-label={`Plan for ${card.repositoryName}`}
                     className="min-h-36"
                     value={card.text}
                     onChange={(event) =>
@@ -176,22 +218,18 @@ export function SplitSheetPanel({
       </DialogPanel>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
-          Cancel
+          {landedPlans.length > 0 ? "Done" : "Cancel"}
         </Button>
-        {proposal.verdict.kind === "atomic" ? (
+        {landedPlans.length > 0 || proposal === undefined ? null : proposal.verdict.kind ===
+          "atomic" ? (
           <Button
             disabled={onOpenSessionDraft === undefined}
             onClick={() => onOpenSessionDraft?.(proposal)}
           >
             Coding sessions arrive next
           </Button>
-        ) : (
-          <Button
-            disabled={payload === null}
-            onClick={() => payload === null || onConfirm(payload)}
-          >
-            {payload?.length === 1 ? "Land split" : `Land ${payload?.length ?? 0} splits`}
-          </Button>
+        ) : payload === null ? null : (
+          <Button onClick={() => onConfirm(payload)}>Add a plan for each repository</Button>
         )}
       </DialogFooter>
     </>

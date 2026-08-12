@@ -74,7 +74,7 @@ import {
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
 import { SplitSheet } from "./SplitSheet";
-import { existingSplitsAt, implementDisabledReason } from "./splits.logic";
+import { existingSplitsAt, implementDisabledReason, type LandedPlan } from "./splits.logic";
 
 const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
 const RIGHT_PANE_DEFAULT_WIDTH = 480;
@@ -110,7 +110,8 @@ const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error, turnRefusal, implementFailure } = usePlanDetail(planId);
+  const { detail, readyCommits, isPending, error, turnRefusal, implementFailure } =
+    usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const visitPlan = useVisitPlan();
@@ -120,6 +121,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const confirmSplits = useConfirmSplits();
   const cancelImplementProposal = useCancelImplementProposal();
   const [splitSheetOpen, setSplitSheetOpen] = useState(false);
+  const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   // The same resolution the server runs, read here so sending gates with the
   // reason stated instead of failing silently. The two can only disagree for
   // the width of a race, which `turn-refused` covers.
@@ -200,7 +202,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   // Another plan is another history: whatever you were looking at there does
   // not name anything here.
-  useEffect(() => setPosition(LATEST), [planId]);
+  useEffect(() => {
+    setPosition(LATEST);
+    setLandedPlans([]);
+  }, [planId]);
 
   /**
    * Being here is seeing it: opening the plan clears its unseen dot, and
@@ -270,7 +275,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   }, [graph, head, inFlightImplement]);
 
   useEffect(() => {
-    if (detail?.implementProposal !== undefined) setSplitSheetOpen(true);
+    if (detail?.implementProposal !== undefined) {
+      setLandedPlans([]);
+      setSplitSheetOpen(true);
+    }
   }, [detail?.implementProposal]);
 
   const gateNotice = planningModelGateNotice(planningModel.resolution);
@@ -373,6 +381,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           <PlanTimeline
             inFlight={visibleInFlight}
             inFlightImplement={visibleInFlightImplement}
+            readyCommits={readyCommits}
             timeline={visibleTimeline}
             onAnswerQuestion={(answers) => void answerQuestion(planId, answers)}
             onStopImplement={() => void stopTurn(planId)}
@@ -443,6 +452,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 <DagExplorer
                   anchoredCommitId={head}
                   graph={graph}
+                  readyCommits={readyCommits}
                   onColumnsWidthCapChange={setColumnsWidthCap}
                   onSelect={select}
                 />
@@ -474,24 +484,37 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           </>
         )}
       </div>
-      {proposal === undefined ? null : (
+      {proposal === undefined && landedPlans.length === 0 ? null : (
         <SplitSheet
           existingSplits={existingSplits}
+          landedPlans={landedPlans}
           open={splitSheetOpen}
           proposal={proposal}
-          onCancel={() => void cancelImplementProposal(planId)}
-          onConfirm={(splits) => {
+          onCancel={() => {
+            setLandedPlans([]);
+            if (proposal !== undefined) void cancelImplementProposal(planId);
+          }}
+          onConfirm={(plans) => {
+            if (proposal === undefined) return;
             void confirmSplits({
               planId,
               parentCommitId: proposal.parentCommitId,
-              splits,
+              splits: plans.map(({ repositoryId, text }) => ({ repositoryId, text })),
             }).then((result) => {
-              if (result !== null) setSplitSheetOpen(false);
+              if (result === null) return;
+              setPosition({ _tag: "at", commitId: proposal.parentCommitId, live: false });
+              setLandedPlans(
+                result.map((commitId, index) => ({
+                  commitId,
+                  repositoryName: plans[index]!.repositoryName,
+                })),
+              );
             });
           }}
           onOpenChange={setSplitSheetOpen}
           onSelect={(commitId) => {
             select(commitId);
+            setLandedPlans([]);
             setSplitSheetOpen(false);
           }}
         />

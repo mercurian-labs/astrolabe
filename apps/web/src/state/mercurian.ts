@@ -10,6 +10,7 @@ import type {
   MercurianTryImplementInput,
   PlanDetail,
   PlanId,
+  PlanImplementReady,
   PlanningTreeSnapshot,
   PlanTurnRefusalReason,
   PlanStreamItem,
@@ -40,6 +41,7 @@ const EMPTY_PLAN_ATOM = Atom.make(
   AsyncResult.initial<
     {
       readonly detail: PlanDetail | null;
+      readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
       readonly synchronized: boolean;
       readonly turnRefusal: PlanTurnRefusalReason | null;
       readonly implementFailure:
@@ -49,6 +51,8 @@ const EMPTY_PLAN_ATOM = Atom.make(
     never
   >(false),
 );
+
+const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
 
 const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [] };
 
@@ -80,6 +84,7 @@ export function useMercurianTree(): MercurianTreeState {
 
 export interface PlanDetailState {
   readonly detail: PlanDetail | null;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly isPending: boolean;
   readonly error: string | null;
   /** Why the last message got no reply — transient, cleared as a turn starts. */
@@ -106,6 +111,7 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const detail = state?.detail ?? null;
   return {
     detail,
+    readyCommits: state?.readyCommits ?? EMPTY_READY_COMMITS,
     isPending: detail === null && environmentId !== null && planId !== null,
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,

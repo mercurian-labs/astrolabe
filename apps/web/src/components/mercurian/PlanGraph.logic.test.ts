@@ -300,7 +300,7 @@ describe("planCommitSummary", () => {
         repositoryName: "server",
       },
     };
-    expect(planCommitSummary(revision)).toBe("Split for server");
+    expect(planCommitSummary(revision)).toBe("Plan for server");
   });
 });
 

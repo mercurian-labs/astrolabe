@@ -1944,6 +1944,36 @@ layer("PlanningStore", (it) => {
       );
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       assert.strictEqual(snapshot.planText, "# Shared implementation plan");
+      assert.deepStrictEqual(
+        snapshot.readyCommits
+          .map((ready) => ({
+            commitId: ready.commitId,
+            repositoryId: ready.repositoryId,
+            repositoryName: ready.repositoryName,
+          }))
+          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
+        landed
+          .map((split) => ({
+            commitId: split.commitId,
+            repositoryId: split.split!.repositoryId,
+            repositoryName: split.split!.repositoryName,
+          }))
+          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
+      );
+      assert.deepStrictEqual(
+        (yield* store.listImplementVerdicts({ planId: created.plan.planId }))
+          .map(({ commitId, verdict }) => ({ commitId, verdict }))
+          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
+        landed
+          .map((split) => ({
+            commitId: split.commitId,
+            verdict: {
+              kind: "ready" as const,
+              payload: split.split!,
+            },
+          }))
+          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
+      );
       const events = yield* store.listTimelineSince({
         planId: created.plan.planId,
         afterSequence: 0,
@@ -1968,6 +1998,162 @@ layer("PlanningStore", (it) => {
         }),
         { atCommitId: revision.commitId, planText: "# Shared implementation plan" },
       );
+    }),
+  );
+
+  it.effect("keeps the first implement verdict for a commit and scopes lists to a plan", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const firstPlan = yield* seedPlan("2026-08-09T00:10:00.000Z");
+      const secondPlan = yield* seedPlan("2026-08-09T00:20:00.000Z");
+      const firstCommit = firstPlan.timeline[0]!.commitId;
+      const secondCommit = secondPlan.timeline[0]!.commitId;
+
+      yield* store.recordImplementVerdict({
+        planId: firstPlan.plan.planId,
+        commitId: firstCommit,
+        verdict: {
+          kind: "ready",
+          payload: {
+            repositoryId: MercurianRepositoryId.make("repository-first"),
+            repositoryName: "first",
+          },
+        },
+        recordedAt: at("2026-08-09T00:11:00.000Z"),
+      });
+      yield* store.recordImplementVerdict({
+        planId: firstPlan.plan.planId,
+        commitId: firstCommit,
+        verdict: {
+          kind: "needs-split",
+          payload: {
+            repositories: [
+              {
+                repositoryId: MercurianRepositoryId.make("repository-later"),
+                repositoryName: "later",
+              },
+            ],
+          },
+        },
+        recordedAt: at("2026-08-09T00:12:00.000Z"),
+      });
+      yield* store.recordImplementVerdict({
+        planId: secondPlan.plan.planId,
+        commitId: secondCommit,
+        verdict: {
+          kind: "ready",
+          payload: {
+            repositoryId: MercurianRepositoryId.make("repository-second"),
+            repositoryName: "second",
+          },
+        },
+        recordedAt: at("2026-08-09T00:21:00.000Z"),
+      });
+
+      const firstVerdicts = yield* store.listImplementVerdicts({
+        planId: firstPlan.plan.planId,
+      });
+      assert.strictEqual(firstVerdicts.length, 1);
+      assert.strictEqual(firstVerdicts[0]?.commitId, firstCommit);
+      assert.deepStrictEqual(firstVerdicts[0]?.verdict, {
+        kind: "ready",
+        payload: {
+          repositoryId: MercurianRepositoryId.make("repository-first"),
+          repositoryName: "first",
+        },
+      });
+      assert.strictEqual(
+        firstVerdicts[0] === undefined ? null : DateTime.formatIso(firstVerdicts[0].recordedAt),
+        "2026-08-09T00:11:00.000Z",
+      );
+      assert.deepStrictEqual(
+        (yield* store.listImplementVerdicts({ planId: secondPlan.plan.planId })).map(
+          (record) => record.commitId,
+        ),
+        [secondCommit],
+      );
+    }),
+  );
+
+  it.effect("rolls split commits and ready verdicts back together", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const repositories = yield* RepositoryStore.RepositoryStore;
+      const sql = yield* SqlClient.SqlClient;
+      const created = yield* seedPlan("2026-08-09T00:30:00.000Z");
+      const parent = created.timeline[0]!.commitId;
+      const first = yield* repositories.addRepository({
+        path: "/tmp",
+        createdAt: at("2026-08-09T00:31:00.000Z"),
+      });
+      const second = yield* repositories.addRepository({
+        path: "/usr",
+        createdAt: at("2026-08-09T00:31:00.000Z"),
+      });
+      yield* repositories.setProjectRepositories({
+        projectId: created.plan.projectId,
+        repositoryIds: [first.repositoryId, second.repositoryId],
+        addedAt: at("2026-08-09T00:32:00.000Z"),
+      });
+      yield* sql`
+        CREATE TEMP TRIGGER poison_second_split_verdict
+        BEFORE INSERT ON plan_implement_verdicts
+        WHEN (
+          SELECT COUNT(*) FROM plan_implement_verdicts WHERE plan_id = NEW.plan_id
+        ) = 1
+        BEGIN
+          SELECT RAISE(ABORT, 'poisoned split verdict');
+        END
+      `;
+
+      const poisoned = yield* Effect.result(
+        store.saveSplits({
+          planId: created.plan.planId,
+          parentCommitId: parent,
+          splits: [
+            { repositoryId: first.repositoryId, text: "First projection" },
+            { repositoryId: second.repositoryId, text: "Second projection" },
+          ],
+          createdAt: at("2026-08-09T00:33:00.000Z"),
+        }),
+      );
+      assert.strictEqual(poisoned._tag, "Failure");
+      assert.strictEqual(
+        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
+        1,
+      );
+      assert.deepStrictEqual(
+        yield* store.listImplementVerdicts({ planId: created.plan.planId }),
+        [],
+      );
+    }),
+  );
+
+  it.effect("deleting a plan removes its implement verdicts", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const sql = yield* SqlClient.SqlClient;
+      const created = yield* seedPlan("2026-08-09T00:40:00.000Z");
+      yield* store.recordImplementVerdict({
+        planId: created.plan.planId,
+        commitId: created.timeline[0]!.commitId,
+        verdict: {
+          kind: "ready",
+          payload: {
+            repositoryId: MercurianRepositoryId.make("repository-ready"),
+            repositoryName: "ready",
+          },
+        },
+        recordedAt: at("2026-08-09T00:41:00.000Z"),
+      });
+
+      yield* store.deletePlan({ planId: created.plan.planId });
+      const [row] = yield* sql<{ readonly count: number }>`
+        SELECT COUNT(*) AS "count"
+        FROM plan_implement_verdicts
+        WHERE plan_id = ${created.plan.planId}
+      `;
+      assert.strictEqual(row?.count, 0);
     }),
   );
 

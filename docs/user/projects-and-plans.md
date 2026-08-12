@@ -150,17 +150,21 @@ When the plan is ready, choose **Implement** beside the composer. The assistant 
 the project's repositories, then works out where the implementation belongs. This analysis is a
 gate: it does not edit the plan, start a coding session, or add anything to history.
 
-If all of the work belongs in one repository, the result says the plan is **atomic** and names that
-repository. Coding sessions will build on this decision in a later release.
+If all of the work belongs in one repository, the result says **This plan is ready to implement**
+and names where its coding session will run. That readiness is remembered on the commit you tried
+from, which shows a **Ready to implement** badge in the conversation and history views. Trying that
+commit again can return the recorded answer without running another analysis.
 
-If the work crosses repositories, a split sheet proposes one self-contained plan for each one and
-explains the cut. You can edit every projected plan or remove a card before confirming. A repository
-already split from this point appears as a jump row instead of another editable card. **Cancel**
-lands nothing; **Land split** or **Land N splits** is the only act that writes.
+If the work crosses repositories, the sheet explains that a coding session works in one repository
+at a time and proposes one self-contained plan for each repository. You can edit every projected
+plan or remove a card before confirming. A repository that already has its own plan from this point
+appears as a jump row instead of another editable card. **Cancel** adds nothing; **Add a plan for
+each repository** is the only act that writes.
 
-Confirmed splits are ordinary branches of the plan's history, all starting at the commit where you
-pressed Implement. Each is labelled with its repository. Open one to keep planning and revising its
-projection like any other branch; the plan on the original line stays unchanged.
+Confirmation adds ordinary branches to the plan's history, all starting at the commit where you
+pressed Implement, and leaves you standing at that original commit. The sheet stays open as a jump
+list with one **You added a plan for {repository}** row per new branch. Choose a row to go to that
+repository's plan and keep planning there; the plan on the original line stays unchanged.
 
 ## The history
 
@@ -168,7 +172,7 @@ The history view shows every commit in the plan: your messages, the assistant's,
 the plan, with the branch points visible. It offers two readings, and remembers which one you chose.
 
 **Navigator** is the one you move through: every commit as a row in the order it happened, with
-lanes drawn down the left showing where work split and where it came back together. **Graph** is a
+lanes drawn down the left showing where work diverged and where it came back together. **Graph** is a
 map of the same history laid out in space — every commit a point, every connection drawn, the whole
 shape at once. Use the navigator to walk the history; use the graph to see it. Drag the map to move
 around it and scroll to zoom; it draws the same way every time you open it, and where you are

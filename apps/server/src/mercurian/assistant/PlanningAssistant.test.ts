@@ -13,6 +13,7 @@ import * as TestClock from "effect/testing/TestClock";
 import {
   EventId,
   MercurianCommitId,
+  MercurianRepositoryId,
   PlanId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -832,7 +833,7 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
-  it.effect("an implement turn publishes an atomic proposal without writing history", () =>
+  it.effect("records and publishes an atomic verdict without writing history", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const store = yield* PlanningStore.PlanningStore;
@@ -957,7 +958,10 @@ describe("PlanningAssistant", () => {
         repositories: [first.name],
       });
       yield* harness.emit(
-        runtimeEvent(session.threadId, { type: "turn.completed", payload: { state: "completed" } }),
+        runtimeEvent(session.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
       );
       const analyzed = yield* Queue.take(frames);
       if (analyzed.kind !== "implement-analyzed") {
@@ -976,6 +980,31 @@ describe("PlanningAssistant", () => {
         (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
         before,
       );
+      assert.deepStrictEqual(yield* Queue.take(frames), {
+        kind: "implement-ready",
+        ready: {
+          commitId: MercurianCommitId.make(revision.commitId),
+          repositoryId: first.repositoryId,
+          repositoryName: first.name,
+        },
+      });
+      assert.deepStrictEqual(
+        (yield* store.listImplementVerdicts({ planId: created.plan.planId })).map(
+          ({ commitId, verdict }) => ({ commitId, verdict }),
+        ),
+        [
+          {
+            commitId: revision.commitId,
+            verdict: {
+              kind: "ready",
+              payload: {
+                repositoryId: first.repositoryId,
+                repositoryName: first.name,
+              },
+            },
+          },
+        ],
+      );
       assert.strictEqual(yield* Queue.take(harness.stops), session.threadId);
       assert.ok((yield* assistant.implementProposal(created.plan.planId)) !== undefined);
       yield* assistant.cancelImplementProposal(created.plan.planId);
@@ -986,6 +1015,247 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(yield* assistant.implementProposal(created.plan.planId), undefined);
       yield* assistant.cancelImplementProposal(created.plan.planId);
       assert.strictEqual(yield* Queue.size(frames), 0);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("short-circuits a recorded ready verdict without a model or provider session", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T01:10:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Ready plan",
+        createdAt: at("2026-08-08T01:10:00.000Z"),
+      });
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Ready without another analysis",
+        createdAt: at("2026-08-08T01:11:00.000Z"),
+      });
+      const repositoryId = MercurianRepositoryId.make("recorded-ready-repository");
+      yield* store.recordImplementVerdict({
+        planId: created.plan.planId,
+        commitId: revision.commitId,
+        verdict: {
+          kind: "ready",
+          payload: { repositoryId, repositoryName: "recorded-ready" },
+        },
+        recordedAt: at("2026-08-08T01:12:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.tryImplement({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+      });
+      const analyzed = yield* Queue.take(frames);
+      assert.ok(analyzed.kind === "implement-analyzed");
+      if (analyzed.kind === "implement-analyzed") {
+        assert.deepStrictEqual(analyzed.proposal.verdict, {
+          kind: "atomic",
+          repositoryId,
+          repositoryName: "recorded-ready",
+        });
+        assert.strictEqual(
+          analyzed.proposal.parentCommitId,
+          MercurianCommitId.make(revision.commitId),
+        );
+      }
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+      assert.strictEqual(yield* assistant.inFlightImplement(created.plan.planId), undefined);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("refuses a recorded ready short-circuit while a reply turn is active", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created } = yield* seedPlan();
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Ready after the reply",
+        createdAt: at("2026-08-08T01:15:00.000Z"),
+      });
+      const repositoryId = MercurianRepositoryId.make("active-ready-repository");
+      yield* store.recordImplementVerdict({
+        planId: created.plan.planId,
+        commitId: revision.commitId,
+        verdict: {
+          kind: "ready",
+          payload: { repositoryId, repositoryName: "active-ready" },
+        },
+        recordedAt: at("2026-08-08T01:16:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        text: "Finish this reply first",
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      assert.strictEqual((yield* Queue.take(frames)).kind, "turn-started");
+
+      const refused = yield* Effect.flip(
+        assistant.tryImplement({
+          planId: created.plan.planId,
+          parentCommitId: revision.commitId,
+        }),
+      );
+      assert.strictEqual(refused._tag, "PlanTurnActiveError");
+      assert.strictEqual(yield* Queue.size(frames), 0);
+      assert.strictEqual(yield* assistant.implementProposal(created.plan.planId), undefined);
+
+      yield* assistant.teardownPlan({ planId: created.plan.planId, commitPartial: false });
+      assert.strictEqual((yield* Queue.take(frames)).kind, "turn-settled");
+      assert.strictEqual(yield* Queue.take(harness.stops), session.threadId);
+
+      yield* assistant.tryImplement({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+      });
+      const analyzed = yield* Queue.take(frames);
+      assert.ok(
+        analyzed.kind === "implement-analyzed" && analyzed.proposal.verdict.kind === "atomic",
+      );
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("short-circuits a fully covered recorded verdict without a provider session", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created } = yield* seedPlan();
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Both repositories",
+        createdAt: at("2026-08-08T01:20:00.000Z"),
+      });
+      const { first, second } = yield* seedTwoRepositories(created);
+      yield* store.recordImplementVerdict({
+        planId: created.plan.planId,
+        commitId: revision.commitId,
+        verdict: {
+          kind: "needs-split",
+          payload: {
+            repositories: [
+              { repositoryId: first.repositoryId, repositoryName: first.name },
+              { repositoryId: second.repositoryId, repositoryName: second.name },
+            ],
+            rationale: "Two implementation roots.",
+          },
+        },
+        recordedAt: at("2026-08-08T01:21:00.000Z"),
+      });
+      yield* store.saveSplits({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        splits: [
+          { repositoryId: first.repositoryId, text: "First projection" },
+          { repositoryId: second.repositoryId, text: "Second projection" },
+        ],
+        createdAt: at("2026-08-08T01:22:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        text: "Finish this reply first",
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      assert.strictEqual((yield* Queue.take(frames)).kind, "turn-started");
+
+      const refused = yield* Effect.flip(
+        assistant.tryImplement({
+          planId: created.plan.planId,
+          parentCommitId: revision.commitId,
+        }),
+      );
+      assert.strictEqual(refused._tag, "PlanTurnActiveError");
+      assert.strictEqual(yield* Queue.size(frames), 0);
+      assert.strictEqual(yield* assistant.implementProposal(created.plan.planId), undefined);
+
+      yield* assistant.teardownPlan({ planId: created.plan.planId, commitPartial: false });
+      assert.strictEqual((yield* Queue.take(frames)).kind, "turn-settled");
+      assert.strictEqual(yield* Queue.take(harness.stops), session.threadId);
+
+      yield* assistant.tryImplement({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+      });
+      const analyzed = yield* Queue.take(frames);
+      assert.ok(analyzed.kind === "implement-analyzed");
+      if (analyzed.kind === "implement-analyzed") {
+        assert.deepStrictEqual(analyzed.proposal.verdict, {
+          kind: "already-covered",
+          repositories: [
+            { repositoryId: first.repositoryId, repositoryName: first.name },
+            { repositoryId: second.repositoryId, repositoryName: second.name },
+          ],
+        });
+      }
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+      assert.strictEqual(yield* assistant.inFlightImplement(created.plan.planId), undefined);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("runs the implement turn when a recorded verdict is only partially covered", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created } = yield* seedPlan();
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        text: "# Both repositories",
+        createdAt: at("2026-08-08T01:30:00.000Z"),
+      });
+      const { first, second } = yield* seedTwoRepositories(created);
+      yield* store.recordImplementVerdict({
+        planId: created.plan.planId,
+        commitId: revision.commitId,
+        verdict: {
+          kind: "needs-split",
+          payload: {
+            repositories: [
+              { repositoryId: first.repositoryId, repositoryName: first.name },
+              { repositoryId: second.repositoryId, repositoryName: second.name },
+            ],
+          },
+        },
+        recordedAt: at("2026-08-08T01:31:00.000Z"),
+      });
+      yield* store.saveSplits({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        splits: [{ repositoryId: first.repositoryId, text: "First projection" }],
+        createdAt: at("2026-08-08T01:32:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.tryImplement({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const started = yield* Queue.take(frames);
+      assert.strictEqual(started.kind, "implement-started");
+      yield* assistant.teardownPlan({ planId: created.plan.planId, commitPartial: false });
+      const stopped = yield* Queue.take(frames);
+      assert.ok(stopped.kind === "implement-failed" && stopped.reason === "stopped");
+      assert.strictEqual(yield* Queue.take(harness.stops), session.threadId);
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
@@ -1054,6 +1324,26 @@ describe("PlanningAssistant", () => {
           ? valid.proposal.verdict.splits.length
           : 0,
         2,
+      );
+      assert.deepStrictEqual(
+        (yield* store.listImplementVerdicts({ planId: created.plan.planId })).map(
+          ({ commitId, verdict }) => ({ commitId, verdict }),
+        ),
+        [
+          {
+            commitId: revision.commitId,
+            verdict: {
+              kind: "needs-split",
+              payload: {
+                repositories: [
+                  { repositoryId: first.repositoryId, repositoryName: first.name },
+                  { repositoryId: second.repositoryId, repositoryName: second.name },
+                ],
+                rationale: "The protocol and implementation move together.",
+              },
+            },
+          },
+        ],
       );
       assert.ok((yield* assistant.implementProposal(created.plan.planId)) !== undefined);
       yield* assistant.startTurn({

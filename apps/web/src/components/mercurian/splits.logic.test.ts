@@ -2,9 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   MercurianCommitId,
-  MercurianProjectId,
   MercurianRepositoryId,
-  PlanId,
   PlanTurnId,
   type PlanImplementProposal,
   type PlanTimelineItem,
@@ -66,11 +64,48 @@ describe("split proposal logic", () => {
         { repositoryId, repositoryName: "server", text: "  Server work  " },
         { repositoryId: otherRepositoryId, repositoryName: "web", text: "removed", removed: true },
       ]),
-    ).toEqual([{ repositoryId, text: "Server work" }]);
+    ).toEqual([{ repositoryId, repositoryName: "server", text: "Server work" }]);
     expect(confirmPayload([{ repositoryId, repositoryName: "server", text: "   " }])).toBeNull();
     expect(
       confirmPayload([{ repositoryId, repositoryName: "server", text: "gone", removed: true }]),
     ).toBeNull();
+  });
+
+  it("turns an already-covered verdict into jumps only", () => {
+    const existing = new Map([
+      [
+        repositoryId,
+        {
+          repositoryId,
+          repositoryName: "server",
+          commitId: MercurianCommitId.make("server-plan"),
+        },
+      ],
+      [
+        otherRepositoryId,
+        {
+          repositoryId: otherRepositoryId,
+          repositoryName: "web",
+          commitId: MercurianCommitId.make("web-plan"),
+        },
+      ],
+    ]);
+    const partitioned = partitionProposal(
+      {
+        turnId: PlanTurnId.make("covered-turn"),
+        parentCommitId: MercurianCommitId.make("parent"),
+        verdict: {
+          kind: "already-covered",
+          repositories: [
+            { repositoryId, repositoryName: "server" },
+            { repositoryId: otherRepositoryId, repositoryName: "web" },
+          ],
+        },
+      },
+      existing,
+    );
+    expect(partitioned.cards).toEqual([]);
+    expect(partitioned.alreadySplit.map((item) => item.repositoryName)).toEqual(["server", "web"]);
   });
 
   it("states every implement disabled reason", () => {

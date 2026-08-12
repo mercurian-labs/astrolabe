@@ -49,10 +49,13 @@ import {
   type PlanGroundingScope,
   type PlanId,
   type PlanImplementProposal,
+  type PlanImplementReady,
+  type PlanImplementVerdict,
   type PlanInFlightImplement,
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanStreamItem,
+  PlanTurnActiveError,
   PlanTurnId,
   type PlanTurnRefusalReason,
   type ProviderInstanceId,
@@ -76,6 +79,7 @@ import {
   MessageCommitPayload,
   PlanningStore,
   PlanRevisionCommitPayload,
+  type StoredPlanImplementVerdict,
   type PlanningStoreError,
 } from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
@@ -190,6 +194,7 @@ const APPROVED_PLANNING_MCP_TOOLS = [
   "read_plan",
 ] as const satisfies ReadonlyArray<PlanningMcpToolName>;
 const PLANNING_MCP_TOOL_PREFIXES = ["mcp__t3-code__", "t3-code_"] as const;
+const decodePlanRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
 
 const normalizePlanningMcpToolName = (toolName: string): string | undefined => {
   const prefix = PLANNING_MCP_TOOL_PREFIXES.find((candidate) => toolName.startsWith(candidate));
@@ -242,6 +247,11 @@ export class PlanningAssistant extends Context.Service<
     readonly cancelImplementProposal: (planId: PlanId) => Effect.Effect<void>;
     /** Clear a landed proposal after its split commits have become the stream signal. */
     readonly clearImplementProposal: (planId: PlanId) => Effect.Effect<void>;
+    /** Publish a ready verdict that the store has already made durable. */
+    readonly publishImplementReady: (input: {
+      readonly planId: PlanId;
+      readonly ready: PlanImplementReady;
+    }) => Effect.Effect<void>;
     /** The tree's two status inputs, for every plan with a live turn. */
     readonly status: Effect.Effect<ReadonlyMap<PlanId, PlanTurnStatus>>;
     /** Fires when any turn starts, pauses on a question, or settles. */
@@ -375,6 +385,21 @@ export const make = Effect.gen(function* () {
     Effect.map((uuid) => ThreadId.make(`mercurian-plan-${uuid}`)),
   );
 
+  const publishShortCircuit = Effect.fn("PlanningAssistant.publishShortCircuit")(function* (input: {
+    readonly planId: PlanId;
+    readonly parentCommitId: CommitId;
+    readonly verdict: PlanImplementVerdict;
+  }) {
+    const proposal = {
+      turnId: yield* mintTurnId,
+      parentCommitId: MercurianCommitId.make(input.parentCommitId),
+      verdict: input.verdict,
+    } satisfies PlanImplementProposal;
+    proposals.set(input.planId, proposal);
+    yield* publishFrame(input.planId, { kind: "implement-analyzed", proposal });
+    yield* announceChange;
+  });
+
   /**
    * Land the turn's one message commit and release everything the turn
    * holds. Total: a failing append still frees the plan — a wedged plan
@@ -435,7 +460,11 @@ export const make = Effect.gen(function* () {
     yield* announceChange;
   });
 
-  /** Validate and publish an implement result. This path never writes history. */
+  /**
+   * Validate and publish an implement result. A node exists only when its
+   * content differs from its parent, so a ready answer records the side-fact
+   * and never copies the plan into a new revision.
+   */
   const settleImplement = Effect.fn("PlanningAssistant.settleImplement")(function* (
     planId: PlanId,
     outcome: "completed" | "stopped" | "provider-error",
@@ -535,6 +564,59 @@ export const make = Effect.gen(function* () {
       }
     }
 
+    let ready: PlanImplementReady | undefined;
+    if (proposal !== undefined && proposal.verdict.kind !== "already-covered") {
+      const verdict: StoredPlanImplementVerdict =
+        proposal.verdict.kind === "atomic"
+          ? {
+              kind: "ready",
+              payload: {
+                repositoryId: proposal.verdict.repositoryId,
+                repositoryName: proposal.verdict.repositoryName,
+              },
+            }
+          : {
+              kind: "needs-split",
+              payload: {
+                repositories: [
+                  {
+                    repositoryId: proposal.verdict.splits[0].repositoryId,
+                    repositoryName: proposal.verdict.splits[0].repositoryName,
+                  },
+                  ...proposal.verdict.splits.slice(1).map((split) => ({
+                    repositoryId: split.repositoryId,
+                    repositoryName: split.repositoryName,
+                  })),
+                ],
+                ...(proposal.verdict.rationale === undefined
+                  ? {}
+                  : { rationale: proposal.verdict.rationale }),
+              },
+            };
+      const recordedAt = yield* DateTime.now;
+      const recorded = yield* planningStore
+        .recordImplementVerdict({
+          planId,
+          commitId: turn.parentCommitId,
+          verdict,
+          recordedAt,
+        })
+        .pipe(Effect.result);
+      if (Result.isFailure(recorded)) {
+        yield* Effect.logError("implement verdict failed to record", {
+          planId,
+          cause: recorded.failure,
+        });
+        proposal = undefined;
+        failureReason = "provider-error";
+      } else if (verdict.kind === "ready") {
+        ready = {
+          commitId: MercurianCommitId.make(turn.parentCommitId),
+          ...verdict.payload,
+        };
+      }
+    }
+
     turns.delete(planId);
     sessions.delete(planId);
     yield* registry.close(planId);
@@ -548,6 +630,9 @@ export const make = Effect.gen(function* () {
     } else {
       proposals.set(planId, proposal);
       yield* publishFrame(planId, { kind: "implement-analyzed", proposal });
+      if (ready !== undefined) {
+        yield* publishFrame(planId, { kind: "implement-ready", ready });
+      }
     }
     yield* providerService
       .stopSession({ threadId: turn.threadId })
@@ -1027,15 +1112,64 @@ export const make = Effect.gen(function* () {
   const tryImplement: PlanningAssistant["Service"]["tryImplement"] = (input) =>
     Effect.gen(function* () {
       proposals.delete(input.planId);
-      const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
       const context = yield* planningStore.getImplementContext({
         planId: input.planId,
         ...(input.parentCommitId === undefined ? {} : { atCommitId: input.parentCommitId }),
       });
+      const verdicts = yield* planningStore.listImplementVerdicts({ planId: input.planId });
+      const recorded = verdicts.find((verdict) => verdict.commitId === context.atCommitId);
+      if (recorded?.verdict.kind === "ready") {
+        if (Option.isSome(yield* registry.get(input.planId))) {
+          return yield* new PlanTurnActiveError({ planId: input.planId });
+        }
+        yield* publishShortCircuit({
+          planId: input.planId,
+          parentCommitId: context.atCommitId,
+          verdict: {
+            kind: "atomic",
+            ...recorded.verdict.payload,
+          },
+        });
+        return;
+      }
+      if (recorded?.verdict.kind === "needs-split") {
+        const children = yield* commits.children({
+          commitId: context.atCommitId,
+          visibility: "all",
+        });
+        const coveredRepositoryIds = new Set<string>();
+        for (const child of children) {
+          if (child.kind !== "plan-revision") continue;
+          const payload = yield* decodePlanRevisionPayload(child.payload);
+          if (payload.split !== undefined) {
+            coveredRepositoryIds.add(payload.split.repositoryId);
+          }
+        }
+        if (
+          recorded.verdict.payload.repositories.every((repository) =>
+            coveredRepositoryIds.has(repository.repositoryId),
+          )
+        ) {
+          if (Option.isSome(yield* registry.get(input.planId))) {
+            return yield* new PlanTurnActiveError({ planId: input.planId });
+          }
+          yield* publishShortCircuit({
+            planId: input.planId,
+            parentCommitId: context.atCommitId,
+            verdict: {
+              kind: "already-covered",
+              repositories: recorded.verdict.payload.repositories,
+            },
+          });
+          return;
+        }
+      }
+
       if (context.planText.trim().length === 0) {
         return yield* new ImplementBlockedError({ reason: "plan-empty" });
       }
 
+      const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
       const settings = yield* workspaceSettings.getSnapshot;
       const providers = yield* providerRegistry.getProviders;
       const resolution = resolvePlanningModel(settings.planningModel, providers);
@@ -1276,6 +1410,9 @@ export const make = Effect.gen(function* () {
   const clearImplementProposal: PlanningAssistant["Service"]["clearImplementProposal"] = (planId) =>
     Effect.sync(() => void proposals.delete(planId));
 
+  const publishImplementReady: PlanningAssistant["Service"]["publishImplementReady"] = (input) =>
+    publishFrame(input.planId, { kind: "implement-ready", ready: input.ready });
+
   const status: PlanningAssistant["Service"]["status"] = Effect.sync(() => {
     const result = new Map<PlanId, PlanTurnStatus>();
     for (const turn of turns.values()) {
@@ -1388,6 +1525,7 @@ export const make = Effect.gen(function* () {
     implementProposal,
     cancelImplementProposal,
     clearImplementProposal,
+    publishImplementReady,
     status,
     teardownPlan,
     saveRevisionFromThread,

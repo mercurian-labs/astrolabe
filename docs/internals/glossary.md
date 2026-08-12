@@ -214,15 +214,19 @@ A direct edit of the plan, recorded as a `plan-revision` commit in the plan's on
 
 #### Atomic plan
 
-A plan whose implementation belongs in exactly one repository. The [implement gate](#implement-gate) identifies the repository but does not write history or start a coding session.
+Internal term, never surfaced in product copy: a plan whose implementation belongs in exactly one repository. The [implement gate](#implement-gate) identifies the repository but does not write history or start a coding session.
 
 #### Split
 
-A plan projection for one repository, landed as a human-authored `plan-revision` branch from the commit where the implement gate ran. Its payload stamps the repository id and name beside the projected text. A split changes the artifact on its own branch, never the parent line; it remains readable even if the repository is later disconnected.
+Internal term, never surfaced in product copy: a plan projection for one repository, landed as a human-authored `plan-revision` branch from the commit where the implement gate ran. Its payload stamps the repository id and name beside the projected text. A split changes the artifact on its own branch, never the parent line; it remains readable even if the repository is later disconnected.
+
+#### Readiness verdict
+
+The implement gate's immutable, recorded answer about one commit. A ready verdict names the one repository where a coding session can run and crosses the wire as a keyed side-fact, rendered as **Ready to implement** wherever that commit appears. A needs-split verdict records the repositories still requiring projections for server-side short-circuiting but is not itself surfaced. Absence means the commit has never been evaluated.
 
 #### Implement gate
 
-The read-only analysis between a finished plan and implementation. It grounds across the project's repository set and produces either an [atomic plan](#atomic-plan) verdict or editable split proposals. Analysis and cancellation write no commits. Only explicit confirmation lands splits, as sibling plan-revision branches at the analyzed commit.
+The read-only analysis between a finished plan and implementation. It grounds across the project's repository set and produces either an [atomic plan](#atomic-plan) verdict or editable split proposals, then records that [readiness verdict](#readiness-verdict) against the analyzed commit. Analysis and cancellation write no commits. Only explicit confirmation lands splits, as sibling plan-revision branches at the analyzed commit; those projected commits are born with ready verdicts of their own.
 
 #### Planning turn
 

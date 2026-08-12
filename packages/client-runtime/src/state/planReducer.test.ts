@@ -7,6 +7,7 @@ import {
   PlanId,
   PlanTurnId,
   type PlanDetail,
+  type PlanImplementReady,
   type PlanQuestion,
   type PlanStreamItem,
   type PlanTimelineItem,
@@ -47,6 +48,7 @@ const snapshot: PlanDetail = {
   planText: "",
   timeline: [message("commit-1", 1, "Reshape the sidebar")],
   snapshotSequence: 1,
+  readyCommits: [],
 };
 
 const fold = (items: ReadonlyArray<PlanStreamItem>) =>
@@ -307,6 +309,49 @@ describe("applyPlanStreamItem implement frames", () => {
     expect(state.detail?.inFlightImplement).toBeUndefined();
     expect(state.detail?.implementProposal).toEqual(proposal);
     expect(state.implementFailure).toBeNull();
+  });
+
+  it("folds a short-circuited proposal with no in-flight analysis", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "implement-analyzed", proposal },
+    ]);
+    expect(state.detail?.implementProposal).toEqual(proposal);
+  });
+
+  it("rejects a proposal that contradicts a different live turn", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      { kind: "implement-analyzed", proposal },
+    ]);
+    expect(state.detail?.implementProposal).toBeUndefined();
+    expect(state.detail?.inFlightTurn?.turnId).toBe(turnId);
+  });
+
+  it("inserts readiness before its commit and replaces readiness on snapshot", () => {
+    const ready: PlanImplementReady = {
+      commitId: MercurianCommitId.make("commit-not-here-yet"),
+      repositoryId: MercurianRepositoryId.make("repo-1"),
+      repositoryName: "server",
+    };
+    const inserted = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "implement-ready", ready },
+    ]);
+    expect(inserted.readyCommits.get(ready.commitId)).toEqual(ready);
+    expect(inserted.detail?.timeline.some((item) => item.commitId === ready.commitId)).toBe(false);
+
+    const replacement: PlanImplementReady = {
+      ...ready,
+      commitId: MercurianCommitId.make("commit-replacement"),
+      repositoryName: "web",
+    };
+    const resnapshotted = applyPlanStreamItem(inserted, {
+      kind: "snapshot",
+      snapshot: { ...snapshot, readyCommits: [replacement] },
+    });
+    expect([...resnapshotted.readyCommits.values()]).toEqual([replacement]);
   });
 
   it("records failure and clears it on the next analysis", () => {

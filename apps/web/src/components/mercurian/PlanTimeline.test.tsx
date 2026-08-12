@@ -234,7 +234,7 @@ describe("PlanTimeline", () => {
     expect(markup).not.toContain("data-model-picker-content");
   });
 
-  it("labels split revisions with their repository", () => {
+  it("labels repository plan revisions in user terms", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
@@ -254,7 +254,29 @@ describe("PlanTimeline", () => {
         ]}
       />,
     );
-    expect(markup).toContain("You split the plan for server");
+    expect(markup).toContain("You added a plan for server");
+  });
+
+  it("badges a ready commit", () => {
+    const readyMessage = message("ready-1", "human", "Implement this");
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        readyCommits={
+          new Map([
+            [
+              readyMessage.commitId,
+              {
+                commitId: readyMessage.commitId,
+                repositoryId: MercurianRepositoryId.make("repo-server"),
+                repositoryName: "server",
+              },
+            ],
+          ])
+        }
+        timeline={[readyMessage]}
+      />,
+    );
+    expect(markup).toContain("Ready to implement");
   });
 
   it("renders the implement analyzing card with grounding and Stop", () => {
@@ -269,7 +291,8 @@ describe("PlanTimeline", () => {
         onStopImplement={() => undefined}
       />,
     );
-    expect(markup).toContain("Working out where this plan implements…");
+    expect(markup).toContain("Checking whether this plan is ready to implement.");
+    expect(markup).toContain("A coding session works in one repository at a time.");
     expect(markup).toContain("Consulted 1 item…");
     expect(markup).toContain(">Stop</button>");
   });

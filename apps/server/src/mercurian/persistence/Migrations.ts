@@ -20,6 +20,7 @@ import Migration0005 from "./Migrations/005_TrackerConnections.ts";
 import Migration0006 from "./Migrations/006_PlanVisits.ts";
 import Migration0007 from "./Migrations/007_PlanLifecycle.ts";
 import Migration0008 from "./Migrations/008_PlanOrigins.ts";
+import Migration0009 from "./Migrations/009_PlanImplementVerdicts.ts";
 
 export const migrationEntries = [
   [1, "CommitGraph", Migration0001],
@@ -30,6 +31,7 @@ export const migrationEntries = [
   [6, "PlanVisits", Migration0006],
   [7, "PlanLifecycle", Migration0007],
   [8, "PlanOrigins", Migration0008],
+  [9, "PlanImplementVerdicts", Migration0009],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

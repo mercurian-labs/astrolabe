@@ -306,6 +306,14 @@ export const PlanSplitProposal = Schema.Struct({
 });
 export type PlanSplitProposal = typeof PlanSplitProposal.Type;
 
+/** A commit whose recorded implementation verdict says it needs no projection. */
+export const PlanImplementReady = Schema.Struct({
+  commitId: MercurianCommitId,
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+});
+export type PlanImplementReady = typeof PlanImplementReady.Type;
+
 export const PlanImplementVerdict = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("atomic"),
@@ -316,6 +324,15 @@ export const PlanImplementVerdict = Schema.Union([
     kind: Schema.Literal("needs-split"),
     rationale: Schema.optional(Schema.String),
     splits: Schema.NonEmptyArray(PlanSplitProposal),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("already-covered"),
+    repositories: Schema.NonEmptyArray(
+      Schema.Struct({
+        repositoryId: MercurianRepositoryId,
+        repositoryName: TrimmedNonEmptyString,
+      }),
+    ),
   }),
 ]);
 export type PlanImplementVerdict = typeof PlanImplementVerdict.Type;
@@ -348,6 +365,8 @@ export const PlanDetail = Schema.Struct({
   timeline: Schema.Array(PlanTimelineItem),
   /** The highest commit sequence this snapshot accounts for — the resume cursor. */
   snapshotSequence: Schema.Number,
+  /** Ready verdicts keyed by commit identity rather than embedded in history items. */
+  readyCommits: Schema.Array(PlanImplementReady),
   /** The turn streaming right now, when one is. Runtime state, never stored. */
   inFlightTurn: Schema.optional(PlanInFlightTurn),
   /** An implement analysis currently running. Runtime state, never stored. */
@@ -429,6 +448,10 @@ export const PlanStreamItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("implement-analyzed"),
     proposal: PlanImplementProposal,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("implement-ready"),
+    ready: PlanImplementReady,
   }),
   Schema.Struct({
     kind: Schema.Literal("implement-cancelled"),

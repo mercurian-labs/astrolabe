@@ -17,6 +17,11 @@ export interface SplitCard extends PlanSplitProposal {
   readonly removed?: boolean;
 }
 
+export interface LandedPlan {
+  readonly commitId: MercurianCommitId;
+  readonly repositoryName: string;
+}
+
 export function existingSplitsAt(
   graph: PlanGraph,
   commitId: MercurianCommitId,
@@ -50,21 +55,29 @@ export function partitionProposal(
   if (proposal.verdict.kind === "atomic") return { cards: [], alreadySplit: [] };
   const cards: Array<SplitCard> = [];
   const alreadySplit: Array<ExistingSplit> = [];
-  for (const split of proposal.verdict.splits) {
-    const landed = existing.get(split.repositoryId);
-    if (landed === undefined) cards.push(split);
-    else alreadySplit.push(landed);
+  if (proposal.verdict.kind === "already-covered") {
+    for (const repository of proposal.verdict.repositories) {
+      const landed = existing.get(repository.repositoryId);
+      if (landed !== undefined) alreadySplit.push(landed);
+    }
+    return { cards, alreadySplit };
+  }
+  for (const repository of proposal.verdict.splits) {
+    const landed = existing.get(repository.repositoryId);
+    if (landed !== undefined) alreadySplit.push(landed);
+    else cards.push(repository);
   }
   return { cards, alreadySplit };
 }
 
 export function confirmPayload(
   cards: ReadonlyArray<SplitCard>,
-): ReadonlyArray<{ readonly repositoryId: MercurianRepositoryId; readonly text: string }> | null {
+): ReadonlyArray<PlanSplitProposal> | null {
   const active = cards.filter((card) => card.removed !== true);
   if (active.length === 0) return null;
   const payload = active.map((card) => ({
     repositoryId: card.repositoryId,
+    repositoryName: card.repositoryName,
     text: card.text.trim(),
   }));
   return payload.some((split) => split.text.length === 0) ? null : payload;

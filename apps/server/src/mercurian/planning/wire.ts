@@ -93,6 +93,10 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
   planText: detail.planText,
   timeline: detail.timeline.map(toWirePlanTimelineItem),
   snapshotSequence: detail.snapshotSequence,
+  readyCommits: detail.readyCommits.map((ready) => ({
+    ...ready,
+    commitId: MercurianCommitId.make(ready.commitId),
+  })),
 });
 
 export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanStreamItem => ({

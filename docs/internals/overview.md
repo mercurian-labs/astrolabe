@@ -140,10 +140,12 @@ publishes its unpublished ancestors along every parent path. See
 one history and is created together with its root commit, so a plan without a first message cannot
 exist. The plan artifact has no table: a direct edit lands as a `plan-revision` commit carrying the
 whole new text, and the plan's current text is derived from the revisions along the history's path.
-The implement gate is a transient, read-only planning turn over that text and the project's repository
-set. It retains an atomic-or-split proposal in memory; only a person's confirmation writes split
-projections, as sibling `plan-revision` commits whose repository stamp does not change the parent
-line's derived artifact.
+The implement gate is a read-only planning turn over that text and the project's repository set. Its
+immutable readiness verdict is recorded beside the commit it evaluated, while a pending proposal
+remains transient in memory. A ready answer writes no commit; only a person's confirmation writes
+repository projections as sibling `plan-revision` commits whose repository stamp does not change
+the parent line's derived artifact, and each projected commit is recorded ready in the same
+transaction.
 The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
 re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
 planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
