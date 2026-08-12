@@ -334,6 +334,10 @@ export function createDevRunnerEnv({
         `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
     };
 
+    if (output.T3CODE_MOCK_PROVIDER === undefined) {
+      output.T3CODE_MOCK_PROVIDER = "1";
+    }
+
     if (configuredBaseDir !== undefined) {
       output.T3CODE_HOME = resolvedBaseDir;
     } else {

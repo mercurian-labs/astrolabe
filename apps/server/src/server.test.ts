@@ -474,6 +474,7 @@ const buildAppUnderTest = (options?: {
       startupPresentation: "browser",
       desktopBootstrapToken: defaultDesktopBootstrapToken,
       autoBootstrapProjectFromCwd: false,
+      mockProviderEnabled: false,
       logWebSocketEvents: false,
       tailscaleServeEnabled: false,
       tailscaleServePort: 443,

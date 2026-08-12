@@ -155,6 +155,27 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
 
         assert.equal(env.T3CODE_HOME, undefined);
         assert.equal(env.T3CODE_NO_BROWSER, "1");
+        assert.equal(env.T3CODE_MOCK_PROVIDER, "1");
+      }),
+    );
+
+    it.effect("keeps an explicit mock provider opt-out", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev",
+          baseEnv: { T3CODE_MOCK_PROVIDER: "0" },
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          browser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_MOCK_PROVIDER, "0");
       }),
     );
 
