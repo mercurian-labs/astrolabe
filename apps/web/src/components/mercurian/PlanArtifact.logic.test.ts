@@ -6,6 +6,8 @@ const message = (createdAt: string) =>
   ({ _tag: "message", authorKind: "human", createdAt }) as const;
 const revision = (authorKind: "human" | "assistant", createdAt: string) =>
   ({ _tag: "plan-revision", authorKind, createdAt }) as const;
+const splitRevision = (authorKind: "human" | "assistant", createdAt: string) =>
+  ({ _tag: "plan-revision", authorKind, createdAt, split: {} }) as const;
 
 describe("lastPlanRevision", () => {
   it("has nothing to attribute on a plan born blank", () => {
@@ -28,15 +30,33 @@ describe("lastPlanRevision", () => {
     ]);
     expect(attribution?.authorKind).toBe("assistant");
   });
+
+  it("attributes a path ending at a split to that split revision", () => {
+    const attribution = lastPlanRevision([
+      revision("assistant", "2026-08-03T00:01:00.000Z"),
+      splitRevision("human", "2026-08-03T00:02:00.000Z"),
+    ]);
+    expect(attribution).toEqual({
+      authorKind: "human",
+      createdAt: "2026-08-03T00:02:00.000Z",
+    });
+  });
 });
 
 const msg = (commitId: string) => ({ _tag: "message", commitId }) as const;
 const rev = (commitId: string) => ({ _tag: "plan-revision", commitId }) as const;
+const splitRev = (commitId: string) =>
+  ({ _tag: "plan-revision", commitId, split: { repositoryId: "repo-1" } }) as const;
 
 describe("snapshotTextIsForPath", () => {
   it("trusts the snapshot while the history is one line", () => {
     const timeline = [msg("a"), rev("b"), msg("c")];
     expect(snapshotTextIsForPath(timeline, timeline)).toBe(true);
+  });
+
+  it("fetches path text when the path ends at a split", () => {
+    const timeline = [msg("root"), rev("parent-plan"), splitRev("split-a")];
+    expect(snapshotTextIsForPath(timeline, timeline)).toBe(false);
   });
 
   it("trusts it for a plan nobody has edited on either reading", () => {

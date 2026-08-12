@@ -67,10 +67,15 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
+  ConfirmSplitsBlockedError,
+  ImplementBlockedError,
   MERCURIAN_WS_METHODS,
   MercurianAnswerPlanningQuestionInput,
   MercurianAppendPlanMessageInput,
   MercurianArchivePlanInput,
+  MercurianCancelImplementProposalInput,
+  MercurianConfirmSplitsInput,
+  MercurianConfirmSplitsResult,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
@@ -87,6 +92,7 @@ import {
   MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
+  MercurianTryImplementInput,
   NoPendingQuestionError,
   PlanDeleteBlockedError,
   PlanDetail,
@@ -941,6 +947,39 @@ export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
   ]),
 });
 
+export const WsMercurianTryImplementRpc = Rpc.make(MERCURIAN_WS_METHODS.tryImplement, {
+  payload: MercurianTryImplementInput,
+  success: MercurianPlanAcknowledged,
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanTurnActiveError,
+    ImplementBlockedError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianConfirmSplitsRpc = Rpc.make(MERCURIAN_WS_METHODS.confirmSplits, {
+  payload: MercurianConfirmSplitsInput,
+  success: MercurianConfirmSplitsResult,
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanTurnActiveError,
+    ConfirmSplitsBlockedError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianCancelImplementProposalRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.cancelImplementProposal,
+  {
+    payload: MercurianCancelImplementProposalInput,
+    success: MercurianPlanAcknowledged,
+    error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+  },
+);
+
 // The planning turn's two acts. Turns are never started by RPC — a turn
 // starts server-side when a human message commits — so the only verbs a
 // client holds are stopping the reply and answering its question.
@@ -1268,6 +1307,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianImportPlanRpc,
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
+  WsMercurianTryImplementRpc,
+  WsMercurianConfirmSplitsRpc,
+  WsMercurianCancelImplementProposalRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
