@@ -978,11 +978,18 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mock(PlanningAssistant.PlanningAssistant)({
           startTurn: () => Effect.void,
+          tryImplement: () => Effect.void,
           stopTurn: () => Effect.void,
+          answerQuestion: () => Effect.void,
           status: Effect.succeed(new Map()),
           changes: Stream.empty,
           frames: () => Stream.empty,
           inFlight: () => Effect.succeed(undefined),
+          inFlightImplement: () => Effect.succeed(undefined),
+          implementProposal: () => Effect.succeed(undefined),
+          cancelImplementProposal: () => Effect.void,
+          clearImplementProposal: () => Effect.void,
+          publishImplementReady: () => Effect.void,
           teardownPlan: () => Effect.void,
           ...options?.layers?.planningAssistant,
         }),
