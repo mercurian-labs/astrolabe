@@ -2,6 +2,7 @@ import type {
   MercurianCommitId,
   MercurianProjectId,
   PlanId,
+  PlanSpecAt,
   PlanTimelineItem,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -35,6 +36,7 @@ import {
   useConfirmSplits,
   useCreatePlan,
   useGetPlanTextAt,
+  useGetSpecAt,
   usePlanDetail,
   useStopPlanningTurn,
   useTryImplement,
@@ -73,6 +75,8 @@ import {
   type PlanPosition,
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
+import { SpecArtifact } from "./SpecArtifact";
+import { snapshotSpecIsForPath, staleSpecLeafIds } from "./SpecArtifact.logic";
 import { SplitSheet } from "./SplitSheet";
 import { existingSplitsAt, implementDisabledReason, type LandedPlan } from "./splits.logic";
 
@@ -83,10 +87,11 @@ const RIGHT_PANE_MAX_WIDTH = 900;
 const RIGHT_PANE_THREAD_MAX_WIDTH = 560;
 const CONVERSATION_MIN_WIDTH = 480;
 
-const RIGHT_PANE_STORAGE_KEY = "mercurian:plan-right-pane:v1";
+const RIGHT_PANE_STORAGE_KEY = "mercurian:plan-right-pane:v2";
 const RightPaneState = Schema.Struct({
   open: Schema.Boolean,
   view: Schema.Literals(["artifact", "explorer"]),
+  artifact: Schema.Literals(["plan", "spec"]),
 });
 type RightPaneState = typeof RightPaneState.Type;
 
@@ -95,7 +100,7 @@ type RightPaneState = typeof RightPaneState.Type;
  * preference is not keyed by plan on purpose: which view you prefer is a fact
  * about you, not about the issue, so it follows you across plans.
  */
-const DEFAULT_RIGHT_PANE: RightPaneState = { open: true, view: "artifact" };
+const DEFAULT_RIGHT_PANE: RightPaneState = { open: true, view: "artifact", artifact: "plan" };
 
 /** One identity for "nothing yet", so the derived graph is not rebuilt for it. */
 const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
@@ -114,6 +119,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
+  const getSpecAt = useGetSpecAt();
   const visitPlan = useVisitPlan();
   const stopTurn = useStopPlanningTurn();
   const answerQuestion = useAnswerPlanningQuestion();
@@ -138,6 +144,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const proposal = detail?.implementProposal;
   const existingSplits = useMemo(
     () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
@@ -189,6 +196,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const [position, setPosition] = useState<PlanPosition>(LATEST);
   const [pathText, setPathText] = useState<string | null>(null);
+  const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
   const draft = usePlanComposerStore(
     (state) => state.draftsByPlanId[planId] ?? EMPTY_PLAN_COMPOSER_DRAFT,
   );
@@ -291,6 +299,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
    * exactly when it is not, which on a linear history is never.
    */
   const needsPathText = head !== null && !snapshotTextIsForPath(timeline, visibleTimeline);
+  const needsPathSpec = head !== null && !snapshotSpecIsForPath(timeline, visibleTimeline);
 
   useEffect(() => {
     if (!needsPathText || head === null) {
@@ -306,6 +315,21 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       cancelled = true;
     };
   }, [getPlanTextAt, head, needsPathText, planId]);
+
+  useEffect(() => {
+    if (!needsPathSpec || head === null) {
+      setPathSpec(undefined);
+      return;
+    }
+    let cancelled = false;
+    setPathSpec(undefined);
+    void getSpecAt(planId, head).then((result) => {
+      if (!cancelled && result !== null) setPathSpec(result.spec);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSpecAt, head, needsPathSpec, planId]);
 
   /**
    * Sending says where it stands. From a branch tip that continues the
@@ -356,6 +380,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   }
 
   const artifactText = needsPathText ? pathText : (detail?.planText ?? null);
+  const artifactSpec = needsPathSpec ? pathSpec : detail?.spec;
   const implementReason = implementDisabledReason({
     turnActive: inFlightTurn !== undefined || inFlightImplement !== undefined,
     planTextEmpty: artifactText === null || artifactText.trim().length === 0,
@@ -453,32 +478,60 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   anchoredCommitId={head}
                   graph={graph}
                   readyCommits={readyCommits}
+                  staleSpecCommitIds={staleSpecLeaves}
                   onColumnsWidthCapChange={setColumnsWidthCap}
                   onSelect={select}
                 />
-              ) : artifactText === null ? (
+              ) : pane.artifact === "plan" && artifactText === null ? (
                 // The plan as of then is still on its way. An empty artifact
                 // and an unread one look alike, and saying nothing is better
                 // than saying the plan was blank.
                 <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
                   <p className="text-sm text-muted-foreground/70">Reading the plan as of then…</p>
                 </div>
+              ) : pane.artifact === "spec" && artifactSpec === undefined ? (
+                <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
+                  <p className="text-sm text-muted-foreground/70">Reading the spec as of then…</p>
+                </div>
               ) : (
-                <PlanArtifact
-                  // An edit lands on the branch you are standing on. Editing
-                  // is only offered live, so a revision can never be the thing
-                  // that opens a fork: a fork opens with a message.
-                  {...(head === null ? {} : { parentCommitId: head })}
-                  planId={planId}
-                  planText={artifactText}
-                  readOnly={viewingPast}
-                  readOnlyAction={
-                    <Button size="sm" variant="ghost" onClick={backToNow}>
-                      Back to now
-                    </Button>
-                  }
-                  timeline={visibleTimeline}
-                />
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <ArtifactToggle
+                    value={pane.artifact}
+                    onChange={(artifact) => setPane({ ...pane, artifact })}
+                  />
+                  {pane.artifact === "plan" ? (
+                    <PlanArtifact
+                      // An edit lands on the branch you are standing on. Editing
+                      // is only offered live, so a revision can never be the thing
+                      // that opens a fork: a fork opens with a message.
+                      {...(head === null ? {} : { parentCommitId: head })}
+                      planId={planId}
+                      planText={artifactText ?? ""}
+                      readOnly={viewingPast}
+                      readOnlyAction={
+                        <Button size="sm" variant="ghost" onClick={backToNow}>
+                          Back to now
+                        </Button>
+                      }
+                      timeline={visibleTimeline}
+                    />
+                  ) : (
+                    <SpecArtifact
+                      {...(head === null ? {} : { parentCommitId: head })}
+                      {...(detail.origin === undefined ? {} : { origin: detail.origin })}
+                      planId={planId}
+                      readOnly={viewingPast}
+                      readOnlyAction={
+                        <Button size="sm" variant="ghost" onClick={backToNow}>
+                          Back to now
+                        </Button>
+                      }
+                      spec={artifactSpec ?? null}
+                      timeline={visibleTimeline}
+                      turnActive={inFlightTurn !== undefined || inFlightImplement !== undefined}
+                    />
+                  )}
+                </div>
               )}
             </div>
           </>
@@ -550,7 +603,7 @@ function PlanPaneToggle({
           return;
         }
         if (chosen === "artifact" || chosen === "explorer") {
-          onChange({ open: true, view: chosen });
+          onChange({ ...state, open: true, view: chosen });
         }
       }}
     >
@@ -567,6 +620,32 @@ function PlanPaneToggle({
         <TooltipPopup side="bottom">History</TooltipPopup>
       </Tooltip>
     </ToggleGroup>
+  );
+}
+
+function ArtifactToggle({
+  value,
+  onChange,
+}: {
+  readonly value: "plan" | "spec";
+  readonly onChange: (value: "plan" | "spec") => void;
+}) {
+  return (
+    <div className="flex justify-center border-b border-border px-3 py-2">
+      <ToggleGroup
+        aria-label="Planning artifact"
+        size="xs"
+        value={[value]}
+        variant="outline"
+        onValueChange={(next) => {
+          const selected = next[0];
+          if (selected === "plan" || selected === "spec") onChange(selected);
+        }}
+      >
+        <Toggle value="spec">Spec</Toggle>
+        <Toggle value="plan">Plan</Toggle>
+      </ToggleGroup>
+    </div>
   );
 }
 

@@ -146,6 +146,7 @@ export function DagExplorer({
   graph,
   anchoredCommitId,
   readyCommits,
+  staleSpecCommitIds,
   onColumnsWidthCapChange,
   onSelect,
 }: {
@@ -153,6 +154,7 @@ export function DagExplorer({
   /** Where the surface is looking, or `null` when it is looking at now. */
   readonly anchoredCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -171,7 +173,14 @@ export function DagExplorer({
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
         <h2 className="text-sm font-medium text-foreground">History</h2>
-        <span className="min-w-0 flex-1" />
+        <span className="min-w-0 flex-1">
+          {staleSpecCommitIds.size === 0 ? null : (
+            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+              {staleSpecCommitIds.size} stale spec{" "}
+              {staleSpecCommitIds.size === 1 ? "branch" : "branches"}
+            </span>
+          )}
+        </span>
         <ToggleGroup
           className="shrink-0"
           size="xs"
@@ -217,6 +226,7 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={graph}
           readyCommits={readyCommits}
+          staleSpecCommitIds={staleSpecCommitIds}
           onSelect={onSelect}
         />
       ) : view === "columns" ? (
@@ -224,6 +234,7 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={graph}
           readyCommits={readyCommits}
+          staleSpecCommitIds={staleSpecCommitIds}
           onSelect={onSelect}
           onWidthCapChange={onColumnsWidthCapChange}
         />
@@ -337,11 +348,13 @@ function ThreadView({
   graph,
   currentCommitId,
   readyCommits,
+  staleSpecCommitIds,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [parentChoices, setParentChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(
@@ -362,6 +375,7 @@ function ThreadView({
               isCurrent={row.commitId === currentCommitId}
               item={row.item}
               ready={readyCommits.has(row.commitId)}
+              staleSpec={staleSpecCommitIds.has(row.commitId)}
               ref={row.commitId === currentCommitId ? scrollRef : undefined}
               trailing={
                 row.siblings !== undefined || row.parentLines !== undefined ? (
@@ -504,12 +518,14 @@ function ColumnsView({
   graph,
   currentCommitId,
   readyCommits,
+  staleSpecCommitIds,
   onSelect,
   onWidthCapChange,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onWidthCapChange: (width: number) => void;
 }) {
@@ -715,6 +731,7 @@ function ColumnsView({
                       isCurrent={isCurrent}
                       item={row.item}
                       ready={readyCommits.has(row.commitId)}
+                      staleSpec={staleSpecCommitIds.has(row.commitId)}
                       ref={registerRow(key, isCurrent)}
                       tabIndex={focusedKey === key ? 0 : -1}
                       trailing={null}
@@ -1825,6 +1842,7 @@ function CommitRow({
   item,
   isCurrent,
   ready,
+  staleSpec = false,
   trailing,
   onSelect,
   onFocus,
@@ -1835,6 +1853,7 @@ function CommitRow({
   readonly item: PlanTimelineItem;
   readonly isCurrent: boolean;
   readonly ready: boolean;
+  readonly staleSpec?: boolean;
   readonly trailing: ReactNode;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onFocus?: () => void;
@@ -1880,6 +1899,11 @@ function CommitRow({
         {ready ? (
           <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
             Ready to implement
+          </span>
+        ) : null}
+        {staleSpec ? (
+          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+            Spec stale
           </span>
         ) : null}
         <span className="shrink-0 text-[11px] text-muted-foreground/70">
