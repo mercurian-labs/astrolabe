@@ -46,13 +46,13 @@ thing that knows how to search its own backlog. Every issue on screen was fetche
 kept nowhere: close the dialog and it is gone. Nothing is stored until you import.
 
 Select an issue and press **Import**. The plan exists immediately, appears under its project, and
-takes the issue's title. Its conversation opens with the issue itself — the title and description
-as they read at import — because that is what the plan begins from.
+takes the issue's title. The issue's title and description become the plan's root **spec** revision:
+the contract the plan is planned from.
 
 Three things follow from importing rather than starting blank:
 
 - **The plan is shared from the start.** The issue having a plan is not a private fact, so the plan
-  and the imported issue are published as soon as they exist. Everything you add afterwards is a
+  and the imported spec are published as soon as they exist. Everything you add afterwards is a
   private draft until you publish it. Because something is published from birth, an imported plan
   can only be archived, never deleted.
 - **The plan is empty.** The issue is what you plan _from_, not the plan itself, so the plan
@@ -70,8 +70,12 @@ That link is to a specific connection. If you disconnect a tracker and connect t
 again, the new connection is a new starting point, and importing an issue through it starts a new
 plan.
 
-Issues are not kept in step with the tracker. What you imported is what the plan begins with, and
-it stays that way.
+Issues are not synchronized in the background. In the plan's **Spec** pane, **Refresh from issue**
+performs one explicit live read. If only the issue changed, its new content lands as a spec revision
+on the current path and the assistant absorbs it into the existing plan. If the local spec and the
+issue both changed, nothing is overwritten: a reconciliation shows the base, local, and upstream
+documents. Choose local, upstream, or edit a resolution, then confirm to land one reconciliation
+revision. An unchanged issue writes nothing.
 
 ## Connection status
 

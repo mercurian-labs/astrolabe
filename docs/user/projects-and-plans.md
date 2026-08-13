@@ -33,7 +33,7 @@ plan's conversation then opens with that issue rather than with something you ty
 land on.
 
 Opening a plan from the tree lands on its planning space: the conversation that evolves the plan,
-with a composer to add to it, and a pane on the right for the plan's two standing views. The plan
+with a composer to add to it, and a pane on the right for its artifacts and history. The plan
 you are looking at stays highlighted in the tree while you are anywhere inside it.
 
 ## Status in the tree
@@ -102,10 +102,11 @@ Instead of guessing, the assistant can ask you a structured question — a card 
 in the conversation. The plan shows **awaiting your input** in the tree until you answer, and the
 question and your answer stay in the record with the reply.
 
-The assistant can also edit the plan itself, mid-reply, at the same standing as your own edits: its
-revisions appear in the history like yours do, live in every window. What it never does is branch,
-merge, or touch anything outside the plan — branches are yours to open, and its replies only ever
-continue from where things left off.
+The assistant can also edit the spec and plan themselves, mid-reply, at the same standing as your
+own edits. Those revisions appear in the history like yours do, live in every window, and always
+land before the reply that explains them. A claim in reply text is not an artifact change. What the
+assistant never does is branch, merge, or open another planning space — those structural acts are
+yours.
 
 One reply at a time, for the whole plan: while the assistant is answering, sending — from any
 window — waits until you stop the reply or it finishes.
@@ -117,9 +118,9 @@ drafts still work; sending resumes as soon as the model resolves. See
 
 ## The right pane
 
-Two icons sit in the space's top-right corner: the **plan** and the **history**. Pressing one shows
-it in the right pane; pressing the one already showing closes the pane and gives the conversation
-the whole width.
+Two icons sit in the space's top-right corner: **artifacts** and **history**. The artifact pane has
+a **Spec | Plan** switch. Pressing the icon already showing closes the pane and gives the
+conversation the whole width.
 
 The first plan you open comes up with its plan visible and the history one press away. After that
 the pane comes back the way you left it — open or closed, and on whichever view — and that choice
@@ -128,6 +129,25 @@ one plan.
 
 Drag the divider between the conversation and the pane to give either side more room; the width is
 remembered. On a narrow window the two stack, pane above conversation.
+
+## The spec
+
+The spec is the behavioral contract the plan is planned from: its user story, expected behavior,
+and acceptance criteria. The plan describes the approach. Both are first-class artifacts in the
+same history, but they have opposite roles.
+
+An imported issue becomes the first spec revision. A plan started blank says **No spec yet — draft
+the contract** and uses the same **Draft spec**, **Save**, and **Cancel** flow; there is no separate
+kind of blank-plan contract. Saving records the complete spec as a revision on the current path.
+
+The Spec pane always shows the contract for the path you are viewing. Looking at an earlier commit
+makes it read-only, just like the plan. If another branch has not absorbed the newest spec, History
+shows a **Spec stale** badge on that branch. A merge that includes the newer revision clears the
+badge naturally.
+
+Changing the spec does not restart planning. After your edit, the assistant gets a follow-up turn
+to absorb the contract change into the existing plan. While any assistant turn is active, artifact
+editing is disabled so two writers cannot silently fork the history.
 
 ## The plan
 
