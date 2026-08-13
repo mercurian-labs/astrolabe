@@ -50,6 +50,7 @@ import {
   isRepositoryPathInvalidError,
   isPlanNotFoundError,
   isPlanTurnActiveError,
+  isSpecRevisionOutdatedError,
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
@@ -109,7 +110,9 @@ import {
   toWirePlanImport,
   toWirePlanMessage,
   toWirePlanRevision,
+  toWirePlanSpecRevision,
   toWirePlanTextAt,
+  toWireSpecAt,
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
@@ -1714,6 +1717,35 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.saveSpecRevision]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.saveSpecRevision,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.saveSpecRevision({
+                  planId: input.planId,
+                  document: input.document,
+                  expectedSpecRevisionCommitId:
+                    input.expectedSpecRevisionCommitId === null
+                      ? null
+                      : CommitId.make(input.expectedSpecRevisionCommitId),
+                  ...(input.parentCommitId === undefined
+                    ? {}
+                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanSpecRevision),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) ||
+                isPlanTurnActiveError(cause) ||
+                isSpecRevisionOutdatedError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "saveSpecRevision", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.tryImplement]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.tryImplement,
@@ -1904,6 +1936,24 @@ const makeWsRpcLayer = (
                   isPlanNotFoundError(cause)
                     ? cause
                     : new MercurianPlanningError({ operation: "getPlanTextAt", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.getSpecAt]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.getSpecAt,
+            planningStore
+              .getSpecAt({
+                planId: input.planId,
+                commitId: CommitId.make(input.commitId),
+              })
+              .pipe(
+                Effect.map(toWireSpecAt),
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause)
+                    ? cause
+                    : new MercurianPlanningError({ operation: "getSpecAt", cause }),
                 ),
               ),
             { "rpc.aggregate": "mercurian" },

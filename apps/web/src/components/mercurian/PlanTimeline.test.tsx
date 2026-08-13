@@ -140,20 +140,20 @@ describe("PlanTimeline", () => {
     expect(markup.indexOf("group-hover/assistant:opacity-100")).toBeLessThan(interruptedTagIndex);
   });
 
-  it("keeps plan revisions and imported issues in their existing shapes", () => {
+  it("renders plan and spec revisions as compact artifact events", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
           {
-            _tag: "issue-revision",
+            _tag: "spec-revision",
             commitId: id("issue-1"),
             sequence: 1,
             parents: [],
             published: false,
             authorKind: "human",
             createdAt: CREATED_AT,
-            title: "Imported title",
-            description: "Imported description",
+            cause: "import",
+            issueId: "M-101",
           },
           {
             _tag: "plan-revision",
@@ -168,9 +168,7 @@ describe("PlanTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('class="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"');
-    expect(markup).toContain("Imported issue");
-    expect(markup).toContain("Imported title");
+    expect(markup).toContain("Spec imported from M-101");
     expect(markup).toContain(
       'class="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/70"',
     );

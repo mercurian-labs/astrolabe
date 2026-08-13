@@ -725,7 +725,7 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
-  it.effect("the MCP door writes at the turn's tip and keeps the chain linear", () =>
+  it.effect("the MCP artifact doors write at the turn's tip and keep the chain linear", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const store = yield* PlanningStore.PlanningStore;
@@ -746,30 +746,53 @@ describe("PlanningAssistant", () => {
         assistant.saveRevisionFromThread({ threadId: ThreadId.make("coding-thread"), text: "x" }),
       );
       assert.strictEqual(refused._tag, "PlanningTurnNotFoundError");
+      const refusedSpec = yield* Effect.flip(
+        assistant.saveSpecRevisionFromThread({
+          threadId: ThreadId.make("coding-thread"),
+          document: { title: "No", description: "Must not land" },
+        }),
+      );
+      assert.strictEqual(refusedSpec._tag, "PlanningTurnNotFoundError");
 
-      // The turn's own thread revises mid-turn, then reads back what it wrote.
+      // The turn's own thread revises both artifacts mid-turn, then reads back
+      // what it wrote from the newly advanced tip.
+      assert.strictEqual(yield* assistant.readSpecFromThread({ threadId: session.threadId }), null);
+      yield* assistant.saveSpecRevisionFromThread({
+        threadId: session.threadId,
+        document: { title: "Behavior", description: "The sidebar is resizable." },
+      });
       yield* assistant.saveRevisionFromThread({
         threadId: session.threadId,
         text: "# Revised by the assistant",
       });
       const readBack = yield* assistant.readPlanFromThread({ threadId: session.threadId });
       assert.strictEqual(readBack, "# Revised by the assistant");
+      assert.deepStrictEqual(yield* assistant.readSpecFromThread({ threadId: session.threadId }), {
+        title: "Behavior",
+        description: "The sidebar is resizable.",
+      });
 
       yield* harness.emit(
         runtimeEvent(session.threadId, { type: "turn.completed", payload: { state: "completed" } }),
       );
       yield* Queue.take(frames); // turn-settled
 
-      // The revision parents on the human message; the settled reply parents
-      // on the revision: linear by construction.
+      // Spec, plan, then response are ordered in one ancestry chain.
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
-      const [message, revision, reply] = snapshot.timeline;
+      const [message, specRevision, revision, reply] = snapshot.timeline;
+      assert.ok(specRevision !== undefined && specRevision._tag === "spec-revision");
+      assert.strictEqual(specRevision.authorKind, "assistant");
+      assert.deepStrictEqual([...specRevision.parents], [message!.commitId]);
       assert.ok(revision !== undefined && revision._tag === "plan-revision");
       assert.strictEqual(revision.authorKind, "assistant");
-      assert.deepStrictEqual([...revision.parents], [message!.commitId]);
+      assert.deepStrictEqual([...revision.parents], [specRevision.commitId]);
       assert.ok(reply !== undefined && reply._tag === "message");
       assert.deepStrictEqual([...reply.parents], [revision.commitId]);
       assert.strictEqual(snapshot.planText, "# Revised by the assistant");
+      assert.deepStrictEqual(snapshot.spec?.document, {
+        title: "Behavior",
+        description: "The sidebar is resizable.",
+      });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 

@@ -1811,7 +1811,7 @@ function interpolateSpatialLayout(
  */
 function commitGlyph(item: PlanTimelineItem) {
   if (item._tag === "plan-revision") return FileTextIcon;
-  if (item._tag === "issue-revision") return CircleDotIcon;
+  if (item._tag === "spec-revision") return CircleDotIcon;
   return MessageSquareIcon;
 }
 

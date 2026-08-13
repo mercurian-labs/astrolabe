@@ -37,10 +37,12 @@ export const MERCURIAN_WS_METHODS = {
   importPlan: "mercurian.importPlan",
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
+  saveSpecRevision: "mercurian.saveSpecRevision",
   tryImplement: "mercurian.tryImplement",
   confirmSplits: "mercurian.confirmSplits",
   cancelImplementProposal: "mercurian.cancelImplementProposal",
   getPlanTextAt: "mercurian.getPlanTextAt",
+  getSpecAt: "mercurian.getSpecAt",
   visitPlan: "mercurian.visitPlan",
   markPlanUnread: "mercurian.markPlanUnread",
   archivePlan: "mercurian.archivePlan",
@@ -254,20 +256,45 @@ export const PlanRevision = Schema.Struct({
 export type PlanRevision = typeof PlanRevision.Type;
 
 /**
- * The imported issue, as the conversation renders it — the root commit of an
- * imported plan's history.
- *
- * This one carries its content, where {@link PlanRevision} deliberately does
- * not: there is exactly one per history, so it cannot grow with activity, and a
- * planning space that "begins with the issue" has to show what was imported.
+ * The behavioral contract a plan is planned from. A full snapshot, parallel
+ * to the plan artifact rather than a live tracker object.
  */
-export const PlanIssueRevision = Schema.Struct({
-  ...PlanCommitFields,
+export const SpecDocument = Schema.Struct({
   title: Schema.String,
-  /** `""` is a real state: an issue with no description imported as one. */
+  /** `""` is a real state: a contract may have no body yet. */
   description: Schema.String,
 });
-export type PlanIssueRevision = typeof PlanIssueRevision.Type;
+export type SpecDocument = typeof SpecDocument.Type;
+
+export const PlanSpecRevisionCause = Schema.Literals([
+  "import",
+  "refresh",
+  "reconciliation",
+  "direct",
+]);
+export type PlanSpecRevisionCause = typeof PlanSpecRevisionCause.Type;
+
+/** A compact history row; the current full document crosses once on PlanDetail. */
+export const PlanSpecRevision = Schema.Struct({
+  ...PlanCommitFields,
+  cause: PlanSpecRevisionCause,
+  /** Present when a tracker issue caused the revision. */
+  issueId: Schema.optional(Schema.String),
+});
+export type PlanSpecRevision = typeof PlanSpecRevision.Type;
+
+export const PlanSpecAt = Schema.Struct({
+  revisionCommitId: MercurianCommitId,
+  document: SpecDocument,
+});
+export type PlanSpecAt = typeof PlanSpecAt.Type;
+
+export const PlanOrigin = Schema.Struct({
+  connectionId: TrackerConnectionId,
+  issueId: Schema.String,
+  issueUrl: Schema.String,
+});
+export type PlanOrigin = typeof PlanOrigin.Type;
 
 /**
  * One commit on the planning space's path. Messages, plan revisions and an
@@ -277,7 +304,7 @@ export type PlanIssueRevision = typeof PlanIssueRevision.Type;
 export const PlanTimelineItem = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("message"), ...PlanMessage.fields }),
   Schema.Struct({ _tag: Schema.Literal("plan-revision"), ...PlanRevision.fields }),
-  Schema.Struct({ _tag: Schema.Literal("issue-revision"), ...PlanIssueRevision.fields }),
+  Schema.Struct({ _tag: Schema.Literal("spec-revision"), ...PlanSpecRevision.fields }),
 ]);
 export type PlanTimelineItem = typeof PlanTimelineItem.Type;
 
@@ -362,6 +389,10 @@ export type PlanInFlightImplement = typeof PlanInFlightImplement.Type;
 export const PlanDetail = Schema.Struct({
   plan: PlanShell,
   planText: Schema.String,
+  /** Null until a blank-born plan receives its first contract revision. */
+  spec: Schema.NullOr(PlanSpecAt),
+  /** Present only when the initial spec was derived from a tracker issue. */
+  origin: Schema.optional(PlanOrigin),
   timeline: Schema.Array(PlanTimelineItem),
   /** The highest commit sequence this snapshot accounts for — the resume cursor. */
   snapshotSequence: Schema.Number,
@@ -408,6 +439,8 @@ export const PlanStreamItem = Schema.Union([
     item: PlanTimelineItem,
     /** Present only when this commit changed the artifact: the new current text. */
     planText: Schema.optional(Schema.String),
+    /** Present only when this commit changed the spec artifact. */
+    spec: Schema.optional(PlanSpecAt),
   }),
   Schema.Struct({ kind: Schema.Literal("synchronized") }),
   Schema.Struct({
@@ -569,6 +602,15 @@ export const MercurianSavePlanRevisionInput = Schema.Struct({
 });
 export type MercurianSavePlanRevisionInput = typeof MercurianSavePlanRevisionInput.Type;
 
+export const MercurianSaveSpecRevisionInput = Schema.Struct({
+  planId: PlanId,
+  document: SpecDocument,
+  parentCommitId: Schema.optional(MercurianCommitId),
+  /** The revision the editor read, or null when drafting the first spec. */
+  expectedSpecRevisionCommitId: Schema.NullOr(MercurianCommitId),
+});
+export type MercurianSaveSpecRevisionInput = typeof MercurianSaveSpecRevisionInput.Type;
+
 export const MercurianTryImplementInput = Schema.Struct({
   planId: PlanId,
   parentCommitId: Schema.optional(MercurianCommitId),
@@ -610,6 +652,15 @@ export type MercurianGetPlanTextAtInput = typeof MercurianGetPlanTextAtInput.Typ
 /** History above a commit cannot change, so this answer never goes stale. */
 export const PlanTextAt = Schema.Struct({ planText: Schema.String });
 export type PlanTextAt = typeof PlanTextAt.Type;
+
+export const MercurianGetSpecAtInput = Schema.Struct({
+  planId: PlanId,
+  commitId: MercurianCommitId,
+});
+export type MercurianGetSpecAtInput = typeof MercurianGetSpecAtInput.Type;
+
+export const SpecAt = Schema.Struct({ spec: Schema.NullOr(PlanSpecAt) });
+export type SpecAt = typeof SpecAt.Type;
 
 /**
  * You opened this plan. The moment is the server's to mint — the act names the
@@ -734,6 +785,18 @@ export class PlanTurnActiveError extends Schema.TaggedErrorClass<PlanTurnActiveE
   }
 }
 
+export class SpecRevisionOutdatedError extends Schema.TaggedErrorClass<SpecRevisionOutdatedError>()(
+  "SpecRevisionOutdatedError",
+  {
+    expectedSpecRevisionCommitId: Schema.NullOr(MercurianCommitId),
+    actualSpecRevisionCommitId: Schema.NullOr(MercurianCommitId),
+  },
+) {
+  override get message(): string {
+    return "The spec changed after this editor opened. Reload it before saving.";
+  }
+}
+
 export const ImplementBlockedReason = Schema.Literals([
   "plan-empty",
   "model-unset",
@@ -781,6 +844,7 @@ export const isMercurianProjectNotFoundError = Schema.is(MercurianProjectNotFoun
 export const isPlanNotFoundError = Schema.is(PlanNotFoundError);
 export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
+export const isSpecRevisionOutdatedError = Schema.is(SpecRevisionOutdatedError);
 export const isImplementBlockedError = Schema.is(ImplementBlockedError);
 export const isConfirmSplitsBlockedError = Schema.is(ConfirmSplitsBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
@@ -801,10 +865,12 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "importPlan",
       "appendPlanMessage",
       "savePlanRevision",
+      "saveSpecRevision",
       "tryImplement",
       "confirmSplits",
       "cancelImplementProposal",
       "getPlanTextAt",
+      "getSpecAt",
       "visitPlan",
       "markPlanUnread",
       "archivePlan",

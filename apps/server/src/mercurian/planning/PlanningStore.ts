@@ -35,6 +35,7 @@ import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import {
   ChatAttachment,
   ConfirmSplitsBlockedError,
+  MercurianCommitId,
   MercurianProjectId,
   MercurianProjectNotFoundError,
   MercurianRepositoryId,
@@ -44,6 +45,8 @@ import {
   PlanId,
   PlanNotFoundError,
   PlanQuestionRecord,
+  SpecDocument,
+  SpecRevisionOutdatedError,
   PlanTurnActiveError,
   TrackerConnectionId,
   TrimmedNonEmptyString,
@@ -151,8 +154,9 @@ export interface PlanImplementReady {
 }
 
 /**
- * What an issue-revision commit carries: the issue's content as it read when it
- * was imported. This is the *content*, and nothing else — the link back to the
+ * What a spec-revision commit carries: the complete behavioral contract. An
+ * imported issue derives the first snapshot; later direct edits and refreshes
+ * use the same shape. The link back to the
  * origin is origin metadata and lives in `plan_origins`, and the issue's status
  * is a live fact about the tracker that nothing here stores.
  *
@@ -160,11 +164,29 @@ export interface PlanImplementReady {
  * begins with the issue. Upstream changes land later as more commits of the
  * same kind, which is why the root is not merely a message.
  */
-export const IssueRevisionCommitPayload = Schema.Struct({
+export const SpecRevisionSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("import"), issueId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("tracker-refresh"), issueId: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("tracker-reconciliation"),
+    issueId: Schema.String,
+    upstream: SpecDocument,
+  }),
+  Schema.Struct({ kind: Schema.Literal("direct") }),
+]);
+export type SpecRevisionSource = typeof SpecRevisionSource.Type;
+
+export const SpecRevisionCommitPayload = Schema.Struct({
+  document: SpecDocument,
+  source: Schema.optional(SpecRevisionSource),
+});
+export type SpecRevisionCommitPayload = typeof SpecRevisionCommitPayload.Type;
+
+/** M-101 roots used this flat payload before the artifact was named Spec. */
+const LegacyIssueRevisionCommitPayload = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
 });
-export type IssueRevisionCommitPayload = typeof IssueRevisionCommitPayload.Type;
 
 /**
  * What every projected commit carries whatever its kind: its place in the
@@ -210,12 +232,23 @@ export type PlanRevision = typeof PlanRevision.Type;
  * human-scale, and the space "begins with the issue" only if the issue is
  * visible in it.
  */
-export const PlanIssueRevision = Schema.Struct({
+export const PlanSpecRevision = Schema.Struct({
   ...PlanCommitFields,
-  title: Schema.String,
-  description: Schema.String,
+  cause: Schema.Literals(["import", "refresh", "reconciliation", "direct"]),
+  issueId: Schema.optional(Schema.String),
 });
-export type PlanIssueRevision = typeof PlanIssueRevision.Type;
+export type PlanSpecRevision = typeof PlanSpecRevision.Type;
+
+export interface PlanSpecAt {
+  readonly revisionCommitId: CommitId;
+  readonly document: SpecDocument;
+}
+
+export interface PlanOrigin {
+  readonly connectionId: TrackerConnectionId;
+  readonly issueId: string;
+  readonly issueUrl: string;
+}
 
 /**
  * One item of the space's history. Messages, plan revisions and an imported
@@ -226,7 +259,7 @@ export type PlanIssueRevision = typeof PlanIssueRevision.Type;
 export type PlanTimelineItem =
   | ({ readonly _tag: "message" } & PlanMessage)
   | ({ readonly _tag: "plan-revision" } & PlanRevision)
-  | ({ readonly _tag: "issue-revision" } & PlanIssueRevision);
+  | ({ readonly _tag: "spec-revision" } & PlanSpecRevision);
 
 /**
  * A projected commit, ready to emit as an event. `planText` rides along only
@@ -236,12 +269,15 @@ export type PlanTimelineItem =
 export interface PlanTimelineEvent {
   readonly item: PlanTimelineItem;
   readonly planText?: string;
+  readonly spec?: PlanSpecAt;
 }
 
 export interface PlanDetail {
   readonly plan: Plan;
   /** Derived from the history, never stored. `""` is a real state. */
   readonly planText: string;
+  readonly spec: PlanSpecAt | null;
+  readonly origin?: PlanOrigin;
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The highest commit sequence this snapshot accounts for; `0` for none. */
   readonly snapshotSequence: number;
@@ -306,6 +342,7 @@ export type PlanningStoreRefusal =
   | PlanNotFoundError
   | PlanDeleteBlockedError
   | PlanTurnActiveError
+  | SpecRevisionOutdatedError
   | ConfirmSplitsBlockedError;
 
 export type PlanningStoreError =
@@ -378,6 +415,15 @@ export const SavePlanRevisionInput = Schema.Struct({
 });
 export type SavePlanRevisionInput = typeof SavePlanRevisionInput.Type;
 
+export const SaveSpecRevisionInput = Schema.Struct({
+  planId: PlanId,
+  document: SpecDocument,
+  parentCommitId: Schema.optional(CommitId),
+  expectedSpecRevisionCommitId: Schema.NullOr(CommitId),
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SaveSpecRevisionInput = typeof SaveSpecRevisionInput.Type;
+
 export const SaveSplitInput = Schema.Struct({
   repositoryId: MercurianRepositoryId,
   text: Schema.String,
@@ -419,6 +465,14 @@ export const SaveAssistantPlanRevisionInput = Schema.Struct({
 });
 export type SaveAssistantPlanRevisionInput = typeof SaveAssistantPlanRevisionInput.Type;
 
+export const SaveAssistantSpecRevisionInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  document: SpecDocument,
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SaveAssistantSpecRevisionInput = typeof SaveAssistantSpecRevisionInput.Type;
+
 export const GetPlanInput = Schema.Struct({ planId: PlanId });
 export type GetPlanInput = typeof GetPlanInput.Type;
 
@@ -447,6 +501,9 @@ export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
 export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
+
+export const GetSpecAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
+export type GetSpecAtInput = typeof GetSpecAtInput.Type;
 
 export const GetImplementContextInput = Schema.Struct({
   planId: PlanId,
@@ -530,6 +587,10 @@ export class PlanningStore extends Context.Service<
     readonly savePlanRevision: (
       input: SavePlanRevisionInput,
     ) => Effect.Effect<PlanRevision, PlanningStoreError>;
+    /** A human's direct edit of the behavioral contract on the current path. */
+    readonly saveSpecRevision: (
+      input: SaveSpecRevisionInput,
+    ) => Effect.Effect<PlanSpecRevision, PlanningStoreError>;
     /**
      * Land repository projections as sibling human revisions at one parent.
      * Narrowing a multi-repository proposal to one card still lands a node:
@@ -554,6 +615,10 @@ export class PlanningStore extends Context.Service<
     readonly saveAssistantPlanRevision: (
       input: SaveAssistantPlanRevisionInput,
     ) => Effect.Effect<PlanRevision, PlanningStoreError>;
+    /** The assistant's direct spec edit, chained inside an active reply turn. */
+    readonly saveAssistantSpecRevision: (
+      input: SaveAssistantSpecRevisionInput,
+    ) => Effect.Effect<PlanSpecRevision, PlanningStoreError>;
     /**
      * Take the plan out of the tree without destroying anything. Idempotent —
      * a second archive keeps the first timestamp — and total for every plan,
@@ -592,6 +657,10 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
+    /** The behavioral contract at one immutable point in the history. */
+    readonly getSpecAt: (
+      input: GetSpecAtInput,
+    ) => Effect.Effect<PlanSpecAt | null, PlanningStoreError>;
     /** The artifact and exact history point an implement analysis starts from. */
     readonly getImplementContext: (
       input: GetImplementContextInput,
@@ -747,6 +816,7 @@ const isPlanningStoreRefusal = Schema.is(
     PlanNotFoundError,
     PlanDeleteBlockedError,
     PlanTurnActiveError,
+    SpecRevisionOutdatedError,
     ConfirmSplitsBlockedError,
   ]),
 );
@@ -764,7 +834,18 @@ function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
 
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
-const decodeIssuePayload = Schema.decodeUnknownEffect(IssueRevisionCommitPayload);
+const decodeCurrentSpecPayload = Schema.decodeUnknownEffect(SpecRevisionCommitPayload);
+const decodeLegacySpecPayload = Schema.decodeUnknownEffect(LegacyIssueRevisionCommitPayload);
+const decodeSpecPayload = Effect.fn("PlanningStore.decodeSpecPayload")(function* (
+  payload: unknown,
+) {
+  const current = yield* Effect.result(decodeCurrentSpecPayload(payload));
+  if (current._tag === "Success") return current.success;
+  const legacy = yield* decodeLegacySpecPayload(payload);
+  return {
+    document: { title: legacy.title, description: legacy.description },
+  } satisfies SpecRevisionCommitPayload;
+});
 const decodeReadyVerdictPayload = Schema.decodeUnknownEffect(PlanImplementReadyVerdictPayload);
 const decodeNeedsSplitVerdictPayload = Schema.decodeUnknownEffect(
   PlanImplementNeedsSplitVerdictPayload,
@@ -787,6 +868,14 @@ function derivePlanText(events: ReadonlyArray<PlanTimelineEvent>): string {
     }
   }
   return text;
+}
+
+function deriveSpec(events: ReadonlyArray<PlanTimelineEvent>): PlanSpecAt | null {
+  let spec: PlanSpecAt | null = null;
+  for (const event of events) {
+    if (event.spec !== undefined) spec = event.spec;
+  }
+  return spec;
 }
 
 export const make = Effect.gen(function* () {
@@ -1026,6 +1115,21 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  const findOriginByPlanRow = SqlSchema.findOneOption({
+    Request: PlanIdRequest,
+    Result: PlanOriginRow,
+    execute: ({ planId }) => sql`
+      SELECT
+        plan_id AS "planId",
+        connection_id AS "connectionId",
+        issue_id AS "issueId",
+        issue_url AS "issueUrl",
+        imported_at AS "importedAt"
+      FROM plan_origins
+      WHERE plan_id = ${planId}
+    `,
+  });
+
   // Edges before commits before the history they hang from: the delete walks
   // the foreign keys inwards so nothing is ever momentarily orphaned.
   const deleteCommitParentRows = SqlSchema.void({
@@ -1114,6 +1218,32 @@ export const make = Effect.gen(function* () {
     ...(split === undefined ? {} : { split }),
   });
 
+  const toPlanSpecRevision = (
+    commit: Commit,
+    payload: SpecRevisionCommitPayload,
+    legacyIssueId?: string,
+  ): PlanSpecRevision => {
+    const cause =
+      payload.source?.kind === "import"
+        ? "import"
+        : payload.source?.kind === "tracker-refresh"
+          ? "refresh"
+          : payload.source?.kind === "tracker-reconciliation"
+            ? "reconciliation"
+            : legacyIssueId === undefined
+              ? "direct"
+              : "import";
+    const issueId =
+      payload.source !== undefined && payload.source.kind !== "direct"
+        ? payload.source.issueId
+        : legacyIssueId;
+    return {
+      ...toPlanCommitFields(commit),
+      cause,
+      ...(issueId === undefined ? {} : { issueId }),
+    };
+  };
+
   const toImplementVerdictRecord = Effect.fn("PlanningStore.toImplementVerdictRecord")(function* (
     row: PlanImplementVerdictRow,
   ) {
@@ -1138,10 +1268,13 @@ export const make = Effect.gen(function* () {
   /**
    * A commit as the planning space sees it, or nothing when the space has no
    * rendering for that kind. Skipping the unknown rather than failing is what
-   * let issue-revision commits land without breaking every reader of this
+   * let new commit kinds land without breaking every reader of this
    * surface, and is what lets coding-session commits land later the same way.
    */
-  const toTimelineEvent = Effect.fn("PlanningStore.toTimelineEvent")(function* (commit: Commit) {
+  const toTimelineEvent = Effect.fn("PlanningStore.toTimelineEvent")(function* (
+    commit: Commit,
+    origin?: PlanOrigin,
+  ) {
     if (commit.kind === "message") {
       const message = yield* toPlanMessage(commit);
       return Option.some<PlanTimelineEvent>({ item: { _tag: "message", ...message } });
@@ -1153,17 +1286,11 @@ export const make = Effect.gen(function* () {
         ...(payload.split === undefined ? { planText: payload.text } : {}),
       });
     }
-    if (commit.kind === "issue-revision") {
-      const payload = yield* decodeIssuePayload(commit.payload);
-      // No `planText`: an issue is what you plan *from*, so an imported plan's
-      // artifact is born empty rather than pre-filled with the issue.
+    if (commit.kind === "spec-revision") {
+      const payload = yield* decodeSpecPayload(commit.payload);
       return Option.some<PlanTimelineEvent>({
-        item: {
-          _tag: "issue-revision",
-          ...toPlanCommitFields(commit),
-          title: payload.title,
-          description: payload.description,
-        },
+        item: { _tag: "spec-revision", ...toPlanSpecRevision(commit, payload, origin?.issueId) },
+        spec: { revisionCommitId: commit.commitId, document: payload.document },
       });
     }
     return Option.none<PlanTimelineEvent>();
@@ -1171,8 +1298,9 @@ export const make = Effect.gen(function* () {
 
   const projectCommits = Effect.fn("PlanningStore.projectCommits")(function* (
     path: ReadonlyArray<Commit>,
+    origin?: PlanOrigin,
   ) {
-    const projected = yield* Effect.forEach(path, toTimelineEvent);
+    const projected = yield* Effect.forEach(path, (commit) => toTimelineEvent(commit, origin));
     return projected.filter(Option.isSome).map((event) => event.value);
   });
 
@@ -1272,6 +1400,7 @@ export const make = Effect.gen(function* () {
       return {
         plan,
         planText: "",
+        spec: null,
         timeline: [{ _tag: "message", ...(yield* toPlanMessage(root)) }],
         snapshotSequence: root.sequence,
         readyCommits: [],
@@ -1320,14 +1449,14 @@ export const make = Effect.gen(function* () {
           historyId,
           rootCommit: {
             commitId: rootCommitId,
-            kind: "issue-revision",
+            kind: "spec-revision",
             // Import is a human act, and opening a history is one.
             authorKind: "human",
             createdAt: input.createdAt,
             payload: {
-              title: input.title,
-              description: input.description,
-            } satisfies IssueRevisionCommitPayload,
+              document: { title: input.title, description: input.description },
+              source: { kind: "import", issueId: input.issueId },
+            } satisfies SpecRevisionCommitPayload,
           },
           // The carve-out this whole feature turns on: the issue having a plan
           // is shared truth, so the plan and its root are published from the
@@ -1407,6 +1536,29 @@ export const make = Effect.gen(function* () {
     return found.value;
   });
 
+  const readSpecAtCommit = Effect.fn("PlanningStore.readSpecAtCommit")(function* (
+    plan: Plan,
+    commitId: CommitId,
+  ) {
+    const found = yield* commits.getCommit({ commitId, visibility: "all" });
+    if (Option.isNone(found) || found.value.historyId !== plan.historyId) {
+      return yield* new CommitStore.CommitNotFoundError({ commitId });
+    }
+    const ancestry = yield* commits.ancestors({ commitId, visibility: "all" });
+    const path = [...ancestry, found.value];
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const commit = path[index];
+      if (commit?.kind === "spec-revision") {
+        const payload = yield* decodeSpecPayload(commit.payload);
+        return {
+          revisionCommitId: commit.commitId,
+          document: payload.document,
+        } satisfies PlanSpecAt;
+      }
+    }
+    return null;
+  });
+
   /**
    * Resolve the parent and append onto it inside one transaction, so the shape
    * of the history is decided by one reader of it rather than by two writers
@@ -1421,7 +1573,7 @@ export const make = Effect.gen(function* () {
     readonly plan: Plan;
     readonly parentCommitId: CommitId | undefined;
     readonly commitId: CommitId;
-    readonly kind: "message" | "plan-revision";
+    readonly kind: "message" | "plan-revision" | "spec-revision";
     readonly payload: unknown;
     readonly createdAt: Commit["createdAt"];
   }) {
@@ -1516,6 +1668,55 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const saveSpecRevision: PlanningStore["Service"]["saveSpecRevision"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const appended = yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const parent = yield* resolveParent(plan, input.parentCommitId);
+          if (parent === undefined) {
+            return yield* new CommitStore.CommitNotFoundError({ commitId });
+          }
+          const current = yield* readSpecAtCommit(plan, parent.commitId);
+          const actual = current?.revisionCommitId ?? null;
+          if (actual !== input.expectedSpecRevisionCommitId) {
+            return yield* new SpecRevisionOutdatedError({
+              expectedSpecRevisionCommitId:
+                input.expectedSpecRevisionCommitId === null
+                  ? null
+                  : MercurianCommitId.make(input.expectedSpecRevisionCommitId),
+              actualSpecRevisionCommitId: actual === null ? null : MercurianCommitId.make(actual),
+            });
+          }
+          return yield* appendAt({
+            plan,
+            parentCommitId: parent.commitId,
+            commitId,
+            kind: "spec-revision",
+            payload: {
+              document: input.document,
+              source: { kind: "direct" },
+            } satisfies SpecRevisionCommitPayload,
+            createdAt: input.createdAt,
+          });
+        }),
+      );
+      yield* announceChange;
+      return toPlanSpecRevision(appended, {
+        document: input.document,
+        source: { kind: "direct" },
+      });
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.saveSpecRevision:query",
+          "PlanningStore.saveSpecRevision:encodeRequest",
+        ),
+      ),
+    );
+
   const saveSplits: PlanningStore["Service"]["saveSplits"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
@@ -1600,7 +1801,7 @@ export const make = Effect.gen(function* () {
     readonly plan: Plan;
     readonly parentCommitId: CommitId;
     readonly commitId: CommitId;
-    readonly kind: "message" | "plan-revision";
+    readonly kind: "message" | "plan-revision" | "spec-revision";
     readonly payload: unknown;
     readonly createdAt: Commit["createdAt"];
   }) {
@@ -1677,6 +1878,35 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.saveAssistantPlanRevision:query",
           "PlanningStore.saveAssistantPlanRevision:encodeRequest",
+        ),
+      ),
+    );
+
+  const saveAssistantSpecRevision: PlanningStore["Service"]["saveAssistantSpecRevision"] = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const payload = {
+        document: input.document,
+        source: { kind: "direct" },
+      } satisfies SpecRevisionCommitPayload;
+      const appended = yield* appendAssistantAt({
+        plan,
+        parentCommitId: input.parentCommitId,
+        commitId,
+        kind: "spec-revision",
+        payload,
+        createdAt: input.createdAt,
+      });
+      yield* announceChange;
+      return toPlanSpecRevision(appended, payload);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.saveAssistantSpecRevision:query",
+          "PlanningStore.saveAssistantSpecRevision:encodeRequest",
         ),
       ),
     );
@@ -1776,17 +2006,27 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       // The author's own workspace sees its drafts, so every commit counts.
-      const { path, verdicts } = yield* Effect.all({
+      const { path, verdicts, originRow } = yield* Effect.all({
         path: commits.listCommits({
           historyId: plan.historyId,
           visibility: "all",
         }),
         verdicts: listImplementVerdicts({ planId: input.planId }),
+        originRow: findOriginByPlanRow({ planId: input.planId }),
       });
-      const events = yield* projectCommits(path);
+      const origin = Option.isNone(originRow)
+        ? undefined
+        : ({
+            connectionId: originRow.value.connectionId,
+            issueId: originRow.value.issueId,
+            issueUrl: originRow.value.issueUrl,
+          } satisfies PlanOrigin);
+      const events = yield* projectCommits(path, origin);
       return {
         plan,
         planText: derivePlanText(events),
+        spec: deriveSpec(events),
+        ...(origin === undefined ? {} : { origin }),
         timeline: events.map((event) => event.item),
         snapshotSequence: path.at(-1)?.sequence ?? 0,
         readyCommits: verdicts.flatMap(({ commitId, verdict }) =>
@@ -1805,12 +2045,22 @@ export const make = Effect.gen(function* () {
   const listTimelineSince: PlanningStore["Service"]["listTimelineSince"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      const since = yield* commits.listCommitsSince({
-        historyId: plan.historyId,
-        afterSequence: input.afterSequence,
-        visibility: "all",
+      const { since, originRow } = yield* Effect.all({
+        since: commits.listCommitsSince({
+          historyId: plan.historyId,
+          afterSequence: input.afterSequence,
+          visibility: "all",
+        }),
+        originRow: findOriginByPlanRow({ planId: input.planId }),
       });
-      return yield* projectCommits(since);
+      const origin = Option.isNone(originRow)
+        ? undefined
+        : ({
+            connectionId: originRow.value.connectionId,
+            issueId: originRow.value.issueId,
+            issueUrl: originRow.value.issueUrl,
+          } satisfies PlanOrigin);
+      return yield* projectCommits(since, origin);
     }).pipe(
       Effect.mapError(
         toPlanningStoreError(
@@ -1857,6 +2107,16 @@ export const make = Effect.gen(function* () {
           "PlanningStore.getPlanTextAt:query",
           "PlanningStore.getPlanTextAt:decodeRows",
         ),
+      ),
+    );
+
+  const getSpecAt: PlanningStore["Service"]["getSpecAt"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      return yield* readSpecAtCommit(plan, input.commitId);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError("PlanningStore.getSpecAt:query", "PlanningStore.getSpecAt:decodeRows"),
       ),
     );
 
@@ -1984,15 +2244,18 @@ export const make = Effect.gen(function* () {
     importPlan,
     appendMessage,
     savePlanRevision,
+    saveSpecRevision,
     saveSplits,
     appendAssistantMessage,
     saveAssistantPlanRevision,
+    saveAssistantSpecRevision,
     archivePlan,
     unarchivePlan,
     deletePlan,
     getPlanSnapshot,
     listTimelineSince,
     getPlanTextAt,
+    getSpecAt,
     getImplementContext,
     recordImplementVerdict,
     listImplementVerdicts,

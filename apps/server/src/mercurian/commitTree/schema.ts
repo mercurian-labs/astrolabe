@@ -33,7 +33,7 @@ export type CommitId = typeof CommitId.Type;
 export const CommitKind = Schema.Literals([
   "message",
   "plan-revision",
-  "issue-revision",
+  "spec-revision",
   "coding-session",
 ]);
 export type CommitKind = typeof CommitKind.Type;

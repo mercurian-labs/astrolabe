@@ -247,11 +247,30 @@ export class CommitStore extends Context.Service<
 // Rows
 // ===============================
 
+/**
+ * Migration 001 constrained the stored discriminator before the product named
+ * this artifact a spec. Keep that storage spelling at the SQLite boundary and
+ * expose only the current domain vocabulary everywhere else.
+ */
+const PersistedCommitKind = Schema.Literals([
+  "message",
+  "plan-revision",
+  "issue-revision",
+  "coding-session",
+]);
+type PersistedCommitKind = typeof PersistedCommitKind.Type;
+
+const decodeCommitKind = (kind: PersistedCommitKind): CommitKind =>
+  kind === "issue-revision" ? "spec-revision" : kind;
+
+const encodeCommitKind = (kind: CommitKind): PersistedCommitKind =>
+  kind === "spec-revision" ? "issue-revision" : kind;
+
 const CommitRow = Schema.Struct({
   commitId: CommitId,
   historyId: HistoryId,
   sequence: Schema.Number,
-  kind: CommitKind,
+  kind: PersistedCommitKind,
   authorKind: CommitAuthorKind,
   published: Schema.Number,
   createdAt: Schema.DateTimeUtcFromString,
@@ -262,7 +281,7 @@ type CommitRow = typeof CommitRow.Type;
 const CommitLookupRow = Schema.Struct({
   commitId: CommitId,
   historyId: HistoryId,
-  kind: CommitKind,
+  kind: PersistedCommitKind,
 });
 
 const CommitIdRow = Schema.Struct({ commitId: CommitId });
@@ -284,7 +303,7 @@ const CommitHistoryRow = Schema.Struct({
 const InsertCommitRow = Schema.Struct({
   commitId: CommitId,
   historyId: HistoryId,
-  kind: CommitKind,
+  kind: PersistedCommitKind,
   authorKind: CommitAuthorKind,
   published: Schema.Boolean,
   createdAt: Schema.DateTimeUtcFromString,
@@ -335,7 +354,7 @@ function toCommit(row: CommitRow, parentsByCommit: ReadonlyMap<string, ReadonlyA
     commitId: row.commitId,
     historyId: row.historyId,
     sequence: row.sequence,
-    kind: row.kind,
+    kind: decodeCommitKind(row.kind),
     authorKind: row.authorKind,
     parents: parentsByCommit.get(row.commitId) ?? [],
     published: row.published !== 0,
@@ -652,7 +671,7 @@ export const make = Effect.gen(function* () {
           parentHistoryId: parent.historyId,
         });
       }
-      if (parent.kind === "coding-session") {
+      if (decodeCommitKind(parent.kind) === "coding-session") {
         return yield* new CodingSessionParentError({ commitId, parentId });
       }
       if (isAssistant) {
@@ -677,7 +696,7 @@ export const make = Effect.gen(function* () {
     const inserted = yield* insertCommitRow({
       commitId,
       historyId,
-      kind: input.kind,
+      kind: encodeCommitKind(input.kind),
       authorKind: input.authorKind,
       published: input.published,
       createdAt: input.createdAt,

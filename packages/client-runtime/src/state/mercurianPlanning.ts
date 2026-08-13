@@ -78,6 +78,12 @@ export function createMercurianPlanningAtoms<R, E>(
       // serializing them per plan is what keeps the local history linear.
       concurrency: serialPerPlan,
     }),
+    saveSpecRevision: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:save-spec-revision",
+      tag: MERCURIAN_WS_METHODS.saveSpecRevision,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
     tryImplement: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:try-implement",
       tag: MERCURIAN_WS_METHODS.tryImplement,
@@ -160,6 +166,11 @@ export function createMercurianPlanningAtoms<R, E>(
     getPlanTextAt: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:get-plan-text-at",
       tag: MERCURIAN_WS_METHODS.getPlanTextAt,
+      scheduler: writeScheduler,
+    }),
+    getSpecAt: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:get-spec-at",
+      tag: MERCURIAN_WS_METHODS.getSpecAt,
       scheduler: writeScheduler,
     }),
   };

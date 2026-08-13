@@ -310,21 +310,19 @@ describe("planCommitDetail", () => {
     expect(planCommitDetail(commit("a", 1, [], { text }))).toBe(text);
   });
 
-  it("includes an imported issue's title and description", () => {
+  it("describes an imported spec revision", () => {
     const issue: PlanTimelineItem = {
-      _tag: "issue-revision",
+      _tag: "spec-revision",
       commitId: id("issue"),
       sequence: 1,
       parents: [],
       published: true,
       authorKind: "human",
-      title: "Keep both parts",
-      description: "The complete issue description.\nIncluding its second line.",
+      cause: "import",
+      issueId: "M-101",
       createdAt: "2026-08-03T00:00:00.000Z",
     };
-    expect(planCommitDetail(issue)).toBe(
-      "Keep both parts\n\nThe complete issue description.\nIncluding its second line.",
-    );
+    expect(planCommitDetail(issue)).toBe("Spec imported from M-101");
   });
 
   it("uses the existing summary line for a plan revision", () => {

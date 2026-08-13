@@ -336,6 +336,60 @@ layer("PlanningStore", (it) => {
     }),
   );
 
+  it.effect("drafts a blank plan's spec and guards later edits with the path revision", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Plan from a blank contract",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      assert.strictEqual(created.spec, null);
+
+      const revision = yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        expectedSpecRevisionCommitId: null,
+        document: {
+          title: "Sidebar remains navigable",
+          description: "Users can change projects without leaving the planning space.",
+        },
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      assert.strictEqual(revision.authorKind, "human");
+      assert.strictEqual(revision.cause, "direct");
+
+      const before = yield* store.getSpecAt({
+        planId: created.plan.planId,
+        commitId: root.commitId,
+      });
+      assert.strictEqual(before, null);
+
+      const current = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(current.spec?.revisionCommitId, revision.commitId);
+      assert.strictEqual(current.spec?.document.title, "Sidebar remains navigable");
+
+      const stale = yield* Effect.flip(
+        store.saveSpecRevision({
+          planId: created.plan.planId,
+          parentCommitId: revision.commitId,
+          expectedSpecRevisionCommitId: null,
+          document: { title: "Stale edit", description: "Must not land." },
+          createdAt: at("2026-08-03T00:03:00.000Z"),
+        }),
+      );
+      assert.strictEqual(stale._tag, "SpecRevisionOutdatedError");
+
+      const unchanged = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(unchanged.spec?.revisionCommitId, revision.commitId);
+    }),
+  );
+
   it.effect("interleaves revisions and messages in one history at the same standing", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
@@ -1660,18 +1714,22 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(path.length, 1);
       const root = path[0]!;
       assert.deepStrictEqual([...root.parents], []);
-      assert.strictEqual(root.kind, "issue-revision");
+      assert.strictEqual(root.kind, "spec-revision");
       assert.strictEqual(root.authorKind, "human");
       assert.strictEqual(root.published, true);
 
       assert.deepStrictEqual(
         imported.detail.timeline.map((item) => item._tag),
-        ["issue-revision"],
+        ["spec-revision"],
       );
       const item = imported.detail.timeline[0]!;
-      assert.ok(item._tag === "issue-revision");
-      assert.strictEqual(item.title, "Issue Import");
-      assert.strictEqual(item.description, "Import an issue as the root of a plan.");
+      assert.ok(item._tag === "spec-revision");
+      assert.strictEqual(item.cause, "import");
+      assert.strictEqual(item.issueId, "M-101");
+      assert.deepStrictEqual(imported.detail.spec?.document, {
+        title: "Issue Import",
+        description: "Import an issue as the root of a plan.",
+      });
 
       const origins = yield* originRows("M-101");
       assert.deepStrictEqual(origins, [

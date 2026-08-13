@@ -4696,14 +4696,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       // The root commit *is* the issue, and it is published from the start.
       const root = result.imported.detail.timeline[0];
-      assert.equal(root?._tag, "issue-revision");
+      assert.equal(root?._tag, "spec-revision");
       assert.equal(root?.published, true);
       assert.equal(root?.authorKind, "human");
       assert.deepEqual([...(root?.parents ?? [])], []);
-      if (root?._tag === "issue-revision") {
-        assert.equal(root.title, "Issue Import");
-        assert.equal(root.description, issue.description);
+      if (root?._tag === "spec-revision") {
+        assert.equal(root.cause, "import");
+        assert.equal(root.issueId, issue.id);
       }
+      assert.deepEqual(result.imported.detail.spec?.document, {
+        title: "Issue Import",
+        description: issue.description,
+      });
 
       // Re-importing never duplicates: it goes to the plan that exists, and
       // brings it back out of the archive when it has left the tree.

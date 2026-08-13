@@ -19,6 +19,8 @@ describe("planningSystemAppendix", () => {
     expect(appendix).toContain('planning assistant for the plan "Reshape the sidebar"');
     expect(appendix).toContain("read-only");
     expect(appendix).toContain("save_plan_revision");
+    expect(appendix).toContain("save_spec_revision");
+    expect(appendix).toContain("spec describes behavior");
     expect(appendix).toContain("- astrolabe: /repos/astrolabe");
     expect(appendix).not.toContain("Out of reach");
   });
@@ -49,20 +51,28 @@ describe("transcriptPreamble", () => {
     { kind: "message", author: "assistant", text: "In the sidebar.", interrupted: true },
     { kind: "plan-revision", author: "assistant" },
     { kind: "plan-revision", author: "human" },
+    { kind: "spec-revision", author: "assistant" },
   ];
 
   it("renders dialogue, revision markers, and the current artifact", () => {
-    const preamble = transcriptPreamble({ entries, planText: "# Plan body", reservedChars: 0 });
+    const preamble = transcriptPreamble({
+      entries,
+      planText: "# Plan body",
+      spec: { title: "Contract", description: "- [ ] It works" },
+      reservedChars: 0,
+    });
     expect(preamble).toContain("Person:\nWhere should the tree live?");
     expect(preamble).toContain("You:\nIn the sidebar.");
     expect(preamble).toContain("[This reply was stopped mid-response.]");
     expect(preamble).toContain("[You revised the plan.]");
-    expect(preamble).toContain("[The person edited the plan directly.]");
+    expect(preamble).toContain("[The person revised the plan.]");
+    expect(preamble).toContain("[You revised the spec.]");
+    expect(preamble).toContain("- [ ] It works");
     expect(preamble).toContain("# Plan body");
   });
 
   it("renders an empty artifact as empty, not missing", () => {
-    const preamble = transcriptPreamble({ entries, planText: "", reservedChars: 0 });
+    const preamble = transcriptPreamble({ entries, planText: "", spec: null, reservedChars: 0 });
     expect(preamble).toContain("currently empty");
   });
 
@@ -75,6 +85,7 @@ describe("transcriptPreamble", () => {
     const preamble = transcriptPreamble({
       entries: wide,
       planText: "",
+      spec: null,
       // Leave room for roughly one entry beyond the framing margin.
       reservedChars: PROVIDER_SEND_TURN_MAX_INPUT_CHARS - 2_600,
     });

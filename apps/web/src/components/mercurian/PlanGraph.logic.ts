@@ -306,12 +306,19 @@ export function planCommitSummary(item: PlanTimelineItem): string {
     if (item.split !== undefined) return `Plan for ${item.split.repositoryName}`;
     return item.authorKind === "human" ? "You edited the plan" : "The assistant revised the plan";
   }
-  const isIssue = item._tag === "issue-revision";
-  const firstLine = (isIssue ? item.title : item.text)
+  if (item._tag === "spec-revision") {
+    if (item.cause === "import")
+      return `Spec imported${item.issueId === undefined ? "" : ` from ${item.issueId}`}`;
+    if (item.cause === "refresh")
+      return `Spec refreshed${item.issueId === undefined ? "" : ` from ${item.issueId}`}`;
+    if (item.cause === "reconciliation") return "Spec reconciled with upstream";
+    return item.authorKind === "human" ? "You revised the spec" : "The assistant revised the spec";
+  }
+  const firstLine = item.text
     .split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0);
-  if (firstLine === undefined) return isIssue ? "Imported issue" : "Empty message";
+  if (firstLine === undefined) return "Empty message";
   return firstLine.length <= SUMMARY_MAX_LENGTH
     ? firstLine
     : `${firstLine.slice(0, SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;
@@ -320,6 +327,5 @@ export function planCommitSummary(item: PlanTimelineItem): string {
 /** The complete commit content shown when a map node is emphasized. */
 export function planCommitDetail(item: PlanTimelineItem): string {
   if (item._tag === "message") return item.text;
-  if (item._tag === "plan-revision") return planCommitSummary(item);
-  return item.description.length === 0 ? item.title : `${item.title}\n\n${item.description}`;
+  return planCommitSummary(item);
 }
