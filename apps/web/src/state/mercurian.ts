@@ -8,6 +8,7 @@ import type {
   MercurianConfirmSplitsInput,
   MercurianSavePlanRevisionInput,
   MercurianSaveSpecRevisionInput,
+  MercurianRefreshSpecInput,
   MercurianTryImplementInput,
   PlanDetail,
   PlanId,
@@ -169,6 +170,11 @@ export function useSavePlanRevision() {
 export function useSaveSpecRevision() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.saveSpecRevision);
   return useCallback((input: MercurianSaveSpecRevisionInput) => run(input), [run]);
+}
+
+export function useRefreshSpec() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.refreshSpec);
+  return useCallback((input: MercurianRefreshSpecInput) => run(input), [run]);
 }
 
 export function useTryImplement() {

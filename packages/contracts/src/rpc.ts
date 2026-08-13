@@ -88,6 +88,8 @@ import {
   MercurianProjectNotFoundError,
   MercurianSavePlanRevisionInput,
   MercurianSaveSpecRevisionInput,
+  MercurianRefreshSpecInput,
+  MercurianRefreshSpecResult,
   MercurianStopPlanningTurnInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
@@ -107,6 +109,7 @@ import {
   PlanStreamItem,
   SpecAt,
   SpecRevisionOutdatedError,
+  SpecRefreshUnavailableError,
   PlanTextAt,
   PlanTurnActiveError,
 } from "./mercurian.ts";
@@ -964,6 +967,23 @@ export const WsMercurianSaveSpecRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.save
   ]),
 });
 
+export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSpec, {
+  payload: MercurianRefreshSpecInput,
+  success: MercurianRefreshSpecResult,
+  error: Schema.Union([
+    PlanNotFoundError,
+    PlanTurnActiveError,
+    SpecRevisionOutdatedError,
+    SpecRefreshUnavailableError,
+    TrackerConnectionNotFoundError,
+    TrackerAuthError,
+    TrackerUnreachableError,
+    MercurianPlanningError,
+    MercurianTrackerError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 export const WsMercurianTryImplementRpc = Rpc.make(MERCURIAN_WS_METHODS.tryImplement, {
   payload: MercurianTryImplementInput,
   success: MercurianPlanAcknowledged,
@@ -1331,6 +1351,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSaveSpecRevisionRpc,
+  WsMercurianRefreshSpecRpc,
   WsMercurianTryImplementRpc,
   WsMercurianConfirmSplitsRpc,
   WsMercurianCancelImplementProposalRpc,

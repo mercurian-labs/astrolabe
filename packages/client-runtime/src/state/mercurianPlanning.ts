@@ -84,6 +84,12 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
+    refreshSpec: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:refresh-spec",
+      tag: MERCURIAN_WS_METHODS.refreshSpec,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
     tryImplement: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:try-implement",
       tag: MERCURIAN_WS_METHODS.tryImplement,

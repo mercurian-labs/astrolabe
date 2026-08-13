@@ -66,6 +66,18 @@ const makeStubConnector = (): StubConnector => {
             })
           : Effect.fail(state.refusal);
       },
+      getIssue: (token, issueId) => {
+        state.tokensSeen.push(token);
+        return state.refusal === null
+          ? Effect.succeed({
+              id: issueId,
+              title: "Tracker connections",
+              description: "Connect a tracker from Settings.",
+              url: `https://linear.app/mercurian/issue/${issueId}`,
+              status: "In Progress",
+            })
+          : Effect.fail(state.refusal);
+      },
     },
   };
   return state;
@@ -354,6 +366,23 @@ layer("TrackerStore", (it) => {
           readonly name: string;
         }>`SELECT name FROM sqlite_master WHERE type = 'table'`).map((row) => row.name);
         assert.notInclude(tables.join(","), "issue");
+      }),
+    ),
+  );
+
+  it.effect("reads one origin directly for refresh", () =>
+    withStore((store) =>
+      Effect.gen(function* () {
+        const status = yield* store.connect({
+          kind: "linear",
+          token: "lin_api_test",
+          createdAt: at("2026-08-06T00:00:00.000Z"),
+        });
+        const issue = yield* store.getIssue({
+          connectionId: status.connection.connectionId,
+          issueId: "M-109",
+        });
+        assert.strictEqual(issue?.id, "M-109");
       }),
     ),
   );

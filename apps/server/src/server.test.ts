@@ -123,6 +123,7 @@ const stubTrackerConnector: TrackerConnector = {
   kind: "linear",
   probe: () => Effect.succeed({ label: "Linear" }),
   listIssues: () => Effect.succeed({ issues: [] }),
+  getIssue: () => Effect.succeed(null),
 };
 import { isThreadDetailEvent, resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";

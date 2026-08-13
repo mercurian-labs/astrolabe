@@ -505,6 +505,59 @@ export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
 export const GetSpecAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetSpecAtInput = typeof GetSpecAtInput.Type;
 
+export const PrepareSpecRefreshInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+});
+export type PrepareSpecRefreshInput = typeof PrepareSpecRefreshInput.Type;
+
+export interface SpecRefreshContext {
+  readonly origin: PlanOrigin | null;
+  readonly local: PlanSpecAt | null;
+  readonly upstreamBaseline: SpecDocument | null;
+}
+
+export type SpecRefreshClassification =
+  | { readonly kind: "unchanged" }
+  | { readonly kind: "committed"; readonly document: SpecDocument }
+  | { readonly kind: "committed-converged"; readonly document: SpecDocument }
+  | {
+      readonly kind: "reconciliation-required";
+      readonly base: SpecDocument;
+      readonly local: SpecDocument;
+      readonly upstream: SpecDocument;
+    };
+
+const sameSpecDocument = (left: SpecDocument, right: SpecDocument) =>
+  left.title === right.title && left.description === right.description;
+
+export function classifySpecRefresh(input: {
+  readonly base: SpecDocument;
+  readonly local: SpecDocument;
+  readonly upstream: SpecDocument;
+}): SpecRefreshClassification {
+  if (sameSpecDocument(input.upstream, input.base)) return { kind: "unchanged" };
+  if (sameSpecDocument(input.local, input.base)) {
+    return { kind: "committed", document: input.upstream };
+  }
+  if (sameSpecDocument(input.local, input.upstream)) {
+    return { kind: "committed-converged", document: input.upstream };
+  }
+  return { kind: "reconciliation-required", ...input };
+}
+
+export const SaveTrackerSpecRevisionInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  expectedSpecRevisionCommitId: CommitId,
+  document: SpecDocument,
+  issueId: Schema.String,
+  sourceKind: Schema.Literals(["tracker-refresh", "tracker-reconciliation"]),
+  upstream: Schema.optional(SpecDocument),
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type SaveTrackerSpecRevisionInput = typeof SaveTrackerSpecRevisionInput.Type;
+
 export const GetImplementContextInput = Schema.Struct({
   planId: PlanId,
   atCommitId: Schema.optional(CommitId),
@@ -661,6 +714,14 @@ export class PlanningStore extends Context.Service<
     readonly getSpecAt: (
       input: GetSpecAtInput,
     ) => Effect.Effect<PlanSpecAt | null, PlanningStoreError>;
+    /** Origin, local contract, and ancestry-derived upstream baseline for refresh. */
+    readonly prepareSpecRefresh: (
+      input: PrepareSpecRefreshInput,
+    ) => Effect.Effect<SpecRefreshContext, PlanningStoreError>;
+    /** Append an already-classified refresh or reviewed reconciliation. */
+    readonly saveTrackerSpecRevision: (
+      input: SaveTrackerSpecRevisionInput,
+    ) => Effect.Effect<PlanSpecRevision, PlanningStoreError>;
     /** The artifact and exact history point an implement analysis starts from. */
     readonly getImplementContext: (
       input: GetImplementContextInput,
@@ -1559,6 +1620,49 @@ export const make = Effect.gen(function* () {
     return null;
   });
 
+  const prepareSpecRefresh: PlanningStore["Service"]["prepareSpecRefresh"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const parent = yield* resolveParent(plan, input.parentCommitId);
+      if (parent === undefined) {
+        return yield* new CommitStore.CommitNotFoundError({ commitId: input.parentCommitId });
+      }
+      const originOption = yield* findOriginByPlanRow({ planId: input.planId });
+      const origin = Option.isNone(originOption)
+        ? null
+        : {
+            connectionId: originOption.value.connectionId,
+            issueId: originOption.value.issueId,
+            issueUrl: originOption.value.issueUrl,
+          };
+      const ancestry = yield* commits.ancestors({ commitId: parent.commitId, visibility: "all" });
+      const path = [...ancestry, parent];
+      let local: PlanSpecAt | null = null;
+      let upstreamBaseline: SpecDocument | null = null;
+      for (const commit of path) {
+        if (commit.kind !== "spec-revision") continue;
+        const payload = yield* decodeSpecPayload(commit.payload);
+        local = { revisionCommitId: commit.commitId, document: payload.document };
+        if (
+          payload.source?.kind === "import" ||
+          payload.source?.kind === "tracker-refresh" ||
+          (payload.source === undefined && origin !== null)
+        ) {
+          upstreamBaseline = payload.document;
+        } else if (payload.source?.kind === "tracker-reconciliation") {
+          upstreamBaseline = payload.source.upstream;
+        }
+      }
+      return { origin, local, upstreamBaseline };
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.prepareSpecRefresh:query",
+          "PlanningStore.prepareSpecRefresh:decodeRows",
+        ),
+      ),
+    );
+
   /**
    * Resolve the parent and append onto it inside one transaction, so the shape
    * of the history is decided by one reader of it rather than by two writers
@@ -1713,6 +1817,56 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.saveSpecRevision:query",
           "PlanningStore.saveSpecRevision:encodeRequest",
+        ),
+      ),
+    );
+
+  const saveTrackerSpecRevision: PlanningStore["Service"]["saveTrackerSpecRevision"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const source: SpecRevisionSource =
+        input.sourceKind === "tracker-refresh"
+          ? { kind: "tracker-refresh", issueId: input.issueId }
+          : {
+              kind: "tracker-reconciliation",
+              issueId: input.issueId,
+              upstream: input.upstream ?? input.document,
+            };
+      const appended = yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const parent = yield* resolveParent(plan, input.parentCommitId);
+          if (parent === undefined) {
+            return yield* new CommitStore.CommitNotFoundError({ commitId: input.parentCommitId });
+          }
+          const current = yield* readSpecAtCommit(plan, parent.commitId);
+          const actual = current?.revisionCommitId ?? null;
+          if (actual !== input.expectedSpecRevisionCommitId) {
+            return yield* new SpecRevisionOutdatedError({
+              expectedSpecRevisionCommitId: MercurianCommitId.make(
+                input.expectedSpecRevisionCommitId,
+              ),
+              actualSpecRevisionCommitId: actual === null ? null : MercurianCommitId.make(actual),
+            });
+          }
+          return yield* appendAt({
+            plan,
+            parentCommitId: parent.commitId,
+            commitId,
+            kind: "spec-revision",
+            payload: { document: input.document, source } satisfies SpecRevisionCommitPayload,
+            createdAt: input.createdAt,
+          });
+        }),
+      );
+      yield* announceChange;
+      return toPlanSpecRevision(appended, { document: input.document, source });
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.saveTrackerSpecRevision:query",
+          "PlanningStore.saveTrackerSpecRevision:encodeRequest",
         ),
       ),
     );
@@ -2245,6 +2399,7 @@ export const make = Effect.gen(function* () {
     appendMessage,
     savePlanRevision,
     saveSpecRevision,
+    saveTrackerSpecRevision,
     saveSplits,
     appendAssistantMessage,
     saveAssistantPlanRevision,
@@ -2256,6 +2411,7 @@ export const make = Effect.gen(function* () {
     listTimelineSince,
     getPlanTextAt,
     getSpecAt,
+    prepareSpecRefresh,
     getImplementContext,
     recordImplementVerdict,
     listImplementVerdicts,

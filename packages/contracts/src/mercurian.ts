@@ -38,6 +38,7 @@ export const MERCURIAN_WS_METHODS = {
   appendPlanMessage: "mercurian.appendPlanMessage",
   savePlanRevision: "mercurian.savePlanRevision",
   saveSpecRevision: "mercurian.saveSpecRevision",
+  refreshSpec: "mercurian.refreshSpec",
   tryImplement: "mercurian.tryImplement",
   confirmSplits: "mercurian.confirmSplits",
   cancelImplementProposal: "mercurian.cancelImplementProposal",
@@ -611,6 +612,33 @@ export const MercurianSaveSpecRevisionInput = Schema.Struct({
 });
 export type MercurianSaveSpecRevisionInput = typeof MercurianSaveSpecRevisionInput.Type;
 
+export const MercurianRefreshSpecInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: MercurianCommitId,
+  expectedSpecRevisionCommitId: MercurianCommitId,
+  /** Present only when confirming a reconciliation the user reviewed. */
+  reviewedUpstream: Schema.optional(SpecDocument),
+  resolvedDocument: Schema.optional(SpecDocument),
+});
+export type MercurianRefreshSpecInput = typeof MercurianRefreshSpecInput.Type;
+
+export const MercurianRefreshSpecResult = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("unchanged") }),
+  Schema.Struct({
+    kind: Schema.Literal("committed"),
+    outcome: Schema.Literals(["upstream", "converged", "reconciled"]),
+    revision: PlanSpecRevision,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("reconciliation-required"),
+    base: SpecDocument,
+    local: SpecDocument,
+    upstream: SpecDocument,
+    expectedSpecRevisionCommitId: MercurianCommitId,
+  }),
+]);
+export type MercurianRefreshSpecResult = typeof MercurianRefreshSpecResult.Type;
+
 export const MercurianTryImplementInput = Schema.Struct({
   planId: PlanId,
   parentCommitId: Schema.optional(MercurianCommitId),
@@ -797,6 +825,15 @@ export class SpecRevisionOutdatedError extends Schema.TaggedErrorClass<SpecRevis
   }
 }
 
+export class SpecRefreshUnavailableError extends Schema.TaggedErrorClass<SpecRefreshUnavailableError>()(
+  "SpecRefreshUnavailableError",
+  { reason: Schema.Literals(["no-origin", "issue-not-found", "spec-missing"]) },
+) {
+  override get message(): string {
+    return `The spec cannot be refreshed: ${this.reason}.`;
+  }
+}
+
 export const ImplementBlockedReason = Schema.Literals([
   "plan-empty",
   "model-unset",
@@ -845,6 +882,7 @@ export const isPlanNotFoundError = Schema.is(PlanNotFoundError);
 export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
 export const isSpecRevisionOutdatedError = Schema.is(SpecRevisionOutdatedError);
+export const isSpecRefreshUnavailableError = Schema.is(SpecRefreshUnavailableError);
 export const isImplementBlockedError = Schema.is(ImplementBlockedError);
 export const isConfirmSplitsBlockedError = Schema.is(ConfirmSplitsBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
@@ -866,6 +904,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "appendPlanMessage",
       "savePlanRevision",
       "saveSpecRevision",
+      "refreshSpec",
       "tryImplement",
       "confirmSplits",
       "cancelImplementProposal",
