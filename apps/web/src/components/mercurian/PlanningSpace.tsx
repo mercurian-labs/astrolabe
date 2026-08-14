@@ -7,7 +7,13 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { CircleDotIcon, ClockIcon, FileTextIcon, GitBranchIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CircleDotIcon,
+  ClockIcon,
+  FileTextIcon,
+  GitBranchIcon,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -45,6 +51,7 @@ import {
 import { usePlanningModel } from "../../state/mercurianWorkspace";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
+import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { SidebarInset } from "../ui/sidebar";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -495,10 +502,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <ArtifactToggle
-                    value={pane.artifact}
-                    onChange={(artifact) => setPane({ ...pane, artifact })}
-                  />
                   {pane.artifact === "plan" ? (
                     <PlanArtifact
                       // An edit lands on the branch you are standing on. Editing
@@ -512,6 +515,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                         <Button size="sm" variant="ghost" onClick={backToNow}>
                           Back to now
                         </Button>
+                      }
+                      titleControl={
+                        <ArtifactPicker
+                          value={pane.artifact}
+                          onChange={(artifact) => setPane({ ...pane, artifact })}
+                        />
                       }
                       timeline={visibleTimeline}
                     />
@@ -527,6 +536,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                         </Button>
                       }
                       spec={artifactSpec ?? null}
+                      titleControl={
+                        <ArtifactPicker
+                          value={pane.artifact}
+                          onChange={(artifact) => setPane({ ...pane, artifact })}
+                        />
+                      }
                       timeline={visibleTimeline}
                       turnActive={inFlightTurn !== undefined || inFlightImplement !== undefined}
                     />
@@ -623,7 +638,7 @@ function PlanPaneToggle({
   );
 }
 
-function ArtifactToggle({
+function ArtifactPicker({
   value,
   onChange,
 }: {
@@ -631,21 +646,30 @@ function ArtifactToggle({
   readonly onChange: (value: "plan" | "spec") => void;
 }) {
   return (
-    <div className="flex justify-center border-b border-border px-3 py-2">
-      <ToggleGroup
-        aria-label="Planning artifact"
-        size="xs"
-        value={[value]}
-        variant="outline"
-        onValueChange={(next) => {
-          const selected = next[0];
-          if (selected === "plan" || selected === "spec") onChange(selected);
-        }}
+    <Menu>
+      <MenuTrigger
+        aria-label="Select planning artifact"
+        className="-ml-1 inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-1 text-sm font-medium text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent"
       >
-        <Toggle value="spec">Spec</Toggle>
-        <Toggle value="plan">Plan</Toggle>
-      </ToggleGroup>
-    </div>
+        {value === "spec" ? "Spec" : "Plan"}
+        <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+      </MenuTrigger>
+      <MenuPopup align="start" className="w-(--anchor-width)">
+        <MenuRadioGroup
+          value={value}
+          onValueChange={(selected) => {
+            if (selected === "plan" || selected === "spec") onChange(selected);
+          }}
+        >
+          <MenuRadioItem closeOnClick value="spec">
+            Spec
+          </MenuRadioItem>
+          <MenuRadioItem closeOnClick value="plan">
+            Plan
+          </MenuRadioItem>
+        </MenuRadioGroup>
+      </MenuPopup>
+    </Menu>
   );
 }
 
