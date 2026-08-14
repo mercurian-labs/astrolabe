@@ -150,9 +150,11 @@ makes it read-only, just like the plan. If another branch has not absorbed the n
 shows a **Spec stale** badge on that branch. A merge that includes the newer revision clears the
 badge naturally.
 
-Changing the spec does not restart planning. After your edit, the assistant gets a follow-up turn
-to absorb the contract change into the existing plan. While any assistant turn is active, artifact
-editing is disabled so two writers cannot silently fork the history.
+Changing the spec records only that revision; it does not start an assistant turn. When the newest
+spec on a path has no later plan revision, History shows **Plan may be stale** separately from a
+stale spec branch. If you implement from there, review the plan or continue through the ordinary
+readiness check. While any assistant turn is active, artifact editing is disabled so two writers
+cannot silently fork the history.
 
 ## The plan
 

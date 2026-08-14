@@ -83,9 +83,21 @@ import {
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
 import { SpecArtifact } from "./SpecArtifact";
-import { snapshotSpecIsForPath, staleSpecLeafIds } from "./SpecArtifact.logic";
+import {
+  planMayBeStaleAt,
+  snapshotSpecIsForPath,
+  stalePlanLeafIds,
+  staleSpecLeafIds,
+} from "./SpecArtifact.logic";
 import { SplitSheet } from "./SplitSheet";
-import { existingSplitsAt, implementDisabledReason, type LandedPlan } from "./splits.logic";
+import { StalePlanWarning } from "./StalePlanWarning";
+import {
+  existingSplitsAt,
+  implementDisabledReason,
+  implementFlowAction,
+  type ImplementFlowEvent,
+  type LandedPlan,
+} from "./splits.logic";
 
 const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
 const RIGHT_PANE_DEFAULT_WIDTH = 480;
@@ -134,6 +146,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const confirmSplits = useConfirmSplits();
   const cancelImplementProposal = useCancelImplementProposal();
   const [splitSheetOpen, setSplitSheetOpen] = useState(false);
+  const [stalePlanWarningOpen, setStalePlanWarningOpen] = useState(false);
   const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   // The same resolution the server runs, read here so sending gates with the
   // reason stated instead of failing silently. The two can only disagree for
@@ -152,6 +165,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
+  const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
   const proposal = detail?.implementProposal;
   const existingSplits = useMemo(
     () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
@@ -220,6 +234,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   useEffect(() => {
     setPosition(LATEST);
     setLandedPlans([]);
+    setStalePlanWarningOpen(false);
   }, [planId]);
 
   /**
@@ -371,6 +386,35 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const backToNow = useCallback(() => setPosition(LATEST), []);
 
+  const handleImplementFlow = useCallback(
+    (event: ImplementFlowEvent) => {
+      const action = implementFlowAction(event);
+      if (action === "show-warning") {
+        setStalePlanWarningOpen(true);
+        return;
+      }
+      setStalePlanWarningOpen(false);
+      if (action === "show-plan") {
+        setPane({ open: true, view: "artifact", artifact: "plan" });
+        return;
+      }
+      void tryImplement({
+        planId,
+        ...(head === null ? {} : { parentCommitId: head }),
+      });
+    },
+    [head, planId, setPane, tryImplement],
+  );
+
+  const beginImplement = useCallback(
+    () =>
+      handleImplementFlow({
+        kind: "invoke",
+        planMayBeStale: head !== null && planMayBeStaleAt(graph, head),
+      }),
+    [graph, handleImplementFlow, head],
+  );
+
   if (error !== null) {
     return (
       <PlanningSurface title="Plan">
@@ -441,12 +485,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             onRemoveAttachment={(localId) => removeDraftAttachment(planId, localId)}
             onSend={send}
             onStop={() => void stopTurn(planId)}
-            onImplement={() =>
-              void tryImplement({
-                planId,
-                ...(head === null ? {} : { parentCommitId: head }),
-              })
-            }
+            onImplement={beginImplement}
           />
         </div>
         {detail === null || !pane.open ? null : (
@@ -485,6 +524,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   anchoredCommitId={head}
                   graph={graph}
                   readyCommits={readyCommits}
+                  stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
                   onColumnsWidthCapChange={setColumnsWidthCap}
                   onSelect={select}
@@ -587,6 +627,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           }}
         />
       )}
+      <StalePlanWarning
+        open={stalePlanWarningOpen}
+        onContinue={() => handleImplementFlow({ kind: "continue-anyway" })}
+        onOpenChange={setStalePlanWarningOpen}
+        onReviewPlan={() => handleImplementFlow({ kind: "review-plan" })}
+      />
     </PlanningSurface>
   );
 }

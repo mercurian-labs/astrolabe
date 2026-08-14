@@ -83,6 +83,7 @@ import {
   type SpatialNode,
   type SpatialPoint,
 } from "./PlanGraph.logic";
+import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
 import {
   branchOption,
   threadLayout,
@@ -146,6 +147,7 @@ export function DagExplorer({
   graph,
   anchoredCommitId,
   readyCommits,
+  stalePlanCommitIds,
   staleSpecCommitIds,
   onColumnsWidthCapChange,
   onSelect,
@@ -154,6 +156,7 @@ export function DagExplorer({
   /** Where the surface is looking, or `null` when it is looking at now. */
   readonly anchoredCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
@@ -173,11 +176,21 @@ export function DagExplorer({
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
         <h2 className="text-sm font-medium text-foreground">History</h2>
-        <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 flex-1 items-center gap-1">
           {staleSpecCommitIds.size === 0 ? null : (
             <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
               {staleSpecCommitIds.size} stale spec{" "}
               {staleSpecCommitIds.size === 1 ? "branch" : "branches"}
+            </span>
+          )}
+          {stalePlanCommitIds.size === 0 ? null : (
+            <span
+              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+              title={PLAN_MAY_BE_STALE_DESCRIPTION}
+            >
+              {stalePlanCommitIds.size === 1
+                ? "1 plan may be stale"
+                : `${stalePlanCommitIds.size} plans may be stale`}
             </span>
           )}
         </span>
@@ -226,6 +239,7 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={graph}
           readyCommits={readyCommits}
+          stalePlanCommitIds={stalePlanCommitIds}
           staleSpecCommitIds={staleSpecCommitIds}
           onSelect={onSelect}
         />
@@ -234,6 +248,7 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={graph}
           readyCommits={readyCommits}
+          stalePlanCommitIds={stalePlanCommitIds}
           staleSpecCommitIds={staleSpecCommitIds}
           onSelect={onSelect}
           onWidthCapChange={onColumnsWidthCapChange}
@@ -243,6 +258,7 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={graph}
           readyCommits={readyCommits}
+          stalePlanCommitIds={stalePlanCommitIds}
           staleSpecCommitIds={staleSpecCommitIds}
           onSelect={onSelect}
         />
@@ -349,12 +365,14 @@ function ThreadView({
   graph,
   currentCommitId,
   readyCommits,
+  stalePlanCommitIds,
   staleSpecCommitIds,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -376,6 +394,7 @@ function ThreadView({
               isCurrent={row.commitId === currentCommitId}
               item={row.item}
               ready={readyCommits.has(row.commitId)}
+              stalePlan={stalePlanCommitIds.has(row.commitId)}
               staleSpec={staleSpecCommitIds.has(row.commitId)}
               ref={row.commitId === currentCommitId ? scrollRef : undefined}
               trailing={
@@ -519,6 +538,7 @@ function ColumnsView({
   graph,
   currentCommitId,
   readyCommits,
+  stalePlanCommitIds,
   staleSpecCommitIds,
   onSelect,
   onWidthCapChange,
@@ -526,6 +546,7 @@ function ColumnsView({
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onWidthCapChange: (width: number) => void;
@@ -732,6 +753,7 @@ function ColumnsView({
                       isCurrent={isCurrent}
                       item={row.item}
                       ready={readyCommits.has(row.commitId)}
+                      stalePlan={stalePlanCommitIds.has(row.commitId)}
                       staleSpec={staleSpecCommitIds.has(row.commitId)}
                       ref={registerRow(key, isCurrent)}
                       tabIndex={focusedKey === key ? 0 : -1}
@@ -930,12 +952,14 @@ function GraphView({
   graph,
   currentCommitId,
   readyCommits,
+  stalePlanCommitIds,
   staleSpecCommitIds,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -958,6 +982,7 @@ function GraphView({
       layout={layout}
       readyCommits={readyCommits}
       settings={settings}
+      stalePlanCommitIds={stalePlanCommitIds}
       staleSpecCommitIds={staleSpecCommitIds}
       onSettingsChange={setSettings}
       onSelect={onSelect}
@@ -971,6 +996,7 @@ function SpatialMap({
   currentCommitId,
   readyCommits,
   settings,
+  stalePlanCommitIds,
   staleSpecCommitIds,
   onSettingsChange,
   onSelect,
@@ -980,6 +1006,7 @@ function SpatialMap({
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly settings: DagExplorerDisplaySettingsValue;
+  readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSettingsChange: DisplaySettingsUpdater;
   readonly onSelect: (commitId: MercurianCommitId) => void;
@@ -1401,6 +1428,7 @@ function SpatialMap({
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const hasDetailOverlay = detailOverlay !== null && node.commitId === emphasisId;
             const isReady = readyCommits.has(node.commitId);
+            const isPlanStale = stalePlanCommitIds.has(node.commitId);
             const isSpecStale = staleSpecCommitIds.has(node.commitId);
             const Glyph = commitGlyph(node.item);
             return (
@@ -1408,7 +1436,7 @@ function SpatialMap({
                 // A node is a control, and a circle has no accessible name of
                 // its own: without this the map is unreadable to a screen
                 // reader and unreachable by keyboard.
-                aria-label={`${planCommitSummary(node.item)}${isSpecStale ? ", spec stale" : ""}`}
+                aria-label={`${planCommitSummary(node.item)}${isSpecStale ? ", spec stale" : ""}${isPlanStale ? `, ${PLAN_MAY_BE_STALE_LABEL.toLowerCase()}` : ""}`}
                 aria-current={isCurrent ? "true" : undefined}
                 aria-describedby={hasDetailOverlay ? DETAIL_OVERLAY_ID : undefined}
                 className="cursor-pointer transition-opacity duration-150"
@@ -1508,6 +1536,25 @@ function SpatialMap({
                       y={node.y - 14}
                     >
                       Spec stale
+                    </text>
+                  </g>
+                ) : null}
+                {isPlanStale ? (
+                  <g className="pointer-events-none">
+                    <rect
+                      className="fill-amber-500/15"
+                      height={14}
+                      rx={3}
+                      width={82}
+                      x={node.x + radius + 6}
+                      y={node.y - (isSpecStale ? 40 : 24)}
+                    />
+                    <text
+                      className="fill-amber-700 text-[9px] dark:fill-amber-400"
+                      x={node.x + radius + 10}
+                      y={node.y - (isSpecStale ? 30 : 14)}
+                    >
+                      {PLAN_MAY_BE_STALE_LABEL}
                     </text>
                   </g>
                 ) : null}
@@ -1868,6 +1915,7 @@ function CommitRow({
   item,
   isCurrent,
   ready,
+  stalePlan = false,
   staleSpec = false,
   trailing,
   onSelect,
@@ -1879,6 +1927,7 @@ function CommitRow({
   readonly item: PlanTimelineItem;
   readonly isCurrent: boolean;
   readonly ready: boolean;
+  readonly stalePlan?: boolean;
   readonly staleSpec?: boolean;
   readonly trailing: ReactNode;
   readonly onSelect: (commitId: MercurianCommitId) => void;
@@ -1930,6 +1979,14 @@ function CommitRow({
         {staleSpec ? (
           <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
             Spec stale
+          </span>
+        ) : null}
+        {stalePlan ? (
+          <span
+            className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+            title={PLAN_MAY_BE_STALE_DESCRIPTION}
+          >
+            {PLAN_MAY_BE_STALE_LABEL}
           </span>
         ) : null}
         <span className="shrink-0 text-[11px] text-muted-foreground/70">
