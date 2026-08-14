@@ -243,6 +243,7 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={graph}
           readyCommits={readyCommits}
+          staleSpecCommitIds={staleSpecCommitIds}
           onSelect={onSelect}
         />
       )}
@@ -929,11 +930,13 @@ function GraphView({
   graph,
   currentCommitId,
   readyCommits,
+  staleSpecCommitIds,
   onSelect,
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [settings, setSettings] = useLocalStorage(
@@ -955,6 +958,7 @@ function GraphView({
       layout={layout}
       readyCommits={readyCommits}
       settings={settings}
+      staleSpecCommitIds={staleSpecCommitIds}
       onSettingsChange={setSettings}
       onSelect={onSelect}
     />
@@ -967,6 +971,7 @@ function SpatialMap({
   currentCommitId,
   readyCommits,
   settings,
+  staleSpecCommitIds,
   onSettingsChange,
   onSelect,
 }: {
@@ -975,6 +980,7 @@ function SpatialMap({
   readonly currentCommitId: MercurianCommitId | null;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly settings: DagExplorerDisplaySettingsValue;
+  readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onSettingsChange: DisplaySettingsUpdater;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -1395,13 +1401,14 @@ function SpatialMap({
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const hasDetailOverlay = detailOverlay !== null && node.commitId === emphasisId;
             const isReady = readyCommits.has(node.commitId);
+            const isSpecStale = staleSpecCommitIds.has(node.commitId);
             const Glyph = commitGlyph(node.item);
             return (
               <g
                 // A node is a control, and a circle has no accessible name of
                 // its own: without this the map is unreadable to a screen
                 // reader and unreachable by keyboard.
-                aria-label={planCommitSummary(node.item)}
+                aria-label={`${planCommitSummary(node.item)}${isSpecStale ? ", spec stale" : ""}`}
                 aria-current={isCurrent ? "true" : undefined}
                 aria-describedby={hasDetailOverlay ? DETAIL_OVERLAY_ID : undefined}
                 className="cursor-pointer transition-opacity duration-150"
@@ -1482,6 +1489,25 @@ function SpatialMap({
                       y={node.y + (isCurrent && !hasDetailOverlay ? 18 : 3)}
                     >
                       Ready to implement
+                    </text>
+                  </g>
+                ) : null}
+                {isSpecStale ? (
+                  <g className="pointer-events-none">
+                    <rect
+                      className="fill-amber-500/15"
+                      height={14}
+                      rx={3}
+                      width={50}
+                      x={node.x + radius + 6}
+                      y={node.y - 24}
+                    />
+                    <text
+                      className="fill-amber-700 text-[9px] dark:fill-amber-400"
+                      x={node.x + radius + 10}
+                      y={node.y - 14}
+                    >
+                      Spec stale
                     </text>
                   </g>
                 ) : null}
