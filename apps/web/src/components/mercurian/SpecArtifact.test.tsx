@@ -38,7 +38,8 @@ describe("SpecArtifact", () => {
       />,
     );
     expect(markup).toContain("No spec yet — draft the contract");
-    expect(markup).toContain("Draft spec");
+    expect(markup).toContain(">Edit</button>");
+    expect(markup).not.toContain("Draft spec");
   });
 
   it("renders the current path contract and keeps issue language at the origin", () => {

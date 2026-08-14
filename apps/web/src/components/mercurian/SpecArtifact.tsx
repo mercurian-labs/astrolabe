@@ -160,7 +160,7 @@ export function SpecArtifact({
               onClick={() => setDraft(spec?.document ?? { title: "", description: "" })}
             >
               <PencilIcon className="size-3.5" />
-              {spec === null ? "Draft spec" : "Edit"}
+              Edit
             </Button>
           </div>
         ) : (
