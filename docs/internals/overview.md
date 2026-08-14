@@ -209,7 +209,10 @@ Issue import is the one path that turns an issue into something Mercurian keeps,
 `PlanningStore` rather than a service of its own: `mercurian.importPlan` creates a plan whose root
 commit is the derived spec, of domain kind `spec-revision` and written with `rootPublished: true` — the
 one caller of that seam, so an imported plan is published from birth while `append` keeps every
-later commit private. The link back lives in `plan_origins`, keyed `(connection_id, issue_id)` with
+later commit private. The complete spec snapshot has two prose fields, `goal` and
+`acceptanceCriteria`; import maps the tracker issue's title and description into them, while the
+persistence decoder maps earlier flat and nested `title`/`description` payloads at read time. The
+link back lives in `plan_origins`, keyed `(connection_id, issue_id)` with
 a `UNIQUE` on the pair: re-importing an origin returns the existing plan, or unarchives it, and the
 wire's `created | existing | resurfaced` outcome says which, so idempotency reads as navigation
 rather than a refusal. `connection_id` is not a foreign key — origins are content, and disconnecting

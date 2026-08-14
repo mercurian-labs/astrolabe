@@ -19,6 +19,8 @@ describe("PlanningToolkit", () => {
     expect(PlanningToolkit.tools.save_spec_revision.description).toContain(
       "complete behavioral contract",
     );
+    expect(PlanningToolkit.tools.save_spec_revision.description).toContain("not a short title");
+    expect(PlanningToolkit.tools.save_spec_revision.description).toContain("acceptanceCriteria");
     expect(PlanningToolkit.tools.read_spec.description).toContain("current tip");
   });
 });

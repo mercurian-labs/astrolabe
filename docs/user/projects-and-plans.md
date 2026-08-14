@@ -118,8 +118,8 @@ drafts still work; sending resumes as soon as the model resolves. See
 
 ## The right pane
 
-Two icons sit in the space's top-right corner: **artifacts** and **history**. The artifact pane has
-a **Spec | Plan** switch. Pressing the icon already showing closes the pane and gives the
+Two icons sit in the space's top-right corner: **artifacts** and **history**. The artifact pane's
+header has a compact dropdown for choosing **Spec** or **Plan**. Pressing the icon already showing closes the pane and gives the
 conversation the whole width.
 
 The first plan you open comes up with its plan visible and the history one press away. After that
@@ -137,8 +137,13 @@ and acceptance criteria. The plan describes the approach. Both are first-class a
 same history, but they have opposite roles.
 
 An imported issue becomes the first spec revision. A plan started blank says **No spec yet — draft
-the contract** and uses the same **Draft spec**, **Save**, and **Cancel** flow; there is no separate
+the contract** and uses the same **Edit**, **Save**, and **Cancel** flow; there is no separate
 kind of blank-plan contract. Saving records the complete spec as a revision on the current path.
+
+Editing shows two prose fields: **Goal / user story** and **Acceptance criteria**. Goal is not a
+short title — it has a larger writing surface, at least six lines tall, for the outcome, context,
+and expected behavior. Acceptance criteria has its own multiline field for the observable
+conditions that make the work complete.
 
 The Spec pane always shows the contract for the path you are viewing. Looking at an earlier commit
 makes it read-only, just like the plan. If another branch has not absorbed the newest spec, History

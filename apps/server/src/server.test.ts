@@ -4706,8 +4706,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(root.issueId, issue.id);
       }
       assert.deepEqual(result.imported.detail.spec?.document, {
-        title: "Issue Import",
-        description: issue.description,
+        goal: "Issue Import",
+        acceptanceCriteria: issue.description,
       });
 
       // Re-importing never duplicates: it goes to the plan that exists, and

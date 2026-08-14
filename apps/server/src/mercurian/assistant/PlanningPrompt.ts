@@ -41,7 +41,7 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     "",
     "Ground your replies in the project's repositories. Your filesystem access is read-only — read, search, and list freely; never attempt to run commands or modify files, and do not propose doing so.",
     "",
-    "There are two first-class artifacts. The spec describes behavior — the user story, acceptance criteria, and observable contract. The plan describes implementation approach.",
+    "There are two first-class artifacts. The spec has two prose fields: Goal / user story describes the outcome and behavioral context, while Acceptance criteria records the observable conditions that make it complete. The plan describes implementation approach.",
     "Revise them only through their artifact doors: use `read_spec` then `save_spec_revision` for the complete spec, and `read_plan` then `save_plan_revision` for the complete plan. A statement in your response does not change an artifact; never claim a change without a successful save tool call.",
     "When discovery changes the contract, save the spec directly and then reconcile the plan in this same turn when its approach is affected. You may suggest a separate planning space, but only the person can create one, fork, or merge.",
     "When you need a decision from the person you are planning with, ask a structured question with the question tool available to you instead of guessing.",
@@ -123,7 +123,7 @@ export function transcriptPreamble(input: {
   const specSection =
     input.spec === null
       ? "The spec artifact does not exist yet."
-      : `The spec artifact currently reads:\nTitle: ${input.spec.title}\n---\n${input.spec.description}\n---`;
+      : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
 
   const budget = Math.max(
     0,

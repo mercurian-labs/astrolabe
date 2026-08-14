@@ -749,7 +749,7 @@ describe("PlanningAssistant", () => {
       const refusedSpec = yield* Effect.flip(
         assistant.saveSpecRevisionFromThread({
           threadId: ThreadId.make("coding-thread"),
-          document: { title: "No", description: "Must not land" },
+          document: { goal: "No", acceptanceCriteria: "Must not land" },
         }),
       );
       assert.strictEqual(refusedSpec._tag, "PlanningTurnNotFoundError");
@@ -759,7 +759,7 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(yield* assistant.readSpecFromThread({ threadId: session.threadId }), null);
       yield* assistant.saveSpecRevisionFromThread({
         threadId: session.threadId,
-        document: { title: "Behavior", description: "The sidebar is resizable." },
+        document: { goal: "Behavior", acceptanceCriteria: "The sidebar is resizable." },
       });
       yield* assistant.saveRevisionFromThread({
         threadId: session.threadId,
@@ -768,8 +768,8 @@ describe("PlanningAssistant", () => {
       const readBack = yield* assistant.readPlanFromThread({ threadId: session.threadId });
       assert.strictEqual(readBack, "# Revised by the assistant");
       assert.deepStrictEqual(yield* assistant.readSpecFromThread({ threadId: session.threadId }), {
-        title: "Behavior",
-        description: "The sidebar is resizable.",
+        goal: "Behavior",
+        acceptanceCriteria: "The sidebar is resizable.",
       });
 
       yield* harness.emit(
@@ -790,8 +790,8 @@ describe("PlanningAssistant", () => {
       assert.deepStrictEqual([...reply.parents], [revision.commitId]);
       assert.strictEqual(snapshot.planText, "# Revised by the assistant");
       assert.deepStrictEqual(snapshot.spec?.document, {
-        title: "Behavior",
-        description: "The sidebar is resizable.",
+        goal: "Behavior",
+        acceptanceCriteria: "The sidebar is resizable.",
       });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );

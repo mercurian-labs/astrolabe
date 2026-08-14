@@ -46,8 +46,9 @@ thing that knows how to search its own backlog. Every issue on screen was fetche
 kept nowhere: close the dialog and it is gone. Nothing is stored until you import.
 
 Select an issue and press **Import**. The plan exists immediately, appears under its project, and
-takes the issue's title. The issue's title and description become the plan's root **spec** revision:
-the contract the plan is planned from.
+takes the issue's title. The issue title becomes the spec's **Goal / user story**, and the issue
+description becomes its **Acceptance criteria**. Together they form the plan's root **spec**
+revision: the contract the plan is planned from.
 
 Three things follow from importing rather than starting blank:
 

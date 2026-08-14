@@ -24,7 +24,6 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { Input } from "../ui/input";
 import { expectedSpecRevisionId, lastSpecRevision, specRevisionLabel } from "./SpecArtifact.logic";
 
 interface Reconciliation {
@@ -157,7 +156,7 @@ export function SpecArtifact({
               disabled={!editable}
               size="sm"
               variant="ghost"
-              onClick={() => setDraft(spec?.document ?? { title: "", description: "" })}
+              onClick={() => setDraft(spec?.document ?? { goal: "", acceptanceCriteria: "" })}
             >
               <PencilIcon className="size-3.5" />
               Edit
@@ -171,10 +170,10 @@ export function SpecArtifact({
             <Button
               disabled={
                 isSaving ||
-                draft.title.trim().length === 0 ||
+                draft.goal.trim().length === 0 ||
                 (spec !== null &&
-                  draft.title === spec.document.title &&
-                  draft.description === spec.document.description)
+                  draft.goal === spec.document.goal &&
+                  draft.acceptanceCriteria === spec.document.acceptanceCriteria)
               }
               size="sm"
               onClick={() => void save()}
@@ -242,25 +241,35 @@ function SpecBody({ document }: { readonly document: SpecDocument | null }) {
   }
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4">
-      <h1 className="text-base font-semibold text-foreground">{document.title}</h1>
-      <div
-        className={cn(
-          "mt-3 text-sm text-foreground",
-          "[&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3",
-          "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-semibold [&_li]:my-0.5",
-          "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2",
-          "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
-        )}
-      >
-        <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
-          {document.description}
-        </ReactMarkdown>
-      </div>
+      <h2 className="text-xs font-medium text-muted-foreground">Goal / user story</h2>
+      <SpecMarkdown className="mt-2" text={document.goal} />
+      <h2 className="mt-6 text-xs font-medium text-muted-foreground">Acceptance criteria</h2>
+      <SpecMarkdown className="mt-2" text={document.acceptanceCriteria} />
     </div>
   );
 }
 
-function SpecEditor({
+function SpecMarkdown({ className, text }: { readonly className?: string; readonly text: string }) {
+  return (
+    <div
+      className={cn(
+        "text-sm text-foreground",
+        "[&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3",
+        "[&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold first:[&_h1]:mt-0",
+        "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-semibold [&_li]:my-0.5",
+        "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2",
+        "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
+        className,
+      )}
+    >
+      <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+export function SpecEditor({
   document,
   onChange,
   onSave,
@@ -270,27 +279,41 @@ function SpecEditor({
   readonly onSave: () => void;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
-      <Input
-        aria-label="Spec title"
-        autoFocus
-        placeholder="User story or outcome"
-        value={document.title}
-        onChange={(event) => onChange({ ...document, title: event.target.value })}
-      />
-      <textarea
-        aria-label="Spec description"
-        className="min-h-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-hidden focus-visible:border-ring"
-        placeholder="Describe behavior and acceptance criteria"
-        value={document.description}
-        onChange={(event) => onChange({ ...document, description: event.target.value })}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            onSave();
-          }
-        }}
-      />
+    <div className="flex min-h-0 flex-1 flex-col gap-4 p-3 sm:p-4">
+      <label className="flex shrink-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        Goal / user story
+        <textarea
+          aria-label="Goal or user story"
+          autoFocus
+          className="min-h-32 resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-sm font-normal text-foreground outline-hidden focus-visible:border-ring"
+          placeholder="Describe the user, outcome, context, and expected behavior"
+          rows={6}
+          value={document.goal}
+          onChange={(event) => onChange({ ...document, goal: event.target.value })}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              onSave();
+            }
+          }}
+        />
+      </label>
+      <label className="flex min-h-0 flex-1 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        Acceptance criteria
+        <textarea
+          aria-label="Acceptance criteria"
+          className="min-h-32 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 font-mono text-sm font-normal text-foreground outline-hidden focus-visible:border-ring"
+          placeholder="List the observable conditions that make this complete"
+          value={document.acceptanceCriteria}
+          onChange={(event) => onChange({ ...document, acceptanceCriteria: event.target.value })}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              onSave();
+            }
+          }}
+        />
+      </label>
     </div>
   );
 }
@@ -337,16 +360,20 @@ function SpecReconciliationDialog({
                 Use upstream
               </Button>
             </div>
-            <Input
-              aria-label="Resolved spec title"
-              value={resolved.title}
-              onChange={(event) => onChange({ ...resolved, title: event.target.value })}
+            <textarea
+              aria-label="Resolved goal or user story"
+              className="min-h-32 w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-hidden focus-visible:border-ring"
+              rows={6}
+              value={resolved.goal}
+              onChange={(event) => onChange({ ...resolved, goal: event.target.value })}
             />
             <textarea
-              aria-label="Resolved spec description"
+              aria-label="Resolved acceptance criteria"
               className="min-h-36 w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-hidden focus-visible:border-ring"
-              value={resolved.description}
-              onChange={(event) => onChange({ ...resolved, description: event.target.value })}
+              value={resolved.acceptanceCriteria}
+              onChange={(event) =>
+                onChange({ ...resolved, acceptanceCriteria: event.target.value })
+              }
             />
           </DialogPanel>
         )}
@@ -355,7 +382,7 @@ function SpecReconciliationDialog({
             Cancel
           </Button>
           <Button
-            disabled={saving || resolved === null || resolved.title.trim().length === 0}
+            disabled={saving || resolved === null || resolved.goal.trim().length === 0}
             onClick={onConfirm}
           >
             Confirm reconciliation
@@ -376,9 +403,17 @@ function SpecSnapshot({
   return (
     <div className="min-w-0 rounded-md border border-border p-3">
       <h3 className="text-xs font-medium text-muted-foreground">{label}</h3>
-      <p className="mt-2 text-sm font-medium text-foreground">{document.title}</p>
+      <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Goal / user story
+      </p>
       <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
-        {document.description}
+        {document.goal}
+      </pre>
+      <p className="mt-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Acceptance criteria
+      </p>
+      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+        {document.acceptanceCriteria}
       </pre>
     </div>
   );

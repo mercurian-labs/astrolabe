@@ -28,7 +28,10 @@ export const SavePlanRevisionResult = Schema.Struct({
   saved: Schema.Literal(true),
 });
 
-export const SaveSpecRevisionInput = Schema.Struct({ document: SpecDocument });
+export const SaveSpecRevisionInput = Schema.Struct({
+  /** Complete prose fields: Goal / user story and Acceptance criteria. */
+  document: SpecDocument,
+});
 export const SaveSpecRevisionResult = Schema.Struct({ saved: Schema.Literal(true) });
 
 export const SaveImplementProposalInput = Schema.Struct({
@@ -70,7 +73,7 @@ export const SavePlanRevisionTool = Tool.make("save_plan_revision", {
 
 export const SaveSpecRevisionTool = Tool.make("save_spec_revision", {
   description:
-    "Replace the spec artifact with the complete behavioral contract. The spec contains the user story, acceptance criteria, and observable behavior; it does not contain implementation approach. Call read_spec first.",
+    "Replace the spec artifact with the complete behavioral contract. Pass both prose fields: goal is the user story or intended outcome, not a short title; acceptanceCriteria contains the observable conditions for completion. The spec does not contain implementation approach. Call read_spec first.",
   parameters: SaveSpecRevisionInput,
   success: SaveSpecRevisionResult,
   failure: PlanningTurnNotFoundError,

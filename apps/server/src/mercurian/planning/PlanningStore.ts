@@ -46,6 +46,7 @@ import {
   PlanNotFoundError,
   PlanQuestionRecord,
   SpecDocument,
+  specDocumentFromIssue,
   SpecRevisionOutdatedError,
   PlanTurnActiveError,
   TrackerConnectionId,
@@ -182,11 +183,30 @@ export const SpecRevisionCommitPayload = Schema.Struct({
 });
 export type SpecRevisionCommitPayload = typeof SpecRevisionCommitPayload.Type;
 
-/** M-101 roots used this flat payload before the artifact was named Spec. */
-const LegacyIssueRevisionCommitPayload = Schema.Struct({
+const LegacySpecDocument = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
 });
+
+const LegacySpecRevisionSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("import"), issueId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("tracker-refresh"), issueId: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("tracker-reconciliation"),
+    issueId: Schema.String,
+    upstream: LegacySpecDocument,
+  }),
+  Schema.Struct({ kind: Schema.Literal("direct") }),
+]);
+
+/** M-109 initially stored title/description before the fields gained semantic names. */
+const LegacyStructuredSpecRevisionCommitPayload = Schema.Struct({
+  document: LegacySpecDocument,
+  source: Schema.optional(LegacySpecRevisionSource),
+});
+
+/** M-101 roots used this flat payload before the artifact was named Spec. */
+const LegacyIssueRevisionCommitPayload = LegacySpecDocument;
 
 /**
  * What every projected commit carries whatever its kind: its place in the
@@ -529,7 +549,7 @@ export type SpecRefreshClassification =
     };
 
 const sameSpecDocument = (left: SpecDocument, right: SpecDocument) =>
-  left.title === right.title && left.description === right.description;
+  left.goal === right.goal && left.acceptanceCriteria === right.acceptanceCriteria;
 
 export function classifySpecRefresh(input: {
   readonly base: SpecDocument;
@@ -896,17 +916,43 @@ function toPlanningStoreError(sqlOperation: string, decodeOperation: string) {
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
 const decodeCurrentSpecPayload = Schema.decodeUnknownEffect(SpecRevisionCommitPayload);
+const decodeStructuredLegacySpecPayload = Schema.decodeUnknownEffect(
+  LegacyStructuredSpecRevisionCommitPayload,
+);
 const decodeLegacySpecPayload = Schema.decodeUnknownEffect(LegacyIssueRevisionCommitPayload);
-const decodeSpecPayload = Effect.fn("PlanningStore.decodeSpecPayload")(function* (
-  payload: unknown,
-) {
-  const current = yield* Effect.result(decodeCurrentSpecPayload(payload));
-  if (current._tag === "Success") return current.success;
-  const legacy = yield* decodeLegacySpecPayload(payload);
-  return {
-    document: { title: legacy.title, description: legacy.description },
-  } satisfies SpecRevisionCommitPayload;
-});
+export const decodeSpecRevisionPayload = Effect.fn("PlanningStore.decodeSpecRevisionPayload")(
+  function* (payload: unknown) {
+    const current = yield* Effect.result(decodeCurrentSpecPayload(payload));
+    if (current._tag === "Success") return current.success;
+    const structured = yield* Effect.result(decodeStructuredLegacySpecPayload(payload));
+    if (structured._tag === "Success") {
+      const source = structured.success.source;
+      return {
+        document: specDocumentFromIssue(
+          structured.success.document.title,
+          structured.success.document.description,
+        ),
+        ...(source === undefined
+          ? {}
+          : source.kind === "tracker-reconciliation"
+            ? {
+                source: {
+                  ...source,
+                  upstream: specDocumentFromIssue(
+                    source.upstream.title,
+                    source.upstream.description,
+                  ),
+                },
+              }
+            : { source }),
+      } satisfies SpecRevisionCommitPayload;
+    }
+    const legacy = yield* decodeLegacySpecPayload(payload);
+    return {
+      document: specDocumentFromIssue(legacy.title, legacy.description),
+    } satisfies SpecRevisionCommitPayload;
+  },
+);
 const decodeReadyVerdictPayload = Schema.decodeUnknownEffect(PlanImplementReadyVerdictPayload);
 const decodeNeedsSplitVerdictPayload = Schema.decodeUnknownEffect(
   PlanImplementNeedsSplitVerdictPayload,
@@ -1348,7 +1394,7 @@ export const make = Effect.gen(function* () {
       });
     }
     if (commit.kind === "spec-revision") {
-      const payload = yield* decodeSpecPayload(commit.payload);
+      const payload = yield* decodeSpecRevisionPayload(commit.payload);
       return Option.some<PlanTimelineEvent>({
         item: { _tag: "spec-revision", ...toPlanSpecRevision(commit, payload, origin?.issueId) },
         spec: { revisionCommitId: commit.commitId, document: payload.document },
@@ -1515,7 +1561,7 @@ export const make = Effect.gen(function* () {
             authorKind: "human",
             createdAt: input.createdAt,
             payload: {
-              document: { title: input.title, description: input.description },
+              document: specDocumentFromIssue(input.title, input.description),
               source: { kind: "import", issueId: input.issueId },
             } satisfies SpecRevisionCommitPayload,
           },
@@ -1610,7 +1656,7 @@ export const make = Effect.gen(function* () {
     for (let index = path.length - 1; index >= 0; index -= 1) {
       const commit = path[index];
       if (commit?.kind === "spec-revision") {
-        const payload = yield* decodeSpecPayload(commit.payload);
+        const payload = yield* decodeSpecRevisionPayload(commit.payload);
         return {
           revisionCommitId: commit.commitId,
           document: payload.document,
@@ -1641,7 +1687,7 @@ export const make = Effect.gen(function* () {
       let upstreamBaseline: SpecDocument | null = null;
       for (const commit of path) {
         if (commit.kind !== "spec-revision") continue;
-        const payload = yield* decodeSpecPayload(commit.payload);
+        const payload = yield* decodeSpecRevisionPayload(commit.payload);
         local = { revisionCommitId: commit.commitId, document: payload.document };
         if (
           payload.source?.kind === "import" ||

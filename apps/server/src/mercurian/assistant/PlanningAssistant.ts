@@ -61,6 +61,7 @@ import {
   type ProviderInstanceId,
   type ProviderRuntimeEvent,
   resolvePlanningModel,
+  specDocumentFromIssue,
   type SpecDocument,
   ThreadId,
   type UserInputQuestion,
@@ -316,15 +317,55 @@ export class PlanningTurnNotFoundError extends Schema.TaggedErrorClass<PlanningT
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
 const decodeCurrentSpecRevisionPayload = Schema.decodeUnknownEffect(SpecRevisionCommitPayload);
-const decodeLegacySpecRevisionPayload = Schema.decodeUnknownEffect(
-  Schema.Struct({ title: Schema.String, description: Schema.String }),
+const LegacySpecDocument = Schema.Struct({ title: Schema.String, description: Schema.String });
+const LegacySpecRevisionSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("import"), issueId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("tracker-refresh"), issueId: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("tracker-reconciliation"),
+    issueId: Schema.String,
+    upstream: LegacySpecDocument,
+  }),
+  Schema.Struct({ kind: Schema.Literal("direct") }),
+]);
+const decodeStructuredLegacySpecRevisionPayload = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    document: LegacySpecDocument,
+    source: Schema.optional(LegacySpecRevisionSource),
+  }),
 );
+const decodeLegacySpecRevisionPayload = Schema.decodeUnknownEffect(LegacySpecDocument);
 const decodeSpecRevisionPayload = Effect.fn("PlanningAssistant.decodeSpecRevisionPayload")(
   function* (payload: unknown) {
     const current = yield* Effect.result(decodeCurrentSpecRevisionPayload(payload));
     if (Result.isSuccess(current)) return current.success;
+    const structured = yield* Effect.result(decodeStructuredLegacySpecRevisionPayload(payload));
+    if (Result.isSuccess(structured)) {
+      const source = structured.success.source;
+      return {
+        document: specDocumentFromIssue(
+          structured.success.document.title,
+          structured.success.document.description,
+        ),
+        ...(source === undefined
+          ? {}
+          : source.kind === "tracker-reconciliation"
+            ? {
+                source: {
+                  ...source,
+                  upstream: specDocumentFromIssue(
+                    source.upstream.title,
+                    source.upstream.description,
+                  ),
+                },
+              }
+            : { source }),
+      } satisfies SpecRevisionCommitPayload;
+    }
     const legacy = yield* decodeLegacySpecRevisionPayload(payload);
-    return { document: legacy } satisfies SpecRevisionCommitPayload;
+    return {
+      document: specDocumentFromIssue(legacy.title, legacy.description),
+    } satisfies SpecRevisionCommitPayload;
   },
 );
 

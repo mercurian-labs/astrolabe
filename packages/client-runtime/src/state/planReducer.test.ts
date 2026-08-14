@@ -89,7 +89,10 @@ describe("applyPlanStreamItem", () => {
   it("replaces the spec when a spec revision carries the path projection", () => {
     const spec = {
       revisionCommitId: MercurianCommitId.make("commit-2"),
-      document: { title: "Sidebar behavior", description: "The sidebar stays visible." },
+      document: {
+        goal: "Sidebar behavior",
+        acceptanceCriteria: "The sidebar stays visible.",
+      },
     };
     const state = fold([
       { kind: "snapshot", snapshot },

@@ -1,34 +1,34 @@
 # Technical Plan — M-109: Specs
 
-_Updated from Linear issue M-109's Goal/AC and product-doc commit `700388058a0ff232590924aad8628afd19f27e4c` in almagest. The implementation plan is grounded in the astrolabe repository as it stands on 2026-08-13. Product intent comes from **Specs**, **Commit Tree**, **DAG Explorer**, **Composer**, **Plans**, **Assistant**, **Issue Import**, **Issues**, **Coding Sessions**, **Trackers**, and the rename record **Issue Revisions**._
+_Updated from Linear issue M-109's Goal/AC, product-doc commit `700388058a0ff232590924aad8628afd19f27e4c`, and the two-prose-field clarification in almagest commit `fb0a306`. The implementation plan is grounded in the astrolabe repository as it stands on 2026-08-13. Product intent comes from **Specs**, **Commit Tree**, **DAG Explorer**, **Composer**, **Plans**, **Assistant**, **Issue Import**, **Issues**, **Coding Sessions**, **Trackers**, and the rename record **Issue Revisions**._
 
 **Goal, in one sentence:** generalize the imported-issue root that M-101 already writes into a path-specific **spec** artifact parallel to the plan; give users and the planning assistant equal, direct revision mechanisms while retaining human-only structural control; absorb tracker and in-loop contract changes without rewriting history; and present the resulting multi-commit turns as continuable checkpoints with raw commits available as an audit view.
 
 ## Conventions Detected
 
-| Convention | Evidence | Confidence |
-|---|---|---|
-| The server is command/event/projector shaped; immutable commits and edges are the source of truth | `apps/server/src/mercurian/commitTree/CommitStore.ts`; `apps/server/src/mercurian/planning/PlanningStore.ts`; `docs/internals/overview.md` | High |
-| Human writes name a parent and are blocked during an active assistant turn; assistant writes use one parent and advance the live turn tip | `PlanningStore.requireNoActiveTurn`; `PlanningStore.savePlanRevision`; `PlanningStore.saveAssistantPlanRevision`; `PlanningAssistant.saveRevisionFromThread`; `PlanTurnRegistry.advanceTip` | High |
-| Structural assistant limits live at the generic commit boundary | `CommitStore` assistant fork/merge errors; `PlanningStore.appendAssistantAt` | High |
-| Artifact content crosses once on the snapshot; history rows carry facts and historical content is fetched by commit | `packages/contracts/src/mercurian.ts`; `PlanningStore.getPlanTextAt`; `packages/client-runtime/src/state/planReducer.ts` | High |
-| Public wire contracts are Effect schemas and RPCs, mapped at one server boundary | `packages/contracts/src/mercurian.ts`; `packages/contracts/src/rpc.ts`; `apps/server/src/mercurian/planning/wire.ts` | High |
-| All DAG Explorer modes consume the same `PlanGraph`, while position remains a per-window commit id | `PlanGraph.logic.ts`; `PlanThread.logic.ts`; `PlanColumns.logic.ts`; `DagExplorer.tsx`; `PlanPosition.logic.ts` | High |
-| Explorer preferences are schema-decoded local storage, separate from server state | `DagExplorer.tsx` storage keys; `DagExplorer.logic.ts`; `PlanningSpace.tsx` | High |
-| Pull-only tracker connectors expose normalized issue values behind `TrackerStore` and one total registry | `apps/server/src/mercurian/trackers/connector.ts`; `TrackerStore.ts`; `connectors/registry.ts`; `connectors/LinearConnector.ts` | High |
-| Focused tests sit next to pure logic and Effect services; server async tests wait on durable changes rather than sleeping | existing `*.test.ts`/`*.test.tsx`; repository `AGENTS.md` | High |
+| Convention                                                                                                                                | Evidence                                                                                                                                                                                    | Confidence |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| The server is command/event/projector shaped; immutable commits and edges are the source of truth                                         | `apps/server/src/mercurian/commitTree/CommitStore.ts`; `apps/server/src/mercurian/planning/PlanningStore.ts`; `docs/internals/overview.md`                                                  | High       |
+| Human writes name a parent and are blocked during an active assistant turn; assistant writes use one parent and advance the live turn tip | `PlanningStore.requireNoActiveTurn`; `PlanningStore.savePlanRevision`; `PlanningStore.saveAssistantPlanRevision`; `PlanningAssistant.saveRevisionFromThread`; `PlanTurnRegistry.advanceTip` | High       |
+| Structural assistant limits live at the generic commit boundary                                                                           | `CommitStore` assistant fork/merge errors; `PlanningStore.appendAssistantAt`                                                                                                                | High       |
+| Artifact content crosses once on the snapshot; history rows carry facts and historical content is fetched by commit                       | `packages/contracts/src/mercurian.ts`; `PlanningStore.getPlanTextAt`; `packages/client-runtime/src/state/planReducer.ts`                                                                    | High       |
+| Public wire contracts are Effect schemas and RPCs, mapped at one server boundary                                                          | `packages/contracts/src/mercurian.ts`; `packages/contracts/src/rpc.ts`; `apps/server/src/mercurian/planning/wire.ts`                                                                        | High       |
+| All DAG Explorer modes consume the same `PlanGraph`, while position remains a per-window commit id                                        | `PlanGraph.logic.ts`; `PlanThread.logic.ts`; `PlanColumns.logic.ts`; `DagExplorer.tsx`; `PlanPosition.logic.ts`                                                                             | High       |
+| Explorer preferences are schema-decoded local storage, separate from server state                                                         | `DagExplorer.tsx` storage keys; `DagExplorer.logic.ts`; `PlanningSpace.tsx`                                                                                                                 | High       |
+| Pull-only tracker connectors expose normalized issue values behind `TrackerStore` and one total registry                                  | `apps/server/src/mercurian/trackers/connector.ts`; `TrackerStore.ts`; `connectors/registry.ts`; `connectors/LinearConnector.ts`                                                             | High       |
+| Focused tests sit next to pure logic and Effect services; server async tests wait on durable changes rather than sleeping                 | existing `*.test.ts`/`*.test.tsx`; repository `AGENTS.md`                                                                                                                                   | High       |
 
 ## Pickup decisions and scope
 
-### Pin the open placement decision: one artifact pane, segmented Spec | Plan
+### Pin the open placement decision: one artifact pane, compact Spec/Plan picker
 
-Use the recommended placement from **Specs**: the existing right-sidebar artifact pane becomes one standing view with a `Spec | Plan` segmented control. `Plan` remains the default so this issue does not relocate an already-shipped artifact. The selected segment persists with the existing pane preference.
+The existing right-sidebar artifact pane becomes one standing view whose header uses the same compact dropdown pattern as the project selector to choose **Spec** or **Plan**. `Plan` remains the default so this issue does not relocate an already-shipped artifact. The selected artifact persists with the existing pane preference.
 
 This keeps “planned from” and “planned toward” adjacent without opening another resize/visibility model, and it works in the existing narrow and wide planning layouts. The timeline and DAG remain history views; they do not become substitute artifact readers.
 
-### The spec is a structured snapshot, not a second tracker issue model
+### The spec is a two-field prose snapshot, not a second tracker issue model
 
-Persist `{ title, description }` as the complete spec document. In the first release, `description` owns the user story, acceptance criteria, and other behavioral contract text; do not split AC into an independently mutable checklist schema. Tracker id, URL, provider, and connection remain origin metadata rather than fields of the spec.
+Persist `{ goal, acceptanceCriteria }` as the complete spec document. Both fields are prose, not metadata: `goal` holds the user story, outcome, and behavioral context rather than a short title, while `acceptanceCriteria` holds the observable conditions for completion. The editor therefore gives Goal / user story a multiline surface with at least six visible lines and keeps Acceptance criteria in its own multiline surface. Tracker id, URL, provider, and connection remain origin metadata rather than fields of the spec.
 
 The full snapshot follows plan-revision semantics: ancestry determines the current document, earlier documents are immutable, and a merge can later resolve to one ordinary complete revision instead of replaying patches.
 
@@ -67,8 +67,8 @@ Introduce the stored document and revision payload:
 
 ```ts
 interface SpecDocument {
-  readonly title: string;
-  readonly description: string;
+  readonly goal: string;
+  readonly acceptanceCriteria: string;
 }
 
 type SpecRevisionSource =
@@ -87,7 +87,7 @@ interface SpecRevisionCommitPayload {
 }
 ```
 
-`source` is optional only for compatibility with M-101 roots. Decode the existing flat `{ title, description }` payload into `document` with no source; when that root belongs to a `plan_origins` row, projection treats it as a legacy import. New writes always stamp a source. `authorKind` already distinguishes direct human and assistant edits, so provenance must not duplicate authorship. Import and clean refresh carry the tracker snapshot as the document itself. A reconciliation may intentionally preserve local changes, so it separately carries the upstream snapshot reviewed at that point. Walking spec ancestry can therefore recover both current contract and last-known upstream content without adding mutable columns to `plan_origins`.
+`source` is optional only for compatibility with M-101 roots. Decode both the existing flat `{ title, description }` payload and M-109's earlier nested `{ document: { title, description } }` payload into `{ goal, acceptanceCriteria }`; convert a legacy reconciliation's nested upstream snapshot too. New writes use only the semantic field names and stamp a source. Import and refresh map tracker title to `goal` and tracker description to `acceptanceCriteria` deterministically. `authorKind` already distinguishes direct human and assistant edits, so provenance must not duplicate authorship. A reconciliation may intentionally preserve local changes, so it separately carries the upstream snapshot reviewed at that point. Walking spec ancestry can therefore recover both current contract and last-known upstream content without adding mutable columns to `plan_origins`.
 
 The wire timeline item stays compact: `PlanSpecRevision` carries commit facts, cause, and optional origin issue id, but not every historical document. Add `PlanSpecAt = { revisionCommitId, document }`, current `spec: PlanSpecAt | null`, and origin summary to `PlanDetail`; add the same `PlanSpecAt` shape for one historical read. A spec-revision commit event carries its new `spec` once so `planReducer.ts` can advance current state. This prevents websocket growth from becoming quadratic as revisions accumulate.
 
@@ -233,13 +233,15 @@ Extend the right-pane state schema with `artifact: "spec" | "plan"` and bump its
 
 `SpecArtifact.tsx` provides:
 
-- title and rendered description for the current selected path;
+- separately labeled, rendered Goal / user story and Acceptance criteria for the current selected path;
 - origin/last-refresh context when tracker-backed;
 - latest revision author and cause;
 - **Edit** for a live human path;
 - **Refresh from issue** for a live tracker-backed path;
 - historical read-only state while looking back;
 - “No spec yet — draft the contract” for blank plans.
+
+The blank and existing states expose the same **Edit** action. Editing uses two textareas: Goal / user story is not a title control and shows at least six lines; Acceptance criteria is a separate multiline field. Save writes one complete two-field snapshot.
 
 Saving a blank draft calls the same guarded human `saveSpecRevision`; there is no special blank-plan table or acceptance flow. During an active assistant turn, the human editor is disabled for the same reason the Plan editor is disabled: a concurrent human append would force an illegal assistant fork. Assistant changes still stream into the Spec pane as ordinary commit events.
 
@@ -290,7 +292,7 @@ A merge that includes the newer spec clears staleness naturally through ancestry
 - `apps/server/src/ws.ts` — spec RPC handlers, scopes, event sequencing, and post-human-revision reconciliation start.
 - `apps/server/src/auth/RpcAuthorization.ts` — get-spec read scope; save/refresh operate scope.
 - `apps/web/src/state/mercurian.ts` — hooks for get/save/refresh spec.
-- `apps/web/src/components/mercurian/PlanningSpace.tsx` — selected-path spec resolution, segmented artifact pane, shared detail preference, checkpoint projection, composer boundary/edit state.
+- `apps/web/src/components/mercurian/PlanningSpace.tsx` — selected-path spec resolution, compact artifact picker, shared detail preference, checkpoint projection, composer boundary/edit state.
 - `apps/web/src/components/mercurian/PlanArtifact.tsx` — share read-only/edit shell primitives with Spec without coupling their document shapes.
 - `apps/web/src/components/mercurian/PlanTimeline.tsx` — spec vocabulary and direct assistant attribution.
 - `apps/web/src/components/mercurian/PlanGraph.logic.ts` — projected checkpoint node metadata and summaries while retaining raw topology utilities.
@@ -317,7 +319,7 @@ A merge that includes the newer spec clears staleness naturally through ancestry
 - [ ] Update the planning prompt and MCP approvals so the assistant treats Spec as behavior, Plan as approach, commits changes through tools, and absorbs spec changes in the same turn.
 - [ ] Add single-issue tracker lookup and pure base/local/upstream refresh classification; make unchanged upstream a no-op, converged tracker changes advance provenance, and divergent paths require explicit reconciliation.
 - [ ] Start a follow-on reconciliation turn after committed human edit/refresh, but never after import or an in-turn assistant spec revision.
-- [ ] Add path-aware Spec | Plan artifact UI, blank-spec draft, historical read-only state, direct editing, refresh, and reconciliation.
+- [ ] Add path-aware Spec/Plan dropdown, blank-spec draft, historical read-only state, two-field prose editing with a six-line Goal surface, refresh, and reconciliation.
 - [ ] Add pure checkpoint projection and make Checkpoints the default shared detail for Thread, Columns, and Graph; retain Commits as the raw audit view.
 - [ ] Derive checkpoint authorship, effects, interrupted/unanswered state, and continuation target only from included commits.
 - [ ] Add exact intermediate-boundary composer copy and edit-and-branch for earlier human queries without rewriting the original branch.
@@ -432,7 +434,7 @@ Use focused suites only, per repository guidance. Do not run repo-wide `vp check
 
 The choices most worth pressure-testing at implementation pickup are:
 
-1. structured `{ title, description }` snapshots rather than an acceptance-criteria submodel;
+1. structured `{ goal, acceptanceCriteria }` prose snapshots, with legacy title/description decoding rather than a storage rewrite;
 2. persistence-only `issue-revision` compatibility rather than a SQLite rewrite;
 3. direct assistant spec writes through the existing turn registry, with generic fork/merge law as the safety boundary;
 4. reconstructing checkpoints from immutable topology/authorship rather than persisting turn ids or checkpoint rows;

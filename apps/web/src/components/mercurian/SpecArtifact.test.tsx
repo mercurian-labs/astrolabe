@@ -7,7 +7,7 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { SpecArtifact } from "./SpecArtifact";
+import { SpecArtifact, SpecEditor } from "./SpecArtifact";
 
 vi.mock("../../state/mercurian", () => ({
   useSaveSpecRevision: () => vi.fn(),
@@ -54,7 +54,10 @@ describe("SpecArtifact", () => {
         planId={PlanId.make("plan-1")}
         spec={{
           revisionCommitId: id("spec-1"),
-          document: { title: "Specs", description: "The contract is **first class**." },
+          document: {
+            goal: "People can plan from an explicit contract.",
+            acceptanceCriteria: "The contract is **first class**.",
+          },
         }}
         timeline={[revision]}
       />,
@@ -72,7 +75,7 @@ describe("SpecArtifact", () => {
         planId={PlanId.make("plan-1")}
         spec={{
           revisionCommitId: id("spec-1"),
-          document: { title: "Specs", description: "Contract" },
+          document: { goal: "Behavior", acceptanceCriteria: "Contract" },
         }}
         timeline={[revision]}
         turnActive
@@ -80,5 +83,20 @@ describe("SpecArtifact", () => {
     );
     expect(markup).toContain("The assistant is replying. Stop it before editing the spec.");
     expect(markup).toContain("disabled");
+  });
+
+  it("gives the goal a multiline writing surface instead of a title input", () => {
+    const markup = renderToStaticMarkup(
+      <SpecEditor
+        document={{ goal: "User story", acceptanceCriteria: "- [ ] It works" }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+    expect(markup).toContain('aria-label="Goal or user story"');
+    expect(markup).toContain('rows="6"');
+    expect(markup).toContain('aria-label="Acceptance criteria"');
+    expect(markup.match(/<textarea/g)).toHaveLength(2);
+    expect(markup).not.toContain("<input");
   });
 });

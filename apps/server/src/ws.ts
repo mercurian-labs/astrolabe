@@ -51,6 +51,8 @@ import {
   isPlanNotFoundError,
   isPlanTurnActiveError,
   isSpecRevisionOutdatedError,
+  specDocumentFromIssue,
+  type SpecDocument,
   SpecRevisionOutdatedError,
   SpecRefreshUnavailableError,
   isSpecRefreshUnavailableError,
@@ -1120,8 +1122,8 @@ const makeWsRpcLayer = (
       const kickOffSpecReconciliation = (input: {
         readonly planId: PlanningAssistant.StartTurnInput["planId"];
         readonly parentCommitId: CommitId;
-        readonly previous: { readonly title: string; readonly description: string } | null;
-        readonly current: { readonly title: string; readonly description: string };
+        readonly previous: SpecDocument | null;
+        readonly current: SpecDocument;
       }) =>
         kickOffPlanningTurn({
           planId: input.planId,
@@ -1131,8 +1133,12 @@ const makeWsRpcLayer = (
             "Revise the plan to absorb what changed; do not restart it.",
             "Use read_plan and save_plan_revision when the approach must change.",
             "Explain what was absorbed in the terminal response.",
-            `Previous spec:\n${input.previous === null ? "(none)" : `${input.previous.title}\n\n${input.previous.description}`}`,
-            `Current spec:\n${input.current.title}\n\n${input.current.description}`,
+            `Previous spec:\n${
+              input.previous === null
+                ? "(none)"
+                : `Goal / user story:\n${input.previous.goal}\n\nAcceptance criteria:\n${input.previous.acceptanceCriteria}`
+            }`,
+            `Current spec:\nGoal / user story:\n${input.current.goal}\n\nAcceptance criteria:\n${input.current.acceptanceCriteria}`,
           ].join("\n\n"),
         });
 
@@ -1808,7 +1814,7 @@ const makeWsRpcLayer = (
                   if (issue === null) {
                     return yield* new SpecRefreshUnavailableError({ reason: "issue-not-found" });
                   }
-                  const upstream = { title: issue.title, description: issue.description };
+                  const upstream = specDocumentFromIssue(issue.title, issue.description);
                   const reconciliation = {
                     kind: "reconciliation-required" as const,
                     base: context.upstreamBaseline,
@@ -1823,8 +1829,8 @@ const makeWsRpcLayer = (
                     input.reviewedUpstream !== undefined && input.resolvedDocument !== undefined;
                   if (confirming) {
                     const upstreamMoved =
-                      input.reviewedUpstream.title !== upstream.title ||
-                      input.reviewedUpstream.description !== upstream.description;
+                      input.reviewedUpstream.goal !== upstream.goal ||
+                      input.reviewedUpstream.acceptanceCriteria !== upstream.acceptanceCriteria;
                     if (
                       upstreamMoved ||
                       String(context.local.revisionCommitId) !==

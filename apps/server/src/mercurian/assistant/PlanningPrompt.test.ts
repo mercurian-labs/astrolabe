@@ -20,7 +20,8 @@ describe("planningSystemAppendix", () => {
     expect(appendix).toContain("read-only");
     expect(appendix).toContain("save_plan_revision");
     expect(appendix).toContain("save_spec_revision");
-    expect(appendix).toContain("spec describes behavior");
+    expect(appendix).toContain("Goal / user story describes the outcome");
+    expect(appendix).toContain("Acceptance criteria records the observable conditions");
     expect(appendix).toContain("- astrolabe: /repos/astrolabe");
     expect(appendix).not.toContain("Out of reach");
   });
@@ -58,7 +59,7 @@ describe("transcriptPreamble", () => {
     const preamble = transcriptPreamble({
       entries,
       planText: "# Plan body",
-      spec: { title: "Contract", description: "- [ ] It works" },
+      spec: { goal: "Contract", acceptanceCriteria: "- [ ] It works" },
       reservedChars: 0,
     });
     expect(preamble).toContain("Person:\nWhere should the tree live?");

@@ -261,11 +261,18 @@ export type PlanRevision = typeof PlanRevision.Type;
  * to the plan artifact rather than a live tracker object.
  */
 export const SpecDocument = Schema.Struct({
-  title: Schema.String,
-  /** `""` is a real state: a contract may have no body yet. */
-  description: Schema.String,
+  /** The outcome, user story, and behavioral context — prose, not a title. */
+  goal: Schema.String,
+  /** The observable conditions that make the goal complete. */
+  acceptanceCriteria: Schema.String,
 });
 export type SpecDocument = typeof SpecDocument.Type;
+
+/** Map a tracker's title/body pair into the spec's two semantic prose fields. */
+export const specDocumentFromIssue = (title: string, description: string): SpecDocument => ({
+  goal: title,
+  acceptanceCriteria: description,
+});
 
 export const PlanSpecRevisionCause = Schema.Literals([
   "import",
