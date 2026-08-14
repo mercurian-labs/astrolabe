@@ -52,7 +52,6 @@ import {
   isPlanTurnActiveError,
   isSpecRevisionOutdatedError,
   specDocumentFromIssue,
-  type SpecDocument,
   SpecRevisionOutdatedError,
   SpecRefreshUnavailableError,
   isSpecRefreshUnavailableError,
@@ -1119,29 +1118,6 @@ const makeWsRpcLayer = (
       const kickOffPlanningTurn = (input: PlanningAssistant.StartTurnInput) =>
         planningAssistant.startTurn(input).pipe(Effect.forkDetach, Effect.asVoid);
 
-      const kickOffSpecReconciliation = (input: {
-        readonly planId: PlanningAssistant.StartTurnInput["planId"];
-        readonly parentCommitId: CommitId;
-        readonly previous: SpecDocument | null;
-        readonly current: SpecDocument;
-      }) =>
-        kickOffPlanningTurn({
-          planId: input.planId,
-          parentCommitId: input.parentCommitId,
-          text: [
-            "The planning contract changed on this path.",
-            "Revise the plan to absorb what changed; do not restart it.",
-            "Use read_plan and save_plan_revision when the approach must change.",
-            "Explain what was absorbed in the terminal response.",
-            `Previous spec:\n${
-              input.previous === null
-                ? "(none)"
-                : `Goal / user story:\n${input.previous.goal}\n\nAcceptance criteria:\n${input.previous.acceptanceCriteria}`
-            }`,
-            `Current spec:\nGoal / user story:\n${input.current.goal}\n\nAcceptance criteria:\n${input.current.acceptanceCriteria}`,
-          ].join("\n\n"),
-        });
-
       const loadTrackersSnapshot = trackerStore.getSnapshot.pipe(
         Effect.map(toWireTrackersSnapshot),
         Effect.tapError((cause) =>
@@ -1750,34 +1726,17 @@ const makeWsRpcLayer = (
             MERCURIAN_WS_METHODS.saveSpecRevision,
             DateTime.now.pipe(
               Effect.flatMap((createdAt) =>
-                Effect.gen(function* () {
-                  const revision = yield* planningStore.saveSpecRevision({
-                    planId: input.planId,
-                    document: input.document,
-                    expectedSpecRevisionCommitId:
-                      input.expectedSpecRevisionCommitId === null
-                        ? null
-                        : CommitId.make(input.expectedSpecRevisionCommitId),
-                    ...(input.parentCommitId === undefined
-                      ? {}
-                      : { parentCommitId: CommitId.make(input.parentCommitId) }),
-                    createdAt,
-                  });
-                  const previousParent = revision.parents[0];
-                  const previous =
-                    previousParent === undefined
+                planningStore.saveSpecRevision({
+                  planId: input.planId,
+                  document: input.document,
+                  expectedSpecRevisionCommitId:
+                    input.expectedSpecRevisionCommitId === null
                       ? null
-                      : yield* planningStore.getSpecAt({
-                          planId: input.planId,
-                          commitId: previousParent,
-                        });
-                  yield* kickOffSpecReconciliation({
-                    planId: input.planId,
-                    parentCommitId: revision.commitId,
-                    previous: previous?.document ?? null,
-                    current: input.document,
-                  });
-                  return revision;
+                      : CommitId.make(input.expectedSpecRevisionCommitId),
+                  ...(input.parentCommitId === undefined
+                    ? {}
+                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
+                  createdAt,
                 }),
               ),
               Effect.map(toWirePlanSpecRevision),
@@ -1850,12 +1809,6 @@ const makeWsRpcLayer = (
                       upstream,
                       createdAt,
                     });
-                    yield* kickOffSpecReconciliation({
-                      planId: input.planId,
-                      parentCommitId: revision.commitId,
-                      previous: context.local.document,
-                      current: input.resolvedDocument,
-                    });
                     return {
                       kind: "committed" as const,
                       outcome: "reconciled" as const,
@@ -1893,12 +1846,6 @@ const makeWsRpcLayer = (
                     issueId: context.origin.issueId,
                     sourceKind: "tracker-refresh",
                     createdAt,
-                  });
-                  yield* kickOffSpecReconciliation({
-                    planId: input.planId,
-                    parentCommitId: revision.commitId,
-                    previous: context.local.document,
-                    current: classified.document,
                   });
                   return {
                     kind: "committed" as const,

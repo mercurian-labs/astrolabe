@@ -147,7 +147,9 @@ immutable readiness verdict is recorded beside the commit it evaluated, while a 
 remains transient in memory. A ready answer writes no commit; only a person's confirmation writes
 repository projections as sibling `plan-revision` commits whose repository stamp does not change
 the parent line's derived artifact, and each projected commit is recorded ready in the same
-transaction.
+transaction. Before that gate, the client warns when the selected path's newest spec revision has
+no descendant plan revision in the same ancestry. The warning is advisory and does not alter an
+existing readiness verdict or write history.
 The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
 re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
 planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
@@ -182,8 +184,8 @@ over the same `mercurian.subscribePlan` subscription and landing exactly one ass
 it settles — marked interrupted when cut short. Its write doors are the planning MCP toolkit's
 `save_plan_revision` and `save_spec_revision`, each paired with a path-aware read. Tool commits
 advance the active turn's tip, so spec changes, plan absorption, and the terminal response form one
-ancestry chain. A standalone human spec change starts a follow-up turn after the durable commit;
-provider refusal never rolls it back.
+ancestry chain. A standalone human spec change lands only its durable commit; the next human
+message starts a turn whose rebuilt context includes that revision and the current artifacts.
 
 [`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
 database: the registry of codebases the app can reach, the app-owned scripts declared on each, and

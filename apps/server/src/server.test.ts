@@ -32,9 +32,11 @@ import {
   WS_METHODS,
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
+  MERCURIAN_TRACKER_WS_METHODS,
   MercurianProjectId,
   type PlanId,
   TrackerConnectionId,
+  type TrackerIssue,
   TrimmedNonEmptyString,
   EditorId,
 } from "@t3tools/contracts";
@@ -408,6 +410,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     planningAssistant?: Partial<PlanningAssistant.PlanningAssistant["Service"]>;
+    trackerConnector?: TrackerConnector;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
     serverSettings?: Partial<ServerSettings.ServerSettingsService["Service"]>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncher["Service"]>;
@@ -1004,7 +1007,11 @@ const buildAppUnderTest = (options?: {
           // Over a connector that reaches no network: the server suite is about
           // the wire, not about Linear.
           TrackerStore.layer.pipe(
-            Layer.provide(TrackerConnectorRegistry.layerWith({ linear: stubTrackerConnector })),
+            Layer.provide(
+              TrackerConnectorRegistry.layerWith({
+                linear: options?.layers?.trackerConnector ?? stubTrackerConnector,
+              }),
+            ),
             Layer.provide(ServerSecretStore.layer),
           ),
         ).pipe(
@@ -4723,6 +4730,129 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Published from birth, so delete is off the surface from the first
       // second and archive is this plan's only disappearance.
       assert.equal(plans[0]?.hasPublishedCommits, true);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("keeps human spec saves and both committing refresh paths silent", () =>
+    Effect.gen(function* () {
+      const startTurnInputs: Array<PlanningAssistant.StartTurnInput> = [];
+      let startTurnBaseline = 0;
+      let liveIssue: TrackerIssue = {
+        id: TrimmedNonEmptyString.make("M-109"),
+        title: "Original contract",
+        description: "Original acceptance criteria",
+        url: TrimmedNonEmptyString.make("https://linear.app/mercurian/issue/M-109"),
+        status: "In Progress",
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          planningAssistant: {
+            startTurn: (input) =>
+              Effect.sync(() => {
+                startTurnInputs.push(input);
+              }),
+          },
+          trackerConnector: {
+            ...stubTrackerConnector,
+            getIssue: () => Effect.succeed(liveIssue),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const blank = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Plan from a human-authored spec",
+            });
+            const connection = yield* client[MERCURIAN_TRACKER_WS_METHODS.connectTracker]({
+              kind: "linear",
+              token: TrimmedNonEmptyString.make("test-token"),
+            });
+            const imported = yield* client[MERCURIAN_WS_METHODS.importPlan]({
+              projectId: project.projectId,
+              connectionId: connection.connectionId,
+              issue: liveIssue,
+            });
+            const root = imported.detail.timeline[0]!;
+            yield* Effect.yieldNow;
+            startTurnBaseline = startTurnInputs.length;
+
+            yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
+              planId: blank.plan.planId,
+              parentCommitId: blank.timeline[0]!.commitId,
+              expectedSpecRevisionCommitId: null,
+              document: {
+                goal: "Human revision",
+                acceptanceCriteria: "Saving it does not start an assistant turn.",
+              },
+            });
+            yield* Effect.yieldNow;
+            assert.equal(startTurnInputs.length, startTurnBaseline);
+
+            liveIssue = {
+              ...liveIssue,
+              title: "Upstream-only refresh",
+              description: "The tracker changed while the local spec did not.",
+            };
+            const refreshed = yield* client[MERCURIAN_WS_METHODS.refreshSpec]({
+              planId: imported.detail.plan.planId,
+              parentCommitId: root.commitId,
+              expectedSpecRevisionCommitId: root.commitId,
+            });
+            assert.equal(refreshed.kind, "committed");
+            if (refreshed.kind !== "committed") return;
+            yield* Effect.yieldNow;
+            assert.equal(startTurnInputs.length, startTurnBaseline);
+
+            const local = yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
+              planId: imported.detail.plan.planId,
+              parentCommitId: refreshed.revision.commitId,
+              expectedSpecRevisionCommitId: refreshed.revision.commitId,
+              document: {
+                goal: refreshed.revision.commitId,
+                acceptanceCriteria: "A local clarification that conflicts with the next refresh.",
+              },
+            });
+            yield* Effect.yieldNow;
+            assert.equal(startTurnInputs.length, startTurnBaseline);
+            liveIssue = {
+              ...liveIssue,
+              title: "Tracker moved again",
+              description: "A different upstream clarification.",
+            };
+            const conflict = yield* client[MERCURIAN_WS_METHODS.refreshSpec]({
+              planId: imported.detail.plan.planId,
+              parentCommitId: local.commitId,
+              expectedSpecRevisionCommitId: local.commitId,
+            });
+            assert.equal(conflict.kind, "reconciliation-required");
+            if (conflict.kind !== "reconciliation-required") return;
+            const reconciled = yield* client[MERCURIAN_WS_METHODS.refreshSpec]({
+              planId: imported.detail.plan.planId,
+              parentCommitId: local.commitId,
+              expectedSpecRevisionCommitId: conflict.expectedSpecRevisionCommitId,
+              reviewedUpstream: conflict.upstream,
+              resolvedDocument: {
+                goal: "Reviewed resolution",
+                acceptanceCriteria: "The person chooses the final contract.",
+              },
+            });
+            assert.equal(reconciled.kind, "committed");
+            if (reconciled.kind === "committed") assert.equal(reconciled.outcome, "reconciled");
+            yield* Effect.yieldNow;
+            assert.equal(startTurnInputs.length, startTurnBaseline);
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      yield* Effect.yieldNow;
+      assert.equal(startTurnInputs.length, startTurnBaseline);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

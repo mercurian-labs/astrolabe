@@ -856,6 +856,49 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
+  it.effect("includes a standalone human spec revision in the next turn input", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const revision = yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        expectedSpecRevisionCommitId: null,
+        document: {
+          goal: "Keep the revised navigation contract",
+          acceptanceCriteria: "The sidebar preserves the active project while it resizes.",
+        },
+        createdAt: at("2026-08-08T00:01:00.000Z"),
+      });
+      const message = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        text: "What should change in the plan?",
+        createdAt: at("2026-08-08T00:02:00.000Z"),
+      });
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: message.commitId,
+        text: message.text,
+      });
+
+      yield* Queue.take(harness.startSessions);
+      const turn = yield* Queue.take(harness.sendTurns);
+      const input = turn.input ?? "";
+      assert.ok(input.includes("[The person revised the spec.]"));
+      assert.ok(input.includes("Goal / user story:\nKeep the revised navigation contract"));
+      assert.ok(
+        input.includes(
+          "Acceptance criteria:\n---\nThe sidebar preserves the active project while it resizes.",
+        ),
+      );
+      assert.ok(input.includes("Reply to this message:\nWhat should change in the plan?"));
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
   it.effect("records and publishes an atomic verdict without writing history", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;

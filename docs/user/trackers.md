@@ -73,10 +73,10 @@ plan.
 
 Issues are not synchronized in the background. In the plan's **Spec** pane, **Refresh from issue**
 performs one explicit live read. If only the issue changed, its new content lands as a spec revision
-on the current path and the assistant absorbs it into the existing plan. If the local spec and the
-issue both changed, nothing is overwritten: a reconciliation shows the base, local, and upstream
-documents. Choose local, upstream, or edit a resolution, then confirm to land one reconciliation
-revision. An unchanged issue writes nothing.
+on the current path without starting an assistant turn. If the local spec and the issue both
+changed, nothing is overwritten: a reconciliation shows the base, local, and upstream documents.
+Choose local, upstream, or edit a resolution, then confirm to land one reconciliation revision. An
+unchanged issue writes nothing.
 
 ## Connection status
 
