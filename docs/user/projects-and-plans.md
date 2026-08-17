@@ -85,8 +85,9 @@ going out the send button is held, and the next one waits.
 ## The assistant
 
 Send a message and the assistant answers, streaming in below it as it thinks. It runs under the
-workspace's [planning model](#the-planning-model), and it grounds what it says in the project's
-repositories — reading, searching, listing, never changing a file.
+[planning model](#the-planning-model) shown in the composer for this branch, and it grounds what it
+says in the project's repositories — reading, searching, listing, never changing a file. Settled
+replies quietly name the provider and model that produced them.
 
 What it consulted is shown with each reply, folded away until you want it: a quiet **Consulted…**
 line expands into the files it read and the searches it ran. When a provider can only ground in one
@@ -110,9 +111,9 @@ continue from where things left off.
 One reply at a time, for the whole plan: while the assistant is answering, sending — from any
 window — waits until you stop the reply or it finishes.
 
-If this machine cannot run the planning model — none is chosen yet, or no connected instance offers
-it — the composer says so right above where you type, instead of failing silently. Your message
-drafts still work; sending resumes as soon as the model resolves. See
+If this machine cannot run the branch's planning model — none is chosen yet, or no connected
+instance offers it — the composer says so right above where you type, instead of failing silently.
+Your message drafts still work; sending resumes as soon as the model resolves. See
 [the planning model](#the-planning-model) for how it is chosen.
 
 ## The right pane
@@ -230,8 +231,17 @@ it returns to the tree in both. Nothing needs refreshing.
 
 ## The planning model
 
-The model the planning assistant runs under is chosen once for the whole workspace, under
-**Settings** → **Providers**. It names a provider and a model — Claude and Opus, say — and never
+**Settings** → **Providers** chooses the workspace default. New planning follows it until you use
+the model picker beside the composer to choose another provider and model for the branch. A picker
+change is part of the unsent draft: it adds nothing to history until you send a message, survives
+leaving and returning, and does not affect another branch.
+
+The choice travels with the conversation. A fork inherits the choice at its fork point; switching
+one branch leaves every other branch alone. Choosing **Workspace default** puts that branch back in
+follow-default mode, so a later change in Settings moves it too. Moving through history makes the
+composer show the choice in effect at the position where you stand.
+
+Both a branch choice and the default name a provider and a model — Claude and Opus, say — and never
 one of your connected accounts, because accounts live on the machine they were signed in on and the
 workspace is shared.
 
@@ -242,8 +252,8 @@ nothing is cleared, and the setting resolves again as soon as an instance exists
 missing because the installed agent is too old to run it, the message names the update that unlocks
 it, and that update is one click away on the instance's own card further down the page.
 
-The picker offers each provider's models the way you have curated them: models you have hidden stay
-hidden, your ordering holds, and your favorites come first.
+Both pickers offer each provider's models the way you have curated them: models you have hidden
+stay hidden, your ordering holds, and your favorites come first.
 
 ## Empty states
 

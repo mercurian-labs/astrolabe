@@ -296,7 +296,9 @@ Settings that belong to the Mercurian workspace rather than to the machine readi
 
 #### Planning model
 
-The model the planning assistant runs under, named for the whole workspace as a **provider and a model** — never a [provider instance](#provider). The type has no field an instance id could occupy, which is what makes the rule structural: an instance is a connected account on one machine (signing in belongs to the provider's agent there, never to Mercurian), and a shared workspace naming one would resolve to nothing everywhere else.
+The two-level choice the planning assistant runs under. The workspace setting is a **default**. Each human message that opens a turn may carry a `PlanTurnModelRecord` in its commit payload: the concrete provider/model the turn ran under and whether the branch was following that default. The standing choice at any position is the nearest such ancestor, self-inclusive: an override keeps its pair, while a follow-default record — or no record in older history — reads the current workspace default. This is history-carried state rather than a plan column: forks inherit at the fork point, branches diverge independently, and returning to a position re-derives the same mode.
+
+The composer sends a draft-local `PlanModelDirective`: follow the workspace default or override it with a provider/model pair; absence from an older client inherits the standing choice. The server stamps the resulting record on the turn-opening message in the same transaction as the append. Assistant replies separately carry `generatedBy`, captured at turn start, so history says which pair actually produced them. None of these shapes can name a [provider instance](#provider): an instance is a connected account on one machine, and a shared history naming one would resolve to nothing everywhere else.
 
 #### Planning-model resolution
 

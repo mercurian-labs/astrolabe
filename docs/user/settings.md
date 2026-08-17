@@ -3,6 +3,13 @@
 **Settings → Preferences** holds workspace behavior that changes how Mercurian works without
 changing a repository.
 
+## Planning model
+
+**Planning model** under **Providers** is the workspace default that seeds new planning. Branches
+follow it until their composer chooses a different provider and model; choosing **Workspace
+default** there makes that branch follow this setting again. The pair is shared, but each machine
+resolves it to one of its own connected provider instances.
+
 ## Background refresh
 
 **Background refresh** controls how often Mercurian refreshes remote source-control status. Enter

@@ -10,6 +10,8 @@ import type {
   PlanQuestion,
   PlanQuestionRecord,
   PlanTimelineItem,
+  PlanningModelSelection,
+  ServerProvider,
 } from "@t3tools/contracts";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import {
@@ -38,6 +40,7 @@ import { MessageCopyButton } from "../chat/MessageCopyButton";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { providerLabel } from "./PlanningModelSetting.logic";
 
 /**
  * The planning space's history: messages, plan revisions and an imported issue
@@ -55,6 +58,7 @@ export function PlanTimeline({
   timeline,
   inFlight,
   inFlightImplement,
+  providers = EMPTY_PROVIDERS,
   readyCommits = EMPTY_READY_COMMITS,
   onAnswerQuestion,
   onStopImplement,
@@ -63,6 +67,7 @@ export function PlanTimeline({
   /** The turn streaming on this path right now, when one is. */
   readonly inFlight?: PlanInFlightTurn | undefined;
   readonly inFlightImplement?: PlanInFlightImplement | undefined;
+  readonly providers?: ReadonlyArray<ServerProvider> | undefined;
   readonly readyCommits?: ReadonlyMap<MercurianCommitId, PlanImplementReady> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onStopImplement?: (() => void) | undefined;
@@ -141,6 +146,9 @@ export function PlanTimeline({
                       </TooltipPopup>
                     </Tooltip>
                   </div>
+                  {item.generatedBy === undefined ? null : (
+                    <ModelAttribution selection={item.generatedBy} providers={providers} />
+                  )}
                   {item.interrupted === true ? <InterruptedBadge /> : null}
                   {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                 </div>
@@ -244,6 +252,26 @@ export function PlanTimeline({
 }
 
 const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
+const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+
+/** The provider/model that produced a settled reply, quiet but always visible. */
+function ModelAttribution({
+  selection,
+  providers,
+}: {
+  readonly selection: PlanningModelSelection;
+  readonly providers: ReadonlyArray<ServerProvider>;
+}) {
+  const modelLabel =
+    providers
+      .flatMap((provider) => (provider.driver === selection.provider ? provider.models : []))
+      .find((model) => model.slug === selection.model)?.name ?? selection.model;
+  return (
+    <span className="text-[11px] text-muted-foreground/65">
+      {providerLabel(selection.provider)} · {modelLabel}
+    </span>
+  );
+}
 
 function ReadyBadge() {
   return (

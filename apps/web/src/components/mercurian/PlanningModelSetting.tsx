@@ -15,7 +15,7 @@ import {
 } from "./PlanningModelSetting.logic";
 
 const DESCRIPTION =
-  "The model the planning assistant runs under, for everyone in this workspace. It names a provider and a model — never one machine's account — and each machine runs it on its own instance of that provider.";
+  "The default new planning follows. It names a provider and a model — never one machine's account — and each machine runs it on its own instance of that provider.";
 
 function AccentDot({ color }: { color: string | undefined }) {
   if (color === undefined) return null;

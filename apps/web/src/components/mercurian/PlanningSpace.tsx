@@ -1,8 +1,9 @@
-import type {
-  MercurianCommitId,
-  MercurianProjectId,
-  PlanId,
-  PlanTimelineItem,
+import {
+  resolvePlanningModel,
+  type MercurianCommitId,
+  type MercurianProjectId,
+  type PlanId,
+  type PlanTimelineItem,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -24,6 +25,7 @@ import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
 import {
   EMPTY_PLAN_COMPOSER_DRAFT,
+  modelChoiceForHead,
   usePlanComposerStore,
   type PlanComposerAttachment,
 } from "../../planComposerStore";
@@ -64,6 +66,9 @@ import {
 } from "./PlanComposer.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
+import { standingModelChoice } from "./PlanModelChoice.logic";
+import { PlanModelPicker } from "./PlanModelPicker";
+import { effectivePlanModelSelection, FOLLOW_DEFAULT } from "./PlanModelPicker.logic";
 import {
   advance,
   isViewingPast,
@@ -196,6 +201,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const addDraftAttachments = usePlanComposerStore((state) => state.addAttachments);
   const removeDraftAttachment = usePlanComposerStore((state) => state.removeAttachment);
   const clearDraft = usePlanComposerStore((state) => state.clearDraft);
+  const setDraftModelChoice = usePlanComposerStore((state) => state.setModelChoice);
   // The plan's project is what says which code this space can mention. With no
   // repository set, there is nothing to offer and the menu stays closed.
   const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
@@ -230,6 +236,19 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   useEffect(() => setPosition((current) => advance(graph, current)), [graph]);
 
   const head = resolveHead(graph, position);
+  const itemsById = useMemo(
+    () => new Map(timeline.map((item) => [item.commitId, item] as const)),
+    [timeline],
+  );
+  const standingChoice = useMemo(
+    () => standingModelChoice(graph, itemsById, head),
+    [graph, head, itemsById],
+  );
+  const modelChoice = modelChoiceForHead(draft, head) ?? standingChoice;
+  const effectiveModelResolution = resolvePlanningModel(
+    effectivePlanModelSelection(modelChoice, planningModel.setting),
+    planningModel.providers,
+  );
   const viewingPast = isViewingPast(graph, position);
   const effectiveRightPaneWidth = width;
   const rightPaneOverlays =
@@ -281,7 +300,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     }
   }, [detail?.implementProposal]);
 
-  const gateNotice = planningModelGateNotice(planningModel.resolution);
+  const gateNotice = planningModelGateNotice(effectiveModelResolution);
 
   /**
    * The artifact's text along *this* path is the one fact the client cannot
@@ -323,6 +342,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         text,
         ...(head === null ? {} : { parentCommitId: head }),
         ...(attachments.length === 0 ? {} : { attachments }),
+        modelChoice,
       });
       if (sent === null) return false;
       // The stream delivers the message back; there is nothing to refresh.
@@ -330,7 +350,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       clearDraft(planId);
       return true;
     },
-    [appendMessage, clearDraft, head, planId],
+    [appendMessage, clearDraft, head, modelChoice, planId],
   );
 
   const select = useCallback(
@@ -381,6 +401,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           <PlanTimeline
             inFlight={visibleInFlight}
             inFlightImplement={visibleInFlightImplement}
+            providers={planningModel.providers}
             readyCommits={readyCommits}
             timeline={visibleTimeline}
             onAnswerQuestion={(answers) => void answerQuestion(planId, answers)}
@@ -396,6 +417,15 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
+            modelPicker={
+              <PlanModelPicker
+                directive={modelChoice}
+                disabled={inFlightTurn !== undefined || inFlightImplement !== undefined}
+                providers={planningModel.providers}
+                workspaceDefault={planningModel.setting}
+                onChange={(directive) => setDraftModelChoice(planId, directive, head)}
+              />
+            }
             implementDisabledReason={implementReason}
             notice={turnRefusal === null ? implementNotice : turnRefusalNotice(turnRefusal)}
             placeholder="Message this plan"
@@ -603,12 +633,18 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   const navigate = useNavigate();
   const draft = usePlanDraftStore((state) => state.draftsById[draftId]);
   const setDraftText = usePlanDraftStore((state) => state.setDraftText);
+  const setDraftModelChoice = usePlanDraftStore((state) => state.setModelChoice);
   const discardDraft = usePlanDraftStore((state) => state.discardDraft);
   const createPlan = useCreatePlan();
   // The birth message starts a reply like any other, so the gate is the
   // same here: the plan can still be born, but the composer says up front
   // that no assistant will answer on this machine.
   const planningModel = usePlanningModel();
+  const modelChoice = draft?.modelChoice ?? FOLLOW_DEFAULT;
+  const effectiveModelResolution = resolvePlanningModel(
+    effectivePlanModelSelection(modelChoice, planningModel.setting),
+    planningModel.providers,
+  );
   const [isImportOpen, setIsImportOpen] = useState(false);
   /**
    * The unborn plan's images. Held here rather than in `planDraftStore`
@@ -631,6 +667,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         projectId: draft.projectId as MercurianProjectId,
         message: text,
         ...(uploads.length === 0 ? {} : { attachments: uploads }),
+        modelChoice,
       });
       if (created === null) {
         return false;
@@ -643,7 +680,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
       });
       return true;
     },
-    [createPlan, discardDraft, draft, draftId, navigate],
+    [createPlan, discardDraft, draft, draftId, modelChoice, navigate],
   );
 
   if (draft === undefined) {
@@ -696,10 +733,18 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
           isDraft: true,
         })}
         mentionCandidates={mentions.candidates}
+        modelPicker={
+          <PlanModelPicker
+            directive={modelChoice}
+            providers={planningModel.providers}
+            workspaceDefault={planningModel.setting}
+            onChange={(directive) => setDraftModelChoice(draftId, directive)}
+          />
+        }
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says
         // what will happen rather than refusing to create the plan.
-        notice={planningModelGateNotice(planningModel.resolution)}
+        notice={planningModelGateNotice(effectiveModelResolution)}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}

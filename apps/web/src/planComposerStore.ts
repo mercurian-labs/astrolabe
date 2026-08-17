@@ -1,3 +1,4 @@
+import type { PlanModelDirective } from "@t3tools/contracts";
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 
@@ -37,6 +38,11 @@ export interface PlanComposerAttachment {
 export interface PlanComposerDraft {
   readonly text: string;
   readonly attachments: ReadonlyArray<PlanComposerAttachment>;
+  /** A draft-only flip, scoped to the branch head where it was made. */
+  readonly modelChoice?: {
+    readonly directive: PlanModelDirective;
+    readonly atHead: string | null;
+  };
 }
 
 export const EMPTY_PLAN_COMPOSER_DRAFT: PlanComposerDraft = { text: "", attachments: [] };
@@ -59,19 +65,56 @@ function isAttachment(value: unknown): value is PlanComposerAttachment {
   );
 }
 
+function isModelDirective(value: unknown): value is PlanModelDirective {
+  if (!value || typeof value !== "object") return false;
+  const directive = value as {
+    readonly _tag?: unknown;
+    readonly selection?: { readonly provider?: unknown; readonly model?: unknown };
+  };
+  return (
+    directive._tag === "follow-default" ||
+    (directive._tag === "override" &&
+      typeof directive.selection?.provider === "string" &&
+      directive.selection.provider.length > 0 &&
+      typeof directive.selection.model === "string" &&
+      directive.selection.model.trim().length > 0)
+  );
+}
+
+function isModelChoice(value: unknown): value is NonNullable<PlanComposerDraft["modelChoice"]> {
+  if (!value || typeof value !== "object") return false;
+  const choice = value as {
+    readonly directive?: unknown;
+    readonly atHead?: unknown;
+  };
+  return (
+    isModelDirective(choice.directive) &&
+    (choice.atHead === null || typeof choice.atHead === "string")
+  );
+}
+
 function isDraft(value: unknown): value is PlanComposerDraft {
   if (!value || typeof value !== "object") return false;
   const draft = value as Partial<PlanComposerDraft>;
   return (
     typeof draft.text === "string" &&
     Array.isArray(draft.attachments) &&
-    draft.attachments.every(isAttachment)
+    draft.attachments.every(isAttachment) &&
+    (draft.modelChoice === undefined || isModelChoice(draft.modelChoice))
   );
 }
 
-/** Empty in both halves: nothing to keep, so keep no entry. */
+/** Text, attachments, and a model flip are each draft intent worth keeping. */
 const isEmptyDraft = (draft: PlanComposerDraft) =>
-  draft.text.length === 0 && draft.attachments.length === 0;
+  draft.text.length === 0 && draft.attachments.length === 0 && draft.modelChoice === undefined;
+
+/** A flip only applies where it was made; another branch reads its history. */
+export function modelChoiceForHead(
+  draft: PlanComposerDraft,
+  head: string | null,
+): PlanModelDirective | undefined {
+  return draft.modelChoice?.atHead === head ? draft.modelChoice.directive : undefined;
+}
 
 /**
  * What a stored blob means, with anything unrecognizable dropped rather than
@@ -103,7 +146,11 @@ export function toPersistableDrafts(
   return Object.fromEntries(
     Object.entries(draftsByPlanId).map(([planId, draft]) => [
       planId,
-      { text: draft.text, attachments: draft.attachments.filter((one) => one.persistable) },
+      {
+        text: draft.text,
+        attachments: draft.attachments.filter((one) => one.persistable),
+        ...(draft.modelChoice === undefined ? {} : { modelChoice: draft.modelChoice }),
+      },
     ]),
   );
 }
@@ -145,6 +192,11 @@ interface PlanComposerStore {
     attachments: ReadonlyArray<PlanComposerAttachment>,
   ) => void;
   readonly removeAttachment: (planId: string, localId: string) => void;
+  readonly setModelChoice: (
+    planId: string,
+    directive: PlanModelDirective,
+    atHead: string | null,
+  ) => void;
   /** What sending does: the message left, so the draft of it is gone. */
   readonly clearDraft: (planId: string) => void;
 }
@@ -185,6 +237,13 @@ export const usePlanComposerStore = create<PlanComposerStore>((set) => ({
       withDraft(state, planId, (draft) => ({
         ...draft,
         attachments: draft.attachments.filter((one) => one.localId !== localId),
+      })),
+    ),
+  setModelChoice: (planId, directive, atHead) =>
+    set((state) =>
+      withDraft(state, planId, (draft) => ({
+        ...draft,
+        modelChoice: { directive, atHead },
       })),
     ),
   clearDraft: (planId) =>

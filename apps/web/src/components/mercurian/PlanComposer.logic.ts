@@ -51,7 +51,7 @@ export function planningModelGateNotice(resolution: PlanningModelResolution): st
     case "resolved":
       return null;
     case "unset":
-      return "Choose a planning model in Settings to hear back from the assistant.";
+      return "Choose a model — or set a planning default in Settings.";
     case "unresolved":
       return resolution.reason === "no-instance"
         ? "No instance of the planning model's provider on this machine — connect one in Settings."

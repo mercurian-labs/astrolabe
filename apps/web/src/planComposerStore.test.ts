@@ -1,6 +1,8 @@
+import { ProviderDriverKind } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
+  modelChoiceForHead,
   parsePersistedDrafts,
   toPersistableDrafts,
   usePlanComposerStore,
@@ -106,5 +108,25 @@ describe("planComposerStore", () => {
     expect(
       parsePersistedDrafts(JSON.stringify({ draftsByPlanId: { [PLAN]: { text: 7 } } })),
     ).toEqual({});
+  });
+
+  it("keeps a model flip only at its head, through reload, until the draft clears", () => {
+    const directive = {
+      _tag: "override",
+      selection: { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" },
+    } as const;
+    const store = usePlanComposerStore.getState();
+    store.setModelChoice(PLAN, directive, "head-left");
+
+    const draft = usePlanComposerStore.getState().draftsByPlanId[PLAN];
+    expect(draft).toBeDefined();
+    expect(modelChoiceForHead(draft!, "head-left")).toEqual(directive);
+    expect(modelChoiceForHead(draft!, "head-right")).toBeUndefined();
+
+    const reloaded = reload(usePlanComposerStore.getState().draftsByPlanId);
+    expect(modelChoiceForHead(reloaded[PLAN]!, "head-left")).toEqual(directive);
+
+    store.clearDraft(PLAN);
+    expect(usePlanComposerStore.getState().draftsByPlanId[PLAN]).toBeUndefined();
   });
 });

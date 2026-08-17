@@ -82,6 +82,7 @@ export function PlanComposer({
   gateNotice = null,
   notice = null,
   implementDisabledReason = null,
+  modelPicker,
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
@@ -114,6 +115,8 @@ export function PlanComposer({
   /** A transient line under the gate's slot: the last turn refusal. */
   readonly notice?: string | null;
   readonly implementDisabledReason?: string | null;
+  /** The branch-local model control, derived and owned by the surface. */
+  readonly modelPicker?: ReactNode;
   readonly onChangeText: (text: string) => void;
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
@@ -339,6 +342,7 @@ export function PlanComposer({
               >
                 <ImageIcon />
               </Button>
+              {modelPicker}
               <Tooltip>
                 <TooltipTrigger
                   render={

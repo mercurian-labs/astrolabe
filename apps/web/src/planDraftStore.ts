@@ -1,3 +1,4 @@
+import type { PlanModelDirective } from "@t3tools/contracts";
 import { create } from "zustand";
 
 /**
@@ -19,6 +20,7 @@ export interface PlanDraft {
   readonly projectId: string;
   readonly text: string;
   readonly createdAt: string;
+  readonly modelChoice?: PlanModelDirective;
 }
 
 interface PersistedPlanDrafts {
@@ -34,7 +36,24 @@ function isPlanDraft(value: unknown): value is PlanDraft {
     typeof draft.projectId === "string" &&
     draft.projectId.length > 0 &&
     typeof draft.text === "string" &&
-    typeof draft.createdAt === "string"
+    typeof draft.createdAt === "string" &&
+    (draft.modelChoice === undefined || isModelDirective(draft.modelChoice))
+  );
+}
+
+function isModelDirective(value: unknown): value is PlanModelDirective {
+  if (!value || typeof value !== "object") return false;
+  const directive = value as {
+    readonly _tag?: unknown;
+    readonly selection?: { readonly provider?: unknown; readonly model?: unknown };
+  };
+  return (
+    directive._tag === "follow-default" ||
+    (directive._tag === "override" &&
+      typeof directive.selection?.provider === "string" &&
+      directive.selection.provider.length > 0 &&
+      typeof directive.selection.model === "string" &&
+      directive.selection.model.trim().length > 0)
   );
 }
 
@@ -82,6 +101,7 @@ interface PlanDraftStore {
     createdAt: string,
   ) => PlanDraft;
   readonly setDraftText: (draftId: string, text: string) => void;
+  readonly setModelChoice: (draftId: string, modelChoice: PlanModelDirective) => void;
   readonly discardDraft: (draftId: string) => void;
 }
 
@@ -103,6 +123,12 @@ export const usePlanDraftStore = create<PlanDraftStore>((set, get) => ({
         return state;
       }
       return { draftsById: { ...state.draftsById, [draftId]: { ...draft, text } } };
+    }),
+  setModelChoice: (draftId, modelChoice) =>
+    set((state) => {
+      const draft = state.draftsById[draftId];
+      if (draft === undefined) return state;
+      return { draftsById: { ...state.draftsById, [draftId]: { ...draft, modelChoice } } };
     }),
   discardDraft: (draftId) =>
     set((state) => {
