@@ -1596,20 +1596,25 @@ const makeWsRpcLayer = (
                     owner: input.projectId,
                     uploads: input.attachments,
                   });
+                  const workspaceDefault = (yield* workspaceSettingsStore.getSnapshot)
+                    .planningModel;
                   const created = yield* planningStore.createPlan({
                     projectId: input.projectId,
                     message: input.message,
                     attachments,
+                    ...(input.modelChoice === undefined ? {} : { modelChoice: input.modelChoice }),
+                    workspaceDefault,
                     createdAt,
                   });
                   // The birth message is a message: the assistant replies to
                   // it like any other.
                   const root = created.timeline[0];
-                  if (root !== undefined) {
+                  if (root?._tag === "message") {
                     yield* kickOffPlanningTurn({
                       planId: created.plan.planId,
                       parentCommitId: root.commitId,
                       text: input.message,
+                      ...(root.ranUnder === undefined ? {} : { ranUnder: root.ranUnder }),
                     });
                   }
                   return created;
@@ -1661,6 +1666,8 @@ const makeWsRpcLayer = (
                     owner: input.planId,
                     uploads: input.attachments,
                   });
+                  const workspaceDefault = (yield* workspaceSettingsStore.getSnapshot)
+                    .planningModel;
                   const appended = yield* planningStore.appendMessage({
                     planId: input.planId,
                     text: input.text,
@@ -1670,12 +1677,15 @@ const makeWsRpcLayer = (
                       ? {}
                       : { parentCommitId: CommitId.make(input.parentCommitId) }),
                     attachments,
+                    ...(input.modelChoice === undefined ? {} : { modelChoice: input.modelChoice }),
+                    workspaceDefault,
                     createdAt,
                   });
                   yield* kickOffPlanningTurn({
                     planId: input.planId,
                     parentCommitId: appended.commitId,
                     text: input.text,
+                    ...(appended.ranUnder === undefined ? {} : { ranUnder: appended.ranUnder }),
                   });
                   return appended;
                 }),

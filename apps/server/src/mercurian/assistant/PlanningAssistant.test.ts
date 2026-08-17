@@ -41,6 +41,8 @@ import * as PlanningAssistant from "./PlanningAssistant.ts";
 
 const claude = ProviderDriverKind.make("claudeAgent");
 const claudeInstance = ProviderInstanceId.make("claudeAgent");
+const codex = ProviderDriverKind.make("codex");
+const codexInstance = ProviderInstanceId.make("codex");
 
 const providerSnapshot: ServerProvider = {
   instanceId: claudeInstance,
@@ -54,6 +56,13 @@ const providerSnapshot: ServerProvider = {
   models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
   slashCommands: [],
   skills: [],
+};
+
+const codexSnapshot: ServerProvider = {
+  ...providerSnapshot,
+  instanceId: codexInstance,
+  driver: codex,
+  models: [{ slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: null }],
 };
 
 /**
@@ -231,6 +240,7 @@ const seedPlan = Effect.fn("seedPlan")(function* (message = "Reshape the sidebar
     createdAt: at("2026-08-08T00:00:00.000Z"),
   });
   const created = yield* store.createPlan({
+    workspaceDefault: null,
     projectId: project.projectId,
     message,
     createdAt: at("2026-08-08T00:00:00.000Z"),
@@ -356,6 +366,7 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(reply.text, "Here is the shape.");
       assert.strictEqual(reply.interrupted, undefined);
       assert.strictEqual(reply.grounding?.length, 1);
+      assert.deepStrictEqual(reply.generatedBy, { provider: claude, model: "opus" });
       assert.deepStrictEqual([...reply.parents], [root.commitId]);
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
@@ -620,6 +631,7 @@ describe("PlanningAssistant", () => {
         createdAt: at("2026-08-08T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "First",
         createdAt: at("2026-08-08T00:00:00.000Z"),
@@ -806,6 +818,7 @@ describe("PlanningAssistant", () => {
 
       // A fork: a second human message from the root, which already led on.
       const fork = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Try another direction",
         parentCommitId: root.commitId,
@@ -831,6 +844,347 @@ describe("PlanningAssistant", () => {
       // The other branch's reply is not on this path.
       assert.ok(!resumeInput.includes("Answer one"));
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("runs a turn under the model recorded on its human commit", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T00:20:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Run this with Codex",
+        modelChoice: {
+          _tag: "override",
+          selection: { provider: codex, model: "gpt-5.4" },
+        },
+        workspaceDefault: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-08T00:21:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      assert.ok(root._tag === "message" && root.ranUnder !== undefined);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: root.text,
+        ranUnder: root.ranUnder!,
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(session.providerInstanceId, codexInstance);
+      assert.deepStrictEqual(session.modelSelection, {
+        instanceId: codexInstance,
+        model: "gpt-5.4",
+      });
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot, codexSnapshot]))),
+  );
+
+  it.effect("a changed default re-stamps the next turn and forces a model rebuild", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const settings = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
+      const harness = yield* ProviderHarness;
+      const frames = yield* Queue.unbounded<PlanStreamItem>();
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T00:30:00.000Z"),
+      });
+      yield* settings.setPlanningModel({ provider: claude, model: "opus" });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Follow the default",
+        modelChoice: { _tag: "follow-default" },
+        workspaceDefault: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-08T00:31:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      assert.ok(root._tag === "message" && root.ranUnder !== undefined);
+      yield* Effect.forkScoped(
+        assistant
+          .frames(created.plan.planId)
+          .pipe(Stream.runForEach((frame) => Queue.offer(frames, frame))),
+        { startImmediately: true },
+      );
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: root.text,
+        ranUnder: root.ranUnder!,
+      });
+      const firstSession = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(firstSession.modelSelection?.model, "opus");
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames); // turn-started
+      yield* harness.emit(
+        runtimeEvent(firstSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "First reply" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(firstSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames); // turn-settled
+
+      yield* settings.setPlanningModel({ provider: claude, model: "sonnet" });
+      const firstSnapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const firstReply = firstSnapshot.timeline.at(-1)!;
+      const next = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: firstReply.commitId,
+        text: "Use the changed default",
+        workspaceDefault: { provider: claude, model: "sonnet" },
+        createdAt: at("2026-08-08T00:32:00.000Z"),
+      });
+      assert.deepStrictEqual(next.ranUnder, {
+        provider: claude,
+        model: "sonnet",
+        followedDefault: true,
+      });
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: next.commitId,
+        text: next.text,
+        ranUnder: next.ranUnder!,
+      });
+      assert.strictEqual(yield* Queue.take(harness.stops), firstSession.threadId);
+      const secondSession = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(secondSession.modelSelection?.model, "sonnet");
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames); // turn-started
+      yield* harness.emit(
+        runtimeEvent(secondSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Second reply" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(secondSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames); // turn-settled
+
+      const replies = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline
+        .filter((item) => item._tag === "message")
+        .filter((item) => item.authorKind === "assistant");
+      assert.deepStrictEqual(
+        replies.map((reply) => ({ text: reply.text, generatedBy: reply.generatedBy })),
+        [
+          { text: "First reply", generatedBy: { provider: claude, model: "opus" } },
+          { text: "Second reply", generatedBy: { provider: claude, model: "sonnet" } },
+        ],
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        testLayer([
+          {
+            ...providerSnapshot,
+            models: [
+              ...providerSnapshot.models,
+              { slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null },
+            ],
+          },
+        ]),
+      ),
+    ),
+  );
+
+  it.effect("keeps different providers local to two forked branches", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T00:40:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Fork this plan",
+        workspaceDefault: null,
+        createdAt: at("2026-08-08T00:41:00.000Z"),
+      });
+      const root = created.timeline[0]!.commitId;
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root,
+        text: "Claude branch",
+        modelChoice: {
+          _tag: "override",
+          selection: { provider: claude, model: "opus" },
+        },
+        workspaceDefault: null,
+        createdAt: at("2026-08-08T00:42:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root,
+        text: "Codex branch",
+        modelChoice: {
+          _tag: "override",
+          selection: { provider: codex, model: "gpt-5.4" },
+        },
+        workspaceDefault: null,
+        createdAt: at("2026-08-08T00:43:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: left.commitId,
+        text: left.text,
+        ranUnder: left.ranUnder!,
+      });
+      const leftSession = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(leftSession.providerInstanceId, claudeInstance);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(leftSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Left answer" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(leftSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: right.commitId,
+        text: right.text,
+        ranUnder: right.ranUnder!,
+      });
+      assert.strictEqual(yield* Queue.take(harness.stops), leftSession.threadId);
+      const rightSession = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(rightSession.providerInstanceId, codexInstance);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(rightSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Right answer" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(rightSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames);
+
+      const replies = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline
+        .filter((item) => item._tag === "message")
+        .filter((item) => item.authorKind === "assistant");
+      assert.deepStrictEqual(
+        replies.map((reply) => ({ parents: [...reply.parents], generatedBy: reply.generatedBy })),
+        [
+          {
+            parents: [left.commitId],
+            generatedBy: { provider: claude, model: "opus" },
+          },
+          {
+            parents: [right.commitId],
+            generatedBy: { provider: codex, model: "gpt-5.4" },
+          },
+        ],
+      );
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot, codexSnapshot]))),
+  );
+
+  for (const [label, ranUnder, providers, expected] of [
+    [
+      "an override whose provider has no instance",
+      { provider: codex, model: "gpt-5.4", followedDefault: false },
+      [providerSnapshot],
+      "no-instance",
+    ],
+    [
+      "an override whose model is absent",
+      { provider: claude, model: "sonnet", followedDefault: false },
+      [providerSnapshot],
+      "model-unavailable",
+    ],
+  ] as const) {
+    it.effect(`refuses ${label}`, () =>
+      Effect.gen(function* () {
+        const assistant = yield* PlanningAssistant.PlanningAssistant;
+        const harness = yield* ProviderHarness;
+        const { created, root } = yield* seedPlan();
+        const frames = yield* subscribeFrames(created.plan.planId);
+        yield* assistant.startTurn({
+          planId: created.plan.planId,
+          parentCommitId: root.commitId,
+          text: "Reshape the sidebar",
+          ranUnder,
+        });
+        const refused = yield* Queue.take(frames);
+        assert.ok(refused.kind === "turn-refused" && refused.reason === expected);
+        assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+      }).pipe(Effect.scoped, Effect.provide(testLayer(providers))),
+    );
+  }
+
+  it.effect("runs implement analysis under the overridden branch choice", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const settings = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
+      const harness = yield* ProviderHarness;
+      yield* settings.setPlanningModel({ provider: claude, model: "opus" });
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T00:50:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Plan with Codex",
+        modelChoice: {
+          _tag: "override",
+          selection: { provider: codex, model: "gpt-5.4" },
+        },
+        workspaceDefault: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-08T00:51:00.000Z"),
+      });
+      const revision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: created.timeline[0]!.commitId,
+        text: "# Ready to implement",
+        createdAt: at("2026-08-08T00:52:00.000Z"),
+      });
+
+      yield* assistant.tryImplement({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(session.providerInstanceId, codexInstance);
+      assert.deepStrictEqual(session.modelSelection, {
+        instanceId: codexInstance,
+        model: "gpt-5.4",
+      });
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot, codexSnapshot]))),
   );
 
   it.effect("records and publishes an atomic verdict without writing history", () =>
@@ -1028,6 +1382,7 @@ describe("PlanningAssistant", () => {
         createdAt: at("2026-08-08T01:10:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Ready plan",
         createdAt: at("2026-08-08T01:10:00.000Z"),
@@ -1493,6 +1848,7 @@ describe("PlanningAssistant", () => {
         createdAt: at("2026-08-08T04:30:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Ready plan",
         createdAt: at("2026-08-08T04:30:00.000Z"),

@@ -43,7 +43,10 @@ import {
   PlanGroundingScope,
   PlanId,
   PlanNotFoundError,
+  PlanModelDirective,
   PlanQuestionRecord,
+  PlanningModelSelection,
+  PlanTurnModelRecord,
   PlanTurnActiveError,
   TrackerConnectionId,
   TrimmedNonEmptyString,
@@ -75,6 +78,10 @@ import { MercurianProject, Plan } from "./schema.ts";
 export const MessageCommitPayload = Schema.Struct({
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  /** The provider/model recorded on a human message that opened a turn. */
+  ranUnder: Schema.optional(PlanTurnModelRecord),
+  /** The provider/model captured when an assistant reply's turn started. */
+  generatedBy: Schema.optional(PlanningModelSelection),
   /**
    * The planning turn's facts, present only on assistant replies and all
    * optional so every message written before turns existed keeps decoding:
@@ -190,6 +197,8 @@ export const PlanMessage = Schema.Struct({
   grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
   groundingScope: Schema.optional(PlanGroundingScope),
   question: Schema.optional(PlanQuestionRecord),
+  ranUnder: Schema.optional(PlanTurnModelRecord),
+  generatedBy: Schema.optional(PlanningModelSelection),
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -329,6 +338,8 @@ export const CreatePlanInput = Schema.Struct({
   /** The plan's first message. Its arrival *is* the plan's creation. */
   message: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  modelChoice: Schema.optional(PlanModelDirective),
+  workspaceDefault: Schema.NullOr(PlanningModelSelection),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type CreatePlanInput = typeof CreatePlanInput.Type;
@@ -364,6 +375,8 @@ export const AppendMessageInput = Schema.Struct({
   text: Schema.String,
   parentCommitId: Schema.optional(CommitId),
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  modelChoice: Schema.optional(PlanModelDirective),
+  workspaceDefault: Schema.NullOr(PlanningModelSelection),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendMessageInput = typeof AppendMessageInput.Type;
@@ -405,6 +418,7 @@ export const AppendAssistantMessageInput = Schema.Struct({
   grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
   groundingScope: Schema.optional(PlanGroundingScope),
   question: Schema.optional(PlanQuestionRecord),
+  generatedBy: Schema.optional(PlanningModelSelection),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendAssistantMessageInput = typeof AppendAssistantMessageInput.Type;
@@ -447,6 +461,13 @@ export type ListTimelineSinceInput = typeof ListTimelineSinceInput.Type;
 
 export const GetPlanTextAtInput = Schema.Struct({ planId: PlanId, commitId: CommitId });
 export type GetPlanTextAtInput = typeof GetPlanTextAtInput.Type;
+
+export const StandingModelChoiceInput = Schema.Struct({
+  planId: PlanId,
+  /** Absent means the plan's current tip. */
+  commitId: Schema.optional(CommitId),
+});
+export type StandingModelChoiceInput = typeof StandingModelChoiceInput.Type;
 
 export const GetImplementContextInput = Schema.Struct({
   planId: PlanId,
@@ -592,6 +613,10 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
+    /** The nearest history-carried choice at a position, or follow-default. */
+    readonly standingModelChoice: (
+      input: StandingModelChoiceInput,
+    ) => Effect.Effect<PlanModelDirective, PlanningStoreError>;
     /** The artifact and exact history point an implement analysis starts from. */
     readonly getImplementContext: (
       input: GetImplementContextInput,
@@ -769,6 +794,18 @@ const decodeReadyVerdictPayload = Schema.decodeUnknownEffect(PlanImplementReadyV
 const decodeNeedsSplitVerdictPayload = Schema.decodeUnknownEffect(
   PlanImplementNeedsSplitVerdictPayload,
 );
+
+const FOLLOW_DEFAULT = { _tag: "follow-default" } as const satisfies PlanModelDirective;
+
+function recordTurnModel(
+  choice: PlanModelDirective,
+  workspaceDefault: PlanningModelSelection | null,
+): PlanTurnModelRecord | undefined {
+  if (choice._tag === "override") {
+    return { ...choice.selection, followedDefault: false };
+  }
+  return workspaceDefault === null ? undefined : { ...workspaceDefault, followedDefault: true };
+}
 
 /**
  * The artifact at the end of a path: the text of the last revision on it, or
@@ -1106,7 +1143,31 @@ export const make = Effect.gen(function* () {
       ...(payload.grounding === undefined ? {} : { grounding: payload.grounding }),
       ...(payload.groundingScope === undefined ? {} : { groundingScope: payload.groundingScope }),
       ...(payload.question === undefined ? {} : { question: payload.question }),
+      ...(payload.ranUnder === undefined ? {} : { ranUnder: payload.ranUnder }),
+      ...(payload.generatedBy === undefined ? {} : { generatedBy: payload.generatedBy }),
     } satisfies PlanMessage;
+  });
+
+  /** The nearest model record on this position's ancestry, self-inclusive. */
+  const standingModelChoiceAt = Effect.fn("PlanningStore.standingModelChoiceAt")(function* (
+    commit: Commit | undefined,
+  ) {
+    if (commit === undefined) return FOLLOW_DEFAULT;
+    const ancestry = yield* commits.ancestors({ commitId: commit.commitId, visibility: "all" });
+    const path = [...ancestry, commit];
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const candidate = path[index];
+      if (candidate === undefined || candidate.kind !== "message") continue;
+      const record = (yield* decodeMessagePayload(candidate.payload)).ranUnder;
+      if (record === undefined) continue;
+      return record.followedDefault
+        ? FOLLOW_DEFAULT
+        : ({
+            _tag: "override",
+            selection: { provider: record.provider, model: record.model },
+          } as const satisfies PlanModelDirective);
+    }
+    return FOLLOW_DEFAULT;
   });
 
   const toPlanRevision = (commit: Commit, split?: PlanSplitStamp): PlanRevision => ({
@@ -1243,6 +1304,10 @@ export const make = Effect.gen(function* () {
       // transaction inside this one.
       const root = yield* sql.withTransaction(
         Effect.gen(function* () {
+          const ranUnder = recordTurnModel(
+            input.modelChoice ?? FOLLOW_DEFAULT,
+            input.workspaceDefault,
+          );
           const rootCommit = yield* commits.createHistory({
             historyId,
             rootCommit: {
@@ -1255,6 +1320,7 @@ export const make = Effect.gen(function* () {
                 ...(input.attachments === undefined || input.attachments.length === 0
                   ? {}
                   : { attachments: input.attachments }),
+                ...(ranUnder === undefined ? {} : { ranUnder }),
               } satisfies MessageCommitPayload,
             },
             // Born blank is born private; an imported plan's published root
@@ -1423,11 +1489,16 @@ export const make = Effect.gen(function* () {
     readonly commitId: CommitId;
     readonly kind: "message" | "plan-revision";
     readonly payload: unknown;
+    readonly resolvePayload?: (
+      parent: Commit | undefined,
+    ) => Effect.Effect<unknown, Schema.SchemaError | CommitStore.CommitStoreError>;
     readonly createdAt: Commit["createdAt"];
   }) {
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         const parent = yield* resolveParent(input.plan, input.parentCommitId);
+        const payload =
+          input.resolvePayload === undefined ? input.payload : yield* input.resolvePayload(parent);
         const commit = yield* commits.append({
           historyId: input.plan.historyId,
           commitId: input.commitId,
@@ -1437,7 +1508,7 @@ export const make = Effect.gen(function* () {
           authorKind: "human",
           parents: parent === undefined ? [] : [parent.commitId],
           createdAt: input.createdAt,
-          payload: input.payload,
+          payload,
         });
         yield* touchPlanRow({ planId: input.plan.planId, updatedAt: input.createdAt });
         return commit;
@@ -1476,6 +1547,22 @@ export const make = Effect.gen(function* () {
             ? {}
             : { attachments: input.attachments }),
         } satisfies MessageCommitPayload,
+        resolvePayload: (parent) =>
+          standingModelChoiceAt(parent).pipe(
+            Effect.map((standing) => {
+              const ranUnder = recordTurnModel(
+                input.modelChoice ?? standing,
+                input.workspaceDefault,
+              );
+              return {
+                text: input.text,
+                ...(input.attachments === undefined || input.attachments.length === 0
+                  ? {}
+                  : { attachments: input.attachments }),
+                ...(ranUnder === undefined ? {} : { ranUnder }),
+              } satisfies MessageCommitPayload;
+            }),
+          ),
         createdAt: input.createdAt,
       });
 
@@ -1640,6 +1727,7 @@ export const make = Effect.gen(function* () {
             : { grounding: input.grounding }),
           ...(input.groundingScope === undefined ? {} : { groundingScope: input.groundingScope }),
           ...(input.question === undefined ? {} : { question: input.question }),
+          ...(input.generatedBy === undefined ? {} : { generatedBy: input.generatedBy }),
         } satisfies MessageCommitPayload,
         createdAt: input.createdAt,
       });
@@ -1860,6 +1948,30 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const standingModelChoice: PlanningStore["Service"]["standingModelChoice"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commit =
+        input.commitId === undefined
+          ? yield* readTip(plan.historyId)
+          : yield* commits
+              .getCommit({ commitId: input.commitId, visibility: "all" })
+              .pipe(Effect.map(Option.getOrUndefined));
+      if (commit === undefined || commit.historyId !== plan.historyId) {
+        return yield* new CommitStore.CommitNotFoundError({
+          commitId: input.commitId ?? CommitId.make(`missing-tip-${input.planId}`),
+        });
+      }
+      return yield* standingModelChoiceAt(commit);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.standingModelChoice:query",
+          "PlanningStore.standingModelChoice:decodeRows",
+        ),
+      ),
+    );
+
   const getImplementContext: PlanningStore["Service"]["getImplementContext"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
@@ -1993,6 +2105,7 @@ export const make = Effect.gen(function* () {
     getPlanSnapshot,
     listTimelineSince,
     getPlanTextAt,
+    standingModelChoice,
     getImplementContext,
     recordImplementVerdict,
     listImplementVerdicts,

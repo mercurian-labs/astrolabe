@@ -12,6 +12,7 @@ import {
   MercurianRepositoryId,
   PlanId,
   PlanTurnId,
+  ProviderDriverKind,
   ThreadId,
   TrackerConnectionId,
 } from "@t3tools/contracts";
@@ -38,6 +39,8 @@ const layer = it.layer(
 );
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
+const claude = ProviderDriverKind.make("claudeAgent");
+const codex = ProviderDriverKind.make("codex");
 
 layer("PlanningStore", (it) => {
   it.effect("round-trips a project, which starts with no plans", () =>
@@ -71,6 +74,7 @@ layer("PlanningStore", (it) => {
       });
 
       const detail = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar into the project tree",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -109,6 +113,188 @@ layer("PlanningStore", (it) => {
     }),
   );
 
+  it.effect("stamps override and follow-default choices on turn-opening messages", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+
+      const overridden = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Use Codex here",
+        modelChoice: {
+          _tag: "override",
+          selection: { provider: codex, model: "gpt-5.4" },
+        },
+        workspaceDefault: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const overrideRoot = overridden.timeline[0]!;
+      assert.ok(overrideRoot._tag === "message");
+      assert.deepStrictEqual(overrideRoot.ranUnder, {
+        provider: codex,
+        model: "gpt-5.4",
+        followedDefault: false,
+      });
+
+      const following = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Follow the workspace",
+        modelChoice: { _tag: "follow-default" },
+        workspaceDefault: { provider: claude, model: "sonnet" },
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      const followRoot = following.timeline[0]!;
+      assert.ok(followRoot._tag === "message");
+      assert.deepStrictEqual(followRoot.ranUnder, {
+        provider: claude,
+        model: "sonnet",
+        followedDefault: true,
+      });
+
+      const unset = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "No default yet",
+        modelChoice: { _tag: "follow-default" },
+        workspaceDefault: null,
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+      const unsetRoot = unset.timeline[0]!;
+      assert.ok(unsetRoot._tag === "message");
+      assert.strictEqual(unsetRoot.ranUnder, undefined);
+    }),
+  );
+
+  it.effect("inherits and re-stamps the nearest branch choice across a fork", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:10:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Override this branch",
+        modelChoice: {
+          _tag: "override",
+          selection: { provider: codex, model: "gpt-5.4" },
+        },
+        workspaceDefault: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-03T00:11:00.000Z"),
+      });
+      const root = created.timeline[0]!.commitId;
+
+      const onward = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root,
+        text: "Inherit without a directive",
+        workspaceDefault: { provider: claude, model: "sonnet" },
+        createdAt: at("2026-08-03T00:12:00.000Z"),
+      });
+      assert.deepStrictEqual(onward.ranUnder, {
+        provider: codex,
+        model: "gpt-5.4",
+        followedDefault: false,
+      });
+
+      const fork = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root,
+        text: "Fork from the override",
+        workspaceDefault: { provider: claude, model: "sonnet" },
+        createdAt: at("2026-08-03T00:13:00.000Z"),
+      });
+      assert.deepStrictEqual(fork.ranUnder, onward.ranUnder);
+      assert.deepStrictEqual(
+        yield* store.standingModelChoice({
+          planId: created.plan.planId,
+          commitId: fork.commitId,
+        }),
+        {
+          _tag: "override",
+          selection: { provider: codex, model: "gpt-5.4" },
+        },
+      );
+
+      const backToDefault = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: onward.commitId,
+        text: "Follow the workspace again",
+        modelChoice: { _tag: "follow-default" },
+        workspaceDefault: { provider: claude, model: "sonnet" },
+        createdAt: at("2026-08-03T00:14:00.000Z"),
+      });
+      assert.deepStrictEqual(
+        yield* store.standingModelChoice({
+          planId: created.plan.planId,
+          commitId: backToDefault.commitId,
+        }),
+        { _tag: "follow-default" },
+      );
+      const changedDefault = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: backToDefault.commitId,
+        text: "Inherit following mode",
+        workspaceDefault: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-03T00:15:00.000Z"),
+      });
+      assert.deepStrictEqual(changedDefault.ranUnder, {
+        provider: claude,
+        model: "opus",
+        followedDefault: true,
+      });
+    }),
+  );
+
+  it.effect("decodes bare history and persists assistant model attribution", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:20:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Written before model records existed",
+        workspaceDefault: null,
+        createdAt: at("2026-08-03T00:21:00.000Z"),
+      });
+      const root = created.timeline[0]!.commitId;
+      const [storedRoot] = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      assert.deepStrictEqual(storedRoot?.payload, {
+        text: "Written before model records existed",
+      });
+      assert.deepStrictEqual(
+        yield* store.standingModelChoice({ planId: created.plan.planId, commitId: root }),
+        { _tag: "follow-default" },
+      );
+
+      const reply = yield* store.appendAssistantMessage({
+        planId: created.plan.planId,
+        parentCommitId: root,
+        text: "A reply",
+        generatedBy: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-03T00:22:00.000Z"),
+      });
+      assert.deepStrictEqual(reply.generatedBy, { provider: claude, model: "opus" });
+
+      const decoded = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      const decodedRoot = decoded.timeline[0]!;
+      assert.ok(decodedRoot._tag === "message");
+      assert.strictEqual(decodedRoot.ranUnder, undefined);
+      assert.strictEqual(decodedRoot.generatedBy, undefined);
+      const decodedReply = decoded.timeline[1]!;
+      assert.ok(decodedReply._tag === "message");
+      assert.deepStrictEqual(decodedReply.generatedBy, { provider: claude, model: "opus" });
+    }),
+  );
+
   it.effect("appends at the tip, bumps the plan, and reorders the project", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
@@ -118,11 +304,13 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const first = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "First plan",
         createdAt: at("2026-08-03T00:01:00.000Z"),
       });
       const second = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Second plan",
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -139,6 +327,7 @@ layer("PlanningStore", (it) => {
       assert.deepStrictEqual(plansOf(beforeAppend), [second.plan.planId, first.plan.planId]);
 
       const appended = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: first.plan.planId,
         text: "A second message",
         createdAt: at("2026-08-03T00:03:00.000Z"),
@@ -168,6 +357,7 @@ layer("PlanningStore", (it) => {
       });
 
       const titled = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "  Trim the sidebar  \nand the rest of the message",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -175,6 +365,7 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(titled.plan.title, "Trim the sidebar");
 
       const long = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "x".repeat(200),
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -182,6 +373,7 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(long.plan.title.length, 80);
 
       const blank = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "   \n\n  ",
         createdAt: at("2026-08-03T00:03:00.000Z"),
@@ -196,6 +388,7 @@ layer("PlanningStore", (it) => {
 
       const missingProject = yield* Effect.flip(
         store.createPlan({
+          workspaceDefault: null,
           projectId: MercurianProjectId.make("nope"),
           message: "Anything",
           createdAt: at("2026-08-03T00:00:00.000Z"),
@@ -219,6 +412,7 @@ layer("PlanningStore", (it) => {
 
       const missingPlanAppend = yield* Effect.flip(
         store.appendMessage({
+          workspaceDefault: null,
           planId: PlanId.make("nope"),
           text: "Anything",
           createdAt: at("2026-08-03T00:00:00.000Z"),
@@ -242,6 +436,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "First plan",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -262,6 +457,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -298,6 +494,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -346,6 +543,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -356,6 +554,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "What about the tree?",
         createdAt: at("2026-08-03T00:03:00.000Z"),
@@ -447,6 +646,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -459,6 +659,7 @@ layer("PlanningStore", (it) => {
       assert.deepStrictEqual(nothingYet, []);
 
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "What about the tree?",
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -495,6 +696,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -529,6 +731,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -565,6 +768,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -594,6 +798,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -613,6 +818,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       const message = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "What about the tree?",
         createdAt: at("2026-08-03T00:03:00.000Z"),
@@ -656,6 +862,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -713,11 +920,13 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const first = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "First plan",
         createdAt: at("2026-08-03T00:01:00.000Z"),
       });
       const second = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Second plan",
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -756,6 +965,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -763,6 +973,7 @@ layer("PlanningStore", (it) => {
       const rootCommitId = created.timeline[0]!.commitId;
 
       const second = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Start from the tree",
         parentCommitId: rootCommitId,
@@ -773,6 +984,7 @@ layer("PlanningStore", (it) => {
       // Naming the tip and naming nothing are the same act while the history
       // is one line.
       const third = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "And the explorer?",
         createdAt: at("2026-08-03T00:03:00.000Z"),
@@ -791,6 +1003,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -798,6 +1011,7 @@ layer("PlanningStore", (it) => {
       const rootCommitId = created.timeline[0]!.commitId;
 
       const onward = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Start from the tree",
         parentCommitId: rootCommitId,
@@ -807,6 +1021,7 @@ layer("PlanningStore", (it) => {
       // Standing back at the root and sending: the fork is the append, and
       // this message is the branch's first commit.
       const sibling = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Start from the composer instead",
         parentCommitId: rootCommitId,
@@ -850,6 +1065,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -857,12 +1073,14 @@ layer("PlanningStore", (it) => {
       const rootCommitId = created.timeline[0]!.commitId;
 
       const left = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Left",
         parentCommitId: rootCommitId,
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       const right = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Right",
         parentCommitId: rootCommitId,
@@ -913,11 +1131,13 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const first = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "First plan",
         createdAt: at("2026-08-03T00:01:00.000Z"),
       });
       const second = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Second plan",
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -925,6 +1145,7 @@ layer("PlanningStore", (it) => {
 
       const unknownParent = yield* Effect.flip(
         store.appendMessage({
+          workspaceDefault: null,
           planId: first.plan.planId,
           text: "From nowhere",
           parentCommitId: CommitId.make("nope"),
@@ -960,6 +1181,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Here is the mock",
         attachments: [
@@ -982,6 +1204,7 @@ layer("PlanningStore", (it) => {
       );
 
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "And no image here",
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -1008,6 +1231,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -1058,6 +1282,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -1102,6 +1327,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         attachments: [
@@ -1166,6 +1392,7 @@ layer("PlanningStore", (it) => {
       // The imported-plan shape: the root itself is published, so the plan is
       // archive-only from birth.
       const born = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Imported from an issue",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -1182,16 +1409,19 @@ layer("PlanningStore", (it) => {
       // And the same the other way round: a plan that starts private and
       // publishes something later loses delete at that moment.
       const later = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       const midCommit = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: later.plan.planId,
         text: "Second thought",
         createdAt: at("2026-08-03T00:03:00.000Z"),
       });
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: later.plan.planId,
         text: "Third thought",
         createdAt: at("2026-08-03T00:04:00.000Z"),
@@ -1227,6 +1457,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Reshape the sidebar",
         createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -1262,6 +1493,7 @@ layer("PlanningStore", (it) => {
       createdAt: at(createdAt),
     });
     return yield* store.createPlan({
+      workspaceDefault: null,
       projectId: project.projectId,
       message: "Reshape the sidebar",
       createdAt: at(createdAt),
@@ -1324,6 +1556,7 @@ layer("PlanningStore", (it) => {
         visitedAt: at("2026-08-03T00:06:00.000Z"),
       });
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Something happened",
         createdAt: at("2026-08-03T00:07:00.000Z"),
@@ -1349,6 +1582,7 @@ layer("PlanningStore", (it) => {
         visitedAt: at("2026-08-03T00:05:00.000Z"),
       });
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "Landed while you were away",
         createdAt: at("2026-08-03T00:06:00.000Z"),
@@ -1515,6 +1749,7 @@ layer("PlanningStore", (it) => {
         const root = created.timeline[0]!;
 
         yield* store.appendMessage({
+          workspaceDefault: null,
           planId: created.plan.planId,
           text: "A human continues",
           createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -1550,6 +1785,7 @@ layer("PlanningStore", (it) => {
 
       const messageRefused = yield* Effect.flip(
         store.appendMessage({
+          workspaceDefault: null,
           planId: created.plan.planId,
           text: "Racing the settle",
           createdAt: at("2026-08-03T00:01:00.000Z"),
@@ -1576,6 +1812,7 @@ layer("PlanningStore", (it) => {
 
       yield* registry.close(created.plan.planId);
       const landed = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: created.plan.planId,
         text: "After the turn",
         createdAt: at("2026-08-03T00:02:00.000Z"),
@@ -1710,6 +1947,7 @@ layer("PlanningStore", (it) => {
       const imported = yield* importIssue({ projectId: project.projectId, issueId: "M-published" });
 
       const appended = yield* store.appendMessage({
+        workspaceDefault: null,
         planId: imported.detail.plan.planId,
         text: "Here is how I would approach it",
         createdAt: at("2026-08-08T00:02:00.000Z"),
@@ -1730,6 +1968,7 @@ layer("PlanningStore", (it) => {
       const project = yield* seedProject("2026-08-08T00:00:00.000Z");
 
       const created = yield* store.createPlan({
+        workspaceDefault: null,
         projectId: project.projectId,
         message: "Born blank",
         createdAt: at("2026-08-08T00:01:00.000Z"),
@@ -1760,6 +1999,7 @@ layer("PlanningStore", (it) => {
         createdAt: "2026-08-08T00:05:00.000Z",
       });
       yield* store.appendMessage({
+        workspaceDefault: null,
         planId: first.detail.plan.planId,
         text: "Something happened",
         createdAt: at("2026-08-08T00:06:00.000Z"),
