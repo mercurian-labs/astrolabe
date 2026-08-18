@@ -113,8 +113,9 @@ One reply at a time, for the whole plan: while the assistant is answering, sendi
 window — waits until you stop the reply or it finishes.
 
 If this machine cannot run the branch's planning model — none is chosen yet, or no connected
-instance offers it — the composer says so right above where you type, instead of failing silently.
-Your message drafts still work; sending resumes as soon as the model resolves. See
+instance offers it, or every instance that offers it is signed out — the composer says so right
+above where you type, instead of failing silently. Your message drafts still work; sending resumes
+as soon as the model resolves. See
 [the planning model](#the-planning-model) for how it is chosen.
 
 ## The right pane
@@ -275,9 +276,10 @@ accounts, because accounts live on the machine they were signed in on and the wo
 
 Each machine works out for itself which of its own instances of that provider runs the model, and
 the picker shows that instance using the familiar coding-session control. If a machine has no
-instance of that provider, or the model is not on offer there, it says so plainly and keeps showing
-the recorded pair — nothing is cleared or rewritten. When a model is missing because the installed
-agent is too old to run it, the disabled reason names the update that unlocks it.
+instance of that provider, the model is not on offer there, or every instance offering it is signed
+out, it says so plainly and keeps showing the recorded pair — nothing is cleared or rewritten. The
+pair resolves again as soon as an instance exists or you sign in. When a model is missing because
+the installed agent is too old to run it, the disabled reason names the update that unlocks it.
 
 The picker offers each instance's models the way you have curated them: models you have hidden stay
 hidden and your ordering holds.

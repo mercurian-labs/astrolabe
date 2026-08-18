@@ -85,6 +85,8 @@ export function planningModelDisabledReason(
   const selection = { provider: entry.driverKind, model } satisfies PlanningModelSelection;
   const resolution = resolvePlanningModel(selection, providers);
   if (resolution._tag === "resolved") return null;
+  // Offering is capability; authentication gates sending, so signed-out models stay selectable.
+  if (resolution._tag === "unresolved" && resolution.reason === "not-signed-in") return null;
   const display = describePlanningModel(selection, resolution, providers);
   return display.kind === "unresolved" ? display.message : "Choose a model to continue.";
 }
