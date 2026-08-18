@@ -134,24 +134,6 @@ export const PlanQuestionRecord = Schema.Struct({
 });
 export type PlanQuestionRecord = typeof PlanQuestionRecord.Type;
 
-/** The concrete provider/model a human message opened its turn under. */
-export const PlanTurnModelRecord = Schema.Struct({
-  ...PlanningModelSelection.fields,
-  /** Whether descendants should continue following the live workspace default. */
-  followedDefault: Schema.Boolean,
-});
-export type PlanTurnModelRecord = typeof PlanTurnModelRecord.Type;
-
-/** What a composer asks the next turn-opening message to establish. */
-export const PlanModelDirective = Schema.Union([
-  Schema.Struct({ _tag: Schema.Literal("follow-default") }),
-  Schema.Struct({
-    _tag: Schema.Literal("override"),
-    selection: PlanningModelSelection,
-  }),
-]);
-export type PlanModelDirective = typeof PlanModelDirective.Type;
-
 export const MercurianProject = Schema.Struct({
   projectId: MercurianProjectId,
   name: TrimmedNonEmptyString,
@@ -250,7 +232,7 @@ export const PlanMessage = Schema.Struct({
   /** The structured question this reply asked, and what it was answered. */
   question: Schema.optional(PlanQuestionRecord),
   /** What this human message's turn ran under, when it opened one. */
-  ranUnder: Schema.optional(PlanTurnModelRecord),
+  ranUnder: Schema.optional(PlanningModelSelection),
   /** What produced this assistant reply, captured when its turn started. */
   generatedBy: Schema.optional(PlanningModelSelection),
 });
@@ -526,8 +508,8 @@ export const MercurianCreatePlanInput = Schema.Struct({
   message: Schema.String,
   /** The birth message is a message: it composes with the same powers. */
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
-  /** Absent only for old clients; otherwise the choice displayed by the composer. */
-  modelChoice: Schema.optional(PlanModelDirective),
+  /** Absent means seed from the pair this workspace last planned under. */
+  modelChoice: Schema.optional(PlanningModelSelection),
 });
 export type MercurianCreatePlanInput = typeof MercurianCreatePlanInput.Type;
 
@@ -576,8 +558,8 @@ export const MercurianAppendPlanMessageInput = Schema.Struct({
   text: Schema.String,
   parentCommitId: Schema.optional(MercurianCommitId),
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
-  /** Absent means inherit the nearest choice already carried by this branch. */
-  modelChoice: Schema.optional(PlanModelDirective),
+  /** Absent means inherit the nearest pair already carried by this branch. */
+  modelChoice: Schema.optional(PlanningModelSelection),
 });
 export type MercurianAppendPlanMessageInput = typeof MercurianAppendPlanMessageInput.Type;
 
