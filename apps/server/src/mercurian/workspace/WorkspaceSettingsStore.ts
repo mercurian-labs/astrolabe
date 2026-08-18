@@ -3,7 +3,7 @@
  * the machine.
  *
  * One rule shapes the whole surface: an instance is machine-local, so nothing
- * stored here ever names one. The planning model is kept as the abstract pair
+ * stored here ever names one. The last-used planning model is kept as the abstract pair
  * {@link PlanningModelSelection} — a provider and a model — and the mapping to
  * an instance is computed per machine from that machine's live provider
  * snapshots. That mapping is a fact about a machine at a moment, so it is never
@@ -11,11 +11,11 @@
  * clients and for the server alike.
  *
  * Deliberately absent: any dependency on the provider registry. This store
- * holds workspace facts and nothing else, which is what keeps the setting
+ * holds workspace facts and nothing else, which is what keeps the last-used pair
  * portable to a machine with a different set of accounts signed in.
  *
  * A stored value that fails to decode refuses loudly rather than reading as
- * "unset" — a workspace setting must not appear to vanish because a build got
+ * "unset" — the last-used seed must not appear to vanish because a build got
  * confused about its shape.
  *
  * @module WorkspaceSettingsStore
@@ -53,12 +53,9 @@ export class WorkspaceSettingsStore extends Context.Service<
   {
     /** Every workspace-scoped setting in one value. */
     readonly getSnapshot: Effect.Effect<WorkspaceSettingsSnapshot, WorkspaceSettingsStoreError>;
-    /**
-     * Name the workspace's planning model, or `null` to choose none. The
-     * argument has no instance field and never will — see the module docs.
-     */
-    readonly setPlanningModel: (
-      selection: PlanningModelSelection | null,
+    /** Record the abstract pair used by the latest turn-opening human message. */
+    readonly recordLastUsedPlanningModel: (
+      selection: PlanningModelSelection,
     ) => Effect.Effect<void, WorkspaceSettingsStoreError>;
     /** Fires once per mutation. What keeps a subscribed client fresh. */
     readonly changes: Stream.Stream<void>;
@@ -124,11 +121,6 @@ export const make = Effect.gen(function* () {
     `,
   });
 
-  const deleteSettingRow = SqlSchema.void({
-    Request: SettingKeyRequest,
-    execute: ({ key }) => sql`DELETE FROM workspace_settings WHERE key = ${key}`,
-  });
-
   const readPlanningModel = Effect.gen(function* () {
     const row = yield* findSettingRow({ key: PLANNING_MODEL_KEY });
     if (Option.isNone(row)) {
@@ -151,33 +143,32 @@ export const make = Effect.gen(function* () {
     ),
   );
 
-  const setPlanningModel: WorkspaceSettingsStore["Service"]["setPlanningModel"] = (selection) =>
-    Effect.gen(function* () {
-      const updatedAt = yield* DateTime.now;
-      yield* sql.withTransaction(
-        selection === null
-          ? deleteSettingRow({ key: PLANNING_MODEL_KEY })
-          : Effect.gen(function* () {
-              yield* upsertSettingRow({
-                key: PLANNING_MODEL_KEY,
-                value: yield* encodePlanningModel(selection),
-                updatedAt,
-              });
-            }),
-      );
-      yield* announceChange;
-    }).pipe(
-      Effect.mapError(
-        toStoreError(
-          "WorkspaceSettingsStore.setPlanningModel:query",
-          "WorkspaceSettingsStore.setPlanningModel:encodeRequest",
+  const recordLastUsedPlanningModel: WorkspaceSettingsStore["Service"]["recordLastUsedPlanningModel"] =
+    (selection) =>
+      Effect.gen(function* () {
+        const updatedAt = yield* DateTime.now;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* upsertSettingRow({
+              key: PLANNING_MODEL_KEY,
+              value: yield* encodePlanningModel(selection),
+              updatedAt,
+            });
+          }),
+        );
+        yield* announceChange;
+      }).pipe(
+        Effect.mapError(
+          toStoreError(
+            "WorkspaceSettingsStore.recordLastUsedPlanningModel:query",
+            "WorkspaceSettingsStore.recordLastUsedPlanningModel:encodeRequest",
+          ),
         ),
-      ),
-    );
+      );
 
   return {
     getSnapshot,
-    setPlanningModel,
+    recordLastUsedPlanningModel,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

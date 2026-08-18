@@ -62,6 +62,8 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
   ...(message.grounding === undefined ? {} : { grounding: message.grounding }),
   ...(message.groundingScope === undefined ? {} : { groundingScope: message.groundingScope }),
   ...(message.question === undefined ? {} : { question: message.question }),
+  ...(message.ranUnder === undefined ? {} : { ranUnder: message.ranUnder }),
+  ...(message.generatedBy === undefined ? {} : { generatedBy: message.generatedBy }),
 });
 
 export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision => ({

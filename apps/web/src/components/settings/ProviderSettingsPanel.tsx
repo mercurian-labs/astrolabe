@@ -53,7 +53,6 @@ import {
   connectionPhaseDotClassName,
   connectionPhasePingClassName,
 } from "../ConnectionStatusDot";
-import { PlanningModelSetting } from "../mercurian/PlanningModelSetting";
 import {
   canOneClickUpdateProviderCandidate,
   collectProviderUpdateCandidates,
@@ -736,7 +735,6 @@ export function EnvironmentProviderSettings({
           aria-disabled={readOnly || undefined}
           className={readOnly ? "space-y-1 opacity-50 select-none" : "space-y-1"}
         >
-          <PlanningModelSetting />
           <SettingsRow
             title={
               <span className="inline-flex items-center gap-1.5">
