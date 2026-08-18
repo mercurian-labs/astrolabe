@@ -93,3 +93,16 @@ export function implementDisabledReason(input: {
   if (input.planTextEmpty) return "Write a plan before implementing it.";
   return null;
 }
+
+export type ImplementFlowEvent =
+  | { readonly kind: "invoke"; readonly planMayBeStale: boolean }
+  | { readonly kind: "review-plan" }
+  | { readonly kind: "continue-anyway" };
+
+export function implementFlowAction(
+  event: ImplementFlowEvent,
+): "show-warning" | "show-plan" | "evaluate-readiness" {
+  if (event.kind === "review-plan") return "show-plan";
+  if (event.kind === "continue-anyway") return "evaluate-readiness";
+  return event.planMayBeStale ? "show-warning" : "evaluate-readiness";
+}

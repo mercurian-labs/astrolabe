@@ -25,6 +25,7 @@ export function PlanArtifact({
   timeline,
   readOnly = false,
   readOnlyAction,
+  titleControl,
 }: {
   readonly planId: PlanId;
   readonly planText: string;
@@ -43,6 +44,8 @@ export function PlanArtifact({
   readonly readOnly?: boolean;
   /** What takes Edit's place while read-only: the way back to now. */
   readonly readOnlyAction?: ReactNode;
+  /** The planning-space artifact picker; omitted in standalone renderings. */
+  readonly titleControl?: ReactNode;
 }) {
   const savePlanRevision = useSavePlanRevision();
   const [draft, setDraft] = useState<string | null>(null);
@@ -66,7 +69,7 @@ export function PlanArtifact({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
-        <h2 className="text-sm font-medium text-foreground">Plan</h2>
+        {titleControl ?? <h2 className="text-sm font-medium text-foreground">Plan</h2>}
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
           {lastRevisionLabel(timeline)}
         </span>

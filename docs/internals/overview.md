@@ -142,14 +142,18 @@ publishes its unpublished ancestors along every parent path. See
 
 [`PlanningStore.ts`][planning-store] adds projects and plans over that graph. A plan owns exactly
 one history and is created together with its root commit, so a plan without a first message cannot
-exist. The plan artifact has no table: a direct edit lands as a `plan-revision` commit carrying the
-whole new text, and the plan's current text is derived from the revisions along the history's path.
+exist. Neither artifact has a table: complete plan and spec snapshots land as `plan-revision` and
+`spec-revision` commits, and current or historical values are derived from revisions on the selected
+path. Spec provenance distinguishes import, tracker refresh, reconciliation, and direct authorship
+without duplicating the commit's author.
 The implement gate is a read-only planning turn over that text and the project's repository set. Its
 immutable readiness verdict is recorded beside the commit it evaluated, while a pending proposal
 remains transient in memory. A ready answer writes no commit; only a person's confirmation writes
 repository projections as sibling `plan-revision` commits whose repository stamp does not change
 the parent line's derived artifact, and each projected commit is recorded ready in the same
-transaction.
+transaction. Before that gate, the client warns when the selected path's newest spec revision has
+no descendant plan revision in the same ancestry. The warning is advisory and does not alter an
+existing readiness verdict or write history.
 The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
 re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
 planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
@@ -157,8 +161,8 @@ by `commits.sequence`, since the commit DAG is already the durable log
 ([ADR 002](../architecture/event-streaming-model.md)). Each projected commit carries `parents` and
 `published` alongside `sequence`, which is what lets the DAG explorer draw the history's shape as a
 second rendering of that one subscription rather than a second stream; the artifact as of an earlier
-commit is the only fact the client cannot derive from it, and `mercurian.getPlanTextAt` reads it
-unarily over the immutable history.
+commit is the only fact the client cannot derive from it; `mercurian.getPlanTextAt` and
+`mercurian.getSpecAt` read the two artifacts unarily over immutable history.
 
 Both write paths name their own parent. `appendPlanMessage` and `savePlanRevision` carry an optional
 `parentCommitId` — the commit the act continues from, resolved inside the same transaction as the
@@ -181,8 +185,11 @@ than living in one of them (§5).
 runtime: a human message committing starts a turn under the workspace planning model, read-only
 (the most restrictive runtime mode plus an auto-answer approval policy), streaming transient frames
 over the same `mercurian.subscribePlan` subscription and landing exactly one assistant commit when
-it settles — marked interrupted when cut short. Its one write door is the planning MCP toolkit's
-`save_plan_revision`, and one-turn-per-plan is a store-enforced fact while a turn runs.
+it settles — marked interrupted when cut short. Its write doors are the planning MCP toolkit's
+`save_plan_revision` and `save_spec_revision`, each paired with a path-aware read. Tool commits
+advance the active turn's tip, so spec changes, plan absorption, and the terminal response form one
+ancestry chain. A standalone human spec change lands only its durable commit; the next human
+message starts a turn whose rebuilt context includes that revision and the current artifacts.
 
 [`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
 database: the registry of codebases the app can reach, the app-owned scripts declared on each, and
@@ -197,7 +204,7 @@ same snapshot-re-emit shape as the tree, and project sets ride that snapshot rat
 — including the cascade a removal leaves behind, whose signal is this store's.
 
 [`mercurian/trackers/`][trackers] holds the seam to external issue trackers, in the same database
-and knowing nothing about plans. `TrackerConnector` has a `probe` and a `listIssues` and no write
+and knowing nothing about plans. `TrackerConnector` has `probe`, `listIssues`, and `getIssue`, and no write
 method, so pull-only is a property of the type rather than a rule; every connector answers in the
 same five-field `TrackerIssue` — id, title, description, url, status — and nothing else crosses.
 Credentials are `ServerSecretStore` files keyed by connection id, never rows and never responses;
@@ -206,15 +213,20 @@ stored at all.
 
 Issue import is the one path that turns an issue into something Mercurian keeps, and it lands in
 `PlanningStore` rather than a service of its own: `mercurian.importPlan` creates a plan whose root
-commit is the issue's content, of kind `issue-revision` and written with `rootPublished: true` — the
+commit is the derived spec, of domain kind `spec-revision` and written with `rootPublished: true` — the
 one caller of that seam, so an imported plan is published from birth while `append` keeps every
-later commit private. The link back lives in `plan_origins`, keyed `(connection_id, issue_id)` with
+later commit private. The complete spec snapshot has two prose fields, `goal` and
+`acceptanceCriteria`; import maps the tracker issue's title and description into them, while the
+persistence decoder maps earlier flat and nested `title`/`description` payloads at read time. The
+link back lives in `plan_origins`, keyed `(connection_id, issue_id)` with
 a `UNIQUE` on the pair: re-importing an origin returns the existing plan, or unarchives it, and the
 wire's `created | existing | resurfaced` outcome says which, so idempotency reads as navigation
 rather than a refusal. `connection_id` is not a foreign key — origins are content, and disconnecting
 a tracker must not dangle a plan — and the origin row joins the delete walk so a deleted plan leaves
-nothing for a later import to find. The issue's content arrives on the call rather than being
-re-fetched: no connector has a by-id read, and its `status` is stored nowhere.
+nothing for a later import to find. Explicit refresh uses the connector's by-id read and derives its
+last upstream baseline from commit ancestry; unchanged reads write nothing, clean and converged
+changes append refresh revisions, and divergent local/upstream changes require a reviewed
+reconciliation. The issue's `status` is stored nowhere.
 
 ## Startup
 

@@ -50,6 +50,11 @@ import {
   isRepositoryPathInvalidError,
   isPlanNotFoundError,
   isPlanTurnActiveError,
+  isSpecRevisionOutdatedError,
+  specDocumentFromIssue,
+  SpecRevisionOutdatedError,
+  SpecRefreshUnavailableError,
+  isSpecRefreshUnavailableError,
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
@@ -109,7 +114,9 @@ import {
   toWirePlanImport,
   toWirePlanMessage,
   toWirePlanRevision,
+  toWirePlanSpecRevision,
   toWirePlanTextAt,
+  toWireSpecAt,
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
@@ -1728,6 +1735,156 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.saveSpecRevision]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.saveSpecRevision,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                planningStore.saveSpecRevision({
+                  planId: input.planId,
+                  document: input.document,
+                  expectedSpecRevisionCommitId:
+                    input.expectedSpecRevisionCommitId === null
+                      ? null
+                      : CommitId.make(input.expectedSpecRevisionCommitId),
+                  ...(input.parentCommitId === undefined
+                    ? {}
+                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
+                  createdAt,
+                }),
+              ),
+              Effect.map(toWirePlanSpecRevision),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) ||
+                isPlanTurnActiveError(cause) ||
+                isSpecRevisionOutdatedError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "saveSpecRevision", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.refreshSpec]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.refreshSpec,
+            DateTime.now.pipe(
+              Effect.flatMap((createdAt) =>
+                Effect.gen(function* () {
+                  const context = yield* planningStore.prepareSpecRefresh({
+                    planId: input.planId,
+                    parentCommitId: CommitId.make(input.parentCommitId),
+                  });
+                  if (context.origin === null) {
+                    return yield* new SpecRefreshUnavailableError({ reason: "no-origin" });
+                  }
+                  if (context.local === null || context.upstreamBaseline === null) {
+                    return yield* new SpecRefreshUnavailableError({ reason: "spec-missing" });
+                  }
+                  const issue = yield* trackerStore.getIssue({
+                    connectionId: context.origin.connectionId,
+                    issueId: context.origin.issueId,
+                  });
+                  if (issue === null) {
+                    return yield* new SpecRefreshUnavailableError({ reason: "issue-not-found" });
+                  }
+                  const upstream = specDocumentFromIssue(issue.title, issue.description);
+                  const reconciliation = {
+                    kind: "reconciliation-required" as const,
+                    base: context.upstreamBaseline,
+                    local: context.local.document,
+                    upstream,
+                    expectedSpecRevisionCommitId: MercurianCommitId.make(
+                      context.local.revisionCommitId,
+                    ),
+                  };
+
+                  const confirming =
+                    input.reviewedUpstream !== undefined && input.resolvedDocument !== undefined;
+                  if (confirming) {
+                    const upstreamMoved =
+                      input.reviewedUpstream.goal !== upstream.goal ||
+                      input.reviewedUpstream.acceptanceCriteria !== upstream.acceptanceCriteria;
+                    if (
+                      upstreamMoved ||
+                      String(context.local.revisionCommitId) !==
+                        String(input.expectedSpecRevisionCommitId)
+                    ) {
+                      return reconciliation;
+                    }
+                    const revision = yield* planningStore.saveTrackerSpecRevision({
+                      planId: input.planId,
+                      parentCommitId: CommitId.make(input.parentCommitId),
+                      expectedSpecRevisionCommitId: CommitId.make(
+                        input.expectedSpecRevisionCommitId,
+                      ),
+                      document: input.resolvedDocument,
+                      issueId: context.origin.issueId,
+                      sourceKind: "tracker-reconciliation",
+                      upstream,
+                      createdAt,
+                    });
+                    return {
+                      kind: "committed" as const,
+                      outcome: "reconciled" as const,
+                      revision: toWirePlanSpecRevision(revision),
+                    };
+                  }
+
+                  if (
+                    input.reviewedUpstream !== undefined ||
+                    input.resolvedDocument !== undefined ||
+                    String(context.local.revisionCommitId) !==
+                      String(input.expectedSpecRevisionCommitId)
+                  ) {
+                    return yield* new SpecRevisionOutdatedError({
+                      expectedSpecRevisionCommitId: input.expectedSpecRevisionCommitId,
+                      actualSpecRevisionCommitId: MercurianCommitId.make(
+                        context.local.revisionCommitId,
+                      ),
+                    });
+                  }
+
+                  const classified = PlanningStore.classifySpecRefresh({
+                    base: context.upstreamBaseline,
+                    local: context.local.document,
+                    upstream,
+                  });
+                  if (classified.kind === "unchanged") return classified;
+                  if (classified.kind === "reconciliation-required") return reconciliation;
+
+                  const revision = yield* planningStore.saveTrackerSpecRevision({
+                    planId: input.planId,
+                    parentCommitId: CommitId.make(input.parentCommitId),
+                    expectedSpecRevisionCommitId: CommitId.make(input.expectedSpecRevisionCommitId),
+                    document: classified.document,
+                    issueId: context.origin.issueId,
+                    sourceKind: "tracker-refresh",
+                    createdAt,
+                  });
+                  return {
+                    kind: "committed" as const,
+                    outcome:
+                      classified.kind === "committed-converged"
+                        ? ("converged" as const)
+                        : ("upstream" as const),
+                    revision: toWirePlanSpecRevision(revision),
+                  };
+                }),
+              ),
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) ||
+                isPlanTurnActiveError(cause) ||
+                isSpecRevisionOutdatedError(cause) ||
+                isSpecRefreshUnavailableError(cause) ||
+                isTrackerConnectionNotFoundError(cause) ||
+                isTrackerAuthError(cause) ||
+                isTrackerUnreachableError(cause)
+                  ? cause
+                  : new MercurianPlanningError({ operation: "refreshSpec", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.tryImplement]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.tryImplement,
@@ -1918,6 +2075,24 @@ const makeWsRpcLayer = (
                   isPlanNotFoundError(cause)
                     ? cause
                     : new MercurianPlanningError({ operation: "getPlanTextAt", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.getSpecAt]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.getSpecAt,
+            planningStore
+              .getSpecAt({
+                planId: input.planId,
+                commitId: CommitId.make(input.commitId),
+              })
+              .pipe(
+                Effect.map(toWireSpecAt),
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause)
+                    ? cause
+                    : new MercurianPlanningError({ operation: "getSpecAt", cause }),
                 ),
               ),
             { "rpc.aggregate": "mercurian" },

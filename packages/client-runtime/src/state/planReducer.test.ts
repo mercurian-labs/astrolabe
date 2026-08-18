@@ -46,6 +46,7 @@ const snapshot: PlanDetail = {
     updatedAt: "2026-08-03T00:00:00.000Z",
   },
   planText: "",
+  spec: null,
   timeline: [message("commit-1", 1, "Reshape the sidebar")],
   snapshotSequence: 1,
   readyCommits: [],
@@ -83,6 +84,31 @@ describe("applyPlanStreamItem", () => {
     ]);
     expect(state.detail?.planText).toBe("# Approach");
     expect(state.detail?.timeline.map((item) => item._tag)).toEqual(["message", "plan-revision"]);
+  });
+
+  it("replaces the spec when a spec revision carries the path projection", () => {
+    const spec = {
+      revisionCommitId: MercurianCommitId.make("commit-2"),
+      document: {
+        goal: "Sidebar behavior",
+        acceptanceCriteria: "The sidebar stays visible.",
+      },
+    };
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      {
+        kind: "commit",
+        sequence: 2,
+        item: {
+          _tag: "spec-revision",
+          ...commitFields("commit-2", 2, ["commit-1"]),
+          cause: "direct",
+        },
+        spec,
+      },
+    ]);
+    expect(state.detail?.spec).toEqual(spec);
+    expect(state.detail?.timeline.map((item) => item._tag)).toEqual(["message", "spec-revision"]);
   });
 
   it("drops a commit the snapshot already accounts for", () => {

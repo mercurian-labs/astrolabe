@@ -45,6 +45,7 @@ import {
   TrackerAuthError,
   TrackerConnectionNotFoundError,
   TrackerUnreachableError,
+  type TrackerIssue,
   type TrackerIssuePage,
   type TrackerStanding,
 } from "@t3tools/contracts";
@@ -107,6 +108,12 @@ export const ListTrackerIssuesInput = Schema.Struct({
 });
 export type ListTrackerIssuesInput = typeof ListTrackerIssuesInput.Type;
 
+export const GetTrackerIssueInput = Schema.Struct({
+  connectionId: TrackerConnectionId,
+  issueId: Schema.String,
+});
+export type GetTrackerIssueInput = typeof GetTrackerIssueInput.Type;
+
 // ===============================
 // Service
 // ===============================
@@ -135,6 +142,10 @@ export class TrackerStore extends Context.Service<
     readonly listIssues: (
       input: ListTrackerIssuesInput,
     ) => Effect.Effect<TrackerIssuePage, TrackerStoreError>;
+    /** One live origin read for explicit refresh; null when the tracker removed it. */
+    readonly getIssue: (
+      input: GetTrackerIssueInput,
+    ) => Effect.Effect<TrackerIssue | null, TrackerStoreError>;
     /** Fires once per mutation. What keeps a subscribed Settings page fresh. */
     readonly changes: Stream.Stream<void>;
   }
@@ -392,11 +403,25 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
       ),
     );
 
+  const getIssue: TrackerStore["Service"]["getIssue"] = (input) =>
+    Effect.gen(function* () {
+      const connection = yield* requireConnection(input.connectionId);
+      const token = yield* readToken(connection);
+      return yield* connectors[connection.kind]
+        .getIssue(token, input.issueId)
+        .pipe(Effect.mapError(toStoreRefusal(connection.kind)));
+    }).pipe(
+      Effect.mapError(
+        toTrackerStoreError("TrackerStore.getIssue:query", "TrackerStore.getIssue:decodeRows"),
+      ),
+    );
+
   return {
     connect,
     disconnect,
     getSnapshot,
     listIssues,
+    getIssue,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },
