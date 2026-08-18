@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PlanningModelResolution } from "@t3tools/contracts";
+import {
+  type PlanningModelResolution,
+  type PlanningModelSelection,
+  ProviderDriverKind,
+} from "@t3tools/contracts";
 
 import {
   implementFailureNotice,
@@ -57,6 +61,10 @@ describe("implementFailureNotice", () => {
 });
 
 describe("planningModelGateNotice", () => {
+  const selection: PlanningModelSelection = {
+    provider: ProviderDriverKind.make("claudeAgent"),
+    model: "opus",
+  };
   const resolved = {
     _tag: "resolved",
     instanceId: "claudeAgent",
@@ -65,26 +73,83 @@ describe("planningModelGateNotice", () => {
   } as unknown as PlanningModelResolution;
 
   it("stays silent when the model resolves", () => {
-    expect(planningModelGateNotice(resolved)).toBeNull();
+    expect(planningModelGateNotice(selection, resolved)).toBeNull();
   });
 
   it("names the reason for every unrunnable state", () => {
-    expect(planningModelGateNotice({ _tag: "unset" })).toBe(
+    expect(planningModelGateNotice(null, { _tag: "unset" })).toBe(
       "Choose a model to hear back from the assistant.",
     );
-    expect(planningModelGateNotice({ _tag: "unresolved", reason: "no-instance" })).toContain(
-      "No instance",
+    expect(
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "no-instance" }),
+    ).toContain("No instance");
+    expect(
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "model-unavailable" }),
+    ).toContain("not available");
+  });
+
+  it("keeps the established gate wording", () => {
+    expect(planningModelGateNotice(selection, { _tag: "unresolved", reason: "no-instance" })).toBe(
+      "No instance of this model's provider is available on this machine — choose another model or connect one in Settings.",
     );
-    expect(planningModelGateNotice({ _tag: "unresolved", reason: "model-unavailable" })).toContain(
-      "not available",
+    expect(
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "model-unavailable" }),
+    ).toBe("This model is not available on this machine's instance — choose another model.");
+  });
+
+  it("names the signed-out provider and points at provider settings", () => {
+    expect(
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "not-signed-in" }),
+    ).toBe(
+      "Not signed in to Claude on this machine — sign in from Settings → Providers to hear back from the assistant.",
     );
+  });
+
+  it("falls back to the provider when the recorded selection is unavailable", () => {
+    expect(planningModelGateNotice(null, { _tag: "unresolved", reason: "not-signed-in" })).toBe(
+      "Not signed in to the provider on this machine — sign in from Settings → Providers to hear back from the assistant.",
+    );
+  });
+
+  it("uses distinct wording for all four can't-reply states", () => {
+    const notices = [
+      planningModelGateNotice(null, { _tag: "unset" }),
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "no-instance" }),
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "not-signed-in" }),
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "model-unavailable" }),
+    ];
+
+    expect(new Set(notices).size).toBe(notices.length);
   });
 });
 
 describe("turnRefusalNotice", () => {
+  const selection: PlanningModelSelection = {
+    provider: ProviderDriverKind.make("claudeAgent"),
+    model: "opus",
+  };
+
   it("has a sentence for every refusal the stream can carry", () => {
-    for (const reason of ["unset", "no-instance", "model-unavailable", "turn-active"] as const) {
-      expect(turnRefusalNotice(reason).length).toBeGreaterThan(0);
+    for (const reason of [
+      "unset",
+      "no-instance",
+      "not-signed-in",
+      "model-unavailable",
+      "turn-active",
+    ] as const) {
+      expect(turnRefusalNotice(selection, reason).length).toBeGreaterThan(0);
     }
+  });
+
+  it("names the signed-out provider after a message lands", () => {
+    expect(turnRefusalNotice(selection, "not-signed-in")).toBe(
+      "The message was sent, but Claude isn't signed in on this machine.",
+    );
+  });
+
+  it("falls back to the provider when the recorded selection is unavailable", () => {
+    expect(turnRefusalNotice(null, "not-signed-in")).toBe(
+      "The message was sent, but the provider isn't signed in on this machine.",
+    );
   });
 });
