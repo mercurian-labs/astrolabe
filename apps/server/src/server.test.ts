@@ -33,6 +33,7 @@ import {
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
+  MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianProjectId,
   type PlanId,
   TrackerConnectionId,
@@ -4438,7 +4439,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc mercurian planning, and births a plan at its first message", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      const turnStarts = yield* Queue.unbounded<PlanningAssistant.StartTurnInput>();
+      yield* buildAppUnderTest({
+        layers: {
+          planningAssistant: {
+            startTurn: (input) => Queue.offer(turnStarts, input).pipe(Effect.asVoid),
+          },
+        },
+      });
 
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
@@ -4451,11 +4459,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
               projectId: project.projectId,
               message: "Reshape the sidebar",
+              modelChoice: { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" },
             });
-            yield* client[MERCURIAN_WS_METHODS.appendPlanMessage]({
+            const appended = yield* client[MERCURIAN_WS_METHODS.appendPlanMessage]({
               planId: created.plan.planId,
               text: "And the planning space",
             });
+            const starts = [yield* Queue.take(turnStarts), yield* Queue.take(turnStarts)];
+            const workspaceSettings = yield* client[
+              MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
+            ]({}).pipe(Stream.take(1), Stream.runCollect);
             // The subscription's own `synchronized` marker is the receipt that
             // the stream is live: the edit is landed from there, so the commit
             // that follows can only have arrived as an event.
@@ -4488,7 +4501,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     commitId: revisionEvent.item.commitId,
                   })
                 : null;
-            return { project, created, items, atRoot, atRevision };
+            return {
+              project,
+              created,
+              appended,
+              starts,
+              workspaceSettings,
+              items,
+              atRoot,
+              atRevision,
+            };
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
@@ -4496,6 +4518,25 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(result.project.name, "Astrolabe");
       assert.equal(result.created.plan.title, "Reshape the sidebar");
       assert.equal(result.created.planText, "");
+      const root = result.created.timeline[0];
+      assert.ok(root?._tag === "message");
+      if (root?._tag === "message") {
+        assert.deepEqual(root.ranUnder, {
+          provider: ProviderDriverKind.make("codex"),
+          model: "gpt-5.4",
+        });
+      }
+      // The old-client path omits a directive. The server inherits and
+      // re-stamps the branch's override before starting the turn.
+      assert.deepEqual(result.appended.ranUnder, root?._tag === "message" ? root.ranUnder : null);
+      assert.deepEqual(
+        result.starts.map((start) => start.ranUnder),
+        [result.appended.ranUnder, result.appended.ranUnder],
+      );
+      assert.deepEqual(result.workspaceSettings[0], {
+        kind: "snapshot",
+        snapshot: { planningModel: result.appended.ranUnder ?? null },
+      });
 
       const opening = result.items[0];
       assert.equal(opening?.kind, "snapshot");
@@ -4733,7 +4774,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
-  it.effect("keeps human spec saves and both committing refresh paths silent", () =>
+  it.effect("keeps human artifact saves and both committing refresh paths silent", () =>
     Effect.gen(function* () {
       const startTurnInputs: Array<PlanningAssistant.StartTurnInput> = [];
       let startTurnBaseline = 0;
@@ -4769,6 +4810,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const blank = yield* client[MERCURIAN_WS_METHODS.createPlan]({
               projectId: project.projectId,
               message: "Plan from a human-authored spec",
+              modelChoice: { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" },
             });
             const connection = yield* client[MERCURIAN_TRACKER_WS_METHODS.connectTracker]({
               kind: "linear",
@@ -4783,7 +4825,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             yield* Effect.yieldNow;
             startTurnBaseline = startTurnInputs.length;
 
-            yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
+            const direct = yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
               planId: blank.plan.planId,
               parentCommitId: blank.timeline[0]!.commitId,
               expectedSpecRevisionCommitId: null,
@@ -4791,6 +4833,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 goal: "Human revision",
                 acceptanceCriteria: "Saving it does not start an assistant turn.",
               },
+            });
+            yield* Effect.yieldNow;
+            assert.equal(startTurnInputs.length, startTurnBaseline);
+
+            yield* client[MERCURIAN_WS_METHODS.savePlanRevision]({
+              planId: blank.plan.planId,
+              parentCommitId: direct.commitId,
+              text: "# Silent human plan edit",
             });
             yield* Effect.yieldNow;
             assert.equal(startTurnInputs.length, startTurnBaseline);
@@ -4847,6 +4897,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             if (reconciled.kind === "committed") assert.equal(reconciled.outcome, "reconciled");
             yield* Effect.yieldNow;
             assert.equal(startTurnInputs.length, startTurnBaseline);
+
+            const workspaceSettings = yield* client[
+              MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
+            ]({}).pipe(Stream.take(1), Stream.runCollect);
+            assert.deepEqual(workspaceSettings[0], {
+              kind: "snapshot",
+              snapshot: {
+                planningModel: {
+                  provider: ProviderDriverKind.make("codex"),
+                  model: "gpt-5.4",
+                },
+              },
+            });
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));

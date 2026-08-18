@@ -27,6 +27,7 @@ import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 // Import creates a plan, so it belongs to the planning surface — but the issue
 // it creates one from is the tracker surface's own shape, passed back verbatim.
 import { TrackerConnectionId, TrackerIssue } from "./mercurianTrackers.ts";
+import { PlanningModelSelection } from "./mercurianWorkspace.ts";
 import { ChatAttachment, UploadChatAttachment } from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
@@ -233,6 +234,10 @@ export const PlanMessage = Schema.Struct({
   groundingScope: Schema.optional(PlanGroundingScope),
   /** The structured question this reply asked, and what it was answered. */
   question: Schema.optional(PlanQuestionRecord),
+  /** What this human message's turn ran under, when it opened one. */
+  ranUnder: Schema.optional(PlanningModelSelection),
+  /** What produced this assistant reply, captured when its turn started. */
+  generatedBy: Schema.optional(PlanningModelSelection),
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -544,6 +549,8 @@ export const MercurianCreatePlanInput = Schema.Struct({
   message: Schema.String,
   /** The birth message is a message: it composes with the same powers. */
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
+  /** Absent means seed from the pair this workspace last planned under. */
+  modelChoice: Schema.optional(PlanningModelSelection),
 });
 export type MercurianCreatePlanInput = typeof MercurianCreatePlanInput.Type;
 
@@ -592,6 +599,8 @@ export const MercurianAppendPlanMessageInput = Schema.Struct({
   text: Schema.String,
   parentCommitId: Schema.optional(MercurianCommitId),
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
+  /** Absent means inherit the nearest pair already carried by this branch. */
+  modelChoice: Schema.optional(PlanningModelSelection),
 });
 export type MercurianAppendPlanMessageInput = typeof MercurianAppendPlanMessageInput.Type;
 

@@ -55,6 +55,7 @@ import {
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanStreamItem,
+  type PlanningModelSelection,
   PlanTurnActiveError,
   PlanTurnId,
   type PlanTurnRefusalReason,
@@ -115,6 +116,8 @@ export interface StartTurnInput {
   readonly parentCommitId: CommitId;
   /** That message's text — what the provider is asked to reply to. */
   readonly text: string;
+  /** The provider/model pair stamped on that human message. */
+  readonly ranUnder?: PlanningModelSelection;
 }
 
 export interface TryImplementInput {
@@ -161,6 +164,8 @@ interface TurnRuntime {
   /** Mutable: a continuation whose session turned out dead moves threads. */
   threadId: ThreadId;
   readonly parentCommitId: CommitId;
+  /** Captured at start so settlement records the model that actually ran. */
+  readonly modelSelection: PlanningModelSelection;
   text: string;
   readonly grounding: Array<PlanGroundingItem>;
   readonly groundingKeys: Set<string>;
@@ -507,6 +512,7 @@ export const make = Effect.gen(function* () {
         ...(turn.grounding.length === 0 ? {} : { grounding: turn.grounding }),
         ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
         ...(question === undefined ? {} : { question }),
+        generatedBy: turn.modelSelection,
         createdAt,
       })
       .pipe(Effect.result);
@@ -1020,9 +1026,10 @@ export const make = Effect.gen(function* () {
   const startTurn: PlanningAssistant["Service"]["startTurn"] = (input) =>
     Effect.gen(function* () {
       proposals.delete(input.planId);
-      const settings = yield* workspaceSettings.getSnapshot;
+      const effectiveSelection =
+        input.ranUnder ?? (yield* workspaceSettings.getSnapshot).planningModel;
       const providers = yield* providerRegistry.getProviders;
-      const resolution = resolvePlanningModel(settings.planningModel, providers);
+      const resolution = resolvePlanningModel(effectiveSelection, providers);
       if (resolution._tag === "unset") {
         return yield* refuse(input.planId, "unset");
       }
@@ -1085,6 +1092,7 @@ export const make = Effect.gen(function* () {
         turnId,
         threadId,
         parentCommitId: input.parentCommitId,
+        modelSelection: { provider: resolution.provider, model: resolution.model },
         text: "",
         grounding: [],
         groundingKeys: new Set(),
@@ -1244,9 +1252,13 @@ export const make = Effect.gen(function* () {
       }
 
       const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
-      const settings = yield* workspaceSettings.getSnapshot;
+      const standing = yield* planningStore.standingModelChoice({
+        planId: input.planId,
+        commitId: context.atCommitId,
+      });
+      const effectiveSelection = standing ?? (yield* workspaceSettings.getSnapshot).planningModel;
       const providers = yield* providerRegistry.getProviders;
-      const resolution = resolvePlanningModel(settings.planningModel, providers);
+      const resolution = resolvePlanningModel(effectiveSelection, providers);
       if (resolution._tag === "unset") {
         return yield* new ImplementBlockedError({ reason: "model-unset" });
       }
@@ -1279,6 +1291,7 @@ export const make = Effect.gen(function* () {
         turnId,
         threadId: materials.threadId,
         parentCommitId: context.atCommitId,
+        modelSelection: { provider: resolution.provider, model: resolution.model },
         text: "",
         grounding: [],
         groundingKeys: new Set(),

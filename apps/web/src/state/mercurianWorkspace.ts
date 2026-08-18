@@ -11,14 +11,13 @@ import {
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { usePrimarySettings } from "../hooks/useSettings";
 import { applyProviderInstanceSettings, deriveProviderInstanceEntries } from "../providerInstances";
 import { usePrimaryEnvironmentId } from "./environments";
 import { primaryServerProvidersAtom } from "./server";
-import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianWorkspace = createMercurianWorkspaceAtoms(connectionAtomRuntime);
 
@@ -32,7 +31,7 @@ const EMPTY_SETTINGS_ATOM = Atom.make(
 const UNSET: WorkspaceSettingsSnapshot = { planningModel: null };
 
 export interface PlanningModelState {
-  /** What the workspace saved: a provider and a model, never an instance. */
+  /** The pair the workspace last planned under, never an instance. */
   readonly setting: PlanningModelSelection | null;
   /** What this machine makes of it right now — recomputed, never stored. */
   readonly resolution: PlanningModelResolution;
@@ -74,7 +73,7 @@ function useResolvableProviders(): ReadonlyArray<ServerProvider> {
 }
 
 /**
- * The workspace's planning model, and this machine's answer to it.
+ * The workspace's last-used planning model, and this machine's answer to it.
  *
  * The two halves come from different places on purpose. The pair is workspace
  * state and arrives over the workspace subscription; the instance it runs under
@@ -105,17 +104,4 @@ export function usePlanningModel(): PlanningModelState {
           ? failure.message
           : "Could not load the workspace settings.",
   };
-}
-
-/**
- * Name the workspace's planning model, or pass `null` to choose none. The
- * argument cannot name an instance, which is what keeps the setting meaningful
- * on every other machine in the workspace.
- */
-export function useSetPlanningModel() {
-  const run = useEnvironmentBoundCommand(mercurianWorkspace.setPlanningModel);
-  return useCallback(
-    (planningModel: PlanningModelSelection | null) => run({ planningModel }),
-    [run],
-  );
 }

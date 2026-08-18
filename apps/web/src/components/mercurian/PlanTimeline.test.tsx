@@ -2,10 +2,13 @@ import {
   MercurianCommitId,
   MercurianRepositoryId,
   PlanTurnId,
+  ProviderDriverKind,
+  ProviderInstanceId,
   type ChatAttachment,
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanTimelineItem,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -24,6 +27,23 @@ type PlanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
 const CREATED_AT = "2026-08-03T12:34:56.000Z";
 const id = (value: string) => MercurianCommitId.make(value);
+const claude = ProviderDriverKind.make("claudeAgent");
+
+const providers: ReadonlyArray<ServerProvider> = [
+  {
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    driver: claude,
+    enabled: true,
+    installed: true,
+    version: "1.0.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: CREATED_AT,
+    models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
+    slashCommands: [],
+    skills: [],
+  },
+];
 
 function message(
   commitId: string,
@@ -138,6 +158,28 @@ describe("PlanTimeline", () => {
     expect(interruptedTag).toContain("bg-amber-500/15");
     expect(interruptedTag).not.toContain("opacity-0");
     expect(markup.indexOf("group-hover/assistant:opacity-100")).toBeLessThan(interruptedTagIndex);
+  });
+
+  it("attributes assistant replies to their recorded provider and model only when present", () => {
+    const attributed = renderToStaticMarkup(
+      <PlanTimeline
+        providers={providers}
+        timeline={[
+          message("assistant-attributed", "assistant", "Recorded reply", {
+            generatedBy: { provider: claude, model: "opus" },
+          }),
+        ]}
+      />,
+    );
+    const historical = renderToStaticMarkup(
+      <PlanTimeline
+        providers={providers}
+        timeline={[message("assistant-old", "assistant", "Old")]}
+      />,
+    );
+
+    expect(attributed).toContain("Claude · Opus");
+    expect(historical).not.toContain("Claude · Opus");
   });
 
   it("renders plan and spec revisions as compact artifact events", () => {
