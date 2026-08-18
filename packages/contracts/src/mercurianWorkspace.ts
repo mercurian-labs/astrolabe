@@ -1,11 +1,10 @@
 /**
- * Mercurian's workspace settings on the wire — the settings that belong to the
- * workspace rather than to the machine it happens to be running on.
+ * Mercurian's workspace-scoped planning seed on the wire.
  *
  * The scoping rule this module exists to enforce: a provider *instance* is a
  * connected account on one machine, because signing in belongs to the
  * provider's agent on that machine. The workspace is shared. So nothing
- * workspace-level ever names an instance. The planning model is named
+ * workspace-level ever names an instance. The last-used planning model is named
  * abstractly — a provider and a model — and each machine resolves that pair to
  * one of its own instances at runtime, freshly, never storing the answer.
  *
@@ -27,7 +26,6 @@ import { isProviderAvailable, type ServerProviders } from "./server.ts";
 
 export const MERCURIAN_WORKSPACE_WS_METHODS = {
   subscribeWorkspaceSettings: "mercurian.subscribeWorkspaceSettings",
-  setPlanningModel: "mercurian.setPlanningModel",
 } as const;
 
 /**
@@ -48,8 +46,8 @@ export const PlanningModelSelection = Schema.Struct({
 export type PlanningModelSelection = typeof PlanningModelSelection.Type;
 
 /**
- * Every workspace-scoped setting in one value. `null` is a real state for the
- * planning model: no one has chosen one yet.
+ * Every workspace-scoped setting in one value. `planningModel` records the
+ * pair the workspace last planned under; `null` means nothing has run yet.
  */
 export const WorkspaceSettingsSnapshot = Schema.Struct({
   planningModel: Schema.NullOr(PlanningModelSelection),
@@ -57,7 +55,7 @@ export const WorkspaceSettingsSnapshot = Schema.Struct({
 export type WorkspaceSettingsSnapshot = typeof WorkspaceSettingsSnapshot.Type;
 
 /**
- * Workspace settings are few and move only on discrete human acts, so the
+ * Workspace values are few and move only on discrete product acts, so the
  * subscription re-sends the whole value rather than carrying sequenced deltas —
  * the same shape the planning tree uses for the same reason.
  */
@@ -66,12 +64,6 @@ export const WorkspaceSettingsStreamItem = Schema.Struct({
   snapshot: WorkspaceSettingsSnapshot,
 });
 export type WorkspaceSettingsStreamItem = typeof WorkspaceSettingsStreamItem.Type;
-
-/** `null` clears the setting: choosing nothing is a choice a person can make. */
-export const MercurianSetPlanningModelInput = Schema.Struct({
-  planningModel: Schema.NullOr(PlanningModelSelection),
-});
-export type MercurianSetPlanningModelInput = typeof MercurianSetPlanningModelInput.Type;
 
 export const MercurianSubscribeWorkspaceSettingsInput = Schema.Struct({});
 export type MercurianSubscribeWorkspaceSettingsInput =
@@ -85,7 +77,7 @@ export type MercurianSubscribeWorkspaceSettingsInput =
 export class MercurianWorkspaceError extends Schema.TaggedErrorClass<MercurianWorkspaceError>()(
   "MercurianWorkspaceError",
   {
-    operation: Schema.Literals(["subscribeWorkspaceSettings", "setPlanningModel"]),
+    operation: Schema.Literal("subscribeWorkspaceSettings"),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -95,10 +87,10 @@ export class MercurianWorkspaceError extends Schema.TaggedErrorClass<MercurianWo
 }
 
 /**
- * What a machine makes of the workspace's planning model right now.
+ * What a machine makes of an abstract planning-model pair right now.
  *
- * `unresolved` is deliberately not a failure and never rewrites the setting:
- * the pair stays saved, and the machine that lacks an instance says so. The
+ * `unresolved` is deliberately not a failure and never rewrites the pair:
+ * the record stays saved, and the machine that lacks an instance says so. The
  * same workspace resolves fine on the machine that has one.
  */
 export type PlanningModelResolution =
@@ -115,9 +107,8 @@ export type PlanningModelResolution =
     };
 
 /**
- * Resolve the workspace's abstract provider/model pair to one instance on this
- * machine. Pure, and written for both callers from day one: the settings row
- * renders it in a client, and a planning turn will compute it server-side
+ * Resolve an abstract provider/model pair to one instance on this machine.
+ * Pure: the picker renders it in a client, and a planning turn computes it server-side
  * against the registry's own snapshots.
  *
  * The rule, stated once:
@@ -136,7 +127,7 @@ export type PlanningModelResolution =
  * candidate's `versionAdvisory`.
  *
  * Curation is deliberately not consulted. Hiding a model is a picker
- * preference of one client; the workspace setting has to keep resolving on a
+ * preference of one client; the recorded pair has to keep resolving on a
  * machine whose user hid it.
  */
 export const resolvePlanningModel = (

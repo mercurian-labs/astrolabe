@@ -137,7 +137,6 @@ import {
 } from "./mercurianTrackers.ts";
 import {
   MERCURIAN_WORKSPACE_WS_METHODS,
-  MercurianSetPlanningModelInput,
   MercurianSubscribeWorkspaceSettingsInput,
   MercurianWorkspaceError,
   WorkspaceSettingsStreamItem,
@@ -1139,8 +1138,8 @@ export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
   },
 );
 
-// Workspace settings: few, and moved only by a discrete human act, so the read
-// is a whole-value re-send rather than a sequenced log.
+// Workspace-scoped seeds are few and small, so the read is a whole-value
+// re-send rather than a sequenced log.
 export const WsMercurianSubscribeWorkspaceSettingsRpc = Rpc.make(
   MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings,
   {
@@ -1148,15 +1147,6 @@ export const WsMercurianSubscribeWorkspaceSettingsRpc = Rpc.make(
     success: WorkspaceSettingsStreamItem,
     error: Schema.Union([MercurianWorkspaceError, EnvironmentAuthorizationError]),
     stream: true,
-  },
-);
-
-export const WsMercurianSetPlanningModelRpc = Rpc.make(
-  MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
-  {
-    payload: MercurianSetPlanningModelInput,
-    success: Schema.Void,
-    error: Schema.Union([MercurianWorkspaceError, EnvironmentAuthorizationError]),
   },
 );
 
@@ -1326,7 +1316,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSaveRepositoryScriptsRpc,
   WsMercurianSetProjectRepositoriesRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
-  WsMercurianSetPlanningModelRpc,
   WsMercurianSubscribeTrackersRpc,
   WsMercurianConnectTrackerRpc,
   WsMercurianDisconnectTrackerRpc,

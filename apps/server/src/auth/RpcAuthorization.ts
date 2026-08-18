@@ -73,10 +73,9 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_TRACKER_WS_METHODS.listTrackerIssues]: AuthOrchestrationReadScope,
   [MERCURIAN_TRACKER_WS_METHODS.connectTracker]: AuthOrchestrationOperateScope,
   [MERCURIAN_TRACKER_WS_METHODS.disconnectTracker]: AuthOrchestrationOperateScope,
-  // Workspace settings likewise: the planning model is workspace configuration,
-  // and it names no instance, so it carries no machine-scoped authority.
+  // The last-used planning pair names no instance, so reading it carries no
+  // machine-scoped authority.
   [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: AuthOrchestrationReadScope,
-  [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

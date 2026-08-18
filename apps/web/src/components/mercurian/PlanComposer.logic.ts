@@ -39,23 +39,21 @@ export function resolveComposerControl(input: {
 }
 
 /**
- * What the composer says when the workspace planning model cannot run a
+ * What the composer says when the displayed planning model cannot run a
  * turn on this machine. `null` means no gate: sending is live.
  *
- * Wording follows the register M-97's settings row established; the
- * composer's version adds where to fix it, because unlike the settings row
- * it is not already there.
+ * Wording points back to the picker that owns the choice.
  */
 export function planningModelGateNotice(resolution: PlanningModelResolution): string | null {
   switch (resolution._tag) {
     case "resolved":
       return null;
     case "unset":
-      return "Choose a planning model in Settings to hear back from the assistant.";
+      return "Choose a model to hear back from the assistant.";
     case "unresolved":
       return resolution.reason === "no-instance"
-        ? "No instance of the planning model's provider on this machine — connect one in Settings."
-        : "The planning model is not available on this machine's instance — pick another in Settings.";
+        ? "No instance of this model's provider is available on this machine — choose another model or connect one in Settings."
+        : "This model is not available on this machine's instance — choose another model.";
     default:
       return null;
   }
@@ -69,7 +67,7 @@ export function planningModelGateNotice(resolution: PlanningModelResolution): st
 export function turnRefusalNotice(reason: PlanTurnRefusalReason): string {
   switch (reason) {
     case "unset":
-      return "The message was sent, but no planning model is set — choose one in Settings.";
+      return "The message was sent, but no planning model was chosen — choose one in the picker.";
     case "no-instance":
       return "The message was sent, but no instance of the planning model's provider is available on this machine.";
     case "model-unavailable":

@@ -16,6 +16,7 @@ import { compressImageForStash } from "../../lib/imageCompression";
 import type { TerminalContextDraft } from "../../lib/terminalContext";
 import { cn } from "../../lib/utils";
 import type { PlanComposerAttachment } from "../../planComposerStore";
+import { ComposerControl, ComposerControlIcon } from "../chat/ComposerControl";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -82,6 +83,7 @@ export function PlanComposer({
   gateNotice = null,
   notice = null,
   implementDisabledReason = null,
+  modelPicker,
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
@@ -114,6 +116,8 @@ export function PlanComposer({
   /** A transient line under the gate's slot: the last turn refusal. */
   readonly notice?: string | null;
   readonly implementDisabledReason?: string | null;
+  /** The branch-local model control, derived and owned by the surface. */
+  readonly modelPicker?: ReactNode;
   readonly onChangeText: (text: string) => void;
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
@@ -243,136 +247,134 @@ export function PlanComposer({
             has taken most of the window. */}
         <div
           className={cn(
-            "overflow-hidden rounded-[20px] border border-border bg-background transition-[background-color,box-shadow] duration-200",
+            "group rounded-[22px] border border-border bg-background p-px transition-[border-color,box-shadow] duration-200",
             "focus-within:border-border/80 focus-within:shadow-sm",
             isDragOver && "bg-accent/45 ring-1 ring-primary/70",
           )}
         >
-          {banner}
-          {/* The gate: sending is unavailable on this machine and the reason
+          <div className="overflow-hidden rounded-[20px] bg-background transition-[background-color] duration-200">
+            {banner}
+            {/* The gate: sending is unavailable on this machine and the reason
               is said out loud — never a silent failure. Typing stays live. */}
-          {gateNotice === null ? null : <ComposerNotice tone="gate" text={gateNotice} />}
-          {notice === null ? null : <ComposerNotice tone="refusal" text={notice} />}
-          {isMentionMenuOpen ? (
-            <MentionMenu
-              candidates={mentionCandidates}
-              highlightedIndex={highlightedIndex}
-              onSelect={insertMention}
-            />
-          ) : null}
-          <div className="px-3 pt-3">
-            {attachments.length === 0 ? null : (
-              <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
-            )}
-            <ComposerPromptEditor
-              cursor={cursor}
-              disabled={isSending}
-              editorRef={editorRef}
-              placeholder={placeholder}
-              skills={NO_SKILLS}
-              terminalContexts={NO_TERMINAL_CONTEXTS}
-              value={text}
-              onChange={(nextText, nextCursor, nextExpandedCursor) => {
-                onChangeText(nextText);
-                setCursor(nextCursor);
-                setExpandedCursor(nextExpandedCursor);
-              }}
-              onCommandKeyDown={(key, event) => {
-                // While the menu is open it owns the arrows and the commit
-                // keys; everything else stays exactly as it was.
-                if (isMentionMenuOpen) {
-                  if (key === "ArrowDown" || key === "ArrowUp") {
-                    setHighlightedIndex((index) =>
-                      moveMentionHighlight(
-                        index,
-                        mentionCandidates.length,
-                        key === "ArrowDown" ? "down" : "up",
-                      ),
-                    );
-                    return true;
-                  }
-                  if (key === "Enter" || key === "Tab") {
-                    const candidate = mentionCandidates[highlightedIndex];
-                    if (candidate !== undefined) {
-                      insertMention(candidate);
+            {gateNotice === null ? null : <ComposerNotice tone="gate" text={gateNotice} />}
+            {notice === null ? null : <ComposerNotice tone="refusal" text={notice} />}
+            {isMentionMenuOpen ? (
+              <MentionMenu
+                candidates={mentionCandidates}
+                highlightedIndex={highlightedIndex}
+                onSelect={insertMention}
+              />
+            ) : null}
+            <div className="px-3 pt-3">
+              {attachments.length === 0 ? null : (
+                <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
+              )}
+              <ComposerPromptEditor
+                cursor={cursor}
+                disabled={isSending}
+                editorRef={editorRef}
+                placeholder={placeholder}
+                skills={NO_SKILLS}
+                terminalContexts={NO_TERMINAL_CONTEXTS}
+                value={text}
+                onChange={(nextText, nextCursor, nextExpandedCursor) => {
+                  onChangeText(nextText);
+                  setCursor(nextCursor);
+                  setExpandedCursor(nextExpandedCursor);
+                }}
+                onCommandKeyDown={(key, event) => {
+                  // While the menu is open it owns the arrows and the commit
+                  // keys; everything else stays exactly as it was.
+                  if (isMentionMenuOpen) {
+                    if (key === "ArrowDown" || key === "ArrowUp") {
+                      setHighlightedIndex((index) =>
+                        moveMentionHighlight(
+                          index,
+                          mentionCandidates.length,
+                          key === "ArrowDown" ? "down" : "up",
+                        ),
+                      );
                       return true;
                     }
+                    if (key === "Enter" || key === "Tab") {
+                      const candidate = mentionCandidates[highlightedIndex];
+                      if (candidate !== undefined) {
+                        insertMention(candidate);
+                        return true;
+                      }
+                    }
                   }
-                }
-                if (key !== "Enter" || event.shiftKey) return false;
-                void submit();
-                return true;
-              }}
-              onPaste={(event) => {
-                const files = Array.from(event.clipboardData.files);
-                if (!files.some((file) => file.type.startsWith("image/"))) return;
-                // A pasted screenshot is an attachment, not the base64 of one.
-                event.preventDefault();
-                void collect(files);
-              }}
-              // Nothing here can hold a terminal context, so nothing can
-              // remove one.
-              onRemoveTerminalContext={noop}
-            />
-          </div>
-          <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
-            <input
-              ref={fileInputRef}
-              accept="image/*"
-              className="hidden"
-              multiple
-              type="file"
-              onChange={(event) => {
-                void collect(Array.from(event.target.files ?? []));
-                // Picking the same file twice in a row should work.
-                event.target.value = "";
-              }}
-            />
-            <div className="flex min-w-0 items-center gap-1">
-              <Button
-                aria-label="Attach images"
-                className="shrink-0 text-muted-foreground"
-                disabled={isSending || attachments.length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS}
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImageIcon />
-              </Button>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      className="text-muted-foreground"
-                      disabled={implementDisabledReason !== null || onImplement === undefined}
-                      size="sm"
-                      variant="ghost"
-                      onClick={onImplement}
-                    />
-                  }
-                >
-                  <HammerIcon />
-                  Implement
-                </TooltipTrigger>
-                {implementDisabledReason === null ? null : (
-                  <TooltipPopup>{implementDisabledReason}</TooltipPopup>
-                )}
-              </Tooltip>
+                  if (key !== "Enter" || event.shiftKey) return false;
+                  void submit();
+                  return true;
+                }}
+                onPaste={(event) => {
+                  const files = Array.from(event.clipboardData.files);
+                  if (!files.some((file) => file.type.startsWith("image/"))) return;
+                  // A pasted screenshot is an attachment, not the base64 of one.
+                  event.preventDefault();
+                  void collect(files);
+                }}
+                // Nothing here can hold a terminal context, so nothing can
+                // remove one.
+                onRemoveTerminalContext={noop}
+              />
             </div>
-            <SendControl
-              // One control, two faces. Held while a send is in flight or a
-              // reply streams, which is what "no queueing" means here.
-              disabled={!control.enabled}
-              face={control.face}
-              isSending={isSending}
-              onPress={() => {
-                if (control.face === "stop") {
-                  onStop?.();
-                  return;
-                }
-                void submit();
-              }}
-            />
+            <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
+              <input
+                ref={fileInputRef}
+                accept="image/*"
+                className="hidden"
+                multiple
+                type="file"
+                onChange={(event) => {
+                  void collect(Array.from(event.target.files ?? []));
+                  // Picking the same file twice in a row should work.
+                  event.target.value = "";
+                }}
+              />
+              <div className="flex min-w-0 items-center gap-1">
+                <ComposerControl
+                  aria-label="Attach images"
+                  className="shrink-0 px-2"
+                  disabled={isSending || attachments.length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ComposerControlIcon icon={ImageIcon} />
+                </ComposerControl>
+                {modelPicker}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <ComposerControl
+                        disabled={implementDisabledReason !== null || onImplement === undefined}
+                        onClick={onImplement}
+                      />
+                    }
+                  >
+                    <ComposerControlIcon icon={HammerIcon} />
+                    Implement
+                  </TooltipTrigger>
+                  {implementDisabledReason === null ? null : (
+                    <TooltipPopup>{implementDisabledReason}</TooltipPopup>
+                  )}
+                </Tooltip>
+              </div>
+              <SendControl
+                // One control, two faces. Held while a send is in flight or a
+                // reply streams, which is what "no queueing" means here.
+                disabled={!control.enabled}
+                face={control.face}
+                isSending={isSending}
+                onPress={() => {
+                  if (control.face === "stop") {
+                    onStop?.();
+                    return;
+                  }
+                  void submit();
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -468,9 +470,12 @@ function SendControl({
     <button
       aria-label={face === "stop" ? "Stop" : isSending ? "Sending" : "Send"}
       className={cn(
-        "relative flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground shadow-xs transition-all duration-150 sm:size-8",
-        "enabled:cursor-pointer hover:bg-primary hover:scale-105 active:shadow-none",
-        "disabled:pointer-events-none disabled:opacity-30 disabled:shadow-none",
+        "relative isolate flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-white shadow-xs transition-all duration-150 sm:size-8",
+        "enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] hover:scale-105 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none",
+        "disabled:pointer-events-none disabled:opacity-30 disabled:shadow-none disabled:hover:scale-100",
+        face === "stop"
+          ? "bg-destructive/90 shadow-destructive/24 hover:bg-destructive"
+          : "bg-message-action text-message-action-foreground shadow-message-action/24 hover:bg-message-action-hover",
       )}
       disabled={disabled}
       type="button"
