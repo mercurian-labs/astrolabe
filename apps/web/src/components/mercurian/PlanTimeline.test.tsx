@@ -180,6 +180,19 @@ describe("PlanTimeline", () => {
 
     expect(attributed).toContain("Claude · Opus");
     expect(historical).not.toContain("Claude · Opus");
+
+    // The attribution lives inside the same hover-revealed row as the copy
+    // action and timestamp. The slice starts inside the row's opening tag, so
+    // staying inside means no surplus of closing divs before the attribution;
+    // escaping the row would close it first (closed > opened).
+    const hoverIndex = attributed.indexOf("group-hover/assistant:opacity-100");
+    const attributionIndex = attributed.indexOf("Claude · Opus");
+    expect(hoverIndex).toBeGreaterThan(-1);
+    expect(attributed.indexOf('aria-label="Copy link"')).toBeGreaterThan(hoverIndex);
+    const upToAttribution = attributed.slice(hoverIndex, attributionIndex);
+    const opened = upToAttribution.split("<div").length - 1;
+    const closed = upToAttribution.split("</div>").length - 1;
+    expect(opened).toBeGreaterThanOrEqual(closed);
   });
 
   it("renders plan and spec revisions as compact artifact events", () => {

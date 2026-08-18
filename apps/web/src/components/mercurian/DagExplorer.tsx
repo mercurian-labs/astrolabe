@@ -1526,13 +1526,13 @@ function SpatialMap({
                       className="fill-amber-500/15"
                       height={14}
                       rx={3}
-                      width={50}
+                      width={60}
                       x={node.x + radius + 6}
                       y={node.y - 24}
                     />
                     <text
                       className="fill-amber-700 text-[9px] dark:fill-amber-400"
-                      x={node.x + radius + 10}
+                      x={node.x + radius + 12}
                       y={node.y - 14}
                     >
                       Spec stale
@@ -1545,13 +1545,13 @@ function SpatialMap({
                       className="fill-amber-500/15"
                       height={14}
                       rx={3}
-                      width={82}
+                      width={90}
                       x={node.x + radius + 6}
                       y={node.y - (isSpecStale ? 40 : 24)}
                     />
                     <text
                       className="fill-amber-700 text-[9px] dark:fill-amber-400"
-                      x={node.x + radius + 10}
+                      x={node.x + radius + 12}
                       y={node.y - (isSpecStale ? 30 : 14)}
                     >
                       {PLAN_MAY_BE_STALE_LABEL}

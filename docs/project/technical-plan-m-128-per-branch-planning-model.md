@@ -53,7 +53,7 @@ There is no live default or mode to follow. The last-used value seeds only a bar
 - **Unavailable models:** wrapper logic builds instance-keyed curated options with `getAppModelOptionsForInstance`, injects a missing recorded slug as disabled, and uses `describePlanningModel` for M-97’s no-instance/model-unavailable and upgrade wording.
 - **Composer:** `PlanComposer.tsx` remains presentational but mirrors `ChatComposer`’s rounded frame, bottom toolbar, `ComposerControl` buttons, bottom-left model picker, and message-action send/stop styling.
 - **Settings:** the Planning model row and component are deleted. `usePlanningModel` retains subscription/provider/resolution reads and loses the setter.
-- **Timeline:** `generatedBy` attribution remains unchanged.
+- **Timeline:** `generatedBy` renders as a quiet provider · model line inside the assistant reply's hover-revealed action row — the same element as the copy action and timestamp — so it appears only on hover. _(2026-08-18 amendment: it originally stood always-visible beside that row, which read as text floating to the right of controls that only exist on hover.)_
 
 ### Docs
 

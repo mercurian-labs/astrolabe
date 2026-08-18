@@ -145,10 +145,10 @@ export function PlanTimeline({
                         {formatChatTimestampTooltip(item.createdAt, timestampFormat)}
                       </TooltipPopup>
                     </Tooltip>
+                    {item.generatedBy === undefined ? null : (
+                      <ModelAttribution selection={item.generatedBy} providers={providers} />
+                    )}
                   </div>
-                  {item.generatedBy === undefined ? null : (
-                    <ModelAttribution selection={item.generatedBy} providers={providers} />
-                  )}
                   {item.interrupted === true ? <InterruptedBadge /> : null}
                   {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                 </div>
