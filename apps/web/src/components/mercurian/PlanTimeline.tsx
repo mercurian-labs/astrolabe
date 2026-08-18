@@ -40,7 +40,7 @@ import { MessageCopyButton } from "../chat/MessageCopyButton";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { providerLabel } from "./PlanningModelSetting.logic";
+import { providerLabel } from "./PlanningModel.logic";
 
 /**
  * The planning space's history: messages, plan revisions and an imported issue

@@ -1,4 +1,4 @@
-import type { PlanModelDirective } from "@t3tools/contracts";
+import type { PlanningModelSelection } from "@t3tools/contracts";
 import { create } from "zustand";
 
 /**
@@ -20,7 +20,7 @@ export interface PlanDraft {
   readonly projectId: string;
   readonly text: string;
   readonly createdAt: string;
-  readonly modelChoice?: PlanModelDirective;
+  readonly modelChoice?: PlanningModelSelection;
 }
 
 interface PersistedPlanDrafts {
@@ -37,23 +37,18 @@ function isPlanDraft(value: unknown): value is PlanDraft {
     draft.projectId.length > 0 &&
     typeof draft.text === "string" &&
     typeof draft.createdAt === "string" &&
-    (draft.modelChoice === undefined || isModelDirective(draft.modelChoice))
+    (draft.modelChoice === undefined || isModelSelection(draft.modelChoice))
   );
 }
 
-function isModelDirective(value: unknown): value is PlanModelDirective {
+function isModelSelection(value: unknown): value is PlanningModelSelection {
   if (!value || typeof value !== "object") return false;
-  const directive = value as {
-    readonly _tag?: unknown;
-    readonly selection?: { readonly provider?: unknown; readonly model?: unknown };
-  };
+  const selection = value as { readonly provider?: unknown; readonly model?: unknown };
   return (
-    directive._tag === "follow-default" ||
-    (directive._tag === "override" &&
-      typeof directive.selection?.provider === "string" &&
-      directive.selection.provider.length > 0 &&
-      typeof directive.selection.model === "string" &&
-      directive.selection.model.trim().length > 0)
+    typeof selection.provider === "string" &&
+    selection.provider.length > 0 &&
+    typeof selection.model === "string" &&
+    selection.model.trim().length > 0
   );
 }
 
@@ -101,7 +96,7 @@ interface PlanDraftStore {
     createdAt: string,
   ) => PlanDraft;
   readonly setDraftText: (draftId: string, text: string) => void;
-  readonly setModelChoice: (draftId: string, modelChoice: PlanModelDirective) => void;
+  readonly setModelChoice: (draftId: string, modelChoice: PlanningModelSelection) => void;
   readonly discardDraft: (draftId: string) => void;
 }
 

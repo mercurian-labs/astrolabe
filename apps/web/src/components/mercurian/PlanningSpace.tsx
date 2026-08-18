@@ -68,7 +68,6 @@ import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
 import { PlanModelPicker } from "./PlanModelPicker";
-import { effectivePlanModelSelection, FOLLOW_DEFAULT } from "./PlanModelPicker.logic";
 import {
   advance,
   isViewingPast,
@@ -244,11 +243,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     () => standingModelChoice(graph, itemsById, head),
     [graph, head, itemsById],
   );
-  const modelChoice = modelChoiceForHead(draft, head) ?? standingChoice;
-  const effectiveModelResolution = resolvePlanningModel(
-    effectivePlanModelSelection(modelChoice, planningModel.setting),
-    planningModel.providers,
-  );
+  const modelChoice = modelChoiceForHead(draft, head) ?? standingChoice ?? planningModel.setting;
+  const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
   const viewingPast = isViewingPast(graph, position);
   const effectiveRightPaneWidth = width;
   const rightPaneOverlays =
@@ -342,7 +338,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         text,
         ...(head === null ? {} : { parentCommitId: head }),
         ...(attachments.length === 0 ? {} : { attachments }),
-        modelChoice,
+        ...(modelChoice === null ? {} : { modelChoice }),
       });
       if (sent === null) return false;
       // The stream delivers the message back; there is nothing to refresh.
@@ -419,11 +415,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             mentionCandidates={mentions.candidates}
             modelPicker={
               <PlanModelPicker
-                directive={modelChoice}
                 disabled={inFlightTurn !== undefined || inFlightImplement !== undefined}
                 providers={planningModel.providers}
-                workspaceDefault={planningModel.setting}
-                onChange={(directive) => setDraftModelChoice(planId, directive, head)}
+                selection={modelChoice}
+                onChange={(selection) => setDraftModelChoice(planId, selection, head)}
               />
             }
             implementDisabledReason={implementReason}
@@ -640,11 +635,8 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   // same here: the plan can still be born, but the composer says up front
   // that no assistant will answer on this machine.
   const planningModel = usePlanningModel();
-  const modelChoice = draft?.modelChoice ?? FOLLOW_DEFAULT;
-  const effectiveModelResolution = resolvePlanningModel(
-    effectivePlanModelSelection(modelChoice, planningModel.setting),
-    planningModel.providers,
-  );
+  const modelChoice = draft?.modelChoice ?? planningModel.setting;
+  const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
   const [isImportOpen, setIsImportOpen] = useState(false);
   /**
    * The unborn plan's images. Held here rather than in `planDraftStore`
@@ -667,7 +659,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         projectId: draft.projectId as MercurianProjectId,
         message: text,
         ...(uploads.length === 0 ? {} : { attachments: uploads }),
-        modelChoice,
+        ...(modelChoice === null ? {} : { modelChoice }),
       });
       if (created === null) {
         return false;
@@ -735,10 +727,9 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         mentionCandidates={mentions.candidates}
         modelPicker={
           <PlanModelPicker
-            directive={modelChoice}
             providers={planningModel.providers}
-            workspaceDefault={planningModel.setting}
-            onChange={(directive) => setDraftModelChoice(draftId, directive)}
+            selection={modelChoice}
+            onChange={(selection) => setDraftModelChoice(draftId, selection)}
           />
         }
         // Informational, not blocking: a plan is born with its first message

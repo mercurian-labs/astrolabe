@@ -70,7 +70,7 @@ describe("planningModelGateNotice", () => {
 
   it("names the reason for every unrunnable state", () => {
     expect(planningModelGateNotice({ _tag: "unset" })).toBe(
-      "Choose a model — or set a planning default in Settings.",
+      "Choose a model to hear back from the assistant.",
     );
     expect(planningModelGateNotice({ _tag: "unresolved", reason: "no-instance" })).toContain(
       "No instance",

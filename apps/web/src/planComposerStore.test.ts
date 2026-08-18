@@ -111,10 +111,7 @@ describe("planComposerStore", () => {
   });
 
   it("keeps a model flip only at its head, through reload, until the draft clears", () => {
-    const directive = {
-      _tag: "override",
-      selection: { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" },
-    } as const;
+    const directive = { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" } as const;
     const store = usePlanComposerStore.getState();
     store.setModelChoice(PLAN, directive, "head-left");
 

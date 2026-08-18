@@ -1,105 +1,112 @@
 import {
-  ProviderDriverKind,
+  defaultInstanceIdForDriver,
+  ProviderInstanceId,
   resolvePlanningModel,
-  type PlanModelDirective,
   type PlanningModelResolution,
   type PlanningModelSelection,
   type ServerProvider,
   type UnifiedSettings,
 } from "@t3tools/contracts";
 
-import {
-  derivePlanningModelOptionGroups,
-  describePlanningModel,
-  type PlanningModelDisplay,
-  type PlanningModelOptionGroup,
-} from "./PlanningModelSetting.logic";
+import { getAppModelOptionsForInstance } from "../../modelSelection";
+import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../../providerInstances";
+import type { ModelEsque } from "../chat/providerIconUtils";
+import { describePlanningModel } from "./PlanningModel.logic";
 
-export const FOLLOW_DEFAULT = {
-  _tag: "follow-default",
-} as const satisfies PlanModelDirective;
+export const NO_PLANNING_MODEL_INSTANCE = ProviderInstanceId.make("t3code_no_planning_model");
 
-export function effectivePlanModelSelection(
-  directive: PlanModelDirective,
-  workspaceDefault: PlanningModelSelection | null,
-): PlanningModelSelection | null {
-  return directive._tag === "override" ? directive.selection : workspaceDefault;
+export function activeInstanceIdForPlanningSelection(
+  selection: PlanningModelSelection | null,
+  resolution: PlanningModelResolution,
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+): ProviderInstanceId {
+  if (selection === null) return NO_PLANNING_MODEL_INSTANCE;
+  if (resolution._tag === "resolved") return resolution.instanceId;
+  return (
+    entries.find((entry) => entry.driverKind === selection.provider && entry.isDefault)
+      ?.instanceId ??
+    entries.find((entry) => entry.driverKind === selection.provider)?.instanceId ??
+    defaultInstanceIdForDriver(selection.provider)
+  );
 }
 
-export function derivePlanModelPickerGroups(
+export function planningSelectionForInstanceModel(
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+  instanceId: ProviderInstanceId,
+  model: string,
+): PlanningModelSelection | null {
+  const entry = entries.find((candidate) => candidate.instanceId === instanceId);
+  return entry === undefined ? null : { provider: entry.driverKind, model };
+}
+
+/**
+ * Build the coding-session picker's instance-keyed options. If the recorded
+ * pair is missing locally, inject its slug on the display instance so the
+ * upstream trigger renders the record instead of substituting option zero.
+ */
+export function planningModelOptionsByInstance(
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+  settings: UnifiedSettings,
+  selection: PlanningModelSelection | null,
+  activeInstanceId: ProviderInstanceId,
+  providers: ReadonlyArray<ServerProvider>,
+): ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>> {
+  const options = new Map<ProviderInstanceId, ReadonlyArray<ModelEsque>>();
+  for (const entry of entries) {
+    options.set(entry.instanceId, getAppModelOptionsForInstance(settings, entry));
+  }
+  if (selection === null) return options;
+
+  const active = options.get(activeInstanceId) ?? [];
+  if (active.some((model) => model.slug === selection.model)) return options;
+  const display = describePlanningModel(
+    selection,
+    resolvePlanningModel(selection, providers),
+    providers,
+  );
+  options.set(activeInstanceId, [
+    ...active,
+    {
+      slug: selection.model,
+      name: display.kind === "unset" ? selection.model : display.modelLabel,
+    },
+  ]);
+  return options;
+}
+
+export function planningModelDisabledReason(
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+  providers: ReadonlyArray<ServerProvider>,
+  instanceId: ProviderInstanceId,
+  model: string,
+): string | null {
+  const entry = entries.find((candidate) => candidate.instanceId === instanceId);
+  if (entry === undefined) return "This provider instance is not available on this machine.";
+  const selection = { provider: entry.driverKind, model } satisfies PlanningModelSelection;
+  const resolution = resolvePlanningModel(selection, providers);
+  if (resolution._tag === "resolved") return null;
+  const display = describePlanningModel(selection, resolution, providers);
+  return display.kind === "unresolved" ? display.message : "Choose a model to continue.";
+}
+
+export function derivePlanModelPickerState(
+  selection: PlanningModelSelection | null,
   providers: ReadonlyArray<ServerProvider>,
   settings: UnifiedSettings,
-): ReadonlyArray<PlanningModelOptionGroup> {
-  return derivePlanningModelOptionGroups(providers, settings);
-}
-
-function pairLabel(
-  selection: PlanningModelSelection,
-  providers: ReadonlyArray<ServerProvider>,
-): string {
+) {
+  const entries = deriveProviderInstanceEntries(providers);
   const resolution = resolvePlanningModel(selection, providers);
-  const display = describePlanningModel(selection, resolution, providers);
-  return display.kind === "unset"
-    ? `${selection.provider} · ${selection.model}`
-    : `${display.providerLabel} · ${display.modelLabel}`;
-}
-
-export function workspaceDefaultOptionLabel(
-  workspaceDefault: PlanningModelSelection | null,
-  providers: ReadonlyArray<ServerProvider>,
-): string {
-  return workspaceDefault === null
-    ? "Workspace default — none set"
-    : `Workspace default — ${pairLabel(workspaceDefault, providers)}`;
-}
-
-export interface PlanModelPickerDisplay {
-  readonly selection: PlanningModelSelection | null;
-  readonly resolution: PlanningModelResolution;
-  readonly display: PlanningModelDisplay;
-  readonly triggerLabel: string;
-  readonly followsDefault: boolean;
-}
-
-/** The trigger and gate describe the effective pair itself, even when unresolved. */
-export function describePlanModelPickerChoice(
-  directive: PlanModelDirective,
-  workspaceDefault: PlanningModelSelection | null,
-  providers: ReadonlyArray<ServerProvider>,
-): PlanModelPickerDisplay {
-  const selection = effectivePlanModelSelection(directive, workspaceDefault);
-  const resolution = resolvePlanningModel(selection, providers);
-  const display = describePlanningModel(selection, resolution, providers);
+  const activeInstanceId = activeInstanceIdForPlanningSelection(selection, resolution, entries);
   return {
-    selection,
+    entries,
     resolution,
-    display,
-    triggerLabel:
-      display.kind === "unset"
-        ? "Choose a model"
-        : `${display.providerLabel} · ${display.modelLabel}`,
-    followsDefault: directive._tag === "follow-default",
-  };
-}
-
-/** Stable command values keep the component's selection grammar string-only. */
-export function serializePlanModelDirective(directive: PlanModelDirective): string {
-  return directive._tag === "follow-default"
-    ? "follow-default"
-    : `override:${encodeURIComponent(directive.selection.provider)}:${encodeURIComponent(directive.selection.model)}`;
-}
-
-export function parsePlanModelDirective(value: string): PlanModelDirective | null {
-  if (value === "follow-default") return FOLLOW_DEFAULT;
-  const [tag, provider, model, ...rest] = value.split(":");
-  if (tag !== "override" || provider === undefined || model === undefined || rest.length > 0) {
-    return null;
-  }
-  const decodedProvider = decodeURIComponent(provider);
-  const decodedModel = decodeURIComponent(model);
-  if (decodedProvider.length === 0 || decodedModel.trim().length === 0) return null;
-  return {
-    _tag: "override",
-    selection: { provider: ProviderDriverKind.make(decodedProvider), model: decodedModel },
+    activeInstanceId,
+    modelOptionsByInstance: planningModelOptionsByInstance(
+      entries,
+      settings,
+      selection,
+      activeInstanceId,
+      providers,
+    ),
   };
 }

@@ -1,130 +1,107 @@
-# Technical Plan — M-128: Per-branch planning model — workspace default seeds, the history carries the choice
+# Technical Plan — M-128: Per-branch planning model — last-used seeds, history carries the pair
 
-_Generated from the Goal/AC of Linear issue M-128 (see the issue for the full AC). Implements the 2026-08 resolution on the almagest vault's Assistant note **as amended** (the choice is per branch, and it lives in the history — vault commit `8918c32`), on the t3code-fork base as it stands at M-107, under [ADR 001](../architecture/local-first-runtime.md) (workspace state lives in `mercurian.sqlite`) and [ADR 004](../architecture/fork-baseline.md) (Mercurian code additive; this plan needs **zero** upstream edits). It supersedes the earlier per-plan plan (`technical-plan-m-128-per-plan-planning-model.md`, unmerged): no plan column, no `setPlanModel` RPC — the choice is not plan state at all._
+_Generated from M-128 and the almagest Assistant note, including “Amended (2026-08, second): last-used seeding; the workspace default retires.” Built on the t3code-fork base after M-107, under [ADR 001](../architecture/local-first-runtime.md) and [ADR 004](../architecture/fork-baseline.md)._
 
-**Goal, in one sentence:** the workspace planning-model setting M-97 built demotes to a _default_; each human message that opens a turn records the provider and model the turn ran under and whether it was following that default; the choice in effect anywhere derives from the nearest such ancestor, so branches carry their own choices, forks inherit at the fork point, and the picker on the composer is draft-local until a message lands.
+**Goal, in one sentence:** every human message that opens a planning turn records the abstract provider/model pair that turn runs under; descendants inherit the nearest recorded pair, while a bare history seeds from the pair the workspace last used.
 
-**Scope fences:** coding-session model choice untouched (per-session, backlog 061); provider instance management, curation, standing, and gating ship as built (M-97); the **reconstruction-boundary record** on assistant replies is the amendment's other half and its own issue; **merge seeding** waits for merges (representable in `commit_parents`, written nowhere today); the DAG-explorer popover's switch-naming is a derived reading over the facts this plan records and rides a later explorer pass; mobile stays parked (ADR 004 §2).
+**Scope fences:** coding-session model choice, `PlanInFlightTurn`, `planReducer`, mobile, merge behavior, and provider-instance storage remain untouched. There is no migration, new commit kind, plan column, planning setter RPC, or instance id in history.
 
-## What discovery found: the record has a home, the derivation has a precedent, and no storage changes are needed
+## What discovery found: the record has a home, the seed already has storage, and T3 owns the picker
 
-- **The commit payload is the storage.** `MessageCommitPayload` ([planning/PlanningStore.ts:75](../../apps/server/src/mercurian/planning/PlanningStore.ts)) grows only optional fields ("every message written before turns existed keeps decoding") — the record rides `payload_json`, so this feature needs **no migration** (next free number 010 stays free) and no new commit kind. M-107's own history records the house rule: an earlier iteration minted a `technical-plan` kind and reverted it — "a split is a flavored plan revision, not its own commit kind." A switch is likewise not its own commit — exactly the amendment's "no switch commit."
-- **Nearest-ancestor derivation is the `getPlanTextAt` pattern.** `CommitStore.ancestors` ([commitTree/CommitStore.ts:850](../../apps/server/src/mercurian/commitTree/CommitStore.ts), recursive CTE over `commit_parents`, sequence-ordered) already powers `getPlanTextAt`'s walk-backwards-for-the-nearest-`plan-revision` ([PlanningStore.ts:1834](../../apps/server/src/mercurian/planning/PlanningStore.ts)), doc-commented for the merge tiebreak. The choice-in-effect is the same query over a different payload fact.
-- **The turn's model is decided in exactly one place per flavor.** `PlanningAssistant.startTurn` resolves `workspaceSettings.getSnapshot → resolvePlanningModel` at :949–957; `tryImplement` repeats it at :1173–1181. Both re-point at a per-position selection. The continuation guard (`canContinue`, :971–975) already compares `instanceId`/`model`/`tipCommitId` — **a model or branch change already forces a fresh session rebuilt from `commits.ancestors(parentCommitId)`**, so "responses after the switch run under the new choice; earlier history is unaffected" costs nothing new. (The `model` conjunct is currently untested — this plan adds the test.)
-- **The write path already lands the human commit first.** `ws.ts` `appendPlanMessage` (:1654) appends, then `kickOffPlanningTurn` with the fresh commit as parent; `createPlan` (:1599) does the same from the root commit. Recording on the turn-opening commit means stamping at append — and the stamp is the abstract pair plus a flag, so it needs the workspace default (`workspaceSettingsStore` is already in the connection scope, ws.ts:415) but **no instance resolution**.
-- **The sender's position already rides the wire.** `MercurianAppendPlanMessageInput.parentCommitId` and `MercurianTryImplementInput.parentCommitId` carry "where you stand"; `MercurianCreatePlanInput` has no position (a root has none). The client's position is `PlanPosition` state in `PlanningSpace` (:190) with `resolveHead` ([PlanPosition.logic.ts:36](../../apps/web/src/components/mercurian/PlanPosition.logic.ts)) — "the parent a send names."
-- **The picker's pure layer was built for this reuse.** `derivePlanningModelOptionGroups` and `describePlanningModel` ([PlanningModelSetting.logic.ts](../../apps/web/src/components/mercurian/PlanningModelSetting.logic.ts)) are exported, provider-grouped, curation-applying, component-free — and carry the invariant to preserve: "the saved pair is always rendered from the setting itself, never from the options list… never quietly rewrite it." Gating flows through `resolvePlanningModel` for free (a too-old agent's model is absent from the snapshot → `model-unavailable`, with `versionAdvisory` naming the unlocking upgrade).
-- **Drafts are two stores, both client-local by design** (ADR 002 §5): `planComposerStore` (live plans, keyed by `planId`, debounced localStorage, empty-draft eviction) and `planDraftStore` (unborn plans, keyed by project). The draft-local flip lives with the draft it belongs to.
-- **`PlanningModelSelection` is the vocabulary to reuse**: `{ provider, model }`, structurally instance-free ("no instance field, and adding one would be a design decision rather than a refactor"), with `unresolved` never rewriting the choice — the discipline a record stamped on machine A needs to survive machine B.
-
-## Conventions Detected
-
-| Convention                                                                                                                                                                                              | Evidence                                                                                   | Confidence                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| Commit payload evolution: optional fields on `MessageCommitPayload`, absence means the old behavior, every old commit keeps decoding; payload flavors over new commit kinds                             | `attachments`/`interrupted`/`grounding`/`question`; M-107's reverted `technical-plan` kind | High                                                                      |
-| Nearest-ancestor facts are derived per read over `CommitStore.ancestors`, never cached as mutable state                                                                                                 | `getPlanTextAt` (PlanningStore.ts:1834)                                                    | High                                                                      |
-| Pure resolution takes live snapshots as arguments; stores stay decoupled (`WorkspaceSettingsStore` "deliberately absent: any dependency on the provider registry")                                      | `resolvePlanningModel`, WorkspaceSettingsStore.ts:13                                       | High                                                                      |
-| Wire inputs widen with optional fields; ws.ts handlers orchestrate store calls under `observeRpcEffect` + `"rpc.aggregate": "mercurian"`; server mints timestamps                                       | `appendPlanMessage` handler, `MercurianAppendPlanMessageInput`                             | High                                                                      |
-| Web UI: Mercurian components in `components/mercurian/`, behavior in pure `.logic.ts` with co-located tests (`vite-plus/test`); component tests via `renderToStaticMarkup`                              | `PlanComposer.logic.ts`, `PlanTimeline.test.tsx`                                           | High                                                                      |
-| Server tests: `@effect/vitest` over `MercurianSqlite.layerMemory`, provider harness with queues ("receipts, never sleeps"), assertions on the record via `getPlanSnapshot`; behavioral-prose test names | `PlanningAssistant.test.ts`, `PlanningStore.test.ts`                                       | High                                                                      |
-| Targeted `vp test run <files>` only; no repo-wide checks                                                                                                                                                | AGENTS.md §Verifying                                                                       | High                                                                      |
-| Commits `feat(scope): … (M-128)`; plan documents at `docs/project/technical-plan-m-<issue>-<slug>.md`; docs ride the PR                                                                                 | `git log`, the existing plans                                                              | High                                                                      |
-| ADR 004 minimal-edits budget for upstream-owned files                                                                                                                                                   | [fork-baseline.md](../architecture/fork-baseline.md)                                       | High — this plan touches only Mercurian-owned files; budget spent at zero |
+- **The commit payload is the storage.** `MessageCommitPayload` already grows through optional fields, so `ranUnder` and `generatedBy` ride `payload_json` without a migration. Effect Schema ignores excess properties, so development data written by the first M-128 implementation still decodes.
+- **Nearest-ancestor derivation already has a pattern.** `CommitStore.ancestors` and `getPlanTextAt` provide the same self-inclusive history walk this feature needs. No plan-level state is introduced.
+- **The workspace row is a seed, not configuration.** The existing `workspace_settings.planningModel` value remains in the snapshot/subscription, but now means “the pair most recently stamped on a turn-opening human message.” The product writes it internally; Settings cannot.
+- **The coding-session picker is reusable.** `ProviderModelPicker` already owns the instance rail, curated model list, search, icons, and `ComposerControl` trigger. Mercurian needs only an adapter between instance-free history and machine-local instances.
+- **The unresolvable-pair invariant needs wrapper work.** The upstream trigger falls back to an instance’s first option when a slug is absent. Injecting the recorded slug as a disabled option makes the trigger render history faithfully without editing upstream code.
 
 ## Design
 
-### The load-bearing shape: a record on turn-opening commits, a directive on the way in, derivation everywhere else
+### The load-bearing shape: one pair on the commit, one pair on the input
 
-Three small vocabularies, all in `packages/contracts/src/mercurian.ts`, importing `PlanningModelSelection` from `./mercurianWorkspace.ts`:
+`PlanningModelSelection` — `{ provider, model }` — is the only planning-model vocabulary on the planning wire.
 
-- **`PlanTurnModelRecord`** — `{ provider, model, followedDefault: boolean }` — the fact a turn-opening human commit carries: the concrete pair the turn ran under, and whether it was the workspace default's doing. Flat (spreads `PlanningModelSelection`'s fields) so the wire reads plainly.
-- **`PlanModelDirective`** — `Union({ _tag: "follow-default" }, { _tag: "override", selection: PlanningModelSelection })` — what the composer sends: the picker's displayed state. Optional on `MercurianAppendPlanMessageInput` and `MercurianCreatePlanInput`; **absence means "inherit the standing choice"** (old clients keep working, and the untouched-picker path needs no client derivation to be correct).
-- **`generatedBy: Schema.optional(PlanningModelSelection)`** on `PlanMessage` — what actually produced an assistant reply, captured at turn start.
+- `PlanMessage.ranUnder?: PlanningModelSelection` records the pair stamped on a turn-opening human message.
+- `PlanMessage.generatedBy?: PlanningModelSelection` records the pair captured when an assistant reply started.
+- `MercurianCreatePlanInput.modelChoice?` and `MercurianAppendPlanMessageInput.modelChoice?` are the same optional pair. Absence means inherit the standing choice.
 
-`PlanMessage` gains `ranUnder: Schema.optional(PlanTurnModelRecord)` and `generatedBy` (both optional; absent on all history written before this change — the record stays honest rather than back-filled). No new RPC methods, no `RpcAuthorization` change, no `PlanShell` change: the choice is not plan state, so the tree and every plan-level surface are untouched, and cross-window agreement is simply the `subscribePlan` commit event delivering the record like any other payload fact.
+The first implementation’s directive and record-with-mode types are removed. An older payload containing the retired `followedDefault` property still decodes because it is excess data; no migration is warranted for development-stage history.
 
-**The standing choice at a position** (the derivation both sides share): walk ancestry from the position, self-inclusive; the nearest message commit carrying `ranUnder` answers — `followedDefault: false` → that pair is the choice; `followedDefault: true` or no record anywhere → following the workspace default, whatever it currently is. This is what makes AC 4/5/8 fall out structurally: forks inherit because ancestry is inherited; returning to a position re-derives the same answer; "return to following the default" is a _mode_ recorded on the next message, so later default changes reach the branch again. The record's pair is history ("this turn ran under X"); the mode is what descendants derive from.
+**Standing choice:** walk first-parent ancestry from the current position, self-inclusive. The nearest message with `ranUnder` answers with that pair. No record answers `null`. Forks inherit because their ancestry is shared; branches diverge when a message stamps a different pair.
 
-**Stamping at append.** The rule, applied server-side when a turn-opening human commit lands:
+**Stamping rule, inside the same PlanningStore transaction as the message append:**
 
-- directive `override` → stamp `{ …selection, followedDefault: false }`;
-- directive `follow-default` (or absent with standing = follow-default) → stamp `{ …currentDefault, followedDefault: true }` when a default is set, **no stamp** when it is unset — absence already means "following the default", and an unset default means there is no pair to record (the live-plan gate blocks sending in that state; a draft root can still land, message-without-reply, exactly today's temperament);
-- directive absent with standing = override X → stamp `{ …X, followedDefault: false }` — _every_ turn-opening message records, per the amendment, so derivation normally finds the answer one commit up.
+1. An explicit `modelChoice` is stamped.
+2. Otherwise the nearest ancestor’s pair is stamped.
+3. With no ancestor record, the `lastUsed` value supplied by `ws.ts` is stamped.
+4. With none of those, no stamp is written; the message can land without a reply.
 
-The stamp happens **inside `PlanningStore.appendMessage`/`createPlan`** (same transaction as the parent resolution, so a concurrent append can't split the derivation from the write), with the workspace default passed in **as a value** by the ws.ts handler — the store stays free of a `WorkspaceSettingsStore` dependency, the same snapshots-as-arguments temperament as `resolvePlanningModel`.
+There is no live default or mode to follow. The last-used value seeds only a bare history; once a branch has a record, history wins.
 
 ### Server
 
-- **`planning/PlanningStore.ts`**: `AppendMessageInput` and `CreatePlanInput` gain `modelChoice?: PlanModelDirective` and `workspaceDefault: PlanningModelSelection | null`; `appendAt`/`createPlan` compute and persist `ranUnder` per the stamping rule. New read **`standingModelChoice({ planId, commitId? })`** (undefined = tip) returning the standing choice — the `getPlanTextAt` walk over `ranUnder`; used by implement turns and by the inherit path inside `appendMessage`. `AppendAssistantMessageInput` gains `generatedBy?: PlanningModelSelection`, persisted on the payload. `wire.ts` maps `ranUnder`/`generatedBy` straight through (one line each in `toWirePlanMessage` and `toPlanMessage`).
-- **`assistant/PlanningAssistant.ts`**: `StartTurnInput` gains `ranUnder?: PlanTurnModelRecord`. `startTurn` replaces the workspace read: effective selection = `input.ranUnder` (the pair the fresh commit records — the turn runs under exactly what the record says, immune to a default-change racing the kickoff) or, absent, the current workspace default; `resolvePlanningModel(effective, providers)` and the refusal vocabulary (`unset` / `no-instance` / `model-unavailable`) are unchanged. The turn keeps the resolved `{ provider, model }` on its runtime and `settleTurn` passes it as `generatedBy` — recorded at start, immune to a switch racing the settle. `canContinue` needs no change; the `sessions` map stays keyed by plan (two branches under different models thrash one slot into rebuilds — which is the _designed_ behavior on any branch hop already, via the `tipCommitId` conjunct). `tryImplement` swaps its workspace read for `standingModelChoice({ planId, commitId: parentCommitId })` → default-or-override → resolve — an implement analysis on a codex branch runs under codex; it records nothing new (its verdict table is not a message).
-- **`ws.ts`**: `appendPlanMessage` and `createPlan` handlers read `workspaceSettingsStore.getSnapshot`, pass `modelChoice`/`workspaceDefault` into the store, and hand the returned message's `ranUnder` to `kickOffPlanningTurn`. No other handler changes.
+- **Contracts:** the message and two command inputs use `PlanningModelSelection` directly. The workspace subscription remains, while the public planning-model setter method, RPC entry, authorization row, and client mutation are removed.
+- **`PlanningStore.ts`:** `CreatePlanInput` and `AppendMessageInput` accept `modelChoice?` and `lastUsed`; `standingModelChoice` returns a pair or `null`; assistant messages keep `generatedBy` unchanged.
+- **`PlanningAssistant.ts`:** `StartTurnInput.ranUnder?` is a pair. `startTurn` resolves `ranUnder ?? workspaceSnapshot.planningModel`. The fallback covers older/bare messages; `unset` now means no record and nothing has ever run. `tryImplement` resolves `standing ?? lastUsed`.
+- **`WorkspaceSettingsStore.ts`:** storage and subscription retain the `planningModel` field. The internal writer is `recordLastUsedPlanningModel(selection)` and cannot clear the value through a user act.
+- **`ws.ts`:** create and append read last-used, pass it with the optional choice, then record the returned stamp as last-used before kicking off the assistant with exactly that stamp. This keeps the commit, seed, and turn start in agreement.
 
 ### Client
 
-- **Standing derivation** (pure): `standingModelChoice(graph, itemsById, fromCommitId)` in **`PlanModelChoice.logic.ts` (new)** beside the other pure history readers — first-parent walk (merges don't exist; when they do, a merge's own record answers before parent ambiguity matters), returning follow-default or override. `PlanningSpace` derives it at `resolveHead(graph, position)`.
-- **`PlanModelPicker.tsx` (new)** + **`PlanModelPicker.logic.ts` (new)** + tests: a compact popover control in the composer's controls row (left group, beside Attach/Implement — `min-w-0`, truncating trigger), mirroring `PlanningModelSetting.tsx`'s Popover + Command grammar. Options from `derivePlanningModelOptionGroups`; one row above the groups — **"Workspace default — {provider · model}"** (or "— none set") — selecting which yields the follow-default directive. The trigger shows the effective pair, with a quiet "default" affordance when following; an unresolvable effective selection renders from the selection itself with the M-97 gating voice (`describePlanningModel` reused, upgrade nudge included), never rewritten.
-- **Draft-local flip**: `planComposerStore`'s `PlanComposerDraft` gains `modelChoice?: { directive: PlanModelDirective; atHead: string | null }` — applied only when `atHead` equals the current head, so a flip made on one branch never leaks onto another and returning to the flipped position restores it; `isEmptyDraft` grows the third half (a flip alone is intent worth keeping), and the persistence validators (`isDraft`, `toPersistableDrafts`) grow with it. `planDraftStore`'s `PlanDraft` gains `modelChoice?: PlanModelDirective` (no head exists yet). Flipping the picker writes only these stores — nothing lands, no history entry (AC 6).
-- **Sending**: the composer always sends the directive the picker shows (flip if present, else the derived standing) on `appendPlanMessage`/`createPlan`; `clearDraft` on success already erases the flip with the rest of the draft. `PlanComposer.tsx` itself stays presentational — the picker's value and callbacks are lifted like everything else on it.
-- **Gate re-pointing** (`PlanningSpace.tsx` both variants + `PlanComposer.logic.ts`): the gate resolves the _effective_ selection (flip ?? standing; follow-default reads `usePlanningModel().setting`) against the overlaid providers via `resolvePlanningModel` — pure, already exported. Wording re-points now that the fix is in reach: unset → "Choose a model — or set a planning default in Settings." `turnRefusalNotice` tags are unchanged.
-- **`PlanTimeline.tsx`**: assistant replies with `generatedBy` carry a quiet always-visible label in the existing meta row (beside `InterruptedBadge`): provider display name + model label — `providerLabel` reused, the model's display name where a current snapshot lists it, the slug otherwise. Replies without it (all prior history) show nothing.
-- **`planReducer.ts`**: no fold changes — `ranUnder`/`generatedBy` ride `PlanMessage` inside existing snapshot/commit items.
-- **Settings copy** (`PlanningModelSetting.tsx`): the row describes itself as the default that seeds planning — one string.
-
-Deliberately not built here: an in-flight "replying with…" model label (the AC speaks of history; `PlanInFlightTurn` stays untouched), the DAG popover identity/switch line, and any timeline rendering of `ranUnder` on human messages — all derived readings over facts this plan does record, ready when their surfaces are.
+- **Standing and drafts:** `PlanModelChoice.logic.ts` returns a pair or `null`. `planComposerStore` keeps `{ directive: pair, atHead }`; the historical property name remains local storage structure, while its value is pair-shaped. `planDraftStore.modelChoice` is also a pair. A flip remains head-keyed, persistent, draft-local intent.
+- **Effective pair:** `PlanningSpace` computes `flip ?? standing ?? lastUsed`. Both live and unborn composers show that value and send the pair they show. An unset unborn plan can still be created without a reply; the live composer gates until a pair is chosen.
+- **Picker adapter:** `PlanModelPicker.tsx` renders `ProviderModelPicker`. `deriveProviderInstanceEntries` maps snapshots to `ProviderInstanceEntry[]`; resolved pairs use the resolving instance, while an unresolvable pair displays on that provider’s default instance when present. Selection maps back through `entry.driverKind`, so no account id reaches history.
+- **Unavailable models:** wrapper logic builds instance-keyed curated options with `getAppModelOptionsForInstance`, injects a missing recorded slug as disabled, and uses `describePlanningModel` for M-97’s no-instance/model-unavailable and upgrade wording.
+- **Composer:** `PlanComposer.tsx` remains presentational but mirrors `ChatComposer`’s rounded frame, bottom toolbar, `ComposerControl` buttons, bottom-left model picker, and message-action send/stop styling.
+- **Settings:** the Planning model row and component are deleted. `usePlanningModel` retains subscription/provider/resolution reads and loses the setter.
+- **Timeline:** `generatedBy` attribution remains unchanged.
 
 ### Docs
 
-- `docs/user/projects-and-plans.md`: the assistant section explains the per-branch choice — the composer picker, the workspace default, forks inheriting, what replies show.
-- `docs/user/settings.md`: the planning-model row becomes "the default new planning follows."
-- `docs/internals/glossary.md`: **planning model** entry becomes the two-level, history-carried shape.
+- `docs/user/settings.md` no longer advertises a planning default.
+- `docs/user/projects-and-plans.md` explains last-used seeding, the shared coding-session picker, per-branch inheritance, draft locality, and unchanged gating.
+- `docs/internals/glossary.md` defines the pair record, nearest-ancestor standing choice, and last-used seed.
 
-### Gaps where the AC outran the repo
+## Gaps where the AC outran the repo
 
-One optional payload fact on turn-opening commits, one on assistant replies, one directive on two existing inputs, one derivation query, one picker, one label. Everything else the AC names — the Settings default, per-machine resolution, gating with upgrade-naming, fork-forces-rebuild — exists and is consumed, not rebuilt.
+None require new architecture. The machine-local picker necessarily displays an instance while the durable record cannot name one; the wrapper is the adapter boundary. A future merge can stamp its own explicit pair under the same rule without changing the record shape.
 
 ## Implementation Checklist
 
-- [ ] `packages/contracts/src/mercurian.ts` — `PlanTurnModelRecord`, `PlanModelDirective`; `PlanMessage.ranUnder`/`.generatedBy`; `modelChoice` on `MercurianAppendPlanMessageInput` and `MercurianCreatePlanInput`. No rpc.ts/RpcAuthorization changes (no new methods).
-- [ ] `apps/server/src/mercurian/planning/PlanningStore.ts` (+ test) — stamping in `appendMessage`/`createPlan` per the rule (override / follow-with-default / follow-with-unset-default / inherit); `standingModelChoice` read; `generatedBy` on `appendAssistantMessage`; old payloads keep decoding.
-- [ ] `apps/server/src/mercurian/planning/wire.ts` — map `ranUnder` and `generatedBy` through.
-- [ ] `apps/server/src/mercurian/assistant/PlanningAssistant.ts` (+ test) — `StartTurnInput.ranUnder`; effective selection at turn start (record, else current default); resolved pair kept on the turn; `generatedBy` at settle; `tryImplement` derives via `standingModelChoice`.
-- [ ] `apps/server/src/ws.ts` — both handlers pass `modelChoice` + `workspaceDefault` and forward the stamped record to `kickOffPlanningTurn`. Extend `server.test.ts`'s store/assistant mocks with the new method and fields in the same change (the wire suite dies in CI otherwise).
-- [ ] `apps/web/src/components/mercurian/PlanModelChoice.logic.ts` (new, + test) — client standing derivation.
-- [ ] `apps/web/src/components/mercurian/PlanModelPicker.logic.ts` + `PlanModelPicker.tsx` (new, + tests) — groups via the shared derivation, the default row, effective/override display, unresolvable rendering from the selection.
-- [ ] `apps/web/src/planComposerStore.ts` (+ test) — head-keyed `modelChoice` on drafts; eviction and validators updated. `apps/web/src/planDraftStore.ts` — directive on the unborn draft.
-- [ ] `apps/web/src/components/mercurian/PlanningSpace.tsx` + `PlanComposer.tsx` + `PlanComposer.logic.ts` (+ tests) — picker mounted in both variants; directive sent with every message and with `createPlan`; gate reads the effective resolution; notice wording re-pointed.
-- [ ] `apps/web/src/components/mercurian/PlanTimeline.tsx` (+ test) — the `generatedBy` label on assistant replies.
-- [ ] Docs ride the PR: `docs/user/projects-and-plans.md`, `docs/user/settings.md`, `docs/internals/glossary.md`.
-- [ ] Do **not** add: a migration, a commit kind, a plan column, a new RPC, a switch stream item, an instance id anywhere in the record, or any edit to an upstream-owned file.
-- [ ] Commits: `feat(contracts): …`, `feat(server): …`, `feat(web): … (M-128)` on branch `venk/m-128-per-branch-planning-model-workspace-default-seeds-the`.
+- [x] Pair-only contracts for `ranUnder` and both model-choice inputs; `generatedBy` unchanged.
+- [x] Remove the public workspace planning-model setter end to end.
+- [x] Store explicit → standing → last-used stamps transactionally; return pair/none from standing derivation.
+- [x] Record every stamped turn-opening pair as workspace last-used before kickoff.
+- [x] Resolve assistant turns from the stamp, with last-used fallback; resolve implement from standing then last-used.
+- [x] Convert live and unborn client drafts to pair semantics.
+- [x] Reuse `ProviderModelPicker` and composer controls without editing upstream-owned files.
+- [x] Preserve an unresolvable pair by injecting its slug as a disabled option.
+- [x] Remove the Providers Settings row and setter hook.
+- [x] Keep timeline attribution unchanged and update user/internal documentation.
+- [x] Do not add a migration, commit kind, plan field, RPC, instance id, mobile work, or reducer work.
 
 ## Test Plan
 
-Unit — server (`@effect/vitest` over `MercurianSqlite.layerMemory`, provider-harness receipts, no sleeps):
+Server, with `@effect/vitest` and `MercurianSqlite.layerMemory`:
 
-- [ ] `PlanningStore.test.ts` — "records the model a message ran under, and decodes one written before it did"; override stamps `followedDefault: false`; follow-default stamps the passed default with `true`; unset default stamps nothing; absent directive inherits the nearest ancestor's mode (and re-stamps it); `standingModelChoice` walks to the nearest record, inherits across a fork point, and answers follow-default on a bare history; `generatedBy` persists on assistant commits.
-- [ ] `PlanningAssistant.test.ts` — a turn runs under the commit's recorded pair (harness receipt: `startSession.modelSelection` matches the override's resolved instance/model); a follow-default record tracks a changed workspace default on the _next_ turn; **a model switch between turns forces a rebuild** (covers the untested `canContinue` model conjunct) while the prior branch's replies are untouched; two forked branches run consecutive turns under different providers without disturbing each other (extends the existing fork-rebuild case); refusals: override to a provider with no instance → `no-instance`, to an absent model → `model-unavailable`, follow-default with unset default → `unset`; the settled reply's `generatedBy` names what the turn started under; `tryImplement` on an overridden branch resolves the override.
+- `PlanningStore.test.ts`: explicit stamp; bare last-used seed; nothing-anywhere no stamp; nearest ancestor across a fork; pair/none standing result; old excess `followedDefault` payload decode; `generatedBy` persistence.
+- `PlanningAssistant.test.ts`: stamped and bare-seeded turns; model-switch rebuild; provider-independent forks; unset/no-instance/model-unavailable refusals; settled attribution; standing-pair implement resolution.
+- `WorkspaceSettingsStore.test.ts`: null before first use, pair round-trip/replacement, mutation signal, corrupt-value refusal.
+- `server.test.ts`: wire mocks match the pair shape; append inherits and re-stamps; the settings subscription reports the sent pair as last-used.
 
-Unit — web logic (targeted `vp test run`):
+Web, with pure logic tests and static markup where rendering is involved:
 
-- [ ] `PlanModelChoice.logic.test.ts` — nearest ancestor wins; fork point inherits; no record → follow-default; a `followedDefault: true` record still yields follow-default mode.
-- [ ] `PlanModelPicker.logic.test.ts` — groups from the shared derivation; default row labeled from the current default (and "none set"); selection round-trips to directives; unresolvable effective selection renders from the selection with the M-97 wording.
-- [ ] `planComposerStore.test.ts` — a flip persists keyed to its head, doesn't apply at another head, counts as a non-empty draft, survives the persistence round-trip, and clears with the draft.
-- [ ] `PlanComposer.logic.test.ts` / `PlanTimeline.test.tsx` — gate wording; attribution label renders for `generatedBy` and stays absent without it.
+- `PlanModelChoice.logic.test.ts`: nearest ancestor, fork inheritance, pair/none result.
+- `PlanModelPicker.logic.test.ts`: pair↔instance mapping, default-instance display fallback, disabled reasons and upgrade advisory, missing-slug injection/no rewrite.
+- `planComposerStore.test.ts`: pair-shaped head-keyed flip, persistence, and clearing.
+- `PlanComposer.logic.test.ts`: picker-directed unset copy and remaining gate states.
+- `PlanTimeline.test.tsx`: attribution stays visible and absent on old replies.
 
-Manual, against the AC (dev app, browser-walked — every criterion demonstrated live, per house practice):
-
-- [ ] Never touch a picker → new plans and replies run under the Settings default; change the default → untouched branches follow it.
-- [ ] Draft composer: flip before the first message → the plan's very first reply runs (and is attributed) under the flip; leave and return → the draft kept it.
-- [ ] Two branches of one plan: override one to another provider, send on both — each reply attributed to its own pair; the composer label follows the checkout as you move between them; a second window agrees without a refresh.
-- [ ] Fork from mid-history under an override → the fork's composer shows the override; "Workspace default" from the picker → next reply follows the default, and a later default change moves that branch again.
-- [ ] Flip the picker and send nothing → history unchanged anywhere, no switch entry; restart the server → recorded choices survive (they live in the history).
-- [ ] Override to a provider/model this machine can't serve → composer gates with the pair named and the upgrade message where one applies; nothing rewritten.
+Verification uses targeted `vp test run <files>` commands and scoped typechecks in `packages/contracts`, `apps/server`, and `apps/web`; no repo-wide check or browser pass is part of this plan.
 
 ## Findings carried out of discovery
 
-- **Record-plus-mode is the one significant call**: the stamp carries both the concrete pair (history: what the turn ran under) and `followedDefault` (mode: what descendants derive from). Recording only the pair would strand follow-default branches on stale defaults; recording only the mode would leave history unable to say what produced a turn.
-- **The turn runs under the record, not a re-read**: `startTurn` trusting `ranUnder` over a fresh default read keeps the commit honest against a default-change racing the kickoff.
-- **"Follow an unset default" stamps nothing by design** — absence already means it, and the live-plan gate makes the state unreachable mid-history; only a draft root can land that way, which is today's message-without-reply temperament.
-- **The plan-keyed `sessions` map is deliberately untouched**: alternating sends across differently-modeled branches rebuild the session each time — correct by the existing guard, and no worse than the branch-hop rebuild that already exists. If it ever hurts, key the map by branch tip; nothing in the record's shape moves.
-- **Merges are pre-paid**: when a human merge path lands, the merge is itself a turn-opening message and records its own choice (the amendment's rule), so `standingModelChoice`'s first-parent walk never faces real ambiguity — worth restating in that issue's plan.
+- **Last-used is a seed, not standing state.** Applying it only when ancestry has no record prevents activity on one plan from moving established branches elsewhere.
+- **The turn trusts the stamp.** Passing the returned `ranUnder` into kickoff keeps history honest against any later workspace activity.
+- **Pair-only history is sufficient.** The nearest record fully determines descendants; retaining a mode would recreate the retired mutable default.
+- **Unresolvable means preserve.** UI option lists are machine facts and may be incomplete; history is authoritative, so a missing slug is injected for display and disabled rather than normalized or replaced.
+- **The adapter is the complexity boundary.** The picker can be instance-aware while the durable selection stays portable because mapping in both directions lives in one Mercurian wrapper.

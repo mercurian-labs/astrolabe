@@ -2,78 +2,104 @@ import {
   DEFAULT_UNIFIED_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
-  type PlanModelDirective,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { derivePlanningModelOptionGroups } from "./PlanningModelSetting.logic";
 import {
-  derivePlanModelPickerGroups,
-  describePlanModelPickerChoice,
-  parsePlanModelDirective,
-  serializePlanModelDirective,
-  workspaceDefaultOptionLabel,
+  derivePlanModelPickerState,
+  planningModelDisabledReason,
+  planningSelectionForInstanceModel,
 } from "./PlanModelPicker.logic";
 
 const claude = ProviderDriverKind.make("claudeAgent");
-const providers: ReadonlyArray<ServerProvider> = [
-  {
-    instanceId: ProviderInstanceId.make("claudeAgent"),
-    driver: claude,
-    enabled: true,
-    installed: true,
-    version: "1.0.0",
-    status: "ready",
-    auth: { status: "authenticated" },
-    checkedAt: "2026-08-17T00:00:00.000Z",
-    models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
-    slashCommands: [],
-    skills: [],
-  },
-];
+const claudeDefault = ProviderInstanceId.make("claudeAgent");
+const claudeWork = ProviderInstanceId.make("claude_work");
+
+const provider = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
+  instanceId: claudeDefault,
+  driver: claude,
+  enabled: true,
+  installed: true,
+  version: "1.0.0",
+  status: "ready",
+  auth: { status: "authenticated" },
+  checkedAt: "2026-08-17T00:00:00.000Z",
+  models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
+  slashCommands: [],
+  skills: [],
+  ...overrides,
+});
 
 describe("PlanModelPicker logic", () => {
-  it("uses the planning setting's provider-grouped option derivation", () => {
-    expect(derivePlanModelPickerGroups(providers, DEFAULT_UNIFIED_SETTINGS)).toEqual(
-      derivePlanningModelOptionGroups(providers, DEFAULT_UNIFIED_SETTINGS),
-    );
-  });
-
-  it("labels the default row from the current default and says when none is set", () => {
-    expect(workspaceDefaultOptionLabel({ provider: claude, model: "opus" }, providers)).toBe(
-      "Workspace default — Claude · Opus",
-    );
-    expect(workspaceDefaultOptionLabel(null, providers)).toBe("Workspace default — none set");
-  });
-
-  it("round-trips follow-default and override directives through picker values", () => {
-    const directives: ReadonlyArray<PlanModelDirective> = [
-      { _tag: "follow-default" },
-      {
-        _tag: "override",
-        selection: { provider: ProviderDriverKind.make("codex"), model: "gpt:5.4" },
-      },
+  it("maps an abstract pair to its resolving instance and back without an account id", () => {
+    const providers = [
+      provider(),
+      provider({ instanceId: claudeWork, displayName: "Claude Work" }),
     ];
-    for (const directive of directives) {
-      expect(parsePlanModelDirective(serializePlanModelDirective(directive))).toEqual(directive);
-    }
-  });
-
-  it("renders an unresolvable effective pair from the selection with M-97 gating wording", () => {
-    const choice = describePlanModelPickerChoice(
-      {
-        _tag: "override",
-        selection: { provider: claude, model: "missing-model" },
-      },
+    const state = derivePlanModelPickerState(
       { provider: claude, model: "opus" },
       providers,
+      DEFAULT_UNIFIED_SETTINGS,
     );
-    expect(choice.triggerLabel).toBe("Claude · missing-model");
-    expect(choice.resolution).toEqual({ _tag: "unresolved", reason: "model-unavailable" });
-    expect(choice.display.kind).toBe("unresolved");
-    if (choice.display.kind !== "unresolved") return;
-    expect(choice.display.message).toContain("missing-model is not available");
-    expect(choice.selection).toEqual({ provider: claude, model: "missing-model" });
+    expect(state.activeInstanceId).toBe(claudeDefault);
+    expect(planningSelectionForInstanceModel(state.entries, claudeWork, "opus")).toEqual({
+      provider: claude,
+      model: "opus",
+    });
+  });
+
+  it("injects an unresolvable recorded slug so the upstream trigger never substitutes it", () => {
+    const selection = { provider: claude, model: "missing-model" } as const;
+    const state = derivePlanModelPickerState(selection, [provider()], DEFAULT_UNIFIED_SETTINGS);
+    expect(state.modelOptionsByInstance.get(claudeDefault)?.map((option) => option.slug)).toEqual([
+      "opus",
+      "missing-model",
+    ]);
+    expect(selection).toEqual({ provider: claude, model: "missing-model" });
+  });
+
+  it("uses M-97 disabled wording, including an unlocking upgrade advisory", () => {
+    const providers = [
+      provider({
+        displayName: "Claude Code",
+        models: [{ slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null }],
+        versionAdvisory: {
+          status: "behind_latest",
+          currentVersion: "1.0.0",
+          latestVersion: "2.4.0",
+          updateCommand: "npm i -g claude",
+          canUpdate: true,
+          checkedAt: "2026-08-17T00:00:00.000Z",
+          message: null,
+        },
+      }),
+    ];
+    const state = derivePlanModelPickerState(null, providers, DEFAULT_UNIFIED_SETTINGS);
+    expect(
+      planningModelDisabledReason(state.entries, providers, claudeDefault, "sonnet"),
+    ).toBeNull();
+    expect(planningModelDisabledReason(state.entries, providers, claudeDefault, "opus")).toContain(
+      "Update Claude Code to 2.4.0 to unlock it.",
+    );
+  });
+
+  it("falls back to the provider's default instance for signed-out display", () => {
+    const providers = [
+      provider({
+        auth: { status: "unauthenticated" },
+        status: "error",
+        availability: "unavailable",
+      }),
+    ];
+    const state = derivePlanModelPickerState(
+      { provider: claude, model: "opus" },
+      providers,
+      DEFAULT_UNIFIED_SETTINGS,
+    );
+    expect(state.activeInstanceId).toBe(claudeDefault);
+    expect(planningModelDisabledReason(state.entries, providers, claudeDefault, "opus")).toContain(
+      "No Claude instance",
+    );
   });
 });

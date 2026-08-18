@@ -1,4 +1,4 @@
-import type { PlanModelDirective } from "@t3tools/contracts";
+import type { PlanningModelSelection } from "@t3tools/contracts";
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 
@@ -40,7 +40,7 @@ export interface PlanComposerDraft {
   readonly attachments: ReadonlyArray<PlanComposerAttachment>;
   /** A draft-only flip, scoped to the branch head where it was made. */
   readonly modelChoice?: {
-    readonly directive: PlanModelDirective;
+    readonly directive: PlanningModelSelection;
     readonly atHead: string | null;
   };
 }
@@ -65,19 +65,14 @@ function isAttachment(value: unknown): value is PlanComposerAttachment {
   );
 }
 
-function isModelDirective(value: unknown): value is PlanModelDirective {
+function isModelSelection(value: unknown): value is PlanningModelSelection {
   if (!value || typeof value !== "object") return false;
-  const directive = value as {
-    readonly _tag?: unknown;
-    readonly selection?: { readonly provider?: unknown; readonly model?: unknown };
-  };
+  const selection = value as { readonly provider?: unknown; readonly model?: unknown };
   return (
-    directive._tag === "follow-default" ||
-    (directive._tag === "override" &&
-      typeof directive.selection?.provider === "string" &&
-      directive.selection.provider.length > 0 &&
-      typeof directive.selection.model === "string" &&
-      directive.selection.model.trim().length > 0)
+    typeof selection.provider === "string" &&
+    selection.provider.length > 0 &&
+    typeof selection.model === "string" &&
+    selection.model.trim().length > 0
   );
 }
 
@@ -88,7 +83,7 @@ function isModelChoice(value: unknown): value is NonNullable<PlanComposerDraft["
     readonly atHead?: unknown;
   };
   return (
-    isModelDirective(choice.directive) &&
+    isModelSelection(choice.directive) &&
     (choice.atHead === null || typeof choice.atHead === "string")
   );
 }
@@ -112,7 +107,7 @@ const isEmptyDraft = (draft: PlanComposerDraft) =>
 export function modelChoiceForHead(
   draft: PlanComposerDraft,
   head: string | null,
-): PlanModelDirective | undefined {
+): PlanningModelSelection | undefined {
   return draft.modelChoice?.atHead === head ? draft.modelChoice.directive : undefined;
 }
 
@@ -194,7 +189,7 @@ interface PlanComposerStore {
   readonly removeAttachment: (planId: string, localId: string) => void;
   readonly setModelChoice: (
     planId: string,
-    directive: PlanModelDirective,
+    directive: PlanningModelSelection,
     atHead: string | null,
   ) => void;
   /** What sending does: the message left, so the draft of it is gone. */

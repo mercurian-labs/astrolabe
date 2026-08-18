@@ -1,18 +1,13 @@
 import {
-  DEFAULT_UNIFIED_SETTINGS,
   type PlanningModelSelection,
   ProviderDriverKind,
   ProviderInstanceId,
   resolvePlanningModel,
   type ServerProvider,
-  type UnifiedSettings,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  derivePlanningModelOptionGroups,
-  describePlanningModel,
-} from "./PlanningModelSetting.logic";
+import { describePlanningModel } from "./PlanningModel.logic";
 
 const claude = ProviderDriverKind.make("claudeAgent");
 const claudeDefault = ProviderInstanceId.make("claudeAgent");
@@ -40,11 +35,6 @@ const provider = (
   ...overrides,
 });
 
-const settingsWith = (overrides: Partial<UnifiedSettings>): UnifiedSettings => ({
-  ...DEFAULT_UNIFIED_SETTINGS,
-  ...overrides,
-});
-
 const selection = (provider: string, model: string): PlanningModelSelection => ({
   provider: ProviderDriverKind.make(provider),
   model,
@@ -52,69 +42,6 @@ const selection = (provider: string, model: string): PlanningModelSelection => (
 
 const describeAgainst = (setting: PlanningModelSelection | null, providers: ServerProvider[]) =>
   describePlanningModel(setting, resolvePlanningModel(setting, providers), providers);
-
-describe("derivePlanningModelOptionGroups", () => {
-  it("groups by provider and draws models from the instance that provider resolves to", () => {
-    const providers = [
-      provider({
-        instanceId: claudeWork,
-        driver: claude,
-        models: [model("work-only")],
-      }),
-      provider({
-        instanceId: claudeDefault,
-        driver: claude,
-        models: [model("opus"), model("sonnet")],
-      }),
-      provider({
-        instanceId: ProviderInstanceId.make("codex"),
-        driver: ProviderDriverKind.make("codex"),
-        models: [model("gpt-5")],
-      }),
-    ];
-
-    const groups = derivePlanningModelOptionGroups(providers, DEFAULT_UNIFIED_SETTINGS);
-
-    expect(groups.map((group) => group.provider)).toEqual([claude, "codex"]);
-    // The default instance wins, so its list — not `claude_work`'s — is offered.
-    expect(groups[0]?.instanceId).toBe(claudeDefault);
-    expect(groups[0]?.options.map((option) => option.model)).toEqual(["opus", "sonnet"]);
-  });
-
-  it("offers no group for a provider this machine cannot run", () => {
-    const providers = [
-      provider({
-        instanceId: claudeDefault,
-        driver: claude,
-        installed: false,
-        models: [model("opus")],
-      }),
-    ];
-
-    expect(derivePlanningModelOptionGroups(providers, DEFAULT_UNIFIED_SETTINGS)).toEqual([]);
-  });
-
-  it("reflects curation: hidden models are gone, order is kept, favorites float", () => {
-    const providers = [
-      provider({
-        instanceId: claudeDefault,
-        driver: claude,
-        models: [model("opus"), model("sonnet"), model("haiku")],
-      }),
-    ];
-    const settings = settingsWith({
-      providerModelPreferences: {
-        [claudeDefault]: { hiddenModels: ["opus"], modelOrder: ["haiku", "sonnet"] },
-      },
-      favorites: [{ provider: claudeDefault, model: "sonnet" }],
-    });
-
-    const groups = derivePlanningModelOptionGroups(providers, settings);
-
-    // `opus` hidden; `sonnet` favorited so it floats above the ordered `haiku`.
-    expect(groups[0]?.options.map((option) => option.model)).toEqual(["sonnet", "haiku"]);
-  });
-});
 
 describe("describePlanningModel", () => {
   it("says nothing is chosen when the workspace has chosen nothing", () => {
@@ -148,7 +75,7 @@ describe("describePlanningModel", () => {
     if (display.kind !== "unresolved") return;
     expect(display.modelLabel).toBe("opus");
     expect(display.message).toContain("No Claude instance on this machine");
-    expect(display.message).toContain("stays saved");
+    expect(display.message).toContain("stays selected");
     expect(display.upgrade).toBeNull();
   });
 
