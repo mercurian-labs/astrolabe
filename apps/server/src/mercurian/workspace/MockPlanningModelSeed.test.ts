@@ -37,14 +37,14 @@ const makeConfigLayer = (mockProviderEnabled: boolean) =>
 
 const makeWorkspaceSettingsLayer = (initial: WorkspaceSettingsSnapshot) => {
   let snapshot = initial;
-  const writes: Array<PlanningModelSelection | null> = [];
+  const writes: Array<PlanningModelSelection> = [];
   return {
     writes,
     layer: Layer.succeed(
       WorkspaceSettingsStore,
       WorkspaceSettingsStore.of({
         getSnapshot: Effect.sync(() => snapshot),
-        setPlanningModel: (selection) =>
+        recordLastUsedPlanningModel: (selection) =>
           Effect.sync(() => {
             writes.push(selection);
             snapshot = { planningModel: selection };
@@ -107,7 +107,7 @@ it.layer(NodeServices.layer)("mock planning model seed", (it) => {
               issue: "Invalid workspace setting",
             }),
           ),
-          setPlanningModel: () => Effect.void,
+          recordLastUsedPlanningModel: () => Effect.void,
           changes: Stream.empty,
         }),
       );

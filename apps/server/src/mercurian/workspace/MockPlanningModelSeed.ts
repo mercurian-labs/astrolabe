@@ -1,3 +1,11 @@
+/**
+ * Seeds a fresh dev workspace's last-used planning model with the mock pair.
+ * This lets the composer resolve flip ?? standing ?? lastUsed without asking
+ * for a model. The first real turn supersedes the seed through the normal
+ * last-used recording path.
+ *
+ * @module MockPlanningModelSeed
+ */
 import { ProviderDriverKind } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -5,7 +13,7 @@ import * as Layer from "effect/Layer";
 import { ServerConfig } from "../../config.ts";
 import { WorkspaceSettingsStore } from "./WorkspaceSettingsStore.ts";
 
-export const seedMockPlanningModel = Effect.fn("seedMockPlanningModel")(function* () {
+export const seedMockPlanningModel = Effect.fn("seedMockLastUsedPlanningModel")(function* () {
   const config = yield* ServerConfig;
   if (!config.mockProviderEnabled) return;
 
@@ -13,7 +21,7 @@ export const seedMockPlanningModel = Effect.fn("seedMockPlanningModel")(function
   const snapshot = yield* workspaceSettings.getSnapshot;
   if (snapshot.planningModel !== null) return;
 
-  yield* workspaceSettings.setPlanningModel({
+  yield* workspaceSettings.recordLastUsedPlanningModel({
     provider: ProviderDriverKind.make("mock"),
     model: "mock-default",
   });
