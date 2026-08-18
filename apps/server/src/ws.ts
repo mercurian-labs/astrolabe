@@ -1596,20 +1596,22 @@ const makeWsRpcLayer = (
                     owner: input.projectId,
                     uploads: input.attachments,
                   });
-                  const workspaceDefault = (yield* workspaceSettingsStore.getSnapshot)
-                    .planningModel;
+                  const lastUsed = (yield* workspaceSettingsStore.getSnapshot).planningModel;
                   const created = yield* planningStore.createPlan({
                     projectId: input.projectId,
                     message: input.message,
                     attachments,
                     ...(input.modelChoice === undefined ? {} : { modelChoice: input.modelChoice }),
-                    workspaceDefault,
+                    lastUsed,
                     createdAt,
                   });
                   // The birth message is a message: the assistant replies to
                   // it like any other.
                   const root = created.timeline[0];
                   if (root?._tag === "message") {
+                    if (root.ranUnder !== undefined) {
+                      yield* workspaceSettingsStore.recordLastUsedPlanningModel(root.ranUnder);
+                    }
                     yield* kickOffPlanningTurn({
                       planId: created.plan.planId,
                       parentCommitId: root.commitId,
@@ -1666,8 +1668,7 @@ const makeWsRpcLayer = (
                     owner: input.planId,
                     uploads: input.attachments,
                   });
-                  const workspaceDefault = (yield* workspaceSettingsStore.getSnapshot)
-                    .planningModel;
+                  const lastUsed = (yield* workspaceSettingsStore.getSnapshot).planningModel;
                   const appended = yield* planningStore.appendMessage({
                     planId: input.planId,
                     text: input.text,
@@ -1678,9 +1679,12 @@ const makeWsRpcLayer = (
                       : { parentCommitId: CommitId.make(input.parentCommitId) }),
                     attachments,
                     ...(input.modelChoice === undefined ? {} : { modelChoice: input.modelChoice }),
-                    workspaceDefault,
+                    lastUsed,
                     createdAt,
                   });
+                  if (appended.ranUnder !== undefined) {
+                    yield* workspaceSettingsStore.recordLastUsedPlanningModel(appended.ranUnder);
+                  }
                   yield* kickOffPlanningTurn({
                     planId: input.planId,
                     parentCommitId: appended.commitId,
@@ -2171,18 +2175,6 @@ const makeWsRpcLayer = (
                 ),
               );
             }),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WORKSPACE_WS_METHODS.setPlanningModel,
-            workspaceSettingsStore
-              .setPlanningModel(input.planningModel)
-              .pipe(
-                Effect.mapError(
-                  (cause) => new MercurianWorkspaceError({ operation: "setPlanningModel", cause }),
-                ),
-              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers]: (_input) =>

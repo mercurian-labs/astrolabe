@@ -43,10 +43,8 @@ import {
   PlanGroundingScope,
   PlanId,
   PlanNotFoundError,
-  PlanModelDirective,
   PlanQuestionRecord,
   PlanningModelSelection,
-  PlanTurnModelRecord,
   PlanTurnActiveError,
   TrackerConnectionId,
   TrimmedNonEmptyString,
@@ -79,7 +77,7 @@ export const MessageCommitPayload = Schema.Struct({
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   /** The provider/model recorded on a human message that opened a turn. */
-  ranUnder: Schema.optional(PlanTurnModelRecord),
+  ranUnder: Schema.optional(PlanningModelSelection),
   /** The provider/model captured when an assistant reply's turn started. */
   generatedBy: Schema.optional(PlanningModelSelection),
   /**
@@ -197,7 +195,7 @@ export const PlanMessage = Schema.Struct({
   grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
   groundingScope: Schema.optional(PlanGroundingScope),
   question: Schema.optional(PlanQuestionRecord),
-  ranUnder: Schema.optional(PlanTurnModelRecord),
+  ranUnder: Schema.optional(PlanningModelSelection),
   generatedBy: Schema.optional(PlanningModelSelection),
 });
 export type PlanMessage = typeof PlanMessage.Type;
@@ -338,8 +336,8 @@ export const CreatePlanInput = Schema.Struct({
   /** The plan's first message. Its arrival *is* the plan's creation. */
   message: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
-  modelChoice: Schema.optional(PlanModelDirective),
-  workspaceDefault: Schema.NullOr(PlanningModelSelection),
+  modelChoice: Schema.optional(PlanningModelSelection),
+  lastUsed: Schema.NullOr(PlanningModelSelection),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type CreatePlanInput = typeof CreatePlanInput.Type;
@@ -375,8 +373,8 @@ export const AppendMessageInput = Schema.Struct({
   text: Schema.String,
   parentCommitId: Schema.optional(CommitId),
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
-  modelChoice: Schema.optional(PlanModelDirective),
-  workspaceDefault: Schema.NullOr(PlanningModelSelection),
+  modelChoice: Schema.optional(PlanningModelSelection),
+  lastUsed: Schema.NullOr(PlanningModelSelection),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendMessageInput = typeof AppendMessageInput.Type;
@@ -613,10 +611,10 @@ export class PlanningStore extends Context.Service<
     readonly getPlanTextAt: (
       input: GetPlanTextAtInput,
     ) => Effect.Effect<string, PlanningStoreError>;
-    /** The nearest history-carried choice at a position, or follow-default. */
+    /** The nearest history-carried pair at a position, or none. */
     readonly standingModelChoice: (
       input: StandingModelChoiceInput,
-    ) => Effect.Effect<PlanModelDirective, PlanningStoreError>;
+    ) => Effect.Effect<PlanningModelSelection | null, PlanningStoreError>;
     /** The artifact and exact history point an implement analysis starts from. */
     readonly getImplementContext: (
       input: GetImplementContextInput,
@@ -794,18 +792,6 @@ const decodeReadyVerdictPayload = Schema.decodeUnknownEffect(PlanImplementReadyV
 const decodeNeedsSplitVerdictPayload = Schema.decodeUnknownEffect(
   PlanImplementNeedsSplitVerdictPayload,
 );
-
-const FOLLOW_DEFAULT = { _tag: "follow-default" } as const satisfies PlanModelDirective;
-
-function recordTurnModel(
-  choice: PlanModelDirective,
-  workspaceDefault: PlanningModelSelection | null,
-): PlanTurnModelRecord | undefined {
-  if (choice._tag === "override") {
-    return { ...choice.selection, followedDefault: false };
-  }
-  return workspaceDefault === null ? undefined : { ...workspaceDefault, followedDefault: true };
-}
 
 /**
  * The artifact at the end of a path: the text of the last revision on it, or
@@ -1152,7 +1138,7 @@ export const make = Effect.gen(function* () {
   const standingModelChoiceAt = Effect.fn("PlanningStore.standingModelChoiceAt")(function* (
     commit: Commit | undefined,
   ) {
-    if (commit === undefined) return FOLLOW_DEFAULT;
+    if (commit === undefined) return null;
     const ancestry = yield* commits.ancestors({ commitId: commit.commitId, visibility: "all" });
     const path = [...ancestry, commit];
     for (let index = path.length - 1; index >= 0; index -= 1) {
@@ -1160,14 +1146,9 @@ export const make = Effect.gen(function* () {
       if (candidate === undefined || candidate.kind !== "message") continue;
       const record = (yield* decodeMessagePayload(candidate.payload)).ranUnder;
       if (record === undefined) continue;
-      return record.followedDefault
-        ? FOLLOW_DEFAULT
-        : ({
-            _tag: "override",
-            selection: { provider: record.provider, model: record.model },
-          } as const satisfies PlanModelDirective);
+      return { provider: record.provider, model: record.model } satisfies PlanningModelSelection;
     }
-    return FOLLOW_DEFAULT;
+    return null;
   });
 
   const toPlanRevision = (commit: Commit, split?: PlanSplitStamp): PlanRevision => ({
@@ -1304,10 +1285,7 @@ export const make = Effect.gen(function* () {
       // transaction inside this one.
       const root = yield* sql.withTransaction(
         Effect.gen(function* () {
-          const ranUnder = recordTurnModel(
-            input.modelChoice ?? FOLLOW_DEFAULT,
-            input.workspaceDefault,
-          );
+          const ranUnder = input.modelChoice ?? input.lastUsed ?? undefined;
           const rootCommit = yield* commits.createHistory({
             historyId,
             rootCommit: {
@@ -1550,10 +1528,7 @@ export const make = Effect.gen(function* () {
         resolvePayload: (parent) =>
           standingModelChoiceAt(parent).pipe(
             Effect.map((standing) => {
-              const ranUnder = recordTurnModel(
-                input.modelChoice ?? standing,
-                input.workspaceDefault,
-              );
+              const ranUnder = input.modelChoice ?? standing ?? input.lastUsed ?? undefined;
               return {
                 text: input.text,
                 ...(input.attachments === undefined || input.attachments.length === 0

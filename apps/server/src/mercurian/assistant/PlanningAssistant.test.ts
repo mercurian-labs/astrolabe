@@ -234,13 +234,13 @@ const runtimeEvent = (
 const seedPlan = Effect.fn("seedPlan")(function* (message = "Reshape the sidebar") {
   const store = yield* PlanningStore.PlanningStore;
   const settings = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
-  yield* settings.setPlanningModel({ provider: claude, model: "opus" });
+  yield* settings.recordLastUsedPlanningModel({ provider: claude, model: "opus" });
   const project = yield* store.createProject({
     name: "Astrolabe",
     createdAt: at("2026-08-08T00:00:00.000Z"),
   });
   const created = yield* store.createPlan({
-    workspaceDefault: null,
+    lastUsed: null,
     projectId: project.projectId,
     message,
     createdAt: at("2026-08-08T00:00:00.000Z"),
@@ -631,7 +631,7 @@ describe("PlanningAssistant", () => {
         createdAt: at("2026-08-08T00:00:00.000Z"),
       });
       const created = yield* store.createPlan({
-        workspaceDefault: null,
+        lastUsed: null,
         projectId: project.projectId,
         message: "First",
         createdAt: at("2026-08-08T00:00:00.000Z"),
@@ -818,7 +818,7 @@ describe("PlanningAssistant", () => {
 
       // A fork: a second human message from the root, which already led on.
       const fork = yield* store.appendMessage({
-        workspaceDefault: null,
+        lastUsed: null,
         planId: created.plan.planId,
         text: "Try another direction",
         parentCommitId: root.commitId,
@@ -858,11 +858,8 @@ describe("PlanningAssistant", () => {
       const created = yield* store.createPlan({
         projectId: project.projectId,
         message: "Run this with Codex",
-        modelChoice: {
-          _tag: "override",
-          selection: { provider: codex, model: "gpt-5.4" },
-        },
-        workspaceDefault: { provider: claude, model: "opus" },
+        modelChoice: { provider: codex, model: "gpt-5.4" },
+        lastUsed: { provider: claude, model: "opus" },
         createdAt: at("2026-08-08T00:21:00.000Z"),
       });
       const root = created.timeline[0]!;
@@ -883,7 +880,39 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot, codexSnapshot]))),
   );
 
-  it.effect("a changed default re-stamps the next turn and forces a model rebuild", () =>
+  it.effect("runs a bare-seeded turn under the last-used pair stamped on it", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T00:25:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Use what this workspace used last",
+        lastUsed: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-08T00:26:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      assert.ok(root._tag === "message");
+      assert.deepStrictEqual(root.ranUnder, { provider: claude, model: "opus" });
+      assert.ok(root.ranUnder !== undefined);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: root.text,
+        ranUnder: root.ranUnder,
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(session.providerInstanceId, claudeInstance);
+      assert.strictEqual(session.modelSelection?.model, "opus");
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("a model switch between turns forces a model rebuild", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const store = yield* PlanningStore.PlanningStore;
@@ -894,12 +923,11 @@ describe("PlanningAssistant", () => {
         name: "Astrolabe",
         createdAt: at("2026-08-08T00:30:00.000Z"),
       });
-      yield* settings.setPlanningModel({ provider: claude, model: "opus" });
+      yield* settings.recordLastUsedPlanningModel({ provider: claude, model: "opus" });
       const created = yield* store.createPlan({
         projectId: project.projectId,
-        message: "Follow the default",
-        modelChoice: { _tag: "follow-default" },
-        workspaceDefault: { provider: claude, model: "opus" },
+        message: "Start with Opus",
+        lastUsed: { provider: claude, model: "opus" },
         createdAt: at("2026-08-08T00:31:00.000Z"),
       });
       const root = created.timeline[0]!;
@@ -936,20 +964,19 @@ describe("PlanningAssistant", () => {
       );
       yield* Queue.take(frames); // turn-settled
 
-      yield* settings.setPlanningModel({ provider: claude, model: "sonnet" });
       const firstSnapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       const firstReply = firstSnapshot.timeline.at(-1)!;
       const next = yield* store.appendMessage({
         planId: created.plan.planId,
         parentCommitId: firstReply.commitId,
-        text: "Use the changed default",
-        workspaceDefault: { provider: claude, model: "sonnet" },
+        text: "Switch to Sonnet",
+        modelChoice: { provider: claude, model: "sonnet" },
+        lastUsed: { provider: claude, model: "sonnet" },
         createdAt: at("2026-08-08T00:32:00.000Z"),
       });
       assert.deepStrictEqual(next.ranUnder, {
         provider: claude,
         model: "sonnet",
-        followedDefault: true,
       });
       yield* assistant.startTurn({
         planId: created.plan.planId,
@@ -1015,7 +1042,7 @@ describe("PlanningAssistant", () => {
       const created = yield* store.createPlan({
         projectId: project.projectId,
         message: "Fork this plan",
-        workspaceDefault: null,
+        lastUsed: null,
         createdAt: at("2026-08-08T00:41:00.000Z"),
       });
       const root = created.timeline[0]!.commitId;
@@ -1023,22 +1050,16 @@ describe("PlanningAssistant", () => {
         planId: created.plan.planId,
         parentCommitId: root,
         text: "Claude branch",
-        modelChoice: {
-          _tag: "override",
-          selection: { provider: claude, model: "opus" },
-        },
-        workspaceDefault: null,
+        modelChoice: { provider: claude, model: "opus" },
+        lastUsed: null,
         createdAt: at("2026-08-08T00:42:00.000Z"),
       });
       const right = yield* store.appendMessage({
         planId: created.plan.planId,
         parentCommitId: root,
         text: "Codex branch",
-        modelChoice: {
-          _tag: "override",
-          selection: { provider: codex, model: "gpt-5.4" },
-        },
-        workspaceDefault: null,
+        modelChoice: { provider: codex, model: "gpt-5.4" },
+        lastUsed: null,
         createdAt: at("2026-08-08T00:43:00.000Z"),
       });
       const frames = yield* subscribeFrames(created.plan.planId);
@@ -1116,13 +1137,13 @@ describe("PlanningAssistant", () => {
   for (const [label, ranUnder, providers, expected] of [
     [
       "an override whose provider has no instance",
-      { provider: codex, model: "gpt-5.4", followedDefault: false },
+      { provider: codex, model: "gpt-5.4" },
       [providerSnapshot],
       "no-instance",
     ],
     [
       "an override whose model is absent",
-      { provider: claude, model: "sonnet", followedDefault: false },
+      { provider: claude, model: "sonnet" },
       [providerSnapshot],
       "model-unavailable",
     ],
@@ -1152,7 +1173,7 @@ describe("PlanningAssistant", () => {
       const store = yield* PlanningStore.PlanningStore;
       const settings = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const harness = yield* ProviderHarness;
-      yield* settings.setPlanningModel({ provider: claude, model: "opus" });
+      yield* settings.recordLastUsedPlanningModel({ provider: claude, model: "opus" });
       const project = yield* store.createProject({
         name: "Astrolabe",
         createdAt: at("2026-08-08T00:50:00.000Z"),
@@ -1160,11 +1181,8 @@ describe("PlanningAssistant", () => {
       const created = yield* store.createPlan({
         projectId: project.projectId,
         message: "Plan with Codex",
-        modelChoice: {
-          _tag: "override",
-          selection: { provider: codex, model: "gpt-5.4" },
-        },
-        workspaceDefault: { provider: claude, model: "opus" },
+        modelChoice: { provider: codex, model: "gpt-5.4" },
+        lastUsed: { provider: claude, model: "opus" },
         createdAt: at("2026-08-08T00:51:00.000Z"),
       });
       const revision = yield* store.savePlanRevision({
@@ -1382,7 +1400,7 @@ describe("PlanningAssistant", () => {
         createdAt: at("2026-08-08T01:10:00.000Z"),
       });
       const created = yield* store.createPlan({
-        workspaceDefault: null,
+        lastUsed: null,
         projectId: project.projectId,
         message: "Ready plan",
         createdAt: at("2026-08-08T01:10:00.000Z"),
@@ -1848,7 +1866,7 @@ describe("PlanningAssistant", () => {
         createdAt: at("2026-08-08T04:30:00.000Z"),
       });
       const created = yield* store.createPlan({
-        workspaceDefault: null,
+        lastUsed: null,
         projectId: project.projectId,
         message: "Ready plan",
         createdAt: at("2026-08-08T04:30:00.000Z"),

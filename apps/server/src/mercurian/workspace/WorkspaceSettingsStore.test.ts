@@ -27,7 +27,7 @@ const planningModel = (provider: string, model: string): PlanningModelSelection 
 const decodeStoredValue = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 layer("WorkspaceSettingsStore", (it) => {
-  it.effect("has no planning model until someone names one", () =>
+  it.effect("has no last-used planning model until a turn records one", () =>
     Effect.gen(function* () {
       const store = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
 
@@ -40,7 +40,7 @@ layer("WorkspaceSettingsStore", (it) => {
       const store = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const sql = yield* SqlClient.SqlClient;
 
-      yield* store.setPlanningModel(planningModel("claudeAgent", "opus"));
+      yield* store.recordLastUsedPlanningModel(planningModel("claudeAgent", "opus"));
 
       const snapshot = yield* store.getSnapshot;
       assert.deepStrictEqual(snapshot.planningModel, planningModel("claudeAgent", "opus"));
@@ -57,28 +57,17 @@ layer("WorkspaceSettingsStore", (it) => {
     }),
   );
 
-  it.effect("replaces a previous choice rather than accumulating rows", () =>
+  it.effect("replaces the previously used pair rather than accumulating rows", () =>
     Effect.gen(function* () {
       const store = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
 
-      yield* store.setPlanningModel(planningModel("claudeAgent", "opus"));
-      yield* store.setPlanningModel(planningModel("codex", "gpt-5"));
+      yield* store.recordLastUsedPlanningModel(planningModel("claudeAgent", "opus"));
+      yield* store.recordLastUsedPlanningModel(planningModel("codex", "gpt-5"));
 
       assert.deepStrictEqual(
         (yield* store.getSnapshot).planningModel,
         planningModel("codex", "gpt-5"),
       );
-    }),
-  );
-
-  it.effect("clears the setting when the choice is none", () =>
-    Effect.gen(function* () {
-      const store = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
-
-      yield* store.setPlanningModel(planningModel("claudeAgent", "opus"));
-      yield* store.setPlanningModel(null);
-
-      assert.deepStrictEqual(yield* store.getSnapshot, { planningModel: null });
     }),
   );
 
@@ -89,8 +78,8 @@ layer("WorkspaceSettingsStore", (it) => {
         startImmediately: true,
       });
 
-      yield* store.setPlanningModel(planningModel("claudeAgent", "opus"));
-      yield* store.setPlanningModel(null);
+      yield* store.recordLastUsedPlanningModel(planningModel("claudeAgent", "opus"));
+      yield* store.recordLastUsedPlanningModel(planningModel("codex", "gpt-5"));
 
       const signals = yield* Fiber.join(changes);
       assert.strictEqual(signals.length, 2);

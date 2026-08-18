@@ -58,7 +58,6 @@ import {
   type PlanningModelSelection,
   PlanTurnActiveError,
   PlanTurnId,
-  type PlanTurnModelRecord,
   type PlanTurnRefusalReason,
   type ProviderInstanceId,
   type ProviderRuntimeEvent,
@@ -112,8 +111,8 @@ export interface StartTurnInput {
   readonly parentCommitId: CommitId;
   /** That message's text — what the provider is asked to reply to. */
   readonly text: string;
-  /** The model record stamped on that human message. */
-  readonly ranUnder?: PlanTurnModelRecord;
+  /** The provider/model pair stamped on that human message. */
+  readonly ranUnder?: PlanningModelSelection;
 }
 
 export interface TryImplementInput {
@@ -954,9 +953,7 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       proposals.delete(input.planId);
       const effectiveSelection =
-        input.ranUnder === undefined
-          ? (yield* workspaceSettings.getSnapshot).planningModel
-          : { provider: input.ranUnder.provider, model: input.ranUnder.model };
+        input.ranUnder ?? (yield* workspaceSettings.getSnapshot).planningModel;
       const providers = yield* providerRegistry.getProviders;
       const resolution = resolvePlanningModel(effectiveSelection, providers);
       if (resolution._tag === "unset") {
@@ -1185,10 +1182,7 @@ export const make = Effect.gen(function* () {
         planId: input.planId,
         commitId: context.atCommitId,
       });
-      const effectiveSelection =
-        standing._tag === "override"
-          ? standing.selection
-          : (yield* workspaceSettings.getSnapshot).planningModel;
+      const effectiveSelection = standing ?? (yield* workspaceSettings.getSnapshot).planningModel;
       const providers = yield* providerRegistry.getProviders;
       const resolution = resolvePlanningModel(effectiveSelection, providers);
       if (resolution._tag === "unset") {
