@@ -1,6 +1,6 @@
 # Technical Plan — M-131: Signed-out providers gate sending
 
-_Generated from the Goal/AC of Linear issue M-131; also mirrored into the issue. Grounded against `main` at `2d469fc4e` — after M-107 (implement gate), M-128 (per-branch planning model), M-109 (specs), and M-130 (mock provider) landed. Every file touched is Mercurian-owned; ADR 004's upstream-edit budget is spent at zero. Two recorded invariants stay intact: a plan can always be born (the draft composer stays non-blocking), and a message that lands, lands unconditionally — the gate is the composer speaking first, never the server refusing._
+_Generated from the Goal/AC of Linear issue M-131; also mirrored into the issue. Grounded against `main` at `2d469fc4e` — after M-107 (implement gate), M-128 (per-branch planning model), M-109 (specs), and M-130 (mock provider) landed. Every file touched is Mercurian-owned except one deliberate ADR 004 upstream edit: `apps/server/src/provider/Layers/ClaudeProvider.ts`, whose auth probe the AC walk found misreporting a signed-out CLI as authenticated (see the probe finding below). Two recorded invariants stay intact: a plan can always be born (the draft composer stays non-blocking), and a message that lands, lands unconditionally — the gate is the composer speaking first, never the server refusing._
 
 **Goal, in one sentence:** teach `resolvePlanningModel` that an installed-but-signed-out provider cannot run a turn — a new `not-signed-in` unresolved reason — so the composer gate, refusal frames, picker display, and implement gate all close and explain honestly, and lift again the moment sign-in lands in a provider snapshot refresh.
 
@@ -68,6 +68,7 @@ M-128's effective selection flows through the same `resolvePlanningModel`; the g
 - [ ] `apps/web/src/components/mercurian/PlanningModel.logic.ts` (+ test) — `describePlanningModel` renders the signed-out state; upgrade nudge stays on `model-unavailable` only.
 - [ ] `apps/web/src/components/mercurian/PlanModelPicker.logic.ts` (+ test) — `planningModelDisabledReason` exempts `not-signed-in`; options derivation untouched.
 - [ ] `apps/web/src/components/mercurian/PlanningSpace.tsx` — thread the effective selection into the notice helpers (mechanical).
+- [ ] `apps/server/src/provider/Layers/ClaudeProvider.ts` (+ registry test) — the probe runs `claude auth status` and maps an explicit `loggedIn: false` to an `unauthenticated` snapshot that keeps the model list; exit code ignored (the CLI exits 1 exactly when logged out); spawn failure/timeout/unparseable output falls back to the previous path.
 - [ ] Docs ride the PR: the gate's states in `docs/user/projects-and-plans.md` (composer gating sentence + "The planning model" resolution paragraph).
 - [ ] Do **not** gate on an `unknown` auth status, hide or disable signed-out providers' models in the picker, block the draft composer, rewrite the recorded selection, or touch message landing.
 - [ ] Commits: `feat(contracts): …`, `feat(web): … (M-131)` on branch `venk/m-131-signed-out-providers-gate-sending-the-composer-says-why-the`.
@@ -102,6 +103,7 @@ Manual, against the AC (dev app; a real CLI signed out via its own logout):
 ## Findings carried out of discovery
 
 - **An `unknown` auth status is treated as usable** — the line between gating on knowledge and gating on ignorance. If a driver reports `unknown` while actually signed out, fix the driver's probe, not this rule.
+- **The Claude probe was that driver, and worse** — it reported a signed-out CLI as _authenticated_: `claude auth status` was never run (the SDK-init capabilities probe succeeds signed-out, and any truthy result mapped to authenticated), and the CLI exits 1 exactly when logged out, so the fix parses stdout/stderr regardless of exit code. Found by the AC walk, fixed on this branch as the plan's own finding prescribed — the branch's one ADR 004 upstream edit.
 - **The offering/readiness asymmetry** (picker lists and stays choosable; gate blocks) is recorded in the vault's Providers note (2026-08 resolution) and the Composer note's four can't-reply states — and now has a concrete enforcement point in `planningModelDisabledReason`.
 - **Signed-in-instance preference is a behavior change beyond gating**: multi-instance machines now resolve past a signed-out default instead of failing on it. Strictly better, but new — recorded so the test pinning it isn't "fixed" away.
 - **The implement gate rides along**: `tryImplement` refuses `not-signed-in` through `ImplementBlockedError` — the same honesty, after the fact, for the implement path.
