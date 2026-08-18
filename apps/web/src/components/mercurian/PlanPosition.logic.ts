@@ -38,6 +38,17 @@ export function resolveHead(graph: PlanGraph, position: PlanPosition): Mercurian
   return graph.byId.has(position.commitId) ? position.commitId : graph.latest;
 }
 
+/** Coding-session commits are inspectable leaves; planning continues from their sole parent. */
+export function resolveActingHead(
+  graph: PlanGraph,
+  viewedHead: MercurianCommitId | null,
+): MercurianCommitId | null {
+  if (viewedHead === null) return null;
+  const node = graph.byId.get(viewedHead);
+  if (node?.item._tag !== "coding-session") return viewedHead;
+  return node.parents[0] ?? viewedHead;
+}
+
 /**
  * Where picking a commit in the explorer puts you.
  *

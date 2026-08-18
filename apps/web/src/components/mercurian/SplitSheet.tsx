@@ -28,6 +28,13 @@ import {
 
 const EMPTY_LANDED_PLANS: ReadonlyArray<LandedPlan> = [];
 
+export const startAllLandedPlans = (
+  plans: ReadonlyArray<LandedPlan>,
+  start: (plan: LandedPlan) => void,
+) => {
+  for (const plan of plans) start(plan);
+};
+
 export function SplitSheet({
   open,
   proposal,
@@ -38,6 +45,9 @@ export function SplitSheet({
   onConfirm,
   onSelect,
   onOpenSessionDraft,
+  onOpenLandedSessionDraft,
+  onStartAll,
+  startAllDisabled,
 }: {
   readonly open: boolean;
   readonly proposal?: PlanImplementProposal | undefined;
@@ -48,6 +58,9 @@ export function SplitSheet({
   readonly onConfirm: (plans: ReadonlyArray<PlanSplitProposal>) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onOpenSessionDraft?: ((input: PlanImplementProposal) => void) | undefined;
+  readonly onOpenLandedSessionDraft?: ((input: LandedPlan) => void) | undefined;
+  readonly onStartAll?: ((input: LandedPlan) => void) | undefined;
+  readonly startAllDisabled?: boolean | undefined;
 }) {
   const dismiss = () => {
     onOpenChange(false);
@@ -69,6 +82,9 @@ export function SplitSheet({
           onCancel={dismiss}
           onConfirm={onConfirm}
           onOpenSessionDraft={onOpenSessionDraft}
+          onOpenLandedSessionDraft={onOpenLandedSessionDraft}
+          onStartAll={onStartAll}
+          startAllDisabled={startAllDisabled}
           onSelect={onSelect}
         />
       </DialogPopup>
@@ -84,6 +100,9 @@ export function SplitSheetPanel({
   onConfirm,
   onSelect,
   onOpenSessionDraft,
+  onOpenLandedSessionDraft,
+  onStartAll,
+  startAllDisabled = false,
 }: {
   readonly proposal?: PlanImplementProposal | undefined;
   readonly landedPlans?: ReadonlyArray<LandedPlan> | undefined;
@@ -92,6 +111,9 @@ export function SplitSheetPanel({
   readonly onConfirm: (plans: ReadonlyArray<PlanSplitProposal>) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onOpenSessionDraft?: ((input: PlanImplementProposal) => void) | undefined;
+  readonly onOpenLandedSessionDraft?: ((input: LandedPlan) => void) | undefined;
+  readonly onStartAll?: ((input: LandedPlan) => void) | undefined;
+  readonly startAllDisabled?: boolean | undefined;
 }) {
   const partitioned = useMemo(
     () =>
@@ -119,20 +141,22 @@ export function SplitSheetPanel({
       <DialogPanel className="flex flex-col gap-3">
         {landedPlans.length > 0 ? (
           landedPlans.map((plan) => (
-            <button
+            <div
               key={plan.commitId}
               className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-left"
-              type="button"
-              onClick={() => onSelect(plan.commitId)}
             >
               <span className="text-sm font-medium">
                 You added a plan for {plan.repositoryName}
               </span>
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                Go to plan
-                <ArrowRightIcon className="size-4" />
+              <span className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" onClick={() => onSelect(plan.commitId)}>
+                  Go to plan <ArrowRightIcon className="size-4" />
+                </Button>
+                <Button size="sm" onClick={() => onOpenLandedSessionDraft?.(plan)}>
+                  Start a coding session
+                </Button>
               </span>
-            </button>
+            </div>
           ))
         ) : proposal?.verdict.kind === "atomic" ? (
           <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
@@ -226,11 +250,19 @@ export function SplitSheetPanel({
             disabled={onOpenSessionDraft === undefined}
             onClick={() => onOpenSessionDraft?.(proposal)}
           >
-            Coding sessions arrive next
+            Start a coding session
           </Button>
         ) : payload === null ? null : (
           <Button onClick={() => onConfirm(payload)}>Add a plan for each repository</Button>
         )}
+        {landedPlans.length > 1 && onStartAll !== undefined ? (
+          <Button
+            disabled={startAllDisabled}
+            onClick={() => startAllLandedPlans(landedPlans, onStartAll)}
+          >
+            Start all
+          </Button>
+        ) : null}
       </DialogFooter>
     </>
   );

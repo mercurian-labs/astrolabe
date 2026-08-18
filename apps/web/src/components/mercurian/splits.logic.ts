@@ -19,6 +19,7 @@ export interface SplitCard extends PlanSplitProposal {
 
 export interface LandedPlan {
   readonly commitId: MercurianCommitId;
+  readonly repositoryId: MercurianRepositoryId;
   readonly repositoryName: string;
 }
 

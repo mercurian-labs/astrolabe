@@ -10,6 +10,7 @@ import type {
   PlanQuestion,
   PlanQuestionRecord,
   PlanTimelineItem,
+  PlanCodingSessionRecord,
   PlanningModelSelection,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -23,6 +24,7 @@ import {
   FolderOpenIcon,
   SearchIcon,
   WrenchIcon,
+  GitBranchIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -62,6 +64,7 @@ export function PlanTimeline({
   readyCommits = EMPTY_READY_COMMITS,
   onAnswerQuestion,
   onStopImplement,
+  codingSessions = EMPTY_CODING_SESSIONS,
 }: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The turn streaming on this path right now, when one is. */
@@ -71,6 +74,7 @@ export function PlanTimeline({
   readonly readyCommits?: ReadonlyMap<MercurianCommitId, PlanImplementReady> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onStopImplement?: (() => void) | undefined;
+  readonly codingSessions?: ReadonlyArray<PlanCodingSessionRecord> | undefined;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const environmentId = usePrimaryEnvironmentId();
@@ -177,6 +181,41 @@ export function PlanTimeline({
               </li>
             );
           }
+          if (item._tag === "coding-session") {
+            const record = codingSessions.find((session) => session.commitId === item.commitId);
+            const status =
+              record?.endedAt === null
+                ? "Running"
+                : record?.outcome === "completed"
+                  ? "Completed"
+                  : record?.outcome === "stopped"
+                    ? "Stopped"
+                    : "Ended";
+            return (
+              <li
+                key={item.commitId}
+                className="rounded-lg border border-border/70 bg-muted/15 p-3"
+              >
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <GitBranchIcon className="size-4" />
+                  Coding session · {item.repositoryName}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span>Implemented {item.planRevisionCommitId.slice(0, 8)}</span>
+                  <span>{status}</span>
+                  {record === undefined ? null : <span>{record.branch}</span>}
+                  {record?.prUrl === null || record?.prUrl === undefined ? null : (
+                    <a className="underline" href={record.prUrl} rel="noreferrer" target="_blank">
+                      Pull request
+                    </a>
+                  )}
+                </div>
+                <Button className="mt-2" disabled size="sm" variant="outline">
+                  Open session
+                </Button>
+              </li>
+            );
+          }
           return (
             <li
               key={item.commitId}
@@ -252,6 +291,7 @@ export function PlanTimeline({
 
 const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+const EMPTY_CODING_SESSIONS: ReadonlyArray<PlanCodingSessionRecord> = [];
 
 /** The provider/model that produced a settled reply, quiet but always visible. */
 function ModelAttribution({

@@ -73,6 +73,15 @@ export interface PlanCardStatus {
   readonly unread: boolean;
 }
 
+interface CodingSessionDetailFields {
+  readonly branch: string;
+  readonly endedAt: string | null;
+}
+
+export function codingSessionDetailLabel(session: CodingSessionDetailFields): string {
+  return `${session.endedAt === null ? "Running" : "Ended"} · ${session.branch}`;
+}
+
 /**
  * The card header carries live state; unseen activity belongs to title weight.
  * They are resolved independently so a working, unread card can say both.

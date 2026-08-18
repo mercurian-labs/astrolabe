@@ -5,6 +5,7 @@ import {
   type PlanId,
   type PlanSpecAt,
   type PlanTimelineItem,
+  type PlanImplementReady,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -27,6 +28,7 @@ import {
 } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { randomUUID } from "../../lib/utils";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
@@ -37,6 +39,9 @@ import {
   type PlanComposerAttachment,
 } from "../../planComposerStore";
 import { usePlanDraftStore } from "../../planDraftStore";
+import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
+import { usePrimarySettings } from "../../hooks/useSettings";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import {
   useAnswerPlanningQuestion,
   useAppendPlanMessage,
@@ -47,10 +52,13 @@ import {
   useGetSpecAt,
   usePlanDetail,
   useStopPlanningTurn,
+  useStartCodingSession,
   useTryImplement,
   useVisitPlan,
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
+import { useRepositories } from "../../state/mercurianRepositories";
+import { usePaginatedBranches } from "../../state/queries";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
@@ -83,6 +91,7 @@ import {
   LATEST,
   positionAfterPick,
   resolveHead,
+  resolveActingHead,
   type PlanPosition,
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
@@ -94,6 +103,13 @@ import {
   staleSpecLeafIds,
 } from "./SpecArtifact.logic";
 import { SplitSheet } from "./SplitSheet";
+import { CodingSessionDraftSheet } from "./CodingSessionDraftSheet";
+import {
+  createCodingSessionDraft,
+  seedBaseRef,
+  seedCodingSessionModelSelection,
+  startCodingSessionPayload,
+} from "./codingSessionDraft.logic";
 import { StalePlanWarning } from "./StalePlanWarning";
 import {
   existingSplitsAt,
@@ -152,10 +168,43 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [splitSheetOpen, setSplitSheetOpen] = useState(false);
   const [stalePlanWarningOpen, setStalePlanWarningOpen] = useState(false);
   const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
+  const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
   // The same resolution the server runs, read here so sending gates with the
   // reason stated instead of failing silently. The two can only disagree for
   // the width of a race, which `turn-refused` covers.
   const planningModel = usePlanningModel();
+  const settings = usePrimarySettings();
+  const environmentId = usePrimaryEnvironmentId();
+  const repositories = useRepositories().snapshot.repositories;
+  const startCodingSession = useStartCodingSession();
+  const openSessionDraft = useCodingSessionDraftStore((state) => state.openDraft);
+  const completeSessionStart = useCodingSessionDraftStore((state) => state.completeStart);
+  const lastSessionModel = useCodingSessionDraftStore((state) => state.lastModelSelection);
+  const [sessionBaseRefs, setSessionBaseRefs] = useState<ReadonlyMap<string, string>>(new Map());
+  const materializeSessionDraft = useCallback(
+    (ready: PlanImplementReady, baseRef = "") => {
+      const modelSelection = seedCodingSessionModelSelection(
+        planningModel.providers,
+        settings,
+        lastSessionModel,
+      );
+      if (modelSelection === null) return null;
+      const draftId = randomUUID();
+      const draft = openSessionDraft(
+        createCodingSessionDraft({
+          draftId,
+          planId,
+          ready,
+          baseRef,
+          startFromOrigin: settings.newWorktreesStartFromOrigin,
+          modelSelection,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+      return draft.draftId;
+    },
+    [lastSessionModel, openSessionDraft, planId, planningModel.providers, settings],
+  );
   const [pane, setPane] = useLocalStorage(
     RIGHT_PANE_STORAGE_KEY,
     DEFAULT_RIGHT_PANE,
@@ -265,15 +314,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   useEffect(() => setPosition((current) => advance(graph, current)), [graph]);
 
   const head = resolveHead(graph, position);
+  const actingHead = resolveActingHead(graph, head);
+  const viewingSessionLeaf = actingHead !== head;
   const itemsById = useMemo(
     () => new Map(timeline.map((item) => [item.commitId, item] as const)),
     [timeline],
   );
   const standingChoice = useMemo(
-    () => standingModelChoice(graph, itemsById, head),
-    [graph, head, itemsById],
+    () => standingModelChoice(graph, itemsById, actingHead),
+    [actingHead, graph, itemsById],
   );
-  const modelChoice = modelChoiceForHead(draft, head) ?? standingChoice ?? planningModel.setting;
+  const modelChoice =
+    modelChoiceForHead(draft, actingHead) ?? standingChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
   const viewingPast = isViewingPast(graph, position);
   const effectiveRightPaneWidth = width;
@@ -382,7 +434,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       const sent = await appendMessage({
         planId,
         text,
-        ...(head === null ? {} : { parentCommitId: head }),
+        ...(actingHead === null ? {} : { parentCommitId: actingHead }),
         ...(attachments.length === 0 ? {} : { attachments }),
         ...(modelChoice === null ? {} : { modelChoice }),
       });
@@ -392,7 +444,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       clearDraft(planId);
       return true;
     },
-    [appendMessage, clearDraft, head, modelChoice, planId],
+    [actingHead, appendMessage, clearDraft, modelChoice, planId],
   );
 
   const select = useCallback(
@@ -416,10 +468,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       }
       void tryImplement({
         planId,
-        ...(head === null ? {} : { parentCommitId: head }),
+        ...(actingHead === null ? {} : { parentCommitId: actingHead }),
       });
     },
-    [head, planId, setPane, tryImplement],
+    [actingHead, planId, setPane, tryImplement],
   );
 
   const beginImplement = useCallback(
@@ -471,6 +523,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <PlanTimeline
+            codingSessions={detail?.codingSessions ?? []}
             inFlight={visibleInFlight}
             inFlightImplement={visibleInFlightImplement}
             providers={planningModel.providers}
@@ -486,7 +539,15 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             attachments={draft.attachments}
             // Standing at an earlier point does not take the composer away —
             // it changes what sending means, and the banner says so.
-            banner={viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null}
+            banner={
+              viewingSessionLeaf ? (
+                <div className="text-xs text-muted-foreground">
+                  New planning continues from the commit before this coding session.
+                </div>
+              ) : viewingPast ? (
+                <ViewingEarlierBanner onBack={backToNow} />
+              ) : null
+            }
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
             modelPicker={
@@ -494,7 +555,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 disabled={inFlightTurn !== undefined || inFlightImplement !== undefined}
                 providers={planningModel.providers}
                 selection={modelChoice}
-                onChange={(selection) => setDraftModelChoice(planId, selection, head)}
+                onChange={(selection) => setDraftModelChoice(planId, selection, actingHead)}
               />
             }
             implementDisabledReason={implementReason}
@@ -572,10 +633,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                       // An edit lands on the branch you are standing on. Editing
                       // is only offered live, so a revision can never be the thing
                       // that opens a fork: a fork opens with a message.
-                      {...(head === null ? {} : { parentCommitId: head })}
+                      {...(actingHead === null ? {} : { parentCommitId: actingHead })}
                       planId={planId}
                       planText={artifactText ?? ""}
-                      readOnly={viewingPast}
+                      readOnly={viewingPast || viewingSessionLeaf}
                       readOnlyAction={
                         <Button size="sm" variant="ghost" onClick={backToNow}>
                           Back to now
@@ -591,10 +652,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                     />
                   ) : (
                     <SpecArtifact
-                      {...(head === null ? {} : { parentCommitId: head })}
+                      {...(actingHead === null ? {} : { parentCommitId: actingHead })}
                       {...(detail.origin === undefined ? {} : { origin: detail.origin })}
                       planId={planId}
-                      readOnly={viewingPast}
+                      readOnly={viewingPast || viewingSessionLeaf}
                       readOnlyAction={
                         <Button size="sm" variant="ghost" onClick={backToNow}>
                           Back to now
@@ -639,6 +700,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               setLandedPlans(
                 result.map((commitId, index) => ({
                   commitId,
+                  repositoryId: plans[index]!.repositoryId,
                   repositoryName: plans[index]!.repositoryName,
                 })),
               );
@@ -650,8 +712,79 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             setLandedPlans([]);
             setSplitSheetOpen(false);
           }}
+          onOpenSessionDraft={(readyProposal) => {
+            if (readyProposal.verdict.kind !== "atomic") return;
+            const draftId = materializeSessionDraft({
+              commitId: readyProposal.parentCommitId,
+              repositoryId: readyProposal.verdict.repositoryId,
+              repositoryName: readyProposal.verdict.repositoryName,
+            });
+            if (draftId !== null) {
+              setSessionDraftId(draftId);
+              setSplitSheetOpen(false);
+            }
+          }}
+          onOpenLandedSessionDraft={(landed) => {
+            const draftId = materializeSessionDraft({
+              commitId: landed.commitId,
+              repositoryId: landed.repositoryId,
+              repositoryName: landed.repositoryName,
+            });
+            if (draftId !== null) {
+              setSessionDraftId(draftId);
+              setSplitSheetOpen(false);
+            }
+          }}
+          onStartAll={(landed) => {
+            const baseRef = sessionBaseRefs.get(landed.repositoryId);
+            if (baseRef === undefined) return;
+            const draftId = materializeSessionDraft(
+              {
+                commitId: landed.commitId,
+                repositoryId: landed.repositoryId,
+                repositoryName: landed.repositoryName,
+              },
+              baseRef,
+            );
+            if (draftId === null) return;
+            const draft = useCodingSessionDraftStore.getState().draftsById[draftId];
+            if (draft === undefined) return;
+            void startCodingSession(startCodingSessionPayload(draft)).then((result) => {
+              if (result !== null) completeSessionStart(draftId);
+              else setSessionDraftId(draftId);
+            });
+            setSplitSheetOpen(false);
+          }}
+          startAllDisabled={landedPlans.some((landed) => !sessionBaseRefs.has(landed.repositoryId))}
         />
       )}
+      {landedPlans.map((landed) => {
+        const repository = repositories.find(
+          (candidate) => candidate.repositoryId === landed.repositoryId,
+        );
+        return repository === undefined ? null : (
+          <CodingSessionBaseRefLoader
+            key={landed.repositoryId}
+            cwd={repository.path}
+            environmentId={environmentId}
+            onResolved={(baseRef) =>
+              setSessionBaseRefs((current) => {
+                if (current.get(landed.repositoryId) === baseRef) return current;
+                const next = new Map(current);
+                next.set(landed.repositoryId, baseRef);
+                return next;
+              })
+            }
+          />
+        );
+      })}
+      <CodingSessionDraftSheet
+        draftId={sessionDraftId}
+        open={sessionDraftId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSessionDraftId(null);
+        }}
+      />
       <StalePlanWarning
         open={stalePlanWarningOpen}
         onContinue={() => handleImplementFlow({ kind: "continue-anyway" })}
@@ -660,6 +793,23 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       />
     </PlanningSurface>
   );
+}
+
+function CodingSessionBaseRefLoader({
+  cwd,
+  environmentId,
+  onResolved,
+}: {
+  readonly cwd: string;
+  readonly environmentId: ReturnType<typeof usePrimaryEnvironmentId>;
+  readonly onResolved: (baseRef: string) => void;
+}) {
+  const branches = usePaginatedBranches({ cwd, environmentId });
+  useEffect(() => {
+    const baseRef = seedBaseRef(branches.refs);
+    if (baseRef.length > 0) onResolved(baseRef);
+  }, [branches.refs, onResolved]);
+  return null;
 }
 
 /**

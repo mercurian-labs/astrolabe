@@ -8,6 +8,7 @@ import {
   isViewingPast,
   LATEST,
   positionAfterPick,
+  resolveActingHead,
   resolveHead,
 } from "./PlanPosition.logic";
 
@@ -68,6 +69,27 @@ describe("resolveHead", () => {
     // The gap between switching plans and the first snapshot: the wrong branch
     // beats no answer.
     expect(resolveHead(chain, { _tag: "at", commitId: id("elsewhere"), live: true })).toBe(id("c"));
+  });
+});
+
+describe("resolveActingHead", () => {
+  it("keeps a viewed coding-session leaf visible but acts from its parent", () => {
+    const session = {
+      _tag: "coding-session",
+      commitId: id("session"),
+      sequence: 4,
+      parents: [id("c")],
+      published: false,
+      authorKind: "human",
+      createdAt: "2026-08-03T00:00:00.000Z",
+      repositoryId: "repo" as never,
+      repositoryName: "server",
+      planRevisionCommitId: id("b"),
+    } satisfies PlanTimelineItem;
+    const graph = buildPlanGraph([...chain.nodes.map(({ item }) => item), session]);
+    expect(resolveHead(graph, positionAfterPick(graph, session.commitId))).toBe(id("session"));
+    expect(resolveActingHead(graph, session.commitId)).toBe(id("c"));
+    expect(resolveActingHead(graph, id("c"))).toBe(id("c"));
   });
 });
 
