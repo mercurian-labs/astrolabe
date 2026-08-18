@@ -148,8 +148,8 @@ layer("CommitStore", (it) => {
         ["axes-1", "message", "assistant"],
         ["axes-2", "plan-revision", "human"],
         ["axes-3", "plan-revision", "assistant"],
-        ["axes-4", "issue-revision", "human"],
-        ["axes-5", "issue-revision", "assistant"],
+        ["axes-4", "spec-revision", "human"],
+        ["axes-5", "spec-revision", "assistant"],
       ];
       let parent = "axes-root";
       for (const [id, kind, authorKind] of chain) {
@@ -175,8 +175,8 @@ layer("CommitStore", (it) => {
           ["message", "assistant"],
           ["plan-revision", "human"],
           ["plan-revision", "assistant"],
-          ["issue-revision", "human"],
-          ["issue-revision", "assistant"],
+          ["spec-revision", "human"],
+          ["spec-revision", "assistant"],
           ["coding-session", "assistant"],
           ["coding-session", "human"],
         ],

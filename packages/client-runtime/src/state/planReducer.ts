@@ -134,6 +134,7 @@ export function applyPlanStreamItem(
           // Text arrives only on commits that changed the artifact; a message
           // leaves the plan exactly as it was.
           planText: item.planText ?? detail.planText,
+          spec: item.spec ?? detail.spec,
           timeline: Arr.append(detail.timeline, item.item),
           snapshotSequence: item.sequence,
         },

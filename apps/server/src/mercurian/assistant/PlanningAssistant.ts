@@ -62,6 +62,8 @@ import {
   type ProviderInstanceId,
   type ProviderRuntimeEvent,
   resolvePlanningModel,
+  specDocumentFromIssue,
+  type SpecDocument,
   ThreadId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
@@ -71,8 +73,10 @@ import * as ProviderService from "../../provider/Services/ProviderService.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import type {
   ReadPlanTool,
+  ReadSpecTool,
   SaveImplementProposalTool,
   SavePlanRevisionTool,
+  SaveSpecRevisionTool,
 } from "../../mcp/toolkits/planning/tools.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, type CommitId } from "../commitTree/schema.ts";
@@ -80,6 +84,7 @@ import {
   MessageCommitPayload,
   PlanningStore,
   PlanRevisionCommitPayload,
+  SpecRevisionCommitPayload,
   type StoredPlanImplementVerdict,
   type PlanningStoreError,
 } from "../planning/PlanningStore.ts";
@@ -191,12 +196,16 @@ const MAX_GROUNDING_ITEMS = 200;
 
 type PlanningMcpToolName =
   | typeof SavePlanRevisionTool.name
+  | typeof SaveSpecRevisionTool.name
   | typeof SaveImplementProposalTool.name
-  | typeof ReadPlanTool.name;
+  | typeof ReadPlanTool.name
+  | typeof ReadSpecTool.name;
 const APPROVED_PLANNING_MCP_TOOLS = [
   "save_plan_revision",
+  "save_spec_revision",
   "save_implement_proposal",
   "read_plan",
+  "read_spec",
 ] as const satisfies ReadonlyArray<PlanningMcpToolName>;
 const PLANNING_MCP_TOOL_PREFIXES = ["mcp__t3-code__", "t3-code_"] as const;
 const decodePlanRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
@@ -280,6 +289,10 @@ export class PlanningAssistant extends Context.Service<
       readonly threadId: ThreadId;
       readonly text: string;
     }) => Effect.Effect<void, PlanningTurnNotFoundError>;
+    readonly saveSpecRevisionFromThread: (input: {
+      readonly threadId: ThreadId;
+      readonly document: SpecDocument;
+    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
     readonly saveImplementProposalFromThread: (input: {
       readonly threadId: ThreadId;
       readonly repositories: ReadonlyArray<string>;
@@ -290,6 +303,9 @@ export class PlanningAssistant extends Context.Service<
     readonly readPlanFromThread: (input: {
       readonly threadId: ThreadId;
     }) => Effect.Effect<string, PlanningTurnNotFoundError>;
+    readonly readSpecFromThread: (input: {
+      readonly threadId: ThreadId;
+    }) => Effect.Effect<SpecDocument | null, PlanningTurnNotFoundError>;
   }
 >()("t3/mercurian/assistant/PlanningAssistant") {}
 
@@ -305,6 +321,58 @@ export class PlanningTurnNotFoundError extends Schema.TaggedErrorClass<PlanningT
 
 const decodeMessagePayload = Schema.decodeUnknownEffect(MessageCommitPayload);
 const decodeRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
+const decodeCurrentSpecRevisionPayload = Schema.decodeUnknownEffect(SpecRevisionCommitPayload);
+const LegacySpecDocument = Schema.Struct({ title: Schema.String, description: Schema.String });
+const LegacySpecRevisionSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("import"), issueId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("tracker-refresh"), issueId: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("tracker-reconciliation"),
+    issueId: Schema.String,
+    upstream: LegacySpecDocument,
+  }),
+  Schema.Struct({ kind: Schema.Literal("direct") }),
+]);
+const decodeStructuredLegacySpecRevisionPayload = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    document: LegacySpecDocument,
+    source: Schema.optional(LegacySpecRevisionSource),
+  }),
+);
+const decodeLegacySpecRevisionPayload = Schema.decodeUnknownEffect(LegacySpecDocument);
+const decodeSpecRevisionPayload = Effect.fn("PlanningAssistant.decodeSpecRevisionPayload")(
+  function* (payload: unknown) {
+    const current = yield* Effect.result(decodeCurrentSpecRevisionPayload(payload));
+    if (Result.isSuccess(current)) return current.success;
+    const structured = yield* Effect.result(decodeStructuredLegacySpecRevisionPayload(payload));
+    if (Result.isSuccess(structured)) {
+      const source = structured.success.source;
+      return {
+        document: specDocumentFromIssue(
+          structured.success.document.title,
+          structured.success.document.description,
+        ),
+        ...(source === undefined
+          ? {}
+          : source.kind === "tracker-reconciliation"
+            ? {
+                source: {
+                  ...source,
+                  upstream: specDocumentFromIssue(
+                    source.upstream.title,
+                    source.upstream.description,
+                  ),
+                },
+              }
+            : { source }),
+      } satisfies SpecRevisionCommitPayload;
+    }
+    const legacy = yield* decodeLegacySpecRevisionPayload(payload);
+    return {
+      document: specDocumentFromIssue(legacy.title, legacy.description),
+    } satisfies SpecRevisionCommitPayload;
+  },
+);
 
 const toPlanQuestion = (question: UserInputQuestion): PlanQuestion => ({
   id: question.id,
@@ -327,6 +395,7 @@ const projectTranscript = Effect.fn("PlanningAssistant.projectTranscript")(funct
 ) {
   const entries: Array<TranscriptEntry> = [];
   let planText = "";
+  let spec: SpecDocument | null = null;
   for (const commit of path) {
     if (commit.kind === "message") {
       const payload = yield* decodeMessagePayload(commit.payload);
@@ -340,9 +409,13 @@ const projectTranscript = Effect.fn("PlanningAssistant.projectTranscript")(funct
       const payload = yield* decodeRevisionPayload(commit.payload);
       entries.push({ kind: "plan-revision", author: commit.authorKind });
       planText = payload.text;
+    } else if (commit.kind === "spec-revision") {
+      const payload = yield* decodeSpecRevisionPayload(commit.payload);
+      entries.push({ kind: "spec-revision", author: commit.authorKind });
+      spec = payload.document;
     }
   }
-  return { entries, planText };
+  return { entries, planText, spec };
 });
 
 /**
@@ -891,6 +964,7 @@ export const make = Effect.gen(function* () {
           : transcriptPreamble({
               entries: transcript.entries,
               planText: transcript.planText,
+              spec: transcript.spec,
               reservedChars: appendix.length + input.text.length,
             });
 
@@ -1488,6 +1562,34 @@ export const make = Effect.gen(function* () {
       yield* registry.advanceTip(turn.planId, revision.commitId);
     });
 
+  const saveSpecRevisionFromThread: PlanningAssistant["Service"]["saveSpecRevisionFromThread"] = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const claimed = yield* registry.getByThread(input.threadId);
+      if (Option.isNone(claimed) || claimed.value.flavor !== "reply") {
+        return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
+      }
+      const turn = claimed.value;
+      const createdAt = yield* DateTime.now;
+      const revision = yield* planningStore
+        .saveAssistantSpecRevision({
+          planId: turn.planId,
+          parentCommitId: turn.tipCommitId,
+          document: input.document,
+          createdAt,
+        })
+        .pipe(
+          Effect.catch((cause) =>
+            Effect.logError("assistant spec revision failed", {
+              planId: turn.planId,
+              cause,
+            }).pipe(Effect.andThen(new PlanningTurnNotFoundError({ threadId: input.threadId }))),
+          ),
+        );
+      yield* registry.advanceTip(turn.planId, revision.commitId);
+    });
+
   const saveImplementProposalFromThread: PlanningAssistant["Service"]["saveImplementProposalFromThread"] =
     (input) =>
       Effect.gen(function* () {
@@ -1527,6 +1629,25 @@ export const make = Effect.gen(function* () {
         );
     });
 
+  const readSpecFromThread: PlanningAssistant["Service"]["readSpecFromThread"] = (input) =>
+    Effect.gen(function* () {
+      const claimed = yield* registry.getByThread(input.threadId);
+      if (Option.isNone(claimed)) {
+        return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
+      }
+      const turn = claimed.value;
+      return yield* planningStore
+        .getSpecAt({ planId: turn.planId, commitId: turn.tipCommitId })
+        .pipe(
+          Effect.map((at) => at?.document ?? null),
+          Effect.catch((cause) =>
+            Effect.logError("assistant spec read failed", { planId: turn.planId, cause }).pipe(
+              Effect.andThen(new PlanningTurnNotFoundError({ threadId: input.threadId })),
+            ),
+          ),
+        );
+    });
+
   return {
     startTurn,
     tryImplement,
@@ -1542,8 +1663,10 @@ export const make = Effect.gen(function* () {
     status,
     teardownPlan,
     saveRevisionFromThread,
+    saveSpecRevisionFromThread,
     saveImplementProposalFromThread,
     readPlanFromThread,
+    readSpecFromThread,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

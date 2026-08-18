@@ -42,7 +42,62 @@ const at = (iso: string) => DateTime.makeUnsafe(iso);
 const claude = ProviderDriverKind.make("claudeAgent");
 const codex = ProviderDriverKind.make("codex");
 
+it.effect("decodes legacy spec payloads into the two prose fields", () =>
+  Effect.gen(function* () {
+    const nested = yield* PlanningStore.decodeSpecRevisionPayload({
+      document: { title: "Outcome", description: "- [ ] Observable behavior" },
+      source: {
+        kind: "tracker-reconciliation",
+        issueId: "M-109",
+        upstream: { title: "Upstream outcome", description: "- [ ] Upstream behavior" },
+      },
+    });
+    assert.deepStrictEqual(nested, {
+      document: { goal: "Outcome", acceptanceCriteria: "- [ ] Observable behavior" },
+      source: {
+        kind: "tracker-reconciliation",
+        issueId: "M-109",
+        upstream: {
+          goal: "Upstream outcome",
+          acceptanceCriteria: "- [ ] Upstream behavior",
+        },
+      },
+    });
+
+    const flat = yield* PlanningStore.decodeSpecRevisionPayload({
+      title: "Imported issue",
+      description: "Original tracker body",
+    });
+    assert.deepStrictEqual(flat, {
+      document: { goal: "Imported issue", acceptanceCriteria: "Original tracker body" },
+    });
+  }),
+);
+
 layer("PlanningStore", (it) => {
+  it("classifies refreshes against the ancestry-derived upstream baseline", () => {
+    const base = { goal: "Contract", acceptanceCriteria: "Original" };
+    const upstream = { goal: "Contract", acceptanceCriteria: "Upstream" };
+    const local = { goal: "Contract", acceptanceCriteria: "Local" };
+    assert.deepStrictEqual(PlanningStore.classifySpecRefresh({ base, local, upstream: base }), {
+      kind: "unchanged",
+    });
+    assert.deepStrictEqual(PlanningStore.classifySpecRefresh({ base, local: base, upstream }), {
+      kind: "committed",
+      document: upstream,
+    });
+    assert.deepStrictEqual(PlanningStore.classifySpecRefresh({ base, local: upstream, upstream }), {
+      kind: "committed-converged",
+      document: upstream,
+    });
+    assert.deepStrictEqual(PlanningStore.classifySpecRefresh({ base, local, upstream }), {
+      kind: "reconciliation-required",
+      base,
+      local,
+      upstream,
+    });
+  });
+
   it.effect("round-trips a project, which starts with no plans", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
@@ -230,6 +285,69 @@ layer("PlanningStore", (it) => {
         provider: claude,
         model: "sonnet",
       });
+    }),
+  );
+
+  it.effect("walks past interleaved spec and plan revisions for the standing choice", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const commits = yield* CommitStore.CommitStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:16:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Keep this branch on Codex",
+        modelChoice: { provider: codex, model: "gpt-5.4" },
+        lastUsed: { provider: claude, model: "opus" },
+        createdAt: at("2026-08-03T00:17:00.000Z"),
+      });
+      const root = created.timeline[0]!.commitId;
+      const spec = yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: root,
+        expectedSpecRevisionCommitId: null,
+        document: {
+          goal: "Preserve the recorded branch model",
+          acceptanceCriteria: "Artifact edits do not carry model state.",
+        },
+        createdAt: at("2026-08-03T00:18:00.000Z"),
+      });
+      const plan = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: spec.commitId,
+        text: "# Continue with the recorded model",
+        createdAt: at("2026-08-03T00:19:00.000Z"),
+      });
+
+      assert.deepStrictEqual(
+        yield* store.standingModelChoice({
+          planId: created.plan.planId,
+          commitId: plan.commitId,
+        }),
+        { provider: codex, model: "gpt-5.4" },
+      );
+      const next = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: plan.commitId,
+        text: "Inherit across both artifacts",
+        lastUsed: { provider: claude, model: "sonnet" },
+        createdAt: at("2026-08-03T00:20:00.000Z"),
+      });
+      assert.deepStrictEqual(next.ranUnder, { provider: codex, model: "gpt-5.4" });
+
+      const path = yield* commits.listCommits({
+        historyId: created.plan.historyId,
+        visibility: "all",
+      });
+      for (const artifact of path.filter((commit) => commit.kind !== "message")) {
+        assert.ok(
+          typeof artifact.payload !== "object" ||
+            artifact.payload === null ||
+            !("ranUnder" in artifact.payload),
+        );
+      }
     }),
   );
 
@@ -537,6 +655,61 @@ layer("PlanningStore", (it) => {
 
       const signals = yield* Fiber.join(changes);
       assert.strictEqual(signals.length, 1);
+    }),
+  );
+
+  it.effect("drafts a blank plan's spec and guards later edits with the path revision", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-03T00:00:00.000Z"),
+      });
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Plan from a blank contract",
+        lastUsed: null,
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      assert.strictEqual(created.spec, null);
+
+      const revision = yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        expectedSpecRevisionCommitId: null,
+        document: {
+          goal: "Sidebar remains navigable",
+          acceptanceCriteria: "Users can change projects without leaving the planning space.",
+        },
+        createdAt: at("2026-08-03T00:02:00.000Z"),
+      });
+      assert.strictEqual(revision.authorKind, "human");
+      assert.strictEqual(revision.cause, "direct");
+
+      const before = yield* store.getSpecAt({
+        planId: created.plan.planId,
+        commitId: root.commitId,
+      });
+      assert.strictEqual(before, null);
+
+      const current = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(current.spec?.revisionCommitId, revision.commitId);
+      assert.strictEqual(current.spec?.document.goal, "Sidebar remains navigable");
+
+      const stale = yield* Effect.flip(
+        store.saveSpecRevision({
+          planId: created.plan.planId,
+          parentCommitId: revision.commitId,
+          expectedSpecRevisionCommitId: null,
+          document: { goal: "Stale edit", acceptanceCriteria: "Must not land." },
+          createdAt: at("2026-08-03T00:03:00.000Z"),
+        }),
+      );
+      assert.strictEqual(stale._tag, "SpecRevisionOutdatedError");
+
+      const unchanged = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+      assert.strictEqual(unchanged.spec?.revisionCommitId, revision.commitId);
     }),
   );
 
@@ -1904,18 +2077,22 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(path.length, 1);
       const root = path[0]!;
       assert.deepStrictEqual([...root.parents], []);
-      assert.strictEqual(root.kind, "issue-revision");
+      assert.strictEqual(root.kind, "spec-revision");
       assert.strictEqual(root.authorKind, "human");
       assert.strictEqual(root.published, true);
 
       assert.deepStrictEqual(
         imported.detail.timeline.map((item) => item._tag),
-        ["issue-revision"],
+        ["spec-revision"],
       );
       const item = imported.detail.timeline[0]!;
-      assert.ok(item._tag === "issue-revision");
-      assert.strictEqual(item.title, "Issue Import");
-      assert.strictEqual(item.description, "Import an issue as the root of a plan.");
+      assert.ok(item._tag === "spec-revision");
+      assert.strictEqual(item.cause, "import");
+      assert.strictEqual(item.issueId, "M-101");
+      assert.deepStrictEqual(imported.detail.spec?.document, {
+        goal: "Issue Import",
+        acceptanceCriteria: "Import an issue as the root of a plan.",
+      });
 
       const origins = yield* originRows("M-101");
       assert.deepStrictEqual(origins, [
@@ -1931,6 +2108,81 @@ layer("PlanningStore", (it) => {
       // The plan appears in the tree, published from birth.
       const row = yield* treeRow(imported.detail.plan.planId);
       assert.strictEqual(row?.hasPublishedCommits, true);
+    }),
+  );
+
+  it.effect("derives tracker baselines from ancestry and records refresh provenance", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const project = yield* seedProject("2026-08-08T01:00:00.000Z");
+      const imported = yield* importIssue({
+        projectId: project.projectId,
+        issueId: "M-refresh",
+        title: "Original",
+        description: "Tracker base",
+      });
+      const root = imported.detail.timeline[0]!;
+
+      const prepared = yield* store.prepareSpecRefresh({
+        planId: imported.detail.plan.planId,
+        parentCommitId: root.commitId,
+      });
+      assert.strictEqual(prepared.origin?.issueId, "M-refresh");
+      assert.deepStrictEqual(prepared.upstreamBaseline, {
+        goal: "Original",
+        acceptanceCriteria: "Tracker base",
+      });
+
+      const refreshed = yield* store.saveTrackerSpecRevision({
+        planId: imported.detail.plan.planId,
+        parentCommitId: root.commitId,
+        expectedSpecRevisionCommitId: root.commitId,
+        document: { goal: "Updated", acceptanceCriteria: "New tracker text" },
+        issueId: "M-refresh",
+        sourceKind: "tracker-refresh",
+        createdAt: at("2026-08-08T01:02:00.000Z"),
+      });
+      assert.strictEqual(refreshed.cause, "refresh");
+
+      const local = yield* store.saveSpecRevision({
+        planId: imported.detail.plan.planId,
+        parentCommitId: refreshed.commitId,
+        expectedSpecRevisionCommitId: refreshed.commitId,
+        document: { goal: "Updated", acceptanceCriteria: "Local clarification" },
+        createdAt: at("2026-08-08T01:03:00.000Z"),
+      });
+      const afterLocal = yield* store.prepareSpecRefresh({
+        planId: imported.detail.plan.planId,
+        parentCommitId: local.commitId,
+      });
+      assert.deepStrictEqual(afterLocal.local?.document, {
+        goal: "Updated",
+        acceptanceCriteria: "Local clarification",
+      });
+      assert.deepStrictEqual(afterLocal.upstreamBaseline, {
+        goal: "Updated",
+        acceptanceCriteria: "New tracker text",
+      });
+
+      const reconciled = yield* store.saveTrackerSpecRevision({
+        planId: imported.detail.plan.planId,
+        parentCommitId: local.commitId,
+        expectedSpecRevisionCommitId: local.commitId,
+        document: { goal: "Updated", acceptanceCriteria: "Resolved wording" },
+        issueId: "M-refresh",
+        sourceKind: "tracker-reconciliation",
+        upstream: { goal: "Updated", acceptanceCriteria: "Newest tracker text" },
+        createdAt: at("2026-08-08T01:04:00.000Z"),
+      });
+      assert.strictEqual(reconciled.cause, "reconciliation");
+      const afterReconciliation = yield* store.prepareSpecRefresh({
+        planId: imported.detail.plan.planId,
+        parentCommitId: reconciled.commitId,
+      });
+      assert.deepStrictEqual(afterReconciliation.upstreamBaseline, {
+        goal: "Updated",
+        acceptanceCriteria: "Newest tracker text",
+      });
     }),
   );
 

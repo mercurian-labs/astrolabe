@@ -22,6 +22,16 @@ const handlers = {
       });
       return { saved: true as const };
     }),
+  save_spec_revision: (input) =>
+    Effect.gen(function* () {
+      const invocation = yield* McpInvocationContext.McpInvocationContext;
+      const assistant = yield* PlanningAssistant;
+      yield* assistant.saveSpecRevisionFromThread({
+        threadId: invocation.threadId,
+        document: input.document,
+      });
+      return { saved: true as const };
+    }),
   save_implement_proposal: (input) =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
@@ -40,6 +50,13 @@ const handlers = {
       const assistant = yield* PlanningAssistant;
       const text = yield* assistant.readPlanFromThread({ threadId: invocation.threadId });
       return { text };
+    }),
+  read_spec: () =>
+    Effect.gen(function* () {
+      const invocation = yield* McpInvocationContext.McpInvocationContext;
+      const assistant = yield* PlanningAssistant;
+      const spec = yield* assistant.readSpecFromThread({ threadId: invocation.threadId });
+      return { spec };
     }),
 } satisfies Parameters<typeof PlanningToolkit.toLayer>[0];
 

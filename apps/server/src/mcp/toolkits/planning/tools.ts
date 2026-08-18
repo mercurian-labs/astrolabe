@@ -14,6 +14,7 @@ import {
   PlanningAssistant,
   PlanningTurnNotFoundError,
 } from "../../../mercurian/assistant/PlanningAssistant.ts";
+import { SpecDocument } from "@t3tools/contracts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const dependencies = [McpInvocationContext.McpInvocationContext, PlanningAssistant];
@@ -26,6 +27,12 @@ export const SavePlanRevisionInput = Schema.Struct({
 export const SavePlanRevisionResult = Schema.Struct({
   saved: Schema.Literal(true),
 });
+
+export const SaveSpecRevisionInput = Schema.Struct({
+  /** Complete prose fields: Goal / user story and Acceptance criteria. */
+  document: SpecDocument,
+});
+export const SaveSpecRevisionResult = Schema.Struct({ saved: Schema.Literal(true) });
 
 export const SaveImplementProposalInput = Schema.Struct({
   repositories: Schema.Array(Schema.String),
@@ -46,9 +53,11 @@ export const ReadPlanResult = Schema.Struct({
   /** The plan document's current text. Empty is a real state. */
   text: Schema.String,
 });
+export const ReadSpecResult = Schema.Struct({ spec: Schema.NullOr(SpecDocument) });
 
 // Unlike an empty Struct, this emits the object-root inputSchema MCP clients require.
 const ReadPlanInput = Schema.Record(Schema.String, Schema.Never);
+const ReadSpecInput = Schema.Record(Schema.String, Schema.Never);
 
 export const SavePlanRevisionTool = Tool.make("save_plan_revision", {
   description:
@@ -59,6 +68,18 @@ export const SavePlanRevisionTool = Tool.make("save_plan_revision", {
   dependencies,
 })
   .annotate(Tool.Title, "Save plan revision")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+
+export const SaveSpecRevisionTool = Tool.make("save_spec_revision", {
+  description:
+    "Replace the spec artifact with the complete behavioral contract. Pass both prose fields: goal is the user story or intended outcome, not a short title; acceptanceCriteria contains the observable conditions for completion. The spec does not contain implementation approach. Call read_spec first.",
+  parameters: SaveSpecRevisionInput,
+  success: SaveSpecRevisionResult,
+  failure: PlanningTurnNotFoundError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Save spec revision")
   .annotate(Tool.Destructive, false)
   .annotate(Tool.OpenWorld, false);
 
@@ -88,8 +109,24 @@ export const ReadPlanTool = Tool.make("read_plan", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+export const ReadSpecTool = Tool.make("read_spec", {
+  description:
+    "Read the spec artifact at this conversation's current tip. Null means the plan was born without a contract. Use before save_spec_revision.",
+  parameters: ReadSpecInput,
+  success: ReadSpecResult,
+  failure: PlanningTurnNotFoundError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Read the spec")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const PlanningToolkit = Toolkit.make(
   SavePlanRevisionTool,
+  SaveSpecRevisionTool,
   SaveImplementProposalTool,
   ReadPlanTool,
+  ReadSpecTool,
 );

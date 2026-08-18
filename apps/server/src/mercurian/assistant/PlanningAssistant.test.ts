@@ -737,7 +737,7 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
-  it.effect("the MCP door writes at the turn's tip and keeps the chain linear", () =>
+  it.effect("the MCP artifact doors write at the turn's tip and keep the chain linear", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const store = yield* PlanningStore.PlanningStore;
@@ -758,30 +758,53 @@ describe("PlanningAssistant", () => {
         assistant.saveRevisionFromThread({ threadId: ThreadId.make("coding-thread"), text: "x" }),
       );
       assert.strictEqual(refused._tag, "PlanningTurnNotFoundError");
+      const refusedSpec = yield* Effect.flip(
+        assistant.saveSpecRevisionFromThread({
+          threadId: ThreadId.make("coding-thread"),
+          document: { goal: "No", acceptanceCriteria: "Must not land" },
+        }),
+      );
+      assert.strictEqual(refusedSpec._tag, "PlanningTurnNotFoundError");
 
-      // The turn's own thread revises mid-turn, then reads back what it wrote.
+      // The turn's own thread revises both artifacts mid-turn, then reads back
+      // what it wrote from the newly advanced tip.
+      assert.strictEqual(yield* assistant.readSpecFromThread({ threadId: session.threadId }), null);
+      yield* assistant.saveSpecRevisionFromThread({
+        threadId: session.threadId,
+        document: { goal: "Behavior", acceptanceCriteria: "The sidebar is resizable." },
+      });
       yield* assistant.saveRevisionFromThread({
         threadId: session.threadId,
         text: "# Revised by the assistant",
       });
       const readBack = yield* assistant.readPlanFromThread({ threadId: session.threadId });
       assert.strictEqual(readBack, "# Revised by the assistant");
+      assert.deepStrictEqual(yield* assistant.readSpecFromThread({ threadId: session.threadId }), {
+        goal: "Behavior",
+        acceptanceCriteria: "The sidebar is resizable.",
+      });
 
       yield* harness.emit(
         runtimeEvent(session.threadId, { type: "turn.completed", payload: { state: "completed" } }),
       );
       yield* Queue.take(frames); // turn-settled
 
-      // The revision parents on the human message; the settled reply parents
-      // on the revision: linear by construction.
+      // Spec, plan, then response are ordered in one ancestry chain.
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
-      const [message, revision, reply] = snapshot.timeline;
+      const [message, specRevision, revision, reply] = snapshot.timeline;
+      assert.ok(specRevision !== undefined && specRevision._tag === "spec-revision");
+      assert.strictEqual(specRevision.authorKind, "assistant");
+      assert.deepStrictEqual([...specRevision.parents], [message!.commitId]);
       assert.ok(revision !== undefined && revision._tag === "plan-revision");
       assert.strictEqual(revision.authorKind, "assistant");
-      assert.deepStrictEqual([...revision.parents], [message!.commitId]);
+      assert.deepStrictEqual([...revision.parents], [specRevision.commitId]);
       assert.ok(reply !== undefined && reply._tag === "message");
       assert.deepStrictEqual([...reply.parents], [revision.commitId]);
       assert.strictEqual(snapshot.planText, "# Revised by the assistant");
+      assert.deepStrictEqual(snapshot.spec?.document, {
+        goal: "Behavior",
+        acceptanceCriteria: "The sidebar is resizable.",
+      });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
@@ -843,6 +866,50 @@ describe("PlanningAssistant", () => {
       assert.ok(resumeInput.includes("Reply to this message:\nTry another direction"));
       // The other branch's reply is not on this path.
       assert.ok(!resumeInput.includes("Answer one"));
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("includes a standalone human spec revision in the next turn input", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const revision = yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        expectedSpecRevisionCommitId: null,
+        document: {
+          goal: "Keep the revised navigation contract",
+          acceptanceCriteria: "The sidebar preserves the active project while it resizes.",
+        },
+        createdAt: at("2026-08-08T00:01:00.000Z"),
+      });
+      const message = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: revision.commitId,
+        text: "What should change in the plan?",
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:02:00.000Z"),
+      });
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: message.commitId,
+        text: message.text,
+      });
+
+      yield* Queue.take(harness.startSessions);
+      const turn = yield* Queue.take(harness.sendTurns);
+      const input = turn.input ?? "";
+      assert.ok(input.includes("[The person revised the spec.]"));
+      assert.ok(input.includes("Goal / user story:\nKeep the revised navigation contract"));
+      assert.ok(
+        input.includes(
+          "Acceptance criteria:\n---\nThe sidebar preserves the active project while it resizes.",
+        ),
+      );
+      assert.ok(input.includes("Reply to this message:\nWhat should change in the plan?"));
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 

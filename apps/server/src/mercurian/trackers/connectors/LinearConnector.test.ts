@@ -66,6 +66,8 @@ const sentBody = (request: HttpClientRequest.HttpClientRequest | null) => {
 const issuesBody = (nodes: ReadonlyArray<unknown>, pageInfo: unknown) =>
   Response.json({ data: { issues: { nodes, pageInfo } } });
 
+const issueBody = (issue: unknown) => Response.json({ data: { issue } });
+
 it.effect("sends only query documents — a mutation cannot enter this file", () =>
   Effect.sync(() => {
     for (const document of LinearConnector.LINEAR_GRAPHQL_DOCUMENTS) {
@@ -241,5 +243,29 @@ it.effect("hands the tracker its own search and its own cursor", () =>
         assert.isNotNull(body.variables.filter);
       }),
     ),
+  ),
+);
+
+it.effect("reads one issue by its tracker identifier", () =>
+  runWith(
+    {
+      respond: () =>
+        issueBody({
+          identifier: "M-109",
+          title: "Specs",
+          description: "A first-class contract.",
+          url: "https://linear.app/mercurian/issue/M-109/specs",
+          state: { name: "In Progress" },
+        }),
+    },
+    (connector) =>
+      connector.getIssue("lin_api_test", "M-109").pipe(
+        Effect.map((issue) => {
+          const body = sentBody(seen.request);
+          assert.strictEqual(body.query, LinearConnector.LINEAR_ISSUE_DOCUMENT);
+          assert.strictEqual(body.variables.id, "M-109");
+          assert.strictEqual(issue?.title, "Specs");
+        }),
+      ),
   ),
 );

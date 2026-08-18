@@ -13,6 +13,7 @@ import {
   confirmPayload,
   existingSplitsAt,
   implementDisabledReason,
+  implementFlowAction,
   partitionProposal,
 } from "./splits.logic";
 
@@ -121,5 +122,14 @@ describe("split proposal logic", () => {
     expect(
       implementDisabledReason({ turnActive: false, planTextEmpty: true, isDraft: false }),
     ).toContain("Write a plan");
+  });
+
+  it("routes the stale-plan warning before readiness without changing the ordinary path", () => {
+    expect(implementFlowAction({ kind: "invoke", planMayBeStale: true })).toBe("show-warning");
+    expect(implementFlowAction({ kind: "review-plan" })).toBe("show-plan");
+    expect(implementFlowAction({ kind: "continue-anyway" })).toBe("evaluate-readiness");
+    expect(implementFlowAction({ kind: "invoke", planMayBeStale: false })).toBe(
+      "evaluate-readiness",
+    );
   });
 });

@@ -13,7 +13,7 @@
  *
  * @module PlanningPrompt
  */
-import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
+import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS, type SpecDocument } from "@t3tools/contracts";
 
 export interface PlanningRepositoryRoot {
   readonly name: string;
@@ -41,7 +41,9 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     "",
     "Ground your replies in the project's repositories. Your filesystem access is read-only — read, search, and list freely; never attempt to run commands or modify files, and do not propose doing so.",
     "",
-    "The plan document is the one artifact you can change, through exactly one door: the `save_plan_revision` tool, which replaces the plan's whole text. Use `read_plan` first so you revise what is actually there. Never claim to have edited the plan without having called `save_plan_revision`.",
+    "There are two first-class artifacts. The spec has two prose fields: Goal / user story describes the outcome and behavioral context, while Acceptance criteria records the observable conditions that make it complete. The plan describes implementation approach.",
+    "Revise them only through their artifact doors: use `read_spec` then `save_spec_revision` for the complete spec, and `read_plan` then `save_plan_revision` for the complete plan. A statement in your response does not change an artifact; never claim a change without a successful save tool call.",
+    "When discovery changes the contract, save the spec directly and then reconcile the plan in this same turn when its approach is affected. You may suggest a separate planning space, but only the person can create one, fork, or merge.",
     "When you need a decision from the person you are planning with, ask a structured question with the question tool available to you instead of guessing.",
   ];
 
@@ -79,7 +81,8 @@ export type TranscriptEntry =
       readonly text: string;
       readonly interrupted?: boolean;
     }
-  | { readonly kind: "plan-revision"; readonly author: "human" | "assistant" };
+  | { readonly kind: "plan-revision"; readonly author: "human" | "assistant" }
+  | { readonly kind: "spec-revision"; readonly author: "human" | "assistant" };
 
 /**
  * Room left for the transcript after the appendix and the current message
@@ -97,14 +100,16 @@ export function transcriptPreamble(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
   /** The plan artifact's current text along this path. `""` renders as empty. */
   readonly planText: string;
+  readonly spec: SpecDocument | null;
   /** Characters already spoken for: appendix + the current message. */
   readonly reservedChars: number;
 }): string {
   const rendered = input.entries.map((entry) => {
-    if (entry.kind === "plan-revision") {
+    if (entry.kind !== "message") {
+      const artifact = entry.kind === "plan-revision" ? "plan" : "spec";
       return entry.author === "human"
-        ? "[The person edited the plan directly.]"
-        : "[You revised the plan.]";
+        ? `[The person revised the ${artifact}.]`
+        : `[You revised the ${artifact}.]`;
     }
     const speaker = entry.author === "human" ? "Person" : "You";
     const suffix = entry.interrupted === true ? "\n[This reply was stopped mid-response.]" : "";
@@ -115,12 +120,17 @@ export function transcriptPreamble(input: {
     input.planText.length === 0
       ? "The plan document is currently empty."
       : `The plan document currently reads:\n---\n${input.planText}\n---`;
+  const specSection =
+    input.spec === null
+      ? "The spec artifact does not exist yet."
+      : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
 
   const budget = Math.max(
     0,
     PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
       input.reservedChars -
       planSection.length -
+      specSection.length -
       TRANSCRIPT_FRAMING_MARGIN,
   );
 
@@ -142,7 +152,7 @@ export function transcriptPreamble(input: {
       ? "You are resuming a planning conversation. Here is what has happened so far:"
       : `You are resuming a planning conversation. Its first ${elided} entries are elided for length; here is the rest:`;
 
-  return [header, "", kept.join("\n\n"), "", planSection].join("\n");
+  return [header, "", kept.join("\n\n"), "", specSection, "", planSection].join("\n");
 }
 
 /**

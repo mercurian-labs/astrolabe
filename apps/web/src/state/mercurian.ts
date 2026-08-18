@@ -7,6 +7,8 @@ import type {
   MercurianImportPlanInput,
   MercurianConfirmSplitsInput,
   MercurianSavePlanRevisionInput,
+  MercurianSaveSpecRevisionInput,
+  MercurianRefreshSpecInput,
   MercurianTryImplementInput,
   PlanDetail,
   PlanId,
@@ -165,6 +167,16 @@ export function useSavePlanRevision() {
   return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
 }
 
+export function useSaveSpecRevision() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.saveSpecRevision);
+  return useCallback((input: MercurianSaveSpecRevisionInput) => run(input), [run]);
+}
+
+export function useRefreshSpec() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.refreshSpec);
+  return useCallback((input: MercurianRefreshSpecInput) => run(input), [run]);
+}
+
 export function useTryImplement() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.tryImplement);
   return useCallback((input: MercurianTryImplementInput) => run(input), [run]);
@@ -226,6 +238,14 @@ export function useAnswerPlanningQuestion() {
  */
 export function useGetPlanTextAt() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.getPlanTextAt);
+  return useCallback(
+    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
+    [run],
+  );
+}
+
+export function useGetSpecAt() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.getSpecAt);
   return useCallback(
     (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
     [run],

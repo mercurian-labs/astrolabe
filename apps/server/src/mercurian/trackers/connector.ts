@@ -63,6 +63,11 @@ export interface TrackerConnector {
     token: string,
     query: TrackerIssueQuery,
   ) => Effect.Effect<TrackerIssuePage, TrackerConnectorRefusal>;
+  /** Read one origin live for an explicit refresh. Null means it no longer exists. */
+  readonly getIssue: (
+    token: string,
+    issueId: string,
+  ) => Effect.Effect<TrackerIssue | null, TrackerConnectorRefusal>;
 }
 
 /**

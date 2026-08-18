@@ -66,8 +66,24 @@ export const LINEAR_ISSUES_DOCUMENT = `
   }
 `;
 
+export const LINEAR_ISSUE_DOCUMENT = `
+  query MercurianTrackerIssue($id: String!) {
+    issue(id: $id) {
+      identifier
+      title
+      description
+      url
+      state { name }
+    }
+  }
+`;
+
 /** Every document this connector can send. The pull-only test reads this. */
-export const LINEAR_GRAPHQL_DOCUMENTS = [LINEAR_PROBE_DOCUMENT, LINEAR_ISSUES_DOCUMENT] as const;
+export const LINEAR_GRAPHQL_DOCUMENTS = [
+  LINEAR_PROBE_DOCUMENT,
+  LINEAR_ISSUES_DOCUMENT,
+  LINEAR_ISSUE_DOCUMENT,
+] as const;
 
 /**
  * The operation types a GraphQL document declares, in source order.
@@ -130,6 +146,21 @@ const LinearIssuesResponse = Schema.Struct({
       }),
     ),
   ),
+  errors: Schema.optional(Schema.NullOr(Schema.Array(LinearGraphQLError))),
+});
+
+const LinearIssue = Schema.Struct({
+  identifier: Schema.String,
+  title: Schema.optional(Schema.NullOr(Schema.String)),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
+  url: Schema.String,
+  state: Schema.optional(
+    Schema.NullOr(Schema.Struct({ name: Schema.optional(Schema.NullOr(Schema.String)) })),
+  ),
+});
+
+const LinearIssueResponse = Schema.Struct({
+  data: Schema.optional(Schema.NullOr(Schema.Struct({ issue: Schema.NullOr(LinearIssue) }))),
   errors: Schema.optional(Schema.NullOr(Schema.Array(LinearGraphQLError))),
 });
 
@@ -270,5 +301,30 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return { kind: "linear", probe, listIssues } satisfies TrackerConnector;
+  const getIssue: TrackerConnector["getIssue"] = Effect.fn("LinearConnector.getIssue")(function* (
+    token: string,
+    issueId: string,
+  ) {
+    const response = yield* send(token, LinearIssueResponse, {
+      query: LINEAR_ISSUE_DOCUMENT,
+      variables: { id: issueId },
+    });
+    if (response.errors && response.errors.length > 0) {
+      return yield* Effect.fail(
+        isAuthError(response.errors) ? trackerAuthRefusal : trackerUnreachableRefusal,
+      );
+    }
+    const issue = response.data?.issue;
+    return issue === null || issue === undefined
+      ? null
+      : {
+          id: issue.identifier.trim(),
+          title: issue.title ?? "",
+          description: issue.description ?? "",
+          url: issue.url.trim(),
+          status: issue.state?.name ?? "",
+        };
+  });
+
+  return { kind: "linear", probe, listIssues, getIssue } satisfies TrackerConnector;
 });

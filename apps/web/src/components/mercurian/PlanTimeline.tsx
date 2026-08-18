@@ -145,36 +145,35 @@ export function PlanTimeline({
                         {formatChatTimestampTooltip(item.createdAt, timestampFormat)}
                       </TooltipPopup>
                     </Tooltip>
+                    {item.generatedBy === undefined ? null : (
+                      <ModelAttribution selection={item.generatedBy} providers={providers} />
+                    )}
                   </div>
-                  {item.generatedBy === undefined ? null : (
-                    <ModelAttribution selection={item.generatedBy} providers={providers} />
-                  )}
                   {item.interrupted === true ? <InterruptedBadge /> : null}
                   {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                 </div>
               </li>
             );
           }
-          if (item._tag === "issue-revision") {
-            // The imported issue: a card rather than a one-liner, because it
-            // has a body — and because this is where the planning space
-            // literally begins.
+          if (item._tag === "spec-revision") {
+            const label =
+              item.cause === "import"
+                ? `Spec imported${item.issueId === undefined ? "" : ` from ${item.issueId}`}`
+                : item.cause === "refresh"
+                  ? `Spec refreshed${item.issueId === undefined ? "" : ` from ${item.issueId}`}`
+                  : item.cause === "reconciliation"
+                    ? "Spec reconciled with upstream"
+                    : item.authorKind === "assistant"
+                      ? "Assistant revised the spec"
+                      : "You revised the spec";
             return (
               <li
                 key={item.commitId}
-                className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+                className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/70"
               >
-                <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-                  <CircleDotIcon className="size-3.5 shrink-0" />
-                  <span>Imported issue</span>
-                  <span>{formatRelativeTimeLabel(item.createdAt)}</span>
-                </div>
-                <p className="text-sm font-medium text-foreground">{item.title}</p>
-                {item.description.length === 0 ? null : (
-                  <div className="mt-1">
-                    <MessageText text={item.description} />
-                  </div>
-                )}
+                <CircleDotIcon className="size-3.5 shrink-0" />
+                <span>{label}</span>
+                <span>{formatRelativeTimeLabel(item.createdAt)}</span>
               </li>
             );
           }
