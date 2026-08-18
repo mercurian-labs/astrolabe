@@ -8,6 +8,15 @@ _Generated from the redone Goal/AC for Linear issue M-110 (2026-08-14). Grounded
 
 **Vocabulary:** the product says **ready to implement**; "split" and "atomic" are internal words for code, payloads, and this document, and never reach a surface (Splits, resolved 2026-08-12).
 
+## Addendum — regrounded 2026-08-14 after rebase onto `18ee435b3`
+
+The branch was rebased onto origin/main after M-130 (mock provider), M-109 (Specs), and M-128 (per-branch planning model) merged. Where this addendum conflicts with the sections below, the addendum wins.
+
+1. **M-109 is built, and the commit-kind claims still hold.** `spec-revision` joined `CommitKind`, aliased at the store boundary onto the stored `issue-revision` value (`CommitStore.ts:258–267`), so the SQL commit-kind CHECK in `001_CommitGraph.ts` is unchanged and migration **010** remains the next free slot. The freshness warning is real: `StalePlanWarning.tsx` and `implementFlowAction` in `splits.logic.ts` already gate the implement flow ahead of the readiness gate. M-110 wires the draft downstream of that flow exactly as planned — build none of it, break none of it.
+2. **M-128 replaced the planning-model surface.** `PlanningModelSetting.logic.ts`/`.tsx` are gone; planning model choice now lives in `PlanningModel.logic.ts`, `PlanModelPicker.{logic.ts,tsx}`, and `PlanModelChoice.logic.ts`. The shared utilities the session draft reuses — `deriveProviderInstanceEntries` (`apps/web/src/providerInstances.ts`), `getAppModelOptionsForInstance` (`apps/web/src/modelSelection.ts`), `sortModelsForProviderInstance` (`apps/web/src/modelOrdering.ts`) — are unchanged. The exact-instance `ModelSelection` schema lives in `packages/contracts/src/orchestration.ts` (not `server.ts`).
+3. **Rendering surfaces grew.** `planReducer.ts` now carries `spec`, and `PlanTimeline`/`DagExplorer`/`PlanningSpace` gained spec-revision and per-branch model rendering; session rendering integrates beside those cases rather than assuming the pre-M-109 shapes.
+4. **M-130 adds a mock provider** (`MockPlanningModelSeed`) for dev-mode planning; no design impact on sessions, which still gate on the machine's installed agent.
+
 ## Conventions Detected
 
 | Convention                                                                                                                                                                                                        | Evidence                                                                                                                                                       | Confidence |
