@@ -8,6 +8,7 @@ import {
   PlanTurnId,
   type PlanDetail,
   type PlanImplementReady,
+  type PlanCodingSessionRecord,
   type PlanQuestion,
   type PlanStreamItem,
   type PlanTimelineItem,
@@ -50,10 +51,24 @@ const snapshot: PlanDetail = {
   timeline: [message("commit-1", 1, "Reshape the sidebar")],
   snapshotSequence: 1,
   readyCommits: [],
+  codingSessions: [],
 };
 
 const fold = (items: ReadonlyArray<PlanStreamItem>) =>
   items.reduce(applyPlanStreamItem, EMPTY_PLAN_STATE);
+
+const session: PlanCodingSessionRecord = {
+  commitId: MercurianCommitId.make("session-1"),
+  repositoryId: MercurianRepositoryId.make("repo-1"),
+  threadId: "thread-1" as PlanCodingSessionRecord["threadId"],
+  branch: "mercurian/sidebar-12345678",
+  worktreePath: "/tmp/sidebar",
+  baseRef: "main",
+  startedAt: "2026-08-03T01:00:00.000Z",
+  endedAt: null,
+  outcome: null,
+  prUrl: null,
+};
 
 describe("applyPlanStreamItem", () => {
   it("takes the snapshot as the whole planning space", () => {
@@ -149,6 +164,54 @@ describe("applyPlanStreamItem", () => {
     ]);
     expect(state.detail).toEqual(replacement);
     expect(state.synchronized).toBe(true);
+  });
+
+  it("replaces coding-session side facts from snapshots and keyed frames", () => {
+    const fromSnapshot = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, codingSessions: [session] } },
+    ]);
+    expect(fromSnapshot.codingSessions.get(session.commitId)).toEqual(session);
+
+    const ended = {
+      ...session,
+      endedAt: "2026-08-03T02:00:00.000Z",
+      outcome: "completed" as const,
+    };
+    const replaced = applyPlanStreamItem(fromSnapshot, {
+      kind: "coding-sessions",
+      sessions: [ended],
+    });
+    const replayed = applyPlanStreamItem(replaced, {
+      kind: "coding-sessions",
+      sessions: [ended],
+    });
+    expect(replayed.codingSessions.size).toBe(1);
+    expect(replayed.codingSessions.get(session.commitId)).toEqual(ended);
+    expect(replayed.detail?.codingSessions).toEqual([ended]);
+  });
+
+  it("accepts a session frame before its leaf and keeps plan text unchanged", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, planText: "# Keep me" } },
+      { kind: "coding-sessions", sessions: [session] },
+      {
+        kind: "commit",
+        sequence: 2,
+        item: {
+          _tag: "coding-session",
+          ...commitFields("session-1", 2, ["commit-1"]),
+          repositoryId: session.repositoryId,
+          repositoryName: "server",
+          planRevisionCommitId: MercurianCommitId.make("revision-1"),
+        },
+      },
+      { kind: "synchronized" },
+      { kind: "coding-sessions", sessions: [session] },
+    ]);
+    expect(state.detail?.planText).toBe("# Keep me");
+    expect(state.detail?.snapshotSequence).toBe(2);
+    expect(state.detail?.timeline.at(-1)?._tag).toBe("coding-session");
+    expect(state.codingSessions.size).toBe(1);
   });
 });
 

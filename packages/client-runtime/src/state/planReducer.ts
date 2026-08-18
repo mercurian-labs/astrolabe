@@ -7,6 +7,7 @@ import type {
   PlanInFlightTurn,
   PlanImplementProposal,
   PlanImplementReady,
+  PlanCodingSessionRecord,
   PlanStreamItem,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
@@ -20,6 +21,7 @@ export interface PlanSubscriptionState {
   readonly detail: PlanDetail | null;
   /** Ready verdicts are side-facts keyed independently of timeline arrival. */
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly codingSessions: ReadonlyMap<MercurianCommitId, PlanCodingSessionRecord>;
   readonly synchronized: boolean;
   /**
    * The last `turn-refused` reason, cleared the moment a turn starts or a
@@ -35,6 +37,7 @@ export interface PlanSubscriptionState {
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   detail: null,
   readyCommits: new Map(),
+  codingSessions: new Map(),
   synchronized: false,
   turnRefusal: null,
   implementFailure: null,
@@ -103,12 +106,25 @@ export function applyPlanStreamItem(
       return {
         detail: item.snapshot,
         readyCommits: new Map(item.snapshot.readyCommits.map((ready) => [ready.commitId, ready])),
+        codingSessions: new Map(
+          item.snapshot.codingSessions.map((session) => [session.commitId, session]),
+        ),
         synchronized: state.synchronized,
         turnRefusal: null,
         implementFailure: null,
       };
     case "synchronized":
       return { ...state, synchronized: true };
+    case "coding-sessions": {
+      const codingSessions = new Map(item.sessions.map((session) => [session.commitId, session]));
+      return {
+        ...state,
+        codingSessions,
+        ...(state.detail === null
+          ? {}
+          : { detail: { ...state.detail, codingSessions: item.sessions } }),
+      };
+    }
     case "commit": {
       const detail = state.detail;
       if (detail === null || item.sequence <= detail.snapshotSequence) return state;

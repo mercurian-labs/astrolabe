@@ -24,7 +24,9 @@ import type {
   PlanTimelineEvent,
   PlanTimelineItem,
   PlanTreeRow,
+  PlanCodingSession,
 } from "./PlanningStore.ts";
+import { toWireCodingSessionRecord } from "../codingSessions/wire.ts";
 
 const iso = (value: DateTime.Utc) => DateTime.formatIso(value);
 
@@ -43,7 +45,9 @@ export const toWirePlanShell = (plan: Plan): Contracts.PlanShell => ({
   updatedAt: iso(plan.updatedAt),
 });
 
-const toWirePlanCommitFields = (commit: PlanMessage | PlanRevision | PlanSpecRevision) => ({
+const toWirePlanCommitFields = (
+  commit: PlanMessage | PlanRevision | PlanSpecRevision | PlanCodingSession,
+) => ({
   commitId: MercurianCommitId.make(commit.commitId),
   sequence: commit.sequence,
   parents: commit.parents.map((parentId) => MercurianCommitId.make(parentId)),
@@ -78,6 +82,15 @@ export const toWirePlanSpecRevision = (revision: PlanSpecRevision): Contracts.Pl
   ...(revision.issueId === undefined ? {} : { issueId: revision.issueId }),
 });
 
+export const toWirePlanCodingSession = (
+  session: PlanCodingSession,
+): Contracts.PlanCodingSession => ({
+  ...toWirePlanCommitFields(session),
+  repositoryId: session.repositoryId,
+  repositoryName: session.repositoryName,
+  planRevisionCommitId: MercurianCommitId.make(session.planRevisionCommitId),
+});
+
 export const toWirePlanSpecAt = (spec: PlanSpecAt): Contracts.PlanSpecAt => ({
   revisionCommitId: MercurianCommitId.make(spec.revisionCommitId),
   document: spec.document,
@@ -89,6 +102,9 @@ export const toWirePlanTimelineItem = (item: PlanTimelineItem): Contracts.PlanTi
   }
   if (item._tag === "spec-revision") {
     return { _tag: "spec-revision", ...toWirePlanSpecRevision(item) };
+  }
+  if (item._tag === "coding-session") {
+    return { _tag: "coding-session", ...toWirePlanCodingSession(item) };
   }
   return { _tag: "plan-revision", ...toWirePlanRevision(item) };
 };
@@ -104,6 +120,7 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
     ...ready,
     commitId: MercurianCommitId.make(ready.commitId),
   })),
+  codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
 });
 
 export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanStreamItem => ({
@@ -141,11 +158,10 @@ const IDLE_STATUS: PlanRowStatus = { isWorking: false, hasPendingInput: false };
 /**
  * A plan as a tree row — and the one place a row's status facts are composed.
  *
- * `isWorking` is a planning turn streaming right now and `hasPendingInput`
- * its structured question waiting, both read from the assistant runtime at
- * the subscription boundary — read-layer composition, never a cross-store
- * transaction (ADR 002 §4). M-114's coding sessions will contribute both
- * from the other store, composed here the same way.
+ * `isWorking` composes planning turns with live coding sessions, while
+ * `hasPendingInput` is the planning assistant's structured question state.
+ * Both are joined at the subscription boundary, never in a cross-store
+ * transaction (ADR 002 §4).
  *
  * The lifecycle facts beside them are already real: `archivedAt` is the plan's
  * own column, and `hasPublishedCommits` the store's per-read answer about its
@@ -154,19 +170,32 @@ const IDLE_STATUS: PlanRowStatus = { isWorking: false, hasPendingInput: false };
 export const toWirePlanTreeRow = (
   row: PlanTreeRow,
   status: PlanRowStatus = IDLE_STATUS,
+  codingSessions: ReadonlyArray<Contracts.PlanCodingSessionRecord> = [],
 ): Contracts.PlanTreeRow => ({
   ...toWirePlanShell(row),
   hasPendingInput: status.hasPendingInput,
   isWorking: status.isWorking,
   archivedAt: row.archivedAt === null ? null : iso(row.archivedAt),
   hasPublishedCommits: row.hasPublishedCommits,
+  codingSessions,
   ...(row.visitedAt === undefined ? {} : { visitedAt: iso(row.visitedAt) }),
+});
+
+export const composePlanRowStatus = (
+  status: PlanRowStatus | undefined,
+  sessions: ReadonlyArray<Contracts.PlanCodingSessionRecord>,
+): PlanRowStatus => ({
+  isWorking: (status?.isWorking ?? false) || sessions.some((session) => session.endedAt === null),
+  hasPendingInput: status?.hasPendingInput ?? false,
 });
 
 export const toWireTreeSnapshot = (
   snapshot: PlanningTreeSnapshot,
   statusByPlan?: ReadonlyMap<string, PlanRowStatus>,
+  sessionsByPlan?: ReadonlyMap<string, ReadonlyArray<Contracts.PlanCodingSessionRecord>>,
 ): Contracts.PlanningTreeSnapshot => ({
   projects: snapshot.projects.map(toWireProject),
-  plans: snapshot.plans.map((plan) => toWirePlanTreeRow(plan, statusByPlan?.get(plan.planId))),
+  plans: snapshot.plans.map((plan) =>
+    toWirePlanTreeRow(plan, statusByPlan?.get(plan.planId), sessionsByPlan?.get(plan.planId) ?? []),
+  ),
 });

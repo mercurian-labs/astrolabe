@@ -114,6 +114,8 @@ import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
+import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
@@ -1000,11 +1002,19 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.planningAssistant,
         }),
       ),
+      Layer.provide(
+        Layer.mock(CodingSessionService.CodingSessionService)({
+          start: () => Effect.die("CodingSessionService not stubbed in this test"),
+        }),
+      ),
       // Mercurian's stores, real but in-memory: they own their own database
       // file, so nothing here reaches t3code's store.
       Layer.provide(
         Layer.mergeAll(
-          PlanningStore.layer.pipe(Layer.provideMerge(RepositoryStore.layer)),
+          PlanningStore.layer.pipe(
+            Layer.provideMerge(CodingSessionStore.layer),
+            Layer.provideMerge(RepositoryStore.layer),
+          ),
           WorkspaceSettingsStore.layer,
           // Over a connector that reaches no network: the server suite is about
           // the wire, not about Linear.
@@ -4484,7 +4494,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     }).pipe(Effect.asVoid)
                   : Effect.void,
               ),
-              Stream.take(3),
+              Stream.take(4),
               Stream.runCollect,
             );
             // The artifact as of an earlier commit is the one thing the
@@ -4494,7 +4504,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               planId: created.plan.planId,
               commitId: created.timeline[0]!.commitId,
             });
-            const revisionEvent = items[2];
+            const revisionEvent = items[3];
             const atRevision =
               revisionEvent?.kind === "commit"
                 ? yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
@@ -4548,7 +4558,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ["message", "message"],
       );
       assert.equal(snapshot?.planText, "");
-      assert.deepEqual(result.items[1], { kind: "synchronized" });
+      assert.deepEqual(result.items[1], { kind: "coding-sessions", sessions: [] });
+      assert.deepEqual(result.items[2], { kind: "synchronized" });
 
       // The graph's shape rides along: the explorer draws the history from
       // these rather than from a second read.
@@ -4559,7 +4570,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
       assert.equal(snapshot?.timeline[0]?.published, false);
 
-      const event = result.items[2];
+      const event = result.items[3];
       assert.equal(event?.kind, "commit");
       if (event?.kind === "commit") {
         assert.equal(event.item._tag, "plan-revision");

@@ -67,6 +67,7 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
+  CodingSessionBlockedError,
   ConfirmSplitsBlockedError,
   ImplementBlockedError,
   MERCURIAN_WS_METHODS,
@@ -76,6 +77,8 @@ import {
   MercurianCancelImplementProposalInput,
   MercurianConfirmSplitsInput,
   MercurianConfirmSplitsResult,
+  MercurianStartCodingSessionInput,
+  MercurianStartCodingSessionResult,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
@@ -1007,6 +1010,19 @@ export const WsMercurianConfirmSplitsRpc = Rpc.make(MERCURIAN_WS_METHODS.confirm
   ]),
 });
 
+export const WsMercurianStartCodingSessionRpc = Rpc.make(MERCURIAN_WS_METHODS.startCodingSession, {
+  payload: MercurianStartCodingSessionInput,
+  success: MercurianStartCodingSessionResult,
+  error: Schema.Union([
+    PlanNotFoundError,
+    MercurianRepositoryNotFoundError,
+    PlanTurnActiveError,
+    CodingSessionBlockedError,
+    MercurianPlanningError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 export const WsMercurianCancelImplementProposalRpc = Rpc.make(
   MERCURIAN_WS_METHODS.cancelImplementProposal,
   {
@@ -1344,6 +1360,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRefreshSpecRpc,
   WsMercurianTryImplementRpc,
   WsMercurianConfirmSplitsRpc,
+  WsMercurianStartCodingSessionRpc,
   WsMercurianCancelImplementProposalRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,

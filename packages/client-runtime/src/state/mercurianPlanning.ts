@@ -102,6 +102,12 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
+    startCodingSession: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:start-coding-session",
+      tag: MERCURIAN_WS_METHODS.startCodingSession,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
     cancelImplementProposal: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:cancel-implement-proposal",
       tag: MERCURIAN_WS_METHODS.cancelImplementProposal,

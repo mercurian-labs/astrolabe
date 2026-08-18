@@ -34,6 +34,7 @@ import * as ProviderService from "../../provider/Services/ProviderService.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
+import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as WorkspaceSettingsStore from "../workspace/WorkspaceSettingsStore.ts";
@@ -196,6 +197,7 @@ const testLayer = (providers: ReadonlyArray<ServerProvider> = [providerSnapshot]
     Layer.provideMerge(
       Layer.mergeAll(
         PlanningStore.layer.pipe(
+          Layer.provideMerge(CodingSessionStore.layer),
           Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(stubProcessRunner))),
         ),
         WorkspaceSettingsStore.layer,

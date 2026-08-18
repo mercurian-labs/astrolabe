@@ -41,6 +41,7 @@ import {
   MercurianTrackerError,
   MercurianWorkspaceError,
   isConfirmSplitsBlockedError,
+  isCodingSessionBlockedError,
   isImplementBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
@@ -108,8 +109,12 @@ import {
   removePlanAttachments,
 } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
+import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
+import { toWireCodingSessionRecord } from "./mercurian/codingSessions/wire.ts";
 import {
   toWirePlanCommitEvent,
+  composePlanRowStatus,
   toWirePlanDetail,
   toWirePlanImport,
   toWirePlanMessage,
@@ -416,6 +421,8 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const codingSessionStore = yield* CodingSessionStore.CodingSessionStore;
+      const codingSessionService = yield* CodingSessionService.CodingSessionService;
       const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const trackerStore = yield* TrackerStore.TrackerStore;
@@ -1099,8 +1106,22 @@ const makeWsRpcLayer = (
       const loadPlanningTreeSnapshot = Effect.all([
         planningStore.getTreeSnapshot,
         planningAssistant.status,
+        codingSessionStore.listAll,
       ]).pipe(
-        Effect.map(([snapshot, status]) => toWireTreeSnapshot(snapshot, status)),
+        Effect.map(([snapshot, status, sessions]) => {
+          const composedStatus = new Map(status);
+          const byPlan = new Map<string, Array<ReturnType<typeof toWireCodingSessionRecord>>>();
+          for (const session of sessions) {
+            const entries = byPlan.get(session.planId) ?? [];
+            entries.push(toWireCodingSessionRecord(session));
+            byPlan.set(session.planId, entries);
+            composedStatus.set(
+              session.planId,
+              composePlanRowStatus(composedStatus.get(session.planId), entries),
+            );
+          }
+          return toWireTreeSnapshot(snapshot, composedStatus, byPlan);
+        }),
         Effect.tapError((cause) =>
           Effect.logError("mercurian planning tree snapshot load failed", { cause }),
         ),
@@ -1557,9 +1578,10 @@ const makeWsRpcLayer = (
               // tree's status facts within the same debounce.
               const changes = yield* Queue.unbounded<void>();
               yield* Effect.forkScoped(
-                Stream.merge(planningStore.changes, planningAssistant.changes).pipe(
-                  Stream.runForEach(() => Queue.offer(changes, undefined)),
-                ),
+                Stream.merge(
+                  Stream.merge(planningStore.changes, planningAssistant.changes),
+                  codingSessionStore.changes,
+                ).pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
                 { startImmediately: true },
               );
               const snapshot = yield* loadPlanningTreeSnapshot;
@@ -1949,6 +1971,23 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.startCodingSession]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.startCodingSession,
+            codingSessionService
+              .start(input)
+              .pipe(
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause) ||
+                  isMercurianRepositoryNotFoundError(cause) ||
+                  isPlanTurnActiveError(cause) ||
+                  isCodingSessionBlockedError(cause)
+                    ? cause
+                    : new MercurianPlanningError({ operation: "startCodingSession", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.cancelImplementProposal]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.cancelImplementProposal,
@@ -2116,6 +2155,14 @@ const makeWsRpcLayer = (
                 ),
                 { startImmediately: true },
               );
+              const sessionChanges = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                codingSessionStore.changes.pipe(
+                  Stream.filter((planId) => planId === input.planId),
+                  Stream.runForEach(() => Queue.offer(sessionChanges, undefined)),
+                ),
+                { startImmediately: true },
+              );
 
               // Turn frames attach with the same discipline: before the
               // snapshot read, so a delta landing while that query runs is
@@ -2182,6 +2229,14 @@ const makeWsRpcLayer = (
                     };
 
               const cursor = yield* Ref.make(opening.cursor);
+              const readSessionFrame = codingSessionStore.listForPlan(input.planId).pipe(
+                Effect.map((sessions) => ({
+                  kind: "coding-sessions" as const,
+                  sessions: sessions.map(toWireCodingSessionRecord),
+                })),
+                Effect.mapError(toPlanStreamError),
+              );
+              const openingSessionFrame = yield* readSessionFrame;
 
               // The change signal is not per-plan, so filtering *is* the
               // cursor query: a mutation on some other plan reads zero rows
@@ -2203,12 +2258,16 @@ const makeWsRpcLayer = (
               return Stream.concat(
                 Stream.fromIterable<PlanStreamItem>([
                   ...opening.items,
+                  openingSessionFrame,
                   { kind: "synchronized" as const },
                 ]),
                 // Turn frames are transport beside the commit events: no
                 // sequence, never resumable, and `synchronized` keeps meaning
                 // caught-up-on-commits (ADR 002 §3).
-                Stream.merge(liveStream, Stream.fromQueue(turnFrames)),
+                Stream.merge(
+                  Stream.merge(liveStream, Stream.fromQueue(turnFrames)),
+                  Stream.fromQueue(sessionChanges).pipe(Stream.mapEffect(() => readSessionFrame)),
+                ),
               );
             }),
             { "rpc.aggregate": "mercurian" },
