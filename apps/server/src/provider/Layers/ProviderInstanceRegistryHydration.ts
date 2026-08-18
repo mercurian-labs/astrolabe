@@ -13,12 +13,14 @@
  *      yet to an explicit `providerInstances` entry.
  *
  * This module bridges (2) into (1) and wires the resulting map into a
- * mutable registry. For every built-in driver whose id is not already
+ * mutable registry. For every effective driver whose id is not already
  * present in `providerInstances` (keyed on
  * `defaultInstanceIdForDriver(driverKind)` — literally the driver kind as a
- * routing slug), we synthesize an envelope from the legacy field. The
- * registry decodes both flavours through the same `configSchema` and ends
- * up with one uniform `ProviderInstance` per entry.
+ * routing slug), we synthesize an envelope from the legacy field. Drivers
+ * explicitly marked for bootstrapping may instead supply their default
+ * config when no legacy field exists. The registry decodes both flavours
+ * through the same `configSchema` and ends up with one uniform
+ * `ProviderInstance` per entry.
  *
  * Explicit `providerInstances` entries always win — users can already
  * override the legacy `providers.<kind>` blob by authoring a
@@ -51,8 +53,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "../builtInDrivers.ts";
+import { MockDriver } from "../Drivers/MockDriver.ts";
+import type { AnyProviderDriver } from "../ProviderDriver.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
 import { ProviderInstanceRegistryMutator } from "../Services/ProviderInstanceRegistryMutator.ts";
 import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistryLive.ts";
@@ -62,9 +67,10 @@ import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistry
  *
  * Strategy:
  *   1. Copy all explicit `settings.providerInstances` entries verbatim.
- *   2. For each built-in driver whose `defaultInstanceIdForDriver(id)` key
+ *   2. For each effective driver whose `defaultInstanceIdForDriver(id)` key
  *      is *not* already in the explicit map, synthesize an entry from the
- *      matching legacy `settings.providers.<kind>` blob.
+ *      matching legacy `settings.providers.<kind>` blob, or its default
+ *      config when `bootstrapWithoutSettings` is enabled.
  *
  * The returned map is the input the registry consumes; pure & exported
  * separately so the hydration logic can be exercised by unit tests
@@ -72,10 +78,11 @@ import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistry
  */
 export const deriveProviderInstanceConfigMap = (
   settings: ServerSettings,
+  drivers: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>> = BUILT_IN_DRIVERS,
 ): ProviderInstanceConfigMap => {
   const merged: Record<string, ProviderInstanceConfig> = { ...settings.providerInstances };
 
-  for (const driver of BUILT_IN_DRIVERS) {
+  for (const driver of drivers) {
     const instanceId = defaultInstanceIdForDriver(driver.driverKind);
     if (instanceId in merged) {
       // Explicit `providerInstances` entry for this slot — user-authored
@@ -91,6 +98,13 @@ export const deriveProviderInstanceConfigMap = (
     const legacyKey = driver.driverKind as keyof ServerSettings["providers"];
     const legacyConfig = settings.providers[legacyKey];
     if (legacyConfig === undefined) {
+      if (driver.metadata.bootstrapWithoutSettings !== true) {
+        continue;
+      }
+      merged[instanceId] = {
+        driver: driver.driverKind,
+        config: driver.defaultConfig(),
+      };
       continue;
     }
 
@@ -114,24 +128,30 @@ export const deriveProviderInstanceConfigMap = (
  * configs, so the only way the watcher could fail is a settings stream
  * tear-down, which logs and exits cleanly.
  */
-const SettingsWatcherLive = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const mutator = yield* ProviderInstanceRegistryMutator;
-    const serverSettings = yield* ServerSettingsService;
-    yield* serverSettings.streamChanges.pipe(
-      Stream.runForEach((next) =>
-        mutator
-          .reconcile(deriveProviderInstanceConfigMap(next))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
+const SettingsWatcherLive = (drivers: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>>) =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const mutator = yield* ProviderInstanceRegistryMutator;
+      const serverSettings = yield* ServerSettingsService;
+      yield* serverSettings.streamChanges.pipe(
+        Stream.runForEach((next) =>
+          mutator
+            .reconcile(deriveProviderInstanceConfigMap(next, drivers))
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
+              ),
             ),
-          ),
-      ),
-      Effect.forkScoped,
-    );
-  }),
-);
+        ),
+        Effect.forkScoped,
+      );
+    }),
+  );
+
+export const effectiveProviderDrivers = (
+  mockProviderEnabled: boolean,
+): ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>> =>
+  mockProviderEnabled ? [...BUILT_IN_DRIVERS, MockDriver] : BUILT_IN_DRIVERS;
 
 /**
  * Hydrate `ProviderInstanceRegistry` from `ServerSettings` and keep it in
@@ -155,20 +175,22 @@ export const ProviderInstanceRegistryHydrationLive: Layer.Layer<
   BuiltInDriversEnv | ServerSettingsService
 > = Layer.unwrap(
   Effect.gen(function* () {
+    const config = yield* ServerConfig;
     const serverSettings = yield* ServerSettingsService;
+    const drivers = effectiveProviderDrivers(config.mockProviderEnabled);
     const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
       Effect.orElseSucceed(() => undefined),
     );
     const initialConfigMap =
       initialSettings === undefined
         ? ({} as ProviderInstanceConfigMap)
-        : deriveProviderInstanceConfigMap(initialSettings);
+        : deriveProviderInstanceConfigMap(initialSettings, drivers);
 
     const mutableLayer = ProviderInstanceRegistryMutableLayer({
-      drivers: BUILT_IN_DRIVERS,
+      drivers,
       configMap: initialConfigMap,
     });
 
-    return SettingsWatcherLive.pipe(Layer.provideMerge(mutableLayer));
+    return SettingsWatcherLive(drivers).pipe(Layer.provideMerge(mutableLayer));
   }),
 ) as Layer.Layer<ProviderInstanceRegistry, never, BuiltInDriversEnv | ServerSettingsService>;

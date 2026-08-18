@@ -72,7 +72,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
-import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
+import { getDriverOption, PROVIDER_CLIENT_DEFINITIONS } from "./providerDriverMeta";
 import { searchableSetting } from "./settingsSearch";
 import {
   backgroundActivityOverrideSettings,
@@ -115,9 +115,13 @@ function withoutProviderInstanceFavorites(
   return favorites.filter((favorite) => favorite.provider !== instanceId);
 }
 
-const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
+const PROVIDER_SETTINGS = PROVIDER_CLIENT_DEFINITIONS.map((definition) => ({
   provider: definition.value,
 }));
+const SNAPSHOT_DISCOVERED_DEFAULT_DRIVERS = new Set<ProviderDriverKind>([
+  ProviderDriverKind.make("cursor"),
+  ProviderDriverKind.make("mock"),
+]);
 
 function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }) {
   useRelativeTimeTick();
@@ -396,10 +400,9 @@ export function EnvironmentProviderSettings({
   );
   const visibleProviderSettings = PROVIDER_SETTINGS.filter(
     (providerSettings) =>
-      providerSettings.provider !== "cursor" ||
+      !SNAPSHOT_DISCOVERED_DEFAULT_DRIVERS.has(providerSettings.provider) ||
       serverProviders.some(
-        (provider) =>
-          provider.instanceId === defaultInstanceIdForDriver(ProviderDriverKind.make("cursor")),
+        (provider) => provider.instanceId === defaultInstanceIdForDriver(providerSettings.provider),
       ),
   );
   const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
@@ -524,6 +527,9 @@ export function EnvironmentProviderSettings({
     const driver = providerSettings.provider;
     const defaultInstanceId = defaultInstanceIdForDriver(driver);
     const explicitInstance = settings.providerInstances?.[defaultInstanceId];
+    const liveDefaultInstance = serverProviders.find(
+      (provider) => provider.instanceId === defaultInstanceId,
+    );
     // A remote device may run a server version whose settings predate this
     // driver, so the legacy mirror can be absent. Without either an explicit
     // instance or a legacy blob there is nothing to render for the slot.
@@ -537,7 +543,13 @@ export function EnvironmentProviderSettings({
             enabled: legacyConfig.enabled,
             config: legacyConfig,
           } satisfies ProviderInstanceConfig)
-        : undefined);
+        : SNAPSHOT_DISCOVERED_DEFAULT_DRIVERS.has(driver) && liveDefaultInstance !== undefined
+          ? ({
+              driver,
+              enabled: liveDefaultInstance.enabled,
+              config: {},
+            } satisfies ProviderInstanceConfig)
+          : undefined);
     // Only the default slot depends on the legacy blob; custom instances for
     // the driver must still render even when the slot has nothing to show.
     if (effectiveInstance !== undefined) {
@@ -558,6 +570,7 @@ export function EnvironmentProviderSettings({
   }
   for (const [driver, list] of instancesByDriver) {
     if (visibleDriverKinds.has(driver)) continue;
+    if (SNAPSHOT_DISCOVERED_DEFAULT_DRIVERS.has(driver)) continue;
     for (const [id, instance] of list) {
       rows.push({
         instanceId: id,

@@ -112,6 +112,10 @@ scoped adapter; `ProviderInstanceRegistry` owns live instances and `ProviderAdap
 an instance to its adapter, so `ProviderService` routes session and turn operations without knowing
 which agent is behind them. See [providers.md](./providers.md).
 
+Dev runs also enable an offline `mock` driver by default. `T3CODE_MOCK_PROVIDER=1` registers it and
+seeds `mock-default` as the workspace planning model when none has been chosen; set
+`T3CODE_MOCK_PROVIDER=0` when starting the dev runner to test the production driver set instead.
+
 ## Checkpointing
 
 Each turn is bracketed by workspace checkpoints so diffs and reverts are exact. `CheckpointStore`

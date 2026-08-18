@@ -51,6 +51,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     otlpExportIntervalMs: 10_000,
     otlpServiceName: "t3-server",
     devAllowedOrigins: [],
+    mockProviderEnabled: false,
   } as const;
 
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
@@ -104,6 +105,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
                     "https://host.example.ts.net, https://phone.example.ts.net ",
                   T3CODE_NO_BROWSER: "true",
                   T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
+                  T3CODE_MOCK_PROVIDER: "1",
                   T3CODE_LOG_WS_EVENTS: "true",
                 },
               }),
@@ -129,6 +131,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
+        mockProviderEnabled: true,
         logWebSocketEvents: true,
         tailscaleServeEnabled: false,
         tailscaleServePort: 443,

@@ -6,7 +6,7 @@ import {
   OpenCodeSettings,
   ProviderDriverKind,
 } from "@t3tools/contracts";
-import type * as Schema from "effect/Schema";
+import * as Schema from "effect/Schema";
 import { ClaudeAI, CursorIcon, GrokIcon, type Icon, OpenAI, OpenCodeIcon } from "../Icons";
 
 type ProviderSettingsSchema = {
@@ -67,6 +67,12 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     icon: OpenCodeIcon,
     settingsSchema: OpenCodeSettings,
   },
+  {
+    value: ProviderDriverKind.make("mock"),
+    label: "Mock",
+    icon: OpenAI,
+    settingsSchema: Schema.Struct({}),
+  },
 ];
 
 export const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<
@@ -75,7 +81,12 @@ export const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<
   PROVIDER_CLIENT_DEFINITIONS.map((definition) => [definition.value, definition]),
 );
 
-export const DRIVER_OPTIONS = PROVIDER_CLIENT_DEFINITIONS;
+// Mock is bootstrapped by the dev server and cannot be added manually. Keeping
+// it out of the add-instance options also prevents it surfacing without a live
+// mock provider snapshot.
+export const DRIVER_OPTIONS = PROVIDER_CLIENT_DEFINITIONS.filter(
+  (definition) => definition.value !== "mock",
+);
 export const DRIVER_OPTION_BY_VALUE = PROVIDER_CLIENT_DEFINITION_BY_VALUE;
 export type DriverOption = ProviderClientDefinition;
 

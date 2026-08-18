@@ -80,6 +80,7 @@ export class ServerConfig extends Context.Service<
     readonly desktopTelemetryControlFd?: number | undefined;
     readonly resourceMonitorPath?: string | undefined;
     readonly autoBootstrapProjectFromCwd: boolean;
+    readonly mockProviderEnabled: boolean;
     readonly logWebSocketEvents: boolean;
     readonly tailscaleServeEnabled: boolean;
     readonly tailscaleServePort: number;
@@ -183,6 +184,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     ...derivedPaths,
     mode: "web",
     autoBootstrapProjectFromCwd: false,
+    mockProviderEnabled: false,
     logWebSocketEvents: false,
     tailscaleServeEnabled: false,
     tailscaleServePort: 443,

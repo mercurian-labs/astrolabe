@@ -90,6 +90,7 @@ import { EnvironmentProviderSettings } from "./ProviderSettingsPanel";
 const environmentId = EnvironmentId.make("remote-device");
 const codexId = ProviderInstanceId.make("codex");
 const customId = ProviderInstanceId.make("codex_work");
+const mockId = ProviderInstanceId.make("mock");
 
 function provider(): ServerProvider {
   return {
@@ -113,6 +114,36 @@ function provider(): ServerProvider {
       checkedAt: "2026-07-24T12:00:00.000Z",
       message: "Update available.",
     },
+  };
+}
+
+function mockProvider(): ServerProvider {
+  return {
+    instanceId: mockId,
+    driver: ProviderDriverKind.make("mock"),
+    enabled: true,
+    installed: true,
+    version: "mock-1.0.0",
+    status: "ready",
+    auth: { status: "authenticated", label: "Mock" },
+    checkedAt: "2026-01-01T00:00:00.000Z",
+    models: [
+      {
+        slug: "mock-default",
+        name: "Mock",
+        isCustom: false,
+        isDefault: true,
+        capabilities: { optionDescriptors: [] },
+      },
+      {
+        slug: "mock-verbose",
+        name: "Mock (verbose)",
+        isCustom: false,
+        capabilities: { optionDescriptors: [] },
+      },
+    ],
+    slashCommands: [],
+    skills: [],
   };
 }
 
@@ -148,6 +179,20 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(() => renderPanel()).not.toThrow();
     expect(settingsState.readEnvironmentIds).toEqual([environmentId]);
     expect(settingsState.updateEnvironmentIds).toEqual([environmentId]);
+  });
+
+  it("renders a mock provider card only while its live default instance exists", () => {
+    atoms.providers = [];
+    let panel = renderPanel();
+    expect(visitElements(panel, (element) => element.props.instanceId === mockId)).toBeNull();
+
+    atoms.providers = [mockProvider()];
+    panel = renderPanel();
+    const mockCard = visitElements(panel, (element) => element.props.instanceId === mockId);
+
+    expect(mockCard).not.toBeNull();
+    expect(mockCard?.props.liveProvider).toEqual(mockProvider());
+    expect(mockCard?.props.driverOption).toMatchObject({ label: "Mock" });
   });
 
   it("routes refresh and provider update commands to the selected environment", async () => {

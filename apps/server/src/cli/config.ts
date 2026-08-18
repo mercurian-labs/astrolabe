@@ -127,6 +127,7 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  mockProviderEnabled: Config.boolean("T3CODE_MOCK_PROVIDER").pipe(Config.withDefault(false)),
   logWebSocketEvents: Config.boolean("T3CODE_LOG_WS_EVENTS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -383,6 +384,7 @@ export const resolveServerConfig = (
       desktopTelemetryControlFd,
       resourceMonitorPath,
       autoBootstrapProjectFromCwd,
+      mockProviderEnabled: env.mockProviderEnabled,
       logWebSocketEvents,
       tailscaleServeEnabled,
       tailscaleServePort,

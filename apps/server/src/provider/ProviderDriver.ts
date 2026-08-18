@@ -43,6 +43,8 @@ import type { ServerProviderShape } from "./Services/ServerProvider.ts";
 export interface ProviderDriverMetadata {
   /** Human-readable name for the driver itself (e.g. "Codex"). */
   readonly displayName: string;
+  /** Bootstrap the default instance even when no legacy provider setting exists. */
+  readonly bootstrapWithoutSettings?: boolean;
   /**
    * Whether the driver may be instantiated more than once concurrently.
    * Defaults to `true`. Set to `false` for drivers that wrap a global
