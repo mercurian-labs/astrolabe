@@ -328,3 +328,16 @@ The palette, the sidebar toggle, and **New plan** all have shortcuts you can cha
 Drag the sidebar's right edge to resize it, or collapse it entirely with the toggle in its header
 (**Toggle main sidebar**, bound to a shortcut you can change under **Settings** → **Keybindings**).
 Both the width and whether the sidebar is collapsed are remembered the next time you open the app.
+
+## Coding sessions
+
+When a plan is ready to implement, **Start a coding session** opens a local draft. Choose the local
+base branch, whether to refresh from `origin`, the runtime mode, and the installed agent instance
+and model. Closing the sheet keeps those choices on this device; nothing is created on the server
+or disk until you press **Start**.
+
+Starting creates an isolated worktree on a descriptive `mercurian/…` branch and sends the exact
+plan text as the first turn. The resulting session appears as a leaf in the plan history. You can
+start another session from the same ready commit when a retry or a different model is useful.
+Selecting a session leaf keeps it visible while new planning continues from the commit immediately
+before it.

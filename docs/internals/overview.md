@@ -266,3 +266,15 @@ already dispatch.
 [planning-assistant]: ../../apps/server/src/mercurian/assistant/PlanningAssistant.ts
 [repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
 [trackers]: ../../apps/server/src/mercurian/trackers/
+
+## Coding-session birth
+
+Coding-session birth spans three durability domains. The orchestration store owns the ordinary
+t3code project and thread, git owns the branch and worktree, and Mercurian owns an immutable leaf
+plus a keyed mutable record. The leaf payload stamps repository identity and the plan revision it
+implements; branch, worktree, thread, timestamps, outcome, and pull-request URL remain side facts.
+
+The Mercurian leaf is the last step. Before it lands, failures delete and drain the new thread,
+remove the worktree, and compare-and-delete the generated branch only while it still points at its
+captured base. A moved branch is preserved. The leaf and keyed row then land together in one
+Mercurian SQL transaction.

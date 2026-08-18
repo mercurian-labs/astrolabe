@@ -362,3 +362,19 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [33]: ../../packages/contracts/src/mercurianTrackers.ts
 [34]: ../../apps/server/src/mercurian/planning/wire.ts
 [35]: ../../apps/server/src/mercurian/assistant/PlanningAssistant.ts
+
+### Coding session
+
+A coding runtime born from a plan commit. It is an ordinary t3code thread with an isolated
+worktree, linked from Mercurian by thread id.
+
+### Coding-session leaf
+
+An immutable terminal commit recording the repository and nearest plan revision a coding session
+implements. Mutable facts such as branch, outcome, and pull-request URL live in the keyed
+`coding_sessions` record beside it.
+
+### Session branch
+
+The descriptive `mercurian/<plan-title>-<token>` branch created with a coding session. It is not a
+temporary t3code branch and therefore never enters first-turn automatic branch renaming.
