@@ -17,9 +17,11 @@ import {
   DagExplorerWarningsContent,
   EXPLORER_VIEW_STORAGE_KEY,
   ExplorerView,
+  graphNodePopoverInteraction,
 } from "./DagExplorer";
 import { DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS } from "./DagExplorer.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
+import type { PlanNodePopoverController } from "./PlanNodePopover";
 import { PlanPaneToggle } from "./PlanningSpace";
 
 const root = MercurianCommitId.make("root");
@@ -107,6 +109,16 @@ const sharedExplorerProps = {
   onImplementFrom: vi.fn(),
 } as const;
 
+const popoverController = () =>
+  ({
+    state: null,
+    open: vi.fn(),
+    linger: vi.fn(),
+    cancelClose: vi.fn(),
+    scheduleClose: vi.fn(),
+    close: vi.fn(),
+  }) satisfies PlanNodePopoverController;
+
 const renderExplorer = (
   items: ReadonlyArray<PlanTimelineItem>,
   anchoredCommitId: MercurianCommitId | null = null,
@@ -125,6 +137,67 @@ const renderExplorer = (
   );
 
 describe("DagExplorer", () => {
+  it("continues immediately for Graph node click and keyboard activation", () => {
+    const popover = popoverController();
+    const calls: Array<string> = [];
+    popover.close.mockImplementation(() => calls.push("close"));
+    const onSelect = vi.fn(() => calls.push("select"));
+    const interaction = graphNodePopoverInteraction({
+      acts: ["continue", "implement"],
+      commitId: root,
+      popover,
+      onSelect,
+    });
+    const anchor = {} as Element;
+
+    interaction.activate(anchor);
+    interaction.activate(anchor);
+
+    expect(popover.open).not.toHaveBeenCalled();
+    expect(popover.close).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenNthCalledWith(1, root);
+    expect(onSelect).toHaveBeenNthCalledWith(2, root);
+    expect(calls).toEqual(["close", "select", "close", "select"]);
+  });
+
+  it("opens details when a future Graph node cannot continue", () => {
+    const popover = popoverController();
+    const onSelect = vi.fn();
+    const interaction = graphNodePopoverInteraction({
+      acts: [],
+      commitId: root,
+      popover,
+      onSelect,
+    });
+    const anchor = {} as Element;
+
+    interaction.activate(anchor);
+
+    expect(popover.open).toHaveBeenCalledWith(root, anchor);
+    expect(popover.close).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("shares linger and delayed close between Graph hover and focus", () => {
+    const popover = popoverController();
+    const interaction = graphNodePopoverInteraction({
+      acts: ["continue"],
+      commitId: root,
+      popover,
+      onSelect: vi.fn(),
+    });
+    const anchor = {} as Element;
+
+    interaction.linger(anchor);
+    interaction.linger(anchor);
+    interaction.scheduleClose();
+    interaction.scheduleClose();
+
+    expect(popover.linger).toHaveBeenNthCalledWith(1, root, anchor);
+    expect(popover.linger).toHaveBeenNthCalledWith(2, root, anchor);
+    expect(popover.scheduleClose).toHaveBeenCalledTimes(2);
+  });
+
   it("names the pane and exposes row details without commit-level controls", () => {
     const markup = renderExplorer(checkpointTimeline);
     const settings = renderToStaticMarkup(

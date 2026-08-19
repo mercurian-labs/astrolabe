@@ -107,6 +107,7 @@ import {
   usePlanNodePopover,
   type PlanNodePopoverController,
 } from "./PlanNodePopover";
+import { offeredActs, type PlanNodePopoverAct } from "./PlanNodePopover.logic";
 import {
   branchOption,
   threadLayout,
@@ -379,6 +380,34 @@ function ActivePlanNodePopover({
       onSelect={onSelect}
     />
   );
+}
+
+/** The Graph node's direct act, with its popover retained as the safe fallback. */
+export function graphNodePopoverInteraction({
+  acts,
+  commitId,
+  popover,
+  onSelect,
+}: {
+  readonly acts: ReadonlyArray<PlanNodePopoverAct>;
+  readonly commitId: MercurianCommitId;
+  readonly popover: PlanNodePopoverController;
+  readonly onSelect: (commitId: MercurianCommitId) => void;
+}) {
+  return {
+    activate(anchor: Element) {
+      if (!acts.includes("continue")) {
+        popover.open(commitId, anchor);
+        return;
+      }
+      popover.close();
+      onSelect(commitId);
+    },
+    linger(anchor: Element) {
+      popover.linger(commitId, anchor);
+    },
+    scheduleClose: popover.scheduleClose,
+  };
 }
 
 function DisplaySettingsPopover({
@@ -1630,6 +1659,12 @@ function SpatialMap({
             const statusDotAnchor = radius / Math.SQRT2;
             const Glyph =
               graphNode.checkpoint === undefined ? commitGlyph(node.item) : MessagesSquareIcon;
+            const interaction = graphNodePopoverInteraction({
+              acts: offeredActs(graphNode, commitGraph),
+              commitId: node.commitId,
+              popover,
+              onSelect,
+            });
             return (
               <g
                 // A node is a control, and a circle has no accessible name of
@@ -1641,16 +1676,22 @@ function SpatialMap({
                 className="cursor-pointer transition-opacity duration-150"
                 data-commit-id={node.commitId}
                 key={node.commitId}
-                onClick={(event) => popover.open(node.commitId, event.currentTarget)}
-                onBlur={() => setFocused((at) => (at === node.commitId ? null : at))}
-                onFocus={() => setFocused(node.commitId)}
+                onClick={(event) => interaction.activate(event.currentTarget)}
+                onBlur={() => {
+                  setFocused((at) => (at === node.commitId ? null : at));
+                  interaction.scheduleClose();
+                }}
+                onFocus={(event) => {
+                  setFocused(node.commitId);
+                  interaction.linger(event.currentTarget);
+                }}
                 onPointerEnter={(event) => {
                   setHovered(node.commitId);
-                  popover.linger(node.commitId, event.currentTarget);
+                  interaction.linger(event.currentTarget);
                 }}
                 onPointerLeave={() => {
                   setHovered((at) => (at === node.commitId ? null : at));
-                  popover.scheduleClose();
+                  interaction.scheduleClose();
                 }}
                 role="button"
                 style={{ opacity: node.opacity * (isDimmed ? 0.18 : 1) }}
@@ -1659,7 +1700,7 @@ function SpatialMap({
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    popover.open(node.commitId, event.currentTarget);
+                    interaction.activate(event.currentTarget);
                   }
                 }}
               >
