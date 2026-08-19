@@ -65,6 +65,11 @@ describe("searchSettings", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("does not offer the removed legacy plan-mode setting", () => {
+    expect(SETTINGS_SEARCH_ITEMS.map((item) => item.id)).not.toContain("legacy-plan-mode");
+    expect(searchSettings("plan mode")).toEqual([]);
+  });
+
   it("serves anchor props to panels from the catalog", () => {
     expect(searchableSetting("word-wrap")).toEqual({ id: "word-wrap", title: "Word wrap" });
     expect(searchableSetting("archive")).toEqual({ id: "archive", title: "Archived threads" });

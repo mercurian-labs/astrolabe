@@ -10,19 +10,19 @@ describe("searchSlashCommandItems", () => {
   it("moves exact provider command matches ahead of broader description matches", () => {
     const items = [
       {
-        id: "slash:default",
+        id: "slash:model",
         type: "slash-command",
-        command: "default",
-        label: "/default",
-        description: "Switch this thread back to normal build mode",
+        command: "model",
+        label: "/model",
+        description: "Switch response model for this thread",
       },
       {
-        id: "provider-slash-command:claudeAgent:ui",
+        id: "provider-slash-command:claudeAgent:response",
         type: "provider-slash-command",
         provider: claudeDriver,
-        command: { name: "ui" },
-        label: "/ui",
-        description: "Explore, build, and refine UI.",
+        command: { name: "response" },
+        label: "/response",
+        description: "Inspect provider responses.",
       },
       {
         id: "provider-slash-command:claudeAgent:frontend-design",
@@ -36,9 +36,9 @@ describe("searchSlashCommandItems", () => {
       Extract<ComposerCommandItem, { type: "slash-command" | "provider-slash-command" }>
     >;
 
-    expect(searchSlashCommandItems(items, "ui").map((item) => item.id)).toEqual([
-      "provider-slash-command:claudeAgent:ui",
-      "slash:default",
+    expect(searchSlashCommandItems(items, "response").map((item) => item.id)).toEqual([
+      "provider-slash-command:claudeAgent:response",
+      "slash:model",
     ]);
   });
 

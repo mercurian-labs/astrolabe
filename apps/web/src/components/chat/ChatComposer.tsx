@@ -4,7 +4,6 @@ import type {
   ModelSelection,
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
-  ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
@@ -33,13 +32,15 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  BUILT_IN_COMPOSER_SLASH_COMMANDS,
   clampCollapsedComposerCursor,
   type ComposerTrigger,
   collapseExpandedComposerCursor,
+  composerCommandKeyWithoutMenu,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   replaceTextRange,
-  shouldSubmitComposerOnEnter,
+  runtimeModeOptionsFor,
 } from "../../composer-logic";
 import { deriveComposerSendState, readFileAsDataUrl } from "../ChatView.logic";
 import {
@@ -92,7 +93,7 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
-import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
+import { ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
@@ -192,9 +193,7 @@ import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
-  BotIcon,
   CircleAlertIcon,
-  PencilRulerIcon,
   type LucideIcon,
   LockIcon,
   LockOpenIcon,
@@ -203,7 +202,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
-import { getProviderDisplayName, getProviderInteractionModeToggle } from "../../providerModels";
+import { getProviderDisplayName } from "../../providerModels";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -253,7 +252,6 @@ const runtimeModeConfig: Record<
   },
 };
 
-const runtimeModeOptions = Object.keys(runtimeModeConfig) as RuntimeMode[];
 const COMPOSER_FLOATING_LAYER_SELECTOR = [
   '[data-slot="popover-popup"]',
   '[data-slot="menu-popup"]',
@@ -294,52 +292,12 @@ function isInsideComposerFloatingLayer(element: Element): boolean {
   return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
 }
 
-const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
-  showInteractionModeToggle: boolean;
-  interactionMode: ProviderInteractionMode;
+export const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
   runtimeMode: RuntimeMode;
-  onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
-  const interactionModeTooltip =
-    props.interactionMode === "plan"
-      ? "Plan mode — click to return to normal build mode"
-      : "Default mode — click to enter plan mode";
-
-  const interactionModeToggle = props.showInteractionModeToggle ? (
-    <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ComposerControl
-              className={cn(
-                "shrink-0 whitespace-nowrap",
-                props.interactionMode === "plan"
-                  ? "bg-accent text-accent-foreground hover:bg-accent/80"
-                  : "text-secondary-label hover:text-foreground",
-              )}
-              type="button"
-              onClick={props.onToggleInteractionMode}
-              aria-label={interactionModeTooltip}
-            />
-          }
-        >
-          {props.interactionMode === "plan" ? (
-            <ComposerControlIcon icon={PencilRulerIcon} className="text-current opacity-100" />
-          ) : (
-            <ComposerControlIcon icon={BotIcon} opticalSize="large" />
-          )}
-          <span className="sr-only sm:not-sr-only">
-            {props.interactionMode === "plan" ? "Plan" : "Build"}
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
-      </Tooltip>
-    </>
-  ) : null;
 
   return (
     <>
@@ -357,7 +315,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             <SelectValue>{runtimeModeOption.label}</SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>
-            {runtimeModeOptions.map((mode) => {
+            {runtimeModeOptionsFor(props.runtimeMode).map((mode) => {
               const option = runtimeModeConfig[mode];
               const OptionIcon = option.icon;
               return (
@@ -380,8 +338,6 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
         </Select>
         <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
       </Tooltip>
-
-      {interactionModeToggle}
     </>
   );
 });
@@ -540,7 +496,6 @@ export interface ChatComposerProps {
 
   // Mode
   runtimeMode: RuntimeMode;
-  interactionMode: ProviderInteractionMode;
 
   // Provider / model
   lockedProvider: ProviderDriverKind | null;
@@ -586,9 +541,7 @@ export interface ChatComposerProps {
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
-  toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
-  handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
 
   focusComposer: () => void;
   scheduleComposerFocus: () => void;
@@ -632,7 +585,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
     activeProposedPlan,
     runtimeMode,
-    interactionMode,
     lockedProvider,
     providerStatuses,
     activeProjectDefaultModelSelection,
@@ -658,9 +610,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
     getModelDisabledReason,
-    toggleInteractionMode,
     handleRuntimeModeChange,
-    handleInteractionModeChange,
     focusComposer,
     scheduleComposerFocus,
     setThreadError,
@@ -875,17 +825,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  // Plan mode is a legacy feature behind Settings → Beta. With the flag off,
-  // ChatView forces the effective mode to "default", so hiding the toggle
-  // can't trap anyone in plan mode.
-  const planModeUiEnabled = settings.planModeEnabled;
-  const composerProviderControls = useMemo(
-    () => ({
-      showInteractionModeToggle:
-        planModeUiEnabled && getProviderInteractionModeToggle(providerStatuses, selectedProvider),
-    }),
-    [planModeUiEnabled, providerStatuses, selectedProvider],
-  );
   const selectedModelSelection = useMemo<ModelSelection>(
     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
@@ -1037,33 +976,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }));
     }
     if (composerTrigger.kind === "slash-command") {
-      const builtInSlashCommandItems = [
-        {
-          id: "slash:model",
-          type: "slash-command",
-          command: "model",
-          label: "/model",
-          description: "Switch response model for this thread",
-        },
-        ...(planModeUiEnabled
-          ? ([
-              {
-                id: "slash:plan",
-                type: "slash-command",
-                command: "plan",
-                label: "/plan",
-                description: "Switch this thread into plan mode",
-              },
-              {
-                id: "slash:default",
-                type: "slash-command",
-                command: "default",
-                label: "/default",
-                description: "Switch this thread back to normal build mode",
-              },
-            ] as const)
-          : []),
-      ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
+      const builtInSlashCommandItems = BUILT_IN_COMPOSER_SLASH_COMMANDS.map((command) => ({
+        id: `slash:${command}`,
+        type: "slash-command" as const,
+        command,
+        label: `/${command}`,
+        description: "Switch response model for this thread",
+      })) satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
         (command) => ({
           id: `provider-slash-command:${selectedProvider}:${command.name}`,
@@ -1097,13 +1016,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       );
     }
     return [];
-  }, [
-    composerTrigger,
-    planModeUiEnabled,
-    selectedProvider,
-    selectedProviderStatus,
-    workspaceEntries.entries,
-  ]);
+  }, [composerTrigger, selectedProvider, selectedProviderStatus, workspaceEntries.entries]);
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -1677,23 +1590,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "slash-command") {
-        if (item.command === "model") {
-          const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-            focusEditorAfterReplace: false,
-          });
-          if (applied) {
-            setComposerHighlightedItemId(null);
-            setIsComposerModelPickerOpen(true);
-          }
-          return;
-        }
-        void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+          focusEditorAfterReplace: false,
         });
         if (applied) {
           setComposerHighlightedItemId(null);
+          setIsComposerModelPickerOpen(true);
         }
         return;
       }
@@ -1734,7 +1637,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
     },
-    [applyPromptReplacement, handleInteractionModeChange, resolveActiveComposerTrigger],
+    [applyPromptReplacement, resolveActiveComposerTrigger],
   );
 
   const onComposerMenuItemHighlighted = useCallback(
@@ -1868,11 +1771,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
   ) => {
-    if (key === "Tab" && event.shiftKey) {
-      if (!planModeUiEnabled) return false;
-      toggleInteractionMode();
-      return true;
-    }
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive = composerMenuOpenRef.current || trigger !== null;
     if (menuIsActive) {
@@ -1892,8 +1790,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
     }
     if (
-      key === "Enter" &&
-      shouldSubmitComposerOnEnter({ isMobileViewport, shiftKey: event.shiftKey })
+      composerCommandKeyWithoutMenu({
+        key,
+        shiftKey: event.shiftKey,
+        isMobileViewport,
+      }) === "submit"
     ) {
       submitComposer();
       return true;
@@ -3148,11 +3049,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
                 {isComposerFooterCompact ? (
                   <CompactComposerControlsMenu
-                    interactionMode={interactionMode}
                     runtimeMode={runtimeMode}
-                    showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                     traitsMenuContent={providerTraitsMenuContent}
-                    onToggleInteractionMode={toggleInteractionMode}
                     onRuntimeModeChange={handleRuntimeModeChange}
                   />
                 ) : (
@@ -3164,10 +3062,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       </>
                     ) : null}
                     <ComposerFooterModeControls
-                      showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
-                      interactionMode={interactionMode}
                       runtimeMode={runtimeMode}
-                      onToggleInteractionMode={toggleInteractionMode}
                       onRuntimeModeChange={handleRuntimeModeChange}
                     />
                   </>

@@ -28,6 +28,7 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings.appear
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatRepositoriesRouteImport } from './routes/_chat.repositories'
+import { Route as ChatSessionsThreadIdRouteImport } from './routes/_chat.sessions.$threadId'
 import { Route as ChatPlansPlanIdRouteImport } from './routes/_chat.plans.$planId'
 import { Route as ChatPlansDraftDraftIdRouteImport } from './routes/_chat.plans.draft.$draftId'
 
@@ -125,6 +126,11 @@ const ChatRepositoriesRoute = ChatRepositoriesRouteImport.update({
   path: '/repositories',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatSessionsThreadIdRoute = ChatSessionsThreadIdRouteImport.update({
+  id: '/sessions/$threadId',
+  path: '/sessions/$threadId',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatPlansPlanIdRoute = ChatPlansPlanIdRouteImport.update({
   id: '/plans/$planId',
   path: '/plans/$planId',
@@ -156,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/trackers': typeof SettingsTrackersRoute
   '/plans/$planId': typeof ChatPlansPlanIdRoute
+  '/sessions/$threadId': typeof ChatSessionsThreadIdRoute
   '/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
 }
 export interface FileRoutesByTo {
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/settings/trackers': typeof SettingsTrackersRoute
   '/': typeof ChatIndexRoute
   '/plans/$planId': typeof ChatPlansPlanIdRoute
+  '/sessions/$threadId': typeof ChatSessionsThreadIdRoute
   '/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
 }
 export interface FileRoutesById {
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/settings/trackers': typeof SettingsTrackersRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/plans/$planId': typeof ChatPlansPlanIdRoute
+  '/_chat/sessions/$threadId': typeof ChatSessionsThreadIdRoute
   '/_chat/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
 }
 export interface FileRouteTypes {
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/trackers'
     | '/plans/$planId'
+    | '/sessions/$threadId'
     | '/plans/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -248,6 +258,7 @@ export interface FileRouteTypes {
     | '/settings/trackers'
     | '/'
     | '/plans/$planId'
+    | '/sessions/$threadId'
     | '/plans/draft/$draftId'
   id:
     | '__root__'
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | '/settings/trackers'
     | '/_chat/'
     | '/_chat/plans/$planId'
+    | '/_chat/sessions/$threadId'
     | '/_chat/plans/draft/$draftId'
   fileRoutesById: FileRoutesById
 }
@@ -419,6 +431,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRepositoriesRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/sessions/$threadId': {
+      id: '/_chat/sessions/$threadId'
+      path: '/sessions/$threadId'
+      fullPath: '/sessions/$threadId'
+      preLoaderRoute: typeof ChatSessionsThreadIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/plans/$planId': {
       id: '/_chat/plans/$planId'
       path: '/plans/$planId'
@@ -440,6 +459,7 @@ interface ChatRouteChildren {
   ChatRepositoriesRoute: typeof ChatRepositoriesRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatPlansPlanIdRoute: typeof ChatPlansPlanIdRoute
+  ChatSessionsThreadIdRoute: typeof ChatSessionsThreadIdRoute
   ChatPlansDraftDraftIdRoute: typeof ChatPlansDraftDraftIdRoute
 }
 
@@ -447,6 +467,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatRepositoriesRoute: ChatRepositoriesRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatPlansPlanIdRoute: ChatPlansPlanIdRoute,
+  ChatSessionsThreadIdRoute: ChatSessionsThreadIdRoute,
   ChatPlansDraftDraftIdRoute: ChatPlansDraftDraftIdRoute,
 }
 

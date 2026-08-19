@@ -11,6 +11,7 @@ import {
   type PlanCodingSessionRecord,
   type ServerProvider,
 } from "@t3tools/contracts";
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -23,6 +24,23 @@ vi.mock("../../assets/assetUrls", () => ({
 vi.mock("../../state/environments", () => ({
   usePrimaryEnvironmentId: () => "environment-test",
 }));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    Link: ({
+      to,
+      params,
+      ...props
+    }: Omit<ComponentProps<"a">, "href"> & {
+      readonly to: string;
+      readonly params?: Readonly<Record<string, string>>;
+    }) => (
+      <a {...props} href={to.replace(/\$(\w+)/g, (_match, key: string) => params?.[key] ?? "")} />
+    ),
+  };
+});
 
 type PlanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
@@ -366,7 +384,17 @@ describe("PlanTimeline", () => {
     expect(markup).toContain("Completed");
     expect(markup).toContain("mercurian/reshape-sidebar-12345678");
     expect(markup).toContain('href="https://example.test/pull/1"');
+    expect(markup).toContain('href="/sessions/thread"');
+    expect(markup).toContain(">Open session</a>");
+    expect(markup).not.toContain('aria-disabled="true"');
+    expect(markup).not.toContain("data-disabled");
     expect(markup).not.toContain("summary");
+
+    const missingRecordMarkup = renderToStaticMarkup(
+      <PlanTimeline timeline={[sessionCommit]} codingSessions={[]} />,
+    );
+    expect(missingRecordMarkup).toContain('disabled=""');
+    expect(missingRecordMarkup).not.toContain('href="/sessions/');
   });
 
   it("renders the implement analyzing card with grounding and Stop", () => {
