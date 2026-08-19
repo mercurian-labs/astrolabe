@@ -5,9 +5,9 @@ import {
   type PlanImplementProposal,
 } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { SplitSheetPanel } from "./SplitSheet";
+import { SplitSheetPanel, startAllLandedPlans } from "./SplitSheet";
 import type { ExistingSplit, LandedPlan } from "./splits.logic";
 import { Dialog } from "../ui/dialog";
 
@@ -42,6 +42,9 @@ const renderSheet = (
         proposal={proposal}
         onCancel={() => undefined}
         onConfirm={() => undefined}
+        onOpenLandedSessionDraft={() => undefined}
+        onOpenSessionDraft={() => undefined}
+        onStartAll={() => undefined}
         onSelect={() => undefined}
       />
     </Dialog>,
@@ -89,8 +92,8 @@ describe("SplitSheet", () => {
     expect(markup).toContain("This plan is ready to implement.");
     expect(markup).toContain("A coding session will run in");
     expect(markup).toContain("server");
-    expect(markup).toContain("Coding sessions arrive next");
-    expect(markup).toContain("disabled");
+    expect(markup).toContain("Start a coding session");
+    expect(markup).not.toContain('disabled=""');
     expect(markup).not.toContain("textarea");
   });
 
@@ -144,13 +147,41 @@ describe("SplitSheet", () => {
 
   it("renders one post-confirm jump row per landed branch", () => {
     const markup = renderSheet(undefined, new Map(), [
-      { commitId: MercurianCommitId.make("server-plan"), repositoryName: "server" },
-      { commitId: MercurianCommitId.make("web-plan"), repositoryName: "web" },
+      {
+        commitId: MercurianCommitId.make("server-plan"),
+        repositoryId: serverId,
+        repositoryName: "server",
+      },
+      {
+        commitId: MercurianCommitId.make("web-plan"),
+        repositoryId: webId,
+        repositoryName: "web",
+      },
     ]);
     expect(markup).toContain("You added a plan for server");
     expect(markup).toContain("You added a plan for web");
     expect(markup.match(/Go to plan/g)).toHaveLength(2);
+    expect(markup.match(/Start a coding session/g)).toHaveLength(2);
+    expect(markup).toContain("Start all");
     expect(markup).not.toContain("Add a plan for each repository");
+  });
+
+  it("starts every confirmed repository independently", () => {
+    const plans: ReadonlyArray<LandedPlan> = [
+      {
+        commitId: MercurianCommitId.make("server-plan"),
+        repositoryId: serverId,
+        repositoryName: "server",
+      },
+      {
+        commitId: MercurianCommitId.make("web-plan"),
+        repositoryId: webId,
+        repositoryName: "web",
+      },
+    ];
+    const start = vi.fn();
+    startAllLandedPlans(plans, start);
+    expect(start.mock.calls).toEqual([[plans[0]], [plans[1]]]);
   });
 
   it("never exposes internal implementation vocabulary in any sheet state", () => {
@@ -179,7 +210,11 @@ describe("SplitSheet", () => {
       ]),
     );
     const landed = renderSheet(undefined, new Map(), [
-      { commitId: MercurianCommitId.make("server-plan"), repositoryName: "server" },
+      {
+        commitId: MercurianCommitId.make("server-plan"),
+        repositoryId: serverId,
+        repositoryName: "server",
+      },
     ]);
     for (const markup of [ready, needsPlans, alreadyCovered, landed]) {
       expect(markup).not.toMatch(/split|atomic/i);

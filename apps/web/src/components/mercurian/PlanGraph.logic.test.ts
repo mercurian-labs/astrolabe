@@ -302,6 +302,26 @@ describe("planCommitSummary", () => {
     };
     expect(planCommitSummary(revision)).toBe("Plan for server");
   });
+
+  it("renders a coding session as a terminal leaf with its parent edge", () => {
+    const session: PlanTimelineItem = {
+      _tag: "coding-session",
+      commitId: id("session"),
+      sequence: 4,
+      parents: [id("c")],
+      published: false,
+      authorKind: "human",
+      createdAt: "2026-08-03T00:00:00.000Z",
+      repositoryId: MercurianRepositoryId.make("repo-server"),
+      repositoryName: "server",
+      planRevisionCommitId: id("b"),
+    };
+    const graph = buildPlanGraph([...chain, session]);
+    expect(planCommitSummary(session)).toBe("Coding session in server");
+    expect(graph.byId.get("session")?.parents).toEqual(["c"]);
+    expect(graph.byId.get("session")?.childrenIds).toEqual([]);
+    expect(graph.byId.get("c")?.childrenIds).toEqual(["session"]);
+  });
 });
 
 describe("planCommitDetail", () => {

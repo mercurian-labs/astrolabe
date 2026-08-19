@@ -26,6 +26,9 @@ import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
+import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
+import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/CodingSessionRecordReactor.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
@@ -279,6 +282,7 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // exists: those settings belong to the workspace, and the workspace is what
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
+  Layer.provideMerge(CodingSessionStore.layer),
   // The turn registry is runtime state shared by the store (the active-turn
   // refusal on human writes) and the assistant runtime (which opens and
   // closes turns) — merged so both resolve the same instance.
@@ -458,7 +462,10 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   ),
 );
 
-const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+const RuntimeDependenciesLive = Layer.empty.pipe(
+  Layer.provideMerge(CodingSessionService.layer),
+  Layer.provideMerge(CodingSessionRecordReactorLive),
+  Layer.provideMerge(RuntimeCoreDependenciesLive),
   Layer.provideMerge(MercurianPersistenceLayerLive),
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),

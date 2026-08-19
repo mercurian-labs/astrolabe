@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  codingSessionDetailLabel,
   filterPlansByProjectScope,
   listJumpTargets,
   pageArchivedPlans,
@@ -9,6 +10,20 @@ import {
   resolvePlanCardStatus,
   resolveSidebarSelection,
 } from "./PlanListSidebar.logic";
+
+describe("codingSessionDetailLabel", () => {
+  it("keeps session state and branch in the detail popover", () => {
+    expect(codingSessionDetailLabel({ branch: "mercurian/ship-12345678", endedAt: null })).toBe(
+      "Running · mercurian/ship-12345678",
+    );
+    expect(
+      codingSessionDetailLabel({
+        branch: "renamed/session",
+        endedAt: "2026-08-18T00:00:00.000Z",
+      }),
+    ).toBe("Ended · renamed/session");
+  });
+});
 
 const plan = (
   planId: string,

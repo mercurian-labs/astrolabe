@@ -34,6 +34,7 @@ import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
   ChatAttachment,
+  CodingSessionBlockedError,
   ConfirmSplitsBlockedError,
   MercurianCommitId,
   MercurianProjectId,
@@ -52,6 +53,7 @@ import {
   PlanTurnActiveError,
   TrackerConnectionId,
   TrimmedNonEmptyString,
+  ThreadId,
 } from "@t3tools/contracts";
 
 import {
@@ -60,6 +62,8 @@ import {
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
+import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
+import type { CodingSessionRecord } from "../codingSessions/schema.ts";
 import { type Commit, CommitAuthorKind, CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import { PlanTurnRegistry } from "./PlanTurnRegistry.ts";
@@ -266,6 +270,21 @@ export const PlanSpecRevision = Schema.Struct({
 });
 export type PlanSpecRevision = typeof PlanSpecRevision.Type;
 
+export const CodingSessionCommitPayload = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+  planRevisionCommitId: CommitId,
+});
+export type CodingSessionCommitPayload = typeof CodingSessionCommitPayload.Type;
+
+export const PlanCodingSession = Schema.Struct({
+  ...PlanCommitFields,
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+  planRevisionCommitId: CommitId,
+});
+export type PlanCodingSession = typeof PlanCodingSession.Type;
+
 export interface PlanSpecAt {
   readonly revisionCommitId: CommitId;
   readonly document: SpecDocument;
@@ -286,7 +305,8 @@ export interface PlanOrigin {
 export type PlanTimelineItem =
   | ({ readonly _tag: "message" } & PlanMessage)
   | ({ readonly _tag: "plan-revision" } & PlanRevision)
-  | ({ readonly _tag: "spec-revision" } & PlanSpecRevision);
+  | ({ readonly _tag: "spec-revision" } & PlanSpecRevision)
+  | ({ readonly _tag: "coding-session" } & PlanCodingSession);
 
 /**
  * A projected commit, ready to emit as an event. `planText` rides along only
@@ -310,6 +330,7 @@ export interface PlanDetail {
   readonly snapshotSequence: number;
   /** Ready verdicts are side-facts keyed by commit, not timeline content. */
   readonly readyCommits: ReadonlyArray<PlanImplementReady>;
+  readonly codingSessions: ReadonlyArray<CodingSessionRecord>;
 }
 
 /**
@@ -370,7 +391,8 @@ export type PlanningStoreRefusal =
   | PlanDeleteBlockedError
   | PlanTurnActiveError
   | SpecRevisionOutdatedError
-  | ConfirmSplitsBlockedError;
+  | ConfirmSplitsBlockedError
+  | CodingSessionBlockedError;
 
 export type PlanningStoreError =
   | PlanningStoreRefusal
@@ -468,6 +490,19 @@ export const SaveSplitsInput = Schema.Struct({
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type SaveSplitsInput = typeof SaveSplitsInput.Type;
+
+export const AppendCodingSessionInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  branch: TrimmedNonEmptyString,
+  worktreePath: TrimmedNonEmptyString,
+  baseRef: TrimmedNonEmptyString,
+  startedAt: Schema.DateTimeUtcFromString,
+});
+export type AppendCodingSessionInput = typeof AppendCodingSessionInput.Type;
 
 /**
  * The assistant's settled reply. The parent is always named — the turn knows
@@ -691,6 +726,10 @@ export class PlanningStore extends Context.Service<
     readonly saveSplits: (
       input: SaveSplitsInput,
     ) => Effect.Effect<ReadonlyArray<PlanRevision>, PlanningStoreError>;
+    /** Final durable step of session birth: immutable leaf and keyed row together. */
+    readonly appendCodingSession: (
+      input: AppendCodingSessionInput,
+    ) => Effect.Effect<PlanCodingSession, PlanningStoreError>;
     /**
      * The assistant's settled reply, landed where its turn stands. Passes
      * `authorKind: "assistant"` through to the commit store, whose
@@ -922,6 +961,7 @@ const isPlanningStoreRefusal = Schema.is(
     PlanTurnActiveError,
     SpecRevisionOutdatedError,
     ConfirmSplitsBlockedError,
+    CodingSessionBlockedError,
   ]),
 );
 
@@ -980,6 +1020,7 @@ const decodeReadyVerdictPayload = Schema.decodeUnknownEffect(PlanImplementReadyV
 const decodeNeedsSplitVerdictPayload = Schema.decodeUnknownEffect(
   PlanImplementNeedsSplitVerdictPayload,
 );
+const decodeCodingSessionPayload = Schema.decodeUnknownEffect(CodingSessionCommitPayload);
 
 /**
  * The artifact at the end of a path: the text of the last revision on it, or
@@ -1014,6 +1055,7 @@ export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const turnRegistry = yield* PlanTurnRegistry;
   const repositoryStore = yield* RepositoryStore.RepositoryStore;
+  const codingSessions = yield* CodingSessionStore.CodingSessionStore;
   const changesPubSub = yield* PubSub.unbounded<void>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
@@ -1453,6 +1495,12 @@ export const make = Effect.gen(function* () {
         spec: { revisionCommitId: commit.commitId, document: payload.document },
       });
     }
+    if (commit.kind === "coding-session") {
+      const payload = yield* decodeCodingSessionPayload(commit.payload);
+      return Option.some<PlanTimelineEvent>({
+        item: { _tag: "coding-session", ...toPlanCommitFields(commit), ...payload },
+      });
+    }
     return Option.none<PlanTimelineEvent>();
   });
 
@@ -1566,6 +1614,7 @@ export const make = Effect.gen(function* () {
         timeline: [{ _tag: "message", ...(yield* toPlanMessage(root)) }],
         snapshotSequence: root.sequence,
         readyCommits: [],
+        codingSessions: [],
       } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
@@ -1778,7 +1827,7 @@ export const make = Effect.gen(function* () {
     readonly plan: Plan;
     readonly parentCommitId: CommitId | undefined;
     readonly commitId: CommitId;
-    readonly kind: "message" | "plan-revision" | "spec-revision";
+    readonly kind: "message" | "plan-revision" | "spec-revision" | "coding-session";
     readonly payload: unknown;
     readonly resolvePayload?: (
       parent: Commit | undefined,
@@ -2064,6 +2113,79 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const appendCodingSession: PlanningStore["Service"]["appendCodingSession"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      yield* requireNoActiveTurn(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const appended = yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const verdict = (yield* listImplementVerdictRows({ planId: input.planId })).find(
+            (candidate) => candidate.commitId === input.parentCommitId,
+          );
+          if (verdict === undefined || verdict.kind !== "ready") {
+            return yield* new CodingSessionBlockedError({ reason: "not-ready" });
+          }
+          const readyPayload = yield* decodeReadyVerdictPayload(verdict.payload);
+          if (readyPayload.repositoryId !== input.repositoryId) {
+            return yield* new CodingSessionBlockedError({ reason: "repository-mismatch" });
+          }
+          const parent = yield* resolveParent(plan, input.parentCommitId);
+          if (parent === undefined) {
+            return yield* new CommitStore.CommitNotFoundError({ commitId: input.parentCommitId });
+          }
+          const ancestry = yield* commits.ancestors({
+            commitId: parent.commitId,
+            visibility: "all",
+          });
+          const nearestRevision = [...ancestry, parent]
+            .reverse()
+            .find((commit) => commit.kind === "plan-revision");
+          if (nearestRevision === undefined) {
+            return yield* new CommitStore.CommitNotFoundError({ commitId: parent.commitId });
+          }
+          const payload = {
+            repositoryId: input.repositoryId,
+            repositoryName: input.repositoryName,
+            planRevisionCommitId: nearestRevision.commitId,
+          } satisfies CodingSessionCommitPayload;
+          const commit = yield* commits.append({
+            historyId: plan.historyId,
+            commitId,
+            kind: "coding-session",
+            authorKind: "human",
+            parents: [parent.commitId],
+            createdAt: input.startedAt,
+            payload,
+          });
+          yield* codingSessions.recordInTransaction({
+            commitId: MercurianCommitId.make(commit.commitId),
+            planId: input.planId,
+            repositoryId: input.repositoryId,
+            threadId: input.threadId,
+            branch: input.branch,
+            worktreePath: input.worktreePath,
+            baseRef: input.baseRef,
+            startedAt: input.startedAt,
+            endedAt: null,
+            outcome: null,
+            prUrl: null,
+          });
+          yield* touchPlanRow({ planId: input.planId, updatedAt: input.startedAt });
+          return { commit, payload } as const;
+        }),
+      );
+      yield* Effect.all([announceChange, codingSessions.announce(input.planId)]);
+      return { ...toPlanCommitFields(appended.commit), ...appended.payload };
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.appendCodingSession:query",
+          "PlanningStore.appendCodingSession:decodeRows",
+        ),
+      ),
+    );
+
   /**
    * The assistant's write path: explicit parent, assistant attribution, and
    * nothing else different from a human's. The commit store's
@@ -2256,6 +2378,7 @@ export const make = Effect.gen(function* () {
           yield* deleteCommitParentRows({ historyId: plan.historyId });
           yield* deleteVisitRow({ planId: input.planId });
           yield* deleteImplementVerdictRows({ planId: input.planId });
+          yield* sql`DELETE FROM coding_sessions WHERE plan_id = ${input.planId}`;
           yield* deleteOriginRow({ planId: input.planId });
           yield* deletePlanRow({ planId: input.planId });
           yield* deleteCommitRows({ historyId: plan.historyId });
@@ -2280,13 +2403,14 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       // The author's own workspace sees its drafts, so every commit counts.
-      const { path, verdicts, originRow } = yield* Effect.all({
+      const { path, verdicts, originRow, sessionRows } = yield* Effect.all({
         path: commits.listCommits({
           historyId: plan.historyId,
           visibility: "all",
         }),
         verdicts: listImplementVerdicts({ planId: input.planId }),
         originRow: findOriginByPlanRow({ planId: input.planId }),
+        sessionRows: codingSessions.listForPlan(input.planId),
       });
       const origin = Option.isNone(originRow)
         ? undefined
@@ -2306,6 +2430,7 @@ export const make = Effect.gen(function* () {
         readyCommits: verdicts.flatMap(({ commitId, verdict }) =>
           verdict.kind === "ready" ? [{ commitId, ...verdict.payload }] : [],
         ),
+        codingSessions: sessionRows,
       } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
@@ -2545,6 +2670,7 @@ export const make = Effect.gen(function* () {
     saveSpecRevision,
     saveTrackerSpecRevision,
     saveSplits,
+    appendCodingSession,
     appendAssistantMessage,
     saveAssistantPlanRevision,
     saveAssistantSpecRevision,

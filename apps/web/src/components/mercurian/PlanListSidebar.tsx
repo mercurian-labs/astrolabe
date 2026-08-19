@@ -52,6 +52,7 @@ import {
 import { readLocalApi } from "../../localApi";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore, type PlanDraft } from "../../planDraftStore";
+import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { useMarkPlanUnread, useMercurianTree } from "../../state/mercurian";
 import { primaryServerKeybindingsAtom } from "../../state/server";
@@ -74,6 +75,7 @@ import {
   type PlanRowMenuAction,
 } from "./planListing.logic";
 import {
+  codingSessionDetailLabel,
   listJumpTargets,
   pageArchivedPlans,
   partitionSidebarPlans,
@@ -139,6 +141,10 @@ export default function PlanListSidebar() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const selection = useMemo(() => resolveSidebarSelection(pathname), [pathname]);
   const { snapshot } = useMercurianTree();
+  const pruneSessionDrafts = useCodingSessionDraftStore((state) => state.pruneMissingPlans);
+  useEffect(() => {
+    pruneSessionDrafts(new Set(snapshot.plans.map((plan) => plan.planId)));
+  }, [pruneSessionDrafts, snapshot.plans]);
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
   const [projectScopeId, setProjectScopeId] = useState<string | null>(null);
   const [archivedPage, setArchivedPage] = useState(0);
@@ -674,11 +680,25 @@ const PlanCard = memo(function PlanCard(props: {
             Updated {formatRelativeTimeLabel(props.plan.updatedAt)}
           </SidebarPlanTooltipRow>
           {cardStatus.slot === null ? null : <PlanTooltipStatusRow status={cardStatus.slot} />}
+          <SidebarCodingSessionRows sessions={props.plan.codingSessions ?? []} />
         </SidebarPlanTooltip>
       </Tooltip>
     </li>
   );
 });
+
+export function SidebarCodingSessionRows(props: {
+  readonly sessions: PlanTreeRow["codingSessions"];
+}) {
+  return props.sessions.map((session) => (
+    <SidebarPlanTooltipRow
+      key={session.commitId}
+      icon={<GitBranchIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
+    >
+      {codingSessionDetailLabel(session)}
+    </SidebarPlanTooltipRow>
+  ));
+}
 
 function PlanTooltipStatusRow(props: { readonly status: "awaiting-input" | "working" }) {
   const isWorking = props.status === "working";

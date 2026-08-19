@@ -313,6 +313,9 @@ const SUMMARY_MAX_LENGTH = 60;
  * issue reads as its title, which is what a person would call it.
  */
 export function planCommitSummary(item: PlanTimelineItem): string {
+  if (item._tag === "coding-session") {
+    return `Coding session in ${item.repositoryName}`;
+  }
   if (item._tag === "plan-revision") {
     if (item.split !== undefined) return `Plan for ${item.split.repositoryName}`;
     return item.authorKind === "human" ? "You edited the plan" : "The assistant revised the plan";

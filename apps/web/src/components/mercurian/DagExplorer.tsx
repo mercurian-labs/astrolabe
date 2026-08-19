@@ -13,6 +13,7 @@ import {
   MessageSquareIcon,
   MessagesSquareIcon,
   Settings2Icon,
+  SquareTerminalIcon,
   WaypointsIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
@@ -1974,6 +1975,7 @@ function interpolateSpatialLayout(
  * and the list so a commit reads the same in both.
  */
 function commitGlyph(item: PlanTimelineItem) {
+  if (item._tag === "coding-session") return SquareTerminalIcon;
   if (item._tag === "plan-revision") return FileTextIcon;
   if (item._tag === "spec-revision") return CircleDotIcon;
   return MessageSquareIcon;

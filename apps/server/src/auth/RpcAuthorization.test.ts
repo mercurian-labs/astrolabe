@@ -3,6 +3,7 @@ import {
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
   AuthRelayWriteScope,
+  MERCURIAN_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -35,6 +36,12 @@ describe("RPC authorization scopes", () => {
       AuthRelayReadScope,
     );
     expect(requiredScopeForRpcMethod(WS_METHODS.cloudInstallRelayClient)).toBe(AuthRelayWriteScope);
+  });
+
+  it("requires operate access to start a coding session", () => {
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.startCodingSession)).toBe(
+      AuthOrchestrationOperateScope,
+    );
   });
 
   it("rejects unknown RPC method names", () => {

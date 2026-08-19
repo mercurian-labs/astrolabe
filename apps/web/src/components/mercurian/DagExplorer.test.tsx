@@ -140,6 +140,34 @@ describe("DagExplorer", () => {
     expect(markup).toContain("The spec changed after the plan was last revised");
   });
 
+  it("uses a terminal glyph and repository summary for a coding-session leaf", () => {
+    const session: PlanTimelineItem = {
+      _tag: "coding-session",
+      commitId: MercurianCommitId.make("session"),
+      sequence: 2,
+      parents: [root],
+      published: false,
+      authorKind: "human",
+      createdAt: "2026-08-14T00:01:00.000Z",
+      repositoryId: MercurianRepositoryId.make("repo-web"),
+      repositoryName: "web",
+      planRevisionCommitId: root,
+    };
+    const markup = renderToStaticMarkup(
+      <DagExplorer
+        anchoredCommitId={session.commitId}
+        graph={buildPlanGraph([timeline[0]!, session])}
+        readyCommits={new Map()}
+        stalePlanCommitIds={new Set()}
+        staleSpecCommitIds={new Set()}
+        onColumnsWidthCapChange={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(markup).toContain("Coding session in web");
+    expect(markup).toContain("lucide-square-terminal");
+  });
+
   it("renders a checkpoint as authored query, effects, and response at the terminal id", () => {
     const markup = renderExplorer(checkpointTimeline, MercurianCommitId.make("plan-revision"));
 

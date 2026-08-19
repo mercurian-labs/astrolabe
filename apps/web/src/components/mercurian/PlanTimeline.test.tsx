@@ -8,6 +8,7 @@ import {
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanTimelineItem,
+  type PlanCodingSessionRecord,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -330,6 +331,42 @@ describe("PlanTimeline", () => {
       />,
     );
     expect(markup).toContain("Ready to implement");
+  });
+
+  it("renders structured coding-session facts without a generated summary", () => {
+    const sessionCommit: PlanTimelineItem = {
+      _tag: "coding-session",
+      commitId: id("session-1"),
+      sequence: 3,
+      parents: [id("revision-abcdef12")],
+      published: false,
+      authorKind: "human",
+      createdAt: CREATED_AT,
+      repositoryId: MercurianRepositoryId.make("repo-server"),
+      repositoryName: "server",
+      planRevisionCommitId: id("revision-abcdef12"),
+    };
+    const session: PlanCodingSessionRecord = {
+      commitId: sessionCommit.commitId,
+      repositoryId: MercurianRepositoryId.make("repo-server"),
+      threadId: "thread" as PlanCodingSessionRecord["threadId"],
+      branch: "mercurian/reshape-sidebar-12345678",
+      worktreePath: "/tmp/session",
+      baseRef: "main",
+      startedAt: CREATED_AT,
+      endedAt: "2026-08-03T13:00:00.000Z",
+      outcome: "completed",
+      prUrl: "https://example.test/pull/1",
+    };
+    const markup = renderToStaticMarkup(
+      <PlanTimeline timeline={[sessionCommit]} codingSessions={[session]} />,
+    );
+    expect(markup).toContain("Coding session · server");
+    expect(markup).toContain("Implemented revision");
+    expect(markup).toContain("Completed");
+    expect(markup).toContain("mercurian/reshape-sidebar-12345678");
+    expect(markup).toContain('href="https://example.test/pull/1"');
+    expect(markup).not.toContain("summary");
   });
 
   it("renders the implement analyzing card with grounding and Stop", () => {

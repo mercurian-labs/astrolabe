@@ -1,13 +1,13 @@
 /** Structural shape, not the wire type: this helper only reads the tag and the author. */
 interface TimelineItemFields {
-  readonly _tag: "message" | "plan-revision" | "spec-revision";
+  readonly _tag: "message" | "plan-revision" | "spec-revision" | "coding-session";
   readonly authorKind: "human" | "assistant";
   readonly createdAt: string;
 }
 
 /** Likewise: only the tag and the identity are read. */
 interface RevisionIdentityFields {
-  readonly _tag: "message" | "plan-revision" | "spec-revision";
+  readonly _tag: "message" | "plan-revision" | "spec-revision" | "coding-session";
   readonly commitId: string;
   readonly split?: unknown;
 }

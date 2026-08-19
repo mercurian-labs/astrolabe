@@ -10,6 +10,7 @@ import type {
   MercurianSaveSpecRevisionInput,
   MercurianRefreshSpecInput,
   MercurianTryImplementInput,
+  MercurianStartCodingSessionInput,
   PlanDetail,
   PlanId,
   PlanImplementReady,
@@ -44,6 +45,10 @@ const EMPTY_PLAN_ATOM = Atom.make(
     {
       readonly detail: PlanDetail | null;
       readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+      readonly codingSessions: ReadonlyMap<
+        MercurianCommitId,
+        import("@t3tools/contracts").PlanCodingSessionRecord
+      >;
       readonly synchronized: boolean;
       readonly turnRefusal: PlanTurnRefusalReason | null;
       readonly implementFailure:
@@ -185,6 +190,11 @@ export function useTryImplement() {
 export function useConfirmSplits() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.confirmSplits);
   return useCallback((input: MercurianConfirmSplitsInput) => run(input), [run]);
+}
+
+export function useStartCodingSession() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.startCodingSession);
+  return useCallback((input: MercurianStartCodingSessionInput) => run(input), [run]);
 }
 
 export function useCancelImplementProposal() {
