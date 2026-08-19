@@ -130,7 +130,7 @@ Checkpointing captures workspace state over time so the app can diff turns and r
 
 #### Checkpoint
 
-A saved snapshot of a thread workspace at a particular turn. In practice it is a hidden Git ref in [CheckpointStore.ts][19] plus a projected summary from [ProjectionCheckpoints.ts][21]. Capture and lifecycle work happen in [CheckpointReactor.ts][6].
+A saved snapshot of a thread workspace at a particular turn. In practice it is a hidden Git ref in [CheckpointStore.ts][19] plus a projected summary from [ProjectionCheckpoints.ts][21]. Capture and lifecycle work happen in [CheckpointReactor.ts][6]. Coding sessions expose checkpoints through the [Coding Session View](#coding-session-view), where they feed turn diffs and revert.
 
 #### Checkpoint ref
 
@@ -146,7 +146,11 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 #### Turn diff
 
-The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
+The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4]. The [Coding Session View](#coding-session-view) renders it as the changed-files card at the end of that turn.
+
+#### Revert
+
+Restoring a thread's worktree and retained conversation to an earlier [checkpoint](#checkpoint). The decider refuses `thread.checkpoint.revert` while the latest turn is running; after interruption, [CheckpointReactor.ts][6] restores the checkpoint and discards later turns and [turn diffs](#turn-diff). A coding-session revert does not write Mercurian planning state, so its [coding-session leaf](#coding-session-leaf) survives.
 
 ### Planning history
 
@@ -375,6 +379,15 @@ bookkeeping inside this thread: it shortens the runtime context and appears as a
 `context-compaction` activity in the session work log, never as a Mercurian commit or plan-stream
 item. In the Merges product sense, deciding how context is assembled going forward is a
 human-driven planning act. The two do not share a surface or a write path.
+
+### Coding Session View
+
+The session-specific screen at `/sessions/$threadId`. It heads the underlying thread with its plan
+and session title, then presents the thread timeline, composer, [checkpoints](#checkpoint),
+[turn diffs](#turn-diff), changed-files cards, and [revert](#revert). It is reached from the plan
+card's session details, a coding-session leaf's Checkpoint Graph popover, or the plan timeline card.
+The view composes thread runtime state with the owning plan for presentation; it does not move
+session history into the Mercurian commit store.
 
 ### Coding-session leaf
 

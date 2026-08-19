@@ -9,7 +9,6 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
-  ThreadId,
   type MercurianRepositoryScript,
   type MercurianStartCodingSessionInput,
   type OrchestrationCommand,
@@ -396,6 +395,17 @@ describe("CodingSessionService validation", () => {
       );
       assert.ok(state.calls.includes("refresh-status"));
       const turnIndex = state.calls.indexOf("dispatch:thread.turn.start");
+      const metadataIndex = state.commands.findIndex(
+        (command) => command.type === "thread.meta.update",
+      );
+      const metadata = state.commands[metadataIndex];
+      assert.ok(metadata?.type === "thread.meta.update");
+      if (metadata?.type === "thread.meta.update") {
+        assert.strictEqual(metadata.worktreePath, "/worktrees/coding-session");
+      }
+      assert.ok(
+        metadataIndex < state.commands.findIndex((command) => command.type === "thread.turn.start"),
+      );
       assert.ok(turnIndex > state.calls.indexOf("setup:write:vp generate\r"));
       assert.ok(state.calls.indexOf("leaf") > turnIndex);
       assert.deepStrictEqual(

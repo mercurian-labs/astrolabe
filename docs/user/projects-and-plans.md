@@ -350,10 +350,25 @@ start another session from the same ready commit when a retry or a different mod
 Selecting a session leaf keeps it visible while new planning continues from the checkpoint
 immediately before it.
 
-The session card in the plan timeline includes **Open session**. A session is a focused coding
+Open a session from its row in the plan card's hover details, from **Open session** in the coding
+session leaf's Checkpoint Graph details, or from **Open session** on the plan timeline card. The
+plan stays highlighted in the sidebar while its session is open. A session is a focused coding
 conversation: send one turn at a time, stop a running turn from the same control, and switch among
 **Supervised**, **Auto-accept edits**, and **Full access** from the composer. See
 [Permission modes](permission-modes.md).
+
+The session timeline reads turn by turn. Work-log detail stays folded to a quiet line until you
+expand it, and completed turns fold to a **Worked for …** summary so long sessions remain
+scannable. The timeline follows new work while you are at the bottom; if you scroll away, use the
+jump-to-bottom control to return to the newest activity. Each completed turn ends with a
+changed-files card listing the files touched and their added and removed lines. Open a file there
+to inspect its diff.
+
+Use **Revert to this message** on an earlier user message to restore the worktree and conversation
+to that checkpoint. Revert is permanent and asks for confirmation. A running turn must be
+interrupted first; the server refuses the revert until it is no longer running. Newer messages and
+turn diffs disappear after the revert, but the coding-session leaf remains in the plan history —
+reverting session work never rewrites the plan or destroys the leaf that records the session.
 
 In Supervised work, commands, file reads, and file changes can pause for approval. Approve once,
 allow requests like it for the session, decline while letting the turn continue, or cancel the

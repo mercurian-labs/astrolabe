@@ -3,6 +3,7 @@ import { ThreadId, type EnvironmentId, type PlanId } from "@t3tools/contracts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import ChatView from "../components/ChatView";
+import { CodingSessionHeader } from "../components/mercurian/CodingSessionHeader";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -20,6 +21,8 @@ export function SessionThreadRouteContent(props: {
   readonly renderState: ThreadRouteRenderState;
   readonly shellExists: boolean;
   readonly planId: PlanId | null;
+  readonly planTitle: string | null;
+  readonly threadTitle: string;
 }) {
   const backToPlanLink =
     props.planId === null ? (
@@ -47,6 +50,15 @@ export function SessionThreadRouteContent(props: {
           threadId={props.threadId}
           routeKind="server"
           threadSyncPhase={props.threadSyncPhase}
+          headerContent={
+            <CodingSessionHeader
+              environmentId={props.environmentId}
+              planId={props.planId}
+              planTitle={props.planTitle}
+              threadId={props.threadId}
+              threadTitle={props.threadTitle}
+            />
+          }
         />
       ) : props.renderState === "missing" ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
@@ -75,10 +87,10 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
   const serverThreadDetail = useThreadDetail(threadRef);
   const serverThreadStatus = useThreadStatus(threadRef);
   const tree = useMercurianTree();
-  const planId =
+  const owningPlan =
     tree.snapshot.plans.find((plan) =>
       plan.codingSessions.some((session) => session.threadId === threadId),
-    )?.planId ?? null;
+    ) ?? null;
 
   if (environmentId === null) return null;
 
@@ -106,7 +118,9 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       threadSyncPhase={threadSyncPhase}
       renderState={renderState}
       shellExists={serverThreadShell !== null}
-      planId={planId}
+      planId={owningPlan?.planId ?? null}
+      planTitle={owningPlan?.title ?? null}
+      threadTitle={serverThreadShell?.title ?? serverThreadDetail?.title ?? "Coding session"}
     />
   );
 }

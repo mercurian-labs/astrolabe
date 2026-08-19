@@ -1117,11 +1117,17 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.checkpoint.revert": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
+      if (thread.latestTurn?.state === "running") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "Interrupt the running turn before reverting checkpoints.",
+        });
+      }
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",

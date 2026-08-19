@@ -5,12 +5,30 @@ import {
   type PlanCodingSessionRecord,
   type PlanTimelineItem,
 } from "@t3tools/contracts";
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { PlanNodePopoverContent } from "./PlanNodePopover";
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    Link: ({
+      to,
+      params,
+      ...props
+    }: Omit<ComponentProps<"a">, "href"> & {
+      readonly to: string;
+      readonly params?: Readonly<Record<string, string>>;
+    }) => (
+      <a {...props} href={to.replace(/\$(\w+)/g, (_match, key: string) => params?.[key] ?? "")} />
+    ),
+  };
+});
 
 const id = (value: string) => MercurianCommitId.make(value);
 
@@ -122,7 +140,7 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Implement from here");
   });
 
-  it("renders coding-session facts and limits the leaf to Continue", () => {
+  it("renders coding-session facts and links the recorded session", () => {
     const session: PlanTimelineItem = {
       _tag: "coding-session",
       commitId: id("session"),
@@ -169,6 +187,8 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("feature/checkpoint-graph");
     expect(markup).toContain("Pull request");
     expect(markup).toContain("Continue from here");
+    expect(markup).toContain("Open session");
+    expect(markup).toContain('href="/sessions/thread"');
     expect(markup).not.toContain("Edit and branch");
     expect(markup).not.toContain("Implement from here");
   });
