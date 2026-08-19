@@ -105,7 +105,9 @@ describe("PlanNodePopoverContent", () => {
 
     expect(markup).toContain("You");
     expect(markup).toContain("Assistant");
-    expect(markup).toContain("Codex · gpt-5");
+    expect(markup.match(/Codex · gpt-5/g)).toHaveLength(1);
+    expect(markup).toMatch(/>You<\/span><svg[^>]*-scale-x-100/);
+    expect(markup).toMatch(/>Assistant<\/span><span[^>]*>Codex · gpt-5<\/span>/);
     expect(markup).toContain("Switched from");
     expect(markup).toContain("Claude · sonnet");
     expect(markup).toContain("Update the graph");

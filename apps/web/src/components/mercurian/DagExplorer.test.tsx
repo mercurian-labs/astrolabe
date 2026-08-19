@@ -14,6 +14,7 @@ import {
 import {
   DagExplorer,
   DagExplorerDisplaySettingsControls,
+  DagExplorerWarningsContent,
   EXPLORER_VIEW_STORAGE_KEY,
   ExplorerView,
 } from "./DagExplorer";
@@ -140,6 +141,7 @@ describe("DagExplorer", () => {
     );
 
     expect(markup).toContain("Checkpoint Graph");
+    expect(markup).not.toContain('aria-label="Checkpoint Graph warnings"');
     expect(markup).toContain(
       'aria-label="Details for You: Group this turn; Assistant: Grouped and ready"',
     );
@@ -175,11 +177,20 @@ describe("DagExplorer", () => {
       />,
     );
 
-    expect(markup).toContain("1 stale spec branch");
-    expect(markup).toContain("1 plan may be stale");
+    const warningContent = renderToStaticMarkup(
+      <DagExplorerWarningsContent stalePlanCount={1} staleSpecCount={1} />,
+    );
+
+    expect(markup).toContain('aria-label="Checkpoint Graph warnings"');
+    expect(markup).toContain("lucide-triangle-alert");
+    expect(markup).not.toContain("1 stale spec branch");
+    expect(markup).not.toContain("1 plan may be stale");
     expect(markup).toContain("Plan may be stale");
     expect(markup).toContain("Ready to implement");
-    expect(markup).toContain("The spec changed after the plan was last revised");
+    expect(warningContent).toContain("1 stale spec branch");
+    expect(warningContent).toContain("spec changed since the branch&#x27;s base");
+    expect(warningContent).toContain("1 plan may be stale");
+    expect(warningContent).toContain("The spec changed after the plan was last revised");
   });
 
   it("uses a terminal glyph and repository summary for a coding-session leaf", () => {
@@ -313,19 +324,23 @@ describe("DagExplorer", () => {
     expect(markup).toContain('aria-label="You: Merge these paths"');
   });
 
-  it("draws Graph nodes as accessible kind-colored dots only", () => {
+  it("draws accessible monochrome Graph nodes with glyphs and no text", () => {
     const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
     setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "graph", ExplorerView);
     try {
       const markup = renderExplorer(checkpointTimeline);
       const start = markup.indexOf('<svg class="size-full cursor-grab');
-      const graphSvg = markup.slice(start, markup.indexOf("</svg>", start) + 6);
+      const graphSvg = markup.slice(
+        start,
+        markup.indexOf('<div class="absolute right-2 top-2', start),
+      );
       expect(start).toBeGreaterThanOrEqual(0);
       expect(graphSvg).not.toContain("<text");
-      expect(graphSvg).not.toContain("lucide-");
-      expect(graphSvg).not.toContain("checkpoint-ring");
-      expect(graphSvg).toContain("stroke-sky-500");
+      expect(graphSvg).toContain("lucide-messages-square");
+      expect(graphSvg).toContain("checkpoint-ring");
+      expect(graphSvg).toContain("fill-background stroke-muted-foreground");
       expect(graphSvg).toContain("current-position-ring fill-none stroke-primary");
+      expect(graphSvg).not.toContain("node-status-dot");
       expect(markup).toContain('aria-label="You: Group this turn; Assistant: Grouped and ready"');
       expect(markup).toContain('aria-haspopup="dialog"');
       expect(markup).toContain('data-commit-id="response"');
@@ -335,64 +350,53 @@ describe("DagExplorer", () => {
     }
   });
 
-  it("renders every kind palette class in Graph", () => {
+  it("stacks readiness and stale-status dots outward from a Graph node", () => {
     const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
     setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "graph", ExplorerView);
     try {
-      const markup = renderExplorer([
-        timeline[0]!,
-        {
-          _tag: "plan-revision",
-          commitId: MercurianCommitId.make("plan-kind"),
-          sequence: 2,
-          parents: [],
-          published: false,
-          authorKind: "human",
-          createdAt: "2026-08-14T00:01:00.000Z",
-        },
-        {
-          _tag: "spec-revision",
-          commitId: MercurianCommitId.make("spec-kind"),
-          sequence: 3,
-          parents: [],
-          published: false,
-          authorKind: "human",
-          cause: "direct",
-          createdAt: "2026-08-14T00:02:00.000Z",
-        },
-        {
-          _tag: "plan-revision",
-          commitId: MercurianCommitId.make("split-kind"),
-          sequence: 4,
-          parents: [],
-          published: false,
-          authorKind: "human",
-          createdAt: "2026-08-14T00:03:00.000Z",
-          split: {
-            repositoryId: MercurianRepositoryId.make("repo-web"),
-            repositoryName: "web",
-          },
-        },
-        {
-          _tag: "coding-session",
-          commitId: MercurianCommitId.make("session-kind"),
-          sequence: 5,
-          parents: [],
-          published: false,
-          authorKind: "human",
-          createdAt: "2026-08-14T00:04:00.000Z",
-          repositoryId: MercurianRepositoryId.make("repo-web"),
-          repositoryName: "web",
-          planRevisionCommitId: MercurianCommitId.make("plan-kind"),
-        },
-      ]);
-      expect(markup).toContain("stroke-sky-500");
-      expect(markup).toContain("stroke-violet-500");
-      expect(markup).toContain("stroke-teal-500");
-      expect(markup).toContain("stroke-emerald-500");
-      expect(markup).toContain("stroke-orange-500");
-      expect(markup).toContain('aria-label="You: Review the branch"');
-      expect(markup).toContain('aria-label="Plan for web"');
+      const response = MercurianCommitId.make("response");
+      const markup = renderToStaticMarkup(
+        <DagExplorer
+          {...sharedExplorerProps}
+          anchoredCommitId={response}
+          graph={buildPlanGraph(checkpointTimeline)}
+          readyCommits={
+            new Map([
+              [
+                response,
+                {
+                  commitId: response,
+                  repositoryId: MercurianRepositoryId.make("repo-web"),
+                  repositoryName: "web",
+                },
+              ],
+            ])
+          }
+          stalePlanCommitIds={new Set([response])}
+          staleSpecCommitIds={new Set([response])}
+          onColumnsWidthCapChange={vi.fn()}
+          onSelect={vi.fn()}
+        />,
+      );
+      const start = markup.indexOf('<svg class="size-full cursor-grab');
+      const graphSvg = markup.slice(
+        start,
+        markup.indexOf('<div class="absolute right-2 top-2', start),
+      );
+      const statusDots = [
+        ...graphSvg.matchAll(/<circle[^>]*class="[^"]*node-status-dot[^"]*"[^>]*>/g),
+      ].map(([tag]) => tag);
+      const xPositions = statusDots.map((tag) => Number(tag.match(/cx="([^"]+)"/)?.[1]));
+
+      expect(statusDots).toHaveLength(3);
+      expect(statusDots[0]).toContain('data-status="ready"');
+      expect(statusDots[0]).toContain("fill-emerald-500");
+      expect(statusDots[1]).toContain('data-status="stale-spec"');
+      expect(statusDots[1]).toContain("fill-amber-500");
+      expect(statusDots[2]).toContain('data-status="stale-plan"');
+      expect(statusDots[2]).toContain("fill-orange-500");
+      expect(xPositions[1]).toBeGreaterThan(xPositions[0]!);
+      expect(xPositions[2]).toBeGreaterThan(xPositions[1]!);
     } finally {
       if (previous === null) removeLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY);
       else setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, previous, ExplorerView);

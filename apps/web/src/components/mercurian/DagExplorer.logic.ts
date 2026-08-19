@@ -61,11 +61,19 @@ export interface MapBounds {
 
 export const MAP_MIN_ZOOM = 0.3;
 export const MAP_MAX_ZOOM = 3;
+export const MAP_GLYPH_ZOOM = 0.65;
 export const MAP_FIT_PADDING = 64;
 export const MAP_PROXIMITY_FALLOFF = 72;
 export const MAP_PROXIMITY_MAX_SCALE = 1.35;
 export const MINIMAP_PADDING = 8;
 const CAMERA_EPSILON = 0.001;
+
+export type MapDetail = "dot" | "glyph";
+
+export function detailFor(zoom: number): MapDetail {
+  if (zoom < MAP_GLYPH_ZOOM) return "dot";
+  return "glyph";
+}
 
 export function zoomAtPoint(
   transform: MapTransform,

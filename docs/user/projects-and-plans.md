@@ -204,9 +204,10 @@ places to continue. It offers **Thread**, **Columns**, and **Graph** readings an
 one you chose.
 
 Thread follows the line you are on. Columns keeps branch choices open as standing panes. Graph is a
-map of the same checkpoints laid out in space — colored status dots and every connection, with no
-text on the map itself. Drag the map to move around it and scroll to zoom; where you are standing is
-ringed and comes to the middle.
+map of the same checkpoints laid out in space, with every connection visible but no text on the map
+itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's top-right
+mark readiness and stale spec or plan status. Drag the map to move around it and scroll to zoom;
+where you are standing is ringed and comes to the middle.
 
 Work you have published reads solid; work still private to you reads muted.
 

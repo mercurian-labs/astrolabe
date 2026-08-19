@@ -17,8 +17,10 @@ import {
   LocateFixedIcon,
   Maximize2Icon,
   MessageSquareIcon,
+  MessagesSquareIcon,
   Settings2Icon,
   SquareTerminalIcon,
+  TriangleAlertIcon,
   WaypointsIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
@@ -49,6 +51,7 @@ import {
   centerOn,
   DagExplorerDisplaySettings,
   DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
+  detailFor,
   edgeWidthFor,
   fitTransform,
   mapOverflows,
@@ -81,7 +84,7 @@ import {
   mapMarksToNodes,
   planCheckpointEffectLabel,
   planNodeIdForCommit,
-  planNodeKindColor,
+  planNodeStatusDots,
   planNodeSummary,
 } from "./PlanCheckpoints.logic";
 import {
@@ -230,23 +233,13 @@ export function DagExplorer({
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
         <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
-        <span className="flex min-w-0 flex-1 items-center gap-1">
-          {staleSpecNodes.size === 0 ? null : (
-            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-              {staleSpecNodes.size} stale spec {staleSpecNodes.size === 1 ? "branch" : "branches"}
-            </span>
-          )}
-          {stalePlanNodes.size === 0 ? null : (
-            <span
-              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
-              title={PLAN_MAY_BE_STALE_DESCRIPTION}
-            >
-              {stalePlanNodes.size === 1
-                ? "1 plan may be stale"
-                : `${stalePlanNodes.size} plans may be stale`}
-            </span>
-          )}
-        </span>
+        {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
+          <GraphWarningsPopover
+            stalePlanCount={stalePlanNodes.size}
+            staleSpecCount={staleSpecNodes.size}
+          />
+        )}
+        <span className="min-w-0 flex-1" />
         <ToggleGroup
           className="shrink-0"
           size="xs"
@@ -416,6 +409,68 @@ function DisplaySettingsPopover({
         />
       </PopoverPopup>
     </Popover>
+  );
+}
+
+function GraphWarningsPopover({
+  stalePlanCount,
+  staleSpecCount,
+}: {
+  readonly stalePlanCount: number;
+  readonly staleSpecCount: number;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            aria-label="Checkpoint Graph warnings"
+            className="text-amber-600 hover:text-amber-700 dark:text-amber-400"
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          />
+        }
+      >
+        <TriangleAlertIcon />
+      </PopoverTrigger>
+      <PopoverPopup align="start" className="w-72">
+        <DagExplorerWarningsContent
+          stalePlanCount={stalePlanCount}
+          staleSpecCount={staleSpecCount}
+        />
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+/** The compact warning reading opened from the graph header. */
+export function DagExplorerWarningsContent({
+  stalePlanCount,
+  staleSpecCount,
+}: {
+  readonly stalePlanCount: number;
+  readonly staleSpecCount: number;
+}) {
+  return (
+    <div className="flex flex-col gap-3 text-xs">
+      {staleSpecCount === 0 ? null : (
+        <p>
+          <span className="font-medium text-foreground">
+            {staleSpecCount} stale spec {staleSpecCount === 1 ? "branch" : "branches"}
+          </span>
+          <span className="text-muted-foreground">{" — spec changed since the branch's base"}</span>
+        </p>
+      )}
+      {stalePlanCount === 0 ? null : (
+        <p>
+          <span className="font-medium text-foreground">
+            {stalePlanCount === 1 ? "1 plan may be stale" : `${stalePlanCount} plans may be stale`}
+          </span>
+          <span className="text-muted-foreground"> — {PLAN_MAY_BE_STALE_DESCRIPTION}</span>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1485,6 +1540,7 @@ function SpatialMap({
     () => (currentCommitId === null ? new Set<string>() : ancestorClosure(graph, currentCommitId)),
     [currentCommitId, graph],
   );
+  const detail = detailFor(transform.zoom);
   const fitToView = () => {
     const from = transformRef.current;
     const tween = cameraTween(from, fitTransform(layout.bounds, viewBox), viewBox);
@@ -1565,6 +1621,15 @@ function SpatialMap({
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
             const isPlanStale = stalePlanCommitIds.has(node.commitId);
             const isSpecStale = staleSpecCommitIds.has(node.commitId);
+            const statusDots = planNodeStatusDots({
+              ready: readyCommits.has(node.commitId),
+              staleSpec: isSpecStale,
+              stalePlan: isPlanStale,
+            });
+            const statusDotRadius = radius * 0.35;
+            const statusDotAnchor = radius / Math.SQRT2;
+            const Glyph =
+              graphNode.checkpoint === undefined ? commitGlyph(node.item) : MessagesSquareIcon;
             return (
               <g
                 // A node is a control, and a circle has no accessible name of
@@ -1608,12 +1673,53 @@ function SpatialMap({
                   />
                 ) : null}
                 <circle
-                  className={planNodeKindColor(graphNode)}
+                  className={
+                    node.item.published
+                      ? "fill-muted-foreground stroke-none"
+                      : "fill-background stroke-muted-foreground"
+                  }
                   cx={node.x}
                   cy={node.y}
                   r={radius}
                   strokeWidth={1.5}
                 />
+                {graphNode.checkpoint === undefined ? null : (
+                  <circle
+                    className={cn(
+                      "checkpoint-ring fill-none",
+                      node.item.published ? "stroke-background/80" : "stroke-muted-foreground",
+                    )}
+                    cx={node.x}
+                    cy={node.y}
+                    r={Math.max(radius - 3, 1)}
+                    strokeWidth={1}
+                  />
+                )}
+                {detail === "dot" ? null : (
+                  <g transform={graphMessageGlyphTransform(graphNode, node.x)}>
+                    <Glyph
+                      className={cn(
+                        "pointer-events-none",
+                        node.item.published ? "text-background" : "text-muted-foreground",
+                      )}
+                      height={radius}
+                      strokeWidth={3}
+                      width={radius}
+                      x={node.x - radius / 2}
+                      y={node.y - radius / 2}
+                    />
+                  </g>
+                )}
+                {statusDots.map((dot, index) => (
+                  <circle
+                    className={cn("node-status-dot pointer-events-none", dot.fillClass)}
+                    data-status={dot.key}
+                    cx={node.x + statusDotAnchor + index * statusDotRadius * 2.1}
+                    cy={node.y - statusDotAnchor}
+                    key={dot.key}
+                    r={statusDotRadius}
+                  />
+                ))}
               </g>
             );
           })}
@@ -1996,6 +2102,14 @@ function planNodeAccessibleLabel(node: PlanGraphNode): string {
     return `${messageAuthorLabel(node.item)}: ${planCommitSummary(node.item)}`;
   }
   return planCommitSummary(node.item);
+}
+
+function graphMessageGlyphTransform(node: PlanGraphNode, x: number): string | undefined {
+  return node.checkpoint === undefined &&
+    node.item._tag === "message" &&
+    node.item.authorKind === "human"
+    ? `translate(${x * 2} 0) scale(-1,1)`
+    : undefined;
 }
 
 interface PlanNodeRowProps {

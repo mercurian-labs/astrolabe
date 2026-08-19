@@ -386,7 +386,7 @@ function MessageIdentity({
   readonly label: "You" | "Assistant";
   readonly providers: ReadonlyArray<ServerProvider>;
 }) {
-  const selection = label === "You" ? item.ranUnder : item.generatedBy;
+  const selection = label === "Assistant" ? item.generatedBy : undefined;
   return (
     <div className={cn("flex min-w-0 items-center gap-1.5", label === "You" && "justify-end")}>
       {label === "Assistant" ? (
