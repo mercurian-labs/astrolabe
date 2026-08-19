@@ -1,11 +1,12 @@
 /**
  * A continuable reading of planning history.
  *
- * The stored DAG remains commit-grained. This projection groups only the
- * structurally complete assistant turns whose terminal response is the state
- * continuation should use, while leaving every other act independently
- * addressable. The output deliberately keeps the PlanGraph shape so all
- * existing layouts and graph traversals retain one source of truth.
+ * The stored DAG remains commit-grained. This projection groups structurally
+ * identifiable assistant turns, using either their terminal response or their
+ * latest landed revision as the state continuation should use, while leaving
+ * every other act independently addressable. The output deliberately keeps
+ * the PlanGraph shape so all existing layouts and graph traversals retain one
+ * source of truth.
  */
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 
@@ -146,15 +147,19 @@ function checkpointCandidate(graph: PlanGraph, opener: PlanGraphNode): Checkpoin
 
     const child = assistantChildren[0];
     if (child === undefined) {
+      const members = [opener, ...revisions];
       return {
         entry: opener,
-        members: [opener],
+        members,
         checkpoint: {
           query: opener.item,
-          revisions: [],
-          effects: ["unanswered"],
+          revisions: revisions.map((revision) => revision.item),
+          effects: effectsFor(
+            members.map((member) => member.item),
+            undefined,
+          ),
         },
-        identity: opener,
+        identity: revisions.at(-1) ?? opener,
       };
     }
     if (child.item._tag === "message") {
@@ -241,12 +246,15 @@ export function planNodeSummary(node: PlanGraphNode): string {
 }
 
 /** Complete map detail: query, landed effects, then a compact response excerpt. */
-export function planNodeDetail(node: PlanGraphNode): string {
+export function planNodeDetail(node: PlanGraphNode, suppressUnanswered = false): string {
   const checkpoint = node.checkpoint;
   if (checkpoint === undefined) return planCommitDetail(node.item);
 
   const query = `You: ${planCommitDetail(checkpoint.query)}`;
-  const effects = checkpoint.effects.map(planCheckpointEffectLabel).join(" · ");
+  const effects = checkpoint.effects
+    .filter((effect) => !suppressUnanswered || effect !== "unanswered")
+    .map(planCheckpointEffectLabel)
+    .join(" · ");
   const response =
     checkpoint.response === undefined
       ? ""

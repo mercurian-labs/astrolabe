@@ -252,4 +252,61 @@ describe("DagExplorer", () => {
       else setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, previous, ExplorerView);
     }
   });
+
+  it("does not call an in-flight forming checkpoint unanswered in Graph view", () => {
+    const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
+    const anchor = MercurianCommitId.make("forming-spec-revision");
+    setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "graph", ExplorerView);
+    try {
+      const markup = renderToStaticMarkup(
+        <DagExplorer
+          anchoredCommitId={anchor}
+          graph={buildPlanGraph([
+            {
+              _tag: "message",
+              commitId: MercurianCommitId.make("forming-query"),
+              sequence: 1,
+              parents: [],
+              published: false,
+              authorKind: "human",
+              createdAt: "2026-08-14T00:00:00.000Z",
+              text: "Still answering",
+            },
+            {
+              _tag: "plan-revision",
+              commitId: MercurianCommitId.make("forming-plan-revision"),
+              sequence: 2,
+              parents: [MercurianCommitId.make("forming-query")],
+              published: false,
+              authorKind: "assistant",
+              createdAt: "2026-08-14T00:01:00.000Z",
+            },
+            {
+              _tag: "spec-revision",
+              commitId: anchor,
+              sequence: 3,
+              parents: [MercurianCommitId.make("forming-plan-revision")],
+              published: false,
+              authorKind: "assistant",
+              cause: "direct",
+              createdAt: "2026-08-14T00:02:00.000Z",
+            },
+          ])}
+          inFlightAnchorCommitId={anchor}
+          readyCommits={new Map()}
+          stalePlanCommitIds={new Set()}
+          staleSpecCommitIds={new Set()}
+          onColumnsWidthCapChange={vi.fn()}
+          onSelect={vi.fn()}
+        />,
+      );
+
+      expect(markup).toContain("Still answering");
+      expect(markup).toContain('data-commit-id="forming-spec-revision"');
+      expect(markup).not.toContain("Unanswered");
+    } finally {
+      if (previous === null) removeLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY);
+      else setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, previous, ExplorerView);
+    }
+  });
 });

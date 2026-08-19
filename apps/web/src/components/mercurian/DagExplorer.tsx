@@ -297,6 +297,7 @@ export function DagExplorer({
         <GraphView
           currentCommitId={currentCommitId}
           graph={checkpointGraph}
+          inFlightUnansweredNodes={inFlightUnansweredNodes}
           readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
@@ -997,6 +998,7 @@ function paneSpanLabel(pane: Pane): string {
 function GraphView({
   graph,
   currentCommitId,
+  inFlightUnansweredNodes,
   readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
@@ -1004,6 +1006,7 @@ function GraphView({
 }: {
   readonly graph: PlanGraph;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly inFlightUnansweredNodes: ReadonlySet<string>;
   readonly readyCommits: ReadonlySet<string>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
@@ -1025,6 +1028,7 @@ function GraphView({
     <SpatialMap
       currentCommitId={currentCommitId}
       graph={graph}
+      inFlightUnansweredNodes={inFlightUnansweredNodes}
       layout={layout}
       readyCommits={readyCommits}
       settings={settings}
@@ -1040,6 +1044,7 @@ function SpatialMap({
   graph,
   layout,
   currentCommitId,
+  inFlightUnansweredNodes,
   readyCommits,
   settings,
   stalePlanCommitIds,
@@ -1050,6 +1055,7 @@ function SpatialMap({
   readonly graph: PlanGraph;
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
+  readonly inFlightUnansweredNodes: ReadonlySet<string>;
   readonly readyCommits: ReadonlySet<string>;
   readonly settings: DagExplorerDisplaySettingsValue;
   readonly stalePlanCommitIds: ReadonlySet<string>;
@@ -1640,7 +1646,10 @@ function SpatialMap({
           style={{ left: detailOverlay.left, top: detailOverlay.top }}
         >
           <p className="line-clamp-10 whitespace-pre-wrap break-words leading-4">
-            {planNodeDetail(detailOverlay.node)}
+            {planNodeDetail(
+              detailOverlay.node,
+              inFlightUnansweredNodes.has(detailOverlay.node.commitId),
+            )}
           </p>
         </div>
       )}

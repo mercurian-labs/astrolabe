@@ -144,13 +144,14 @@ describe("condensePlanGraph", () => {
       planRevision("landed", 2, ["query"], "assistant"),
     ]);
     const graph = condensePlanGraph(commitGraph);
-    const query = graph.byId.get("query")!;
+    const checkpoint = graph.byId.get("landed")!;
 
-    expect(query.checkpoint?.effects).toEqual(["unanswered"]);
-    expect(graph.byId.get("landed")?.checkpoint).toBeUndefined();
-    expect(isUnansweredCheckpointInFlight(query, commitGraph, id("query"))).toBe(true);
-    expect(isUnansweredCheckpointInFlight(query, commitGraph, id("landed"))).toBe(true);
-    expect(isUnansweredCheckpointInFlight(query, commitGraph, id("elsewhere"))).toBe(false);
+    expect(checkpoint.checkpoint?.effects).toEqual(["plan-updated", "unanswered"]);
+    expect(planNodeDetail(checkpoint, true)).toContain("Plan updated");
+    expect(planNodeDetail(checkpoint, true)).not.toContain("Unanswered");
+    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, id("query"))).toBe(true);
+    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, id("landed"))).toBe(true);
+    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, id("elsewhere"))).toBe(false);
   });
 
   it("leaves direct edits, imports, refreshes, splits, merges, and ambiguous turns standalone", () => {
@@ -195,7 +196,7 @@ describe("condensePlanGraph", () => {
     expect(graph.byId.get("ambiguous")?.isBranchPoint).toBe(true);
   });
 
-  it("keeps revisions stranded before a missing terminal as individual commits", () => {
+  it("condenses a terminal-less revision chain onto its last landed member", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
         message("query", 1, [], "human"),
@@ -203,10 +204,27 @@ describe("condensePlanGraph", () => {
         specRevision("spec", 3, ["plan"], "assistant"),
       ]),
     );
-    expect(graph.nodes.map((node) => node.commitId)).toEqual(["query", "plan", "spec"]);
-    expect(graph.byId.get("query")?.checkpoint?.effects).toEqual(["unanswered"]);
-    expect(graph.byId.get("plan")?.checkpoint).toBeUndefined();
-    expect(graph.byId.get("spec")?.checkpoint).toBeUndefined();
+    const node = graph.byId.get("spec");
+
+    expect(graph.nodes.map((candidate) => candidate.commitId)).toEqual(["spec"]);
+    expect(node?.item).toMatchObject({
+      commitId: "spec",
+      sequence: 3,
+      createdAt: at(3),
+      published: false,
+    });
+    expect(node?.checkpoint?.query.commitId).toBe("query");
+    expect(node?.checkpoint?.revisions.map((revision) => revision.commitId)).toEqual([
+      "plan",
+      "spec",
+    ]);
+    expect(node?.checkpoint?.response).toBeUndefined();
+    expect(node?.checkpoint?.effects).toEqual(["plan-updated", "spec-updated", "unanswered"]);
+    expect([...graph.nodeIdByCommit]).toEqual([
+      ["query", "spec"],
+      ["plan", "spec"],
+      ["spec", "spec"],
+    ]);
   });
 
   it("reanchors an interior fork and remains coherent in thread and column layouts", () => {
@@ -234,6 +252,31 @@ describe("condensePlanGraph", () => {
     expect(new Set(columnIds).size).toBe(columnIds.length);
   });
 
+  it("reanchors a fork from a trailing revision and remains coherent in layouts", () => {
+    const graph = condensePlanGraph(
+      buildPlanGraph([
+        message("query", 1, [], "human"),
+        planRevision("plan", 2, ["query"], "assistant"),
+        specRevision("spec", 3, ["plan"], "assistant"),
+        message("fork", 4, ["spec"], "human"),
+        message("main", 5, ["spec"], "human"),
+      ]),
+    );
+
+    expect(graph.byId.get("fork")?.parents).toEqual(["spec"]);
+    expect(graph.byId.get("spec")?.childrenIds).toEqual(["fork", "main"]);
+    expect(graph.byId.get("spec")?.isBranchPoint).toBe(true);
+
+    const threadIds = threadLayout(graph, id("fork"), new Map()).rows.map((row) => row.commitId);
+    expect(threadIds).toEqual(["spec", "fork"]);
+    expect(new Set(threadIds).size).toBe(threadIds.length);
+
+    const columns = columnLayout(graph, id("fork"), defaultBranchChoices(graph, id("fork")));
+    const columnIds = columns.panes.flatMap((pane) => pane.rows.map((row) => row.commitId));
+    expect(columnIds).toEqual(threadIds);
+    expect(new Set(columnIds).size).toBe(columnIds.length);
+  });
+
   it("derives artifact effects only from landed revision commits", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
@@ -250,17 +293,19 @@ describe("condensePlanGraph", () => {
     expect(planNodeDetail(node)).not.toContain("Spec updated");
   });
 
-  it("maps member identities, marks, and interior current positions to the checkpoint", () => {
+  it("maps trailing revision marks and current positions to the forming checkpoint", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
         message("query", 1, [], "human"),
         planRevision("plan", 2, ["query"], "assistant"),
-        message("response", 3, ["plan"], "assistant"),
+        specRevision("spec", 3, ["plan"], "assistant"),
       ]),
     );
 
-    expect(mapMarksToNodes(new Set(["plan"]), graph.nodeIdByCommit)).toEqual(new Set(["response"]));
-    expect(planNodeIdForCommit(id("plan"), graph.nodeIdByCommit)).toBe("response");
+    expect(mapMarksToNodes(new Set(["plan"]), graph.nodeIdByCommit)).toEqual(new Set(["spec"]));
+    expect(planNodeIdForCommit(id("plan"), graph.nodeIdByCommit)).toBe("spec");
+    expect(planNodeIdForCommit(id("spec"), graph.nodeIdByCommit)).toBe("spec");
+    expect(planNodeIdForCommit(id("query"), graph.nodeIdByCommit)).toBe("spec");
     expect(planNodeIdForCommit(id("missing"), graph.nodeIdByCommit)).toBe("missing");
   });
 });
