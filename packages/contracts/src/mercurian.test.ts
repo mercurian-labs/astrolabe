@@ -9,10 +9,69 @@ import {
   MercurianStartCodingSessionInput,
   PlanId,
   PlanStreamItem,
+  type PlanTimelineItem,
   ProviderInstanceId,
 } from "./index.ts";
 
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Assert<T extends true> = T;
+
+const PLAN_TIMELINE_TAGS = ["message", "plan-revision", "spec-revision", "coding-session"] as const;
+const PLAN_STREAM_KINDS = [
+  "snapshot",
+  "commit",
+  "synchronized",
+  "coding-sessions",
+  "turn-started",
+  "turn-delta",
+  "turn-grounding",
+  "turn-question",
+  "turn-question-answered",
+  "turn-settled",
+  "turn-refused",
+  "implement-started",
+  "implement-analyzed",
+  "implement-ready",
+  "implement-cancelled",
+  "implement-failed",
+] as const;
+
+type _PlanTimelineTagsAreExact = Assert<
+  Equal<(typeof PLAN_TIMELINE_TAGS)[number], PlanTimelineItem["_tag"]>
+>;
+type _PlanStreamKindsAreExact = Assert<
+  Equal<(typeof PLAN_STREAM_KINDS)[number], (typeof PlanStreamItem.Type)["kind"]>
+>;
+
 describe("coding-session contracts", () => {
+  it("pins plan history and stream discriminants without session-activity members", () => {
+    expect(PLAN_TIMELINE_TAGS).toEqual([
+      "message",
+      "plan-revision",
+      "spec-revision",
+      "coding-session",
+    ]);
+    expect(PLAN_STREAM_KINDS).toEqual([
+      "snapshot",
+      "commit",
+      "synchronized",
+      "coding-sessions",
+      "turn-started",
+      "turn-delta",
+      "turn-grounding",
+      "turn-question",
+      "turn-question-answered",
+      "turn-settled",
+      "turn-refused",
+      "implement-started",
+      "implement-analyzed",
+      "implement-ready",
+      "implement-cancelled",
+      "implement-failed",
+    ]);
+  });
+
   it("round-trips an exact-instance start payload", () => {
     const input = {
       planId: PlanId.make("plan"),

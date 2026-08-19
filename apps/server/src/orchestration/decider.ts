@@ -1047,12 +1047,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.approval.respond": {
-      yield* requireThread({
+      const targetThread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
-      return {
+      const approvalResponseEvent = {
         ...(yield* withEventBase({
           aggregateKind: "thread",
           aggregateId: command.threadId,
@@ -1069,7 +1069,25 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           decision: command.decision,
           createdAt: command.createdAt,
         },
-      };
+      } satisfies PlannedOrchestrationEvent;
+      if (command.decision !== "cancel" || targetThread.latestTurn?.state !== "running") {
+        return approvalResponseEvent;
+      }
+      const turnInterruptEvent = {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.turn-interrupt-requested",
+        payload: {
+          threadId: command.threadId,
+          turnId: targetThread.latestTurn.turnId,
+          createdAt: command.createdAt,
+        },
+      } satisfies PlannedOrchestrationEvent;
+      return [approvalResponseEvent, turnInterruptEvent];
     }
 
     case "thread.user-input.respond": {

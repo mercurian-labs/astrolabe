@@ -59,6 +59,7 @@ import {
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
+  type PlanId,
   type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -347,6 +348,39 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
     event.type === "thread.session-set"
   );
 }
+
+export function isCodingSessionStatusEvent(event: OrchestrationEvent): event is Extract<
+  OrchestrationEvent,
+  {
+    type:
+      | "thread.activity-appended"
+      | "thread.session-set"
+      | "thread.turn-start-requested"
+      | "thread.turn-interrupt-requested"
+      | "thread.approval-response-requested"
+      | "thread.user-input-response-requested";
+  }
+> {
+  return (
+    event.type === "thread.activity-appended" ||
+    event.type === "thread.session-set" ||
+    event.type === "thread.turn-start-requested" ||
+    event.type === "thread.turn-interrupt-requested" ||
+    event.type === "thread.approval-response-requested" ||
+    event.type === "thread.user-input-response-requested"
+  );
+}
+
+export const codingSessionStatusChanges = (
+  events: Stream.Stream<OrchestrationEvent>,
+  getByThreadId: CodingSessionStore.CodingSessionStore["Service"]["getByThreadId"],
+) =>
+  events.pipe(
+    Stream.filter(isCodingSessionStatusEvent),
+    Stream.filterEffect((event) =>
+      getByThreadId(event.payload.threadId).pipe(Effect.map(Option.isSome)),
+    ),
+  );
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
@@ -1103,25 +1137,53 @@ const makeWsRpcLayer = (
       // Status is composed at this read layer, never stored: the assistant
       // runtime says which plans are streaming or waiting on input, and the
       // rows carry it (ADR 002 §4).
-      const loadPlanningTreeSnapshot = Effect.all([
-        planningStore.getTreeSnapshot,
-        planningAssistant.status,
-        codingSessionStore.listAll,
-      ]).pipe(
-        Effect.map(([snapshot, status, sessions]) => {
-          const composedStatus = new Map(status);
-          const byPlan = new Map<string, Array<ReturnType<typeof toWireCodingSessionRecord>>>();
-          for (const session of sessions) {
-            const entries = byPlan.get(session.planId) ?? [];
-            entries.push(toWireCodingSessionRecord(session));
-            byPlan.set(session.planId, entries);
-            composedStatus.set(
-              session.planId,
-              composePlanRowStatus(composedStatus.get(session.planId), entries),
-            );
-          }
-          return toWireTreeSnapshot(snapshot, composedStatus, byPlan);
-        }),
+      const loadPlanningTreeSnapshot = Effect.gen(function* () {
+        const [snapshot, status, sessions] = yield* Effect.all([
+          planningStore.getTreeSnapshot,
+          planningAssistant.status,
+          codingSessionStore.listAll,
+        ]);
+        const sessionsWithLiveStatus = yield* Effect.forEach(sessions, (session) =>
+          session.endedAt !== null
+            ? Effect.succeed([session, null] as const)
+            : projectionSnapshotQuery.getThreadShellById(session.threadId).pipe(
+                Effect.map(
+                  (shell) =>
+                    [
+                      session,
+                      Option.match(shell, {
+                        onNone: () => null,
+                        onSome: (value) => ({
+                          isWorking: value.latestTurn?.state === "running",
+                          hasPendingInput: value.hasPendingApprovals || value.hasPendingUserInput,
+                        }),
+                      }),
+                    ] as const,
+                ),
+              ),
+        );
+        const composedStatus = new Map(status);
+        const byPlan = new Map<PlanId, Array<ReturnType<typeof toWireCodingSessionRecord>>>();
+        const liveStatusByPlan = new Map<
+          PlanId,
+          Array<(typeof sessionsWithLiveStatus)[number][1]>
+        >();
+        for (const [session, liveStatus] of sessionsWithLiveStatus) {
+          const entries = byPlan.get(session.planId) ?? [];
+          entries.push(toWireCodingSessionRecord(session));
+          byPlan.set(session.planId, entries);
+          const liveEntries = liveStatusByPlan.get(session.planId) ?? [];
+          liveEntries.push(liveStatus);
+          liveStatusByPlan.set(session.planId, liveEntries);
+        }
+        for (const [planId, liveStatuses] of liveStatusByPlan) {
+          composedStatus.set(
+            planId,
+            composePlanRowStatus(composedStatus.get(planId), liveStatuses),
+          );
+        }
+        return toWireTreeSnapshot(snapshot, composedStatus, byPlan);
+      }).pipe(
         Effect.tapError((cause) =>
           Effect.logError("mercurian planning tree snapshot load failed", { cause }),
         ),
@@ -1577,10 +1639,21 @@ const makeWsRpcLayer = (
               // starting, pausing on a question, or settling repaints the
               // tree's status facts within the same debounce.
               const changes = yield* Queue.unbounded<void>();
+              const sessionStatusChanges = codingSessionStatusChanges(
+                orchestrationEngine.streamDomainEvents,
+                codingSessionStore.getByThreadId,
+              ).pipe(
+                Stream.mapError(
+                  (cause) => new MercurianPlanningError({ operation: "subscribeTree", cause }),
+                ),
+              );
               yield* Effect.forkScoped(
                 Stream.merge(
-                  Stream.merge(planningStore.changes, planningAssistant.changes),
-                  codingSessionStore.changes,
+                  Stream.merge(
+                    Stream.merge(planningStore.changes, planningAssistant.changes),
+                    codingSessionStore.changes,
+                  ),
+                  sessionStatusChanges,
                 ).pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
                 { startImmediately: true },
               );
