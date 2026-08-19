@@ -31,6 +31,7 @@ export function SidebarPlanHoverCard(props: {
       }}
     >
       <PopoverTrigger
+        nativeButton={false}
         render={props.trigger}
         onPointerEnter={() => dispatch("anchor-enter")}
         onPointerLeave={() => dispatch("anchor-leave")}
@@ -39,6 +40,10 @@ export function SidebarPlanHoverCard(props: {
         side="right"
         align="start"
         sideOffset={4}
+        // This popover opens and closes from pointer linger, so it must never
+        // move focus away from whatever the user is typing in or interacting with.
+        initialFocus={false}
+        finalFocus={false}
         className="max-w-80 rounded-md text-left whitespace-normal shadow-xl shadow-black/25 before:hidden"
         viewportClassName="p-0"
         onPointerEnter={() => dispatch("popup-enter")}

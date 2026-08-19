@@ -803,6 +803,118 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.reverted", () => {
+    const message = (
+      id: string,
+      role: "system" | "user" | "assistant",
+      createdAt: string,
+      turnId: TurnId | null = null,
+    ): OrchestrationThread["messages"][number] => ({
+      id: MessageId.make(id),
+      role,
+      text: id,
+      turnId,
+      streaming: false,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const checkpoint = (
+      turnId: TurnId,
+      checkpointTurnCount: number,
+    ): OrchestrationThread["checkpoints"][number] => ({
+      turnId,
+      checkpointTurnCount,
+      checkpointRef: CheckpointRef.make(`ref-${turnId}`),
+      status: "ready",
+      files: [],
+      assistantMessageId: null,
+      completedAt: "2026-04-01T12:00:00.000Z",
+    });
+    const revert = (
+      messages: OrchestrationThread["messages"],
+      checkpoints: OrchestrationThread["checkpoints"],
+      turnCount: number,
+    ): OrchestrationThread => {
+      const result = applyThreadDetailEvent(
+        { ...baseThread, messages, checkpoints },
+        {
+          ...baseEventFields,
+          sequence: 14,
+          occurredAt: "2026-04-01T13:00:00.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.reverted",
+          payload: { threadId: ThreadId.make("thread-1"), turnCount },
+        },
+      );
+      if (result.kind !== "updated") throw new Error("Expected revert to update the thread");
+      return result.thread;
+    };
+
+    it("keeps only the oldest turn-less user messages up to the retained turn count", () => {
+      const thread = revert(
+        [
+          message("user-newest", "user", "2026-04-01T03:00:00.000Z"),
+          message("user-oldest-b", "user", "2026-04-01T01:00:00.000Z"),
+          message("user-oldest-a", "user", "2026-04-01T01:00:00.000Z"),
+        ],
+        [checkpoint(TurnId.make("turn-1"), 1)],
+        1,
+      );
+
+      expect(thread.messages.map((entry) => entry.id)).toEqual(["user-oldest-a"]);
+    });
+
+    it("always retains system messages", () => {
+      const thread = revert(
+        [
+          message("system", "system", "2026-04-01T02:00:00.000Z"),
+          message("discarded-user", "user", "2026-04-01T01:00:00.000Z"),
+        ],
+        [],
+        0,
+      );
+
+      expect(thread.messages.map((entry) => entry.id)).toEqual(["system"]);
+    });
+
+    it("keeps turn-bound messages for retained turns and drops later turns", () => {
+      const turn1 = TurnId.make("turn-1");
+      const turn2 = TurnId.make("turn-2");
+      const thread = revert(
+        [
+          message("user-1", "user", "2026-04-01T01:00:00.000Z", turn1),
+          message("assistant-1", "assistant", "2026-04-01T02:00:00.000Z", turn1),
+          message("user-2", "user", "2026-04-01T03:00:00.000Z", turn2),
+          message("assistant-2", "assistant", "2026-04-01T04:00:00.000Z", turn2),
+        ],
+        [checkpoint(turn1, 1), checkpoint(turn2, 2)],
+        1,
+      );
+
+      expect(thread.messages.map((entry) => entry.id)).toEqual(["user-1", "assistant-1"]);
+    });
+
+    it("caps turn-less assistant fallback by the missing retained-assistant count", () => {
+      const turn1 = TurnId.make("turn-1");
+      const turn2 = TurnId.make("turn-2");
+      const turn3 = TurnId.make("turn-3");
+      const thread = revert(
+        [
+          message("assistant-late", "assistant", "2026-04-01T04:00:00.000Z"),
+          message("assistant-later-turn", "assistant", "2026-04-01T03:00:00.000Z", turn3),
+          message("assistant-retained-turn", "assistant", "2026-04-01T02:00:00.000Z", turn1),
+          message("assistant-oldest", "assistant", "2026-04-01T01:00:00.000Z"),
+        ],
+        [checkpoint(turn1, 1), checkpoint(turn2, 2), checkpoint(turn3, 3)],
+        2,
+      );
+
+      expect(thread.messages.map((entry) => entry.id)).toEqual([
+        "assistant-retained-turn",
+        "assistant-oldest",
+      ]);
+    });
+
     it("filters entities to retained turns", () => {
       const threadWithData: OrchestrationThread = {
         ...baseThread,
@@ -875,7 +987,8 @@ describe("applyThreadDetailEvent", () => {
         // turn-2 checkpoint is filtered out (turnCount 2 > revert target 1)
         expect(result.thread.checkpoints).toHaveLength(1);
         expect(result.thread.checkpoints[0]?.turnId).toBe("turn-1");
-        // msg-3 (turn-2) is filtered, msg-1 (no turn) and msg-2 (turn-1) remain
+        // msg-1 fills the one user fallback slot; msg-2 belongs to retained turn-1.
+        // msg-3 belongs to discarded turn-2.
         expect(result.thread.messages).toHaveLength(2);
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
       }
