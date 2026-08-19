@@ -2,8 +2,11 @@ import type {
   PlanInFlightTurn,
   PlanStreamItem,
   PlanningModelResolution,
+  PlanningModelSelection,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
+
+import { providerLabel } from "./PlanningModel.logic";
 
 /**
  * The send↔stop↔gate state machine, kept pure so the composer component
@@ -44,16 +47,29 @@ export function resolveComposerControl(input: {
  *
  * Wording points back to the picker that owns the choice.
  */
-export function planningModelGateNotice(resolution: PlanningModelResolution): string | null {
+export function planningModelGateNotice(
+  selection: PlanningModelSelection | null,
+  resolution: PlanningModelResolution,
+): string | null {
   switch (resolution._tag) {
     case "resolved":
       return null;
     case "unset":
       return "Choose a model to hear back from the assistant.";
-    case "unresolved":
-      return resolution.reason === "no-instance"
-        ? "No instance of this model's provider is available on this machine — choose another model or connect one in Settings."
-        : "This model is not available on this machine's instance — choose another model.";
+    case "unresolved": {
+      switch (resolution.reason) {
+        case "no-instance":
+          return "No instance of this model's provider is available on this machine — choose another model or connect one in Settings.";
+        case "not-signed-in": {
+          const provider = selection === null ? "the provider" : providerLabel(selection.provider);
+          return `Not signed in to ${provider} on this machine — sign in from Settings → Providers to hear back from the assistant.`;
+        }
+        case "model-unavailable":
+          return "This model is not available on this machine's instance — choose another model.";
+        default:
+          return null;
+      }
+    }
     default:
       return null;
   }
@@ -64,12 +80,19 @@ export function planningModelGateNotice(resolution: PlanningModelResolution): st
  * makes these rare; they exist for the window that raced a settings change
  * or another send.
  */
-export function turnRefusalNotice(reason: PlanTurnRefusalReason): string {
+export function turnRefusalNotice(
+  selection: PlanningModelSelection | null,
+  reason: PlanTurnRefusalReason,
+): string {
   switch (reason) {
     case "unset":
       return "The message was sent, but no planning model was chosen — choose one in the picker.";
     case "no-instance":
       return "The message was sent, but no instance of the planning model's provider is available on this machine.";
+    case "not-signed-in": {
+      const provider = selection === null ? "the provider" : providerLabel(selection.provider);
+      return `The message was sent, but ${provider} isn't signed in on this machine.`;
+    }
     case "model-unavailable":
       return "The message was sent, but the planning model is not available on this machine.";
     case "turn-active":

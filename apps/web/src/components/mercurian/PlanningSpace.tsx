@@ -81,6 +81,7 @@ import {
   planningModelGateNotice,
   turnRefusalNotice,
 } from "./PlanComposer.logic";
+import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
@@ -217,6 +218,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const explorerGraph = useMemo(() => condensePlanGraph(graph), [graph]);
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
   const proposal = detail?.implementProposal;
@@ -224,7 +226,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
     [graph, proposal],
   );
-  const effectiveExplorerView = effectivePlanExplorerView(graph, explorerView);
+  const effectiveExplorerView = effectivePlanExplorerView(explorerGraph, explorerView);
   const [columnsWidthCap, setColumnsWidthCap] = useState(0);
   const planningSpaceRef = useRef<HTMLDivElement>(null);
   const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
@@ -378,7 +380,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     }
   }, [detail?.implementProposal]);
 
-  const gateNotice = planningModelGateNotice(effectiveModelResolution);
+  const gateNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
 
   /**
    * The artifact's text along *this* path is the one fact the client cannot
@@ -559,7 +561,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               />
             }
             implementDisabledReason={implementReason}
-            notice={turnRefusal === null ? implementNotice : turnRefusalNotice(turnRefusal)}
+            notice={
+              turnRefusal === null ? implementNotice : turnRefusalNotice(modelChoice, turnRefusal)
+            }
             placeholder="Message this plan"
             text={draft.text}
             // The whole plan holds one turn at a time, wherever it streams —
@@ -609,6 +613,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 <DagExplorer
                   anchoredCommitId={head}
                   graph={graph}
+                  {...(detail?.inFlightTurn === undefined
+                    ? {}
+                    : { inFlightAnchorCommitId: detail.inFlightTurn.parentCommitId })}
                   readyCommits={readyCommits}
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
@@ -1034,7 +1041,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says
         // what will happen rather than refusing to create the plan.
-        notice={planningModelGateNotice(effectiveModelResolution)}
+        notice={planningModelGateNotice(modelChoice, effectiveModelResolution)}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}

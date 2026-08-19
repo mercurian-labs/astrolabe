@@ -2,6 +2,7 @@
  * Shared presentation for Mercurian's instance-free planning-model pair.
  */
 import {
+  defaultInstanceIdForDriver,
   isProviderAvailable,
   type PlanningModelResolution,
   type PlanningModelSelection,
@@ -74,6 +75,27 @@ function upgradeNudgeFor(
   return null;
 }
 
+function signedOutInstanceLabelFor(
+  selection: PlanningModelSelection,
+  providers: ReadonlyArray<ServerProvider>,
+  entriesByInstanceId: ReadonlyMap<ProviderInstanceId, ProviderInstanceEntry>,
+): string {
+  const offerers = providers.filter(
+    (snapshot) =>
+      snapshot.driver === selection.provider &&
+      isCandidate(snapshot) &&
+      snapshot.auth.status === "unauthenticated" &&
+      snapshot.models.some((model) => model.slug === selection.model),
+  );
+  const defaultInstanceId = defaultInstanceIdForDriver(selection.provider);
+  const instance =
+    offerers.find((snapshot) => snapshot.instanceId === defaultInstanceId) ?? offerers[0];
+  return instance === undefined
+    ? providerLabel(selection.provider)
+    : (entriesByInstanceId.get(instance.instanceId)?.displayName ??
+        providerLabel(selection.provider));
+}
+
 /**
  * What the picker shows. The saved pair is always rendered from the record
  * itself, never from the options list — a machine that cannot resolve the
@@ -111,13 +133,18 @@ export function describePlanningModel(
     };
   }
 
-  const upgrade = upgradeNudgeFor(providers, selection.provider, entriesByInstanceId);
+  const upgrade =
+    resolution.reason === "model-unavailable"
+      ? upgradeNudgeFor(providers, selection.provider, entriesByInstanceId)
+      : null;
   const message =
     resolution.reason === "no-instance"
       ? `No ${provider} instance on this machine. The model stays selected and resolves wherever one exists.`
-      : upgrade === null
-        ? `${modelLabel} is not available on this machine's ${provider} instance.`
-        : `${modelLabel} is not available on this machine's ${provider} instance. Update ${upgrade.instanceLabel} to ${upgrade.latestVersion} to unlock it.`;
+      : resolution.reason === "not-signed-in"
+        ? `Not signed in to ${signedOutInstanceLabelFor(selection, providers, entriesByInstanceId)}. The model stays selected and resolves once you sign in.`
+        : upgrade === null
+          ? `${modelLabel} is not available on this machine's ${provider} instance.`
+          : `${modelLabel} is not available on this machine's ${provider} instance. Update ${upgrade.instanceLabel} to ${upgrade.latestVersion} to unlock it.`;
 
   return { kind: "unresolved", providerLabel: provider, modelLabel, message, upgrade };
 }

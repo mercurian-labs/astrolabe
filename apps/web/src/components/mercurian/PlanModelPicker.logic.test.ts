@@ -84,6 +84,16 @@ describe("PlanModelPicker logic", () => {
     );
   });
 
+  it("offers a signed-out provider's models without disabling them", () => {
+    const providers = [provider({ auth: { status: "unauthenticated" } })];
+    const state = derivePlanModelPickerState(null, providers, DEFAULT_UNIFIED_SETTINGS);
+
+    expect(state.modelOptionsByInstance.get(claudeDefault)?.map((option) => option.slug)).toEqual([
+      "opus",
+    ]);
+    expect(planningModelDisabledReason(state.entries, providers, claudeDefault, "opus")).toBeNull();
+  });
+
   it("falls back to the provider's default instance for signed-out display", () => {
     const providers = [
       provider({

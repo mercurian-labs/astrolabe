@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 
+import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { branchOption, mostRecentTip, threadLayout } from "./PlanThread.logic";
 
@@ -162,6 +163,28 @@ describe("branchOption", () => {
       summary: "Explore another route",
       lastActiveAt: "2026-08-03T02:00:00.000Z",
       published: true,
+    });
+  });
+
+  it("names a checkpoint branch by its query and dates it by the terminal response", () => {
+    const query = commit("query", 1, [], {
+      createdAt: "2026-08-03T01:00:00.000Z",
+      text: "  Try checkpoint grouping\nwith details",
+    });
+    const response: PlanTimelineItem = {
+      ...commit("response", 2, ["query"], {
+        createdAt: "2026-08-03T02:00:00.000Z",
+        text: "The assistant's response",
+      }),
+      authorKind: "assistant",
+    };
+    const graph = condensePlanGraph(buildPlanGraph([query, response]));
+
+    expect(branchOption(graph, id("response"))).toMatchObject({
+      branchRootId: "response",
+      tipId: "response",
+      summary: "Try checkpoint grouping",
+      lastActiveAt: "2026-08-03T02:00:00.000Z",
     });
   });
 });
