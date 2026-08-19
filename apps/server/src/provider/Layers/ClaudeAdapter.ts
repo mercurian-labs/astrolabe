@@ -729,6 +729,41 @@ function classifyRequestType(toolName: string): CanonicalRequestType {
       : "dynamic_tool_call";
 }
 
+const CLAUDE_APPROVAL_KIND_TOOL_NAMES = [
+  "Bash",
+  "Read",
+  "Glob",
+  "Grep",
+  "Edit",
+  "Write",
+  "NotebookEdit",
+] as const;
+
+export function claudePermissionUpdatesForApprovalDecision(
+  decision: ProviderApprovalDecision,
+  requestType: CanonicalRequestType,
+  suggestions?: ReadonlyArray<PermissionUpdate>,
+): PermissionUpdate[] | undefined {
+  if (decision !== "acceptForSession") {
+    return undefined;
+  }
+
+  const rules = CLAUDE_APPROVAL_KIND_TOOL_NAMES.filter(
+    (toolName) => classifyRequestType(toolName) === requestType,
+  ).map((toolName) => ({ toolName }));
+  if (rules.length > 0) {
+    return [
+      {
+        type: "addRules",
+        rules,
+        behavior: "allow",
+        destination: "session",
+      },
+    ];
+  }
+  return suggestions === undefined ? undefined : [...suggestions];
+}
+
 function isTodoTool(toolName: string): boolean {
   return toolName.toLowerCase().includes("todowrite");
 }
@@ -4031,14 +4066,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
 
         if (decision === "accept" || decision === "acceptForSession") {
+          const updatedPermissions = claudePermissionUpdatesForApprovalDecision(
+            decision,
+            pendingApproval.requestType,
+            pendingApproval.suggestions,
+          );
           return {
             behavior: "allow",
             updatedInput: toolInput,
-            ...(decision === "acceptForSession" && pendingApproval.suggestions
-              ? {
-                  updatedPermissions: [...pendingApproval.suggestions],
-                }
-              : {}),
+            ...(updatedPermissions === undefined ? {} : { updatedPermissions }),
           } satisfies PermissionResult;
         }
 

@@ -144,7 +144,7 @@ _Reviewed 2026-08-19 (`technical-plan-decision-review`; evaluations in `decision
 - **D3 (architectural) — Cancel-ends-the-turn lives in the decider.** One command → two events has precedent (`thread.turn.start`); reactor-side coupling would end the turn without the log recording an interrupt request (violates ADR 002's typed-events rule), and client double-dispatch leaves other clients without the invariant.
 - **D4 (local) — Rollup: pull-at-read with per-connection filtered invalidation.** ADR 002 §4's mechanism verbatim; a shared invalidation layer is the named fallback if per-connection filtering measurably costs (the ADR's own revisit trigger).
 - **D5 (local) — Route addresses the thread id** (`/sessions/$threadId`), not the leaf commit: zero translation at the mount; 063/064 may re-address the real screen.
-- **D6 (local) — Allow-for-session ships provider-delegated granularity**, verified in the walk, with the `ClaudeAdapter.ts:4032` kind-widening as the named fallback — a wider-than-suggested grant deserves the walk's evidence first.
+- **D6 (local) — Allow-for-session ships provider-delegated granularity**, verified in the walk, with the `ClaudeAdapter.ts:4032` kind-widening as the named fallback — a wider-than-suggested grant deserves the walk's evidence first. _Walk outcome (2026-08-19): the risk was real — after allow-for-session on one command, a different command asked again — so the fallback was applied: `claudePermissionUpdatesForApprovalDecision` widens `acceptForSession` to session-scoped allow rules for every tool that classifies to the request's kind; re-walked green._
 
 ---
 

@@ -8,6 +8,7 @@ import type {
   Options as ClaudeQueryOptions,
   PermissionMode,
   PermissionResult,
+  PermissionUpdate,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -37,7 +38,11 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
-import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
+import {
+  claudePermissionUpdatesForApprovalDecision,
+  makeClaudeAdapter,
+  type ClaudeAdapterLiveOptions,
+} from "./ClaudeAdapter.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 // Test-local service tag so the rest of the file can keep using `yield* ClaudeAdapter`.
@@ -273,6 +278,53 @@ const THREAD_ID = ThreadId.make("thread-claude-1");
 const RESUME_THREAD_ID = ThreadId.make("thread-claude-resume");
 
 describe("ClaudeAdapterLive", () => {
+  it.effect("widens allow-for-session to every tool in the approved request kind", () =>
+    Effect.sync(() => {
+      const suggestion = {
+        type: "setMode",
+        mode: "default",
+        destination: "session",
+      } as const;
+      const expectedUpdate = (toolNames: ReadonlyArray<string>): PermissionUpdate[] => [
+        {
+          type: "addRules",
+          rules: toolNames.map((toolName) => ({ toolName })),
+          behavior: "allow",
+          destination: "session",
+        },
+      ];
+
+      assert.deepEqual(
+        claudePermissionUpdatesForApprovalDecision(
+          "acceptForSession",
+          "command_execution_approval",
+          [suggestion],
+        ),
+        expectedUpdate(["Bash"]),
+      );
+      assert.deepEqual(
+        claudePermissionUpdatesForApprovalDecision("acceptForSession", "file_read_approval", [
+          suggestion,
+        ]),
+        expectedUpdate(["Read", "Glob", "Grep"]),
+      );
+      assert.deepEqual(
+        claudePermissionUpdatesForApprovalDecision("acceptForSession", "file_change_approval", [
+          suggestion,
+        ]),
+        expectedUpdate(["Edit", "Write", "NotebookEdit"]),
+      );
+      for (const decision of ["accept", "decline", "cancel"] as const) {
+        assert.equal(
+          claudePermissionUpdatesForApprovalDecision(decision, "command_execution_approval", [
+            suggestion,
+          ]),
+          undefined,
+        );
+      }
+    }),
+  );
+
   it.effect("returns validation error for non-claude provider on startSession", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
