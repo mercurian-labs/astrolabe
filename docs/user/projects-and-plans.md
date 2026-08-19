@@ -341,5 +341,5 @@ or disk until you press **Start**.
 Starting creates an isolated worktree on a descriptive `mercurian/…` branch and sends the exact
 plan text as the first turn. The resulting session appears as a leaf in the plan history. You can
 start another session from the same ready commit when a retry or a different model is useful.
-Selecting a session leaf keeps it visible while new planning continues from the commit immediately
-before it.
+Selecting a session leaf keeps it visible while new planning continues from the checkpoint
+immediately before it.

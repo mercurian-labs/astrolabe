@@ -15,6 +15,7 @@ import {
   ClockIcon,
   FileTextIcon,
   GitBranchIcon,
+  SquareTerminalIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -543,9 +544,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             // it changes what sending means, and the banner says so.
             banner={
               viewingSessionLeaf ? (
-                <div className="text-xs text-muted-foreground">
-                  New planning continues from the commit before this coding session.
-                </div>
+                <SessionLeafBanner />
               ) : viewingPast ? (
                 <ViewingEarlierBanner onBack={backToNow} />
               ) : null
@@ -909,6 +908,24 @@ function ArtifactPicker({
  * conversation, so the surface says that before you press send, and keeps the
  * way back beside it.
  */
+// The t3code composer-notification treatment: a muted card capping the
+// composer bubble, so standing on a session leaf reads as a state the
+// composer is in rather than a stray line of text.
+function SessionLeafBanner() {
+  return (
+    <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+      <div className="px-4 py-3.5 sm:px-5 sm:py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <SquareTerminalIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 text-sm text-muted-foreground">
+            New planning continues from the checkpoint before this coding session.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ViewingEarlierBanner({ onBack }: { readonly onBack: () => void }) {
   return (
     <div className="flex items-center gap-2 border-b border-border/65 bg-muted/20 px-3 py-2">
