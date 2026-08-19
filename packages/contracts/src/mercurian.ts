@@ -429,6 +429,7 @@ export type PlanDetail = typeof PlanDetail.Type;
 export const PlanTurnRefusalReason = Schema.Literals([
   "unset",
   "no-instance",
+  "not-signed-in",
   "model-unavailable",
   "turn-active",
 ]);
@@ -854,6 +855,7 @@ export const ImplementBlockedReason = Schema.Literals([
   "plan-empty",
   "model-unset",
   "no-instance",
+  "not-signed-in",
   "model-unavailable",
 ]);
 export type ImplementBlockedReason = typeof ImplementBlockedReason.Type;

@@ -788,6 +788,23 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   return yield* spawnAndCollect(claudeSettings.binaryPath, command);
 });
 
+function parseClaudeLoggedIn(stdout: string): boolean | undefined {
+  try {
+    const parsed = JSON.parse(stdout) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "loggedIn" in parsed &&
+      typeof parsed.loggedIn === "boolean"
+    ) {
+      return parsed.loggedIn;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(function* (
   claudeSettings: ClaudeSettings,
   resolveCapabilities?: (
@@ -906,6 +923,35 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         : supportsClaudeOpus47(parsedVersion)
           ? formatClaudeOpus48UpgradeMessage(parsedVersion)
           : formatClaudeOpus47UpgradeMessage(parsedVersion);
+
+  const authStatusProbe = yield* runClaudeCommand(
+    claudeSettings,
+    ["auth", "status"],
+    resolvedEnvironment,
+  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  const loggedIn =
+    Result.isSuccess(authStatusProbe) && Option.isSome(authStatusProbe.success)
+      ? (parseClaudeLoggedIn(authStatusProbe.success.value.stdout) ??
+        parseClaudeLoggedIn(authStatusProbe.success.value.stderr))
+      : undefined;
+
+  if (loggedIn === false) {
+    const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models,
+      skills,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status: "error",
+        auth: { status: "unauthenticated" },
+        message: "Claude Agent CLI is not authenticated. Run `claude /login` and try again.",
+      },
+    });
+  }
 
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))

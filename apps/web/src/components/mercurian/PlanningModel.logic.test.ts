@@ -79,6 +79,51 @@ describe("describePlanningModel", () => {
     expect(display.upgrade).toBeNull();
   });
 
+  it("names the signed-out offering instance while keeping the saved pair visible", () => {
+    const providers = [
+      provider({
+        instanceId: claudeWork,
+        driver: claude,
+        displayName: "Claude Work",
+        auth: { status: "unauthenticated" },
+        models: [model("opus", "Opus")],
+        versionAdvisory: {
+          status: "behind_latest",
+          currentVersion: "1.0.0",
+          latestVersion: "2.4.0",
+          updateCommand: "npm i -g claude",
+          canUpdate: true,
+          checkedAt: "2026-08-01T00:00:00.000Z",
+          message: null,
+        },
+      }),
+    ];
+
+    const display = describeAgainst(selection("claudeAgent", "opus"), providers);
+
+    expect(display).toEqual({
+      kind: "unresolved",
+      providerLabel: "Claude",
+      modelLabel: "Opus",
+      message:
+        "Not signed in to Claude Work. The model stays selected and resolves once you sign in.",
+      upgrade: null,
+    });
+  });
+
+  it("treats unknown authentication as ignorance, not a gate", () => {
+    const providers = [
+      provider({
+        instanceId: claudeDefault,
+        driver: claude,
+        auth: { status: "unknown" },
+        models: [model("opus", "Opus")],
+      }),
+    ];
+
+    expect(describeAgainst(selection("claudeAgent", "opus"), providers).kind).toBe("resolved");
+  });
+
   it("names the unlocking upgrade when an instance is behind its latest", () => {
     const providers = [
       provider({

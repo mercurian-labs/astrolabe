@@ -650,6 +650,27 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
+  it.effect("forwards not-signed-in when the planning model's offerer is signed out", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan("First");
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "First",
+      });
+      const refused = yield* Queue.take(frames);
+      assert.ok(refused.kind === "turn-refused" && refused.reason === "not-signed-in");
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(testLayer([{ ...providerSnapshot, auth: { status: "unauthenticated" } }])),
+    ),
+  );
+
   it.effect("one turn at a time: a second start refuses as turn-active", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;

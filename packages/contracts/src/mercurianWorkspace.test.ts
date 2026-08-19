@@ -107,6 +107,81 @@ describe("resolvePlanningModel", () => {
     });
   });
 
+  it("reports not-signed-in when the sole offering instance is unauthenticated", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        auth: { status: "unauthenticated" },
+        models: [model("opus")],
+      }),
+    ];
+
+    expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
+      _tag: "unresolved",
+      reason: "not-signed-in",
+    });
+  });
+
+  it("treats an unknown auth status as usable", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        auth: { status: "unknown" },
+        models: [model("opus")],
+      }),
+    ];
+
+    expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
+      _tag: "resolved",
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      provider: claude,
+      model: "opus",
+    });
+  });
+
+  it("treats an authenticated offering instance as usable", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        auth: { status: "authenticated" },
+        models: [model("opus")],
+      }),
+    ];
+
+    expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
+      _tag: "resolved",
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      provider: claude,
+      model: "opus",
+    });
+  });
+
+  it("skips a signed-out default instance for a signed-in offerer", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        auth: { status: "unauthenticated" },
+        models: [model("opus")],
+      }),
+      provider({
+        instanceId: ProviderInstanceId.make("claude_work"),
+        driver: claude,
+        models: [model("opus")],
+      }),
+    ];
+
+    expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
+      _tag: "resolved",
+      instanceId: ProviderInstanceId.make("claude_work"),
+      provider: claude,
+      model: "opus",
+    });
+  });
+
   it("falls through to the first candidate offering the model when the default lacks it", () => {
     const providers = [
       provider({
@@ -148,6 +223,39 @@ describe("resolvePlanningModel", () => {
     expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
       _tag: "unresolved",
       reason: "model-unavailable",
+    });
+  });
+
+  it("reports model-unavailable before auth when signed-out candidates do not offer the model", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        auth: { status: "unauthenticated" },
+        models: [model("sonnet")],
+      }),
+    ];
+
+    expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
+      _tag: "unresolved",
+      reason: "model-unavailable",
+    });
+  });
+
+  it("reports no-instance before auth when there are no candidates", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        enabled: false,
+        auth: { status: "unauthenticated" },
+        models: [model("opus")],
+      }),
+    ];
+
+    expect(resolvePlanningModel(selection("claudeAgent", "opus"), providers)).toEqual({
+      _tag: "unresolved",
+      reason: "no-instance",
     });
   });
 

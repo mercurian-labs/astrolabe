@@ -328,7 +328,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     }
   }, [detail?.implementProposal]);
 
-  const gateNotice = planningModelGateNotice(effectiveModelResolution);
+  const gateNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
 
   /**
    * The artifact's text along *this* path is the one fact the client cannot
@@ -500,7 +500,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               />
             }
             implementDisabledReason={implementReason}
-            notice={turnRefusal === null ? implementNotice : turnRefusalNotice(turnRefusal)}
+            notice={
+              turnRefusal === null ? implementNotice : turnRefusalNotice(modelChoice, turnRefusal)
+            }
             placeholder="Message this plan"
             text={draft.text}
             // The whole plan holds one turn at a time, wherever it streams —
@@ -889,7 +891,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says
         // what will happen rather than refusing to create the plan.
-        notice={planningModelGateNotice(effectiveModelResolution)}
+        notice={planningModelGateNotice(modelChoice, effectiveModelResolution)}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}

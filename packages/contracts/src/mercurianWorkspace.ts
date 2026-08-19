@@ -103,7 +103,7 @@ export type PlanningModelResolution =
     }
   | {
       readonly _tag: "unresolved";
-      readonly reason: "no-instance" | "model-unavailable";
+      readonly reason: "no-instance" | "model-unavailable" | "not-signed-in";
     };
 
 /**
@@ -115,11 +115,13 @@ export type PlanningModelResolution =
  *
  *   - candidates are snapshots of that driver which are available, enabled,
  *     and installed — the ones that could actually run a turn;
- *   - among candidates offering the model, the provider's default instance
- *     wins; otherwise the first candidate in snapshot order, which is settings
- *     order;
+ *   - among candidates offering the model, explicitly unauthenticated
+ *     instances are set aside; authenticated and unknown instances are usable;
+ *   - among usable offerers, the provider's default instance wins; otherwise
+ *     the first candidate in snapshot order, which is settings order;
  *   - no candidates at all is `no-instance`; candidates but none offering the
- *     model is `model-unavailable`.
+ *     model is `model-unavailable`; offerers but none usable is
+ *     `not-signed-in`.
  *
  * Capability gating flows through for free: a model the installed agent is too
  * old to run is already absent from the snapshot's `models`, so it resolves as
@@ -153,9 +155,12 @@ export const resolvePlanningModel = (
   if (offering.length === 0) {
     return { _tag: "unresolved", reason: "model-unavailable" };
   }
+  const usable = offering.filter((snapshot) => snapshot.auth.status !== "unauthenticated");
+  if (usable.length === 0) {
+    return { _tag: "unresolved", reason: "not-signed-in" };
+  }
   const defaultInstanceId = defaultInstanceIdForDriver(setting.provider);
-  const chosen =
-    offering.find((snapshot) => snapshot.instanceId === defaultInstanceId) ?? offering[0]!;
+  const chosen = usable.find((snapshot) => snapshot.instanceId === defaultInstanceId) ?? usable[0]!;
   return {
     _tag: "resolved",
     instanceId: chosen.instanceId,
