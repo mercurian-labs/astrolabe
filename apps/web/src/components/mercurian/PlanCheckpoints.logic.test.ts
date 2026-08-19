@@ -13,9 +13,10 @@ import {
   mapMarksToNodes,
   planNodeDetail,
   planNodeIdForCommit,
+  planNodeKindColor,
   planNodeSummary,
 } from "./PlanCheckpoints.logic";
-import { buildPlanGraph } from "./PlanGraph.logic";
+import { buildPlanGraph, type PlanGraphNode } from "./PlanGraph.logic";
 import { threadLayout } from "./PlanThread.logic";
 
 const id = (value: string) => MercurianCommitId.make(value);
@@ -307,5 +308,83 @@ describe("condensePlanGraph", () => {
     expect(planNodeIdForCommit(id("spec"), graph.nodeIdByCommit)).toBe("spec");
     expect(planNodeIdForCommit(id("query"), graph.nodeIdByCommit)).toBe("spec");
     expect(planNodeIdForCommit(id("missing"), graph.nodeIdByCommit)).toBe("missing");
+  });
+
+  it("never absorbs a coding-session leaf into a conversational checkpoint", () => {
+    const session: PlanTimelineItem = {
+      _tag: "coding-session",
+      commitId: id("session"),
+      sequence: 2,
+      parents: [id("query")],
+      published: false,
+      authorKind: "human",
+      createdAt: at(2),
+      repositoryId: MercurianRepositoryId.make("repo-web"),
+      repositoryName: "web",
+      planRevisionCommitId: id("query"),
+    };
+    const graph = condensePlanGraph(buildPlanGraph([message("query", 1, [], "human"), session]));
+
+    expect(graph.nodes.map((node) => node.commitId)).toEqual(["query", "session"]);
+    expect(graph.byId.get("query")?.checkpoint?.effects).toEqual(["unanswered"]);
+    expect(graph.byId.get("session")?.checkpoint).toBeUndefined();
+  });
+});
+
+describe("planNodeKindColor", () => {
+  const color = (item: PlanTimelineItem) => planNodeKindColor(buildPlanGraph([item]).nodes[0]!);
+  const published = (item: PlanTimelineItem): PlanTimelineItem => ({ ...item, published: true });
+
+  it("colors every checkpoint kind and preserves solid versus hollow standing", () => {
+    const turn = message("turn", 1, [], "human");
+    const plan = planRevision("plan-color", 1, [], "human");
+    const spec = specRevision("spec-color", 1, [], "human");
+    const split = planRevision("split-color", 1, [], "human", true);
+    const session: PlanTimelineItem = {
+      _tag: "coding-session",
+      commitId: id("session-color"),
+      sequence: 1,
+      parents: [],
+      published: false,
+      authorKind: "human",
+      createdAt: at(1),
+      repositoryId: MercurianRepositoryId.make("repo-web"),
+      repositoryName: "web",
+      planRevisionCommitId: id("plan-color"),
+    };
+
+    expect(color(turn)).toBe("fill-background stroke-sky-500");
+    expect(color(published(turn))).toBe("fill-sky-500 stroke-none");
+    expect(color(plan)).toBe("fill-background stroke-violet-500");
+    expect(color(published(plan))).toBe("fill-violet-500 stroke-none");
+    expect(color(spec)).toBe("fill-background stroke-teal-500");
+    expect(color(published(spec))).toBe("fill-teal-500 stroke-none");
+    expect(color(split)).toBe("fill-background stroke-emerald-500");
+    expect(color(published(split))).toBe("fill-emerald-500 stroke-none");
+    expect(color(session)).toBe("fill-background stroke-orange-500");
+    expect(color(published(session))).toBe("fill-orange-500 stroke-none");
+  });
+
+  it("colors settled and forming turns sky and falls back safely for future kinds", () => {
+    const settled = condensePlanGraph(
+      buildPlanGraph([
+        message("settled-query", 1, [], "human"),
+        message("settled-response", 2, ["settled-query"], "assistant"),
+      ]),
+    ).nodes[0]!;
+    const forming = condensePlanGraph(
+      buildPlanGraph([
+        message("forming-query", 1, [], "human"),
+        planRevision("forming-plan", 2, ["forming-query"], "assistant"),
+      ]),
+    ).nodes[0]!;
+    const future = {
+      ...buildPlanGraph([message("future", 1, [], "human")]).nodes[0]!,
+      item: { ...message("future", 1, [], "human"), _tag: "future-kind" },
+    } as unknown as PlanGraphNode;
+
+    expect(planNodeKindColor(settled)).toContain("sky-500");
+    expect(planNodeKindColor(forming)).toContain("sky-500");
+    expect(planNodeKindColor(future)).toBe("fill-background stroke-muted-foreground");
   });
 });

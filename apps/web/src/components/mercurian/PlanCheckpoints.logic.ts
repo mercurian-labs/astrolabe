@@ -245,6 +245,33 @@ export function planNodeSummary(node: PlanGraphNode): string {
   return planCommitSummary(node.checkpoint?.query ?? node.item);
 }
 
+/**
+ * The map's kind reading, with publication carried by fill rather than color.
+ * Unknown future timeline kinds fall back to the old neutral dot so an older
+ * client can still draw a usable graph.
+ */
+export function planNodeKindColor(node: PlanGraphNode): string {
+  const published = node.item.published;
+  if (node.checkpoint !== undefined || node.item._tag === "message") {
+    return published ? "fill-sky-500 stroke-none" : "fill-background stroke-sky-500";
+  }
+  if (node.item._tag === "coding-session") {
+    return published ? "fill-orange-500 stroke-none" : "fill-background stroke-orange-500";
+  }
+  if (node.item._tag === "spec-revision") {
+    return published ? "fill-teal-500 stroke-none" : "fill-background stroke-teal-500";
+  }
+  if (node.item._tag === "plan-revision") {
+    if (node.item.split !== undefined) {
+      return published ? "fill-emerald-500 stroke-none" : "fill-background stroke-emerald-500";
+    }
+    return published ? "fill-violet-500 stroke-none" : "fill-background stroke-violet-500";
+  }
+  return published
+    ? "fill-muted-foreground stroke-none"
+    : "fill-background stroke-muted-foreground";
+}
+
 /** Complete map detail: query, landed effects, then a compact response excerpt. */
 export function planNodeDetail(node: PlanGraphNode, suppressUnanswered = false): string {
   const checkpoint = node.checkpoint;

@@ -573,7 +573,7 @@ let nextLocalId = 0;
  * session-only. Refusing to hold it at all would be a worse trade than losing
  * it on a reload nobody performed.
  */
-async function toPlanComposerAttachment(file: File): Promise<PlanComposerAttachment | null> {
+export async function toPlanComposerAttachment(file: File): Promise<PlanComposerAttachment | null> {
   const localId = `plan-attachment-${(nextLocalId += 1)}`;
   const name = file.name.trim().length === 0 ? "image.png" : file.name;
 

@@ -44,6 +44,7 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { providerLabel } from "./PlanningModel.logic";
+import { codingSessionRecordFor, codingSessionStatus } from "./PlanNodePopover.logic";
 
 /**
  * The planning space's history: messages, plan revisions and an imported issue
@@ -183,15 +184,8 @@ export function PlanTimeline({
             );
           }
           if (item._tag === "coding-session") {
-            const record = codingSessions.find((session) => session.commitId === item.commitId);
-            const status =
-              record?.endedAt === null
-                ? "Running"
-                : record?.outcome === "completed"
-                  ? "Completed"
-                  : record?.outcome === "stopped"
-                    ? "Stopped"
-                    : "Ended";
+            const record = codingSessionRecordFor(codingSessions, item.commitId);
+            const status = record === undefined ? "Ended" : codingSessionStatus(record);
             return (
               <li
                 key={item.commitId}
@@ -305,7 +299,7 @@ const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 const EMPTY_CODING_SESSIONS: ReadonlyArray<PlanCodingSessionRecord> = [];
 
 /** The provider/model that produced a settled reply, quiet but always visible. */
-function ModelAttribution({
+export function ModelAttribution({
   selection,
   providers,
 }: {

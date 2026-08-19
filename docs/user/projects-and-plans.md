@@ -120,11 +120,11 @@ as soon as the model resolves. See
 
 ## The right pane
 
-Two icons sit in the space's top-right corner: **artifacts** and **history**. The artifact pane's
+Two icons sit in the space's top-right corner: **artifacts** and **Checkpoint Graph**. The artifact pane's
 header has a compact dropdown for choosing **Spec** or **Plan**. Pressing the icon already showing closes the pane and gives the
 conversation the whole width.
 
-The first plan you open comes up with its plan visible and the history one press away. After that
+The first plan you open comes up with its plan visible and the Checkpoint Graph one press away. After that
 the pane comes back the way you left it — open or closed, and on whichever view — and that choice
 follows you from plan to plan, because which view you prefer is a fact about you rather than about
 one plan.
@@ -148,12 +148,12 @@ and expected behavior. Acceptance criteria has its own multiline field for the o
 conditions that make the work complete.
 
 The Spec pane always shows the contract for the path you are viewing. Looking at an earlier commit
-makes it read-only, just like the plan. If another branch has not absorbed the newest spec, History
+makes it read-only, just like the plan. If another branch has not absorbed the newest spec, the Checkpoint Graph
 shows a **Spec stale** badge on that branch. A merge that includes the newer revision clears the
 badge naturally.
 
 Changing the spec records only that revision; it does not start an assistant turn. When the newest
-spec on a path has no later plan revision, History shows **Plan may be stale** separately from a
+spec on a path has no later plan revision, the Checkpoint Graph shows **Plan may be stale** separately from a
 stale spec branch. If you implement from there, review the plan or continue through the ordinary
 readiness check. While any assistant turn is active, artifact editing is disabled so two writers
 cannot silently fork the history.
@@ -181,7 +181,7 @@ gate: it does not edit the plan, start a coding session, or add anything to hist
 
 If all of the work belongs in one repository, the result says **This plan is ready to implement**
 and names where its coding session will run. That readiness is remembered on the commit you tried
-from, which shows a **Ready to implement** badge in the conversation and history views. Trying that
+from, which shows a **Ready to implement** badge in the conversation and Checkpoint Graph views. Trying that
 commit again can return the recorded answer without running another analysis.
 
 If the work crosses repositories, the sheet explains that a coding session works in one repository
@@ -195,25 +195,30 @@ pressed Implement, and leaves you standing at that original commit. The sheet st
 list with one **You added a plan for {repository}** row per new branch. Choose a row to go to that
 repository's plan and keep planning there; the plan on the original line stays unchanged.
 
-## The history
+## The Checkpoint Graph
 
-The history view shows every commit in the plan: your messages, the assistant's, and every edit of
-the plan, with the branch points visible. It offers two readings, and remembers which one you chose.
+The Checkpoint Graph shows every continuable checkpoint in the plan: complete turns, unanswered
+queries, direct artifact revisions, repository plans, and coding-session leaves. Revisions made
+inside one assistant turn stay inside that turn's checkpoint rather than appearing as separate
+places to continue. It offers **Thread**, **Columns**, and **Graph** readings and remembers which
+one you chose.
 
-**Navigator** is the one you move through: every commit as a row in the order it happened, with
-lanes drawn down the left showing where work diverged and where it came back together. **Graph** is a
-map of the same history laid out in space — every commit a point, every connection drawn, the whole
-shape at once. Use the navigator to walk the history; use the graph to see it. Drag the map to move
-around it and scroll to zoom; it draws the same way every time you open it, and where you are
-standing is ringed and comes to the middle.
+Thread follows the line you are on. Columns keeps branch choices open as standing panes. Graph is a
+map of the same checkpoints laid out in space — colored status dots and every connection, with no
+text on the map itself. Drag the map to move around it and scroll to zoom; where you are standing is
+ringed and comes to the middle.
 
 Work you have published reads solid; work still private to you reads muted.
 
-Pick any commit, in either view, and the space moves there: the conversation shows the path through
-that commit, the plan shows what it said at the time, and the history highlights where you are
-standing. The conversation is always one path — a branch you are not on is a different conversation,
-not more of this one. Nothing is destroyed by looking: no history is rewritten, and nothing is
-thrown away.
+Rows move the space directly. In Graph, choose a dot to open its details, then choose **Continue
+from here** to move there. The same details are available from the information button on Thread and
+Columns rows. The popover records model facts, changes, warnings, readiness, and the acts available
+from that checkpoint without moving you merely because it opened.
+
+After moving, the conversation shows the path through that checkpoint, the plan shows what it said
+at the time, and the Checkpoint Graph highlights where you are standing. The conversation is always
+one path — a branch you are not on is a different conversation, not more of this one. Nothing is
+destroyed by looking: no history is rewritten, and nothing is thrown away.
 
 Picking the end of a branch stands you in that conversation, and the space follows that branch as
 it grows. Branches other than yours can grow all they like; you stay where you are.

@@ -1,5 +1,6 @@
 import {
   resolvePlanningModel,
+  type EnvironmentId,
   type MercurianCommitId,
   type MercurianProjectId,
   type PlanId,
@@ -29,6 +30,7 @@ import {
 } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useAssetUrls } from "../../assets/assetUrls";
 import { randomUUID } from "../../lib/utils";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
@@ -76,7 +78,11 @@ import {
 import { ImportIssueDialog } from "./ImportIssueDialog";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
-import { PlanComposer, type PlanComposerSubmission } from "./PlanComposer";
+import {
+  PlanComposer,
+  toPlanComposerAttachment,
+  type PlanComposerSubmission,
+} from "./PlanComposer";
 import {
   implementFailureNotice,
   planningModelGateNotice,
@@ -87,6 +93,7 @@ import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
 import { PlanModelPicker } from "./PlanModelPicker";
+import { resolveImplementFrom } from "./PlanNodePopover.logic";
 import {
   advance,
   isViewingPast,
@@ -137,7 +144,7 @@ const RightPaneState = Schema.Struct({
 type RightPaneState = typeof RightPaneState.Type;
 
 /**
- * A plan opens with its plan visible and its history one toggle away. The
+ * A plan opens with its plan visible and its Checkpoint Graph one toggle away. The
  * preference is not keyed by plan on purpose: which view you prefer is a fact
  * about you, not about the issue, so it follows you across plans.
  */
@@ -145,6 +152,12 @@ const DEFAULT_RIGHT_PANE: RightPaneState = { open: true, view: "artifact", artif
 
 /** One identity for "nothing yet", so the derived graph is not rebuilt for it. */
 const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
+type PlanHumanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
+
+interface PendingEditAndBranch {
+  readonly query: PlanHumanMessage;
+  readonly parentCommitId: MercurianCommitId;
+}
 
 /**
  * The planning space: the conversation as the main content, with the plan's
@@ -169,6 +182,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const cancelImplementProposal = useCancelImplementProposal();
   const [splitSheetOpen, setSplitSheetOpen] = useState(false);
   const [stalePlanWarningOpen, setStalePlanWarningOpen] = useState(false);
+  const [implementFromCommitId, setImplementFromCommitId] = useState<MercurianCommitId | null>(
+    null,
+  );
+  const [pendingEditAndBranch, setPendingEditAndBranch] = useState<PendingEditAndBranch | null>(
+    null,
+  );
   const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
   // The same resolution the server runs, read here so sending gates with the
@@ -292,6 +311,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setPosition(LATEST);
     setLandedPlans([]);
     setStalePlanWarningOpen(false);
+    setImplementFromCommitId(null);
+    setPendingEditAndBranch(null);
   }, [planId]);
 
   /**
@@ -342,7 +363,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
    * leading to wherever you stand. A branch you are not on is a different
    * conversation, not more of this one.
    *
-   * History above a commit is immutable, so looking back needs no liveness of
+   * Checkpoints above a commit are immutable, so looking back needs no liveness of
    * its own: new commits keep folding into the subscription, and the
    * projection through an earlier commit cannot change.
    */
@@ -455,36 +476,72 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     [graph],
   );
 
+  const editAndBranch = useCallback(
+    (query: PlanHumanMessage) => {
+      const parentCommitId = graph.byId.get(query.commitId)?.parents[0];
+      if (parentCommitId === undefined) return;
+      setDraftText(planId, query.text);
+      if (
+        query.attachments === undefined ||
+        query.attachments.length === 0 ||
+        environmentId === null
+      ) {
+        select(parentCommitId);
+        return;
+      }
+      setPendingEditAndBranch({ query, parentCommitId });
+    },
+    [environmentId, graph.byId, planId, select, setDraftText],
+  );
+  const completeEditAndBranch = useCallback(
+    (parentCommitId: MercurianCommitId, attachments: ReadonlyArray<PlanComposerAttachment>) => {
+      addDraftAttachments(planId, attachments);
+      select(parentCommitId);
+      setPendingEditAndBranch(null);
+    },
+    [addDraftAttachments, planId, select],
+  );
+
   const backToNow = useCallback(() => setPosition(LATEST), []);
 
   const handleImplementFlow = useCallback(
-    (event: ImplementFlowEvent) => {
+    (event: ImplementFlowEvent, fromCommitId: MercurianCommitId | null) => {
       const action = implementFlowAction(event);
       if (action === "show-warning") {
+        setImplementFromCommitId(fromCommitId);
         setStalePlanWarningOpen(true);
         return;
       }
       setStalePlanWarningOpen(false);
       if (action === "show-plan") {
+        setImplementFromCommitId(null);
         setPane({ open: true, view: "artifact", artifact: "plan" });
         return;
       }
+      setImplementFromCommitId(null);
       void tryImplement({
         planId,
-        ...(actingHead === null ? {} : { parentCommitId: actingHead }),
+        ...(fromCommitId === null ? {} : { parentCommitId: fromCommitId }),
       });
     },
-    [actingHead, planId, setPane, tryImplement],
+    [planId, setPane, tryImplement],
   );
 
-  const beginImplement = useCallback(
-    () =>
-      handleImplementFlow({
-        kind: "invoke",
-        planMayBeStale: head !== null && planMayBeStaleAt(graph, head),
-      }),
-    [graph, handleImplementFlow, head],
+  const beginImplementFrom = useCallback(
+    (fromCommitId: MercurianCommitId | null) => {
+      const resolved = resolveImplementFrom(graph, fromCommitId);
+      handleImplementFlow(
+        {
+          kind: "invoke",
+          planMayBeStale: resolved !== null && planMayBeStaleAt(graph, resolved),
+        },
+        resolved,
+      );
+    },
+    [graph, handleImplementFlow],
   );
+
+  const beginImplement = useCallback(() => beginImplementFrom(head), [beginImplementFrom, head]);
 
   if (error !== null) {
     return (
@@ -518,6 +575,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       actions={detail === null ? null : <PlanPaneToggle state={pane} onChange={setPane} />}
       title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}
     >
+      {pendingEditAndBranch === null || environmentId === null ? null : (
+        <EditAndBranchAttachmentLoader
+          environmentId={environmentId}
+          key={pendingEditAndBranch.query.commitId}
+          query={pendingEditAndBranch.query}
+          onReady={(attachments) =>
+            completeEditAndBranch(pendingEditAndBranch.parentCommitId, attachments)
+          }
+        />
+      )}
       {/* Below `sm` the two stack, pane above conversation — same content, no
           second surface to keep in step. */}
       <div
@@ -611,14 +678,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 // following a branch shows in the explorer as it happens.
                 <DagExplorer
                   anchoredCommitId={head}
+                  codingSessions={detail.codingSessions}
                   graph={graph}
                   {...(detail?.inFlightTurn === undefined
                     ? {}
                     : { inFlightAnchorCommitId: detail.inFlightTurn.parentCommitId })}
+                  providers={planningModel.providers}
                   readyCommits={readyCommits}
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
                   onColumnsWidthCapChange={setColumnsWidthCap}
+                  onEditAndBranch={editAndBranch}
+                  onImplementFrom={beginImplementFrom}
                   onSelect={select}
                 />
               ) : pane.artifact === "plan" && artifactText === null ? (
@@ -793,12 +864,64 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       />
       <StalePlanWarning
         open={stalePlanWarningOpen}
-        onContinue={() => handleImplementFlow({ kind: "continue-anyway" })}
+        onContinue={() => handleImplementFlow({ kind: "continue-anyway" }, implementFromCommitId)}
         onOpenChange={setStalePlanWarningOpen}
-        onReviewPlan={() => handleImplementFlow({ kind: "review-plan" })}
+        onReviewPlan={() => handleImplementFlow({ kind: "review-plan" }, implementFromCommitId)}
       />
     </PlanningSurface>
   );
+}
+
+/**
+ * Re-materialize recorded image metadata through the environment's asset door.
+ * The position moves only after every available image has become a composer
+ * attachment, so the branch draft appears as one deliberate act.
+ */
+function EditAndBranchAttachmentLoader({
+  environmentId,
+  query,
+  onReady,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly query: PlanHumanMessage;
+  readonly onReady: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
+}) {
+  const attachments = query.attachments ?? [];
+  const urls = useAssetUrls(
+    environmentId,
+    attachments.map((attachment) => ({
+      _tag: "attachment",
+      attachmentId: attachment.id,
+    })),
+  );
+
+  useEffect(() => {
+    if (urls.some((url) => url === null)) return;
+    let cancelled = false;
+    void Promise.all(
+      attachments.map(async (attachment, index) => {
+        const url = urls[index];
+        if (url === null || url === undefined) return null;
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          const blob = await response.blob();
+          return await toPlanComposerAttachment(
+            new File([blob], attachment.name, { type: attachment.mimeType }),
+          );
+        } catch {
+          return null;
+        }
+      }),
+    ).then((materialized) => {
+      if (!cancelled) onReady(materialized.filter((item) => item !== null));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachments, onReady, urls]);
+
+  return null;
 }
 
 function CodingSessionBaseRefLoader({
@@ -823,7 +946,7 @@ function CodingSessionBaseRefLoader({
  * is the pane's content; pressing the pressed one closes the pane and leaves
  * the conversation full-width.
  */
-function PlanPaneToggle({
+export function PlanPaneToggle({
   state,
   onChange,
 }: {
@@ -856,10 +979,10 @@ function PlanPaneToggle({
         <TooltipPopup side="bottom">Plan</TooltipPopup>
       </Tooltip>
       <Tooltip>
-        <TooltipTrigger render={<Toggle aria-label="History" value="explorer" />}>
+        <TooltipTrigger render={<Toggle aria-label="Checkpoint Graph" value="explorer" />}>
           <GitBranchIcon className="size-3.5" />
         </TooltipTrigger>
-        <TooltipPopup side="bottom">History</TooltipPopup>
+        <TooltipPopup side="bottom">Checkpoint Graph</TooltipPopup>
       </Tooltip>
     </ToggleGroup>
   );
