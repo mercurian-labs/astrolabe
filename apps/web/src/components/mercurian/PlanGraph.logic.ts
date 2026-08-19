@@ -11,6 +11,15 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import { graphStratify, grid, sugiyama, zherebko } from "d3-dag";
 
+export type PlanCheckpointEffect = "plan-updated" | "spec-updated" | "interrupted" | "unanswered";
+
+export interface PlanCheckpoint {
+  readonly query: PlanTimelineItem;
+  readonly revisions: ReadonlyArray<PlanTimelineItem>;
+  readonly response?: PlanTimelineItem;
+  readonly effects: ReadonlyArray<PlanCheckpointEffect>;
+}
+
 export interface PlanGraphNode {
   readonly commitId: MercurianCommitId;
   readonly item: PlanTimelineItem;
@@ -24,10 +33,12 @@ export interface PlanGraphNode {
   readonly childrenIds: ReadonlyArray<MercurianCommitId>;
   readonly isBranchPoint: boolean;
   readonly isMerge: boolean;
+  /** A settled assistant turn projected onto its continuable terminal commit. */
+  readonly checkpoint?: PlanCheckpoint;
 }
 
 export interface PlanGraph {
-  /** Every commit, in the store's append order. */
+  /** Every rendered history node, in the represented commits' append order. */
   readonly nodes: ReadonlyArray<PlanGraphNode>;
   readonly byId: ReadonlyMap<string, PlanGraphNode>;
   /** Commits with no parent left to hang from. One in a well-formed history. */

@@ -9,7 +9,8 @@
  */
 import type { MercurianCommitId } from "@t3tools/contracts";
 
-import { planCommitSummary, type PlanGraph, type PlanGraphNode } from "./PlanGraph.logic";
+import { planNodeSummary } from "./PlanCheckpoints.logic";
+import type { PlanGraph, PlanGraphNode } from "./PlanGraph.logic";
 
 export interface ThreadSwitch {
   readonly options: ReadonlyArray<MercurianCommitId>;
@@ -155,7 +156,7 @@ export function branchOption(graph: PlanGraph, branchRootId: MercurianCommitId):
   return {
     branchRootId,
     tipId,
-    summary: planCommitSummary(branchRoot.item),
+    summary: planNodeSummary(branchRoot),
     lastActiveAt: tip.item.createdAt,
     published: branchRoot.item.published,
   };

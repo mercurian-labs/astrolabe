@@ -73,6 +73,7 @@ import {
   planningModelGateNotice,
   turnRefusalNotice,
 } from "./PlanComposer.logic";
+import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
@@ -168,6 +169,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const explorerGraph = useMemo(() => condensePlanGraph(graph), [graph]);
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
   const proposal = detail?.implementProposal;
@@ -175,7 +177,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
     [graph, proposal],
   );
-  const effectiveExplorerView = effectivePlanExplorerView(graph, explorerView);
+  const effectiveExplorerView = effectivePlanExplorerView(explorerGraph, explorerView);
   const [columnsWidthCap, setColumnsWidthCap] = useState(0);
   const planningSpaceRef = useRef<HTMLDivElement>(null);
   const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
@@ -550,6 +552,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 <DagExplorer
                   anchoredCommitId={head}
                   graph={graph}
+                  {...(detail?.inFlightTurn === undefined
+                    ? {}
+                    : { inFlightAnchorCommitId: detail.inFlightTurn.parentCommitId })}
                   readyCommits={readyCommits}
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
