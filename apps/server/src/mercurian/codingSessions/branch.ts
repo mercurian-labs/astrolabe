@@ -10,6 +10,10 @@ export function buildCodingSessionBranchName(planTitle: string, randomHex: strin
     .slice(0, 8)
     .padEnd(8, "0");
   const slug =
-    sanitizeBranchFragment(planTitle).slice(0, MAX_TITLE_FRAGMENT).replace(/-+$/u, "") || "session";
+    sanitizeBranchFragment(planTitle)
+      .replace(/\//gu, "-")
+      .replace(/-+/gu, "-")
+      .slice(0, MAX_TITLE_FRAGMENT)
+      .replace(/-+$/u, "") || "session";
   return `${CODING_SESSION_BRANCH_PREFIX}/${slug}-${token}`;
 }

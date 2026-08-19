@@ -19,4 +19,13 @@ describe("coding-session branch names", () => {
       buildCodingSessionBranchName("Implement it", "22222222"),
     );
   });
+
+  it("replaces title slashes without introducing consecutive dashes", () => {
+    const branch = buildCodingSessionBranchName(
+      "Add a /uptime endpoint to the timekeeper service that reports…",
+      "EF9E727A",
+    );
+    expect(branch).toMatch(/^mercurian\/[a-z0-9-]+-[0-9a-f]{8}$/u);
+    expect(branch).not.toContain("--");
+  });
 });
