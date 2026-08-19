@@ -280,6 +280,10 @@ describe("offeredActs", () => {
       "implement",
     ]);
     expect(offeredActs(condensed.byId.get("session")!, graph)).toEqual(["continue"]);
+    expect(offeredActs(condensed.byId.get("session")!, graph, true)).toEqual([
+      "continue",
+      "open-session",
+    ]);
   });
 });
 
@@ -340,12 +344,15 @@ describe("coding-session facts", () => {
       planRevisionCommitId: "plan",
       status: "Running",
       branch: "feature/checkpoints",
+      threadId: "thread",
       prUrl: "https://example.com/pr/1",
     });
     expect(withoutRecord.session).toEqual({
       repositoryName: "web",
       planRevisionCommitId: "plan",
     });
+    expect(withRecord.acts).toEqual(["continue", "open-session"]);
+    expect(withoutRecord.acts).toEqual(["continue"]);
   });
 
   it("resolves implementation from a session leaf through its parent line", () => {

@@ -7,6 +7,7 @@ import {
   resolvePlanRowActions,
   resolvePlanRowStatus,
   resolveRollupStatus,
+  resolveTreeActivePlanId,
   resolveTreeSelection,
   sortPlansNewestFirst,
   sortProjectsForTree,
@@ -22,6 +23,20 @@ describe("resolveTreeSelection", () => {
 
   it("selects nothing for an unsent draft", () => {
     expect(resolveTreeSelection("/plans/draft/draft-1").activePlanId).toBeNull();
+  });
+
+  it("selects a coding session by its thread id", () => {
+    const selection = resolveTreeSelection("/sessions/thread%20one");
+    expect(selection).toMatchObject({
+      activePlanId: null,
+      activeSessionThreadId: "thread one",
+    });
+    expect(
+      resolveTreeActivePlanId(selection, [
+        { planId: "plan-1", codingSessions: [{ threadId: "thread one" }] },
+        { planId: "plan-2", codingSessions: [] },
+      ]),
+    ).toBe("plan-1");
   });
 
   it("selects the workspace rows by prefix", () => {

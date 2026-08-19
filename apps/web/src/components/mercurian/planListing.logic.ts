@@ -20,6 +20,7 @@ interface ProjectRowFields {
 /** Which plan or workspace destination the current route belongs to. */
 export interface TreeSelection {
   readonly activePlanId: string | null;
+  readonly activeSessionThreadId: string | null;
   readonly isRepositoriesActive: boolean;
   readonly isSettingsActive: boolean;
 }
@@ -35,9 +36,29 @@ export function resolveTreeSelection(pathname: string): TreeSelection {
   const [first, second] = segments;
   return {
     activePlanId: first === "plans" && second !== undefined && second !== "draft" ? second : null,
+    activeSessionThreadId: first === "sessions" && second !== undefined ? second : null,
     isRepositoriesActive: first === "repositories",
     isSettingsActive: first === "settings",
   };
+}
+
+interface SessionOwningPlanFields {
+  readonly planId: string;
+  readonly codingSessions: ReadonlyArray<{ readonly threadId: string }>;
+}
+
+/** Resolve a session route's thread selection to the plan card that owns it. */
+export function resolveTreeActivePlanId(
+  selection: Pick<TreeSelection, "activePlanId" | "activeSessionThreadId">,
+  plans: ReadonlyArray<SessionOwningPlanFields>,
+): string | null {
+  if (selection.activePlanId !== null) return selection.activePlanId;
+  if (selection.activeSessionThreadId === null) return null;
+  return (
+    plans.find((plan) =>
+      plan.codingSessions.some((session) => session.threadId === selection.activeSessionThreadId),
+    )?.planId ?? null
+  );
 }
 
 export function sortPlansNewestFirst<T extends Pick<PlanRowFields, "updatedAt" | "planId">>(

@@ -23,11 +23,12 @@ import {
 } from "./PlanGraph.logic";
 import { resolveActingHead } from "./PlanPosition.logic";
 
-export type PlanNodePopoverAct = "continue" | "edit-and-branch" | "implement";
+export type PlanNodePopoverAct = "continue" | "edit-and-branch" | "implement" | "open-session";
 
 export interface PlanNodeSessionFacts {
   readonly repositoryName: string;
   readonly planRevisionCommitId: MercurianCommitId;
+  readonly threadId?: PlanCodingSessionRecord["threadId"];
   readonly status?: "Running" | "Completed" | "Stopped" | "Ended";
   readonly branch?: string;
   readonly prUrl?: string;
@@ -150,6 +151,7 @@ export function derivePlanNodePopover({
             : {
                 status: codingSessionStatus(record),
                 branch: record.branch,
+                threadId: record.threadId,
                 ...(record.prUrl === null ? {} : { prUrl: record.prUrl }),
               }),
         }
@@ -178,15 +180,18 @@ export function derivePlanNodePopover({
     ...(splitRepositoryName === undefined ? {} : { movedPastRepositoryName: splitRepositoryName }),
     ...(ready === undefined ? {} : { ready }),
     ...(session === undefined ? {} : { session }),
-    acts: offeredActs(node, commitGraph),
+    acts: offeredActs(node, commitGraph, record !== undefined),
   };
 }
 
 export function offeredActs(
   node: PlanGraphNode,
   commitGraph: PlanGraph,
+  hasCodingSessionRecord = false,
 ): ReadonlyArray<PlanNodePopoverAct> {
-  if (node.item._tag === "coding-session") return ["continue"];
+  if (node.item._tag === "coding-session") {
+    return hasCodingSessionRecord ? ["continue", "open-session"] : ["continue"];
+  }
   const acts: Array<PlanNodePopoverAct> = ["continue"];
   const query = node.checkpoint?.query ?? node.item;
   if (

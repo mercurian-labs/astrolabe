@@ -12,6 +12,7 @@ import type {
   PlanTimelineItem,
   ServerProvider,
 } from "@t3tools/contracts";
+import { Link } from "@tanstack/react-router";
 import {
   CircleDotIcon,
   FileTextIcon,
@@ -354,24 +355,38 @@ export function PlanNodePopoverContent({
       )}
 
       <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
-        {reading.acts.map((act) => (
-          <Button
-            key={act}
-            size="sm"
-            type="button"
-            variant={act === "continue" ? "default" : "outline"}
-            onClick={() => {
-              runAct(act, reading.query, node.commitId, {
-                onSelect,
-                onEditAndBranch,
-                onImplementFrom,
-              });
-              onClose();
-            }}
-          >
-            {actLabel(act)}
-          </Button>
-        ))}
+        {reading.acts.map((act) =>
+          act === "open-session" && reading.session?.threadId !== undefined ? (
+            <Button
+              key={act}
+              render={
+                <Link to="/sessions/$threadId" params={{ threadId: reading.session.threadId }} />
+              }
+              size="sm"
+              variant="outline"
+              onClick={onClose}
+            >
+              Open session
+            </Button>
+          ) : (
+            <Button
+              key={act}
+              size="sm"
+              type="button"
+              variant={act === "continue" ? "default" : "outline"}
+              onClick={() => {
+                runAct(act, reading.query, node.commitId, {
+                  onSelect,
+                  onEditAndBranch,
+                  onImplementFrom,
+                });
+                onClose();
+              }}
+            >
+              {actLabel(act)}
+            </Button>
+          ),
+        )}
       </div>
     </div>
   );
@@ -461,6 +476,7 @@ function Warning({
 function actLabel(act: PlanNodePopoverAct): string {
   if (act === "continue") return "Continue from here";
   if (act === "edit-and-branch") return "Edit and branch";
+  if (act === "open-session") return "Open session";
   return "Implement from here";
 }
 
