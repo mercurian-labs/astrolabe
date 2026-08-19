@@ -153,6 +153,11 @@ export interface PlanRowStatus {
   readonly hasPendingInput: boolean;
 }
 
+export interface SessionLiveStatus {
+  readonly isWorking: boolean;
+  readonly hasPendingInput: boolean;
+}
+
 const IDLE_STATUS: PlanRowStatus = { isWorking: false, hasPendingInput: false };
 
 /**
@@ -183,10 +188,13 @@ export const toWirePlanTreeRow = (
 
 export const composePlanRowStatus = (
   status: PlanRowStatus | undefined,
-  sessions: ReadonlyArray<Contracts.PlanCodingSessionRecord>,
+  sessions: ReadonlyArray<SessionLiveStatus | null>,
 ): PlanRowStatus => ({
-  isWorking: (status?.isWorking ?? false) || sessions.some((session) => session.endedAt === null),
-  hasPendingInput: status?.hasPendingInput ?? false,
+  isWorking:
+    (status?.isWorking ?? false) || sessions.some((session) => session?.isWorking === true),
+  hasPendingInput:
+    (status?.hasPendingInput ?? false) ||
+    sessions.some((session) => session?.hasPendingInput === true),
 });
 
 export const toWireTreeSnapshot = (

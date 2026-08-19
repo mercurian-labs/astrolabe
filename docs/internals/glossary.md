@@ -108,7 +108,9 @@ The live provider-backed runtime attached to a thread. Session shape is in [the 
 
 #### Runtime mode
 
-The safety/access mode for a thread or session. [The contracts][1] define four values: `approval-required`, `auto-accept-edits`, `auto`, and `full-access`. See [permission modes][18].
+The safety/access mode for a thread or session. Coding-session surfaces offer `approval-required`,
+`auto-accept-edits`, and `full-access`. [The contracts][1] retain the upstream `auto` value for
+legacy thread compatibility, but Mercurian never creates it. See [permission modes][18].
 
 #### Interaction mode
 
@@ -246,9 +248,9 @@ The assistant reading the project's repositories to answer from what is actually
 
 #### Issue status
 
-The one thing a tree row is saying right now, from a vocabulary of three: **awaiting your input** (something is waiting on a person — a structured question, or a coding session's approval request), **assistant working** (a reply is streaming), **unseen updates** (the plan moved while you were not looking at it). When several are true the most urgent wins, in that order, and a row shows exactly one. The vocabulary is deliberately narrower than the thread sidebar's five pills: signals from both stores map into these three words _before_ they are ranked, so a session's pending approval and a plan's structured question are one status and there is nothing left to rank inside a tier.
+The one thing a tree row is saying right now, from a vocabulary of three: **awaiting your input** (a planning question is waiting, or a coding session is paused on either an approval or a structured user-input request), **assistant working** (a planning reply is streaming or a coding-session turn is running), **unseen updates** (the plan moved while you were not looking at it). When several are true the most urgent wins, in that order, and a row shows exactly one. The vocabulary is deliberately narrower than the thread sidebar's five pills: signals from both stores map into these three words _before_ they are ranked, so a session's pending approval and a plan's structured question are one status and there is nothing left to rank inside a tier.
 
-Every input is a server-side fact on the tree subscription's rows — `hasPendingInput`, `isWorking`, and [visited-at](#visited-at) — and the client only ranks them ([ADR 002](../architecture/event-streaming-model.md) §4). The two booleans are composed at one point, `toWirePlanTreeRow` in [wire.ts][34]: [planning turns](#planning-turn) raise `isWorking` while a reply streams and `hasPendingInput` while a structured question waits, and coding-session runtimes will contribute both from the other store, composed at the same point. Unseen is not a wire field at all: it is `updatedAt` against `visitedAt`, which is ranking rather than originating, and the search palette needs both raw timestamps anyway.
+Every input is a server-side fact on the tree subscription's rows — `hasPendingInput`, `isWorking`, and [visited-at](#visited-at) — and the client only ranks them ([ADR 002](../architecture/event-streaming-model.md) §4). The two booleans are composed at one point, `toWirePlanTreeRow` in [wire.ts][34]: [planning turns](#planning-turn) raise `isWorking` while a reply streams and `hasPendingInput` while a structured question waits; coding-session thread shells add a running latest turn to `isWorking`, and pending approvals or pending user input to `hasPendingInput`. Unseen is not a wire field at all: it is `updatedAt` against `visitedAt`, which is ranking rather than originating, and the search palette needs both raw timestamps anyway.
 
 **Rollup** is the same resolver applied to a row's children, most urgent wins: a collapsed project speaks for its plans, and a plan will speak for its coding sessions when those rows nest under it. It is level-agnostic by construction, so adding a level does not change it. An _expanded_ project stays quiet — its plans are on screen saying it themselves.
 
@@ -367,6 +369,12 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 
 A coding runtime born from a plan commit. It is an ordinary t3code thread with an isolated
 worktree, linked from Mercurian by thread id.
+
+**Compaction has two deliberately separate meanings.** Session compaction is automatic provider
+bookkeeping inside this thread: it shortens the runtime context and appears as an ordinary
+`context-compaction` activity in the session work log, never as a Mercurian commit or plan-stream
+item. In the Merges product sense, deciding how context is assembled going forward is a
+human-driven planning act. The two do not share a surface or a write path.
 
 ### Coding-session leaf
 

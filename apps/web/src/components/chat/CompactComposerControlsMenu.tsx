@@ -1,6 +1,7 @@
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import { RuntimeMode } from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
 import { EllipsisIcon } from "lucide-react";
+import { runtimeModeOptionsFor } from "../../composer-logic";
 import { Button } from "../ui/button";
 import {
   Menu,
@@ -12,11 +13,8 @@ import {
 } from "../ui/menu";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
-  interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
-  showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
-  onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   return (
@@ -40,22 +38,6 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             <MenuDivider />
           </>
         ) : null}
-        {props.showInteractionModeToggle ? (
-          <>
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>
-            <MenuRadioGroup
-              value={props.interactionMode}
-              onValueChange={(value) => {
-                if (!value || value === props.interactionMode) return;
-                props.onToggleInteractionMode();
-              }}
-            >
-              <MenuRadioItem value="default">Chat</MenuRadioItem>
-              <MenuRadioItem value="plan">Plan</MenuRadioItem>
-            </MenuRadioGroup>
-            <MenuDivider />
-          </>
-        ) : null}
         <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
         <MenuRadioGroup
           value={props.runtimeMode}
@@ -64,10 +46,17 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             props.onRuntimeModeChange(value as RuntimeMode);
           }}
         >
-          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
-          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
-          <MenuRadioItem value="auto">Auto</MenuRadioItem>
-          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+          {runtimeModeOptionsFor(props.runtimeMode).map((mode) => (
+            <MenuRadioItem key={mode} value={mode}>
+              {mode === "approval-required"
+                ? "Supervised"
+                : mode === "auto-accept-edits"
+                  ? "Auto-accept edits"
+                  : mode === "full-access"
+                    ? "Full access"
+                    : "Auto"}
+            </MenuRadioItem>
+          ))}
         </MenuRadioGroup>
       </MenuPopup>
     </Menu>

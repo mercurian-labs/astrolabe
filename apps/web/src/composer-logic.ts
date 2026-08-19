@@ -1,8 +1,23 @@
+import type { RuntimeMode } from "@t3tools/contracts";
+
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill";
-export type ComposerSlashCommand = "model" | "plan" | "default";
+export type ComposerSlashCommand = "model";
+export const BUILT_IN_COMPOSER_SLASH_COMMANDS = [
+  "model",
+] as const satisfies ReadonlyArray<ComposerSlashCommand>;
+
+const SESSION_RUNTIME_MODES = [
+  "approval-required",
+  "auto-accept-edits",
+  "full-access",
+] as const satisfies ReadonlyArray<RuntimeMode>;
+
+export function runtimeModeOptionsFor(current: RuntimeMode): ReadonlyArray<RuntimeMode> {
+  return current === "auto" ? [...SESSION_RUNTIME_MODES, current] : SESSION_RUNTIME_MODES;
+}
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -16,6 +31,14 @@ export function shouldSubmitComposerOnEnter(input: {
   shiftKey: boolean;
 }): boolean {
   return !input.isMobileViewport && !input.shiftKey;
+}
+
+export function composerCommandKeyWithoutMenu(input: {
+  readonly key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab";
+  readonly shiftKey: boolean;
+  readonly isMobileViewport: boolean;
+}): "submit" | null {
+  return input.key === "Enter" && shouldSubmitComposerOnEnter(input) ? "submit" : null;
 }
 
 const isInlineTokenSegment = (
@@ -260,18 +283,6 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     rangeStart: tokenStart,
     rangeEnd: cursor,
   };
-}
-
-export function parseStandaloneComposerSlashCommand(
-  text: string,
-): Exclude<ComposerSlashCommand, "model"> | null {
-  const match = /^\/(plan|default)\s*$/i.exec(text.trim());
-  if (!match) {
-    return null;
-  }
-  const command = match[1]?.toLowerCase();
-  if (command === "plan") return "plan";
-  return "default";
 }
 
 export function replaceTextRange(

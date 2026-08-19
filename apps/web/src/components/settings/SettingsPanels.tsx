@@ -1589,7 +1589,6 @@ function AutoSettleDaysInput({
 // The legacy rows sit behind the fold, so a settings-search jump has to
 // expand the section before its target can mount and scroll.
 const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
-  "legacy-plan-mode",
   "legacy-token-streaming",
   "legacy-sidebar",
 ]);
@@ -1631,19 +1630,6 @@ function LegacyFeaturesSection() {
         </CollapsibleTrigger>
         <CollapsiblePanel>
           <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
-            <SettingsRow
-              {...searchableSetting("legacy-plan-mode")}
-              description="Brings back the Build/Plan toggle in the composer along with the /plan and /default commands and the Shift+Tab shortcut. While off, every thread runs in build mode."
-              control={
-                <Switch
-                  checked={settings.planModeEnabled}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ planModeEnabled: Boolean(checked) })
-                  }
-                  aria-label="Plan mode (legacy)"
-                />
-              }
-            />
             <SettingsRow
               {...searchableSetting("legacy-token-streaming")}
               description="Paints assistant output token by token instead of in complete chunks. Not recommended: it is significantly slower, and long responses become harder to follow. Kept only for compatibility with the old behavior."

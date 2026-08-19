@@ -5,6 +5,7 @@ import * as NodeCrypto from "node:crypto";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 import {
+  ApprovalRequestId,
   AuthAccessTokenType,
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
@@ -29,13 +30,16 @@ import {
   ProviderInstanceId,
   ResolvedKeybindingRule,
   ThreadId,
+  TurnId,
   WS_METHODS,
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
+  MercurianCommitId,
   MercurianProjectId,
-  type PlanId,
+  MercurianRepositoryId,
+  PlanId,
   TrackerConnectionId,
   type TrackerIssue,
   TrimmedNonEmptyString,
@@ -130,7 +134,11 @@ const stubTrackerConnector: TrackerConnector = {
   listIssues: () => Effect.succeed({ issues: [] }),
   getIssue: () => Effect.succeed(null),
 };
-import { isThreadDetailEvent, resolveAvailableEditorsForConfig } from "./ws.ts";
+import {
+  codingSessionStatusChanges,
+  isThreadDetailEvent,
+  resolveAvailableEditorsForConfig,
+} from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -432,6 +440,7 @@ const buildAppUnderTest = (options?: {
     terminalManager?: Partial<TerminalManager.TerminalManager["Service"]>;
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
+    codingSessionStore?: Partial<CodingSessionStore.CodingSessionStore["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
     serverLifecycleEvents?: Partial<ServerLifecycleEvents.ServerLifecycleEvents["Service"]>;
@@ -638,6 +647,21 @@ const buildAppUnderTest = (options?: {
     const serviceLauncherClientLayer = ServiceLauncherClient.layer.pipe(
       Layer.provide(Layer.succeed(HostProcessEnvironment, {})),
     );
+    const codingSessionStoreLayer = options?.layers?.codingSessionStore
+      ? Layer.mock(CodingSessionStore.CodingSessionStore)({
+          record: () => Effect.void,
+          recordInTransaction: () => Effect.void,
+          announce: () => Effect.void,
+          listForPlan: () => Effect.succeed([]),
+          listAll: Effect.succeed([]),
+          getByThreadId: () => Effect.succeed(Option.none()),
+          updateBranch: () => Effect.void,
+          end: () => Effect.void,
+          attachPullRequest: () => Effect.void,
+          changes: Stream.empty,
+          ...options.layers.codingSessionStore,
+        })
+      : CodingSessionStore.layer;
 
     const servedRoutesLayer = HttpRouter.serve(
       makeRoutesLayer.pipe(Layer.provide(serviceLauncherClientLayer)),
@@ -1012,7 +1036,7 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mergeAll(
           PlanningStore.layer.pipe(
-            Layer.provideMerge(CodingSessionStore.layer),
+            Layer.provideMerge(codingSessionStoreLayer),
             Layer.provideMerge(RepositoryStore.layer),
           ),
           WorkspaceSettingsStore.layer,
@@ -1481,6 +1505,86 @@ const NodeHttpServerTestWithWsDeflate = HttpServer.layerTestClient.pipe(
       ),
     ),
   ),
+);
+
+it.effect("filters coding-session tree invalidations and excludes message deltas", () =>
+  Effect.gen(function* () {
+    const sessionThreadId = ThreadId.make("thread-session-filter");
+    const otherThreadId = ThreadId.make("thread-not-a-session-filter");
+    const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
+      sequence,
+      eventId: EventId.make(`event-session-filter-${sequence}`),
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: "2026-08-19T12:00:00.000Z",
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      type: "thread.approval-response-requested",
+      payload: {
+        threadId,
+        requestId: ApprovalRequestId.make(`request-filter-${sequence}`),
+        decision: "accept",
+        createdAt: "2026-08-19T12:00:00.000Z",
+      },
+    });
+    const messageEvent: OrchestrationEvent = {
+      sequence: 1,
+      eventId: EventId.make("event-session-filter-message"),
+      aggregateKind: "thread",
+      aggregateId: sessionThreadId,
+      occurredAt: "2026-08-19T12:00:00.000Z",
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      type: "thread.message-sent",
+      payload: {
+        threadId: sessionThreadId,
+        messageId: MessageId.make("message-session-filter"),
+        role: "assistant",
+        text: "streaming token",
+        turnId: TurnId.make("turn-session-filter"),
+        streaming: true,
+        createdAt: "2026-08-19T12:00:00.000Z",
+        updatedAt: "2026-08-19T12:00:00.000Z",
+      },
+    };
+    const sessionRecord = {
+      commitId: MercurianCommitId.make("session-filter-commit"),
+      planId: PlanId.make("plan-session-filter"),
+      repositoryId: MercurianRepositoryId.make("repository-session-filter"),
+      threadId: sessionThreadId,
+      branch: "mercurian/session-filter-12345678",
+      worktreePath: "/tmp/session-filter",
+      baseRef: "main",
+      startedAt: DateTime.makeUnsafe("2026-08-19T12:00:00.000Z"),
+      endedAt: null,
+      outcome: null,
+      prUrl: null,
+    } as const;
+    const lookedUpThreadIds: ThreadId[] = [];
+
+    const filtered = yield* codingSessionStatusChanges(
+      Stream.fromIterable([
+        messageEvent,
+        approvalEvent(2, otherThreadId),
+        approvalEvent(3, sessionThreadId),
+      ]),
+      (threadId) =>
+        Effect.sync(() => {
+          lookedUpThreadIds.push(threadId);
+          return threadId === sessionThreadId ? Option.some(sessionRecord) : Option.none();
+        }),
+    ).pipe(Stream.runCollect);
+
+    assert.deepEqual(
+      Array.from(filtered).map((event) => event.aggregateId),
+      [sessionThreadId],
+    );
+    assert.deepEqual(lookedUpThreadIds, [otherThreadId, sessionThreadId]);
+  }),
 );
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
@@ -4635,6 +4739,118 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Mark unread stands the visit back before the latest activity.
       assert.ok(result.rearmed?.visitedAt !== undefined);
       assert.ok(result.rearmed.visitedAt < result.rearmed.updatedAt);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("composes coding-session shell status and re-emits for session approval activity", () =>
+    Effect.gen(function* () {
+      const sessionThreadId = ThreadId.make("thread-session-status");
+      const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const openingSeen = yield* Deferred.make<void>();
+      let sessionPlanId: PlanId | null = null;
+      let liveShell = makeDefaultOrchestrationThreadShell({ id: sessionThreadId });
+      const sessionRecord = () => {
+        if (sessionPlanId === null) return null;
+        return {
+          commitId: MercurianCommitId.make("session-status-commit"),
+          planId: sessionPlanId,
+          repositoryId: MercurianRepositoryId.make("repository-status"),
+          threadId: sessionThreadId,
+          branch: "mercurian/session-status-12345678",
+          worktreePath: "/tmp/session-status",
+          baseRef: "main",
+          startedAt: DateTime.makeUnsafe("2026-08-19T12:00:00.000Z"),
+          endedAt: null,
+          outcome: null,
+          prUrl: null,
+        } as const;
+      };
+      const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
+        sequence,
+        eventId: EventId.make(`event-session-status-${sequence}`),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-08-19T12:00:00.000Z",
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "thread.approval-response-requested",
+        payload: {
+          threadId,
+          requestId: ApprovalRequestId.make(`request-${sequence}`),
+          decision: "accept",
+          createdAt: "2026-08-19T12:00:00.000Z",
+        },
+      });
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: { streamDomainEvents: Stream.fromPubSub(liveEvents) },
+          projectionSnapshotQuery: {
+            getThreadShellById: (threadId) =>
+              Effect.succeed(threadId === sessionThreadId ? Option.some(liveShell) : Option.none()),
+          },
+          codingSessionStore: {
+            listAll: Effect.sync(() => {
+              const record = sessionRecord();
+              return record === null ? [] : [record];
+            }),
+            getByThreadId: (threadId) =>
+              Effect.sync(() => {
+                const record = sessionRecord();
+                return record !== null && threadId === sessionThreadId
+                  ? Option.some(record)
+                  : Option.none();
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const snapshots = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Session status",
+            });
+            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              projectId: project.projectId,
+              message: "Exercise the session runtime",
+            });
+            sessionPlanId = created.plan.planId;
+
+            const itemsFiber = yield* client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+              Stream.tap((_item) => Deferred.succeed(openingSeen, undefined).pipe(Effect.ignore)),
+              Stream.take(2),
+              Stream.runCollect,
+              Effect.forkScoped,
+            );
+            yield* Deferred.await(openingSeen);
+            liveShell = makeDefaultOrchestrationThreadShell({
+              id: sessionThreadId,
+              latestTurn: {
+                turnId: TurnId.make("turn-session-status"),
+                state: "running",
+                requestedAt: "2026-08-19T12:00:00.000Z",
+                startedAt: "2026-08-19T12:00:00.000Z",
+                completedAt: null,
+                assistantMessageId: null,
+              },
+              hasPendingApprovals: true,
+            });
+            yield* PubSub.publish(liveEvents, approvalEvent(1, sessionThreadId));
+            return yield* Fiber.join(itemsFiber);
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      const rows = Array.from(snapshots).map((item) =>
+        item.snapshot.plans.find((plan) => plan.planId === sessionPlanId),
+      );
+      assert.equal(rows[0]?.isWorking, false);
+      assert.equal(rows[0]?.hasPendingInput, false);
+      assert.equal(rows[1]?.isWorking, true);
+      assert.equal(rows[1]?.hasPendingInput, true);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

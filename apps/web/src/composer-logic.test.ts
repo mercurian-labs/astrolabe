@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  BUILT_IN_COMPOSER_SLASH_COMMANDS,
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
+  composerCommandKeyWithoutMenu,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   isCollapsedCursorAdjacentToInlineToken,
-  parseStandaloneComposerSlashCommand,
   replaceTextRange,
+  runtimeModeOptionsFor,
   shouldSubmitComposerOnEnter,
 } from "./composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
@@ -23,6 +25,26 @@ describe("shouldSubmitComposerOnEnter", () => {
 
   it("inserts a newline for Shift+Enter", () => {
     expect(shouldSubmitComposerOnEnter({ isMobileViewport: false, shiftKey: true })).toBe(false);
+  });
+});
+
+describe("composerCommandKeyWithoutMenu", () => {
+  it("leaves Shift+Tab unhandled", () => {
+    expect(
+      composerCommandKeyWithoutMenu({
+        key: "Tab",
+        shiftKey: true,
+        isMobileViewport: false,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("built-in composer slash commands", () => {
+  it("does not parse plan/default interaction-mode commands", () => {
+    expect(BUILT_IN_COMPOSER_SLASH_COMMANDS).toEqual(["model"]);
+    expect(BUILT_IN_COMPOSER_SLASH_COMMANDS).not.toContain("plan");
+    expect(BUILT_IN_COMPOSER_SLASH_COMMANDS).not.toContain("default");
   });
 });
 
@@ -359,16 +381,27 @@ describe("isCollapsedCursorAdjacentToInlineToken", () => {
   });
 });
 
-describe("parseStandaloneComposerSlashCommand", () => {
-  it("parses standalone /plan command", () => {
-    expect(parseStandaloneComposerSlashCommand(" /plan ")).toBe("plan");
+describe("runtimeModeOptionsFor", () => {
+  it("offers exactly the three coding-session tiers", () => {
+    expect(runtimeModeOptionsFor("approval-required")).toEqual([
+      "approval-required",
+      "auto-accept-edits",
+      "full-access",
+    ]);
+    expect(runtimeModeOptionsFor("full-access")).toEqual([
+      "approval-required",
+      "auto-accept-edits",
+      "full-access",
+    ]);
   });
 
-  it("parses standalone /default command", () => {
-    expect(parseStandaloneComposerSlashCommand("/default")).toBe("default");
-  });
-
-  it("ignores slash commands with extra message text", () => {
-    expect(parseStandaloneComposerSlashCommand("/plan explain this")).toBeNull();
+  it("keeps legacy auto truthful only while it is current", () => {
+    expect(runtimeModeOptionsFor("auto")).toEqual([
+      "approval-required",
+      "auto-accept-edits",
+      "full-access",
+      "auto",
+    ]);
+    expect(runtimeModeOptionsFor("auto-accept-edits")).not.toContain("auto");
   });
 });

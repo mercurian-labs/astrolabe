@@ -343,3 +343,18 @@ plan text as the first turn. The resulting session appears as a leaf in the plan
 start another session from the same ready commit when a retry or a different model is useful.
 Selecting a session leaf keeps it visible while new planning continues from the checkpoint
 immediately before it.
+
+The session card in the plan timeline includes **Open session**. A session is a focused coding
+conversation: send one turn at a time, stop a running turn from the same control, and switch among
+**Supervised**, **Auto-accept edits**, and **Full access** from the composer. See
+[Permission modes](permission-modes.md).
+
+In Supervised work, commands, file reads, and file changes can pause for approval. Approve once,
+allow requests like it for the session, decline while letting the turn continue, or cancel the
+turn. Structured questions pause in their own answer card. Either kind of pause marks the plan
+**Awaiting your input** in the tree; a running session marks it **Assistant working**.
+
+The context meter in the composer shows how much of the provider's context window is in use. When
+the provider compacts context, that happens automatically and appears as an ordinary entry in the
+session timeline. It is bookkeeping inside the coding session: it never becomes a plan-history
+entry, changes the plan, or asks you to trigger it.

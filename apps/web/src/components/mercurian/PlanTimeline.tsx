@@ -15,6 +15,7 @@ import type {
   ServerProvider,
 } from "@t3tools/contracts";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
+import { Link } from "@tanstack/react-router";
 import {
   ChevronRightIcon,
   CircleAlertIcon,
@@ -210,7 +211,17 @@ export function PlanTimeline({
                     </a>
                   )}
                 </div>
-                <Button className="mt-2" disabled size="sm" variant="outline">
+                <Button
+                  className="mt-2"
+                  render={
+                    record === undefined ? undefined : (
+                      <Link to="/sessions/$threadId" params={{ threadId: record.threadId }} />
+                    )
+                  }
+                  disabled={record === undefined}
+                  size="sm"
+                  variant="outline"
+                >
                   Open session
                 </Button>
               </li>
