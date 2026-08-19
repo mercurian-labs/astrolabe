@@ -9,7 +9,7 @@ import type { PlanGraph } from "./PlanGraph.logic";
 /**
  * The branch's standing model choice at one position.
  *
- * History is walked self-first through the first parent. A recorded pair is
+ * Checkpoint history is walked self-first through the first parent. A recorded pair is
  * the standing choice descendants inherit; a bare history has no choice.
  */
 export function standingModelChoice(

@@ -52,17 +52,6 @@ export interface MapFrameSize {
   readonly height: number;
 }
 
-export interface DetailOverlayPlacement {
-  readonly anchor: MapPoint;
-  readonly width: number;
-  readonly height: number;
-  readonly containerWidth: number;
-  readonly containerHeight: number;
-  readonly inset: number;
-  readonly gap: number;
-  readonly tracksCursor: boolean;
-}
-
 export interface MapBounds {
   readonly minX: number;
   readonly minY: number;
@@ -79,33 +68,11 @@ export const MAP_PROXIMITY_MAX_SCALE = 1.35;
 export const MINIMAP_PADDING = 8;
 const CAMERA_EPSILON = 0.001;
 
-/**
- * Prefer the cursor's lower-right quadrant, flipping before either edge. A
- * keyboard-opened overlay keeps its existing node-relative vertical anchor.
- */
-export function detailOverlayPosition({
-  anchor,
-  width,
-  height,
-  containerWidth,
-  containerHeight,
-  inset,
-  gap,
-  tracksCursor,
-}: DetailOverlayPlacement): MapPoint {
-  const right = anchor.x + gap;
-  const left = right + width <= containerWidth - inset ? right : anchor.x - gap - width;
-  const below = anchor.y + gap;
-  const top =
-    tracksCursor && below + height > containerHeight - inset
-      ? anchor.y - gap - height
-      : tracksCursor
-        ? below
-        : anchor.y - gap;
-  return {
-    x: clampOverlayCoordinate(left, width, containerWidth, inset),
-    y: clampOverlayCoordinate(top, height, containerHeight, inset),
-  };
+export type MapDetail = "dot" | "glyph";
+
+export function detailFor(zoom: number): MapDetail {
+  if (zoom < MAP_GLYPH_ZOOM) return "dot";
+  return "glyph";
 }
 
 export function zoomAtPoint(
@@ -198,13 +165,6 @@ export function cameraTween(
       zoom,
     };
   };
-}
-
-export type MapDetail = "dot" | "glyph";
-
-export function detailFor(zoom: number): MapDetail {
-  if (zoom < MAP_GLYPH_ZOOM) return "dot";
-  return "glyph";
 }
 
 export function radiusFor(
@@ -338,10 +298,3 @@ const easeOut = (progress: number) => 1 - (1 - clamp(progress, 0, 1)) ** 3;
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.max(minimum, Math.min(maximum, value));
-
-const clampOverlayCoordinate = (
-  value: number,
-  size: number,
-  containerSize: number,
-  inset: number,
-) => clamp(value, inset, Math.max(inset, containerSize - size - inset));

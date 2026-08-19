@@ -13,6 +13,7 @@ import {
   mapMarksToNodes,
   planNodeDetail,
   planNodeIdForCommit,
+  planNodeStatusDots,
   planNodeSummary,
 } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
@@ -307,5 +308,42 @@ describe("condensePlanGraph", () => {
     expect(planNodeIdForCommit(id("spec"), graph.nodeIdByCommit)).toBe("spec");
     expect(planNodeIdForCommit(id("query"), graph.nodeIdByCommit)).toBe("spec");
     expect(planNodeIdForCommit(id("missing"), graph.nodeIdByCommit)).toBe("missing");
+  });
+
+  it("never absorbs a coding-session leaf into a conversational checkpoint", () => {
+    const session: PlanTimelineItem = {
+      _tag: "coding-session",
+      commitId: id("session"),
+      sequence: 2,
+      parents: [id("query")],
+      published: false,
+      authorKind: "human",
+      createdAt: at(2),
+      repositoryId: MercurianRepositoryId.make("repo-web"),
+      repositoryName: "web",
+      planRevisionCommitId: id("query"),
+    };
+    const graph = condensePlanGraph(buildPlanGraph([message("query", 1, [], "human"), session]));
+
+    expect(graph.nodes.map((node) => node.commitId)).toEqual(["query", "session"]);
+    expect(graph.byId.get("query")?.checkpoint?.effects).toEqual(["unanswered"]);
+    expect(graph.byId.get("session")?.checkpoint).toBeUndefined();
+  });
+});
+
+describe("planNodeStatusDots", () => {
+  it("orders readiness before spec and plan staleness with their status colors", () => {
+    expect(planNodeStatusDots({ ready: true, staleSpec: true, stalePlan: true })).toEqual([
+      { key: "ready", fillClass: "fill-emerald-500" },
+      { key: "stale-spec", fillClass: "fill-amber-500" },
+      { key: "stale-plan", fillClass: "fill-orange-500" },
+    ]);
+  });
+
+  it("returns only applicable marks and none for an unmarked node", () => {
+    expect(planNodeStatusDots({ ready: false, staleSpec: true, stalePlan: false })).toEqual([
+      { key: "stale-spec", fillClass: "fill-amber-500" },
+    ]);
+    expect(planNodeStatusDots({ ready: false, staleSpec: false, stalePlan: false })).toEqual([]);
   });
 });

@@ -1,4 +1,10 @@
-import type { MercurianCommitId, PlanImplementReady, PlanTimelineItem } from "@t3tools/contracts";
+import type {
+  MercurianCommitId,
+  PlanCodingSessionRecord,
+  PlanImplementReady,
+  PlanTimelineItem,
+  ServerProvider,
+} from "@t3tools/contracts";
 import {
   ArrowDownIcon,
   CheckIcon,
@@ -14,6 +20,7 @@ import {
   MessagesSquareIcon,
   Settings2Icon,
   SquareTerminalIcon,
+  TriangleAlertIcon,
   WaypointsIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
@@ -45,7 +52,6 @@ import {
   DagExplorerDisplaySettings,
   DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS,
   detailFor,
-  detailOverlayPosition,
   edgeWidthFor,
   fitTransform,
   mapOverflows,
@@ -77,8 +83,8 @@ import {
   isUnansweredCheckpointInFlight,
   mapMarksToNodes,
   planCheckpointEffectLabel,
-  planNodeDetail,
   planNodeIdForCommit,
+  planNodeStatusDots,
   planNodeSummary,
 } from "./PlanCheckpoints.logic";
 import {
@@ -95,6 +101,13 @@ import {
   type SpatialPoint,
 } from "./PlanGraph.logic";
 import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
+import {
+  PlanNodeDetailsButton,
+  PlanNodePopover,
+  usePlanNodePopover,
+  type PlanNodePopoverController,
+} from "./PlanNodePopover";
+import { offeredActs, type PlanNodePopoverAct } from "./PlanNodePopover.logic";
 import {
   branchOption,
   threadLayout,
@@ -113,11 +126,6 @@ const ROW_HEIGHT = 34;
 
 const MAP_PADDING = 64;
 const MAP_TWEEN_DURATION = 250;
-const DETAIL_OVERLAY_ID = "dag-explorer-node-detail";
-const DETAIL_OVERLAY_INSET = 8;
-const DETAIL_OVERLAY_GAP = 12;
-const DETAIL_OVERLAY_MAX_WIDTH = 288;
-const DETAIL_OVERLAY_MAX_HEIGHT = 186;
 /** How far the pointer has to travel before a press counts as a pan. */
 const DRAG_THRESHOLD = 4;
 
@@ -127,14 +135,8 @@ type DisplaySettingsUpdater = (
     | ((current: DagExplorerDisplaySettingsValue) => DagExplorerDisplaySettingsValue),
 ) => void;
 
-interface MeasuredDetailOverlay {
-  readonly commitId: MercurianCommitId;
-  readonly width: number;
-  readonly height: number;
-}
-
 /**
- * The DAG explorer: the plan's whole history, in the three readings the design
+ * The Checkpoint Graph: the plan's whole checkpoint history, in the three readings the design
  * settled on.
  *
  * The **Thread** is the checked-out root-to-tip path through where the planning
@@ -159,10 +161,14 @@ export function DagExplorer({
   graph,
   anchoredCommitId,
   inFlightAnchorCommitId,
+  providers,
+  codingSessions,
   readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
   onColumnsWidthCapChange,
+  onEditAndBranch,
+  onImplementFrom,
   onSelect,
 }: {
   readonly graph: PlanGraph;
@@ -170,10 +176,16 @@ export function DagExplorer({
   readonly anchoredCommitId: MercurianCommitId | null;
   /** The commit an assistant response currently streaming will continue from. */
   readonly inFlightAnchorCommitId?: MercurianCommitId;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onColumnsWidthCapChange: (width: number) => void;
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [storedView, setView] = useLocalStorage(
@@ -191,7 +203,13 @@ export function DagExplorer({
     checkpointGraph.nodeIdByCommit,
   );
   const readyNodes = useMemo(
-    () => mapMarksToNodes(readyCommits.keys(), checkpointGraph.nodeIdByCommit),
+    () =>
+      new Map<MercurianCommitId, PlanImplementReady>(
+        [...readyCommits].map(
+          ([commitId, ready]) =>
+            [checkpointGraph.nodeIdByCommit.get(commitId) ?? commitId, ready] as const,
+        ),
+      ),
     [checkpointGraph.nodeIdByCommit, readyCommits],
   );
   const stalePlanNodes = useMemo(
@@ -215,24 +233,14 @@ export function DagExplorer({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
-        <h2 className="text-sm font-medium text-foreground">History</h2>
-        <span className="flex min-w-0 flex-1 items-center gap-1">
-          {staleSpecNodes.size === 0 ? null : (
-            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-              {staleSpecNodes.size} stale spec {staleSpecNodes.size === 1 ? "branch" : "branches"}
-            </span>
-          )}
-          {stalePlanNodes.size === 0 ? null : (
-            <span
-              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
-              title={PLAN_MAY_BE_STALE_DESCRIPTION}
-            >
-              {stalePlanNodes.size === 1
-                ? "1 plan may be stale"
-                : `${stalePlanNodes.size} plans may be stale`}
-            </span>
-          )}
-        </span>
+        <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
+        {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
+          <GraphWarningsPopover
+            stalePlanCount={stalePlanNodes.size}
+            staleSpecCount={staleSpecNodes.size}
+          />
+        )}
+        <span className="min-w-0 flex-1" />
         <ToggleGroup
           className="shrink-0"
           size="xs"
@@ -275,38 +283,131 @@ export function DagExplorer({
         </div>
       ) : view === "thread" ? (
         <ThreadView
+          codingSessions={codingSessions}
+          commitGraph={graph}
           currentCommitId={currentCommitId}
           graph={checkpointGraph}
           inFlightUnansweredNodes={inFlightUnansweredNodes}
+          providers={providers}
           readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
+          onEditAndBranch={onEditAndBranch}
+          onImplementFrom={onImplementFrom}
           onSelect={onSelect}
         />
       ) : view === "columns" ? (
         <ColumnsView
+          codingSessions={codingSessions}
+          commitGraph={graph}
           currentCommitId={currentCommitId}
           graph={checkpointGraph}
           inFlightUnansweredNodes={inFlightUnansweredNodes}
           readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
+          providers={providers}
+          onEditAndBranch={onEditAndBranch}
+          onImplementFrom={onImplementFrom}
           onSelect={onSelect}
           onWidthCapChange={onColumnsWidthCapChange}
         />
       ) : (
         <GraphView
+          codingSessions={codingSessions}
+          commitGraph={graph}
           currentCommitId={currentCommitId}
           graph={checkpointGraph}
           inFlightUnansweredNodes={inFlightUnansweredNodes}
           readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
+          providers={providers}
+          onEditAndBranch={onEditAndBranch}
+          onImplementFrom={onImplementFrom}
           onSelect={onSelect}
         />
       )}
     </section>
   );
+}
+
+function ActivePlanNodePopover({
+  controller,
+  graph,
+  commitGraph,
+  codingSessions,
+  providers,
+  readyCommits,
+  stalePlanCommitIds,
+  staleSpecCommitIds,
+  inFlightUnansweredNodes,
+  onSelect,
+  onEditAndBranch,
+  onImplementFrom,
+}: {
+  readonly controller: PlanNodePopoverController;
+  readonly graph: PlanGraph;
+  readonly commitGraph: PlanGraph;
+  readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
+  readonly stalePlanCommitIds: ReadonlySet<string>;
+  readonly staleSpecCommitIds: ReadonlySet<string>;
+  readonly inFlightUnansweredNodes: ReadonlySet<string>;
+  readonly onSelect: (commitId: MercurianCommitId) => void;
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
+}) {
+  const node = controller.state === null ? undefined : graph.byId.get(controller.state.commitId);
+  return (
+    <PlanNodePopover
+      codingSessions={codingSessions}
+      commitGraph={commitGraph}
+      controller={controller}
+      node={node}
+      providers={providers}
+      {...(node === undefined || readyCommits.get(node.commitId) === undefined
+        ? {}
+        : { ready: readyCommits.get(node.commitId)! })}
+      stalePlan={node !== undefined && stalePlanCommitIds.has(node.commitId)}
+      staleSpec={node !== undefined && staleSpecCommitIds.has(node.commitId)}
+      suppressUnanswered={node !== undefined && inFlightUnansweredNodes.has(node.commitId)}
+      onEditAndBranch={onEditAndBranch}
+      onImplementFrom={onImplementFrom}
+      onSelect={onSelect}
+    />
+  );
+}
+
+/** The Graph node's direct act, with its popover retained as the safe fallback. */
+export function graphNodePopoverInteraction({
+  acts,
+  commitId,
+  popover,
+  onSelect,
+}: {
+  readonly acts: ReadonlyArray<PlanNodePopoverAct>;
+  readonly commitId: MercurianCommitId;
+  readonly popover: PlanNodePopoverController;
+  readonly onSelect: (commitId: MercurianCommitId) => void;
+}) {
+  return {
+    activate(anchor: Element) {
+      if (!acts.includes("continue")) {
+        popover.open(commitId, anchor);
+        return;
+      }
+      popover.close();
+      onSelect(commitId);
+    },
+    linger(anchor: Element) {
+      popover.linger(commitId, anchor);
+    },
+    scheduleClose: popover.scheduleClose,
+  };
 }
 
 function DisplaySettingsPopover({
@@ -331,42 +432,120 @@ function DisplaySettingsPopover({
         <Settings2Icon />
       </PopoverTrigger>
       <PopoverPopup align="end" className="w-64">
-        <div className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
-            Display layout
-            <Select
-              value={settings.layout}
-              onValueChange={(layout) => {
-                if (layout === "sugiyama" || layout === "grid" || layout === "zherebko") {
-                  onSettingsChange((current) => ({ ...current, layout }));
-                }
-              }}
-            >
-              <SelectTrigger aria-label="Display layout" size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem value="sugiyama">Sugiyama</SelectItem>
-                <SelectItem value="grid">Grid</SelectItem>
-                <SelectItem value="zherebko">Zherebko</SelectItem>
-              </SelectPopup>
-            </Select>
-          </label>
-          <DisplaySlider
-            label="Node size"
-            value={settings.nodeSize}
-            onValueChange={(nodeSize) => onSettingsChange((current) => ({ ...current, nodeSize }))}
-          />
-          <DisplaySlider
-            label="Line thickness"
-            value={settings.lineThickness}
-            onValueChange={(lineThickness) =>
-              onSettingsChange((current) => ({ ...current, lineThickness }))
-            }
-          />
-        </div>
+        <DagExplorerDisplaySettingsControls
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
       </PopoverPopup>
     </Popover>
+  );
+}
+
+function GraphWarningsPopover({
+  stalePlanCount,
+  staleSpecCount,
+}: {
+  readonly stalePlanCount: number;
+  readonly staleSpecCount: number;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            aria-label="Checkpoint Graph warnings"
+            className="text-amber-600 hover:text-amber-700 dark:text-amber-400"
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          />
+        }
+      >
+        <TriangleAlertIcon />
+      </PopoverTrigger>
+      <PopoverPopup align="start" className="w-72">
+        <DagExplorerWarningsContent
+          stalePlanCount={stalePlanCount}
+          staleSpecCount={staleSpecCount}
+        />
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+/** The compact warning reading opened from the graph header. */
+export function DagExplorerWarningsContent({
+  stalePlanCount,
+  staleSpecCount,
+}: {
+  readonly stalePlanCount: number;
+  readonly staleSpecCount: number;
+}) {
+  return (
+    <div className="flex flex-col gap-3 text-xs">
+      {staleSpecCount === 0 ? null : (
+        <p>
+          <span className="font-medium text-foreground">
+            {staleSpecCount} stale spec {staleSpecCount === 1 ? "branch" : "branches"}
+          </span>
+          <span className="text-muted-foreground">{" — spec changed since the branch's base"}</span>
+        </p>
+      )}
+      {stalePlanCount === 0 ? null : (
+        <p>
+          <span className="font-medium text-foreground">
+            {stalePlanCount === 1 ? "1 plan may be stale" : `${stalePlanCount} plans may be stale`}
+          </span>
+          <span className="text-muted-foreground"> — {PLAN_MAY_BE_STALE_DESCRIPTION}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The graph's complete display vocabulary; detail level is intentionally absent. */
+export function DagExplorerDisplaySettingsControls({
+  settings,
+  onSettingsChange,
+}: {
+  readonly settings: DagExplorerDisplaySettingsValue;
+  readonly onSettingsChange: DisplaySettingsUpdater;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
+        Display layout
+        <Select
+          value={settings.layout}
+          onValueChange={(layout) => {
+            if (layout === "sugiyama" || layout === "grid" || layout === "zherebko") {
+              onSettingsChange((current) => ({ ...current, layout }));
+            }
+          }}
+        >
+          <SelectTrigger aria-label="Display layout" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            <SelectItem value="sugiyama">Sugiyama</SelectItem>
+            <SelectItem value="grid">Grid</SelectItem>
+            <SelectItem value="zherebko">Zherebko</SelectItem>
+          </SelectPopup>
+        </Select>
+      </label>
+      <DisplaySlider
+        label="Node size"
+        value={settings.nodeSize}
+        onValueChange={(nodeSize) => onSettingsChange((current) => ({ ...current, nodeSize }))}
+      />
+      <DisplaySlider
+        label="Line thickness"
+        value={settings.lineThickness}
+        onValueChange={(lineThickness) =>
+          onSettingsChange((current) => ({ ...current, lineThickness }))
+        }
+      />
+    </div>
   );
 }
 
@@ -405,19 +584,31 @@ function DisplaySlider({
  */
 function ThreadView({
   graph,
+  commitGraph,
+  codingSessions,
+  providers,
   currentCommitId,
   inFlightUnansweredNodes,
   readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
+  onEditAndBranch,
+  onImplementFrom,
   onSelect,
 }: {
   readonly graph: PlanGraph;
+  readonly commitGraph: PlanGraph;
+  readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
+  readonly providers: ReadonlyArray<ServerProvider>;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlySet<string>;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [parentChoices, setParentChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(
@@ -428,55 +619,79 @@ function ThreadView({
     [currentCommitId, graph, parentChoices],
   );
   const scrollRef = useCurrentRowScroll(currentCommitId);
+  const popover = usePlanNodePopover();
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto py-2">
-      <ol className="flex flex-col">
-        {layout.rows.map((row) => (
-          <li key={row.commitId}>
-            <PlanNodeRow
-              isCurrent={row.commitId === currentCommitId}
-              node={row}
-              ready={readyCommits.has(row.commitId)}
-              stalePlan={stalePlanCommitIds.has(row.commitId)}
-              staleSpec={staleSpecCommitIds.has(row.commitId)}
-              suppressUnanswered={inFlightUnansweredNodes.has(row.commitId)}
-              ref={row.commitId === currentCommitId ? scrollRef : undefined}
-              trailing={
-                row.siblings !== undefined || row.parentLines !== undefined ? (
-                  <span className="flex shrink-0 items-center gap-1">
-                    {row.siblings !== undefined ? (
-                      <DivergenceBadge
-                        graph={graph}
-                        kind="siblings"
-                        selection={row.siblings}
-                        onChoose={(option) => onSelect(option.tipId)}
-                      />
-                    ) : null}
-                    {row.parentLines !== undefined ? (
-                      <DivergenceBadge
-                        graph={graph}
-                        kind="parent-lines"
-                        selection={row.parentLines}
-                        onChoose={(option) => {
-                          setParentChoices((current) => {
-                            if (current.get(row.commitId) === option.branchRootId) return current;
-                            const next = new Map(current);
-                            next.set(row.commitId, option.branchRootId);
-                            return next;
-                          });
-                        }}
-                      />
-                    ) : null}
-                  </span>
-                ) : null
-              }
-              onSelect={onSelect}
-            />
-          </li>
-        ))}
-      </ol>
-    </div>
+    <>
+      <div className="min-h-0 flex-1 overflow-auto py-2">
+        <ol className="flex flex-col">
+          {layout.rows.map((row) => (
+            <li key={row.commitId}>
+              <PlanNodeRow
+                isCurrent={row.commitId === currentCommitId}
+                node={row}
+                popover={popover}
+                ready={readyCommits.has(row.commitId)}
+                stalePlan={stalePlanCommitIds.has(row.commitId)}
+                staleSpec={staleSpecCommitIds.has(row.commitId)}
+                suppressUnanswered={inFlightUnansweredNodes.has(row.commitId)}
+                ref={row.commitId === currentCommitId ? scrollRef : undefined}
+                trailing={
+                  row.siblings !== undefined || row.parentLines !== undefined ? (
+                    <span
+                      className="flex shrink-0 items-center gap-1"
+                      onPointerEnter={(event) => {
+                        event.stopPropagation();
+                        popover.close();
+                      }}
+                    >
+                      {row.siblings !== undefined ? (
+                        <DivergenceBadge
+                          graph={graph}
+                          kind="siblings"
+                          selection={row.siblings}
+                          onChoose={(option) => onSelect(option.tipId)}
+                        />
+                      ) : null}
+                      {row.parentLines !== undefined ? (
+                        <DivergenceBadge
+                          graph={graph}
+                          kind="parent-lines"
+                          selection={row.parentLines}
+                          onChoose={(option) => {
+                            setParentChoices((current) => {
+                              if (current.get(row.commitId) === option.branchRootId) return current;
+                              const next = new Map(current);
+                              next.set(row.commitId, option.branchRootId);
+                              return next;
+                            });
+                          }}
+                        />
+                      ) : null}
+                    </span>
+                  ) : null
+                }
+                onSelect={onSelect}
+              />
+            </li>
+          ))}
+        </ol>
+      </div>
+      <ActivePlanNodePopover
+        codingSessions={codingSessions}
+        commitGraph={commitGraph}
+        controller={popover}
+        graph={graph}
+        inFlightUnansweredNodes={inFlightUnansweredNodes}
+        providers={providers}
+        readyCommits={readyCommits}
+        stalePlanCommitIds={stalePlanCommitIds}
+        staleSpecCommitIds={staleSpecCommitIds}
+        onEditAndBranch={onEditAndBranch}
+        onImplementFrom={onImplementFrom}
+        onSelect={onSelect}
+      />
+    </>
   );
 }
 
@@ -581,20 +796,32 @@ interface ColumnFocusEntry {
  */
 function ColumnsView({
   graph,
+  commitGraph,
+  codingSessions,
+  providers,
   currentCommitId,
   inFlightUnansweredNodes,
   readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
+  onEditAndBranch,
+  onImplementFrom,
   onSelect,
   onWidthCapChange,
 }: {
   readonly graph: PlanGraph;
+  readonly commitGraph: PlanGraph;
+  readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
+  readonly providers: ReadonlyArray<ServerProvider>;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlySet<string>;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onWidthCapChange: (width: number) => void;
 }) {
@@ -629,6 +856,7 @@ function ColumnsView({
   const currentScrollRef = useCurrentRowScroll(currentCommitId);
   const columnsContainerRef = useRef<HTMLDivElement>(null);
   const [columnsContainerWidth, setColumnsContainerWidth] = useState(0);
+  const popover = usePlanNodePopover();
 
   const widthCap = columnViewWidthCap(layout.panes);
   useLayoutEffect(() => {
@@ -733,109 +961,126 @@ function ColumnsView({
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto" ref={columnsContainerRef}>
-      {layout.panes.map((pane, paneIndex) => {
-        const compressed =
-          paneIndex < firstAutoExpandedPaneIndex && paneIndex !== expandedPaneIndex;
-        const entries = entriesByPane[paneIndex] ?? [];
-        const paneKey = pane.rows[0]?.commitId ?? `pane-${paneIndex}`;
-        if (compressed) {
+    <>
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto" ref={columnsContainerRef}>
+        {layout.panes.map((pane, paneIndex) => {
+          const compressed =
+            paneIndex < firstAutoExpandedPaneIndex && paneIndex !== expandedPaneIndex;
+          const entries = entriesByPane[paneIndex] ?? [];
+          const paneKey = pane.rows[0]?.commitId ?? `pane-${paneIndex}`;
+          if (compressed) {
+            return (
+              <button
+                aria-label={paneSpanLabel(pane)}
+                className={cn(
+                  "flex min-h-0 w-8 shrink-0 flex-col items-center gap-2 overflow-hidden py-3 outline-hidden",
+                  paneIndex === 0 && "ml-auto",
+                  paneIndex > 0 && "border-l border-border",
+                  "hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                )}
+                key={paneKey}
+                tabIndex={-1}
+                type="button"
+                onClick={() => {
+                  const target = entries[0];
+                  if (target !== undefined) moveFocus(target, true);
+                }}
+              >
+                {pane.rows.map((row) => (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-2 shrink-0 rounded-full border border-muted-foreground/70",
+                      row.item.published && "bg-muted-foreground",
+                    )}
+                    key={row.commitId}
+                  />
+                ))}
+              </button>
+            );
+          }
+
           return (
-            <button
-              aria-label={paneSpanLabel(pane)}
+            <div
               className={cn(
-                "flex min-h-0 w-8 shrink-0 flex-col items-center gap-2 overflow-hidden py-3 outline-hidden",
+                "min-h-0 overflow-y-auto py-2",
+                "w-56 min-w-56 grow shrink-0",
+                expandedPaneCount === 1 ? "max-w-104" : "max-w-84",
                 paneIndex === 0 && "ml-auto",
                 paneIndex > 0 && "border-l border-border",
-                "hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               )}
               key={paneKey}
-              tabIndex={-1}
-              type="button"
-              onClick={() => {
-                const target = entries[0];
-                if (target !== undefined) moveFocus(target, true);
+              ref={(element) => {
+                if (element !== null)
+                  element.scrollTop = paneScrollOffsetsRef.current.get(paneKey) ?? 0;
+              }}
+              onScroll={(event) => {
+                paneScrollOffsetsRef.current.set(paneKey, event.currentTarget.scrollTop);
               }}
             >
-              {pane.rows.map((row) => (
-                <span
-                  aria-hidden
-                  className={cn(
-                    "size-2 shrink-0 rounded-full border border-muted-foreground/70",
-                    row.item.published && "bg-muted-foreground",
-                  )}
-                  key={row.commitId}
-                />
-              ))}
-            </button>
+              <ol className="flex flex-col px-1">
+                {pane.rows.map((row, rowIndex) => {
+                  const key = commitFocusKey(row.commitId);
+                  const entry = entries[rowIndex]!;
+                  const isCurrent = row.commitId === currentCommitId;
+                  return (
+                    <li key={row.commitId}>
+                      <PlanNodeRow
+                        isCurrent={isCurrent}
+                        node={row}
+                        popover={popover}
+                        ready={readyCommits.has(row.commitId)}
+                        stalePlan={stalePlanCommitIds.has(row.commitId)}
+                        staleSpec={staleSpecCommitIds.has(row.commitId)}
+                        suppressUnanswered={inFlightUnansweredNodes.has(row.commitId)}
+                        ref={registerRow(key, isCurrent)}
+                        tabIndex={focusedKey === key ? 0 : -1}
+                        trailing={null}
+                        onFocus={() => setFocusedKey(key)}
+                        onKeyDown={(event) => onRovingKeyDown(event, entry)}
+                        onSelect={onSelect}
+                      />
+                    </li>
+                  );
+                })}
+              </ol>
+              <ColumnTerminal
+                entries={entries}
+                focusedKey={focusedKey}
+                pane={pane}
+                paneIndex={paneIndex}
+                registerRow={registerRow}
+                onChoose={(forkId, childId) => {
+                  setBranchChoices((current) => {
+                    if (current.get(forkId) === childId) return current;
+                    const next = new Map(current);
+                    next.set(forkId, childId);
+                    return next;
+                  });
+                }}
+                onJumpToMerge={jumpToMerge}
+                onRovingKeyDown={onRovingKeyDown}
+                onFocusKey={setFocusedKey}
+              />
+            </div>
           );
-        }
-
-        return (
-          <div
-            className={cn(
-              "min-h-0 overflow-y-auto py-2",
-              "w-56 min-w-56 grow shrink-0",
-              expandedPaneCount === 1 ? "max-w-104" : "max-w-84",
-              paneIndex === 0 && "ml-auto",
-              paneIndex > 0 && "border-l border-border",
-            )}
-            key={paneKey}
-            ref={(element) => {
-              if (element !== null)
-                element.scrollTop = paneScrollOffsetsRef.current.get(paneKey) ?? 0;
-            }}
-            onScroll={(event) => {
-              paneScrollOffsetsRef.current.set(paneKey, event.currentTarget.scrollTop);
-            }}
-          >
-            <ol className="flex flex-col px-1">
-              {pane.rows.map((row, rowIndex) => {
-                const key = commitFocusKey(row.commitId);
-                const entry = entries[rowIndex]!;
-                const isCurrent = row.commitId === currentCommitId;
-                return (
-                  <li key={row.commitId}>
-                    <PlanNodeRow
-                      isCurrent={isCurrent}
-                      node={row}
-                      ready={readyCommits.has(row.commitId)}
-                      stalePlan={stalePlanCommitIds.has(row.commitId)}
-                      staleSpec={staleSpecCommitIds.has(row.commitId)}
-                      suppressUnanswered={inFlightUnansweredNodes.has(row.commitId)}
-                      ref={registerRow(key, isCurrent)}
-                      tabIndex={focusedKey === key ? 0 : -1}
-                      trailing={null}
-                      onFocus={() => setFocusedKey(key)}
-                      onKeyDown={(event) => onRovingKeyDown(event, entry)}
-                      onSelect={onSelect}
-                    />
-                  </li>
-                );
-              })}
-            </ol>
-            <ColumnTerminal
-              entries={entries}
-              focusedKey={focusedKey}
-              pane={pane}
-              paneIndex={paneIndex}
-              registerRow={registerRow}
-              onChoose={(forkId, childId) => {
-                setBranchChoices((current) => {
-                  if (current.get(forkId) === childId) return current;
-                  const next = new Map(current);
-                  next.set(forkId, childId);
-                  return next;
-                });
-              }}
-              onJumpToMerge={jumpToMerge}
-              onRovingKeyDown={onRovingKeyDown}
-              onFocusKey={setFocusedKey}
-            />
-          </div>
-        );
-      })}
-    </div>
+        })}
+      </div>
+      <ActivePlanNodePopover
+        codingSessions={codingSessions}
+        commitGraph={commitGraph}
+        controller={popover}
+        graph={graph}
+        inFlightUnansweredNodes={inFlightUnansweredNodes}
+        providers={providers}
+        readyCommits={readyCommits}
+        stalePlanCommitIds={stalePlanCommitIds}
+        staleSpecCommitIds={staleSpecCommitIds}
+        onEditAndBranch={onEditAndBranch}
+        onImplementFrom={onImplementFrom}
+        onSelect={onSelect}
+      />
+    </>
   );
 }
 
@@ -982,10 +1227,10 @@ const branchFocusKey = (paneIndex: number, commitId: MercurianCommitId) =>
 function paneSpanLabel(pane: Pane): string {
   const first = pane.rows[0];
   const last = pane.rows.at(-1);
-  if (first === undefined || last === undefined) return "Empty history pane";
+  if (first === undefined || last === undefined) return "Empty checkpoint pane";
   const start = planNodeSummary(first);
   const end = planNodeSummary(last);
-  return start === end ? `History pane: ${start}` : `History pane: ${start} to ${end}`;
+  return start === end ? `Checkpoints: ${start}` : `Checkpoints: ${start} to ${end}`;
 }
 
 /**
@@ -998,19 +1243,31 @@ function paneSpanLabel(pane: Pane): string {
  */
 function GraphView({
   graph,
+  commitGraph,
+  codingSessions,
+  providers,
   currentCommitId,
   inFlightUnansweredNodes,
   readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
+  onEditAndBranch,
+  onImplementFrom,
   onSelect,
 }: {
   readonly graph: PlanGraph;
+  readonly commitGraph: PlanGraph;
+  readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
+  readonly providers: ReadonlyArray<ServerProvider>;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlySet<string>;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [settings, setSettings] = useLocalStorage(
@@ -1027,15 +1284,20 @@ function GraphView({
   // the pan and zoom of whoever is reading the map.
   return (
     <SpatialMap
+      codingSessions={codingSessions}
+      commitGraph={commitGraph}
       currentCommitId={currentCommitId}
       graph={graph}
       inFlightUnansweredNodes={inFlightUnansweredNodes}
       layout={layout}
+      providers={providers}
       readyCommits={readyCommits}
       settings={settings}
       stalePlanCommitIds={stalePlanCommitIds}
       staleSpecCommitIds={staleSpecCommitIds}
       onSettingsChange={setSettings}
+      onEditAndBranch={onEditAndBranch}
+      onImplementFrom={onImplementFrom}
       onSelect={onSelect}
     />
   );
@@ -1043,6 +1305,9 @@ function GraphView({
 
 function SpatialMap({
   graph,
+  commitGraph,
+  codingSessions,
+  providers,
   layout,
   currentCommitId,
   inFlightUnansweredNodes,
@@ -1050,17 +1315,26 @@ function SpatialMap({
   settings,
   stalePlanCommitIds,
   staleSpecCommitIds,
+  onEditAndBranch,
+  onImplementFrom,
   onSettingsChange,
   onSelect,
 }: {
   readonly graph: PlanGraph;
+  readonly commitGraph: PlanGraph;
+  readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
+  readonly providers: ReadonlyArray<ServerProvider>;
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlySet<string>;
+  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly settings: DagExplorerDisplaySettingsValue;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
   readonly onSettingsChange: DisplaySettingsUpdater;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -1074,12 +1348,8 @@ function SpatialMap({
   } | null>(null);
   const [hovered, setHovered] = useState<MercurianCommitId | null>(null);
   const [focused, setFocused] = useState<MercurianCommitId | null>(null);
-  const [measuredDetailOverlay, setMeasuredDetailOverlay] = useState<MeasuredDetailOverlay | null>(
-    null,
-  );
   const [pointerWorld, setPointerWorld] = useState<
     | (SpatialPoint & {
-        readonly mapPosition: MapPoint;
         readonly viewBoxUnitsPerPixel: number;
       })
     | null
@@ -1088,8 +1358,6 @@ function SpatialMap({
   const [mapFrame, setMapFrame] = useState({
     width: 0,
     height: 0,
-    svgLeft: 0,
-    svgTop: 0,
     svgWidth: 0,
     svgHeight: 0,
   });
@@ -1098,6 +1366,7 @@ function SpatialMap({
   const renderLayoutRef = useRef(renderLayout);
   const solvedLayoutRef = useRef(layout);
   const [startTween, cancelTween] = useTween();
+  const popover = usePlanNodePopover();
 
   useEffect(() => {
     const container = mapContainerRef.current;
@@ -1107,21 +1376,16 @@ function SpatialMap({
       const svg = svgRef.current;
       if (entry === undefined || svg === null) return;
       const { width, height } = entry.contentRect;
-      const containerRect = container.getBoundingClientRect();
       const svgRect = svg.getBoundingClientRect();
       const next = {
         width,
         height,
-        svgLeft: svgRect.left - containerRect.left,
-        svgTop: svgRect.top - containerRect.top,
         svgWidth: svgRect.width,
         svgHeight: svgRect.height,
       };
       setMapFrame((current) =>
         current.width === next.width &&
         current.height === next.height &&
-        current.svgLeft === next.svgLeft &&
-        current.svgTop === next.svgTop &&
         current.svgWidth === next.svgWidth &&
         current.svgHeight === next.svgHeight
           ? current
@@ -1203,27 +1467,6 @@ function SpatialMap({
     [viewBox],
   );
 
-  const viewBoxToMap = useCallback(
-    (point: MapPoint): MapPoint => {
-      if (mapFrame.svgWidth === 0 || mapFrame.svgHeight === 0) {
-        return { x: mapFrame.width / 2, y: mapFrame.height / 2 };
-      }
-      const scale = Math.max(
-        viewBox.width / mapFrame.svgWidth,
-        viewBox.height / mapFrame.svgHeight,
-      );
-      const renderedWidth = viewBox.width / scale;
-      const renderedHeight = viewBox.height / scale;
-      const insetX = (mapFrame.svgWidth - renderedWidth) / 2;
-      const insetY = (mapFrame.svgHeight - renderedHeight) / 2;
-      return {
-        x: mapFrame.svgLeft + insetX + (point.x - viewBox.x) / scale,
-        y: mapFrame.svgTop + insetY + (point.y - viewBox.y) / scale,
-      };
-    },
-    [mapFrame, viewBox],
-  );
-
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
     // Deliberately not capturing yet. Capturing on press retargets the click
@@ -1243,7 +1486,6 @@ function SpatialMap({
     setPointerWorld({
       x: (pointer.x - currentTransform.x) / currentTransform.zoom,
       y: (pointer.y - currentTransform.y) / currentTransform.zoom,
-      mapPosition: viewBoxToMap(pointer),
       viewBoxUnitsPerPixel: unitsPerPixel(),
     });
 
@@ -1316,18 +1558,6 @@ function SpatialMap({
   }, [cancelTween, clientToViewBox, unitsPerPixel, viewBox]);
 
   const emphasisId = hovered ?? focused;
-  const measureDetailOverlay = useCallback(
-    (element: HTMLDivElement | null) => {
-      if (element === null || emphasisId === null) return;
-      const { width, height } = element.getBoundingClientRect();
-      setMeasuredDetailOverlay((current) =>
-        current?.commitId === emphasisId && current.width === width && current.height === height
-          ? current
-          : { commitId: emphasisId, width, height },
-      );
-    },
-    [emphasisId],
-  );
   const lineage = useMemo(() => {
     if (emphasisId === null || !graph.byId.has(emphasisId)) return null;
     return new Set([
@@ -1340,64 +1570,6 @@ function SpatialMap({
     [currentCommitId, graph],
   );
   const detail = detailFor(transform.zoom);
-  const emphasizedNode = useMemo(
-    () =>
-      emphasisId === null
-        ? undefined
-        : renderLayout.nodes.find((node) => node.commitId === emphasisId),
-    [emphasisId, renderLayout.nodes],
-  );
-  const detailOverlay = useMemo(() => {
-    if (
-      emphasizedNode === undefined ||
-      mapFrame.width <= DETAIL_OVERLAY_INSET * 2 ||
-      mapFrame.height <= DETAIL_OVERLAY_INSET * 2
-    ) {
-      return null;
-    }
-
-    const tracksCursor = hovered !== null && pointerWorld !== null;
-    const anchor = tracksCursor
-      ? pointerWorld.mapPosition
-      : viewBoxToMap({
-          x: transform.x + emphasizedNode.x * transform.zoom,
-          y: transform.y + emphasizedNode.y * transform.zoom,
-        });
-    const maximumWidth = mapFrame.width - DETAIL_OVERLAY_INSET * 2;
-    const maximumHeight = mapFrame.height - DETAIL_OVERLAY_INSET * 2;
-    const measured =
-      measuredDetailOverlay?.commitId === emphasizedNode.commitId ? measuredDetailOverlay : null;
-    const width = Math.min(measured?.width ?? DETAIL_OVERLAY_MAX_WIDTH, maximumWidth);
-    const height = Math.min(measured?.height ?? DETAIL_OVERLAY_MAX_HEIGHT, maximumHeight);
-    const position = detailOverlayPosition({
-      anchor,
-      width,
-      height,
-      containerWidth: mapFrame.width,
-      containerHeight: mapFrame.height,
-      inset: DETAIL_OVERLAY_INSET,
-      gap: DETAIL_OVERLAY_GAP,
-      tracksCursor,
-    });
-    const graphNode = graph.byId.get(emphasizedNode.commitId);
-    if (graphNode === undefined) return null;
-    return {
-      node: graphNode,
-      left: position.x,
-      top: position.y,
-    };
-  }, [
-    emphasizedNode,
-    graph.byId,
-    hovered,
-    mapFrame.height,
-    mapFrame.width,
-    measuredDetailOverlay,
-    pointerWorld,
-    transform,
-    viewBoxToMap,
-  ]);
-
   const fitToView = () => {
     const from = transformRef.current;
     const tween = cameraTween(from, fitTransform(layout.bounds, viewBox), viewBox);
@@ -1421,12 +1593,6 @@ function SpatialMap({
     }
     const tween = cameraTween(from, target, viewBox);
     startTween("camera", (progress) => applyTransform(tween(progress)));
-  };
-
-  const pickNode = (commitId: MercurianCommitId) => {
-    setHovered(null);
-    setFocused(null);
-    onSelect(commitId);
   };
 
   const renderedFrame = useMemo<MapFrameSize>(
@@ -1482,12 +1648,23 @@ function SpatialMap({
                   pointerWorld.viewBoxUnitsPerPixel;
             const radius = radiusFor(graphNode, settings) * proximityScale(distanceToPointer);
             const isDimmed = lineage !== null && !lineage.has(node.commitId);
-            const hasDetailOverlay = detailOverlay !== null && node.commitId === emphasisId;
-            const isReady = readyCommits.has(node.commitId);
             const isPlanStale = stalePlanCommitIds.has(node.commitId);
             const isSpecStale = staleSpecCommitIds.has(node.commitId);
+            const statusDots = planNodeStatusDots({
+              ready: readyCommits.has(node.commitId),
+              staleSpec: isSpecStale,
+              stalePlan: isPlanStale,
+            });
+            const statusDotRadius = radius * 0.35;
+            const statusDotAnchor = radius / Math.SQRT2;
             const Glyph =
               graphNode.checkpoint === undefined ? commitGlyph(node.item) : MessagesSquareIcon;
+            const interaction = graphNodePopoverInteraction({
+              acts: offeredActs(graphNode, commitGraph),
+              commitId: node.commitId,
+              popover,
+              onSelect,
+            });
             return (
               <g
                 // A node is a control, and a circle has no accessible name of
@@ -1495,15 +1672,27 @@ function SpatialMap({
                 // reader and unreachable by keyboard.
                 aria-label={`${planNodeAccessibleLabel(graphNode)}${isSpecStale ? ", spec stale" : ""}${isPlanStale ? `, ${PLAN_MAY_BE_STALE_LABEL.toLowerCase()}` : ""}`}
                 aria-current={isCurrent ? "true" : undefined}
-                aria-describedby={hasDetailOverlay ? DETAIL_OVERLAY_ID : undefined}
+                aria-haspopup="dialog"
                 className="cursor-pointer transition-opacity duration-150"
                 data-commit-id={node.commitId}
                 key={node.commitId}
-                onClick={() => pickNode(node.commitId)}
-                onBlur={() => setFocused((at) => (at === node.commitId ? null : at))}
-                onFocus={() => setFocused(node.commitId)}
-                onPointerEnter={() => setHovered(node.commitId)}
-                onPointerLeave={() => setHovered((at) => (at === node.commitId ? null : at))}
+                onClick={(event) => interaction.activate(event.currentTarget)}
+                onBlur={() => {
+                  setFocused((at) => (at === node.commitId ? null : at));
+                  interaction.scheduleClose();
+                }}
+                onFocus={(event) => {
+                  setFocused(node.commitId);
+                  interaction.linger(event.currentTarget);
+                }}
+                onPointerEnter={(event) => {
+                  setHovered(node.commitId);
+                  interaction.linger(event.currentTarget);
+                }}
+                onPointerLeave={() => {
+                  setHovered((at) => (at === node.commitId ? null : at));
+                  interaction.scheduleClose();
+                }}
                 role="button"
                 style={{ opacity: node.opacity * (isDimmed ? 0.18 : 1) }}
                 tabIndex={0}
@@ -1511,13 +1700,13 @@ function SpatialMap({
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    pickNode(node.commitId);
+                    interaction.activate(event.currentTarget);
                   }
                 }}
               >
                 {isCurrent ? (
                   <circle
-                    className="fill-none stroke-primary"
+                    className="current-position-ring fill-none stroke-primary"
                     cx={node.x}
                     cy={node.y}
                     r={radius + 4}
@@ -1525,13 +1714,11 @@ function SpatialMap({
                   />
                 ) : null}
                 <circle
-                  className={cn(
-                    // Same distinction the navigator's dots draw: solid is
-                    // shared history, hollow is private work still your own.
+                  className={
                     node.item.published
                       ? "fill-muted-foreground stroke-none"
-                      : "fill-background stroke-muted-foreground",
-                  )}
+                      : "fill-background stroke-muted-foreground"
+                  }
                   cx={node.x}
                   cy={node.y}
                   r={radius}
@@ -1564,72 +1751,16 @@ function SpatialMap({
                     />
                   </g>
                 )}
-                {isCurrent && !hasDetailOverlay ? (
-                  <text
-                    className="pointer-events-none fill-foreground text-[11px]"
-                    x={node.x + radius + 8}
-                    y={node.y + 4}
-                  >
-                    {planNodeSummary(graphNode)}
-                  </text>
-                ) : null}
-                {isReady ? (
-                  <g className="pointer-events-none">
-                    <rect
-                      className="fill-emerald-500/15"
-                      height={14}
-                      rx={3}
-                      width={92}
-                      x={node.x + radius + 6}
-                      y={node.y + (isCurrent && !hasDetailOverlay ? 8 : -7)}
-                    />
-                    <text
-                      className="fill-emerald-700 text-[9px] dark:fill-emerald-400"
-                      x={node.x + radius + 10}
-                      y={node.y + (isCurrent && !hasDetailOverlay ? 18 : 3)}
-                    >
-                      Ready to implement
-                    </text>
-                  </g>
-                ) : null}
-                {isSpecStale ? (
-                  <g className="pointer-events-none">
-                    <rect
-                      className="fill-amber-500/15"
-                      height={14}
-                      rx={3}
-                      width={60}
-                      x={node.x + radius + 6}
-                      y={node.y - 24}
-                    />
-                    <text
-                      className="fill-amber-700 text-[9px] dark:fill-amber-400"
-                      x={node.x + radius + 12}
-                      y={node.y - 14}
-                    >
-                      Spec stale
-                    </text>
-                  </g>
-                ) : null}
-                {isPlanStale ? (
-                  <g className="pointer-events-none">
-                    <rect
-                      className="fill-amber-500/15"
-                      height={14}
-                      rx={3}
-                      width={90}
-                      x={node.x + radius + 6}
-                      y={node.y - (isSpecStale ? 40 : 24)}
-                    />
-                    <text
-                      className="fill-amber-700 text-[9px] dark:fill-amber-400"
-                      x={node.x + radius + 12}
-                      y={node.y - (isSpecStale ? 30 : 14)}
-                    >
-                      {PLAN_MAY_BE_STALE_LABEL}
-                    </text>
-                  </g>
-                ) : null}
+                {statusDots.map((dot, index) => (
+                  <circle
+                    className={cn("node-status-dot pointer-events-none", dot.fillClass)}
+                    data-status={dot.key}
+                    cx={node.x + statusDotAnchor + index * statusDotRadius * 2.1}
+                    cy={node.y - statusDotAnchor}
+                    key={dot.key}
+                    r={statusDotRadius}
+                  />
+                ))}
               </g>
             );
           })}
@@ -1638,22 +1769,20 @@ function SpatialMap({
       <div className="absolute right-2 top-2 z-20 flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
         <DisplaySettingsPopover settings={settings} onSettingsChange={onSettingsChange} />
       </div>
-      {detailOverlay === null ? null : (
-        <div
-          className="pointer-events-none absolute z-10 w-72 max-w-[calc(100%-1rem)] rounded-md border border-border bg-popover p-3 text-popover-foreground text-xs shadow-md/5"
-          id={DETAIL_OVERLAY_ID}
-          ref={measureDetailOverlay}
-          role="tooltip"
-          style={{ left: detailOverlay.left, top: detailOverlay.top }}
-        >
-          <p className="line-clamp-10 whitespace-pre-wrap break-words leading-4">
-            {planNodeDetail(
-              detailOverlay.node,
-              inFlightUnansweredNodes.has(detailOverlay.node.commitId),
-            )}
-          </p>
-        </div>
-      )}
+      <ActivePlanNodePopover
+        codingSessions={codingSessions}
+        commitGraph={commitGraph}
+        controller={popover}
+        graph={graph}
+        inFlightUnansweredNodes={inFlightUnansweredNodes}
+        providers={providers}
+        readyCommits={readyCommits}
+        stalePlanCommitIds={stalePlanCommitIds}
+        staleSpecCommitIds={staleSpecCommitIds}
+        onEditAndBranch={onEditAndBranch}
+        onImplementFrom={onImplementFrom}
+        onSelect={onSelect}
+      />
       <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
         <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
           {mapIsOverflowing ? (
@@ -2026,6 +2155,7 @@ function graphMessageGlyphTransform(node: PlanGraphNode, x: number): string | un
 
 interface PlanNodeRowProps {
   readonly node: PlanGraphNode;
+  readonly popover: PlanNodePopoverController;
   readonly isCurrent: boolean;
   readonly ready: boolean;
   readonly stalePlan?: boolean;
@@ -2049,6 +2179,7 @@ function PlanNodeRow(props: PlanNodeRowProps) {
 
 function CheckpointRow({
   node,
+  popover,
   isCurrent,
   ready,
   stalePlan = false,
@@ -2072,10 +2203,12 @@ function CheckpointRow({
   return (
     <div
       className={cn(
-        "flex w-full items-stretch gap-2 rounded-md px-2 py-1.5",
+        "group/node flex w-full items-stretch gap-2 rounded-md px-2 py-1.5",
         "hover:bg-accent/50",
         isCurrent && "bg-accent",
       )}
+      onPointerEnter={(event) => popover.linger(node.commitId, event.currentTarget)}
+      onPointerLeave={popover.scheduleClose}
     >
       <button
         aria-current={isCurrent ? "true" : undefined}
@@ -2085,7 +2218,10 @@ function CheckpointRow({
         ref={ref}
         tabIndex={tabIndex}
         type="button"
-        onClick={() => onSelect(node.commitId)}
+        onClick={() => {
+          popover.close();
+          onSelect(node.commitId);
+        }}
         onFocus={onFocus}
         onKeyDown={onKeyDown}
       >
@@ -2166,6 +2302,7 @@ function CheckpointRow({
         ) : null}
       </button>
       {trailing}
+      <PlanNodeDetailsButton controller={popover} node={node} />
     </div>
   );
 }
@@ -2178,6 +2315,7 @@ function CheckpointRow({
  */
 function CommitRow({
   node,
+  popover,
   isCurrent,
   ready,
   stalePlan = false,
@@ -2195,11 +2333,13 @@ function CommitRow({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2",
+        "group/node flex w-full items-center gap-2 rounded-md px-2",
         "hover:bg-accent/50",
         isCurrent && "bg-accent",
       )}
       style={{ height: `${ROW_HEIGHT}px` }}
+      onPointerEnter={(event) => popover.linger(node.commitId, event.currentTarget)}
+      onPointerLeave={popover.scheduleClose}
     >
       <button
         aria-current={isCurrent ? "true" : undefined}
@@ -2208,7 +2348,10 @@ function CommitRow({
         ref={ref}
         tabIndex={tabIndex}
         type="button"
-        onClick={() => onSelect(node.commitId)}
+        onClick={() => {
+          popover.close();
+          onSelect(node.commitId);
+        }}
         onFocus={onFocus}
         onKeyDown={onKeyDown}
       >
@@ -2259,6 +2402,7 @@ function CommitRow({
         </span>
       </button>
       {trailing}
+      <PlanNodeDetailsButton controller={popover} node={node} />
     </div>
   );
 }
