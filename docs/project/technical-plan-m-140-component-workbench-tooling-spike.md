@@ -47,7 +47,7 @@ One story file at `apps/web/src/components/mercurian/PlanStatusDot.stories.tsx`,
 
 ### 4. Success, failure, and the recording — the actual deliverable
 
-The spike passes when: `pnpm --filter t3-web storybook` (or `vp run` equivalent) serves the catalog; the three stories render with correct Tailwind styling in light **and** dark via the toolbar; `storybook:build` produces a static build that renders the same when served; and `vp test run --project unit`, `lint`, and `typecheck` still pass.
+The spike passes when: `pnpm --filter @t3tools/web storybook` (or `vp run` equivalent) serves the catalog; the three stories render with correct Tailwind styling in light **and** dark via the toolbar; `storybook:build` produces a static build that renders the same when served; and `vp test run --project unit`, `lint`, and `typecheck` still pass.
 
 Whatever happens, the outcome lands as an edit to the **Tooling decision** section of [design-system.md](../internals/design-system.md): the chosen tool and versions on success, or the failure mode (peer refusal, runtime API break, silent mis-build) and the switch to the vite-plus browser-mode fallback. It also records what the spike learned about interaction-check hosting (the vitest-addon incompatibility above) as input to M-143/M-144. If the fallback is taken, the `.storybook/` directory and Storybook deps are removed on this same branch — the branch delivers one answer, not two half-installations.
 
@@ -60,7 +60,7 @@ Whatever happens, the outcome lands as an edit to the **Tooling decision** secti
 - [ ] Create `apps/web/src/components/mercurian/PlanStatusDot.stories.tsx` with the three state-named stories.
 - [ ] Run the dev catalog; verify all three stories in both appearances, including the `working` pulse animation and tooltip labels.
 - [ ] Run `storybook:build`; serve the static output and verify the same rendering.
-- [ ] Verify `vp test run --project unit --filter t3-web`, `vp lint`, and `typecheck` are unaffected.
+- [ ] Verify `vp test run --project unit --filter @t3tools/web`, `vp lint`, and `typecheck` are unaffected.
 - [ ] Record the outcome (tool + versions, or failure mode + fallback switch) in `docs/internals/design-system.md` § Tooling decision, including the interaction-check finding.
 - [ ] If the fallback is taken: remove the Storybook deps and `.storybook/`, and note the browser-mode direction in the same doc edit (its detailed plan is a follow-up, not this spike).
 - [ ] Don't add Storybook addons, don't touch `apps/web/vite.config.ts`, don't add CI jobs, and don't write more stories — those belong to M-142/M-143/M-144.

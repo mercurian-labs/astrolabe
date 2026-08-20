@@ -26,6 +26,8 @@
     ]
   },
   "include": [
+    ".storybook/**/*.ts",
+    ".storybook/**/*.tsx",
     "src",
     "vite.config.ts",
     "vercel.ts",
