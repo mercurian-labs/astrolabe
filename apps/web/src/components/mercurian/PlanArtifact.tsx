@@ -112,7 +112,7 @@ export function PlanArtifact({
  * surface — scoped thread refs, the right panel, workspace file links — and
  * mounting it here would drag that machinery into the planning space.
  */
-function PlanArtifactBody({ planText }: { readonly planText: string }) {
+export function PlanArtifactBody({ planText }: { readonly planText: string }) {
   if (planText.length === 0) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-6 sm:px-4">

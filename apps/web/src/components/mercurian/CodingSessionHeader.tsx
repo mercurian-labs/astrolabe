@@ -15,6 +15,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { resolveRenameCommit } from "../chat/ChatHeader";
 import { toastManager } from "../ui/toast";
+import { SessionPreviewOffer } from "./SessionPreviewOffer";
 
 export interface CodingSessionHeaderProps {
   readonly environmentId: EnvironmentId;
@@ -132,6 +133,7 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
           />
         )}
       </WorkspaceBreadcrumbItem>
+      <SessionPreviewOffer environmentId={props.environmentId} threadId={props.threadId} />
     </WorkspaceBreadcrumb>
   );
 }

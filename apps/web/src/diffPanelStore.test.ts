@@ -90,6 +90,32 @@ describe("diffPanelStore", () => {
     ).toEqual({ kind: "branch", baseRef: "origin/main" });
   });
 
+  it("round-trips the whole-session selection per thread", () => {
+    const otherRef = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-2"));
+    useDiffPanelStore.getState().selectSessionScope(THREAD_REF);
+
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "session" });
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, otherRef),
+    ).toEqual({ kind: "branch", baseRef: null });
+    expect(
+      useDiffPanelStore.persist.getOptions().partialize?.(useDiffPanelStore.getState()),
+    ).toMatchObject({
+      byThreadKey: { "environment-1:thread-1": { kind: "session" } },
+    });
+  });
+
+  it("leaves a whole-session selection alone while reconciling turns", () => {
+    useDiffPanelStore.getState().selectSessionScope(THREAD_REF);
+    useDiffPanelStore.getState().reconcileTurnSelection(THREAD_REF, [TurnId.make("turn-latest")]);
+
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "session" });
+  });
+
   it("reconciles a missing turn selection to the latest available turn", () => {
     const missingTurnId = TurnId.make("turn-missing");
     const latestTurnId = TurnId.make("turn-latest");

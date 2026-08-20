@@ -3317,7 +3317,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
             const reviewComments = existing.reviewComments.filter(
-              (entry) => entry.id !== comment.id,
+              (entry) =>
+                entry.id !== comment.id &&
+                !(
+                  entry.sectionId === comment.sectionId &&
+                  entry.filePath === comment.filePath &&
+                  entry.startIndex === comment.startIndex &&
+                  entry.endIndex === comment.endIndex
+                ),
             );
             return {
               draftsByThreadKey: {
