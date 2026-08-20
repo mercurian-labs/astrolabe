@@ -364,6 +364,29 @@ jump-to-bottom control to return to the newest activity. Each completed turn end
 changed-files card listing the files touched and their added and removed lines. Open a file there
 to inspect its diff.
 
+The right panel keeps five session tools within reach: **Terminal**, **Files**, **Diff**, **Browser**,
+and **Plan**. Open one from the **+** menu, switch between the tabs you have open, or close a tab
+when you are finished with it. The terminal starts in the session worktree, and selected terminal
+output can be added to the next message as context.
+
+Diff can show the **Working tree**, **Branch changes**, the **Whole session**, or one completed turn.
+Whole session compares the session's starting checkpoint with its latest checkpoint. Use the
+whitespace control to include or ignore whitespace-only changes, and the word-wrap control to fit
+long lines to the panel. Select lines in a diff to leave a review comment. Each comment waits above
+the composer as a removable chip; commenting on the same lines again replaces that chip, while
+comments on other ranges stay alongside it. Sending carries the remaining comments with the next
+message and clears the chips.
+
+Plan is a read-only view of the exact plan revision this session started to implement, even if
+planning has continued since. A repository-specific plan is headed **Plan for _repository_**. When
+the planning line has advanced beyond that revision, the tab says **Planning has moved past this
+plan** so the historical plan is never mistaken for the current one.
+
+On desktop, starting a listening development server from the session terminal adds a `host:port`
+offer beside the session title. Choose it to open the server in Browser. Browser previews are a
+desktop feature; in the web client the Browser action remains visible but disabled and explains
+that it is available in the Astrolabe desktop app.
+
 Use **Revert to this message** on an earlier user message to restore the worktree and conversation
 to that checkpoint. Revert is permanent and asks for confirmation. A running turn must be
 interrupted first; the server refuses the revert until it is no longer running. Newer messages and

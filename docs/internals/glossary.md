@@ -148,6 +148,14 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4]. The [Coding Session View](#coding-session-view) renders it as the changed-files card at the end of that turn.
 
+#### Whole-session diff
+
+The checkpoint diff from turn count zero through a coding session's latest completed checkpoint. It reuses the full-thread checkpoint query rather than comparing the session branch to a Git base, so it includes the complete workspace arc even when the session has made commits.
+
+#### Review comment
+
+A pending composer context anchored to an exact diff section, file, and selected row range. Re-commenting the same anchor replaces the pending entry; distinct ranges coexist. On send, each entry becomes a `<review_comment>` block in the user message and the pending chips clear.
+
 #### Revert
 
 Restoring a thread's worktree and retained conversation to an earlier [checkpoint](#checkpoint). The decider refuses `thread.checkpoint.revert` while the latest turn is running; after interruption, [CheckpointReactor.ts][6] restores the checkpoint and discards later turns and [turn diffs](#turn-diff). A coding-session revert does not write Mercurian planning state, so its [coding-session leaf](#coding-session-leaf) survives.
@@ -388,6 +396,10 @@ and session title, then presents the thread timeline, composer, [checkpoints](#c
 card's session details, a coding-session leaf's Checkpoint Graph popover, or the plan timeline card.
 The view composes thread runtime state with the owning plan for presentation; it does not move
 session history into the Mercurian commit store.
+
+### Session plan tab
+
+The read-only right-panel surface on a [Coding Session View](#coding-session-view) that renders the exact plan revision named by the session's immutable leaf. It reads historical plan text through `mercurian.getPlanTextAt` and reports when planning has moved past that position; it is unrelated to the stripped t3code plan-mode proposals surface.
 
 ### Coding-session leaf
 
