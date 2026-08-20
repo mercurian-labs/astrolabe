@@ -91,6 +91,25 @@ jobs:
           T3CODE_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
         run: vp run test
 
+      - name: Build Storybook catalog
+        env:
+          STORYBOOK_DISABLE_TELEMETRY: "1"
+        run: vp run --filter @t3tools/web storybook:build
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @t3tools/web exec playwright install chromium
+
+      - name: Test Storybook stories
+        run: vp run --filter @t3tools/web test:stories
+
+      - name: Upload Storybook catalog
+        uses: actions/upload-artifact@v7
+        with:
+          name: storybook-catalog
+          path: apps/web/dist/storybook
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Publish transfer budget report
         if: always()
         run: |

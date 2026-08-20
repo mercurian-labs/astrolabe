@@ -246,6 +246,7 @@ export function DagExplorer({
         <span className="min-w-0 flex-1" />
         <ToggleGroup
           className="shrink-0"
+          role="toolbar"
           size="xs"
           value={[view]}
           variant="outline"
