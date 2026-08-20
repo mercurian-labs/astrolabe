@@ -1,6 +1,11 @@
 import type { Preview } from "@storybook/react";
 
 import "../src/index.css";
+import { foundationsThemes } from "../src/foundations/foundations.logic";
+import { applyThemePalette, type ThemeAppearance } from "../src/themePalette";
+
+const themes = foundationsThemes();
+const defaultTheme = themes[0]!;
 
 const preview: Preview = {
   globalTypes: {
@@ -16,10 +21,25 @@ const preview: Preview = {
         dynamicTitle: true,
       },
     },
+    theme: {
+      description: "Theme palette",
+      defaultValue: defaultTheme.id,
+      toolbar: {
+        icon: "paintbrush",
+        items: themes.map(({ id, label }) => ({ value: id, title: label })),
+        dynamicTitle: true,
+      },
+    },
   },
   decorators: [
     (Story, context) => {
       document.documentElement.classList.toggle("dark", context.globals.appearance === "dark");
+      return <Story />;
+    },
+    (Story, context) => {
+      const theme = themes.find(({ id }) => id === context.globals.theme) ?? defaultTheme;
+      const appearance: ThemeAppearance = context.globals.appearance === "dark" ? "dark" : "light";
+      applyThemePalette(theme.id, appearance);
       return <Story />;
     },
   ],
