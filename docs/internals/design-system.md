@@ -1,6 +1,6 @@
 # Design system and Storybook strategy
 
-**Status:** Direction accepted 2026-08-20; documentation first, implementation not started.
+**Status:** Direction accepted 2026-08-20; documentation first, implementation not started. Rev 2 (2026-08-20) grounded the strategy against the repository: tooling spike and fallback, shared fixture location, foundations story, staged rendering matrix, CI and merge-safety shape — no direction changed.
 
 Astrolabe's design-system strategy is to keep its visual language coherent across product states with the smallest shared system that earns its place. Storybook is the workbench for inspecting and exercising that system in isolation. It is not the source of product intent and it is not a second implementation of the application.
 
@@ -22,6 +22,12 @@ Product intent lives in Almagest, principally the `Visual Language` note and the
 - The first pass does not catalog every inherited primitive or redesign upstream-owned t3code surfaces.
 - Stories never connect to a live server, provider, repository, database, or user workspace.
 
+## Tooling decision
+
+The strategy is tool-shaped but not tool-guaranteed, and this repository is not a stock Vite app: `vite` is aliased to vite-plus, tests run under `vp test` rather than vitest, Tailwind v4 is configured entirely in CSS, and the web build carries the React Compiler. Storybook's framework packages configure Vite directly; whether they hold up against this toolchain is unproven.
+
+The first implementation step is therefore a time-boxed spike: prove that Storybook builds and serves under the aliased Vite with the production stylesheet and theme application, and that one real Mercurian component story renders in both appearances. If the spike fails or fights the toolchain, the named fallback is vite-plus browser mode — already declared but unused in `apps/web` (`src/vite-plus-browser-matchers.d.ts`) — hosting the same catalog as browser-mode component tests under a thin story convention. Everything else in this document — the layers, fixture rules, taxonomy, testing ladder, and review matrix — is written to survive either answer.
+
 ## The system's layers
 
 The design system has four layers. A layer earns shared machinery only when more than one consumer needs it.
@@ -32,6 +38,8 @@ The design system has four layers. A layer earns shared machinery only when more
 4. **Product states** — small compositions that prove the parts together: a draft among active plans, a stale spec beside its plan, or a fork selected in the Checkpoint Graph.
 
 The repository remains the implementation source of truth. Storybook renders the same components and semantic tokens the application ships; there is no story-only visual implementation.
+
+Layer 1 is not greenfield. The inherited system already carries a semantic role layer in two coupled places — the `@theme inline` role mapping in `apps/web/src/index.css` and the enumerated color roles in `apps/web/src/themePalette.ts` — and user-facing customization already ships (built-in themes, a theme editor, VS Code theme import). The first pass therefore includes a **foundations story** that renders the inherited roles from the enumerated list: an immediate token audit, the measured starting point for the cut-over rework, and a guard against stories hard-coding raw values. Pre-cut-over stories express appearance exclusively through these existing roles.
 
 ## What receives stories
 
@@ -66,7 +74,10 @@ Stories use typed fixture builders based on the same public contracts the client
 
 Fixture rules:
 
+- Builders live in shared test support (`apps/web/src/test/fixtures/`), not under Storybook configuration. Unit tests and stories consume the same module, and the existing file-local helpers (such as those in `PlanCheckpoints.logic.test.ts` and `DagExplorer.test.tsx`) migrate onto it — one canonical builder per concept cannot hold if stories and tests keep separate factories. Building and adopting the builders in existing tests is worthwhile even before any catalog lands.
+- Builders construct through the contracts' Effect schemas, so impossible states fail at construction rather than at render.
 - Prefer one canonical builder per product concept over component-local object literals.
+- Mind the checkpoint naming collision: "checkpoint" is two concepts in this repository — upstream's thread/diff checkpoints in the contracts, and Mercurian's client-side reading derived from plan timeline items. Builders and story titles stay in the Mercurian namespace, and graph stories obtain checkpoints by passing timeline fixtures through the production derivation (`condensePlanGraph` in `PlanCheckpoints.logic.ts`).
 - Use fixed identifiers and timestamps so stories and screenshots are deterministic.
 - Represent impossible states as type errors where the contracts allow it; do not loosen production types for story convenience.
 - Keep derived facts derived. If the application computes status priority or checkpoint shape, the story passes source facts through the production derivation rather than encoding the answer twice.
@@ -78,7 +89,7 @@ Mocks stop at application boundaries. Storybook may provide in-memory callbacks,
 
 Every story inherits the production stylesheet, fonts, and semantic theme application. Global controls cover:
 
-- flagship light and dark appearances;
+- the shipped appearances — before hard-fork cut-over that means the inherited light and dark plus one representative built-in theme; the flagship pair joins the matrix when it exists, at cut-over;
 - a representative custom high-chroma theme, once customization is retained by design;
 - standard desktop, narrow desktop, and compact widths relevant to the component;
 - reduced motion; and
@@ -96,7 +107,9 @@ Each layer proves a different thing:
 4. **Visual snapshots** protect a curated set of signature states and theme boundaries after the visual direction stabilizes.
 5. **Real-client passes** prove routing, WebSocket transitions, Electron chrome, resizing, keyboard traversal across surfaces, and Checkpoint Graph performance with realistic data.
 
-A visual snapshot is not required merely because a story exists. Baselines have maintenance cost; add one when the state is important enough that a pixel-level regression would justify review.
+Rung 2 is a larger step here than it reads: the repository currently has no DOM testing at all — component tests render static markup or run through the hook harness — so interaction checks introduce its first real-browser test stack, whichever tool hosts them. In CI, the story build and its checks run inside the existing job names first (`Check` and `Test` are required status checks, so a new job is also a branch-protection change; a dedicated job can come at cut-over). CI also publishes the static catalog as a build artifact on every pull request that touches it — the review loop this document promises requires reviewers to see stories without checking out the branch. No snapshot service is implied by either.
+
+A visual snapshot is not required merely because a story exists. Baselines have maintenance cost; add one when the state is important enough that a pixel-level regression would justify review. Baselines also require render determinism, not only data determinism: capture waits for fonts, suppresses transitions (the stylesheet already carries a suppress-transitions rule for theme changes to reuse), and lets layout settle before reading pixels — the Checkpoint Graph's measured d3-dag arrangement especially.
 
 ## Contributor workflow
 
@@ -118,7 +131,7 @@ Story review asks three questions: does the state match the product design, does
 
 Storybook may land as additive tooling focused on Mercurian-owned components. The initial target is roughly ten to fifteen high-value stories across plan navigation, the composer, artifacts, and the Checkpoint Graph. It uses the inherited stylesheet and token system as they exist; it does not begin the broad design-system rework early or restructure upstream-owned components for catalog purity.
 
-Configuration and fixture support stay local to the web application unless another shipping surface proves it can consume them. No visual snapshot service is required for the first pass. The value to prove is faster, more complete review of Astrolabe's product states.
+Configuration and fixture support stay local to the web application unless another shipping surface proves it can consume them. Merge safety shapes the file layout: the weekly upstream sync makes `apps/web/vite.config.ts` and `apps/web/package.json` the conflict-prone files, so configuration prefers new sibling files (a `.storybook/` directory with its own config) over edits to upstream-owned ones, and unavoidable `package.json` edits stay a minimal, contiguous block. No visual snapshot service is required for the first pass. The value to prove is faster, more complete review of Astrolabe's product states.
 
 ### At hard-fork cut-over
 
@@ -134,6 +147,8 @@ Coverage grows from observed regressions and repeated design work, not from a pe
 
 The first Storybook pass has succeeded when:
 
+- the tooling spike has a recorded answer — Storybook under the aliased Vite, or the vite-plus browser-mode fallback;
+- the inherited semantic roles are visible in a foundations story;
 - the four identity-bearing surfaces can be reviewed without a running Astrolabe server;
 - rare states are produced from typed, deterministic fixtures;
 - light, dark, narrow, keyboard, and reduced-motion review are straightforward;
