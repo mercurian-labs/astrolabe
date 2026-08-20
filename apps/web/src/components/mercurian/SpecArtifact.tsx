@@ -43,6 +43,7 @@ export function SpecArtifact({
   turnActive = false,
   readOnlyAction,
   titleControl,
+  cornerControl,
 }: {
   readonly planId: PlanId;
   readonly spec: PlanSpecAt | null;
@@ -54,6 +55,8 @@ export function SpecArtifact({
   readonly readOnlyAction?: ReactNode;
   /** The planning-space artifact picker; omitted in standalone renderings. */
   readonly titleControl?: ReactNode;
+  /** The planning-space pane toggle; omitted in standalone renderings. */
+  readonly cornerControl?: ReactNode;
 }) {
   const saveSpecRevision = useSaveSpecRevision();
   const refreshSpec = useRefreshSpec();
@@ -132,7 +135,7 @@ export function SpecArtifact({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
+      <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
         {titleControl ?? <h2 className="text-sm font-medium text-foreground">Spec</h2>}
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
           {specRevisionLabel(revision)}
@@ -182,6 +185,7 @@ export function SpecArtifact({
             </Button>
           </div>
         )}
+        {cornerControl}
       </div>
       {origin === undefined ? null : (
         <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground sm:px-4">

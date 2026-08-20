@@ -26,6 +26,7 @@ export function PlanArtifact({
   readOnly = false,
   readOnlyAction,
   titleControl,
+  cornerControl,
 }: {
   readonly planId: PlanId;
   readonly planText: string;
@@ -46,6 +47,8 @@ export function PlanArtifact({
   readonly readOnlyAction?: ReactNode;
   /** The planning-space artifact picker; omitted in standalone renderings. */
   readonly titleControl?: ReactNode;
+  /** The planning-space pane toggle; omitted in standalone renderings. */
+  readonly cornerControl?: ReactNode;
 }) {
   const savePlanRevision = useSavePlanRevision();
   const [draft, setDraft] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export function PlanArtifact({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
+      <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
         {titleControl ?? <h2 className="text-sm font-medium text-foreground">Plan</h2>}
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
           {lastRevisionLabel(timeline)}
@@ -95,6 +98,7 @@ export function PlanArtifact({
             </Button>
           </div>
         )}
+        {cornerControl}
       </div>
       {draft === null || readOnly ? (
         <PlanArtifactBody planText={planText} />
