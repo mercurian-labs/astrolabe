@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
+import type { PlanTimelineItem } from "@t3tools/contracts";
+
+import { commitId, message, planRevision, specRevision } from "../../test/fixtures/timeline";
 
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
@@ -19,36 +21,22 @@ const item = (
   tag: "message" | "plan-revision" | "spec-revision",
 ): PlanTimelineItem =>
   tag === "message"
-    ? {
-        _tag: "message",
-        commitId: MercurianCommitId.make(id),
+    ? message(id, {
         sequence,
-        parents: parents.map((parent) => MercurianCommitId.make(parent)),
-        published: false,
-        authorKind: "human",
+        parents,
         createdAt: "2026-08-13T00:00:00.000Z",
-        text: id,
-      }
+      })
     : tag === "plan-revision"
-      ? {
-          _tag: "plan-revision",
-          commitId: MercurianCommitId.make(id),
+      ? planRevision(id, {
           sequence,
-          parents: parents.map((parent) => MercurianCommitId.make(parent)),
-          published: false,
-          authorKind: "human",
+          parents,
           createdAt: "2026-08-13T00:00:00.000Z",
-        }
-      : {
-          _tag: "spec-revision",
-          commitId: MercurianCommitId.make(id),
+        })
+      : specRevision(id, {
           sequence,
-          parents: parents.map((parent) => MercurianCommitId.make(parent)),
-          published: false,
-          authorKind: "human",
+          parents,
           createdAt: "2026-08-13T00:00:00.000Z",
-          cause: "direct",
-        };
+        });
 
 describe("SpecArtifact logic", () => {
   it("keeps the plan freshness signal distinct and user-facing", () => {
@@ -92,7 +80,7 @@ describe("SpecArtifact logic", () => {
       item("plan", 3, ["spec"], "plan-revision"),
       item("tip", 4, ["plan"], "message"),
     ]);
-    expect(planMayBeStaleAt(graph, MercurianCommitId.make("tip"))).toBe(false);
+    expect(planMayBeStaleAt(graph, commitId("tip"))).toBe(false);
     expect([...stalePlanLeafIds(graph)]).toEqual([]);
   });
 
@@ -102,7 +90,7 @@ describe("SpecArtifact logic", () => {
       item("spec", 2, ["root"], "spec-revision"),
       item("verdict", 3, ["spec"], "message"),
     ]);
-    expect(planMayBeStaleAt(graph, MercurianCommitId.make("verdict"))).toBe(true);
+    expect(planMayBeStaleAt(graph, commitId("verdict"))).toBe(true);
     expect([...stalePlanLeafIds(graph)]).toEqual(["verdict"]);
   });
 
@@ -113,8 +101,8 @@ describe("SpecArtifact logic", () => {
       item("sibling-plan", 3, ["root"], "plan-revision"),
       item("merged-tip", 4, ["spec", "sibling-plan"], "message"),
     ]);
-    expect(planMayBeStaleAt(graph, MercurianCommitId.make("sibling-plan"))).toBe(false);
-    expect(planMayBeStaleAt(graph, MercurianCommitId.make("merged-tip"))).toBe(true);
+    expect(planMayBeStaleAt(graph, commitId("sibling-plan"))).toBe(false);
+    expect(planMayBeStaleAt(graph, commitId("merged-tip"))).toBe(true);
     expect([...stalePlanLeafIds(graph)]).toEqual(["merged-tip"]);
   });
 
@@ -123,7 +111,7 @@ describe("SpecArtifact logic", () => {
       item("root", 1, [], "plan-revision"),
       item("tip", 2, ["root"], "message"),
     ]);
-    expect(planMayBeStaleAt(graph, MercurianCommitId.make("tip"))).toBe(false);
+    expect(planMayBeStaleAt(graph, commitId("tip"))).toBe(false);
   });
 
   it("treats an imported root spec as current after a later plan revision", () => {
@@ -133,6 +121,6 @@ describe("SpecArtifact logic", () => {
       { ...imported, cause: "import", issueId: "M-109" },
       item("plan", 2, ["import"], "plan-revision"),
     ]);
-    expect(planMayBeStaleAt(graph, MercurianCommitId.make("plan"))).toBe(false);
+    expect(planMayBeStaleAt(graph, commitId("plan"))).toBe(false);
   });
 });

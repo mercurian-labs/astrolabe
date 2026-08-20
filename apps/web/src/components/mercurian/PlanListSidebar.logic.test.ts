@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { planTreeRow } from "../../test/fixtures/plan";
+
 import {
   codingSessionDetailLabel,
   filterPlansByProjectScope,
@@ -35,17 +37,16 @@ const plan = (
     readonly hasPendingInput?: boolean;
     readonly isWorking?: boolean;
   } = {},
-) => ({
-  planId,
-  projectId: overrides.projectId ?? "project-a",
-  createdAt: "2026-08-01T00:00:00.000Z",
-  updatedAt: overrides.updatedAt ?? "2026-08-03T00:00:00.000Z",
-  visitedAt: "visitedAt" in overrides ? overrides.visitedAt : "2026-08-03T00:00:00.000Z",
-  archivedAt: overrides.archivedAt ?? null,
-  hasPublishedCommits: false,
-  hasPendingInput: overrides.hasPendingInput ?? false,
-  isWorking: overrides.isWorking ?? false,
-});
+) =>
+  planTreeRow(planId, {
+    projectId: overrides.projectId ?? "project-a",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-08-03T00:00:00.000Z",
+    visitedAt: "visitedAt" in overrides ? overrides.visitedAt : "2026-08-03T00:00:00.000Z",
+    archivedAt: overrides.archivedAt ?? null,
+    hasPendingInput: overrides.hasPendingInput ?? false,
+    isWorking: overrides.isWorking ?? false,
+  });
 
 describe("filterPlansByProjectScope", () => {
   const plans = [plan("a"), plan("b", { projectId: "project-b" })];

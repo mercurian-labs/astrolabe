@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  MercurianCommitId,
-  MercurianRepositoryId,
-  type PlanTimelineItem,
-} from "@t3tools/contracts";
+  at,
+  codingSessionLeaf,
+  commitId as id,
+  message,
+  planRevision,
+  specRevision,
+} from "../../test/fixtures/timeline";
 
 import { columnLayout, defaultBranchChoices } from "./PlanColumns.logic";
 import {
@@ -19,77 +22,19 @@ import {
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { threadLayout } from "./PlanThread.logic";
 
-const id = (value: string) => MercurianCommitId.make(value);
-const at = (sequence: number) => `2026-08-18T00:${sequence.toString().padStart(2, "0")}:00.000Z`;
-
-const message = (
-  name: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-  authorKind: "human" | "assistant",
-  text = name,
-  interrupted = false,
-): PlanTimelineItem => ({
-  _tag: "message",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind,
-  createdAt: at(sequence),
-  text,
-  ...(interrupted ? { interrupted: true } : {}),
-});
-
-const planRevision = (
-  name: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-  authorKind: "human" | "assistant",
-  split = false,
-): PlanTimelineItem => ({
-  _tag: "plan-revision",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind,
-  createdAt: at(sequence),
-  ...(split
-    ? {
-        split: {
-          repositoryId: MercurianRepositoryId.make("repo-web"),
-          repositoryName: "web",
-        },
-      }
-    : {}),
-});
-
-const specRevision = (
-  name: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-  authorKind: "human" | "assistant",
-  cause: "direct" | "refresh" | "import" | "reconciliation" = "direct",
-): PlanTimelineItem => ({
-  _tag: "spec-revision",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind,
-  createdAt: at(sequence),
-  cause,
-});
-
 describe("condensePlanGraph", () => {
   it("condenses a settled turn onto its terminal response in real member order", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human", "Build the explorer"),
-        planRevision("plan", 2, ["query"], "assistant"),
-        specRevision("spec", 3, ["plan"], "assistant"),
-        message("response", 4, ["spec"], "assistant", "Done"),
+        message("query", { text: "Build the explorer" }),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        specRevision("spec", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
+        message("response", {
+          sequence: 4,
+          parents: ["spec"],
+          authorKind: "assistant",
+          text: "Done",
+        }),
       ]),
     );
 
@@ -115,9 +60,15 @@ describe("condensePlanGraph", () => {
   it("groups interrupted terminals, including a bare stopped reply", () => {
     const revised = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human"),
-        planRevision("plan", 2, ["query"], "assistant"),
-        message("response", 3, ["plan"], "assistant", "Partial", true),
+        message("query"),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        message("response", {
+          sequence: 3,
+          parents: ["plan"],
+          authorKind: "assistant",
+          text: "Partial",
+          interrupted: true,
+        }),
       ]),
     );
     expect(revised.byId.get("response")?.checkpoint?.effects).toEqual([
@@ -127,8 +78,14 @@ describe("condensePlanGraph", () => {
 
     const bare = condensePlanGraph(
       buildPlanGraph([
-        message("bare-query", 1, [], "human"),
-        message("bare-response", 2, ["bare-query"], "assistant", "", true),
+        message("bare-query"),
+        message("bare-response", {
+          sequence: 2,
+          parents: ["bare-query"],
+          authorKind: "assistant",
+          text: "",
+          interrupted: true,
+        }),
       ]),
     );
     expect(bare.nodes.map((node) => node.commitId)).toEqual(["bare-response"]);
@@ -141,8 +98,8 @@ describe("condensePlanGraph", () => {
 
   it("marks an unanswered query, except while its descendant chain is in flight", () => {
     const commitGraph = buildPlanGraph([
-      message("query", 1, [], "human"),
-      planRevision("landed", 2, ["query"], "assistant"),
+      message("query"),
+      planRevision("landed", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
     ]);
     const graph = condensePlanGraph(commitGraph);
     const checkpoint = graph.byId.get("landed")!;
@@ -156,15 +113,38 @@ describe("condensePlanGraph", () => {
   });
 
   it("leaves direct edits, imports, refreshes, splits, merges, and ambiguous turns standalone", () => {
-    const directPlan = planRevision("direct-plan", 1, [], "human");
-    const refreshedSpec = specRevision("refresh", 2, ["direct-plan"], "human", "refresh");
-    const importedSpec = specRevision("import", 3, ["refresh"], "human", "import");
-    const split = planRevision("split", 4, ["import"], "human", true);
-    const otherRoot = planRevision("other-root", 5, [], "human");
-    const mergeMessage = message("merge", 6, ["split", "other-root"], "human");
-    const ambiguous = message("ambiguous", 7, ["merge"], "human");
-    const replyA = message("reply-a", 8, ["ambiguous"], "assistant");
-    const replyB = message("reply-b", 9, ["ambiguous"], "assistant");
+    const directPlan = planRevision("direct-plan");
+    const refreshedSpec = specRevision("refresh", {
+      sequence: 2,
+      parents: ["direct-plan"],
+      cause: "refresh",
+    });
+    const importedSpec = specRevision("import", {
+      sequence: 3,
+      parents: ["refresh"],
+      cause: "import",
+    });
+    const split = planRevision("split", {
+      sequence: 4,
+      parents: ["import"],
+      split: { repositoryId: "repo-web", repositoryName: "web" },
+    });
+    const otherRoot = planRevision("other-root", { sequence: 5 });
+    const mergeMessage = message("merge", {
+      sequence: 6,
+      parents: ["split", "other-root"],
+    });
+    const ambiguous = message("ambiguous", { sequence: 7, parents: ["merge"] });
+    const replyA = message("reply-a", {
+      sequence: 8,
+      parents: ["ambiguous"],
+      authorKind: "assistant",
+    });
+    const replyB = message("reply-b", {
+      sequence: 9,
+      parents: ["ambiguous"],
+      authorKind: "assistant",
+    });
     const graph = condensePlanGraph(
       buildPlanGraph([
         directPlan,
@@ -200,9 +180,9 @@ describe("condensePlanGraph", () => {
   it("condenses a terminal-less revision chain onto its last landed member", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human"),
-        planRevision("plan", 2, ["query"], "assistant"),
-        specRevision("spec", 3, ["plan"], "assistant"),
+        message("query"),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        specRevision("spec", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
       ]),
     );
     const node = graph.byId.get("spec");
@@ -231,11 +211,11 @@ describe("condensePlanGraph", () => {
   it("reanchors an interior fork and remains coherent in thread and column layouts", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human"),
-        planRevision("plan", 2, ["query"], "assistant"),
-        message("response", 3, ["plan"], "assistant"),
-        message("fork", 4, ["plan"], "human"),
-        message("main", 5, ["response"], "human"),
+        message("query"),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        message("response", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
+        message("fork", { sequence: 4, parents: ["plan"] }),
+        message("main", { sequence: 5, parents: ["response"] }),
       ]),
     );
 
@@ -256,11 +236,11 @@ describe("condensePlanGraph", () => {
   it("reanchors a fork from a trailing revision and remains coherent in layouts", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human"),
-        planRevision("plan", 2, ["query"], "assistant"),
-        specRevision("spec", 3, ["plan"], "assistant"),
-        message("fork", 4, ["spec"], "human"),
-        message("main", 5, ["spec"], "human"),
+        message("query"),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        specRevision("spec", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
+        message("fork", { sequence: 4, parents: ["spec"] }),
+        message("main", { sequence: 5, parents: ["spec"] }),
       ]),
     );
 
@@ -281,8 +261,13 @@ describe("condensePlanGraph", () => {
   it("derives artifact effects only from landed revision commits", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human", "Update both artifacts"),
-        message("response", 2, ["query"], "assistant", "I updated the plan and spec, trust me."),
+        message("query", { text: "Update both artifacts" }),
+        message("response", {
+          sequence: 2,
+          parents: ["query"],
+          authorKind: "assistant",
+          text: "I updated the plan and spec, trust me.",
+        }),
       ]),
     );
     const node = graph.byId.get("response")!;
@@ -297,9 +282,9 @@ describe("condensePlanGraph", () => {
   it("maps trailing revision marks and current positions to the forming checkpoint", () => {
     const graph = condensePlanGraph(
       buildPlanGraph([
-        message("query", 1, [], "human"),
-        planRevision("plan", 2, ["query"], "assistant"),
-        specRevision("spec", 3, ["plan"], "assistant"),
+        message("query"),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        specRevision("spec", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
       ]),
     );
 
@@ -311,19 +296,15 @@ describe("condensePlanGraph", () => {
   });
 
   it("never absorbs a coding-session leaf into a conversational checkpoint", () => {
-    const session: PlanTimelineItem = {
-      _tag: "coding-session",
-      commitId: id("session"),
+    const session = codingSessionLeaf("session", {
       sequence: 2,
-      parents: [id("query")],
-      published: false,
-      authorKind: "human",
+      parents: ["query"],
       createdAt: at(2),
-      repositoryId: MercurianRepositoryId.make("repo-web"),
+      repositoryId: "repo-web",
       repositoryName: "web",
-      planRevisionCommitId: id("query"),
-    };
-    const graph = condensePlanGraph(buildPlanGraph([message("query", 1, [], "human"), session]));
+      planRevisionCommitId: "query",
+    });
+    const graph = condensePlanGraph(buildPlanGraph([message("query"), session]));
 
     expect(graph.nodes.map((node) => node.commitId)).toEqual(["query", "session"]);
     expect(graph.byId.get("query")?.checkpoint?.effects).toEqual(["unanswered"]);

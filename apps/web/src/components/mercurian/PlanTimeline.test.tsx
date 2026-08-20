@@ -1,5 +1,4 @@
 import {
-  MercurianCommitId,
   MercurianRepositoryId,
   PlanTurnId,
   ProviderDriverKind,
@@ -8,12 +7,20 @@ import {
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanTimelineItem,
-  type PlanCodingSessionRecord,
   type ServerProvider,
 } from "@t3tools/contracts";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+import { planCodingSessionRecord, planQuestion } from "../../test/fixtures/sessionsAndSplits";
+import {
+  codingSessionLeaf,
+  commitId as id,
+  message,
+  planRevision,
+  specRevision,
+} from "../../test/fixtures/timeline";
 
 import { PlanTimeline } from "./PlanTimeline";
 
@@ -45,7 +52,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 type PlanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
 const CREATED_AT = "2026-08-03T12:34:56.000Z";
-const id = (value: string) => MercurianCommitId.make(value);
 const claude = ProviderDriverKind.make("claudeAgent");
 
 const providers: ReadonlyArray<ServerProvider> = [
@@ -64,34 +70,30 @@ const providers: ReadonlyArray<ServerProvider> = [
   },
 ];
 
-function message(
+function timelineMessage(
   commitId: string,
   authorKind: PlanMessage["authorKind"],
   text: string,
   overrides: Partial<PlanMessage> = {},
 ): PlanMessage {
-  return {
-    _tag: "message",
-    commitId: id(commitId),
-    sequence: 1,
-    parents: [],
-    published: false,
+  const { commitId: _commitId, parents, ...fields } = overrides;
+  return message(commitId, {
     authorKind,
     text,
     createdAt: CREATED_AT,
-    ...overrides,
-  };
+    ...fields,
+    ...(parents === undefined ? {} : { parents: parents.map(String) }),
+  });
 }
 
-const question: PlanQuestion = {
-  id: "surface",
+const question: PlanQuestion = planQuestion("surface", {
   header: "Scope",
   question: "Which surface first?",
   options: [
     { label: "Web", description: "The browser app" },
     { label: "Mobile", description: "The phone app" },
   ],
-};
+});
 
 function inFlight(overrides: Partial<PlanInFlightTurn> = {}): PlanInFlightTurn {
   return {
@@ -115,7 +117,7 @@ describe("PlanTimeline", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
-          message("human-1", "human", "Inspect @README.md next", {
+          timelineMessage("human-1", "human", "Inspect @README.md next", {
             attachments: [attachment],
           }),
         ]}
@@ -139,7 +141,7 @@ describe("PlanTimeline", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
-          message("assistant-1", "assistant", "A **bold** answer", {
+          timelineMessage("assistant-1", "assistant", "A **bold** answer", {
             groundingScope: { unreachableRepositories: ["mobile"] },
             grounding: [{ kind: "file-read", label: "apps/web/src/App.tsx" }],
           }),
@@ -162,7 +164,7 @@ describe("PlanTimeline", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
-          message("assistant-interrupted", "assistant", "Partial reply", {
+          timelineMessage("assistant-interrupted", "assistant", "Partial reply", {
             interrupted: true,
           }),
         ]}
@@ -184,7 +186,7 @@ describe("PlanTimeline", () => {
       <PlanTimeline
         providers={providers}
         timeline={[
-          message("assistant-attributed", "assistant", "Recorded reply", {
+          timelineMessage("assistant-attributed", "assistant", "Recorded reply", {
             generatedBy: { provider: claude, model: "opus" },
           }),
         ]}
@@ -193,7 +195,7 @@ describe("PlanTimeline", () => {
     const historical = renderToStaticMarkup(
       <PlanTimeline
         providers={providers}
-        timeline={[message("assistant-old", "assistant", "Old")]}
+        timeline={[timelineMessage("assistant-old", "assistant", "Old")]}
       />,
     );
 
@@ -218,26 +220,16 @@ describe("PlanTimeline", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
-          {
-            _tag: "spec-revision",
-            commitId: id("issue-1"),
-            sequence: 1,
-            parents: [],
-            published: false,
-            authorKind: "human",
+          specRevision("issue-1", {
             createdAt: CREATED_AT,
             cause: "import",
             issueId: "M-101",
-          },
-          {
-            _tag: "plan-revision",
-            commitId: id("revision-1"),
+          }),
+          planRevision("revision-1", {
             sequence: 2,
-            parents: [id("issue-1")],
-            published: false,
-            authorKind: "human",
+            parents: ["issue-1"],
             createdAt: CREATED_AT,
-          },
+          }),
         ]}
       />,
     );
@@ -253,7 +245,7 @@ describe("PlanTimeline", () => {
     const settledMarkup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
-          message("assistant-question", "assistant", "I need a choice.", {
+          timelineMessage("assistant-question", "assistant", "I need a choice.", {
             question: { questions: [question], answers: { surface: "Web" } },
           }),
         ]}
@@ -292,7 +284,7 @@ describe("PlanTimeline", () => {
   it("does not add thread-only affordances", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
-        timeline={[message("assistant-plain", "assistant", "Plain reply")]}
+        timeline={[timelineMessage("assistant-plain", "assistant", "Plain reply")]}
         inFlight={inFlight({ text: "Live reply" })}
       />,
     );
@@ -310,19 +302,13 @@ describe("PlanTimeline", () => {
     const markup = renderToStaticMarkup(
       <PlanTimeline
         timeline={[
-          {
-            _tag: "plan-revision",
-            commitId: id("split-1"),
-            sequence: 1,
-            parents: [],
-            published: false,
-            authorKind: "human",
+          planRevision("split-1", {
             createdAt: CREATED_AT,
             split: {
-              repositoryId: MercurianRepositoryId.make("repo-server"),
+              repositoryId: "repo-server",
               repositoryName: "server",
             },
-          },
+          }),
         ]}
       />,
     );
@@ -330,7 +316,7 @@ describe("PlanTimeline", () => {
   });
 
   it("badges a ready commit", () => {
-    const readyMessage = message("ready-1", "human", "Implement this");
+    const readyMessage = timelineMessage("ready-1", "human", "Implement this");
     const markup = renderToStaticMarkup(
       <PlanTimeline
         readyCommits={
@@ -352,22 +338,17 @@ describe("PlanTimeline", () => {
   });
 
   it("renders structured coding-session facts without a generated summary", () => {
-    const sessionCommit: PlanTimelineItem = {
-      _tag: "coding-session",
-      commitId: id("session-1"),
+    const sessionCommit = codingSessionLeaf("session-1", {
       sequence: 3,
-      parents: [id("revision-abcdef12")],
-      published: false,
-      authorKind: "human",
+      parents: ["revision-abcdef12"],
       createdAt: CREATED_AT,
-      repositoryId: MercurianRepositoryId.make("repo-server"),
+      repositoryId: "repo-server",
       repositoryName: "server",
-      planRevisionCommitId: id("revision-abcdef12"),
-    };
-    const session: PlanCodingSessionRecord = {
-      commitId: sessionCommit.commitId,
-      repositoryId: MercurianRepositoryId.make("repo-server"),
-      threadId: "thread" as PlanCodingSessionRecord["threadId"],
+      planRevisionCommitId: "revision-abcdef12",
+    });
+    const session = planCodingSessionRecord("session-1", {
+      repositoryId: "repo-server",
+      threadId: "thread",
       branch: "mercurian/reshape-sidebar-12345678",
       worktreePath: "/tmp/session",
       baseRef: "main",
@@ -375,7 +356,7 @@ describe("PlanTimeline", () => {
       endedAt: "2026-08-03T13:00:00.000Z",
       outcome: "completed",
       prUrl: "https://example.test/pull/1",
-    };
+    });
     const markup = renderToStaticMarkup(
       <PlanTimeline timeline={[sessionCommit]} codingSessions={[session]} />,
     );

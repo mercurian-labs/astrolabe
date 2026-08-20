@@ -1,29 +1,13 @@
-import { MercurianCommitId, ProviderDriverKind, type PlanTimelineItem } from "@t3tools/contracts";
+import { ProviderDriverKind, type PlanTimelineItem } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+
+import { commitId as id, message, planRevision, specRevision } from "../../test/fixtures/timeline";
 
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
 
 const claude = ProviderDriverKind.make("claudeAgent");
 const codex = ProviderDriverKind.make("codex");
-const id = (value: string) => MercurianCommitId.make(value);
-
-const message = (
-  commitId: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-  ranUnder?: Extract<PlanTimelineItem, { readonly _tag: "message" }>["ranUnder"],
-): PlanTimelineItem => ({
-  _tag: "message",
-  commitId: id(commitId),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind: "human",
-  createdAt: "2026-08-17T00:00:00.000Z",
-  text: commitId,
-  ...(ranUnder === undefined ? {} : { ranUnder }),
-});
 
 const derive = (timeline: ReadonlyArray<PlanTimelineItem>, from: string) => {
   const graph = buildPlanGraph(timeline);
@@ -37,53 +21,48 @@ const derive = (timeline: ReadonlyArray<PlanTimelineItem>, from: string) => {
 describe("standingModelChoice", () => {
   it("takes the nearest ancestor record", () => {
     const timeline = [
-      message("root", 1, [], { provider: claude, model: "opus" }),
-      message("middle", 2, ["root"], {
-        provider: codex,
-        model: "gpt-5.4",
+      message("root", { ranUnder: { provider: claude, model: "opus" } }),
+      message("middle", {
+        sequence: 2,
+        parents: ["root"],
+        ranUnder: {
+          provider: codex,
+          model: "gpt-5.4",
+        },
       }),
-      message("tip", 3, ["middle"]),
+      message("tip", { sequence: 3, parents: ["middle"] }),
     ];
     expect(derive(timeline, "tip")).toEqual({ provider: codex, model: "gpt-5.4" });
   });
 
   it("inherits the choice at a fork point", () => {
     const timeline = [
-      message("root", 1, [], { provider: claude, model: "opus" }),
-      message("left", 2, ["root"]),
-      message("right", 3, ["root"]),
+      message("root", { ranUnder: { provider: claude, model: "opus" } }),
+      message("left", { sequence: 2, parents: ["root"] }),
+      message("right", { sequence: 3, parents: ["root"] }),
     ];
     expect(derive(timeline, "right")).toEqual({ provider: claude, model: "opus" });
   });
 
   it("walks past interleaved spec and plan revisions", () => {
     const timeline: ReadonlyArray<PlanTimelineItem> = [
-      message("root", 1, [], { provider: codex, model: "gpt-5.4" }),
-      {
-        _tag: "spec-revision",
-        commitId: id("spec"),
+      message("root", { ranUnder: { provider: codex, model: "gpt-5.4" } }),
+      specRevision("spec", {
         sequence: 2,
-        parents: [id("root")],
-        published: false,
-        authorKind: "human",
+        parents: ["root"],
         createdAt: "2026-08-17T00:01:00.000Z",
-        cause: "direct",
-      },
-      {
-        _tag: "plan-revision",
-        commitId: id("plan"),
+      }),
+      planRevision("plan", {
         sequence: 3,
-        parents: [id("spec")],
-        published: false,
-        authorKind: "human",
+        parents: ["spec"],
         createdAt: "2026-08-17T00:02:00.000Z",
-      },
+      }),
     ];
 
     expect(derive(timeline, "plan")).toEqual({ provider: codex, model: "gpt-5.4" });
   });
 
   it("returns none when history has no record", () => {
-    expect(derive([message("root", 1, [])], "root")).toBeNull();
+    expect(derive([message("root")], "root")).toBeNull();
   });
 });

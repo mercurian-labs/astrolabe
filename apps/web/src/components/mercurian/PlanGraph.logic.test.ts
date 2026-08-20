@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { PlanTimelineItem } from "@t3tools/contracts";
+
 import {
-  MercurianCommitId,
-  MercurianRepositoryId,
-  type PlanTimelineItem,
-} from "@t3tools/contracts";
+  codingSessionLeaf,
+  commitId as id,
+  message,
+  planRevision,
+  specRevision,
+} from "../../test/fixtures/timeline";
 
 import {
   ancestorClosure,
@@ -18,23 +22,19 @@ import {
   type DagLayoutName,
 } from "./PlanGraph.logic";
 
-const id = (value: string) => MercurianCommitId.make(value);
-
 const commit = (
   name: string,
   sequence: number,
   parents: ReadonlyArray<string>,
   overrides: Partial<{ readonly published: boolean; readonly text: string }> = {},
-): PlanTimelineItem => ({
-  _tag: "message",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: overrides.published ?? false,
-  authorKind: "human",
-  text: overrides.text ?? name,
-  createdAt: "2026-08-03T00:00:00.000Z",
-});
+): PlanTimelineItem =>
+  message(name, {
+    sequence,
+    parents,
+    published: overrides.published ?? false,
+    text: overrides.text ?? name,
+    createdAt: "2026-08-03T00:00:00.000Z",
+  });
 
 /** a → b → c. */
 const chain: ReadonlyArray<PlanTimelineItem> = [
@@ -274,48 +274,37 @@ describe("planCommitSummary", () => {
   });
 
   it("says what a revision did, since it has no body to show", () => {
-    const revision: PlanTimelineItem = {
-      _tag: "plan-revision",
-      commitId: id("rev"),
+    const revision = planRevision("rev", {
       sequence: 2,
-      parents: [id("a")],
-      published: false,
+      parents: ["a"],
       authorKind: "assistant",
       createdAt: "2026-08-03T00:00:00.000Z",
-    };
+    });
     expect(planCommitSummary(revision)).toBe("The assistant revised the plan");
   });
 
   it("names the repository on a split revision", () => {
-    const revision: PlanTimelineItem = {
-      _tag: "plan-revision",
-      commitId: id("split"),
+    const revision = planRevision("split", {
       sequence: 2,
-      parents: [id("a")],
-      published: false,
-      authorKind: "human",
+      parents: ["a"],
       createdAt: "2026-08-03T00:00:00.000Z",
       split: {
-        repositoryId: MercurianRepositoryId.make("repo-server"),
+        repositoryId: "repo-server",
         repositoryName: "server",
       },
-    };
+    });
     expect(planCommitSummary(revision)).toBe("Plan for server");
   });
 
   it("renders a coding session as a terminal leaf with its parent edge", () => {
-    const session: PlanTimelineItem = {
-      _tag: "coding-session",
-      commitId: id("session"),
+    const session = codingSessionLeaf("session", {
       sequence: 4,
-      parents: [id("c")],
-      published: false,
-      authorKind: "human",
+      parents: ["c"],
       createdAt: "2026-08-03T00:00:00.000Z",
-      repositoryId: MercurianRepositoryId.make("repo-server"),
+      repositoryId: "repo-server",
       repositoryName: "server",
-      planRevisionCommitId: id("b"),
-    };
+      planRevisionCommitId: "b",
+    });
     const graph = buildPlanGraph([...chain, session]);
     expect(planCommitSummary(session)).toBe("Coding session in server");
     expect(graph.byId.get("session")?.parents).toEqual(["c"]);
@@ -331,30 +320,22 @@ describe("planCommitDetail", () => {
   });
 
   it("describes an imported spec revision", () => {
-    const issue: PlanTimelineItem = {
-      _tag: "spec-revision",
-      commitId: id("issue"),
-      sequence: 1,
-      parents: [],
+    const issue = specRevision("issue", {
       published: true,
-      authorKind: "human",
       cause: "import",
       issueId: "M-101",
       createdAt: "2026-08-03T00:00:00.000Z",
-    };
+    });
     expect(planCommitDetail(issue)).toBe("Spec imported from M-101");
   });
 
   it("uses the existing summary line for a plan revision", () => {
-    const revision: PlanTimelineItem = {
-      _tag: "plan-revision",
-      commitId: id("rev"),
+    const revision = planRevision("rev", {
       sequence: 2,
-      parents: [id("a")],
-      published: false,
+      parents: ["a"],
       authorKind: "assistant",
       createdAt: "2026-08-03T00:00:00.000Z",
-    };
+    });
     expect(planCommitDetail(revision)).toBe("The assistant revised the plan");
   });
 });

@@ -1,5 +1,4 @@
 import {
-  MercurianCommitId,
   MercurianRepositoryId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -8,6 +7,8 @@ import {
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
+
+import { commitId } from "../../test/fixtures/timeline";
 
 import {
   CODING_SESSION_RUNTIME_MODES,
@@ -86,7 +87,7 @@ describe("codingSessionDraft logic", () => {
       draftId: "draft",
       planId: "plan",
       ready: {
-        commitId: MercurianCommitId.make("ready"),
+        commitId: commitId("ready"),
         repositoryId: MercurianRepositoryId.make("repo"),
         repositoryName: "server",
       },

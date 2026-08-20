@@ -1,5 +1,4 @@
 import {
-  MercurianCommitId,
   MercurianRepositoryId,
   ProviderDriverKind,
   type PlanCodingSessionRecord,
@@ -7,6 +6,16 @@ import {
   type PlanTimelineItem,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+
+import { planCodingSessionRecord } from "../../test/fixtures/sessionsAndSplits";
+import {
+  at,
+  codingSessionLeaf,
+  commitId as id,
+  message,
+  planRevision,
+  specRevision,
+} from "../../test/fixtures/timeline";
 
 import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
@@ -19,13 +28,11 @@ import {
   resolveImplementFrom,
 } from "./PlanNodePopover.logic";
 
-const id = (value: string) => MercurianCommitId.make(value);
-const at = (sequence: number) => `2026-08-18T00:${sequence.toString().padStart(2, "0")}:00.000Z`;
 const model = (provider: string, name: string): PlanningModelSelection => ({
   provider: ProviderDriverKind.make(provider),
   model: name,
 });
-const message = (
+const commit = (
   name: string,
   sequence: number,
   parents: ReadonlyArray<string>,
@@ -35,49 +42,42 @@ const message = (
     readonly ranUnder?: PlanningModelSelection;
     readonly generatedBy?: PlanningModelSelection;
   } = {},
-): PlanTimelineItem => ({
-  _tag: "message",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind,
-  createdAt: at(sequence),
-  text: options.text ?? name,
-  ...(options.ranUnder === undefined ? {} : { ranUnder: options.ranUnder }),
-  ...(options.generatedBy === undefined ? {} : { generatedBy: options.generatedBy }),
-});
+): PlanTimelineItem =>
+  message(name, {
+    sequence,
+    parents,
+    authorKind,
+    createdAt: at(sequence),
+    text: options.text ?? name,
+    ...(options.ranUnder === undefined ? {} : { ranUnder: options.ranUnder }),
+    ...(options.generatedBy === undefined ? {} : { generatedBy: options.generatedBy }),
+  });
 const revision = (
   name: string,
   sequence: number,
   parents: ReadonlyArray<string>,
   split = false,
-): PlanTimelineItem => ({
-  _tag: "plan-revision",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind: "assistant",
-  createdAt: at(sequence),
-  ...(split
-    ? {
-        split: {
-          repositoryId: MercurianRepositoryId.make("repo-web"),
-          repositoryName: "web",
-        },
-      }
-    : {}),
-});
+): PlanTimelineItem =>
+  planRevision(name, {
+    sequence,
+    parents,
+    authorKind: "assistant",
+    createdAt: at(sequence),
+    ...(split
+      ? {
+          split: { repositoryId: "repo-web", repositoryName: "web" },
+        }
+      : {}),
+  });
 
 describe("modelSwitchFor", () => {
   it("compares the nearest ancestor recorded turn and crosses interior commits", () => {
     const graph = buildPlanGraph([
-      message("old-query", 1, [], "human", { ranUnder: model("claude", "sonnet") }),
+      commit("old-query", 1, [], "human", { ranUnder: model("claude", "sonnet") }),
       revision("old-plan", 2, ["old-query"]),
-      message("old-response", 3, ["old-plan"], "assistant"),
+      commit("old-response", 3, ["old-plan"], "assistant"),
       revision("between", 4, ["old-response"]),
-      message("new-query", 5, ["between"], "human", { ranUnder: model("codex", "gpt-5") }),
+      commit("new-query", 5, ["between"], "human", { ranUnder: model("codex", "gpt-5") }),
     ]);
 
     expect(modelSwitchFor(graph, id("new-query"))).toEqual(model("claude", "sonnet"));
@@ -85,12 +85,12 @@ describe("modelSwitchFor", () => {
 
   it("returns no switch without an ancestor record or for the same pair", () => {
     const none = buildPlanGraph([
-      message("bare", 1, [], "human"),
-      message("next", 2, ["bare"], "human", { ranUnder: model("codex", "gpt-5") }),
+      commit("bare", 1, [], "human"),
+      commit("next", 2, ["bare"], "human", { ranUnder: model("codex", "gpt-5") }),
     ]);
     const same = buildPlanGraph([
-      message("old", 1, [], "human", { ranUnder: model("codex", "gpt-5") }),
-      message("new", 2, ["old"], "human", { ranUnder: model("codex", "gpt-5") }),
+      commit("old", 1, [], "human", { ranUnder: model("codex", "gpt-5") }),
+      commit("new", 2, ["old"], "human", { ranUnder: model("codex", "gpt-5") }),
     ]);
     expect(modelSwitchFor(none, id("next"))).toBeNull();
     expect(modelSwitchFor(same, id("new"))).toBeNull();
@@ -98,12 +98,12 @@ describe("modelSwitchFor", () => {
 
   it("detects either a provider or model change", () => {
     const provider = buildPlanGraph([
-      message("p-old", 1, [], "human", { ranUnder: model("claude", "same") }),
-      message("p-new", 2, ["p-old"], "human", { ranUnder: model("codex", "same") }),
+      commit("p-old", 1, [], "human", { ranUnder: model("claude", "same") }),
+      commit("p-new", 2, ["p-old"], "human", { ranUnder: model("codex", "same") }),
     ]);
     const modelChange = buildPlanGraph([
-      message("m-old", 1, [], "human", { ranUnder: model("codex", "old") }),
-      message("m-new", 2, ["m-old"], "human", { ranUnder: model("codex", "new") }),
+      commit("m-old", 1, [], "human", { ranUnder: model("codex", "old") }),
+      commit("m-new", 2, ["m-old"], "human", { ranUnder: model("codex", "new") }),
     ]);
     expect(modelSwitchFor(provider, id("p-new"))).toEqual(model("claude", "same"));
     expect(modelSwitchFor(modelChange, id("m-new"))).toEqual(model("codex", "old"));
@@ -113,12 +113,12 @@ describe("modelSwitchFor", () => {
 describe("planMovedPastSplit", () => {
   it("is true only when the parent line has a non-projection child", () => {
     const moved = buildPlanGraph([
-      message("parent", 1, [], "human"),
+      commit("parent", 1, [], "human"),
       revision("split", 2, ["parent"], true),
-      message("continued", 3, ["parent"], "human"),
+      commit("continued", 3, ["parent"], "human"),
     ]);
     const projectionsOnly = buildPlanGraph([
-      message("only-parent", 1, [], "human"),
+      commit("only-parent", 1, [], "human"),
       revision("first-split", 2, ["only-parent"], true),
       revision("second-split", 3, ["only-parent"], true),
     ]);
@@ -133,13 +133,13 @@ describe("planMovedPastSplit", () => {
 describe("derivePlanNodePopover", () => {
   it("derives a turn from recorded commits, including models, warnings, and readiness", () => {
     const commitGraph = buildPlanGraph([
-      message("old", 1, [], "human", { ranUnder: model("claude", "sonnet") }),
-      message("query", 2, ["old"], "human", {
+      commit("old", 1, [], "human", { ranUnder: model("claude", "sonnet") }),
+      commit("query", 2, ["old"], "human", {
         text: "Update both",
         ranUnder: model("codex", "gpt-5"),
       }),
       revision("plan", 3, ["query"]),
-      message("response", 4, ["plan"], "assistant", {
+      commit("response", 4, ["plan"], "assistant", {
         text: "Done",
         generatedBy: model("codex", "gpt-5"),
       }),
@@ -177,8 +177,8 @@ describe("derivePlanNodePopover", () => {
 
   it("never infers effects from response prose and suppresses in-flight unanswered", () => {
     const proseGraph = buildPlanGraph([
-      message("prose-query", 1, [], "human"),
-      message("prose-response", 2, ["prose-query"], "assistant", {
+      commit("prose-query", 1, [], "human"),
+      commit("prose-response", 2, ["prose-query"], "assistant", {
         text: "I updated the plan",
       }),
     ]);
@@ -190,7 +190,7 @@ describe("derivePlanNodePopover", () => {
       staleSpec: false,
       suppressUnanswered: false,
     });
-    const inFlightGraph = buildPlanGraph([message("in-flight", 1, [], "human")]);
+    const inFlightGraph = buildPlanGraph([commit("in-flight", 1, [], "human")]);
     const inFlight = derivePlanNodePopover({
       node: condensePlanGraph(inFlightGraph).byId.get("in-flight")!,
       commitGraph: inFlightGraph,
@@ -205,9 +205,9 @@ describe("derivePlanNodePopover", () => {
 
   it("names repository projections and their moved-past warning", () => {
     const commitGraph = buildPlanGraph([
-      message("parent", 1, [], "human"),
+      commit("parent", 1, [], "human"),
       { ...revision("split", 2, ["parent"], true), authorKind: "human" },
-      message("continued", 3, ["parent"], "human"),
+      commit("continued", 3, ["parent"], "human"),
     ]);
     const reading = derivePlanNodePopover({
       node: condensePlanGraph(commitGraph).byId.get("split")!,
@@ -223,17 +223,10 @@ describe("derivePlanNodePopover", () => {
   });
 
   it("names spec refresh causes", () => {
-    const spec: PlanTimelineItem = {
-      _tag: "spec-revision",
-      commitId: id("spec"),
-      sequence: 1,
-      parents: [],
-      published: false,
-      authorKind: "human",
-      createdAt: at(1),
+    const spec = specRevision("spec", {
       cause: "refresh",
       issueId: "M-12",
-    };
+    });
     const graph = buildPlanGraph([spec]);
     const reading = derivePlanNodePopover({
       node: graph.nodes[0]!,
@@ -250,22 +243,18 @@ describe("derivePlanNodePopover", () => {
 describe("offeredActs", () => {
   it("offers branch editing only for non-root human queries and limits session leaves", () => {
     const graph = buildPlanGraph([
-      message("root", 1, [], "human"),
-      message("query", 2, ["root"], "human"),
-      message("response", 3, ["query"], "assistant"),
+      commit("root", 1, [], "human"),
+      commit("query", 2, ["root"], "human"),
+      commit("response", 3, ["query"], "assistant"),
       revision("standalone", 4, ["response"]),
-      {
-        _tag: "coding-session",
-        commitId: id("session"),
+      codingSessionLeaf("session", {
         sequence: 5,
-        parents: [id("standalone")],
-        published: false,
-        authorKind: "human",
+        parents: ["standalone"],
         createdAt: at(5),
-        repositoryId: MercurianRepositoryId.make("repo-web"),
+        repositoryId: "repo-web",
         repositoryName: "web",
-        planRevisionCommitId: id("standalone"),
-      },
+        planRevisionCommitId: "standalone",
+      }),
     ]);
     const condensed = condensePlanGraph(graph);
 
@@ -288,23 +277,18 @@ describe("offeredActs", () => {
 });
 
 describe("coding-session facts", () => {
-  const leaf: PlanTimelineItem = {
-    _tag: "coding-session",
-    commitId: id("session"),
+  const leaf = codingSessionLeaf("session", {
     sequence: 2,
-    parents: [id("plan")],
-    published: false,
-    authorKind: "human",
+    parents: ["plan"],
     createdAt: at(2),
-    repositoryId: MercurianRepositoryId.make("repo-web"),
+    repositoryId: "repo-web",
     repositoryName: "web",
-    planRevisionCommitId: id("plan"),
-  };
+    planRevisionCommitId: "plan",
+  });
   const record = (outcome: PlanCodingSessionRecord["outcome"], endedAt: string | null) =>
-    ({
-      commitId: id("session"),
-      repositoryId: MercurianRepositoryId.make("repo-web"),
-      threadId: "thread" as PlanCodingSessionRecord["threadId"],
+    planCodingSessionRecord("session", {
+      repositoryId: "repo-web",
+      threadId: "thread",
       branch: "feature/checkpoints",
       worktreePath: "/tmp/worktree",
       baseRef: "main",
@@ -312,7 +296,7 @@ describe("coding-session facts", () => {
       endedAt,
       outcome,
       prUrl: "https://example.com/pr/1",
-    }) satisfies PlanCodingSessionRecord;
+    });
 
   it("uses the shared four-state wording", () => {
     expect(codingSessionStatus(record(null, null))).toBe("Running");

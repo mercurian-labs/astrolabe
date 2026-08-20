@@ -1,7 +1,8 @@
-import { MercurianCommitId, MercurianRepositoryId, ThreadId } from "@t3tools/contracts";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+import { planCodingSessionRecord } from "../../test/fixtures/sessionsAndSplits";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-router")>();
@@ -22,10 +23,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 import { SidebarCodingSessionRows, SidebarPlanHoverCardContent } from "./PlanListSidebar";
 
-const session = {
-  commitId: MercurianCommitId.make("session"),
-  repositoryId: MercurianRepositoryId.make("repository"),
-  threadId: ThreadId.make("thread"),
+const session = planCodingSessionRecord("session", {
+  repositoryId: "repository",
+  threadId: "thread",
   branch: "mercurian/ship-12345678",
   worktreePath: "/tmp/session",
   baseRef: "main",
@@ -33,7 +33,7 @@ const session = {
   endedAt: null,
   outcome: null,
   prUrl: null,
-} as const;
+});
 
 describe("PlanListSidebar coding-session details", () => {
   it("adds running and ended sessions to the detail rows", () => {
@@ -41,13 +41,13 @@ describe("PlanListSidebar coding-session details", () => {
       <SidebarCodingSessionRows
         sessions={[
           session,
-          {
-            ...session,
-            commitId: MercurianCommitId.make("ended-session"),
+          planCodingSessionRecord("ended-session", {
+            repositoryId: "repository",
+            threadId: "thread",
             branch: "renamed/session",
             endedAt: "2026-08-18T01:00:00.000Z",
             outcome: "completed",
-          },
+          }),
         ]}
       />,
     );

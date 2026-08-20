@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  MercurianCommitId,
-  MercurianRepositoryId,
-  PlanTurnId,
-  type PlanImplementProposal,
-  type PlanTimelineItem,
-} from "@t3tools/contracts";
+import { MercurianRepositoryId, type PlanTimelineItem } from "@t3tools/contracts";
+
+import { planImplementProposal, planSplitProposal } from "../../test/fixtures/sessionsAndSplits";
+import { commitId, message, planRevision } from "../../test/fixtures/timeline";
 
 import { buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -17,42 +14,38 @@ import {
   partitionProposal,
 } from "./splits.logic";
 
-const fields = (id: string, sequence: number, parents: ReadonlyArray<string>) => ({
-  commitId: MercurianCommitId.make(id),
-  sequence,
-  parents: parents.map((parent) => MercurianCommitId.make(parent)),
-  published: false,
-  authorKind: "human" as const,
-  createdAt: "2026-08-10T00:00:00.000Z",
-});
 const repositoryId = MercurianRepositoryId.make("repo-server");
 const otherRepositoryId = MercurianRepositoryId.make("repo-web");
-const proposal: PlanImplementProposal = {
-  turnId: PlanTurnId.make("turn"),
-  parentCommitId: MercurianCommitId.make("parent"),
+const proposal = planImplementProposal("turn", {
+  parentCommitId: "parent",
   verdict: {
     kind: "needs-split",
     splits: [
-      { repositoryId, repositoryName: "server", text: "Server work" },
-      { repositoryId: otherRepositoryId, repositoryName: "web", text: "Web work" },
+      planSplitProposal("server", { repositoryId, text: "Server work" }),
+      planSplitProposal("web", { repositoryId: otherRepositoryId, text: "Web work" }),
     ],
   },
-};
+});
 
 describe("split proposal logic", () => {
   it("finds split children per repository and ignores ordinary revisions", () => {
     const timeline: ReadonlyArray<PlanTimelineItem> = [
-      { _tag: "message", ...fields("parent", 1, []), text: "Implement" },
-      {
-        _tag: "plan-revision",
-        ...fields("split", 2, ["parent"]),
+      message("parent", { createdAt: "2026-08-10T00:00:00.000Z", text: "Implement" }),
+      planRevision("split", {
+        sequence: 2,
+        parents: ["parent"],
+        createdAt: "2026-08-10T00:00:00.000Z",
         split: { repositoryId, repositoryName: "server" },
-      },
-      { _tag: "plan-revision", ...fields("ordinary", 3, ["parent"]) },
+      }),
+      planRevision("ordinary", {
+        sequence: 3,
+        parents: ["parent"],
+        createdAt: "2026-08-10T00:00:00.000Z",
+      }),
     ];
-    const existing = existingSplitsAt(buildPlanGraph(timeline), MercurianCommitId.make("parent"));
+    const existing = existingSplitsAt(buildPlanGraph(timeline), commitId("parent"));
     expect([...existing.values()]).toEqual([
-      { repositoryId, repositoryName: "server", commitId: MercurianCommitId.make("split") },
+      { repositoryId, repositoryName: "server", commitId: commitId("split") },
     ]);
     const partitioned = partitionProposal(proposal, existing);
     expect(partitioned.alreadySplit).toHaveLength(1);
@@ -79,7 +72,7 @@ describe("split proposal logic", () => {
         {
           repositoryId,
           repositoryName: "server",
-          commitId: MercurianCommitId.make("server-plan"),
+          commitId: commitId("server-plan"),
         },
       ],
       [
@@ -87,14 +80,13 @@ describe("split proposal logic", () => {
         {
           repositoryId: otherRepositoryId,
           repositoryName: "web",
-          commitId: MercurianCommitId.make("web-plan"),
+          commitId: commitId("web-plan"),
         },
       ],
     ]);
     const partitioned = partitionProposal(
-      {
-        turnId: PlanTurnId.make("covered-turn"),
-        parentCommitId: MercurianCommitId.make("parent"),
+      planImplementProposal("covered-turn", {
+        parentCommitId: "parent",
         verdict: {
           kind: "already-covered",
           repositories: [
@@ -102,7 +94,7 @@ describe("split proposal logic", () => {
             { repositoryId: otherRepositoryId, repositoryName: "web" },
           ],
         },
-      },
+      }),
       existing,
     );
     expect(partitioned.cards).toEqual([]);
