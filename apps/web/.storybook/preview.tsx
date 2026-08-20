@@ -1,6 +1,7 @@
 import type { Preview } from "@storybook/react";
 
 import "../src/index.css";
+import "./preview.css";
 import { foundationsThemes } from "../src/foundations/foundations.logic";
 import { applyThemePalette, type ThemeAppearance } from "../src/themePalette";
 
