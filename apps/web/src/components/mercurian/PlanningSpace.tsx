@@ -545,7 +545,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   if (error !== null) {
     return (
-      <PlanningSurface title="Plan">
+      <PlanningSurface>
+        <PlanningHeader title="Plan" />
         <Empty className="flex-1">
           <EmptyHeader className="max-w-md">
             <EmptyTitle className="text-foreground text-xl">Couldn’t open this plan</EmptyTitle>
@@ -567,14 +568,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   });
   const implementNotice =
     implementFailure === null ? null : implementFailureNotice(implementFailure);
+  const paneCornerControl = usesSideBySideLayout ? (
+    <PlanPaneToggle state={pane} onChange={setPane} />
+  ) : null;
 
   return (
-    <PlanningSurface
-      // The pane and its icons belong to a plan; a space with no plan has
-      // neither.
-      actions={detail === null ? null : <PlanPaneToggle state={pane} onChange={setPane} />}
-      title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}
-    >
+    <PlanningSurface>
       {pendingEditAndBranch === null || environmentId === null ? null : (
         <EditAndBranchAttachmentLoader
           environmentId={environmentId}
@@ -585,6 +584,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           }
         />
       )}
+      {usesSideBySideLayout ? null : (
+        <PlanningHeader
+          actions={detail === null ? null : <PlanPaneToggle state={pane} onChange={setPane} />}
+          title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}
+        />
+      )}
       {/* Below `sm` the two stack, pane above conversation — same content, no
           second surface to keep in step. */}
       <div
@@ -592,6 +597,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         ref={planningSpaceRef}
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {usesSideBySideLayout ? (
+            <PlanningHeader
+              actions={
+                detail === null || pane.open ? null : (
+                  <PlanPaneToggle state={pane} onChange={setPane} />
+                )
+              }
+              title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}
+            />
+          ) : null}
           <PlanTimeline
             codingSessions={detail?.codingSessions ?? []}
             inFlight={visibleInFlight}
@@ -687,6 +702,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   readyCommits={readyCommits}
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
+                  cornerControl={paneCornerControl}
                   onColumnsWidthCapChange={setColumnsWidthCap}
                   onEditAndBranch={editAndBranch}
                   onImplementFrom={beginImplementFrom}
@@ -696,12 +712,32 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 // The plan as of then is still on its way. An empty artifact
                 // and an unread one look alike, and saying nothing is better
                 // than saying the plan was blank.
-                <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
-                  <p className="text-sm text-muted-foreground/70">Reading the plan as of then…</p>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+                    <ArtifactPicker
+                      value={pane.artifact}
+                      onChange={(artifact) => setPane({ ...pane, artifact })}
+                    />
+                    <span className="min-w-0 flex-1" />
+                    {paneCornerControl}
+                  </div>
+                  <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
+                    <p className="text-sm text-muted-foreground/70">Reading the plan as of then…</p>
+                  </div>
                 </div>
               ) : pane.artifact === "spec" && artifactSpec === undefined ? (
-                <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
-                  <p className="text-sm text-muted-foreground/70">Reading the spec as of then…</p>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+                    <ArtifactPicker
+                      value={pane.artifact}
+                      onChange={(artifact) => setPane({ ...pane, artifact })}
+                    />
+                    <span className="min-w-0 flex-1" />
+                    {paneCornerControl}
+                  </div>
+                  <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
+                    <p className="text-sm text-muted-foreground/70">Reading the spec as of then…</p>
+                  </div>
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col">
@@ -719,6 +755,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                           Back to now
                         </Button>
                       }
+                      cornerControl={paneCornerControl}
                       titleControl={
                         <ArtifactPicker
                           value={pane.artifact}
@@ -738,6 +775,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                           Back to now
                         </Button>
                       }
+                      cornerControl={paneCornerControl}
                       spec={artifactSpec ?? null}
                       titleControl={
                         <ArtifactPicker
@@ -1123,7 +1161,8 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
 
   if (draft === undefined) {
     return (
-      <PlanningSurface title="New plan">
+      <PlanningSurface>
+        <PlanningHeader title="New plan" />
         <Empty className="flex-1">
           <EmptyHeader className="max-w-md">
             <EmptyTitle className="text-foreground text-xl">This draft is gone</EmptyTitle>
@@ -1137,7 +1176,8 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   }
 
   return (
-    <PlanningSurface title="New plan">
+    <PlanningSurface>
+      <PlanningHeader title="New plan" />
       <Empty className="flex-1">
         <EmptyHeader className="max-w-md">
           <EmptyTitle className="text-foreground text-lg">What are we planning?</EmptyTitle>
@@ -1196,28 +1236,31 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   );
 }
 
-function PlanningSurface({
+function PlanningHeader({
   title,
   actions,
-  children,
 }: {
   readonly title: string;
   /** The top-right corner. Empty wherever there is no plan to have views of. */
   readonly actions?: ReactNode;
-  readonly children: ReactNode;
 }) {
+  return (
+    <header
+      className={cn(
+        "workspace-topbar gap-2 border-b border-border px-3 sm:px-5",
+        COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+      )}
+    >
+      <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{title}</h1>
+      {actions}
+    </header>
+  );
+}
+
+function PlanningSurface({ children }: { readonly children: ReactNode }) {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-        <header
-          className={cn(
-            "flex items-center gap-2 border-b border-border px-3 py-2 sm:px-5 sm:py-3",
-            COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-          )}
-        >
-          <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{title}</h1>
-          {actions}
-        </header>
         {children}
       </div>
     </SidebarInset>
