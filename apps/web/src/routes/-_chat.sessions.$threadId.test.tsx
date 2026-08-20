@@ -1,4 +1,4 @@
-import { EnvironmentId, PlanId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, MercurianCommitId, PlanId, ThreadId } from "@t3tools/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -8,10 +8,20 @@ vi.mock("../components/ChatView", () => ({
     readonly threadId: ThreadId;
     readonly routeKind: string;
     readonly headerContent?: ReactNode;
+    readonly planPanel?: ReactNode;
   }) => (
     <div data-route-kind={props.routeKind}>
       {props.headerContent}
+      {props.planPanel}
       Chat {props.threadId}
+    </div>
+  ),
+}));
+
+vi.mock("../components/mercurian/SessionPlanPanel", () => ({
+  SessionPlanPanel: (props: { readonly planId: PlanId; readonly sessionLeafCommitId: string }) => (
+    <div data-session-plan-panel={`${props.planId}:${props.sessionLeafCommitId}`}>
+      Standing plan
     </div>
   ),
 }));
@@ -63,6 +73,7 @@ describe("session thread route", () => {
         renderState="ready"
         shellExists
         planId={PlanId.make("plan-test")}
+        sessionLeafCommitId={MercurianCommitId.make("session-leaf")}
         planTitle="Reviewed plan"
         threadTitle="Coding session title"
       />,
@@ -74,6 +85,8 @@ describe("session thread route", () => {
     expect(markup).toContain('href="/plans/plan-test"');
     expect(markup).toContain("Reviewed plan");
     expect(markup).toContain("Coding session title");
+    expect(markup).toContain('data-session-plan-panel="plan-test:session-leaf"');
+    expect(markup).toContain("Standing plan");
     expect(markup).not.toContain("Thread breadcrumb");
     expect(markup).not.toContain("New thread in");
     expect(markup).not.toContain("Session unavailable");
@@ -88,6 +101,7 @@ describe("session thread route", () => {
         renderState="missing"
         shellExists={false}
         planId={PlanId.make("plan-test")}
+        sessionLeafCommitId={MercurianCommitId.make("session-leaf")}
         planTitle="Reviewed plan"
         threadTitle="Coding session title"
       />,
@@ -105,10 +119,30 @@ describe("session thread route", () => {
         renderState="missing"
         shellExists={false}
         planId={null}
+        sessionLeafCommitId={null}
         planTitle={null}
         threadTitle="Coding session title"
       />,
     );
     expect(fallbackMarkup).toContain('href="/"');
+  });
+
+  it("omits the standing plan panel for a detached session", () => {
+    const markup = renderToStaticMarkup(
+      <SessionThreadRouteContent
+        environmentId={environmentId}
+        threadId={threadId}
+        threadSyncPhase={null}
+        renderState="ready"
+        shellExists
+        planId={null}
+        sessionLeafCommitId={null}
+        planTitle={null}
+        threadTitle="Detached session"
+      />,
+    );
+
+    expect(markup).not.toContain("data-session-plan-panel");
+    expect(markup).not.toContain("Standing plan");
   });
 });

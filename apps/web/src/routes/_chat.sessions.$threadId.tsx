@@ -1,9 +1,15 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { ThreadId, type EnvironmentId, type PlanId } from "@t3tools/contracts";
+import {
+  ThreadId,
+  type EnvironmentId,
+  type MercurianCommitId,
+  type PlanId,
+} from "@t3tools/contracts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import ChatView from "../components/ChatView";
 import { CodingSessionHeader } from "../components/mercurian/CodingSessionHeader";
+import { SessionPlanPanel } from "../components/mercurian/SessionPlanPanel";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -21,6 +27,7 @@ export function SessionThreadRouteContent(props: {
   readonly renderState: ThreadRouteRenderState;
   readonly shellExists: boolean;
   readonly planId: PlanId | null;
+  readonly sessionLeafCommitId: MercurianCommitId | null;
   readonly planTitle: string | null;
   readonly threadTitle: string;
 }) {
@@ -50,6 +57,14 @@ export function SessionThreadRouteContent(props: {
           threadId={props.threadId}
           routeKind="server"
           threadSyncPhase={props.threadSyncPhase}
+          planPanel={
+            props.planId && props.sessionLeafCommitId ? (
+              <SessionPlanPanel
+                planId={props.planId}
+                sessionLeafCommitId={props.sessionLeafCommitId}
+              />
+            ) : undefined
+          }
           headerContent={
             <CodingSessionHeader
               environmentId={props.environmentId}
@@ -91,6 +106,8 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
     tree.snapshot.plans.find((plan) =>
       plan.codingSessions.some((session) => session.threadId === threadId),
     ) ?? null;
+  const owningSession =
+    owningPlan?.codingSessions.find((session) => session.threadId === threadId) ?? null;
 
   if (environmentId === null) return null;
 
@@ -119,6 +136,7 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       renderState={renderState}
       shellExists={serverThreadShell !== null}
       planId={owningPlan?.planId ?? null}
+      sessionLeafCommitId={owningSession?.commitId ?? null}
       planTitle={owningPlan?.title ?? null}
       threadTitle={serverThreadShell?.title ?? serverThreadDetail?.title ?? "Coding session"}
     />

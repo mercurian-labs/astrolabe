@@ -1,6 +1,6 @@
 import type { ContextMenuItem, PreviewSessionSnapshot } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
-import { Bot, FileDiff, Files, Globe2, Plus, TerminalSquare, X } from "lucide-react";
+import { Bot, FileDiff, Files, Globe2, Plus, ScrollText, TerminalSquare, X } from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -45,9 +45,11 @@ interface RightPanelTabsProps {
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddAgents: () => void;
+  onAddPlan: () => void;
   browserAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
+  planAvailable: boolean;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
   children: ReactNode;
@@ -95,9 +97,11 @@ function RightPanelEmptyState(props: {
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddAgents: () => void;
+  onAddPlan: () => void;
   browserAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
+  planAvailable: boolean;
   liveAgentCount: number;
 }) {
   const actions = [
@@ -137,6 +141,19 @@ function RightPanelEmptyState(props: {
       onClick: props.onAddDiff,
       badgeCount: 0,
     },
+    ...(props.planAvailable
+      ? [
+          {
+            label: "Plan",
+            description: "Read the plan this session implements.",
+            icon: ScrollText,
+            available: true,
+            disabledReason: null,
+            onClick: props.onAddPlan,
+            badgeCount: 0,
+          },
+        ]
+      : []),
     {
       label: "Agents",
       description: "Watch subagents and workflows run.",
@@ -191,6 +208,7 @@ function RightPanelEmptyState(props: {
                 </button>
               );
             }
+            if (action.disabledReason === null) return null;
             const disabledCard = (
               <button
                 type="button"
@@ -233,6 +251,8 @@ function surfaceTitle(
       );
     case "agents":
       return "Agents";
+    case "plan":
+      return "Plan";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -294,6 +314,8 @@ function SurfaceIcon({
       return <TerminalSquare className="size-3 shrink-0" />;
     case "agents":
       return <Bot className="size-3 shrink-0" />;
+    case "plan":
+      return <ScrollText className="size-3 shrink-0" />;
   }
 }
 
@@ -494,6 +516,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     <FileDiff />
                     Diff
                   </SurfaceMenuItem>
+                  {props.planAvailable ? (
+                    <SurfaceMenuItem available onClick={props.onAddPlan}>
+                      <ScrollText />
+                      Plan
+                    </SurfaceMenuItem>
+                  ) : null}
                   <SurfaceMenuItem available onClick={props.onAddAgents}>
                     <Bot />
                     Agents
@@ -513,9 +541,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
             onAddAgents={props.onAddAgents}
+            onAddPlan={props.onAddPlan}
             browserAvailable={props.browserAvailable}
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}
+            planAvailable={props.planAvailable}
             liveAgentCount={props.liveAgentCount}
           />
         ) : (

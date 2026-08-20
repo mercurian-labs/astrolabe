@@ -635,17 +635,70 @@ describe("composerDraftStore review comments", () => {
     resetComposerDraftStore();
   });
 
-  it("upserts and removes review comments by id", () => {
+  it("replaces a same-id review comment after its anchor is remapped", () => {
     const store = useComposerDraftStore.getState();
     store.addReviewComment(threadRef, comment);
-    store.addReviewComment(threadRef, { ...comment, text: "Updated comment." });
+    store.addReviewComment(threadRef, {
+      ...comment,
+      startIndex: 4,
+      endIndex: 5,
+      rangeLabel: "L5 to L6",
+      text: "Updated comment.",
+    });
 
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toEqual([
-      { ...comment, text: "Updated comment." },
+      {
+        ...comment,
+        startIndex: 4,
+        endIndex: 5,
+        rangeLabel: "L5 to L6",
+        text: "Updated comment.",
+      },
     ]);
 
     store.removeReviewComment(threadRef, comment.id);
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
+  it("replaces a review comment with a new id on the same anchor", () => {
+    const store = useComposerDraftStore.getState();
+    store.addReviewComment(threadRef, comment);
+    store.addReviewComment(threadRef, {
+      ...comment,
+      id: "comment-2",
+      text: "Newest comment.",
+    });
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toEqual([
+      { ...comment, id: "comment-2", text: "Newest comment." },
+    ]);
+  });
+
+  it("keeps comments on distinct ranges in the same file", () => {
+    const store = useComposerDraftStore.getState();
+    store.addReviewComment(threadRef, comment);
+    store.addReviewComment(threadRef, {
+      ...comment,
+      id: "comment-2",
+      startIndex: 3,
+      endIndex: 4,
+      rangeLabel: "L4 to L5",
+    });
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toHaveLength(2);
+  });
+
+  it("keeps the same range when it belongs to a different section", () => {
+    const store = useComposerDraftStore.getState();
+    store.addReviewComment(threadRef, comment);
+    store.addReviewComment(threadRef, {
+      ...comment,
+      id: "comment-2",
+      sectionId: "turn:2",
+      sectionTitle: "Turn 2",
+    });
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toHaveLength(2);
   });
 
   it("persists review comments and clears them with composer content", () => {

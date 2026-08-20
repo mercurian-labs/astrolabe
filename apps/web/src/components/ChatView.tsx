@@ -494,6 +494,7 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
       headerContent?: ReactNode;
+      planPanel?: ReactNode;
       routeKind: "server";
       draftId?: never;
     }
@@ -505,6 +506,7 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
       headerContent?: ReactNode;
+      planPanel?: ReactNode;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -1175,7 +1177,9 @@ function ChatViewContent(props: ChatViewProps) {
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
     headerContent,
+    planPanel,
   } = props;
+  const planAvailable = planPanel !== undefined;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
@@ -3187,6 +3191,10 @@ function ChatViewContent(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
+  const addPlanSurface = useCallback(() => {
+    if (!activeThreadRef || !planAvailable) return;
+    useRightPanelStore.getState().open(activeThreadRef, "plan");
+  }, [activeThreadRef, planAvailable]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -5935,8 +5943,11 @@ function ChatViewContent(props: ChatViewProps) {
           mode="embedded"
           composerDraftTarget={composerDraftTarget}
           initialGitScope={initialDiffPanelGitScope}
+          threadRef={activeThreadRef}
         />
       </Suspense>
+    ) : activeRightPanelSurface?.kind === "plan" ? (
+      planPanel
     ) : activeRightPanelSurface?.kind === "agents" ? (
       <AgentsPanel
         model={agentPanelModel}
@@ -6377,9 +6388,11 @@ function ChatViewContent(props: ChatViewProps) {
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
           onAddAgents={addAgentsSurface}
+          onAddPlan={addPlanSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
+          planAvailable={planAvailable}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -6406,9 +6419,11 @@ function ChatViewContent(props: ChatViewProps) {
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
             onAddAgents={addAgentsSurface}
+            onAddPlan={addPlanSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}
+            planAvailable={planAvailable}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

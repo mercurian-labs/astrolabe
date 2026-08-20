@@ -167,6 +167,38 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("opens, activates, closes, and persists the plan singleton", () => {
+    useRightPanelStore.getState().open(refA, "plan");
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "plan");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "plan",
+      surfaces: [
+        { id: "plan", kind: "plan" },
+        { id: "diff", kind: "diff" },
+      ],
+    });
+    expect(
+      useRightPanelStore.persist.getOptions().partialize?.(useRightPanelStore.getState()),
+    ).toMatchObject({
+      byThreadKey: {
+        "env-1:thread-A": {
+          activeSurfaceId: "plan",
+          surfaces: expect.arrayContaining([{ id: "plan", kind: "plan" }]),
+        },
+      },
+    });
+
+    useRightPanelStore.getState().closeSurface(refA, "plan");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "diff",
+      surfaces: [{ id: "diff", kind: "diff" }],
+    });
+  });
+
   it("keeps files as a singleton surface", () => {
     useRightPanelStore.getState().open(refA, "files");
     useRightPanelStore.getState().open(refA, "files");
