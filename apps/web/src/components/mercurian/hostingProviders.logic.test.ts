@@ -222,13 +222,11 @@ describe("repositoryHostingStanding", () => {
 });
 
 describe("changeRequestsAllowed", () => {
-  it("allows only a known, installed, authenticated repository host", () => {
-    expect(
-      changeRequestsAllowed(hosting("github", "GitHub"), discovery([provider("github")])),
-    ).toBe(true);
+  it("allows only when the status-derived provider is installed and authenticated", () => {
+    expect(changeRequestsAllowed("github", discovery([provider("github")]))).toBe(true);
     expect(
       changeRequestsAllowed(
-        hosting("github", "GitHub"),
+        "github",
         discovery([
           provider("github", {
             auth: {
@@ -242,14 +240,19 @@ describe("changeRequestsAllowed", () => {
       ),
     ).toBe(false);
     expect(
-      changeRequestsAllowed(
-        hosting("github", "GitHub"),
-        discovery([provider("github", { status: "missing" })]),
-      ),
+      changeRequestsAllowed("github", discovery([provider("github", { status: "missing" })])),
     ).toBe(false);
-    expect(changeRequestsAllowed(hosting("unknown", "git.example.test"), discovery([]))).toBe(
-      false,
-    );
+    expect(changeRequestsAllowed("unknown", discovery([provider("github")]))).toBe(false);
     expect(changeRequestsAllowed(null, discovery([provider("github")]))).toBe(false);
+    expect(changeRequestsAllowed(undefined, discovery([provider("github")]))).toBe(false);
+  });
+
+  it("closes for a freshly flipped remote even while the old provider stays authenticated", () => {
+    // Regression for the M-119 walk finding: origin moved github → gitlab; the
+    // machine is still authenticated for github only. The gate keys off the
+    // status-derived provider, so it must close without waiting for a rescan.
+    const githubOnlyMachine = discovery([provider("github")]);
+    expect(changeRequestsAllowed("gitlab", githubOnlyMachine)).toBe(false);
+    expect(changeRequestsAllowed("github", githubOnlyMachine)).toBe(true);
   });
 });

@@ -8,6 +8,7 @@ import type {
   MercurianRepositoryId,
   PlanId,
   ScopedThreadRef,
+  SourceControlProviderKind,
   ThreadId,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
@@ -81,6 +82,11 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
   const rightPanelOpen = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, props.threadRef),
   ).isOpen;
+  const discoveryData = discovery.data;
+  const changeRequestsGate = useCallback(
+    (provider: SourceControlProviderKind | null) => changeRequestsAllowed(provider, discoveryData),
+    [discoveryData],
+  );
   const showOpenInPicker =
     props.worktreePath !== null &&
     shouldShowOpenInPicker({
@@ -216,10 +222,7 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
           <GitActionsControl
             gitCwd={props.worktreePath}
             activeThreadRef={props.threadRef}
-            changeRequestsAllowed={changeRequestsAllowed(
-              repository?.hosting ?? null,
-              discovery.data,
-            )}
+            changeRequestsAllowed={changeRequestsGate}
           />
         ) : null}
         <WorkspaceBreadcrumb ariaLabel="Session previews">

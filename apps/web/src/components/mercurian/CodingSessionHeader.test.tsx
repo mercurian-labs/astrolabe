@@ -20,9 +20,36 @@ vi.mock("../../state/server", () => ({
 vi.mock("../../state/environments", () => ({
   usePrimaryEnvironmentId: () => "environment-test",
 }));
-vi.mock("../../state/query", () => ({
-  useEnvironmentQuery: () => ({ data: null, error: null, isPending: false, refresh: vi.fn() }),
-}));
+vi.mock("../../state/query", async () => {
+  const Option = await import("effect/Option");
+  return {
+    useEnvironmentQuery: () => ({
+      data: {
+        versionControlSystems: [],
+        sourceControlProviders: [
+          {
+            kind: "github",
+            label: "GitHub",
+            executable: "gh",
+            status: "available",
+            version: Option.none(),
+            installHint: "Install gh.",
+            detail: Option.none(),
+            auth: {
+              status: "authenticated",
+              account: Option.none(),
+              host: Option.none(),
+              detail: Option.none(),
+            },
+          },
+        ],
+      },
+      error: null,
+      isPending: false,
+      refresh: vi.fn(),
+    }),
+  };
+});
 vi.mock("../../state/sourceControl", () => ({
   sourceControlEnvironment: { discovery: vi.fn(() => "discovery") },
 }));
@@ -60,9 +87,26 @@ vi.mock("../../rightPanelStore", () => ({
   selectThreadRightPanelState: () => ({ isOpen: false }),
 }));
 vi.mock("../GitActionsControl", () => ({
-  default: (props: { readonly gitCwd: string | null }) => (
-    <div data-control="git-actions" data-git-cwd={props.gitCwd ?? ""} />
-  ),
+  default: (props: {
+    readonly gitCwd: string | null;
+    readonly changeRequestsAllowed?:
+      | boolean
+      | ((
+          provider: "github" | "gitlab" | "azure-devops" | "bitbucket" | "unknown" | null,
+        ) => boolean);
+  }) => {
+    const gate = props.changeRequestsAllowed;
+    const decide = (provider: "github" | "gitlab" | null) =>
+      typeof gate === "function" ? String(gate(provider)) : String(gate ?? true);
+    return (
+      <div
+        data-control="git-actions"
+        data-git-cwd={props.gitCwd ?? ""}
+        data-gate-github={decide("github")}
+        data-gate-gitlab={decide("gitlab")}
+      />
+    );
+  },
 }));
 vi.mock("../chat/OpenInPicker", () => ({
   OpenInPicker: (props: { readonly openInCwd: string | null }) => (
@@ -121,6 +165,11 @@ describe("CodingSessionHeader", () => {
     expect(markup).toContain('data-open-in-cwd="/repo/worktrees/session"');
     expect(markup).toContain('data-control="git-actions"');
     expect(markup).toContain('data-git-cwd="/repo/worktrees/session"');
+    // The gate is a predicate over the status-derived provider: the machine's
+    // authenticated github passes, while a freshly flipped gitlab remote is
+    // refused immediately — no stale hosting-cache window (M-119 walk finding).
+    expect(markup).toContain('data-gate-github="true"');
+    expect(markup).toContain('data-gate-gitlab="false"');
     expect(markup).not.toMatch(/delete|new thread/iu);
   });
 

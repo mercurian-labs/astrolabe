@@ -95,7 +95,12 @@ interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
-  changeRequestsAllowed?: boolean;
+  /**
+   * Gates the change-request creation moves. A boolean gates statically; a
+   * predicate is re-evaluated against the current status-derived provider, so
+   * the decision stays as fresh as the git status itself.
+   */
+  changeRequestsAllowed?: boolean | ((provider: SourceControlProviderKind | null) => boolean);
 }
 
 interface PendingDefaultBranchAction {
@@ -1147,15 +1152,24 @@ export default function GitActionsControl({
     return gitStatusForActions?.isDefaultRef ?? false;
   }, [gitStatusForActions?.isDefaultRef]);
 
+  const statusProviderKind = gitStatusForActions?.sourceControlProvider?.kind ?? null;
+  const changeRequestsPermitted = useMemo(
+    () =>
+      typeof changeRequestsAllowed === "function"
+        ? changeRequestsAllowed(statusProviderKind)
+        : changeRequestsAllowed,
+    [changeRequestsAllowed, statusProviderKind],
+  );
+
   const gitActionMenuItems = useMemo(
     () =>
       buildMenuItems(
         gitStatusForActions,
         isGitActionRunning,
         hasPrimaryRemote,
-        changeRequestsAllowed,
+        changeRequestsPermitted,
       ),
-    [changeRequestsAllowed, gitStatusForActions, hasPrimaryRemote, isGitActionRunning],
+    [changeRequestsPermitted, gitStatusForActions, hasPrimaryRemote, isGitActionRunning],
   );
   const quickAction = useMemo(
     () =>
@@ -1164,10 +1178,10 @@ export default function GitActionsControl({
         isGitActionRunning,
         isDefaultRef,
         hasPrimaryRemote,
-        changeRequestsAllowed,
+        changeRequestsPermitted,
       ),
     [
-      changeRequestsAllowed,
+      changeRequestsPermitted,
       gitStatusForActions,
       hasPrimaryRemote,
       isDefaultRef,
@@ -1187,12 +1201,12 @@ export default function GitActionsControl({
     : null;
 
   useEffect(() => {
-    if (changeRequestsAllowed) return;
+    if (changeRequestsPermitted) return;
     setPendingDefaultBranchAction((pending) => {
       if (pending?.action === "create_pr") return null;
       return pending?.action === "commit_push_pr" ? { ...pending, action: "commit_push" } : pending;
     });
-  }, [changeRequestsAllowed]);
+  }, [changeRequestsPermitted]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -1283,9 +1297,9 @@ export default function GitActionsControl({
       progressToastId,
       filePaths,
     }: RunGitActionWithToastInput) => {
-      if (action === "create_pr" && !changeRequestsAllowed) return;
+      if (action === "create_pr" && !changeRequestsPermitted) return;
       const resolvedAction =
-        action === "commit_push_pr" && !changeRequestsAllowed ? "commit_push" : action;
+        action === "commit_push_pr" && !changeRequestsPermitted ? "commit_push" : action;
       const actionStatus = statusOverride ?? gitStatusForActions;
       const actionBranch = actionStatus?.refName ?? null;
       const actionIsDefaultBranch = featureBranch ? false : isDefaultRef;
@@ -1463,7 +1477,7 @@ export default function GitActionsControl({
       } | null = null;
       if (
         toastCta.kind === "run_action" &&
-        (toastCta.action.kind !== "create_pr" || changeRequestsAllowed)
+        (toastCta.action.kind !== "create_pr" || changeRequestsPermitted)
       ) {
         toastActionProps = {
           children: toastCta.label,
