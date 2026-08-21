@@ -64,5 +64,6 @@ export const planDetail = (name: string, overrides: PlanDetailOverrides = {}): P
     snapshotSequence: 0,
     readyCommits: [],
     codingSessions: [],
+    inFlightTurns: [],
     ...overrides,
   });

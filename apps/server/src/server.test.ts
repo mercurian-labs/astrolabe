@@ -1046,7 +1046,7 @@ const buildAppUnderTest = (options?: {
           status: Effect.succeed(new Map()),
           changes: Stream.empty,
           frames: () => Stream.empty,
-          inFlight: () => Effect.succeed(undefined),
+          inFlightTurns: () => Effect.succeed([]),
           inFlightImplement: () => Effect.succeed(undefined),
           implementProposal: () => Effect.succeed(undefined),
           cancelImplementProposal: () => Effect.void,

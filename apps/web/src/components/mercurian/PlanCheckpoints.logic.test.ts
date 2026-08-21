@@ -107,9 +107,9 @@ describe("condensePlanGraph", () => {
     expect(checkpoint.checkpoint?.effects).toEqual(["plan-updated", "unanswered"]);
     expect(planNodeDetail(checkpoint, true)).toContain("Plan updated");
     expect(planNodeDetail(checkpoint, true)).not.toContain("Unanswered");
-    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, id("query"))).toBe(true);
-    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, id("landed"))).toBe(true);
-    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, id("elsewhere"))).toBe(false);
+    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, [id("query")])).toBe(true);
+    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, [id("landed")])).toBe(true);
+    expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, [id("elsewhere")])).toBe(false);
   });
 
   it("leaves direct edits, imports, refreshes, splits, merges, and ambiguous turns standalone", () => {

@@ -13,6 +13,7 @@ import type {
   MercurianStartCodingSessionInput,
   PlanDetail,
   PlanId,
+  PlanTurnId,
   PlanImplementReady,
   PlanningTreeSnapshot,
   PlanTurnRefusalReason,
@@ -105,7 +106,7 @@ export interface PlanDetailState {
  * The planning space, live. There is no refresh: the artifact and the history
  * are one subscription over the plan's commits, so an edit or a message —
  * from this window or another — arrives as it lands. The streaming turn rides
- * the same subscription as `detail.inFlightTurn`.
+ * the same subscription as `detail.inFlightTurns`.
  */
 export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const environmentId = usePrimaryEnvironmentId();
@@ -222,20 +223,21 @@ export function useMarkPlanUnread() {
 }
 
 /**
- * Stop the reply streaming in a plan. The partial lands as a commit marked
- * interrupted, arriving on the same subscription as everything else.
+ * Stop one reply streaming in a plan — replies on other branches keep going.
+ * The partial lands as a commit marked interrupted, arriving on the same
+ * subscription as everything else.
  */
 export function useStopPlanningTurn() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.stopPlanningTurn);
-  return useCallback((planId: PlanId) => run({ planId }), [run]);
+  return useCallback((planId: PlanId, turnId: PlanTurnId) => run({ planId, turnId }), [run]);
 }
 
-/** Answer the structured question a plan is waiting on, keyed by question id. */
+/** Answer the structured question one turn is waiting on, keyed by question id. */
 export function useAnswerPlanningQuestion() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.answerPlanningQuestion);
   return useCallback(
-    (planId: PlanId, answers: Readonly<Record<string, unknown>>) =>
-      run({ planId, answers: answers as Record<string, unknown> }),
+    (planId: PlanId, turnId: PlanTurnId, answers: Readonly<Record<string, unknown>>) =>
+      run({ planId, turnId, answers: answers as Record<string, unknown> }),
     [run],
   );
 }

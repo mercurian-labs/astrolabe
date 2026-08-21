@@ -1992,7 +1992,7 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:01:30.000Z"),
       });
 
-      yield* registry.close(created.plan.planId);
+      yield* registry.close(created.plan.planId, PlanTurnId.make("turn-1"));
       const landed = yield* store.appendMessage({
         lastUsed: null,
         planId: created.plan.planId,
@@ -2000,6 +2000,84 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       assert.strictEqual(landed.authorKind, "human");
+    }),
+  );
+
+  it.effect("a write on another branch lands while a turn streams elsewhere", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
+      const created = yield* seedPlan("2026-08-03T00:00:00.000Z");
+      const root = created.timeline[0]!;
+      const branchA = yield* store.appendMessage({
+        lastUsed: null,
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch A",
+        createdAt: at("2026-08-03T00:01:00.000Z"),
+      });
+
+      // The turn claims branch A's chain, revision included.
+      yield* registry.open({
+        flavor: "reply",
+        planId: created.plan.planId,
+        turnId: PlanTurnId.make("turn-a"),
+        threadId: ThreadId.make("thread-a"),
+        parentCommitId: branchA.commitId,
+        tipCommitId: branchA.commitId,
+      });
+      const midTurnRevision = yield* store.saveAssistantPlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: branchA.commitId,
+        text: "# Mid-turn",
+        createdAt: at("2026-08-03T00:01:30.000Z"),
+      });
+      yield* registry.advanceTip(
+        created.plan.planId,
+        PlanTurnId.make("turn-a"),
+        midTurnRevision.commitId,
+      );
+
+      // On the claimed chain: refused, opening parent and grown tip alike.
+      for (const claimed of [branchA.commitId, midTurnRevision.commitId]) {
+        const refused = yield* Effect.flip(
+          store.appendMessage({
+            lastUsed: null,
+            planId: created.plan.planId,
+            parentCommitId: claimed,
+            text: "Onto the streaming chain",
+            createdAt: at("2026-08-03T00:02:00.000Z"),
+          }),
+        );
+        assert.strictEqual(refused._tag, "PlanTurnActiveError");
+      }
+
+      // Another branch from the shared root: lands mid-turn — a message, a
+      // plan revision, and a spec revision alike.
+      const branchB = yield* store.appendMessage({
+        lastUsed: null,
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch B, while A streams",
+        createdAt: at("2026-08-03T00:03:00.000Z"),
+      });
+      assert.deepStrictEqual([...branchB.parents], [root.commitId]);
+      const revisionB = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: branchB.commitId,
+        text: "# Branch B plan",
+        createdAt: at("2026-08-03T00:04:00.000Z"),
+      });
+      yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: revisionB.commitId,
+        expectedSpecRevisionCommitId: null,
+        document: {
+          goal: "Branch B goal",
+          acceptanceCriteria: "Lands while A streams.",
+        },
+        createdAt: at("2026-08-03T00:05:00.000Z"),
+      });
     }),
   );
 
@@ -2713,7 +2791,7 @@ layer("PlanningStore", (it) => {
       });
       const refused = yield* append("thread-three", "06").pipe(Effect.flip);
       assert.strictEqual(refused._tag, "PlanTurnActiveError");
-      yield* registry.close(created.plan.planId);
+      yield* registry.close(created.plan.planId, PlanTurnId.make("active-session-refusal"));
 
       yield* store.deletePlan({ planId: created.plan.planId });
       assert.deepStrictEqual(yield* sessions.listForPlan(created.plan.planId), []);

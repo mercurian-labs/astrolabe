@@ -221,19 +221,17 @@ export function planNodeIdForCommit(
   return commitId === null ? null : (nodeIdByCommit.get(commitId) ?? commitId);
 }
 
-/** A query on the active turn's descendant chain is streaming, not unanswered. */
+/** A query on an active turn's descendant chain is streaming, not unanswered. */
 export function isUnansweredCheckpointInFlight(
   node: PlanGraphNode,
   commitGraph: PlanGraph,
-  inFlightAnchorCommitId: MercurianCommitId | undefined,
+  inFlightAnchorCommitIds: ReadonlyArray<MercurianCommitId>,
 ): boolean {
   const checkpoint = node.checkpoint;
-  return (
-    checkpoint !== undefined &&
-    checkpoint.response === undefined &&
-    inFlightAnchorCommitId !== undefined &&
-    descendantClosure(commitGraph, checkpoint.query.commitId).has(inFlightAnchorCommitId)
-  );
+  if (checkpoint === undefined || checkpoint.response !== undefined) return false;
+  if (inFlightAnchorCommitIds.length === 0) return false;
+  const descendants = descendantClosure(commitGraph, checkpoint.query.commitId);
+  return inFlightAnchorCommitIds.some((anchor) => descendants.has(anchor));
 }
 
 export function planCheckpointEffectLabel(effect: PlanCheckpointEffect): string {

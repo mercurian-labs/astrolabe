@@ -305,7 +305,7 @@ describe("DagExplorer", () => {
             createdAt: "2026-08-14T00:01:00.000Z",
           }),
         ])}
-        inFlightAnchorCommitId={anchor}
+        inFlightAnchorCommitIds={[anchor]}
         readyCommits={new Map()}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
@@ -450,7 +450,7 @@ describe("DagExplorer", () => {
               createdAt: "2026-08-14T00:02:00.000Z",
             }),
           ])}
-          inFlightAnchorCommitId={anchor}
+          inFlightAnchorCommitIds={[anchor]}
           readyCommits={new Map()}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}

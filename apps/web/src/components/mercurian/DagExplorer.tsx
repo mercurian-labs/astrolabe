@@ -160,7 +160,7 @@ type DisplaySettingsUpdater = (
 export function DagExplorer({
   graph,
   anchoredCommitId,
-  inFlightAnchorCommitId,
+  inFlightAnchorCommitIds,
   providers,
   codingSessions,
   readyCommits,
@@ -176,7 +176,7 @@ export function DagExplorer({
   /** Where the surface is looking, or `null` when it is looking at now. */
   readonly anchoredCommitId: MercurianCommitId | null;
   /** The commit an assistant response currently streaming will continue from. */
-  readonly inFlightAnchorCommitId?: MercurianCommitId;
+  readonly inFlightAnchorCommitIds?: ReadonlyArray<MercurianCommitId>;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
@@ -227,10 +227,12 @@ export function DagExplorer({
     () =>
       new Set(
         checkpointGraph.nodes
-          .filter((node) => isUnansweredCheckpointInFlight(node, graph, inFlightAnchorCommitId))
+          .filter((node) =>
+            isUnansweredCheckpointInFlight(node, graph, inFlightAnchorCommitIds ?? []),
+          )
           .map((node) => node.commitId),
       ),
-    [checkpointGraph.nodes, graph, inFlightAnchorCommitId],
+    [checkpointGraph.nodes, graph, inFlightAnchorCommitIds],
   );
 
   return (

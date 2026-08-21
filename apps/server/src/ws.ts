@@ -2124,14 +2124,20 @@ const makeWsRpcLayer = (
             // Idempotent by design: stopping a plan with nothing streaming is
             // not an error a person caused. The interrupted settle arrives on
             // the plan's own stream, not in this answer.
-            planningAssistant.stopTurn({ planId: input.planId }).pipe(Effect.as({})),
+            planningAssistant
+              .stopTurn({ planId: input.planId, turnId: input.turnId })
+              .pipe(Effect.as({})),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.answerPlanningQuestion]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.answerPlanningQuestion,
             planningAssistant
-              .answerQuestion({ planId: input.planId, answers: input.answers })
+              .answerQuestion({
+                planId: input.planId,
+                turnId: input.turnId,
+                answers: input.answers,
+              })
               .pipe(Effect.as({})),
             { "rpc.aggregate": "mercurian" },
           ),
@@ -2294,18 +2300,18 @@ const makeWsRpcLayer = (
                         // opened — or reconnected — mid-turn joins coherently
                         // with no frame replay (ADR 002 §3).
                         Effect.all({
-                          inFlightTurn: planningAssistant.inFlight(input.planId),
+                          inFlightTurns: planningAssistant.inFlightTurns(input.planId),
                           inFlightImplement: planningAssistant.inFlightImplement(input.planId),
                           implementProposal: planningAssistant.implementProposal(input.planId),
                         }).pipe(
-                          Effect.map(({ inFlightTurn, inFlightImplement, implementProposal }) => ({
+                          Effect.map(({ inFlightTurns, inFlightImplement, implementProposal }) => ({
                             cursor: detail.snapshotSequence,
                             items: [
                               {
                                 kind: "snapshot" as const,
                                 snapshot: {
                                   ...toWirePlanDetail(detail),
-                                  ...(inFlightTurn === undefined ? {} : { inFlightTurn }),
+                                  inFlightTurns,
                                   ...(inFlightImplement === undefined ? {} : { inFlightImplement }),
                                   ...(implementProposal === undefined ? {} : { implementProposal }),
                                 },

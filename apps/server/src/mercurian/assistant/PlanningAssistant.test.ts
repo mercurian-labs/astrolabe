@@ -5,6 +5,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
@@ -388,7 +389,8 @@ describe("PlanningAssistant", () => {
       });
       const session = yield* Queue.take(harness.startSessions);
       yield* Queue.take(harness.sendTurns);
-      yield* Queue.take(frames); // turn-started
+      const startedForStop = yield* Queue.take(frames);
+      assert.ok(startedForStop.kind === "turn-started");
 
       yield* harness.emit(
         runtimeEvent(session.threadId, {
@@ -398,7 +400,7 @@ describe("PlanningAssistant", () => {
       );
       yield* Queue.take(frames);
 
-      yield* assistant.stopTurn({ planId: created.plan.planId });
+      yield* assistant.stopTurn({ planId: created.plan.planId, turnId: startedForStop.turnId });
       const interrupted = yield* Queue.take(harness.interrupts);
       assert.strictEqual(interrupted, session.threadId);
 
@@ -416,7 +418,7 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(reply.interrupted, true);
 
       // Stopping again is a no-op, not an error.
-      yield* assistant.stopTurn({ planId: created.plan.planId });
+      yield* assistant.stopTurn({ planId: created.plan.planId, turnId: startedForStop.turnId });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
@@ -434,7 +436,8 @@ describe("PlanningAssistant", () => {
         text: "Reshape the sidebar",
       });
       const session = yield* Queue.take(harness.startSessions);
-      yield* Queue.take(frames); // turn-started
+      const startedStuck = yield* Queue.take(frames);
+      assert.ok(startedStuck.kind === "turn-started");
       yield* harness.emit(
         runtimeEvent(session.threadId, {
           type: "content.delta",
@@ -444,7 +447,7 @@ describe("PlanningAssistant", () => {
       yield* Queue.take(frames);
 
       // The interrupt is delivered — and the wedged provider never answers.
-      yield* assistant.stopTurn({ planId: created.plan.planId });
+      yield* assistant.stopTurn({ planId: created.plan.planId, turnId: startedStuck.turnId });
       yield* Queue.take(harness.interrupts);
 
       yield* Effect.yieldNow;
@@ -480,7 +483,8 @@ describe("PlanningAssistant", () => {
       });
       const session = yield* Queue.take(harness.startSessions);
       yield* Queue.take(harness.sendTurns);
-      yield* Queue.take(frames); // turn-started
+      const startedQuestionTurn = yield* Queue.take(frames);
+      assert.ok(startedQuestionTurn.kind === "turn-started");
 
       yield* harness.emit({
         ...runtimeEvent(session.threadId, {
@@ -507,11 +511,12 @@ describe("PlanningAssistant", () => {
         isWorking: false,
         hasPendingInput: true,
       });
-      const inFlight = yield* assistant.inFlight(created.plan.planId);
-      assert.strictEqual(inFlight?.questions?.[0]?.question, "Web first?");
+      const inFlight = yield* assistant.inFlightTurns(created.plan.planId);
+      assert.strictEqual(inFlight[0]?.questions?.[0]?.question, "Web first?");
 
       yield* assistant.answerQuestion({
         planId: created.plan.planId,
+        turnId: startedQuestionTurn.turnId,
         answers: { q1: "Yes" },
       });
       const delivered = yield* Queue.take(harness.userInputs);
@@ -521,7 +526,11 @@ describe("PlanningAssistant", () => {
 
       // A second answer has nothing to answer.
       const refused = yield* Effect.flip(
-        assistant.answerQuestion({ planId: created.plan.planId, answers: {} }),
+        assistant.answerQuestion({
+          planId: created.plan.planId,
+          turnId: startedQuestionTurn.turnId,
+          answers: {},
+        }),
       );
       assert.strictEqual(refused._tag, "NoPendingQuestionError");
 
@@ -876,11 +885,11 @@ describe("PlanningAssistant", () => {
         text: "Try another direction",
       });
 
-      // The old session stops; a fresh one opens whose first turn resumes
-      // the conversation this branch actually has.
-      const stopped = yield* Queue.take(harness.stops);
-      assert.strictEqual(stopped, firstSession.threadId);
+      // A fresh session opens whose first turn resumes the conversation this
+      // branch actually has — and the first branch's session survives the
+      // fork: its branch may keep planning concurrently.
       const rebuilt = yield* Queue.take(harness.startSessions);
+      assert.ok(Option.isNone(yield* Queue.poll(harness.stops)));
       assert.notStrictEqual(rebuilt.threadId, firstSession.threadId);
       const resumeTurn = yield* Queue.take(harness.sendTurns);
       const resumeInput = resumeTurn.input ?? "";
@@ -1185,8 +1194,9 @@ describe("PlanningAssistant", () => {
         text: right.text,
         ranUnder: right.ranUnder!,
       });
-      assert.strictEqual(yield* Queue.take(harness.stops), leftSession.threadId);
+      // The Claude branch's session survives: branches plan concurrently now.
       const rightSession = yield* Queue.take(harness.startSessions);
+      assert.ok(Option.isNone(yield* Queue.poll(harness.stops)));
       assert.strictEqual(rightSession.providerInstanceId, codexInstance);
       yield* Queue.take(harness.sendTurns);
       yield* Queue.take(frames);
@@ -1222,6 +1232,303 @@ describe("PlanningAssistant", () => {
         ],
       );
     }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot, codexSnapshot]))),
+  );
+
+  it.effect("streams two branches' replies at once, each settling on its own branch", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch A question",
+        lastUsed: null,
+        createdAt: at("2026-08-08T05:00:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch B question",
+        lastUsed: null,
+        createdAt: at("2026-08-08T05:01:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      // Both turns open before either settles: disjoint chains, both claims stand.
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: left.commitId,
+        text: left.text,
+      });
+      const leftSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const leftStarted = yield* Queue.take(frames);
+      assert.ok(leftStarted.kind === "turn-started");
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: right.commitId,
+        text: right.text,
+      });
+      const rightSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const rightStarted = yield* Queue.take(frames);
+      assert.ok(rightStarted.kind === "turn-started");
+      assert.notStrictEqual(rightSession.threadId, leftSession.threadId);
+
+      // A joining window is coherent for both streams at once.
+      const partials = yield* assistant.inFlightTurns(created.plan.planId);
+      assert.deepStrictEqual(
+        partials.map((turn) => String(turn.parentCommitId)).sort(),
+        [String(left.commitId), String(right.commitId)].sort(),
+      );
+      assert.deepStrictEqual((yield* assistant.status).get(created.plan.planId), {
+        isWorking: true,
+        hasPendingInput: false,
+      });
+
+      // Interleaved deltas ride their own turns.
+      yield* harness.emit(
+        runtimeEvent(leftSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Left answer" },
+        }),
+      );
+      const leftDelta = yield* Queue.take(frames);
+      assert.ok(leftDelta.kind === "turn-delta" && leftDelta.turnId === leftStarted.turnId);
+      yield* harness.emit(
+        runtimeEvent(rightSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Right answer" },
+        }),
+      );
+      const rightDelta = yield* Queue.take(frames);
+      assert.ok(rightDelta.kind === "turn-delta" && rightDelta.turnId === rightStarted.turnId);
+
+      // The right turn settles; the left keeps streaming untouched.
+      yield* harness.emit(
+        runtimeEvent(rightSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      const rightSettled = yield* Queue.take(frames);
+      assert.ok(
+        rightSettled.kind === "turn-settled" && rightSettled.turnId === rightStarted.turnId,
+      );
+      const stillStreaming = yield* assistant.inFlightTurns(created.plan.planId);
+      assert.deepStrictEqual(
+        stillStreaming.map((turn) => String(turn.parentCommitId)),
+        [String(left.commitId)],
+      );
+
+      yield* harness.emit(
+        runtimeEvent(leftSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      const leftSettled = yield* Queue.take(frames);
+      assert.ok(leftSettled.kind === "turn-settled" && leftSettled.turnId === leftStarted.turnId);
+
+      // Each reply is a commit on its own branch, and nothing crossed.
+      const replies = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline
+        .filter((item) => item._tag === "message")
+        .filter((item) => item.authorKind === "assistant");
+      assert.deepStrictEqual(
+        replies
+          .map((reply) => ({ parents: [...reply.parents], text: reply.text }))
+          .sort((a, b) => a.text.localeCompare(b.text)),
+        [
+          { parents: [left.commitId], text: "Left answer" },
+          { parents: [right.commitId], text: "Right answer" },
+        ],
+      );
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("a question pauses only its own turn while the other streams on", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch A question",
+        lastUsed: null,
+        createdAt: at("2026-08-08T05:10:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch B question",
+        lastUsed: null,
+        createdAt: at("2026-08-08T05:11:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: left.commitId,
+        text: left.text,
+      });
+      const leftSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const leftStarted = yield* Queue.take(frames);
+      assert.ok(leftStarted.kind === "turn-started");
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: right.commitId,
+        text: right.text,
+      });
+      const rightSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const rightStarted = yield* Queue.take(frames);
+      assert.ok(rightStarted.kind === "turn-started");
+
+      yield* harness.emit({
+        ...runtimeEvent(leftSession.threadId, {
+          type: "user-input.requested",
+          payload: {
+            questions: [
+              {
+                id: "q1",
+                header: "Scope",
+                question: "Web first?",
+                options: [{ label: "Yes", description: "Start narrow" }],
+                multiSelect: false,
+              },
+            ],
+          },
+        }),
+        requestId: "input-left" as never,
+      });
+      const questionFrame = yield* Queue.take(frames);
+      assert.ok(
+        questionFrame.kind === "turn-question" && questionFrame.turnId === leftStarted.turnId,
+      );
+
+      // The plan both works and waits: the right turn streams while the left
+      // waits on the person.
+      assert.deepStrictEqual((yield* assistant.status).get(created.plan.planId), {
+        isWorking: true,
+        hasPendingInput: true,
+      });
+      yield* harness.emit(
+        runtimeEvent(rightSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Still streaming" },
+        }),
+      );
+      const rightDelta = yield* Queue.take(frames);
+      assert.ok(rightDelta.kind === "turn-delta" && rightDelta.turnId === rightStarted.turnId);
+
+      // Answering resumes only the asking turn.
+      yield* assistant.answerQuestion({
+        planId: created.plan.planId,
+        turnId: leftStarted.turnId,
+        answers: { q1: "Yes" },
+      });
+      const delivered = yield* Queue.take(harness.userInputs);
+      assert.strictEqual(delivered.requestId, "input-left");
+      const answeredFrame = yield* Queue.take(frames);
+      assert.ok(
+        answeredFrame.kind === "turn-question-answered" &&
+          answeredFrame.turnId === leftStarted.turnId,
+      );
+
+      // Answering the turn that asked nothing has nothing to answer.
+      const refused = yield* Effect.flip(
+        assistant.answerQuestion({
+          planId: created.plan.planId,
+          turnId: rightStarted.turnId,
+          answers: {},
+        }),
+      );
+      assert.strictEqual(refused._tag, "NoPendingQuestionError");
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("stopping one branch's reply leaves the other streaming", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch A question",
+        lastUsed: null,
+        createdAt: at("2026-08-08T05:20:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Branch B question",
+        lastUsed: null,
+        createdAt: at("2026-08-08T05:21:00.000Z"),
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: left.commitId,
+        text: left.text,
+      });
+      const leftSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const leftStarted = yield* Queue.take(frames);
+      assert.ok(leftStarted.kind === "turn-started");
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: right.commitId,
+        text: right.text,
+      });
+      const rightSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      const rightStarted = yield* Queue.take(frames);
+      assert.ok(rightStarted.kind === "turn-started");
+
+      yield* harness.emit(
+        runtimeEvent(leftSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Cut short" },
+        }),
+      );
+      yield* Queue.take(frames);
+
+      yield* assistant.stopTurn({ planId: created.plan.planId, turnId: leftStarted.turnId });
+      const interrupted = yield* Queue.take(harness.interrupts);
+      assert.strictEqual(interrupted, leftSession.threadId);
+      yield* harness.emit(
+        runtimeEvent(leftSession.threadId, {
+          type: "turn.aborted",
+          payload: { reason: "interrupt" },
+        }),
+      );
+      const settled = yield* Queue.take(frames);
+      assert.ok(settled.kind === "turn-settled" && settled.turnId === leftStarted.turnId);
+
+      // The right turn never noticed.
+      const remaining = yield* assistant.inFlightTurns(created.plan.planId);
+      assert.deepStrictEqual(
+        remaining.map((turn) => String(turn.parentCommitId)),
+        [String(right.commitId)],
+      );
+      yield* harness.emit(
+        runtimeEvent(rightSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Unbothered" },
+        }),
+      );
+      const rightDelta = yield* Queue.take(frames);
+      assert.ok(rightDelta.kind === "turn-delta" && rightDelta.turnId === rightStarted.turnId);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
   for (const [label, ranUnder, providers, expected] of [
@@ -1860,8 +2167,12 @@ describe("PlanningAssistant", () => {
       yield* assistant.tryImplement({ planId: created.plan.planId });
       const session = yield* Queue.take(harness.startSessions);
       yield* Queue.take(harness.sendTurns);
-      yield* Queue.take(frames);
-      yield* assistant.stopTurn({ planId: created.plan.planId });
+      const implementStarted = yield* Queue.take(frames);
+      assert.ok(implementStarted.kind === "implement-started");
+      yield* assistant.stopTurn({
+        planId: created.plan.planId,
+        turnId: implementStarted.implement.turnId,
+      });
       yield* Queue.take(harness.interrupts);
       yield* harness.emit(
         runtimeEvent(session.threadId, { type: "turn.aborted", payload: { reason: "interrupt" } }),
@@ -1914,7 +2225,7 @@ describe("PlanningAssistant", () => {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const store = yield* PlanningStore.PlanningStore;
       const harness = yield* ProviderHarness;
-      const { created, root } = yield* seedPlan();
+      const { created } = yield* seedPlan();
       const empty = yield* Effect.flip(assistant.tryImplement({ planId: created.plan.planId }));
       assert.ok(empty._tag === "ImplementBlockedError" && empty.reason === "plan-empty");
       const revision = yield* store.savePlanRevision({
@@ -1937,9 +2248,11 @@ describe("PlanningAssistant", () => {
       yield* assistant.tryImplement({ planId: created.plan.planId });
       yield* Queue.take(harness.startSessions);
       yield* Queue.take(frames);
+      // A reply from the very commit the analysis claims refuses; the claim
+      // is the chain, so a reply on another branch would have started fine.
       yield* assistant.startTurn({
         planId: created.plan.planId,
-        parentCommitId: root.commitId,
+        parentCommitId: revision.commitId,
         text: "Reply while analyzing",
       });
       const refused = yield* Queue.take(frames);

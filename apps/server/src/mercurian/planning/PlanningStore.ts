@@ -1837,6 +1837,18 @@ export const make = Effect.gen(function* () {
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         const parent = yield* resolveParent(input.plan, input.parentCommitId);
+        // The one-turn-per-branch rule at the store boundary. While the
+        // assistant is replying, a human commit onto that turn's own chain
+        // would turn its next commit into an illegal assistant fork — so the
+        // write refuses here, from every window at once, and stopping the
+        // reply is the way to act on that branch now. Writes parenting
+        // elsewhere in the plan land normally while the reply streams.
+        if (
+          parent !== undefined &&
+          (yield* turnRegistry.activeChainMember(input.plan.planId, parent.commitId))
+        ) {
+          return yield* new PlanTurnActiveError({ planId: input.plan.planId });
+        }
         const payload =
           input.resolvePayload === undefined ? input.payload : yield* input.resolvePayload(parent);
         const commit = yield* commits.append({
@@ -1856,25 +1868,9 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  /**
-   * The one-turn-at-a-time rule at the store boundary. While the assistant is
-   * replying, a human commit onto the same history would turn the turn's next
-   * commit into an illegal assistant fork — so the write refuses here, from
-   * every window at once, and stopping the reply is the way to act now.
-   */
-  const requireNoActiveTurn = Effect.fn("PlanningStore.requireNoActiveTurn")(function* (
-    planId: PlanId,
-  ) {
-    const active = yield* turnRegistry.get(planId);
-    if (Option.isSome(active)) {
-      return yield* new PlanTurnActiveError({ planId });
-    }
-  });
-
   const appendMessage: PlanningStore["Service"]["appendMessage"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const appended = yield* appendAt({
         plan,
@@ -1917,7 +1913,6 @@ export const make = Effect.gen(function* () {
   const savePlanRevision: PlanningStore["Service"]["savePlanRevision"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const appended = yield* appendAt({
         plan,
@@ -1943,7 +1938,6 @@ export const make = Effect.gen(function* () {
   const saveSpecRevision: PlanningStore["Service"]["saveSpecRevision"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const appended = yield* sql.withTransaction(
         Effect.gen(function* () {
@@ -1992,7 +1986,6 @@ export const make = Effect.gen(function* () {
   const saveTrackerSpecRevision: PlanningStore["Service"]["saveTrackerSpecRevision"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const source: SpecRevisionSource =
         input.sourceKind === "tracker-refresh"
@@ -2042,7 +2035,12 @@ export const make = Effect.gen(function* () {
   const saveSplits: PlanningStore["Service"]["saveSplits"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      yield* requireNoActiveTurn(input.planId);
+      // The branch's turn owns the chain before the payload is judged: while
+      // an analysis or reply streams from this commit, "the turn is active"
+      // is the truer refusal than any verdict on the splits themselves.
+      if (yield* turnRegistry.activeChainMember(input.planId, input.parentCommitId)) {
+        return yield* new PlanTurnActiveError({ planId: input.planId });
+      }
       if (input.splits.length === 0) {
         return yield* new ConfirmSplitsBlockedError({ reason: "no-splits" });
       }
@@ -2116,7 +2114,6 @@ export const make = Effect.gen(function* () {
   const appendCodingSession: PlanningStore["Service"]["appendCodingSession"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      yield* requireNoActiveTurn(input.planId);
       const commitId = yield* mintId(CommitId);
       const appended = yield* sql.withTransaction(
         Effect.gen(function* () {
@@ -2133,6 +2130,12 @@ export const make = Effect.gen(function* () {
           const parent = yield* resolveParent(plan, input.parentCommitId);
           if (parent === undefined) {
             return yield* new CommitStore.CommitNotFoundError({ commitId: input.parentCommitId });
+          }
+          // Same one-turn-per-branch guard as appendAt: a session leaf on a
+          // streaming turn's own chain would fork the reply; other branches
+          // stay open.
+          if (yield* turnRegistry.activeChainMember(input.planId, parent.commitId)) {
+            return yield* new PlanTurnActiveError({ planId: input.planId });
           }
           const ancestry = yield* commits.ancestors({
             commitId: parent.commitId,
