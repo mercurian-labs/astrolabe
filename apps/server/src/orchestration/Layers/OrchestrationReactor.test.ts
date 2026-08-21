@@ -66,6 +66,7 @@ describe("OrchestrationReactor", () => {
         ),
         Layer.provideMerge(
           Layer.succeed(AgentAwarenessRelay.AgentAwarenessRelay, {
+            publishState: () => Effect.void,
             publishThread: () => Effect.void,
             start: () => {
               started.push("agent-awareness-relay");

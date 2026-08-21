@@ -110,6 +110,7 @@ import * as Schema from "effect/Schema";
 export interface PlanTurnStatus {
   readonly isWorking: boolean;
   readonly hasPendingInput: boolean;
+  readonly modelTitle: string;
 }
 
 export interface StartTurnInput {
@@ -1560,10 +1561,14 @@ export const make = Effect.gen(function* () {
     for (const turn of turns.values()) {
       if (turn.settling) continue;
       const waiting = turn.flavor === "reply" && turn.pendingQuestions !== undefined;
-      const existing = result.get(turn.planId) ?? { isWorking: false, hasPendingInput: false };
+      // Concurrent turns share a plan row (M-158): the row is working if any
+      // branch's reply streams, and waiting if any branch has a question up.
+      // The model title names the first live turn — the row carries one.
+      const existing = result.get(turn.planId);
       result.set(turn.planId, {
-        isWorking: existing.isWorking || !waiting,
-        hasPendingInput: existing.hasPendingInput || waiting,
+        isWorking: (existing?.isWorking ?? false) || !waiting,
+        hasPendingInput: (existing?.hasPendingInput ?? false) || waiting,
+        modelTitle: existing?.modelTitle ?? turn.modelSelection.model,
       });
     }
     return result;

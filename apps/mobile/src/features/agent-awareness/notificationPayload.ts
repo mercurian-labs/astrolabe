@@ -34,17 +34,29 @@ function identifierFromNotificationResponse(response: unknown): string | null {
   return typeof identifier === "string" ? identifier : null;
 }
 
+function encodeAgentDeepLink(input: {
+  readonly route: "threads" | "plans" | "sessions";
+  readonly environmentId: string;
+  readonly resourceId: string;
+}): string | null {
+  if (input.environmentId.length === 0 || input.resourceId.length === 0) {
+    return null;
+  }
+  return `/${input.route}/${encodeURIComponent(input.environmentId)}/${encodeURIComponent(input.resourceId)}`;
+}
+
 function encodeThreadDeepLink(input: {
   readonly environmentId: string;
   readonly threadId: string;
 }): string | null {
-  if (input.environmentId.length === 0 || input.threadId.length === 0) {
-    return null;
-  }
-  return `/threads/${encodeURIComponent(input.environmentId)}/${encodeURIComponent(input.threadId)}`;
+  return encodeAgentDeepLink({
+    route: "threads",
+    environmentId: input.environmentId,
+    resourceId: input.threadId,
+  });
 }
 
-function normalizeThreadDeepLink(value: string): string | null {
+function normalizeAgentDeepLink(value: string): string | null {
   if (
     value.trim() !== value ||
     value.startsWith("//") ||
@@ -55,14 +67,20 @@ function normalizeThreadDeepLink(value: string): string | null {
   }
 
   const parts = value.split("/");
-  if (parts.length !== 4 || parts[0] !== "" || parts[1] !== "threads") {
+  const route = parts[1];
+  if (
+    parts.length !== 4 ||
+    parts[0] !== "" ||
+    (route !== "threads" && route !== "plans" && route !== "sessions")
+  ) {
     return null;
   }
 
   try {
-    return encodeThreadDeepLink({
+    return encodeAgentDeepLink({
+      route,
       environmentId: decodeURIComponent(parts[2] ?? ""),
-      threadId: decodeURIComponent(parts[3] ?? ""),
+      resourceId: decodeURIComponent(parts[3] ?? ""),
     });
   } catch {
     return null;
@@ -73,7 +91,7 @@ export function extractAgentNotificationDeepLink(response: unknown): string | nu
   const data = dataFromNotificationResponse(response);
   const deepLink = data?.deepLink;
   if (typeof deepLink === "string") {
-    const normalizedDeepLink = normalizeThreadDeepLink(deepLink);
+    const normalizedDeepLink = normalizeAgentDeepLink(deepLink);
     if (normalizedDeepLink) {
       return normalizedDeepLink;
     }

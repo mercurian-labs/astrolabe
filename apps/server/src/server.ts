@@ -29,6 +29,7 @@ import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/CodingSessionRecordReactor.ts";
+import { PlanAwarenessReactorLive } from "./mercurian/awareness/PlanAwarenessReactor.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
@@ -465,6 +466,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
 const RuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(CodingSessionService.layer),
   Layer.provideMerge(CodingSessionRecordReactorLive),
+  Layer.provideMerge(PlanAwarenessReactorLive),
   Layer.provideMerge(RuntimeCoreDependenciesLive),
   Layer.provideMerge(MercurianPersistenceLayerLive),
   // Misc.

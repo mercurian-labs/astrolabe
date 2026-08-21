@@ -377,6 +377,7 @@ export const makeOrchestrationIntegrationHarness = (
       ),
       Layer.provideMerge(
         Layer.succeed(AgentAwarenessRelay.AgentAwarenessRelay, {
+          publishState: () => Effect.void,
           publishThread: () => Effect.void,
           start: () => Effect.void,
         }),

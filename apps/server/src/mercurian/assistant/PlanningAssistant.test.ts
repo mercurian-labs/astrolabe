@@ -510,6 +510,7 @@ describe("PlanningAssistant", () => {
       assert.deepStrictEqual(status.get(created.plan.planId), {
         isWorking: false,
         hasPendingInput: true,
+        modelTitle: "opus",
       });
       const inFlight = yield* assistant.inFlightTurns(created.plan.planId);
       assert.strictEqual(inFlight[0]?.questions?.[0]?.question, "Web first?");
@@ -1638,7 +1639,9 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(started.kind, "implement-started");
       assert.deepStrictEqual(
         yield* assistant.status,
-        new Map([[created.plan.planId, { isWorking: true, hasPendingInput: false }]]),
+        new Map([
+          [created.plan.planId, { isWorking: true, hasPendingInput: false, modelTitle: "opus" }],
+        ]),
       );
 
       yield* harness.emit({
