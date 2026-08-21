@@ -655,6 +655,7 @@ const buildAppUnderTest = (options?: {
           listForPlan: () => Effect.succeed([]),
           listAll: Effect.succeed([]),
           getByThreadId: () => Effect.succeed(Option.none()),
+          getByWorktreePath: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
@@ -6326,6 +6327,121 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(invalidationCalls, 0);
       assert.equal(statusCalls, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "records a created PR on the matching coding session and ignores non-session worktrees",
+    () =>
+      Effect.gen(function* () {
+        const sessionCwd = "/tmp/session-pr";
+        const sessionThreadId = ThreadId.make("thread-session-pr");
+        const sessionRecord = {
+          commitId: MercurianCommitId.make("session-pr-commit"),
+          planId: PlanId.make("session-pr-plan"),
+          repositoryId: MercurianRepositoryId.make("session-pr-repository"),
+          threadId: sessionThreadId,
+          branch: "feature/session-pr",
+          worktreePath: sessionCwd,
+          baseRef: "main",
+          startedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+          endedAt: null,
+          outcome: null,
+          prUrl: null,
+        } as const;
+        const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
+        const announcedPlans: PlanId[] = [];
+        const result = {
+          action: "create_pr" as const,
+          branch: { status: "skipped_not_requested" as const },
+          commit: { status: "skipped_not_requested" as const },
+          push: { status: "pushed" as const, branch: "feature/session-pr" },
+          pr: {
+            status: "created" as const,
+            url: "https://example.com/pr/119",
+            number: 119,
+            baseBranch: "main",
+            headBranch: "feature/session-pr",
+            title: "Session header actions",
+          },
+          toast: {
+            title: "Created PR #119",
+            cta: {
+              kind: "open_pr" as const,
+              label: "View PR",
+              url: "https://example.com/pr/119",
+            },
+          },
+        };
+
+        yield* buildAppUnderTest({
+          layers: {
+            vcsDriver: { isInsideWorkTree: () => Effect.succeed(true) },
+            codingSessionStore: {
+              getByWorktreePath: (worktreePath) =>
+                Effect.succeed(
+                  worktreePath === sessionCwd ? Option.some(sessionRecord) : Option.none(),
+                ),
+              attachPullRequest: (input) =>
+                Effect.sync(() => {
+                  attached.push(input);
+                  announcedPlans.push(sessionRecord.planId);
+                }),
+            },
+            gitManager: {
+              invalidateLocalStatus: () => Effect.void,
+              invalidateRemoteStatus: () => Effect.void,
+              invalidateStatus: () => Effect.void,
+              localStatus: () =>
+                Effect.succeed({
+                  isRepo: true,
+                  hasPrimaryRemote: true,
+                  isDefaultRef: false,
+                  refName: "feature/session-pr",
+                  hasWorkingTreeChanges: false,
+                  workingTree: { files: [], insertions: 0, deletions: 0 },
+                }),
+              remoteStatus: () =>
+                Effect.succeed({
+                  hasUpstream: true,
+                  aheadCount: 0,
+                  behindCount: 0,
+                  pr: null,
+                }),
+              runStackedAction: (input, options) =>
+                Effect.gen(function* () {
+                  yield* (
+                    options?.progressReporter?.publish({
+                      actionId: options.actionId ?? input.actionId,
+                      cwd: input.cwd,
+                      action: input.action,
+                      kind: "action_finished",
+                      result,
+                    }) ?? Effect.void
+                  );
+                  return result;
+                }),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            Effect.forEach([sessionCwd, "/tmp/upstream-thread"], (cwd) =>
+              client[WS_METHODS.gitRunStackedAction]({
+                actionId: `action-${cwd}`,
+                cwd,
+                action: "create_pr",
+              }).pipe(Stream.runCollect),
+            ),
+          ),
+        );
+
+        assert.deepStrictEqual(attached, [
+          { threadId: sessionThreadId, prUrl: "https://example.com/pr/119" },
+        ]);
+        assert.deepStrictEqual(announcedPlans, [sessionRecord.planId]);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc git.runStackedAction errors after refreshing git status", () =>

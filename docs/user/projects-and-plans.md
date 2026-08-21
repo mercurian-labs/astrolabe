@@ -357,6 +357,19 @@ conversation: send one turn at a time, stop a running turn from the same control
 **Supervised**, **Auto-accept edits**, and **Full access** from the composer. See
 [Permission modes](permission-modes.md).
 
+The session header acts on this session's worktree. Use its git control to commit selected files,
+commit on a new branch, push, pull, or open a pull request; generated commit messages and pull
+request text are suggestions you review, and nothing runs until you choose an action. Creating a
+pull request appears only when the repository's hosting provider is installed and authenticated.
+After Astrolabe creates one, its link is recorded on the session leaf in the plan. **Open in** hands
+the same worktree to an available editor.
+
+Repository scripts also run from the session header, with their output opened in a Terminal tab.
+Scripts are declared and edited on the Repositories page rather than in a session. On desktop, a
+script with a preview address also opens that address in Browser; the web client still runs the
+script without opening a preview. Scripts marked as setup run in the fresh worktree when the
+session starts, before its first turn.
+
 The session timeline reads turn by turn. Work-log detail stays folded to a quiet line until you
 expand it, and completed turns fold to a **Worked for …** summary so long sessions remain
 scannable. The timeline follows new work while you are at the bottom; if you scroll away, use the

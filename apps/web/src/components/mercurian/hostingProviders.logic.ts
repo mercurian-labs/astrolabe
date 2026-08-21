@@ -208,3 +208,21 @@ export function repositoryHostingStanding(
     account: standing.account,
   };
 }
+
+/**
+ * Change requests exist only when the provider actually serving the working
+ * tree's remotes is authenticated. Keyed by the status-derived provider — not
+ * the snapshot's cached hosting fact — so a remote change closes the gate as
+ * fast as the git status reflects it, with no stale-cache window.
+ */
+export function changeRequestsAllowed(
+  provider: SourceControlProviderKind | null | undefined,
+  discovery: SourceControlDiscoveryResult | null,
+): boolean {
+  return (
+    provider !== null &&
+    provider !== undefined &&
+    provider !== "unknown" &&
+    providerStanding(discovery, provider).kind === "authenticated"
+  );
+}

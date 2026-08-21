@@ -20,6 +20,7 @@ import {
   EventId,
   type OrchestrationCommand,
   type GitActionProgressEvent,
+  type GitRunStackedActionResult,
   type GitManagerServiceError,
   OrchestrationDispatchCommandError,
   type OrchestrationEvent,
@@ -381,6 +382,25 @@ export const codingSessionStatusChanges = (
       getByThreadId(event.payload.threadId).pipe(Effect.map(Option.isSome)),
     ),
   );
+
+export const attachCreatedPullRequestToCodingSession = Effect.fn(
+  "ws.attachCreatedPullRequestToCodingSession",
+)(function* (
+  codingSessionStore: Pick<
+    CodingSessionStore.CodingSessionStore["Service"],
+    "getByWorktreePath" | "attachPullRequest"
+  >,
+  cwd: string,
+  result: GitRunStackedActionResult,
+) {
+  if (result.pr.status !== "created" || result.pr.url === undefined) return;
+  const session = yield* codingSessionStore.getByWorktreePath(cwd);
+  if (Option.isNone(session)) return;
+  yield* codingSessionStore.attachPullRequest({
+    threadId: session.value.threadId,
+    prUrl: result.pr.url,
+  });
+});
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
@@ -3008,8 +3028,14 @@ const makeWsRpcLayer = (
                 .pipe(
                   Effect.matchCauseEffect({
                     onFailure: (cause) => Queue.failCause(queue, cause),
-                    onSuccess: () =>
-                      refreshGitStatus(input.cwd).pipe(
+                    onSuccess: (result) =>
+                      attachCreatedPullRequestToCodingSession(
+                        codingSessionStore,
+                        input.cwd,
+                        result,
+                      ).pipe(
+                        Effect.ignore({ log: true }),
+                        Effect.andThen(refreshGitStatus(input.cwd)),
                         Effect.andThen(Queue.end(queue).pipe(Effect.asVoid)),
                       ),
                   }),

@@ -391,11 +391,13 @@ human-driven planning act. The two do not share a surface or a write path.
 ### Coding Session View
 
 The session-specific screen at `/sessions/$threadId`. It heads the underlying thread with its plan
-and session title, then presents the thread timeline, composer, [checkpoints](#checkpoint),
-[turn diffs](#turn-diff), changed-files cards, and [revert](#revert). It is reached from the plan
-card's session details, a coding-session leaf's Checkpoint Graph popover, or the plan timeline card.
-The view composes thread runtime state with the owning plan for presentation; it does not move
-session history into the Mercurian commit store.
+and session title. Its header runs [repository scripts](#repository-script), opens the worktree in
+an editor, and exposes git actions; change-request creation is present only when the repository's
+[hosting provider](#hosting-provider) is authenticated. It then presents the thread timeline,
+composer, [checkpoints](#checkpoint), [turn diffs](#turn-diff), changed-files cards, and
+[revert](#revert). It is reached from the plan card's session details, a coding-session leaf's
+Checkpoint Graph popover, or the plan timeline card. The view composes thread runtime state with
+the owning plan for presentation; it does not move session history into the Mercurian commit store.
 
 ### Session plan tab
 
