@@ -1,0 +1,5 @@
+/* The production app shell hides body overflow in index.css:1391; tall Storybook pages need document scrolling. */
+body.sb-show-main {
+  height: auto;
+  overflow: auto;
+}
