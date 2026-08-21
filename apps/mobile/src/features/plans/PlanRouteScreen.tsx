@@ -30,6 +30,7 @@ import { PlanArtifactPane } from "./PlanArtifactPane";
 import { PlanComposerBar } from "./PlanComposerBar";
 import { PlanTimelineList } from "./PlanTimelineList";
 import { useImplementFlow } from "./useImplementFlow";
+import { navigateToCodingSession } from "./sessionNavigation";
 
 /** A stable empty array keeps the visible-turn memo from re-running. */
 const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
@@ -273,6 +274,12 @@ function PlanRouteContent(props: {
                   input: { planId: props.planId, turnId },
                 });
               }}
+              onOpenSession={(session) =>
+                navigateToCodingSession(navigation, {
+                  environmentId: props.environmentId,
+                  threadId: session.threadId,
+                })
+              }
             />
             {viewingPast ? (
               <View className="flex-row items-center gap-3 border-t border-border bg-subtle px-4 py-2.5">

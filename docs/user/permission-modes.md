@@ -14,6 +14,10 @@ work where edits are expected but shell commands still deserve review.
 **Full access** allows commands and edits without approval prompts. Use it for isolated worktrees or
 other environments where unattended work is appropriate.
 
+Mobile coding-session screens use these same three tiers. They do not offer the shell's legacy
+**Auto** mode; if an older session already carries that value, it remains visible until you choose
+one of the three session modes.
+
 ## Responding to an approval
 
 An approval card identifies the requested command, file read, or file change and offers four

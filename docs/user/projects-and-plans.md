@@ -387,6 +387,14 @@ jump-to-bottom control to return to the newest activity. Each completed turn end
 changed-files card listing the files touched and their added and removed lines. Open a file there
 to inspect its diff.
 
+On mobile, tap a coding-session card in the plan conversation or choose **Open session** from its
+history or map checkpoint sheet. The phone opens the same streaming timeline with its session
+composer and finishing Git controls. A changed-files card opens Review at that turn, where selected
+lines can become comments carried with your next message. Earlier user messages offer **Revert**;
+stop an active turn first, then confirm to permanently discard everything after that checkpoint.
+Approval cards on this screen offer **Allow once**, **Allow session**, **Decline**, and **Cancel
+turn**. While work is running, Stop is the only turn control and another message cannot be queued.
+
 The right panel keeps five session tools within reach: **Terminal**, **Files**, **Diff**, **Browser**,
 and **Plan**. Open one from the **+** menu, switch between the tabs you have open, or close a tab
 when you are finished with it. The terminal starts in the session worktree, and selected terminal

@@ -84,7 +84,7 @@ export function PlanImplementSheet({ route }: Props) {
     navigation.dispatch(
       StackActions.replace("SessionDraft", {
         environmentId: String(environmentId),
-        ...sessionDraftParams(String(planId), plan.commitId, plan),
+        ...sessionDraftParams(String(planId), plan.commitId),
       }),
     );
   };

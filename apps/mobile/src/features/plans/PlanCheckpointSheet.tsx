@@ -25,6 +25,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePlanDetail } from "../../state/mercurian";
 import { usePlanPosition } from "../../state/plan-position";
 import { checkpointSheetActions } from "./planCheckpointSheet.logic";
+import { navigateToCodingSession } from "./sessionNavigation";
 import { useImplementFromHere } from "./useImplementFromHere";
 
 type Props = StaticScreenProps<{
@@ -180,7 +181,12 @@ export function PlanCheckpointSheet({ route }: Props) {
                 disabled={action.disabled}
                 key={action.key}
                 onPress={() => {
-                  if (action.key === "implement") {
+                  if (action.key === "open-session" && reading.session?.threadId !== undefined) {
+                    navigateToCodingSession(navigation, {
+                      environmentId,
+                      threadId: reading.session.threadId,
+                    });
+                  } else if (action.key === "implement") {
                     implement.begin();
                   } else {
                     position.pick(commitId);

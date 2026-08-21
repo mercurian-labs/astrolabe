@@ -31,6 +31,7 @@ export function PlanTimelineList(props: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly onAnswerQuestion: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onStop: () => void;
+  readonly onOpenSession: (session: PlanCodingSessionRecord) => void;
 }) {
   const rows = useMemo(
     () =>
@@ -61,6 +62,7 @@ export function PlanTimelineList(props: {
           providers={props.providers}
           onAnswerQuestion={props.onAnswerQuestion}
           onStop={props.onStop}
+          onOpenSession={props.onOpenSession}
         />
       )}
       getItemType={(row) => row.type}
@@ -88,6 +90,7 @@ function PlanTimelineRowView(props: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly onAnswerQuestion: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onStop: () => void;
+  readonly onOpenSession: (session: PlanCodingSessionRecord) => void;
 }) {
   const row = props.row;
   if (row.type === "human-message") {
@@ -109,14 +112,24 @@ function PlanTimelineRowView(props: {
   }
   if (row.type === "coding-session") {
     return (
-      <View className="mb-4 rounded-xl border border-border bg-subtle px-3 py-3">
+      <Pressable
+        accessibilityRole={row.record === null ? undefined : "button"}
+        disabled={row.record === null}
+        onPress={() => {
+          if (row.record !== null) props.onOpenSession(row.record);
+        }}
+        className="mb-4 rounded-xl border border-border bg-subtle px-3 py-3 active:opacity-70"
+      >
         <Text className="text-sm font-t3-medium text-foreground">
           Coding session · {row.item.repositoryName}
         </Text>
         <Text className="mt-1 text-xs text-foreground-muted">
           {[row.status, row.record?.branch].filter(Boolean).join(" · ")}
         </Text>
-      </View>
+        {row.record === null ? null : (
+          <Text className="mt-2 text-xs font-t3-bold text-foreground">Open session</Text>
+        )}
+      </Pressable>
     );
   }
   if (row.type === "in-flight-implement") {

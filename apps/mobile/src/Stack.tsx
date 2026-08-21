@@ -39,6 +39,7 @@ import { PlanBranchesSheet } from "./features/plans/PlanBranchesSheet";
 import { PlanCheckpointSheet } from "./features/plans/PlanCheckpointSheet";
 import { PlanImplementSheet } from "./features/plans/PlanImplementSheet";
 import { CodingSessionDraftSheet } from "./features/plans/CodingSessionDraftSheet";
+import { CodingSessionScreen } from "./features/plans/CodingSessionScreen";
 import { PlanHistoryRouteScreen } from "./features/plans/PlanHistoryRouteScreen";
 import { PlanMapRouteScreen } from "./features/plans/PlanMapRouteScreen";
 import { PlanRouteScreen } from "./features/plans/PlanRouteScreen";
@@ -289,6 +290,7 @@ const WORKSPACE_OVERLAY_ROUTES = new Set([
   "GitConfirm",
   "GitOverview",
   "NewTaskSheet",
+  "SessionDraft",
   "SettingsLegal",
   "SettingsSheet",
   "ThreadReviewComment",
@@ -469,6 +471,11 @@ export const RootStack = createNativeStackNavigator({
         sheetAllowedDetents: [0.55, 0.92],
         sheetGrabberVisible: true,
       },
+    }),
+    Session: createNativeStackScreen({
+      screen: CodingSessionScreen,
+      linking: "sessions/:environmentId/:threadId",
+      options: GLASS_HEADER_OPTIONS,
     }),
     Thread: createNativeStackScreen({
       screen: ThreadRouteScreen,

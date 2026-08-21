@@ -1,7 +1,17 @@
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareLegendList } from "@legendapp/list/keyboard";
 import { type LegendListRef } from "@legendapp/list/react-native";
-import type { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  MessageId,
+  OrchestrationCheckpointSummary,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { CHAT_LIST_ANCHOR_OFFSET, resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { formatElapsed } from "@t3tools/shared/orchestrationTiming";
 import { SymbolView } from "../../components/AppSymbol";
@@ -27,6 +37,7 @@ import {
 } from "react-native-nitro-markdown";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Platform,
@@ -98,6 +109,19 @@ import {
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import { useAssetUrl } from "../../state/assets";
 import { resolveWorkspaceRelativeFilePath } from "../files/filePath";
+import { showConfirmDialog } from "../../components/ConfirmDialogHost";
+import { scopedThreadKey } from "../../lib/scopedEntities";
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { getReviewSectionIdForCheckpoint } from "../review/reviewModel";
+import { setReviewSelectedSectionId } from "../review/reviewState";
+import { useCodingSessionScreen } from "../plans/SessionScreenContext";
+import {
+  appendSessionChangedFilesRows,
+  deriveRevertTurnCountByUserMessageId,
+  type SessionChangedFilesRow,
+  type SessionFeedEntry,
+} from "../plans/sessionFeed.logic";
 
 const MESSAGE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -135,10 +159,12 @@ export interface ThreadFeedProps {
   readonly threadId: ThreadId;
   readonly workspaceRoot?: string | null;
   readonly feed: ReadonlyArray<ThreadFeedEntry>;
+  readonly checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>;
   readonly contentPresentation: ThreadContentPresentation;
   readonly agentLabel: string;
   readonly latestTurn: ThreadFeedLatestTurn | null;
   readonly activeWorkStartedAt: string | null;
+  readonly activeThreadBusy: boolean;
   readonly listRef: RefObject<LegendListRef | null>;
   readonly freeze: SharedValue<boolean>;
   readonly anchorMessageId: MessageId | null;
@@ -809,7 +835,7 @@ function useMarkdownStyles(onLinkPress: (href: string) => void): MarkdownStyleSe
 }
 
 function renderFeedEntry(
-  info: { item: ThreadFeedEntry; index: number },
+  info: { item: SessionFeedEntry; index: number },
   props: Pick<ThreadFeedProps, "environmentId" | "skills"> & {
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
@@ -819,6 +845,9 @@ function renderFeedEntry(
     readonly onToggleWorkGroup: (groupId: string) => void;
     readonly onToggleWorkRow: (rowId: string) => void;
     readonly onToggleTurnFold: (turnId: TurnId) => void;
+    readonly onRevertUserMessage: (turnCount: number) => void;
+    readonly onOpenChangedFiles: (checkpoint: OrchestrationCheckpointSummary) => void;
+    readonly revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
     readonly onPressImage: (uri: string, headers?: Record<string, string>) => void;
     readonly onMarkdownLinkPress: (href: string) => void;
     readonly iconSubtleColor: string | import("react-native").ColorValue;
@@ -831,6 +860,16 @@ function renderFeedEntry(
 ) {
   const entry = info.item;
   const { markdownStyles, iconSubtleColor, userBubbleColor } = props;
+
+  if (entry.type === "session-changed-files") {
+    return (
+      <SessionChangedFilesCard
+        row={entry}
+        iconColor={iconSubtleColor}
+        onPress={() => props.onOpenChangedFiles(entry.checkpoint)}
+      />
+    );
+  }
 
   if (entry.type === "working") {
     return <WorkingTimelineRow startedAt={entry.createdAt} />;
@@ -895,13 +934,22 @@ function renderFeedEntry(
 
     if (isUser) {
       const enterAnimated = isFreshTimestamp(message.createdAt);
+      const revertTurnCount = props.revertTurnCountByUserMessageId.get(message.id);
+      const UserBubble = revertTurnCount === undefined ? View : Pressable;
       return (
         <Animated.View
           className="mb-5 items-end"
           {...(enterAnimated ? { entering: FadeInUp.duration(220) } : {})}
         >
-          <View
+          <UserBubble
             className="min-w-0 gap-2 rounded-[20px] px-3.5 py-2.5"
+            {...(revertTurnCount === undefined
+              ? {}
+              : {
+                  accessibilityHint: "Long press to revert to this message",
+                  delayLongPress: 400,
+                  onLongPress: () => props.onRevertUserMessage(revertTurnCount),
+                })}
             style={{
               backgroundColor: userBubbleColor,
               maxWidth: props.userBubbleMaxWidth,
@@ -932,7 +980,7 @@ function renderFeedEntry(
                 />
               );
             })}
-          </View>
+          </UserBubble>
           <View className="mt-1 flex-row items-center justify-end gap-1 pr-0.5">
             <Text className="font-t3-medium text-xs tabular-nums text-neutral-600 dark:text-neutral-400">
               {timestampLabel}
@@ -946,6 +994,18 @@ function renderFeedEntry(
                 iconSize={13}
               />
             ) : null}
+            {revertTurnCount === undefined ? null : (
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={6}
+                onPress={() => props.onRevertUserMessage(revertTurnCount)}
+                className="px-1.5 py-1"
+              >
+                <Text className="font-t3-bold text-xs text-neutral-600 dark:text-neutral-400">
+                  Revert
+                </Text>
+              </Pressable>
+            )}
           </View>
         </Animated.View>
       );
@@ -1022,6 +1082,46 @@ function renderFeedEntry(
     />
   );
 }
+
+const SessionChangedFilesCard = memo(function SessionChangedFilesCard(props: {
+  readonly row: SessionChangedFilesRow;
+  readonly iconColor: ColorValue;
+  readonly onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className="mb-5 gap-2 rounded-[16px] border border-border bg-subtle px-3 py-3 active:opacity-70"
+      onPress={props.onPress}
+    >
+      <View className="flex-row items-center gap-2">
+        <SymbolView name="doc.text" size={14} tintColor={props.iconColor} type="monochrome" />
+        <Text className="min-w-0 flex-1 font-t3-bold text-sm text-foreground">
+          Changed files · {props.row.files.length}
+        </Text>
+        <SymbolView name="chevron.right" size={12} tintColor={props.iconColor} type="monochrome" />
+      </View>
+      <View className="gap-1.5">
+        {props.row.files.map((file) => (
+          <View className="flex-row items-center gap-2" key={file.path}>
+            <Text
+              className="min-w-0 flex-1 font-mono text-xs text-foreground-muted"
+              numberOfLines={1}
+            >
+              {file.path}
+            </Text>
+            <Text className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
+              +{file.additions}
+            </Text>
+            <Text className="font-mono text-xs text-rose-600 dark:text-rose-400">
+              −{file.deletions}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </Pressable>
+  );
+});
 
 const WorkingTimelineRow = memo(function WorkingTimelineRow(props: { readonly startedAt: string }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -1318,6 +1418,11 @@ function ThreadFeedPlaceholder(props: {
 
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const navigation = useNavigation();
+  const codingSessionScreen = useCodingSessionScreen();
+  const revertCheckpoint = useAtomCommand(threadEnvironment.revertCheckpoint, {
+    reportFailure: false,
+  });
+  const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const foldSettleFrameRef = useRef<number | null>(null);
   const foldSettleSecondFrameRef = useRef<number | null>(null);
@@ -1418,6 +1523,71 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       }
     },
     [props.environmentId, props.threadId, props.workspaceRoot, navigation],
+  );
+  const performRevert = useCallback(
+    async (turnCount: number) => {
+      if (isRevertingCheckpoint) return;
+      setIsRevertingCheckpoint(true);
+      const result = await revertCheckpoint({
+        environmentId: props.environmentId,
+        input: { threadId: props.threadId, turnCount },
+      });
+      setIsRevertingCheckpoint(false);
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        Alert.alert(
+          "Could not revert session",
+          error instanceof Error ? error.message : "The session could not be reverted.",
+        );
+      }
+    },
+    [isRevertingCheckpoint, props.environmentId, props.threadId, revertCheckpoint],
+  );
+  const requestRevert = useCallback(
+    (turnCount: number) => {
+      if (props.activeThreadBusy) {
+        Alert.alert(
+          "Stop the current turn first",
+          "Interrupt the current turn before reverting checkpoints.",
+        );
+        return;
+      }
+      const title = `Revert to checkpoint ${turnCount}?`;
+      const message =
+        "This will discard newer messages and turn diffs in this session. This action cannot be undone.";
+      if (Platform.OS === "ios") {
+        Alert.alert(title, message, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Revert",
+            style: "destructive",
+            onPress: () => void performRevert(turnCount),
+          },
+        ]);
+        return;
+      }
+      showConfirmDialog({
+        title,
+        message,
+        confirmText: "Revert",
+        destructive: true,
+        onConfirm: () => void performRevert(turnCount),
+      });
+    },
+    [performRevert, props.activeThreadBusy],
+  );
+  const openChangedFiles = useCallback(
+    (checkpoint: OrchestrationCheckpointSummary) => {
+      setReviewSelectedSectionId(
+        scopedThreadKey(props.environmentId, props.threadId),
+        getReviewSectionIdForCheckpoint(checkpoint),
+      );
+      navigation.navigate("ThreadReview", {
+        environmentId: props.environmentId,
+        threadId: props.threadId,
+      });
+    },
+    [navigation, props.environmentId, props.threadId],
   );
   const markdownStyles = useMarkdownStyles(onMarkdownLinkPress);
   const reviewCommentColors = useReviewCommentColors();
@@ -1529,23 +1699,39 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     }
     return ids;
   }, [expandedWorkGroups]);
-  const presentedFeed = useMemo(
+  const unsettledTurnId =
+    props.latestTurn &&
+    (props.latestTurn.completedAt === null || props.latestTurn.state === "running")
+      ? props.latestTurn.turnId
+      : null;
+  const revertTurnCountByUserMessageId = useMemo(
     () =>
-      deriveThreadFeedPresentation(
-        props.feed,
-        props.latestTurn,
-        expandedTurnIds,
-        expandedWorkGroupIds,
-        props.activeWorkStartedAt,
-      ),
-    [
+      codingSessionScreen === null
+        ? new Map<MessageId, number>()
+        : deriveRevertTurnCountByUserMessageId(props.feed, props.checkpoints),
+    [codingSessionScreen, props.checkpoints, props.feed],
+  );
+  const presentedFeed = useMemo(() => {
+    const baseFeed = deriveThreadFeedPresentation(
+      props.feed,
+      props.latestTurn,
       expandedTurnIds,
       expandedWorkGroupIds,
       props.activeWorkStartedAt,
-      props.feed,
-      props.latestTurn,
-    ],
-  );
+    );
+    return codingSessionScreen === null
+      ? baseFeed
+      : appendSessionChangedFilesRows(baseFeed, props.checkpoints, unsettledTurnId);
+  }, [
+    codingSessionScreen,
+    expandedTurnIds,
+    expandedWorkGroupIds,
+    props.activeWorkStartedAt,
+    props.checkpoints,
+    props.feed,
+    props.latestTurn,
+    unsettledTurnId,
+  ]);
 
   // The empty↔filled key below remounts the list, which resets its imperative
   // content-inset override — and useKeyboardChatComposerInset (mounted above
@@ -1581,12 +1767,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     }
     return new Set(terminalIdsByTurn.values());
   }, [props.feed]);
-  const unsettledTurnId =
-    props.latestTurn &&
-    (props.latestTurn.completedAt === null || props.latestTurn.state === "running")
-      ? props.latestTurn.turnId
-      : null;
-
   useEffect(() => {
     const previous = previousLatestTurnRef.current;
     previousLatestTurnRef.current = props.latestTurn;
@@ -1646,7 +1826,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     });
   }, []);
 
-  const shouldRestoreVisibleContentPosition = useCallback((entry: ThreadFeedEntry) => {
+  const shouldRestoreVisibleContentPosition = useCallback((entry: SessionFeedEntry) => {
     const disclosureAnchorKey = disclosureAnchorKeyRef.current;
     return disclosureAnchorKey === null || entry.id === disclosureAnchorKey;
   }, []);
@@ -1736,7 +1916,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     WORKING_ROW_VERTICAL_EXTRAS +
     scaledTypographyLineHeight(MOBILE_TYPOGRAPHY.label, appearance.baseFontSize);
   const getFixedItemSize = useCallback(
-    (entry: ThreadFeedEntry) => {
+    (entry: SessionFeedEntry) => {
       switch (entry.type) {
         case "turn-fold":
           return TURN_FOLD_HEIGHT;
@@ -1758,7 +1938,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   );
 
   const renderItem = useCallback(
-    (info: { item: ThreadFeedEntry; index: number }) =>
+    (info: { item: SessionFeedEntry; index: number }) =>
       renderFeedEntry(info, {
         environmentId: props.environmentId,
         copiedRowId,
@@ -1769,6 +1949,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         onToggleWorkGroup,
         onToggleWorkRow,
         onToggleTurnFold,
+        onRevertUserMessage: requestRevert,
+        onOpenChangedFiles: openChangedFiles,
+        revertTurnCountByUserMessageId,
         onPressImage,
         onMarkdownLinkPress,
         iconSubtleColor,
@@ -1796,8 +1979,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       onToggleTurnFold,
       onToggleWorkGroup,
       onToggleWorkRow,
+      openChangedFiles,
       props.environmentId,
       props.skills,
+      requestRevert,
+      revertTurnCountByUserMessageId,
     ],
   );
 
