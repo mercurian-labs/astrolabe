@@ -1,9 +1,11 @@
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
+import { HeaderHeightContext } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import { EnvironmentId, type PlanTreeRow } from "@t3tools/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPill";
@@ -21,6 +23,13 @@ import { resolvePlanListEnvironmentId } from "./planListItems";
 export function PlanListRouteScreen() {
   const navigation = useNavigation();
   const iconColor = useThemeColor("--color-icon");
+  // The controls row is a plain view under the translucent glass header:
+  // without the header's height as top inset it renders beneath the bar,
+  // hittable but invisible. (Read the context directly — useHeaderHeight
+  // throws outside a header-providing screen; ThreadFeed's fallback idiom.)
+  const insets = useSafeAreaInsets();
+  const navigationHeaderHeight = useContext(HeaderHeightContext);
+  const controlsTopInset = navigationHeaderHeight || insets.top + 44;
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(null);
@@ -130,7 +139,10 @@ export function PlanListRouteScreen() {
             navigation.navigate("SettingsSheet", { screen: "SettingsEnvironments" }),
         })}
       />
-      <View className="flex-row justify-end gap-2 px-5 py-2">
+      <View
+        className="flex-row justify-end gap-2 px-5 py-2"
+        style={{ marginTop: controlsTopInset }}
+      >
         <ControlPillMenu actions={menuActions} onPressAction={handleMenuAction}>
           <Pressable
             accessibilityLabel="Filter plans"
