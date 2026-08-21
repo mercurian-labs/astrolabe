@@ -67,6 +67,23 @@ technically read; search narrows within them. Issue ids include their full proje
 `group/project#31`, so the same issue number in two projects stays distinct. Merge requests never
 appear.
 
+## Connecting Azure DevOps
+
+Azure DevOps connections support Azure DevOps Services at dev.azure.com. On-premises Azure DevOps
+Server is not supported.
+
+1. In Azure DevOps, open **User settings → Personal access tokens** and create a personal access
+   token with the **Work Items (Read)** scope.
+2. In Mercurian, go to **Settings → Trackers**, press **Connect tracker**, and choose
+   **Azure DevOps**.
+3. Enter the organization name from `dev.azure.com/<organization>` — for example, `acme` — and
+   paste the token, then press **Connect**.
+
+The connection is named after the organization. Work items are the issues that cross into
+Mercurian, and their ids are their Azure DevOps work item numbers. Browsing covers the projects the
+token can reach across the organization and pages through the 1000 most recently changed matches;
+search narrows that set. Azure DevOps rich-text descriptions arrive as plain text.
+
 ## What crosses over
 
 Whatever the tracker, an issue arrives as exactly five things:

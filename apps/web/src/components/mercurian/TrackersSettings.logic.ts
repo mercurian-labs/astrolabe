@@ -98,6 +98,25 @@ export const TRACKER_KIND_PRESENTATION: Readonly<Record<TrackerKind, TrackerKind
       },
     ],
   },
+  "azure-devops": {
+    name: "Azure DevOps",
+    credentialHint:
+      "Enter the organization name from dev.azure.com/<org>. In Azure DevOps, open User settings → Personal access tokens and create one with Work Items (Read) scope.",
+    fields: [
+      {
+        key: "organization",
+        label: "Organization",
+        placeholder: "acme",
+        secret: false,
+      },
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "Your Azure DevOps personal access token",
+        secret: true,
+      },
+    ],
+  },
 };
 
 export const TRACKER_KINDS = Object.keys(TRACKER_KIND_PRESENTATION) as ReadonlyArray<TrackerKind>;
@@ -141,6 +160,11 @@ export function buildConnectInput(
       const token = read("token");
       const host = read("host");
       return token === null ? null : host === null ? { kind, token } : { kind, token, host };
+    }
+    case "azure-devops": {
+      const organization = read("organization");
+      const token = read("token");
+      return organization === null || token === null ? null : { kind, organization, token };
     }
   }
 }

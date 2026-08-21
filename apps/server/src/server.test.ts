@@ -156,6 +156,13 @@ const stubGitLabTrackerConnector: TrackerConnector<"gitlab"> = {
   listIssues: () => Effect.succeed({ issues: [] }),
   getIssue: () => Effect.succeed(null),
 };
+const stubAzureDevOpsTrackerConnector: TrackerConnector<"azure-devops"> = {
+  kind: "azure-devops",
+  packCredential: (input) => JSON.stringify(input),
+  probe: () => Effect.succeed({ label: "Azure DevOps" }),
+  listIssues: () => Effect.succeed({ issues: [] }),
+  getIssue: () => Effect.succeed(null),
+};
 import {
   codingSessionStatusChanges,
   isThreadDetailEvent,
@@ -1072,6 +1079,7 @@ const buildAppUnderTest = (options?: {
                 jira: stubJiraTrackerConnector,
                 github: stubGitHubTrackerConnector,
                 gitlab: stubGitLabTrackerConnector,
+                "azure-devops": stubAzureDevOpsTrackerConnector,
               }),
             ),
             Layer.provide(ServerSecretStore.layer),
