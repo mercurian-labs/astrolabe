@@ -1,8 +1,12 @@
+import { sortPlansNewestArchivedFirst } from "@t3tools/client-runtime/state/plan-listing";
 import {
   partitionPlansByLifecycle,
   resolvePlanRowActions,
   sortProjectsForTree,
 } from "./planListing.logic";
+
+/** Newest-archived first, with creation time as the missing-stamp fallback. */
+export { sortPlansNewestArchivedFirst } from "@t3tools/client-runtime/state/plan-listing";
 
 /** Structural shapes, not the wire types: the page reads ids, titles, and stamps. */
 interface ArchivedPlanFields {
@@ -12,12 +16,6 @@ interface ArchivedPlanFields {
   readonly createdAt: string;
   readonly archivedAt: string | null;
   readonly hasPublishedCommits: boolean;
-}
-
-interface ArchivedPlanSortFields {
-  readonly planId: string;
-  readonly createdAt: string;
-  readonly archivedAt: string | null;
 }
 
 interface ArchivedProjectFields {
@@ -70,20 +68,6 @@ export function groupArchivedPlansByProject<
     groups.push({ project, plans: sortPlansNewestArchivedFirst(plans) });
   }
   return groups;
-}
-
-/**
- * Newest-archived first. `createdAt` is the tiebreak for a row whose stamp is
- * somehow absent, so an unstamped plan still sorts rather than jumping about.
- */
-export function sortPlansNewestArchivedFirst<T extends ArchivedPlanSortFields>(
-  plans: readonly T[],
-): T[] {
-  return [...plans].sort((left, right) => {
-    const leftKey = left.archivedAt ?? left.createdAt;
-    const rightKey = right.archivedAt ?? right.createdAt;
-    return rightKey.localeCompare(leftKey) || right.planId.localeCompare(left.planId);
-  });
 }
 
 /**

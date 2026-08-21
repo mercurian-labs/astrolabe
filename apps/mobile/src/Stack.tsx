@@ -34,7 +34,8 @@ import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
-import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
+import { PlanListRouteScreen } from "./features/plans/PlanListRouteScreen";
+import { PlanRouteScreen } from "./features/plans/PlanRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
 import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
 import { AddProjectRepositoryRoute } from "./features/projects/AddProjectRepositoryRoute";
@@ -403,7 +404,7 @@ export const RootStack = createNativeStackNavigator({
   },
   screens: {
     Home: createNativeStackScreen({
-      screen: HomeRouteScreen,
+      screen: PlanListRouteScreen,
       linking: "",
       options: {
         ...GLASS_HEADER_OPTIONS,
@@ -411,6 +412,11 @@ export const RootStack = createNativeStackNavigator({
         headerBackVisible: false,
         ...getCompactBrandHeaderOptions(),
       },
+    }),
+    Plan: createNativeStackScreen({
+      screen: PlanRouteScreen,
+      linking: "plans/:environmentId/:planId",
+      options: GLASS_HEADER_OPTIONS,
     }),
     Thread: createNativeStackScreen({
       screen: ThreadRouteScreen,
