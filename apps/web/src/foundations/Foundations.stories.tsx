@@ -55,7 +55,12 @@ export const SemanticRoles: Story = {
               </p>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <div
+              aria-label="Semantic color roles"
+              className="overflow-x-auto rounded-xl border border-border bg-card"
+              role="region"
+              tabIndex={0}
+            >
               <table className="w-full min-w-3xl border-collapse text-left text-sm">
                 <thead className="bg-muted text-xs text-muted-foreground uppercase">
                   <tr>
@@ -87,6 +92,7 @@ export const SemanticRoles: Story = {
                         <span
                           aria-label={`${role} live color`}
                           className="block h-8 w-20 rounded-md border border-border"
+                          role="img"
                           style={{ background: `var(${cssVariable}, ${value})` }}
                         />
                       </td>

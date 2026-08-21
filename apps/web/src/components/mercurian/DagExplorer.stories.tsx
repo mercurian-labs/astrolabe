@@ -64,6 +64,11 @@ const withExplorerView =
     return <Story />;
   };
 
+const inheritedPaletteA11y = {
+  // ADR 004 fences changes to the inherited t3code palette until hard-fork cut-over.
+  a11y: { disabledRules: ["color-contrast"] },
+};
+
 const meta = {
   title: "Mercurian/Checkpoint Graph/Dag Explorer",
   component: DagExplorer,
@@ -89,11 +94,13 @@ type Story = StoryObj<typeof meta>;
 export const ThreadView: Story = {
   name: "Thread view",
   decorators: [withExplorerView("thread")],
+  parameters: inheritedPaletteA11y,
 };
 
 export const ColumnsAtAFork: Story = {
   name: "Columns at a fork",
   decorators: [withExplorerView("columns")],
+  parameters: inheritedPaletteA11y,
 };
 
 export const GraphMap: Story = {
@@ -104,6 +111,7 @@ export const GraphMap: Story = {
 export const StaleArtifactsFlagged: Story = {
   name: "Stale artifacts flagged",
   decorators: [withExplorerView("thread")],
+  parameters: inheritedPaletteA11y,
   args: {
     readyCommits: new Map([
       [

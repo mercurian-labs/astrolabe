@@ -5,6 +5,7 @@ import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import compression from "compression";
+import { playwright } from "vite-plus/test/browser-playwright";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
 import { defineConfig, type Connect, type Plugin } from "vite-plus";
@@ -13,6 +14,7 @@ import pkg from "./package.json" with { type: "json" };
 import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
+import { storybookAliases } from "./.storybook/shims/aliases";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -80,6 +82,34 @@ const unitTestProject = {
     // run, those async tests can exceed Vitest's default 5s budget.
     hookTimeout: 15_000,
     testTimeout: 15_000,
+  },
+} satisfies TestProjectInlineConfiguration;
+
+const storiesTestProject = {
+  extends: true,
+  optimizeDeps: {
+    // Vitest discovers these browser-client deps on first run; listing them prevents a cold-cache reload mid-import.
+    include: [
+      "@base-ui/react/autocomplete",
+      "@base-ui/react/combobox",
+      "@base-ui/react/radio-group",
+      "effect/PartitionedSemaphore",
+      "effect/SchemaGetter",
+    ],
+  },
+  resolve: {
+    alias: storybookAliases,
+  },
+  test: {
+    name: "stories",
+    include: [".storybook/checks/**/*.browser.test.{ts,tsx}"],
+    browser: {
+      enabled: true,
+      headless: true,
+      provider: playwright(),
+      instances: [{ browser: "chromium" }],
+      screenshotFailures: false,
+    },
   },
 } satisfies TestProjectInlineConfiguration;
 
@@ -263,7 +293,7 @@ export default defineConfig(() => {
       sourcemap: buildSourcemap,
     },
     test: {
-      projects: [defineProject(unitTestProject)],
+      projects: [defineProject(unitTestProject), defineProject(storiesTestProject)],
     },
   };
 });

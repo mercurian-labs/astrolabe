@@ -883,6 +883,7 @@ interface ComposerPromptEditorProps {
   skills: ReadonlyArray<ServerProviderSkill>;
   disabled: boolean;
   placeholder: string;
+  ariaLabel?: string;
   className?: string;
   onRemoveTerminalContext: (contextId: string) => void;
   onChange: (
@@ -1532,6 +1533,7 @@ function ComposerPromptEditorInner({
   skills,
   disabled,
   placeholder,
+  ariaLabel,
   className,
   onRemoveTerminalContext,
   onChange,
@@ -1757,6 +1759,7 @@ function ComposerPromptEditorInner({
                 "block max-h-50 min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none",
                 className,
               )}
+              aria-label={ariaLabel}
               data-testid="composer-editor"
               aria-placeholder={placeholder}
               placeholder={<span />}
@@ -1794,6 +1797,7 @@ export function ComposerPromptEditor({
   skills,
   disabled,
   placeholder,
+  ariaLabel,
   className,
   onRemoveTerminalContext,
   onChange,
@@ -1836,6 +1840,7 @@ export function ComposerPromptEditor({
         onChange={onChange}
         onPaste={onPaste}
         editorRef={editorRef}
+        {...(ariaLabel ? { ariaLabel } : {})}
         {...(onCommandKeyDown ? { onCommandKeyDown } : {})}
         {...(className ? { className } : {})}
       />

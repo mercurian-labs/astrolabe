@@ -1,0 +1,100 @@
+name: Storybook Catalog Report
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  publish:
+    name: Publish PR comment
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: storybook-catalog-report-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+      cancel-in-progress: true
+    steps:
+      - name: Update Storybook catalog comment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const marker = "<!-- storybook-catalog-report -->";
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+
+            let pull = run.pull_requests?.[0];
+            if (!pull) {
+              const { data: pulls } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: run.head_sha,
+              });
+              pull = pulls.find((candidate) => candidate.state === "open") ?? pulls[0];
+            }
+
+            if (!pull) {
+              core.notice(`No pull request found for CI run ${run.id}.`);
+              return;
+            }
+
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+              owner,
+              repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const catalog = artifacts.find((artifact) => artifact.name === "storybook-catalog");
+
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner,
+              repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const storyStep = jobs
+              .flatMap((job) => job.steps ?? [])
+              .find((step) => step.name === "Test Storybook stories");
+            const storyChecksPassed = storyStep?.conclusion === "success";
+            const status = storyChecksPassed
+              ? "✅ Story checks passed."
+              : `❌ Story checks did not pass (${storyStep?.conclusion ?? "step did not run"}).`;
+            const catalogLine = catalog
+              ? `[Download the browsable Storybook catalog](${context.serverUrl}/${owner}/${repo}/actions/runs/${run.id}/artifacts/${catalog.id}).`
+              : `The catalog artifact was not produced. [Open the CI run](${run.html_url}) for details.`;
+            const body = [
+              marker,
+              "### Storybook catalog",
+              "",
+              status,
+              "",
+              catalogLine,
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pull.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull.number,
+                body,
+              });
+            }

@@ -270,6 +270,7 @@ export function PlanComposer({
                 <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
               )}
               <ComposerPromptEditor
+                ariaLabel={placeholder}
                 cursor={cursor}
                 disabled={isSending}
                 editorRef={editorRef}

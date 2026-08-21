@@ -48,6 +48,7 @@ export function PlanStatusDot({ status }: { readonly status: PlanRowStatus }) {
               "inline-flex size-3.5 shrink-0 items-center justify-center",
               presentation.colorClass,
             )}
+            role="img"
           />
         }
       >
