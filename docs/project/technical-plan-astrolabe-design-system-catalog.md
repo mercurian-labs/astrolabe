@@ -1,18 +1,8 @@
 # Technical Plan — Astrolabe design system and in-app catalog
 
-_Generated from the conversation goal: research TanStack's new design system, replace Storybook with a lower-maintenance equivalent where that is justified, and completely map the aesthetic Astrolabe currently inherits from T3 Code before designing Astrolabe's future visual identity._
+_Generated from the Goal/AC in [the local Linear issue draft](issue-draft-astrolabe-design-system-catalog.md). The proposed issue title is **Astrolabe design system: map the inherited aesthetic in an in-app catalog**._
 
 **Goal, in one sentence:** make Astrolabe's current visual language explicit, complete, inspectable, and executable in a normal `/ds` application route, so the later Astrolabe rebrand changes foundations and recipes instead of rewriting product components.
-
-**Acceptance criteria inferred from the conversation:**
-
-- `/ds` uses the real Astrolabe application build, stylesheet, theme runtime, primitives, and product components; it is not a second visual implementation.
-- The first catalog preserves today's T3 Code-derived appearance. It inventories and names what exists; it does not introduce Astrolabe's future palette, typography, or component styling early.
-- Every shipped color role, foundation family, reusable web primitive module, and existing Mercurian catalog scenario is represented or explicitly classified as infrastructure-only.
-- The catalog works without a server, repository, provider, database, or user workspace and is reachable in web and desktop development builds.
-- One framework-agnostic scenario registry powers both `/ds` and the existing vite-plus browser checks, including deterministic fixtures, bounded interactions, and axe.
-- Storybook is removed only after catalog and check parity. Its packages, aliases, configuration, CI artifact workflow, and esbuild-only compatibility override do not remain as dead machinery.
-- The future Astrolabe identity can replace foundation values and component recipes without changing product-state semantics or rebuilding the catalog shell.
 
 ## What TanStack actually built
 
