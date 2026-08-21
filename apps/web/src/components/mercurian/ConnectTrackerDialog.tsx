@@ -106,7 +106,12 @@ export function ConnectTrackerDialog({
               const id = `tracker-${kind}-${field.key}`;
               return (
                 <div key={field.key} className="space-y-2">
-                  <Label htmlFor={id}>{field.label}</Label>
+                  <Label htmlFor={id}>
+                    {field.label}
+                    {field.optional === true ? (
+                      <span className="text-muted-foreground"> (optional)</span>
+                    ) : null}
+                  </Label>
                   <Input
                     id={id}
                     type={field.secret ? "password" : "text"}

@@ -148,6 +148,39 @@ const makeGitHubStubConnector = (): GitHubStubConnector => {
   return state;
 };
 
+interface GitLabStubConnector {
+  readonly connector: TrackerConnector<"gitlab">;
+  refusal: TrackerConnectorRefusal | null;
+  readonly credentialsSeen: Array<string>;
+}
+
+const makeGitLabStubConnector = (): GitLabStubConnector => {
+  const state: GitLabStubConnector = {
+    refusal: null,
+    credentialsSeen: [],
+    connector: {
+      kind: "gitlab",
+      packCredential: (input) =>
+        JSON.stringify({ host: input.host ?? "https://gitlab.com", token: input.token }),
+      probe: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null
+          ? Effect.succeed({ label: "gitlab-user" })
+          : Effect.fail(state.refusal);
+      },
+      listIssues: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null ? Effect.succeed({ issues: [] }) : Effect.fail(state.refusal);
+      },
+      getIssue: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null ? Effect.succeed(null) : Effect.fail(state.refusal);
+      },
+    },
+  };
+  return state;
+};
+
 /** The secret store as a Map, so a test can look at exactly what was filed. */
 interface StubSecrets {
   readonly files: Map<string, string>;
@@ -200,6 +233,7 @@ interface Harness {
   readonly connector: StubConnector;
   readonly jiraConnector: JiraStubConnector;
   readonly githubConnector: GitHubStubConnector;
+  readonly gitlabConnector: GitLabStubConnector;
   readonly secrets: StubSecrets;
 }
 
@@ -223,6 +257,7 @@ const withStore = <A, E>(
     const connector = makeStubConnector();
     const jiraConnector = makeJiraStubConnector();
     const githubConnector = makeGitHubStubConnector();
+    const gitlabConnector = makeGitLabStubConnector();
     const secrets = makeStubSecrets();
     const store = yield* TrackerStore.make({ standingCacheTtl: Duration.zero }).pipe(
       Effect.provide(
@@ -231,12 +266,19 @@ const withStore = <A, E>(
             linear: connector.connector,
             jira: jiraConnector.connector,
             github: githubConnector.connector,
+            gitlab: gitlabConnector.connector,
           }),
           secrets.layer,
         ),
       ),
     );
-    return yield* body(store, { connector, jiraConnector, githubConnector, secrets });
+    return yield* body(store, {
+      connector,
+      jiraConnector,
+      githubConnector,
+      gitlabConnector,
+      secrets,
+    });
   });
 
 const layer = it.layer(Layer.provideMerge(MercurianSqlite.layerMemory, NodeServicesLayer));

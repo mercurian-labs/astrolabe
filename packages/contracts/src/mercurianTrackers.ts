@@ -40,7 +40,7 @@ export type TrackerConnectionId = typeof TrackerConnectionId.Type;
  * Jira and GitHub Issues are the named family, not a wire enum to pre-declare,
  * and each arrives with its own connector and its own connect inputs.
  */
-export const TrackerKind = Schema.Literals(["linear", "jira", "github"]);
+export const TrackerKind = Schema.Literals(["linear", "jira", "github", "gitlab"]);
 export type TrackerKind = typeof TrackerKind.Type;
 
 /**
@@ -145,10 +145,18 @@ export const GitHubConnectTrackerInput = Schema.Struct({
 });
 export type GitHubConnectTrackerInput = typeof GitHubConnectTrackerInput.Type;
 
+export const GitLabConnectTrackerInput = Schema.Struct({
+  kind: Schema.Literal("gitlab"),
+  token: TrimmedNonEmptyString,
+  host: Schema.optional(TrimmedNonEmptyString),
+});
+export type GitLabConnectTrackerInput = typeof GitLabConnectTrackerInput.Type;
+
 export const MercurianConnectTrackerInput = Schema.Union([
   LinearConnectTrackerInput,
   JiraConnectTrackerInput,
   GitHubConnectTrackerInput,
+  GitLabConnectTrackerInput,
 ]);
 export type MercurianConnectTrackerInput = typeof MercurianConnectTrackerInput.Type;
 

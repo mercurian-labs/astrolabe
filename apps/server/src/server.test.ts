@@ -149,6 +149,13 @@ const stubGitHubTrackerConnector: TrackerConnector<"github"> = {
   listIssues: () => Effect.succeed({ issues: [] }),
   getIssue: () => Effect.succeed(null),
 };
+const stubGitLabTrackerConnector: TrackerConnector<"gitlab"> = {
+  kind: "gitlab",
+  packCredential: (input) => JSON.stringify(input),
+  probe: () => Effect.succeed({ label: "GitLab" }),
+  listIssues: () => Effect.succeed({ issues: [] }),
+  getIssue: () => Effect.succeed(null),
+};
 import {
   codingSessionStatusChanges,
   isThreadDetailEvent,
@@ -1064,6 +1071,7 @@ const buildAppUnderTest = (options?: {
                 linear: options?.layers?.trackerConnector ?? stubTrackerConnector,
                 jira: stubJiraTrackerConnector,
                 github: stubGitHubTrackerConnector,
+                gitlab: stubGitLabTrackerConnector,
               }),
             ),
             Layer.provide(ServerSecretStore.layer),
