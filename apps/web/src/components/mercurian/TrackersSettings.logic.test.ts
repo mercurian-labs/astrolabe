@@ -22,9 +22,10 @@ const connection = (overrides: Partial<TrackerConnection> = {}): TrackerConnecti
 
 describe("tracker kinds", () => {
   it("lists one tracker per shipped connector", () => {
-    expect(TRACKER_KINDS).toEqual(["linear", "jira"]);
+    expect(TRACKER_KINDS).toEqual(["linear", "jira", "github"]);
     expect(TRACKER_KIND_PRESENTATION.linear.name).toBe("Linear");
     expect(TRACKER_KIND_PRESENTATION.jira.name).toBe("Jira");
+    expect(TRACKER_KIND_PRESENTATION.github.name).toBe("GitHub Issues");
     expect(TRACKER_KINDS.length).toBeGreaterThan(1);
   });
 
@@ -51,6 +52,21 @@ describe("tracker kinds", () => {
     ]);
     expect(TRACKER_KIND_PRESENTATION.linear.fields).toHaveLength(1);
     expect(TRACKER_KIND_PRESENTATION.linear.fields[0]?.secret).toBe(true);
+  });
+
+  it("describes GitHub's one secret personal access token field", () => {
+    expect(TRACKER_KIND_PRESENTATION.github.fields).toEqual([
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "ghp_… or github_pat_…",
+        secret: true,
+      },
+    ]);
+    expect(TRACKER_KIND_PRESENTATION.github.credentialHint).toContain(
+      "Settings → Developer settings → Personal access tokens",
+    );
+    expect(TRACKER_KIND_PRESENTATION.github.credentialHint).toContain("issue read access");
   });
 });
 
@@ -82,6 +98,15 @@ describe("buildConnectInput", () => {
       site: "acme.atlassian.net",
       email: "dev@acme.com",
       token: "jira-secret",
+    });
+  });
+
+  it("builds GitHub's input only when its token is present", () => {
+    expect(buildConnectInput("github", {})).toBeNull();
+    expect(buildConnectInput("github", { token: "   " })).toBeNull();
+    expect(buildConnectInput("github", { token: " github_pat_test " })).toEqual({
+      kind: "github",
+      token: "github_pat_test",
     });
   });
 });

@@ -63,6 +63,19 @@ export const TRACKER_KIND_PRESENTATION: Readonly<Record<TrackerKind, TrackerKind
       },
     ],
   },
+  github: {
+    name: "GitHub Issues",
+    credentialHint:
+      "In GitHub, open Settings → Developer settings → Personal access tokens. The token needs issue read access to the repositories you want to browse.",
+    fields: [
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "ghp_… or github_pat_…",
+        secret: true,
+      },
+    ],
+  },
 };
 
 export const TRACKER_KINDS = Object.keys(TRACKER_KIND_PRESENTATION) as ReadonlyArray<TrackerKind>;
@@ -89,6 +102,10 @@ export function buildConnectInput(
       return site === null || email === null || token === null
         ? null
         : { kind, site, email, token };
+    }
+    case "github": {
+      const token = read("token");
+      return token === null ? null : { kind, token };
     }
   }
 }
