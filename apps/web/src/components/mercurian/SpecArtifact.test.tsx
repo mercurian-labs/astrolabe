@@ -7,7 +7,7 @@ import { commitId as id, specRevision } from "../../test/fixtures/timeline";
 import { SpecArtifact, SpecEditor } from "./SpecArtifact";
 
 vi.mock("../../state/mercurian", () => ({
-  useSaveSpecRevision: () => vi.fn(),
+  useSaveSpecRevision: () => vi.fn().mockResolvedValue({ ok: true, value: {} }),
   useRefreshSpec: () => vi.fn(),
 }));
 

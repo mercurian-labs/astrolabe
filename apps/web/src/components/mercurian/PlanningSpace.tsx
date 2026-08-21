@@ -805,6 +805,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                       planId={planId}
                       planText={artifactText ?? ""}
                       readOnly={viewingPast || viewingSessionLeaf}
+                      turnActive={
+                        visibleInFlight !== undefined || visibleInFlightImplement !== undefined
+                      }
                       readOnlyAction={
                         <Button size="sm" variant="ghost" onClick={backToNow}>
                           Back to now

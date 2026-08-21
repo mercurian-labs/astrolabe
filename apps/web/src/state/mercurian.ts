@@ -26,7 +26,10 @@ import { useCallback } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { usePrimaryEnvironmentId } from "./environments";
-import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
+import {
+  useEnvironmentBoundCommand,
+  useEnvironmentBoundCommandResult,
+} from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 
@@ -167,14 +170,19 @@ export function useAppendPlanMessage() {
  * A direct edit of the plan. The text is the artifact's whole new body — a
  * revision is a snapshot, and an empty one is a legal edit. It lands on the
  * branch its author was standing on, for the same reason a message does.
+ *
+ * Bound through the result variant: a refusal — a reply streaming on the
+ * edit's own branch — is something the artifact pane has to say in place,
+ * not a console line the editor swallows.
  */
 export function useSavePlanRevision() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.savePlanRevision);
+  const run = useEnvironmentBoundCommandResult(mercurianPlanning.savePlanRevision);
   return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
 }
 
+/** The spec's edit, with the same in-place refusals as the plan's. */
 export function useSaveSpecRevision() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.saveSpecRevision);
+  const run = useEnvironmentBoundCommandResult(mercurianPlanning.saveSpecRevision);
   return useCallback((input: MercurianSaveSpecRevisionInput) => run(input), [run]);
 }
 

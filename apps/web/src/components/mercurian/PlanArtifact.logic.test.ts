@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { message, planRevision } from "../../test/fixtures/timeline";
 
-import { lastPlanRevision, snapshotTextIsForPath } from "./PlanArtifact.logic";
+import { lastPlanRevision, saveRefusalNotice, snapshotTextIsForPath } from "./PlanArtifact.logic";
 
 const revision = (authorKind: "human" | "assistant", createdAt: string) =>
   planRevision(`${authorKind}-${createdAt}`, { authorKind, createdAt });
@@ -83,5 +83,20 @@ describe("snapshotTextIsForPath", () => {
   it("trusts it when this path's revision is the newest one anywhere", () => {
     const timeline = [msg("root"), msg("theirs"), rev("my-edit")];
     expect(snapshotTextIsForPath(timeline, [msg("root"), rev("my-edit")])).toBe(true);
+  });
+});
+
+describe("saveRefusalNotice", () => {
+  it("names the streaming reply as the reason, and that the edit survived", () => {
+    const notice = saveRefusalNotice({ _tag: "PlanTurnActiveError", planId: "plan-1" });
+    expect(notice).toContain("replying on this branch");
+    expect(notice).toContain("still here");
+  });
+
+  it("keeps honest about a refusal it cannot name", () => {
+    expect(saveRefusalNotice(new Error("boom"))).toContain("could not be saved");
+    expect(saveRefusalNotice(undefined)).toContain("could not be saved");
+    // A tag from some other refusal is not dressed up as a turn.
+    expect(saveRefusalNotice({ _tag: "SomethingElse" })).toContain("could not be saved");
   });
 });
