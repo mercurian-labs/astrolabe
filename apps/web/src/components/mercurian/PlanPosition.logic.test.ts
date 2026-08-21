@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
+import type { PlanTimelineItem } from "@t3tools/contracts";
+
+import { codingSessionLeaf, commitId as id, message } from "../../test/fixtures/timeline";
 
 import { buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -12,22 +14,12 @@ import {
   resolveHead,
 } from "./PlanPosition.logic";
 
-const id = (value: string) => MercurianCommitId.make(value);
-
-const commit = (
-  name: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-): PlanTimelineItem => ({
-  _tag: "message",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind: "human",
-  text: name,
-  createdAt: "2026-08-03T00:00:00.000Z",
-});
+const commit = (name: string, sequence: number, parents: ReadonlyArray<string>): PlanTimelineItem =>
+  message(name, {
+    sequence,
+    parents,
+    createdAt: "2026-08-03T00:00:00.000Z",
+  });
 
 /** a → b → c. */
 const chain = buildPlanGraph([commit("a", 1, []), commit("b", 2, ["a"]), commit("c", 3, ["b"])]);
@@ -74,18 +66,14 @@ describe("resolveHead", () => {
 
 describe("resolveActingHead", () => {
   it("keeps a viewed coding-session leaf visible but acts from its parent", () => {
-    const session = {
-      _tag: "coding-session",
-      commitId: id("session"),
+    const session = codingSessionLeaf("session", {
       sequence: 4,
-      parents: [id("c")],
-      published: false,
-      authorKind: "human",
+      parents: ["c"],
       createdAt: "2026-08-03T00:00:00.000Z",
-      repositoryId: "repo" as never,
+      repositoryId: "repo",
       repositoryName: "server",
-      planRevisionCommitId: id("b"),
-    } satisfies PlanTimelineItem;
+      planRevisionCommitId: "b",
+    });
     const graph = buildPlanGraph([...chain.nodes.map(({ item }) => item), session]);
     expect(resolveHead(graph, positionAfterPick(graph, session.commitId))).toBe(id("session"));
     expect(resolveActingHead(graph, session.commitId)).toBe(id("c"));

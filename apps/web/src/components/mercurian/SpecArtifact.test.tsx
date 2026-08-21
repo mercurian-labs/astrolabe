@@ -1,11 +1,8 @@
-import {
-  MercurianCommitId,
-  PlanId,
-  TrackerConnectionId,
-  type PlanTimelineItem,
-} from "@t3tools/contracts";
+import { PlanId, TrackerConnectionId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+import { commitId as id, specRevision } from "../../test/fixtures/timeline";
 
 import { SpecArtifact, SpecEditor } from "./SpecArtifact";
 
@@ -14,18 +11,12 @@ vi.mock("../../state/mercurian", () => ({
   useRefreshSpec: () => vi.fn(),
 }));
 
-const id = (value: string) => MercurianCommitId.make(value);
-const revision: PlanTimelineItem = {
-  _tag: "spec-revision",
-  commitId: id("spec-1"),
-  sequence: 1,
-  parents: [],
+const revision = specRevision("spec-1", {
   published: true,
-  authorKind: "human",
   createdAt: "2026-08-13T00:00:00.000Z",
   cause: "import",
   issueId: "M-109",
-};
+});
 
 describe("SpecArtifact", () => {
   it("offers the same draft path when a blank plan has no spec", () => {

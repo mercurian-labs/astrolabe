@@ -1,11 +1,13 @@
 import {
-  MercurianCommitId,
   MercurianRepositoryId,
-  PlanTurnId,
   type PlanImplementProposal,
+  type PlanImplementVerdict,
 } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+import { planImplementProposal, planSplitProposal } from "../../test/fixtures/sessionsAndSplits";
+import { commitId } from "../../test/fixtures/timeline";
 
 import { SplitSheetPanel, startAllLandedPlans } from "./SplitSheet";
 import type { ExistingSplit, LandedPlan } from "./splits.logic";
@@ -13,21 +15,16 @@ import { Dialog } from "../ui/dialog";
 
 const serverId = MercurianRepositoryId.make("server-id");
 const webId = MercurianRepositoryId.make("web-id");
-const base = {
-  turnId: PlanTurnId.make("turn"),
-  parentCommitId: MercurianCommitId.make("parent"),
-};
-const splitProposal: PlanImplementProposal = {
-  ...base,
-  verdict: {
-    kind: "needs-split",
-    rationale: "The API and its surface can land independently.",
-    splits: [
-      { repositoryId: serverId, repositoryName: "server", text: "Server projection" },
-      { repositoryId: webId, repositoryName: "web", text: "Web projection" },
-    ],
-  },
-};
+const proposal = (verdict: PlanImplementVerdict) =>
+  planImplementProposal("turn", { parentCommitId: "parent", verdict });
+const splitProposal = proposal({
+  kind: "needs-split",
+  rationale: "The API and its surface can land independently.",
+  splits: [
+    planSplitProposal("server", { repositoryId: serverId, text: "Server projection" }),
+    planSplitProposal("web", { repositoryId: webId, text: "Web projection" }),
+  ],
+});
 
 const renderSheet = (
   proposal: PlanImplementProposal | undefined,
@@ -72,7 +69,7 @@ describe("SplitSheet", () => {
           {
             repositoryId: serverId,
             repositoryName: "server",
-            commitId: MercurianCommitId.make("server-split"),
+            commitId: commitId("server-split"),
           },
         ],
       ]),
@@ -85,10 +82,9 @@ describe("SplitSheet", () => {
   });
 
   it("renders the ready M-110 seam without an editor", () => {
-    const markup = renderSheet({
-      ...base,
-      verdict: { kind: "atomic", repositoryId: serverId, repositoryName: "server" },
-    });
+    const markup = renderSheet(
+      proposal({ kind: "atomic", repositoryId: serverId, repositoryName: "server" }),
+    );
     expect(markup).toContain("This plan is ready to implement.");
     expect(markup).toContain("A coding session will run in");
     expect(markup).toContain("server");
@@ -98,13 +94,12 @@ describe("SplitSheet", () => {
   });
 
   it("renders no confirmation action when the payload is null", () => {
-    const markup = renderSheet({
-      ...base,
-      verdict: {
+    const markup = renderSheet(
+      proposal({
         kind: "needs-split",
         splits: [{ repositoryId: serverId, repositoryName: "server", text: "  " }],
-      },
-    });
+      }),
+    );
     expect(markup).not.toContain("Add a plan for each repository");
   });
 
@@ -115,7 +110,7 @@ describe("SplitSheet", () => {
         {
           repositoryId: serverId,
           repositoryName: "server",
-          commitId: MercurianCommitId.make("server-plan"),
+          commitId: commitId("server-plan"),
         },
       ],
       [
@@ -123,21 +118,18 @@ describe("SplitSheet", () => {
         {
           repositoryId: webId,
           repositoryName: "web",
-          commitId: MercurianCommitId.make("web-plan"),
+          commitId: commitId("web-plan"),
         },
       ],
     ]);
     const markup = renderSheet(
-      {
-        ...base,
-        verdict: {
-          kind: "already-covered",
-          repositories: [
-            { repositoryId: serverId, repositoryName: "server" },
-            { repositoryId: webId, repositoryName: "web" },
-          ],
-        },
-      },
+      proposal({
+        kind: "already-covered",
+        repositories: [
+          { repositoryId: serverId, repositoryName: "server" },
+          { repositoryId: webId, repositoryName: "web" },
+        ],
+      }),
       existing,
     );
     expect(markup.match(/This repository already has its own plan/g)).toHaveLength(2);
@@ -148,12 +140,12 @@ describe("SplitSheet", () => {
   it("renders one post-confirm jump row per landed branch", () => {
     const markup = renderSheet(undefined, new Map(), [
       {
-        commitId: MercurianCommitId.make("server-plan"),
+        commitId: commitId("server-plan"),
         repositoryId: serverId,
         repositoryName: "server",
       },
       {
-        commitId: MercurianCommitId.make("web-plan"),
+        commitId: commitId("web-plan"),
         repositoryId: webId,
         repositoryName: "web",
       },
@@ -169,12 +161,12 @@ describe("SplitSheet", () => {
   it("starts every confirmed repository independently", () => {
     const plans: ReadonlyArray<LandedPlan> = [
       {
-        commitId: MercurianCommitId.make("server-plan"),
+        commitId: commitId("server-plan"),
         repositoryId: serverId,
         repositoryName: "server",
       },
       {
-        commitId: MercurianCommitId.make("web-plan"),
+        commitId: commitId("web-plan"),
         repositoryId: webId,
         repositoryName: "web",
       },
@@ -185,33 +177,29 @@ describe("SplitSheet", () => {
   });
 
   it("never exposes internal implementation vocabulary in any sheet state", () => {
-    const ready = renderSheet({
-      ...base,
-      verdict: { kind: "atomic", repositoryId: serverId, repositoryName: "server" },
-    });
+    const ready = renderSheet(
+      proposal({ kind: "atomic", repositoryId: serverId, repositoryName: "server" }),
+    );
     const needsPlans = renderSheet(splitProposal);
     const alreadyCovered = renderSheet(
-      {
-        ...base,
-        verdict: {
-          kind: "already-covered",
-          repositories: [{ repositoryId: serverId, repositoryName: "server" }],
-        },
-      },
+      proposal({
+        kind: "already-covered",
+        repositories: [{ repositoryId: serverId, repositoryName: "server" }],
+      }),
       new Map([
         [
           serverId,
           {
             repositoryId: serverId,
             repositoryName: "server",
-            commitId: MercurianCommitId.make("existing-server-plan"),
+            commitId: commitId("existing-server-plan"),
           },
         ],
       ]),
     );
     const landed = renderSheet(undefined, new Map(), [
       {
-        commitId: MercurianCommitId.make("server-plan"),
+        commitId: commitId("server-plan"),
         repositoryId: serverId,
         repositoryName: "server",
       },

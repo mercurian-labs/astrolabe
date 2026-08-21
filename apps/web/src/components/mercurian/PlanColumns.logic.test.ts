@@ -1,26 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
+import type { PlanTimelineItem } from "@t3tools/contracts";
+
+import { commitId as id, message } from "../../test/fixtures/timeline";
 
 import { columnLayout, columnViewWidthCap, defaultBranchChoices } from "./PlanColumns.logic";
 import { buildPlanGraph, type PlanGraph } from "./PlanGraph.logic";
 
-const id = (value: string) => MercurianCommitId.make(value);
-
-const commit = (
-  name: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-): PlanTimelineItem => ({
-  _tag: "message",
-  commitId: id(name),
-  sequence,
-  parents: parents.map(id),
-  published: false,
-  authorKind: "human",
-  text: name,
-  createdAt: "2026-08-03T00:00:00.000Z",
-});
+const commit = (name: string, sequence: number, parents: ReadonlyArray<string>): PlanTimelineItem =>
+  message(name, {
+    sequence,
+    parents,
+    createdAt: "2026-08-03T00:00:00.000Z",
+  });
 
 /** a → b → c. */
 const chain: ReadonlyArray<PlanTimelineItem> = [
