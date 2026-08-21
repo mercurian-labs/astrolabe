@@ -51,6 +51,22 @@ repositories and your organizations' repositories. Repositories you can reach on
 collaborator are not included. Pull requests never appear, and issue ids include their repository —
 for example, `owner/repo#123`.
 
+## Connecting GitLab
+
+1. In GitLab, open **Preferences → Access tokens** and create a personal access token with the
+   `read_api` scope.
+2. In Mercurian, go to **Settings → Trackers**, press **Connect tracker**, and choose **GitLab**.
+3. Paste the token. For gitlab.com, leave **GitLab host** empty. For a self-hosted instance, enter
+   its host, such as `gitlab.example.com`, then press **Connect**.
+
+The connection is named after the GitLab username the token authenticates as. Self-hosted
+connections also show their host — for example, `alex · gitlab.example.com` — so connections to
+different GitLab instances are easy to tell apart. Browsing covers issues across the projects you
+are a member of — up to your twenty most active projects — not every public project the token could
+technically read; search narrows within them. Issue ids include their full project path, such as
+`group/project#31`, so the same issue number in two projects stays distinct. Merge requests never
+appear.
+
 ## What crosses over
 
 Whatever the tracker, an issue arrives as exactly five things:

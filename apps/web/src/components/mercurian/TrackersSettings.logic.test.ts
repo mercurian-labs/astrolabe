@@ -22,10 +22,11 @@ const connection = (overrides: Partial<TrackerConnection> = {}): TrackerConnecti
 
 describe("tracker kinds", () => {
   it("lists one tracker per shipped connector", () => {
-    expect(TRACKER_KINDS).toEqual(["linear", "jira", "github"]);
+    expect(TRACKER_KINDS).toEqual(["linear", "jira", "github", "gitlab"]);
     expect(TRACKER_KIND_PRESENTATION.linear.name).toBe("Linear");
     expect(TRACKER_KIND_PRESENTATION.jira.name).toBe("Jira");
     expect(TRACKER_KIND_PRESENTATION.github.name).toBe("GitHub Issues");
+    expect(TRACKER_KIND_PRESENTATION.gitlab.name).toBe("GitLab");
     expect(TRACKER_KINDS.length).toBeGreaterThan(1);
   });
 
@@ -68,6 +69,28 @@ describe("tracker kinds", () => {
     );
     expect(TRACKER_KIND_PRESENTATION.github.credentialHint).toContain("issue read access");
   });
+
+  it("describes GitLab's token and optional self-hosted host", () => {
+    expect(TRACKER_KIND_PRESENTATION.gitlab.fields).toEqual([
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "glpat-…",
+        secret: true,
+      },
+      {
+        key: "host",
+        label: "GitLab host",
+        placeholder: "gitlab.com",
+        secret: false,
+        optional: true,
+      },
+    ]);
+    expect(TRACKER_KIND_PRESENTATION.gitlab.credentialHint).toContain(
+      "Preferences → Access tokens",
+    );
+    expect(TRACKER_KIND_PRESENTATION.gitlab.credentialHint).toContain("read_api");
+  });
 });
 
 describe("buildConnectInput", () => {
@@ -107,6 +130,25 @@ describe("buildConnectInput", () => {
     expect(buildConnectInput("github", { token: " github_pat_test " })).toEqual({
       kind: "github",
       token: "github_pat_test",
+    });
+  });
+
+  it("builds GitLab's input with or without its optional host", () => {
+    expect(buildConnectInput("gitlab", {})).toBeNull();
+    expect(buildConnectInput("gitlab", { token: "   ", host: "gitlab.example.com" })).toBeNull();
+    expect(buildConnectInput("gitlab", { token: " glpat-test ", host: "   " })).toEqual({
+      kind: "gitlab",
+      token: "glpat-test",
+    });
+    expect(
+      buildConnectInput("gitlab", {
+        token: " glpat-test ",
+        host: " gitlab.example.com ",
+      }),
+    ).toEqual({
+      kind: "gitlab",
+      token: "glpat-test",
+      host: "gitlab.example.com",
     });
   });
 });

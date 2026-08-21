@@ -38,6 +38,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as Tuple from "effect/Tuple";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
@@ -95,10 +96,15 @@ export type TrackerStoreError = TrackerStoreRefusal | PersistenceSqlError | Pers
 // Inputs
 // ===============================
 
-export const ConnectTrackerInput = MercurianConnectTrackerInput.mapMembers((members) =>
-  members.map((member) =>
-    Schema.Struct({
-      ...member.fields,
+/**
+ * The wire union plus the store-owned timestamp, derived mechanically per
+ * member. Keep the tuple-preserving field assignment: a plain array map that
+ * spreads `.fields` into a new Struct drops optional-key metadata, turning an
+ * optional field such as GitLab's `host?` into a required `host | undefined`.
+ */
+export const ConnectTrackerInput = MercurianConnectTrackerInput.mapMembers(
+  Tuple.map(
+    Schema.fieldsAssign({
       createdAt: Schema.DateTimeUtcFromString,
     }),
   ),

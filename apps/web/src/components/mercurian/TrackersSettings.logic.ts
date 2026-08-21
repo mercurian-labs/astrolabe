@@ -10,6 +10,8 @@ export interface TrackerCredentialField {
   readonly label: string;
   readonly placeholder: string;
   readonly secret: boolean;
+  /** Omitted means required. */
+  readonly optional?: boolean;
 }
 
 export interface TrackerKindPresentation {
@@ -76,11 +78,31 @@ export const TRACKER_KIND_PRESENTATION: Readonly<Record<TrackerKind, TrackerKind
       },
     ],
   },
+  gitlab: {
+    name: "GitLab",
+    credentialHint:
+      "In GitLab, open Preferences → Access tokens and create a personal access token with the read_api scope. Leave the host empty for gitlab.com; set it for a self-hosted instance.",
+    fields: [
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "glpat-…",
+        secret: true,
+      },
+      {
+        key: "host",
+        label: "GitLab host",
+        placeholder: "gitlab.com",
+        secret: false,
+        optional: true,
+      },
+    ],
+  },
 };
 
 export const TRACKER_KINDS = Object.keys(TRACKER_KIND_PRESENTATION) as ReadonlyArray<TrackerKind>;
 
-/** Builds the kind's wire input only when every displayed field is complete. */
+/** Builds the kind's wire input when required fields are complete, omitting blank optionals. */
 export function buildConnectInput(
   kind: TrackerKind,
   values: Readonly<Record<string, string>>,
@@ -89,6 +111,14 @@ export function buildConnectInput(
     const value = values[key]?.trim();
     return value === undefined || value.length === 0 ? null : value;
   };
+
+  if (
+    TRACKER_KIND_PRESENTATION[kind].fields.some(
+      (field) => field.optional !== true && read(field.key) === null,
+    )
+  ) {
+    return null;
+  }
 
   switch (kind) {
     case "linear": {
@@ -106,6 +136,11 @@ export function buildConnectInput(
     case "github": {
       const token = read("token");
       return token === null ? null : { kind, token };
+    }
+    case "gitlab": {
+      const token = read("token");
+      const host = read("host");
+      return token === null ? null : host === null ? { kind, token } : { kind, token, host };
     }
   }
 }
