@@ -30,6 +30,8 @@ import {
   type TrackerConnectorRefusal,
 } from "../connector.ts";
 
+type Connector = TrackerConnector<"linear">;
+
 export const LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql";
 
 /** How many issues one browse page asks for. */
@@ -194,6 +196,7 @@ const refusalForStatus = (status: number): TrackerConnectorRefusal =>
 
 export const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
+  const packCredential: Connector["packCredential"] = (input) => input.token;
 
   /**
    * One GraphQL round trip. The key rides in the `Authorization` header and
@@ -236,9 +239,7 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const probe: TrackerConnector["probe"] = Effect.fn("LinearConnector.probe")(function* (
-    token: string,
-  ) {
+  const probe: Connector["probe"] = Effect.fn("LinearConnector.probe")(function* (token: string) {
     const response = yield* send(token, LinearProbeResponse, { query: LINEAR_PROBE_DOCUMENT });
     if (response.errors && response.errors.length > 0) {
       return yield* Effect.fail(
@@ -251,57 +252,58 @@ export const make = Effect.gen(function* () {
     return { label: name === undefined || name.length === 0 ? "Linear" : name };
   });
 
-  const listIssues: TrackerConnector["listIssues"] = Effect.fn("LinearConnector.listIssues")(
-    function* (token: string, query) {
-      const search = query.search?.trim();
-      const response = yield* send(token, LinearIssuesResponse, {
-        query: LINEAR_ISSUES_DOCUMENT,
-        variables: {
-          first: ISSUE_PAGE_SIZE,
-          after: query.cursor ?? null,
-          // Searching is the tracker's job: it is the only thing that knows its
-          // own backlog. Absent search means the whole backlog, newest first.
-          filter:
-            search === undefined || search.length === 0
-              ? null
-              : {
-                  or: [
-                    { title: { containsIgnoreCase: search } },
-                    { description: { containsIgnoreCase: search } },
-                  ],
-                },
-        },
-      });
-      if (response.errors && response.errors.length > 0) {
-        return yield* Effect.fail(
-          isAuthError(response.errors) ? trackerAuthRefusal : trackerUnreachableRefusal,
-        );
-      }
+  const listIssues: Connector["listIssues"] = Effect.fn("LinearConnector.listIssues")(function* (
+    token: string,
+    query,
+  ) {
+    const search = query.search?.trim();
+    const response = yield* send(token, LinearIssuesResponse, {
+      query: LINEAR_ISSUES_DOCUMENT,
+      variables: {
+        first: ISSUE_PAGE_SIZE,
+        after: query.cursor ?? null,
+        // Searching is the tracker's job: it is the only thing that knows its
+        // own backlog. Absent search means the whole backlog, newest first.
+        filter:
+          search === undefined || search.length === 0
+            ? null
+            : {
+                or: [
+                  { title: { containsIgnoreCase: search } },
+                  { description: { containsIgnoreCase: search } },
+                ],
+              },
+      },
+    });
+    if (response.errors && response.errors.length > 0) {
+      return yield* Effect.fail(
+        isAuthError(response.errors) ? trackerAuthRefusal : trackerUnreachableRefusal,
+      );
+    }
 
-      const page = response.data?.issues;
-      const nextCursor =
-        page?.pageInfo.hasNextPage === true ? (page.pageInfo.endCursor ?? null) : null;
-      return {
-        // The mapping *is* the narrow shape: `identifier` is the human-facing
-        // key a person would say out loud ("M-98"), an absent description is an
-        // empty one, `state.name` is the tracker's own status word left
-        // uninterpreted, and `url` is Linear's canonical link — the origin link
-        // straight from the source of truth.
-        issues: (page?.nodes ?? []).map((node) => ({
-          id: node.identifier.trim(),
-          title: node.title ?? "",
-          description: node.description ?? "",
-          url: node.url.trim(),
-          status: node.state?.name ?? "",
-        })),
-        ...(nextCursor === null || nextCursor.trim().length === 0
-          ? {}
-          : { nextCursor: nextCursor.trim() }),
-      };
-    },
-  );
+    const page = response.data?.issues;
+    const nextCursor =
+      page?.pageInfo.hasNextPage === true ? (page.pageInfo.endCursor ?? null) : null;
+    return {
+      // The mapping *is* the narrow shape: `identifier` is the human-facing
+      // key a person would say out loud ("M-98"), an absent description is an
+      // empty one, `state.name` is the tracker's own status word left
+      // uninterpreted, and `url` is Linear's canonical link — the origin link
+      // straight from the source of truth.
+      issues: (page?.nodes ?? []).map((node) => ({
+        id: node.identifier.trim(),
+        title: node.title ?? "",
+        description: node.description ?? "",
+        url: node.url.trim(),
+        status: node.state?.name ?? "",
+      })),
+      ...(nextCursor === null || nextCursor.trim().length === 0
+        ? {}
+        : { nextCursor: nextCursor.trim() }),
+    };
+  });
 
-  const getIssue: TrackerConnector["getIssue"] = Effect.fn("LinearConnector.getIssue")(function* (
+  const getIssue: Connector["getIssue"] = Effect.fn("LinearConnector.getIssue")(function* (
     token: string,
     issueId: string,
   ) {
@@ -326,5 +328,11 @@ export const make = Effect.gen(function* () {
         };
   });
 
-  return { kind: "linear", probe, listIssues, getIssue } satisfies TrackerConnector;
+  return {
+    kind: "linear",
+    packCredential,
+    probe,
+    listIssues,
+    getIssue,
+  } satisfies Connector;
 });

@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import type { TrackerConnectorRegistry } from "../connector.ts";
+import * as JiraConnector from "./JiraConnector.ts";
 import * as LinearConnector from "./LinearConnector.ts";
 
 export class TrackerConnectors extends Context.Service<
@@ -21,7 +22,8 @@ export class TrackerConnectors extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const linear = yield* LinearConnector.make;
-  return TrackerConnectors.of({ linear });
+  const jira = yield* JiraConnector.make;
+  return TrackerConnectors.of({ linear, jira });
 });
 
 export const layer = Layer.effect(TrackerConnectors, make);

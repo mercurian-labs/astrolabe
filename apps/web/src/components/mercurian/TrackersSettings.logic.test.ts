@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { TrackerConnection } from "@t3tools/contracts";
 
 import {
+  buildConnectInput,
   presentConnectFailure,
   presentConnection,
   presentStanding,
@@ -21,8 +22,67 @@ const connection = (overrides: Partial<TrackerConnection> = {}): TrackerConnecti
 
 describe("tracker kinds", () => {
   it("lists one tracker per shipped connector", () => {
-    expect(TRACKER_KINDS).toEqual(["linear"]);
+    expect(TRACKER_KINDS).toEqual(["linear", "jira"]);
     expect(TRACKER_KIND_PRESENTATION.linear.name).toBe("Linear");
+    expect(TRACKER_KIND_PRESENTATION.jira.name).toBe("Jira");
+    expect(TRACKER_KINDS.length).toBeGreaterThan(1);
+  });
+
+  it("describes Jira's three fields and keeps only its token secret", () => {
+    expect(TRACKER_KIND_PRESENTATION.jira.fields).toEqual([
+      {
+        key: "site",
+        label: "Atlassian site",
+        placeholder: "acme.atlassian.net",
+        secret: false,
+      },
+      {
+        key: "email",
+        label: "Account email",
+        placeholder: "you@acme.com",
+        secret: false,
+      },
+      {
+        key: "token",
+        label: "API token",
+        placeholder: "Your Atlassian API token",
+        secret: true,
+      },
+    ]);
+    expect(TRACKER_KIND_PRESENTATION.linear.fields).toHaveLength(1);
+    expect(TRACKER_KIND_PRESENTATION.linear.fields[0]?.secret).toBe(true);
+  });
+});
+
+describe("buildConnectInput", () => {
+  it("builds Linear's input only when its token is present", () => {
+    expect(buildConnectInput("linear", {})).toBeNull();
+    expect(buildConnectInput("linear", { token: "   " })).toBeNull();
+    expect(buildConnectInput("linear", { token: " lin_api_test " })).toEqual({
+      kind: "linear",
+      token: "lin_api_test",
+    });
+  });
+
+  it("builds Jira's input only when all three fields are present", () => {
+    expect(
+      buildConnectInput("jira", {
+        site: "acme.atlassian.net",
+        email: "dev@acme.com",
+      }),
+    ).toBeNull();
+    expect(
+      buildConnectInput("jira", {
+        site: " acme.atlassian.net ",
+        email: " dev@acme.com ",
+        token: " jira-secret ",
+      }),
+    ).toEqual({
+      kind: "jira",
+      site: "acme.atlassian.net",
+      email: "dev@acme.com",
+      token: "jira-secret",
+    });
   });
 });
 

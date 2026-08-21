@@ -2533,9 +2533,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             MERCURIAN_TRACKER_WS_METHODS.connectTracker,
             DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                trackerStore.connect({ kind: input.kind, token: input.token, createdAt }),
-              ),
+              Effect.flatMap((createdAt) => trackerStore.connect({ ...input, createdAt })),
               Effect.map(toWireConnection),
               // The two refusals travel because the dialog says something
               // different for each. Nothing else about the attempt does — in

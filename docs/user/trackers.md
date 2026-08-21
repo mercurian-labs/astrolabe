@@ -22,6 +22,21 @@ server keeps its other secrets. It is never shown again — not in the list, not
 
 You can connect more than one tracker workspace. Each connection is its own row with its own key.
 
+## Connecting Jira
+
+Jira connections support Jira Cloud. Jira Server and Jira Data Center use different authentication
+and are not supported.
+
+1. At [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens), open
+   **Security → Create and manage API tokens** and create an API token.
+2. In Mercurian, go to **Settings → Trackers**, press **Connect tracker**, and choose **Jira**.
+3. Enter your Atlassian site (for example, `acme.atlassian.net`), the email address for your
+   Atlassian account, and the API token, then press **Connect**.
+
+Mercurian checks both the site and the credentials before saving anything. Once accepted, the
+connection is named after the Jira site it reaches. The site, email, and token are kept together in
+the server's protected secret store and are never shown again.
+
 ## What crosses over
 
 Whatever the tracker, an issue arrives as exactly five things:

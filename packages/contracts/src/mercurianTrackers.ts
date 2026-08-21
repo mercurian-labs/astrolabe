@@ -40,7 +40,7 @@ export type TrackerConnectionId = typeof TrackerConnectionId.Type;
  * Jira and GitHub Issues are the named family, not a wire enum to pre-declare,
  * and each arrives with its own connector and its own connect inputs.
  */
-export const TrackerKind = Schema.Literals(["linear"]);
+export const TrackerKind = Schema.Literals(["linear", "jira"]);
 export type TrackerKind = typeof TrackerKind.Type;
 
 /**
@@ -125,10 +125,24 @@ export type MercurianSubscribeTrackersInput = typeof MercurianSubscribeTrackersI
  * stored as a file beside the server's other secrets — never as a row, never in
  * a response, never in a log.
  */
-export const MercurianConnectTrackerInput = Schema.Struct({
-  kind: TrackerKind,
+export const LinearConnectTrackerInput = Schema.Struct({
+  kind: Schema.Literal("linear"),
   token: TrimmedNonEmptyString,
 });
+export type LinearConnectTrackerInput = typeof LinearConnectTrackerInput.Type;
+
+export const JiraConnectTrackerInput = Schema.Struct({
+  kind: Schema.Literal("jira"),
+  site: TrimmedNonEmptyString,
+  email: TrimmedNonEmptyString,
+  token: TrimmedNonEmptyString,
+});
+export type JiraConnectTrackerInput = typeof JiraConnectTrackerInput.Type;
+
+export const MercurianConnectTrackerInput = Schema.Union([
+  LinearConnectTrackerInput,
+  JiraConnectTrackerInput,
+]);
 export type MercurianConnectTrackerInput = typeof MercurianConnectTrackerInput.Type;
 
 export const MercurianDisconnectTrackerInput = Schema.Struct({

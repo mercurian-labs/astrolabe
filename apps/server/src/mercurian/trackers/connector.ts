@@ -19,7 +19,17 @@
  */
 import type * as Effect from "effect/Effect";
 
-import type { TrackerIssue, TrackerIssuePage, TrackerKind } from "@t3tools/contracts";
+import type {
+  MercurianConnectTrackerInput,
+  TrackerIssue,
+  TrackerIssuePage,
+  TrackerKind,
+} from "@t3tools/contracts";
+
+export type ConnectTrackerInputFor<K extends TrackerKind> = Extract<
+  MercurianConnectTrackerInput,
+  { readonly kind: K }
+>;
 
 /** What a successful probe learned: the name to show the connection by. */
 export interface TrackerProbeResult {
@@ -47,25 +57,29 @@ export interface TrackerIssueQuery {
   readonly cursor?: string | undefined;
 }
 
-export interface TrackerConnector {
-  readonly kind: TrackerKind;
+export interface TrackerConnector<K extends TrackerKind> {
+  readonly kind: K;
+  /** Packs this tracker's connect fields into its one opaque stored credential. */
+  readonly packCredential: (input: ConnectTrackerInputFor<K>) => string;
   /**
    * Validates the credential and names what it reaches. Run before anything is
    * written at connect time, and again — cheaply, behind a cache — to say where
    * a connection stands.
    */
-  readonly probe: (token: string) => Effect.Effect<TrackerProbeResult, TrackerConnectorRefusal>;
+  readonly probe: (
+    credential: string,
+  ) => Effect.Effect<TrackerProbeResult, TrackerConnectorRefusal>;
   /**
    * The live browse, and the only issue-shaped read there is. Never stored:
    * import is selection, not synchronization.
    */
   readonly listIssues: (
-    token: string,
+    credential: string,
     query: TrackerIssueQuery,
   ) => Effect.Effect<TrackerIssuePage, TrackerConnectorRefusal>;
   /** Read one origin live for an explicit refresh. Null means it no longer exists. */
   readonly getIssue: (
-    token: string,
+    credential: string,
     issueId: string,
   ) => Effect.Effect<TrackerIssue | null, TrackerConnectorRefusal>;
 }
@@ -74,6 +88,8 @@ export interface TrackerConnector {
  * The registry every tracker-aware service reads. Total over `TrackerKind`, so
  * a new literal without a connector is a type error rather than a runtime hole.
  */
-export type TrackerConnectorRegistry = Readonly<Record<TrackerKind, TrackerConnector>>;
+export type TrackerConnectorRegistry = Readonly<{
+  [K in TrackerKind]: TrackerConnector<K>;
+}>;
 
 export type { TrackerIssue, TrackerIssuePage };
