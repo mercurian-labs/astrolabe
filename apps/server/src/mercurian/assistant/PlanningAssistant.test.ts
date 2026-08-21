@@ -1288,6 +1288,7 @@ describe("PlanningAssistant", () => {
       assert.deepStrictEqual((yield* assistant.status).get(created.plan.planId), {
         isWorking: true,
         hasPendingInput: false,
+        modelTitle: "opus",
       });
 
       // Interleaved deltas ride their own turns.
@@ -1418,6 +1419,7 @@ describe("PlanningAssistant", () => {
       assert.deepStrictEqual((yield* assistant.status).get(created.plan.planId), {
         isWorking: true,
         hasPendingInput: true,
+        modelTitle: "opus",
       });
       yield* harness.emit(
         runtimeEvent(rightSession.threadId, {
