@@ -180,8 +180,12 @@ export function PlanMap(props: {
     [frame, props.layout.bounds],
   );
 
+  // The transform list, not an SVG transform string: react-native-svg parses
+  // an animated string with only the first translate component, so the y
+  // translation never landed and nodes drew where the hit test — which uses
+  // the shared values directly — did not look for them.
   const worldAnimatedProps = useAnimatedProps(() => ({
-    transform: `translate(${tx.value} ${ty.value}) scale(${zoom.value})`,
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: zoom.value }],
   }));
 
   const handleTap = useCallback(
