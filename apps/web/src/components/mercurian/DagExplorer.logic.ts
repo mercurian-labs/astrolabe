@@ -3,6 +3,23 @@ import * as Schema from "effect/Schema";
 
 import type { PlanGraphNode } from "./PlanGraph.logic";
 
+/** Status marks keep their semantic order when several share one graph node. */
+export function planNodeStatusDots({
+  ready,
+  staleSpec,
+  stalePlan,
+}: {
+  readonly ready: boolean;
+  readonly staleSpec: boolean;
+  readonly stalePlan: boolean;
+}): ReadonlyArray<{ readonly key: string; readonly fillClass: string }> {
+  return [
+    ...(ready ? [{ key: "ready", fillClass: "fill-emerald-500" }] : []),
+    ...(staleSpec ? [{ key: "stale-spec", fillClass: "fill-amber-500" }] : []),
+    ...(stalePlan ? [{ key: "stale-plan", fillClass: "fill-orange-500" }] : []),
+  ];
+}
+
 const DisplayMultiplier = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0),

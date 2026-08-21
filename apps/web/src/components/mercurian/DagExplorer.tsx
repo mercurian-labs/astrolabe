@@ -69,6 +69,7 @@ import {
   type MapTransform,
   type MapViewBox,
   type MinimapSize,
+  planNodeStatusDots,
 } from "./DagExplorer.logic";
 import {
   COLUMN_PANE_WIDTH,
@@ -84,7 +85,6 @@ import {
   mapMarksToNodes,
   planCheckpointEffectLabel,
   planNodeIdForCommit,
-  planNodeStatusDots,
   planNodeSummary,
 } from "./PlanCheckpoints.logic";
 import {

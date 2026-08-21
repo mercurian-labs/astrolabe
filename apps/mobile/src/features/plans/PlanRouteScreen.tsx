@@ -2,11 +2,9 @@ import { type StaticScreenProps, useNavigation } from "@react-navigation/native"
 import { ancestorClosure, buildPlanGraph } from "@t3tools/client-runtime/state/plan-graph";
 import { standingModelChoice } from "@t3tools/client-runtime/state/plan-model-choice";
 import {
-  advance,
-  LATEST,
+  isViewingPast,
   resolveActingHead,
   resolveHead,
-  type PlanPosition,
 } from "@t3tools/client-runtime/state/plan-position";
 import {
   EnvironmentId,
@@ -15,14 +13,16 @@ import {
   PlanId,
 } from "@t3tools/contracts";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
+import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { mercurianPlanning, usePlanDetail, useVisitPlan } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
+import { planPositionKey, resetPlanPosition, usePlanPosition } from "../../state/plan-position";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { PlanArtifactPane } from "./PlanArtifactPane";
@@ -77,27 +77,27 @@ function PlanRouteContent(props: {
     reportFailure: false,
   });
   const stopTurn = useAtomCommand(mercurianPlanning.stopPlanningTurn, { reportFailure: false });
-  const [position, setPosition] = useState<PlanPosition>(LATEST);
   const [view, setView] = useState<"conversation" | "artifact">("conversation");
   const detail = state.detail;
   const timeline = detail?.timeline ?? [];
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const planPosition = usePlanPosition(props.environmentId, props.planId, graph);
+  const transientPositionKey = planPositionKey(props.environmentId, props.planId);
 
   useEffect(() => {
-    setPosition(LATEST);
     setView("conversation");
   }, [props.planId]);
 
   useEffect(() => {
-    setPosition((current) => advance(graph, current));
-  }, [graph]);
+    return () => resetPlanPosition(transientPositionKey);
+  }, [transientPositionKey]);
 
   useEffect(() => {
     if (detail === null) return;
     void visitPlan({ planId: detail.plan.planId });
   }, [detail?.plan.updatedAt, detail?.plan.planId, visitPlan]);
 
-  const head = resolveHead(graph, position);
+  const head = resolveHead(graph, planPosition.position);
   const actingHead = resolveActingHead(graph, head);
   const visibleCommitIds = useMemo(
     () =>
@@ -136,7 +136,13 @@ function PlanRouteContent(props: {
   const turnActive = visibleInFlight !== undefined || visibleInFlightImplement !== undefined;
   const toggleArtifact = () =>
     setView((current) => (current === "artifact" ? "conversation" : "artifact"));
+  const openHistory = () =>
+    navigation.navigate("PlanHistory", {
+      environmentId: String(props.environmentId),
+      planId: String(props.planId),
+    });
   const title = detail?.plan.title ?? "Plan";
+  const viewingPast = isViewingPast(graph, planPosition.position);
 
   return (
     <View className="flex-1 bg-screen">
@@ -149,6 +155,14 @@ function PlanRouteContent(props: {
           unstable_headerRightItems:
             Platform.OS === "ios"
               ? () => [
+                  withNativeGlassHeaderItem({
+                    accessibilityLabel: "Show plan history",
+                    icon: { name: "clock", type: "sfSymbol" } as const,
+                    identifier: "plan-history",
+                    label: "",
+                    onPress: openHistory,
+                    type: "button",
+                  }),
                   withNativeGlassHeaderItem({
                     accessibilityLabel:
                       view === "artifact" ? "Hide plan artifact" : "Show plan artifact",
@@ -170,6 +184,11 @@ function PlanRouteContent(props: {
           title={title}
           onBack={() => navigation.goBack()}
           actions={[
+            {
+              accessibilityLabel: "Show plan history",
+              icon: "clock",
+              onPress: openHistory,
+            },
             {
               accessibilityLabel: view === "artifact" ? "Hide plan artifact" : "Show plan artifact",
               icon: view === "artifact" ? "text.bubble" : "doc.text",
@@ -224,6 +243,20 @@ function PlanRouteContent(props: {
                 });
               }}
             />
+            {viewingPast ? (
+              <View className="flex-row items-center gap-3 border-t border-border bg-subtle px-4 py-2.5">
+                <Text className="min-w-0 flex-1 text-xs leading-4 text-foreground-muted">
+                  Viewing an earlier point — sending starts a new branch from here
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  className="rounded-full border border-border bg-sheet px-3 py-1.5 active:opacity-70"
+                  onPress={planPosition.backToNow}
+                >
+                  <Text className="text-xs font-t3-bold text-foreground">Back to now</Text>
+                </Pressable>
+              </View>
+            ) : null}
             <PlanComposerBar
               environmentId={props.environmentId}
               planId={props.planId}
@@ -234,9 +267,7 @@ function PlanRouteContent(props: {
               turnActive={turnActive}
               activeTurnId={visibleInFlight?.turnId ?? visibleInFlightImplement?.turnId}
               turnRefusal={state.turnRefusal}
-              onSent={(commitId: MercurianCommitId) =>
-                setPosition({ _tag: "at", commitId, live: true })
-              }
+              onSent={(commitId: MercurianCommitId) => planPosition.standAt(commitId)}
             />
           </View>
         </>
