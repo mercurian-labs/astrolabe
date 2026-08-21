@@ -9,7 +9,7 @@ import { cn } from "../../lib/utils";
 import { useSavePlanRevision } from "../../state/mercurian";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
-import { lastPlanRevision } from "./PlanArtifact.logic";
+import { lastPlanRevision, saveRefusalNotice } from "./PlanArtifact.logic";
 
 /**
  * The plan artifact: the standing object the planning space orbits.
@@ -24,6 +24,7 @@ export function PlanArtifact({
   parentCommitId,
   timeline,
   readOnly = false,
+  turnActive = false,
   readOnlyAction,
   titleControl,
   cornerControl,
@@ -43,6 +44,12 @@ export function PlanArtifact({
    * away rather than quietly appending at the tip.
    */
   readonly readOnly?: boolean;
+  /**
+   * Set while a reply streams on this branch. A human revision would fork the
+   * assistant's own chain, so the edit affordance steps aside and a line says
+   * why — the same fact the composer's Stop face states.
+   */
+  readonly turnActive?: boolean;
   /** What takes Edit's place while read-only: the way back to now. */
   readonly readOnlyAction?: ReactNode;
   /** The planning-space artifact picker; omitted in standalone renderings. */
@@ -53,20 +60,27 @@ export function PlanArtifact({
   const savePlanRevision = useSavePlanRevision();
   const [draft, setDraft] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const editable = !readOnly && !turnActive;
 
   const save = useCallback(async () => {
     if (draft === null || isSaving) return;
     setIsSaving(true);
+    setNotice(null);
     const saved = await savePlanRevision({
       planId,
       text: draft,
       ...(parentCommitId === undefined ? {} : { parentCommitId }),
     });
     setIsSaving(false);
-    if (saved !== null) {
+    if (saved.ok) {
       // The stream delivers the new text; the buffer's job is done.
       setDraft(null);
+      return;
     }
+    // The editor keeps the text either way; the pane says why nothing landed
+    // instead of leaving a refusal to the console.
+    setNotice(saveRefusalNotice(saved.error));
   }, [draft, isSaving, parentCommitId, planId, savePlanRevision]);
 
   return (
@@ -79,13 +93,22 @@ export function PlanArtifact({
         {readOnly ? (
           readOnlyAction
         ) : draft === null ? (
-          <Button size="sm" variant="ghost" onClick={() => setDraft(planText)}>
-            <PencilIcon className="size-3.5" />
-            Edit
-          </Button>
+          editable ? (
+            <Button size="sm" variant="ghost" onClick={() => setDraft(planText)}>
+              <PencilIcon className="size-3.5" />
+              Edit
+            </Button>
+          ) : null
         ) : (
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDraft(null);
+                setNotice(null);
+              }}
+            >
               Cancel
             </Button>
             <Button
@@ -100,6 +123,16 @@ export function PlanArtifact({
         )}
         {cornerControl}
       </div>
+      {notice === null ? null : (
+        <p className="border-b border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:px-4">
+          {notice}
+        </p>
+      )}
+      {turnActive && !readOnly ? (
+        <p className="border-b border-border/60 px-3 py-2 text-xs text-muted-foreground sm:px-4">
+          The assistant is replying. Stop it before editing the plan.
+        </p>
+      ) : null}
       {draft === null || readOnly ? (
         <PlanArtifactBody planText={planText} />
       ) : (

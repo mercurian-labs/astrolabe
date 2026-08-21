@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { expectedSpecRevisionId, lastSpecRevision, specRevisionLabel } from "./SpecArtifact.logic";
+import { saveRefusalNotice } from "./PlanArtifact.logic";
 
 interface Reconciliation {
   readonly base: SpecDocument;
@@ -80,7 +81,12 @@ export function SpecArtifact({
       document: draft,
     });
     setIsSaving(false);
-    if (saved !== null) setDraft(null);
+    if (saved.ok) {
+      setDraft(null);
+      return;
+    }
+    // The editor keeps the document; the pane says why nothing landed.
+    setNotice(saveRefusalNotice(saved.error));
   }, [draft, isSaving, parentCommitId, planId, saveSpecRevision, timeline]);
 
   const refresh = useCallback(async () => {

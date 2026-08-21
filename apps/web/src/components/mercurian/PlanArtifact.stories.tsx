@@ -39,3 +39,8 @@ export const Editing: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Edit" }));
   },
 };
+
+export const ReplyStreaming: Story = {
+  name: "Reply streaming on this branch",
+  args: { turnActive: true },
+};

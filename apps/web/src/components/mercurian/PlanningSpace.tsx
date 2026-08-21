@@ -4,6 +4,7 @@ import {
   type MercurianCommitId,
   type MercurianProjectId,
   type PlanId,
+  type PlanInFlightTurn,
   type PlanSpecAt,
   type PlanTimelineItem,
   type PlanImplementReady,
@@ -151,6 +152,7 @@ const DEFAULT_RIGHT_PANE: RightPaneState = { open: true, view: "artifact", artif
 
 /** One identity for "nothing yet", so the derived graph is not rebuilt for it. */
 const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
+const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 type PlanHumanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
 interface PendingEditAndBranch {
@@ -403,17 +405,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   }, [graph, head, timeline]);
 
   /**
-   * The streaming reply belongs to one path: the one its human message is
-   * on. Standing on another branch — or in the past — shows the history you
-   * chose, not a reply landing somewhere else.
+   * Each streaming reply belongs to one path: the one its human message is
+   * on. Standing on a branch shows that branch's own reply — replies landing
+   * on other branches stream there, not here — and standing in the past
+   * shows the history you chose.
    */
-  const inFlightTurn = detail?.inFlightTurn;
+  const inFlightTurns = detail?.inFlightTurns ?? EMPTY_IN_FLIGHT_TURNS;
   const visibleInFlight = useMemo(() => {
-    if (inFlightTurn === undefined) return undefined;
-    if (head === null) return inFlightTurn;
+    if (inFlightTurns.length === 0) return undefined;
+    if (head === null) return inFlightTurns[0];
     const closure = ancestorClosure(graph, head);
-    return closure.has(inFlightTurn.parentCommitId) ? inFlightTurn : undefined;
-  }, [graph, head, inFlightTurn]);
+    return inFlightTurns.find((turn) => closure.has(turn.parentCommitId));
+  }, [graph, head, inFlightTurns]);
 
   const inFlightImplement = detail?.inFlightImplement;
   const visibleInFlightImplement = useMemo(() => {
@@ -594,7 +597,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const artifactText = needsPathText ? pathText : (detail?.planText ?? null);
   const artifactSpec = needsPathSpec ? pathSpec : detail?.spec;
   const implementReason = implementDisabledReason({
-    turnActive: inFlightTurn !== undefined || inFlightImplement !== undefined,
+    turnActive: visibleInFlight !== undefined || inFlightImplement !== undefined,
     planTextEmpty: artifactText === null || artifactText.trim().length === 0,
     isDraft: false,
   });
@@ -646,8 +649,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             providers={planningModel.providers}
             readyCommits={readyCommits}
             timeline={visibleTimeline}
-            onAnswerQuestion={(answers) => void answerQuestion(planId, answers)}
-            onStopImplement={() => void stopTurn(planId)}
+            onAnswerQuestion={(answers) => {
+              if (visibleInFlight !== undefined) {
+                void answerQuestion(planId, visibleInFlight.turnId, answers);
+              }
+            }}
+            onStopImplement={() => {
+              if (visibleInFlightImplement !== undefined) {
+                void stopTurn(planId, visibleInFlightImplement.turnId);
+              }
+            }}
           />
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
@@ -667,7 +678,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             mentionCandidates={mentions.candidates}
             modelPicker={
               <PlanModelPicker
-                disabled={inFlightTurn !== undefined || inFlightImplement !== undefined}
+                disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
                 providers={planningModel.providers}
                 selection={modelChoice}
                 onChange={(selection) => {
@@ -683,9 +694,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             }
             placeholder="Message this plan"
             text={draft.text}
-            // The whole plan holds one turn at a time, wherever it streams —
-            // Stop is offered even when the reply is on another branch.
-            turnActive={inFlightTurn !== undefined || inFlightImplement !== undefined}
+            // One turn at a time per branch: Stop wears the send button only
+            // while this branch's own reply streams. A reply on another
+            // branch never gates sending here.
+            turnActive={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
             onAddAttachments={(added) => {
               if (actingHead !== null) addDraftAttachments(planId, actingHead, added, draftLive);
             }}
@@ -697,7 +709,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               if (actingHead !== null) removeDraftAttachment(planId, actingHead, localId);
             }}
             onSend={send}
-            onStop={() => void stopTurn(planId)}
+            onStop={() => {
+              const streaming = visibleInFlight ?? visibleInFlightImplement;
+              if (streaming !== undefined) void stopTurn(planId, streaming.turnId);
+            }}
             onImplement={beginImplement}
           />
         </div>
@@ -737,9 +752,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   anchoredCommitId={head}
                   codingSessions={detail.codingSessions}
                   graph={graph}
-                  {...(detail?.inFlightTurn === undefined
-                    ? {}
-                    : { inFlightAnchorCommitId: detail.inFlightTurn.parentCommitId })}
+                  inFlightAnchorCommitIds={inFlightTurns.map((turn) => turn.parentCommitId)}
                   providers={planningModel.providers}
                   readyCommits={readyCommits}
                   stalePlanCommitIds={stalePlanLeaves}
@@ -792,6 +805,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                       planId={planId}
                       planText={artifactText ?? ""}
                       readOnly={viewingPast || viewingSessionLeaf}
+                      turnActive={
+                        visibleInFlight !== undefined || visibleInFlightImplement !== undefined
+                      }
                       readOnlyAction={
                         <Button size="sm" variant="ghost" onClick={backToNow}>
                           Back to now
@@ -826,7 +842,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                         />
                       }
                       timeline={visibleTimeline}
-                      turnActive={inFlightTurn !== undefined || inFlightImplement !== undefined}
+                      turnActive={
+                        visibleInFlight !== undefined || visibleInFlightImplement !== undefined
+                      }
                     />
                   )}
                 </div>

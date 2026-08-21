@@ -52,6 +52,7 @@ const snapshot: PlanDetail = {
   snapshotSequence: 1,
   readyCommits: [],
   codingSessions: [],
+  inFlightTurns: [],
 };
 
 const fold = (items: ReadonlyArray<PlanStreamItem>) =>
@@ -240,8 +241,8 @@ const question: PlanQuestion = {
 describe("applyPlanStreamItem turn frames", () => {
   it("opens the in-flight turn and streams deltas into it", () => {
     const state = fold([{ kind: "snapshot", snapshot }, started, delta("Hel", 0), delta("lo", 3)]);
-    expect(state.detail?.inFlightTurn?.text).toBe("Hello");
-    expect(state.detail?.inFlightTurn?.parentCommitId).toBe("commit-1");
+    expect(state.detail?.inFlightTurns[0]?.text).toBe("Hello");
+    expect(state.detail?.inFlightTurns[0]?.parentCommitId).toBe("commit-1");
   });
 
   it("folds away a delta replayed across the snapshot join", () => {
@@ -249,15 +250,17 @@ describe("applyPlanStreamItem turn frames", () => {
     // delta the snapshot's partial text already contains can arrive again.
     const midTurn: PlanDetail = {
       ...snapshot,
-      inFlightTurn: {
-        turnId,
-        parentCommitId: MercurianCommitId.make("commit-1"),
-        text: "Hel",
-        grounding: [],
-      },
+      inFlightTurns: [
+        {
+          turnId,
+          parentCommitId: MercurianCommitId.make("commit-1"),
+          text: "Hel",
+          grounding: [],
+        },
+      ],
     };
     const state = fold([{ kind: "snapshot", snapshot: midTurn }, delta("Hel", 0), delta("lo", 3)]);
-    expect(state.detail?.inFlightTurn?.text).toBe("Hello");
+    expect(state.detail?.inFlightTurns[0]?.text).toBe("Hello");
   });
 
   it("collects grounding once per item", () => {
@@ -268,7 +271,7 @@ describe("applyPlanStreamItem turn frames", () => {
       { kind: "turn-grounding", turnId, item },
       { kind: "turn-grounding", turnId, item },
     ]);
-    expect(state.detail?.inFlightTurn?.grounding).toEqual([item]);
+    expect(state.detail?.inFlightTurns[0]?.grounding).toEqual([item]);
   });
 
   it("raises the question and clears it when answered", () => {
@@ -277,11 +280,11 @@ describe("applyPlanStreamItem turn frames", () => {
       started,
       { kind: "turn-question", turnId, questions: [question] },
     ]);
-    expect(asked.detail?.inFlightTurn?.questions).toEqual([question]);
+    expect(asked.detail?.inFlightTurns[0]?.questions).toEqual([question]);
 
     const answered = applyPlanStreamItem(asked, { kind: "turn-question-answered", turnId });
-    expect(answered.detail?.inFlightTurn?.questions).toBeUndefined();
-    expect(answered.detail?.inFlightTurn?.text).toBe("");
+    expect(answered.detail?.inFlightTurns[0]?.questions).toBeUndefined();
+    expect(answered.detail?.inFlightTurns[0]?.text).toBe("");
   });
 
   it("closes the turn on turn-settled and appends the commit as the record", () => {
@@ -302,7 +305,7 @@ describe("applyPlanStreamItem turn frames", () => {
         },
       },
     ]);
-    expect(state.detail?.inFlightTurn).toBeUndefined();
+    expect(state.detail?.inFlightTurns).toHaveLength(0);
     expect(state.detail?.timeline).toHaveLength(2);
   });
 
@@ -324,7 +327,7 @@ describe("applyPlanStreamItem turn frames", () => {
         planText: "# Plan",
       },
     ]);
-    expect(midRevision.detail?.inFlightTurn).toBeDefined();
+    expect(midRevision.detail?.inFlightTurns).toHaveLength(1);
 
     const settledByCommit = applyPlanStreamItem(midRevision, {
       kind: "commit",
@@ -336,10 +339,10 @@ describe("applyPlanStreamItem turn frames", () => {
         text: "Done",
       },
     });
-    expect(settledByCommit.detail?.inFlightTurn).toBeUndefined();
+    expect(settledByCommit.detail?.inFlightTurns).toHaveLength(0);
 
     const idempotent = applyPlanStreamItem(settledByCommit, { kind: "turn-settled", turnId });
-    expect(idempotent.detail?.inFlightTurn).toBeUndefined();
+    expect(idempotent.detail?.inFlightTurns).toHaveLength(0);
     expect(idempotent.detail?.timeline).toHaveLength(3);
   });
 
@@ -357,16 +360,112 @@ describe("applyPlanStreamItem turn frames", () => {
   it("joins mid-turn from the snapshot's own in-flight state", () => {
     const midTurn: PlanDetail = {
       ...snapshot,
-      inFlightTurn: {
-        turnId,
-        parentCommitId: MercurianCommitId.make("commit-1"),
-        text: "So far",
-        grounding: [{ kind: "search", label: "subscribeTree" }],
-      },
+      inFlightTurns: [
+        {
+          turnId,
+          parentCommitId: MercurianCommitId.make("commit-1"),
+          text: "So far",
+          grounding: [{ kind: "search", label: "subscribeTree" }],
+        },
+      ],
     };
     const state = fold([{ kind: "snapshot", snapshot: midTurn }]);
-    expect(state.detail?.inFlightTurn?.text).toBe("So far");
-    expect(state.detail?.inFlightTurn?.grounding).toHaveLength(1);
+    expect(state.detail?.inFlightTurns[0]?.text).toBe("So far");
+    expect(state.detail?.inFlightTurns[0]?.grounding).toHaveLength(1);
+  });
+});
+
+describe("applyPlanStreamItem concurrent turns", () => {
+  const otherTurnId = PlanTurnId.make("turn-2");
+  const forkSnapshot: PlanDetail = {
+    ...snapshot,
+    timeline: [
+      message("commit-1", 1, "Reshape the sidebar"),
+      message("commit-2", 2, "Reply", ["commit-1"]),
+      message("commit-3", 3, "Branch A", ["commit-2"]),
+      message("commit-4", 4, "Branch B", ["commit-2"]),
+    ],
+    snapshotSequence: 4,
+  };
+  const startedA: PlanStreamItem = {
+    kind: "turn-started",
+    turnId,
+    parentCommitId: MercurianCommitId.make("commit-3"),
+  };
+  const startedB: PlanStreamItem = {
+    kind: "turn-started",
+    turnId: otherTurnId,
+    parentCommitId: MercurianCommitId.make("commit-4"),
+  };
+
+  it("streams interleaved deltas into their own turns, never across", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: forkSnapshot },
+      startedA,
+      startedB,
+      delta("A-text", 0),
+      { kind: "turn-delta", turnId: otherTurnId, textDelta: "B-text", offset: 0 },
+    ]);
+    const turns = state.detail?.inFlightTurns ?? [];
+    expect(turns).toHaveLength(2);
+    expect(turns.find((turn) => turn.turnId === turnId)?.text).toBe("A-text");
+    expect(turns.find((turn) => turn.turnId === otherTurnId)?.text).toBe("B-text");
+  });
+
+  it("settles one turn and leaves the other streaming", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: forkSnapshot },
+      startedA,
+      startedB,
+      { kind: "turn-settled", turnId },
+    ]);
+    const turns = state.detail?.inFlightTurns ?? [];
+    expect(turns.map((turn) => turn.turnId)).toEqual([otherTurnId]);
+  });
+
+  it("lets a settled commit close only the branch it descends from", () => {
+    // Branch A's reply settles as a commit — walking its first parents finds
+    // turn A's opening parent; turn B keeps streaming untouched.
+    const state = fold([
+      { kind: "snapshot", snapshot: forkSnapshot },
+      startedA,
+      startedB,
+      {
+        kind: "commit",
+        sequence: 5,
+        item: {
+          _tag: "plan-revision",
+          ...commitFields("revision-a", 5, ["commit-3"]),
+          authorKind: "assistant",
+        },
+        planText: "# Branch A plan",
+      },
+      {
+        kind: "commit",
+        sequence: 6,
+        item: {
+          _tag: "message",
+          ...commitFields("reply-a", 6, ["revision-a"]),
+          authorKind: "assistant",
+          text: "Done on A",
+        },
+      },
+    ]);
+    const turns = state.detail?.inFlightTurns ?? [];
+    expect(turns.map((turn) => turn.turnId)).toEqual([otherTurnId]);
+    expect(state.detail?.timeline.at(-1)?.commitId).toBe("reply-a");
+  });
+
+  it("a question pauses only its own turn", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: forkSnapshot },
+      startedA,
+      startedB,
+      { kind: "turn-question", turnId, questions: [question] },
+    ]);
+    const turns = state.detail?.inFlightTurns ?? [];
+    expect(turns.find((turn) => turn.turnId === turnId)?.questions).toEqual([question]);
+    expect(turns.find((turn) => turn.turnId === otherTurnId)?.questions).toBeUndefined();
   });
 });
 
@@ -408,14 +507,26 @@ describe("applyPlanStreamItem implement frames", () => {
     expect(state.detail?.implementProposal).toEqual(proposal);
   });
 
-  it("rejects a proposal that contradicts a different live turn", () => {
-    const state = fold([
+  it("folds a proposal beside a streaming reply, but not against a different live analysis", () => {
+    // A reply on some branch is no reason to drop the analysis; only a
+    // different live implement marks this one stale.
+    const besideReply = fold([
       { kind: "snapshot", snapshot },
       started,
       { kind: "implement-analyzed", proposal },
     ]);
-    expect(state.detail?.implementProposal).toBeUndefined();
-    expect(state.detail?.inFlightTurn?.turnId).toBe(turnId);
+    expect(besideReply.detail?.implementProposal).toEqual(proposal);
+    expect(besideReply.detail?.inFlightTurns[0]?.turnId).toBe(turnId);
+
+    const otherAnalysis = fold([
+      { kind: "snapshot", snapshot },
+      {
+        kind: "implement-started",
+        implement: { ...implement, turnId: PlanTurnId.make("newer-implement") },
+      },
+      { kind: "implement-analyzed", proposal },
+    ]);
+    expect(otherAnalysis.detail?.implementProposal).toBeUndefined();
   });
 
   it("inserts readiness before its commit and replaces readiness on snapshot", () => {

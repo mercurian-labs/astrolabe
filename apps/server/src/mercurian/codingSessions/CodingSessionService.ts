@@ -225,7 +225,9 @@ export const make = Effect.gen(function* () {
 
   const start: CodingSessionService["Service"]["start"] = Effect.fn("CodingSessionService.start")(
     function* (input) {
-      if (Option.isSome(yield* planTurns.get(input.planId))) {
+      // A session starts from a settled commit; only a turn streaming on that
+      // very chain blocks it. Replies on other branches run beside it.
+      if (yield* planTurns.activeChainMember(input.planId, CommitId.make(input.parentCommitId))) {
         return yield* new PlanTurnActiveError({ planId: input.planId });
       }
       const detail = yield* planning.getPlanSnapshot({ planId: input.planId });

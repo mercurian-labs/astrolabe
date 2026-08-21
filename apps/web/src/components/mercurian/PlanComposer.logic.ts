@@ -12,8 +12,9 @@ import { providerLabel } from "./PlanningModel.logic";
  * The send↔stop↔gate state machine, kept pure so the composer component
  * stays a renderer of it.
  *
- * The contract, restated from the design: while a reply streams the send
- * control *is* the stop control — one control, two faces, no queueing.
+ * The contract, restated from the design: while this branch's reply streams
+ * the send control *is* the stop control — one control, two faces, no
+ * queueing — and a reply streaming on another branch never wears it.
  * While the planning model cannot run a turn on this machine, sending is
  * gated with the reason stated — typing stays legal, drafts are drafts.
  */
@@ -26,7 +27,7 @@ export interface PlanComposerControlState {
 }
 
 export function resolveComposerControl(input: {
-  /** A turn is live in this plan — streaming, or waiting on a question. */
+  /** A turn is live on this branch — streaming, or waiting on a question. */
   readonly turnActive: boolean;
   readonly hasContent: boolean;
   readonly isSending: boolean;
@@ -96,7 +97,7 @@ export function turnRefusalNotice(
     case "model-unavailable":
       return "The message was sent, but the planning model is not available on this machine.";
     case "turn-active":
-      return "The assistant is already replying in this plan.";
+      return "The assistant is already replying on this branch.";
     default:
       return "The message was sent, but the assistant could not reply.";
   }

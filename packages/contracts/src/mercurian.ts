@@ -445,8 +445,8 @@ export const PlanDetail = Schema.Struct({
   readyCommits: Schema.Array(PlanImplementReady),
   /** Mutable coding-session facts, keyed by their immutable leaf commits. */
   codingSessions: Schema.Array(PlanCodingSessionRecord),
-  /** The turn streaming right now, when one is. Runtime state, never stored. */
-  inFlightTurn: Schema.optional(PlanInFlightTurn),
+  /** The turns streaming right now — one per branch. Runtime state, never stored. */
+  inFlightTurns: Schema.Array(PlanInFlightTurn),
   /** An implement analysis currently running. Runtime state, never stored. */
   inFlightImplement: Schema.optional(PlanInFlightImplement),
   /** The latest analysis result awaiting a person's decision. */
@@ -475,7 +475,7 @@ export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
  *
  * The `turn-*` members are transient frames (ADR 002 §3): transport, not
  * record. They carry no sequence and never resume — a reconnect re-subscribes
- * and the snapshot's `inFlightTurn` carries the partial turn. Only the
+ * and the snapshot's `inFlightTurns` carries the partial turns. Only the
  * settling commit is durable, and it arrives as an ordinary `commit` event
  * right after `turn-settled`.
  */
@@ -817,7 +817,7 @@ export type MercurianSubscribePlanInput = typeof MercurianSubscribePlanInput.Typ
  * streaming: there is nothing to stop, and that is not an error a person
  * caused.
  */
-export const MercurianStopPlanningTurnInput = Schema.Struct({ planId: PlanId });
+export const MercurianStopPlanningTurnInput = Schema.Struct({ planId: PlanId, turnId: PlanTurnId });
 export type MercurianStopPlanningTurnInput = typeof MercurianStopPlanningTurnInput.Type;
 
 /**
@@ -826,6 +826,7 @@ export type MercurianStopPlanningTurnInput = typeof MercurianStopPlanningTurnInp
  */
 export const MercurianAnswerPlanningQuestionInput = Schema.Struct({
   planId: PlanId,
+  turnId: PlanTurnId,
   answers: Schema.Record(Schema.String, Schema.Unknown),
 });
 export type MercurianAnswerPlanningQuestionInput = typeof MercurianAnswerPlanningQuestionInput.Type;

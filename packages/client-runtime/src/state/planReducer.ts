@@ -46,16 +46,54 @@ export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
 const sameGroundingItem = (left: PlanGroundingItem, right: PlanGroundingItem): boolean =>
   left.kind === right.kind && left.label === right.label && left.detail === right.detail;
 
-function withInFlightTurn(
+function withInFlightTurns(
   state: PlanSubscriptionState,
-  inFlightTurn: PlanInFlightTurn | undefined,
+  inFlightTurns: ReadonlyArray<PlanInFlightTurn>,
 ): PlanSubscriptionState {
   if (state.detail === null) return state;
-  const { inFlightTurn: _previous, ...rest } = state.detail;
-  return {
-    ...state,
-    detail: { ...rest, ...(inFlightTurn === undefined ? {} : { inFlightTurn }) },
-  };
+  return { ...state, detail: { ...state.detail, inFlightTurns } };
+}
+
+/** Address one streaming turn among the branch's peers; unknown ids fold away. */
+function updateInFlightTurn(
+  state: PlanSubscriptionState,
+  turnId: PlanInFlightTurn["turnId"],
+  update: (turn: PlanInFlightTurn) => PlanInFlightTurn | undefined,
+): PlanSubscriptionState {
+  const turns = state.detail?.inFlightTurns;
+  const current = turns?.find((turn) => turn.turnId === turnId);
+  if (turns === undefined || current === undefined) return state;
+  const updated = update(current);
+  return withInFlightTurns(
+    state,
+    updated === undefined
+      ? turns.filter((turn) => turn.turnId !== turnId)
+      : turns.map((turn) => (turn.turnId === turnId ? updated : turn)),
+  );
+}
+
+/**
+ * Which streaming turn a settled assistant reply belongs to: the one whose
+ * opening parent the reply descends from along first parents. Mid-turn
+ * revisions land as commits between the two, so the walk crosses them; it
+ * stops at the first human message — another branch's history is never
+ * consulted — and is bounded against malformed data.
+ */
+function turnSettledByCommit(
+  detail: PlanDetail,
+  parents: ReadonlyArray<MercurianCommitId>,
+): PlanInFlightTurn | undefined {
+  if (detail.inFlightTurns.length === 0) return undefined;
+  const byId = new Map(detail.timeline.map((entry) => [entry.commitId, entry] as const));
+  let cursor = parents[0];
+  for (let step = 0; step < 100 && cursor !== undefined; step += 1) {
+    const match = detail.inFlightTurns.find((turn) => turn.parentCommitId === cursor);
+    if (match !== undefined) return match;
+    const entry = byId.get(cursor);
+    if (entry === undefined || entry._tag === "message") return undefined;
+    cursor = entry.parents[0];
+  }
+  return undefined;
 }
 
 function withInFlightImplement(
@@ -92,7 +130,7 @@ function withImplementProposal(
  * duplicate a row in the history.
  *
  * Turn frames are transient transport (ADR 002 §3) and fold into
- * `detail.inFlightTurn`. They carry no sequence; instead each delta carries
+ * `detail.inFlightTurns`, keyed by their turn. They carry no sequence; each delta carries
  * the offset of the text before it, so a frame replayed across the join —
  * the server attaches its frame feed before it reads the snapshot — folds
  * away instead of duplicating characters.
@@ -130,20 +168,26 @@ export function applyPlanStreamItem(
       if (detail === null || item.sequence <= detail.snapshotSequence) return state;
       // The settled assistant reply arriving as a commit is the record
       // replacing the stream: whichever of it and `turn-settled` lands
-      // first closes the in-flight turn. Mid-turn plan revisions are
-      // assistant commits too and close nothing.
-      const closesTurn =
-        detail.inFlightTurn !== undefined &&
-        item.item._tag === "message" &&
-        item.item.authorKind === "assistant";
+      // first closes that branch's in-flight turn — and only that one; a
+      // reply settling on one branch says nothing about another still
+      // streaming. Mid-turn plan revisions are assistant commits too and
+      // close nothing.
+      const settled =
+        item.item._tag === "message" && item.item.authorKind === "assistant"
+          ? turnSettledByCommit(detail, item.item.parents)
+          : undefined;
+      const inFlightTurns =
+        settled === undefined
+          ? detail.inFlightTurns
+          : detail.inFlightTurns.filter((turn) => turn.turnId !== settled.turnId);
       const closesImplementProposal =
         item.item._tag === "plan-revision" && item.item.split !== undefined;
-      const { inFlightTurn, implementProposal, ...rest } = detail;
+      const { implementProposal, ...rest } = detail;
       return {
         ...state,
         detail: {
           ...rest,
-          ...(closesTurn || inFlightTurn === undefined ? {} : { inFlightTurn }),
+          inFlightTurns,
           ...(closesImplementProposal || implementProposal === undefined
             ? {}
             : { implementProposal }),
@@ -156,38 +200,46 @@ export function applyPlanStreamItem(
         },
       };
     }
-    case "turn-started":
+    case "turn-started": {
+      const cleared = withImplementProposal(state, undefined);
+      const existing = cleared.detail?.inFlightTurns ?? [];
       return {
-        ...withInFlightTurn(withImplementProposal(state, undefined), {
-          turnId: item.turnId,
-          parentCommitId: item.parentCommitId,
-          text: "",
-          grounding: [],
-          ...(item.groundingScope === undefined ? {} : { groundingScope: item.groundingScope }),
-        }),
+        ...withInFlightTurns(cleared, [
+          ...existing.filter((turn) => turn.turnId !== item.turnId),
+          {
+            turnId: item.turnId,
+            parentCommitId: item.parentCommitId,
+            text: "",
+            grounding: [],
+            ...(item.groundingScope === undefined ? {} : { groundingScope: item.groundingScope }),
+          },
+        ]),
         turnRefusal: null,
       };
+    }
     case "implement-started":
       return {
         ...withInFlightImplement(withImplementProposal(state, undefined), item.implement),
         implementFailure: null,
       };
-    case "turn-delta": {
-      const turn = state.detail?.inFlightTurn;
-      if (turn === undefined || turn.turnId !== item.turnId) return state;
-      // A delta wholly below the text this window already holds is a replay
-      // across the snapshot join.
-      if (item.offset !== undefined && item.offset < turn.text.length) return state;
-      return withInFlightTurn(state, { ...turn, text: turn.text + item.textDelta });
-    }
+    case "turn-delta":
+      return updateInFlightTurn(state, item.turnId, (turn) =>
+        // A delta wholly below the text this window already holds is a replay
+        // across the snapshot join.
+        item.offset !== undefined && item.offset < turn.text.length
+          ? turn
+          : { ...turn, text: turn.text + item.textDelta },
+      );
     case "turn-grounding": {
-      const turn = state.detail?.inFlightTurn;
-      if (turn !== undefined && turn.turnId === item.turnId) {
-        if (turn.grounding.some((existing) => sameGroundingItem(existing, item.item))) return state;
-        return withInFlightTurn(state, {
-          ...turn,
-          grounding: Arr.append(turn.grounding, item.item),
-        });
+      const turn = state.detail?.inFlightTurns.find(
+        (candidate) => candidate.turnId === item.turnId,
+      );
+      if (turn !== undefined) {
+        return updateInFlightTurn(state, item.turnId, (current) =>
+          current.grounding.some((existing) => sameGroundingItem(existing, item.item))
+            ? current
+            : { ...current, grounding: Arr.append(current.grounding, item.item) },
+        );
       }
       const implement = state.detail?.inFlightImplement;
       if (implement === undefined || implement.turnId !== item.turnId) return state;
@@ -199,31 +251,25 @@ export function applyPlanStreamItem(
         grounding: Arr.append(implement.grounding, item.item),
       });
     }
-    case "turn-question": {
-      const turn = state.detail?.inFlightTurn;
-      if (turn === undefined || turn.turnId !== item.turnId) return state;
-      return withInFlightTurn(state, { ...turn, questions: item.questions });
-    }
-    case "turn-question-answered": {
-      const turn = state.detail?.inFlightTurn;
-      if (turn === undefined || turn.turnId !== item.turnId) return state;
-      const { questions: _answered, ...rest } = turn;
-      return withInFlightTurn(state, rest);
-    }
-    case "turn-settled": {
-      const turn = state.detail?.inFlightTurn;
-      if (turn === undefined || turn.turnId !== item.turnId) return state;
-      return withInFlightTurn(state, undefined);
-    }
+    case "turn-question":
+      return updateInFlightTurn(state, item.turnId, (turn) => ({
+        ...turn,
+        questions: item.questions,
+      }));
+    case "turn-question-answered":
+      return updateInFlightTurn(state, item.turnId, (turn) => {
+        const { questions: _answered, ...rest } = turn;
+        return rest;
+      });
+    case "turn-settled":
+      return updateInFlightTurn(state, item.turnId, () => undefined);
     case "turn-refused":
       return { ...state, turnRefusal: item.reason };
     case "implement-analyzed": {
-      const turn = state.detail?.inFlightTurn;
+      // A reply streaming on some branch is no reason to drop the analysis;
+      // only a *different* live analysis marks this one stale.
       const implement = state.detail?.inFlightImplement;
-      if (
-        (turn !== undefined && turn.turnId !== item.proposal.turnId) ||
-        (implement !== undefined && implement.turnId !== item.proposal.turnId)
-      ) {
+      if (implement !== undefined && implement.turnId !== item.proposal.turnId) {
         return state;
       }
       return {

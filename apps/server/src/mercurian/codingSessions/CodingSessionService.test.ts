@@ -329,7 +329,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
       }),
     }),
     Layer.mock(PlanTurnRegistry.PlanTurnRegistry)({
-      get: () => Effect.succeed(Option.none()),
+      activeChainMember: () => Effect.succeed(false),
     }),
   );
 

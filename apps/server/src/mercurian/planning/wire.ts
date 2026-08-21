@@ -121,6 +121,9 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
     commitId: MercurianCommitId.make(ready.commitId),
   })),
   codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
+  // The store's detail knows nothing live; the subscribe path overlays the
+  // assistant's actual in-flight turns onto this.
+  inFlightTurns: [],
 });
 
 export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanStreamItem => ({
