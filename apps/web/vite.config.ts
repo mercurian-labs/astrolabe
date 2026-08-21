@@ -87,6 +87,16 @@ const unitTestProject = {
 
 const storiesTestProject = {
   extends: true,
+  optimizeDeps: {
+    // Vitest discovers these browser-client deps on first run; listing them prevents a cold-cache reload mid-import.
+    include: [
+      "@base-ui/react/autocomplete",
+      "@base-ui/react/combobox",
+      "@base-ui/react/radio-group",
+      "effect/PartitionedSemaphore",
+      "effect/SchemaGetter",
+    ],
+  },
   resolve: {
     alias: storybookAliases,
   },
