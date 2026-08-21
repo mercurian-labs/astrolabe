@@ -181,6 +181,39 @@ const makeGitLabStubConnector = (): GitLabStubConnector => {
   return state;
 };
 
+interface AzureDevOpsStubConnector {
+  readonly connector: TrackerConnector<"azure-devops">;
+  refusal: TrackerConnectorRefusal | null;
+  readonly credentialsSeen: Array<string>;
+}
+
+const makeAzureDevOpsStubConnector = (): AzureDevOpsStubConnector => {
+  const state: AzureDevOpsStubConnector = {
+    refusal: null,
+    credentialsSeen: [],
+    connector: {
+      kind: "azure-devops",
+      packCredential: (input) =>
+        JSON.stringify({ organization: input.organization, token: input.token }),
+      probe: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null
+          ? Effect.succeed({ label: "acme" })
+          : Effect.fail(state.refusal);
+      },
+      listIssues: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null ? Effect.succeed({ issues: [] }) : Effect.fail(state.refusal);
+      },
+      getIssue: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null ? Effect.succeed(null) : Effect.fail(state.refusal);
+      },
+    },
+  };
+  return state;
+};
+
 /** The secret store as a Map, so a test can look at exactly what was filed. */
 interface StubSecrets {
   readonly files: Map<string, string>;
@@ -234,6 +267,7 @@ interface Harness {
   readonly jiraConnector: JiraStubConnector;
   readonly githubConnector: GitHubStubConnector;
   readonly gitlabConnector: GitLabStubConnector;
+  readonly azureDevOpsConnector: AzureDevOpsStubConnector;
   readonly secrets: StubSecrets;
 }
 
@@ -258,6 +292,7 @@ const withStore = <A, E>(
     const jiraConnector = makeJiraStubConnector();
     const githubConnector = makeGitHubStubConnector();
     const gitlabConnector = makeGitLabStubConnector();
+    const azureDevOpsConnector = makeAzureDevOpsStubConnector();
     const secrets = makeStubSecrets();
     const store = yield* TrackerStore.make({ standingCacheTtl: Duration.zero }).pipe(
       Effect.provide(
@@ -267,6 +302,7 @@ const withStore = <A, E>(
             jira: jiraConnector.connector,
             github: githubConnector.connector,
             gitlab: gitlabConnector.connector,
+            "azure-devops": azureDevOpsConnector.connector,
           }),
           secrets.layer,
         ),
@@ -277,6 +313,7 @@ const withStore = <A, E>(
       jiraConnector,
       githubConnector,
       gitlabConnector,
+      azureDevOpsConnector,
       secrets,
     });
   });

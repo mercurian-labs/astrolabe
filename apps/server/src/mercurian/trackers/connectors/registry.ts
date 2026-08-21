@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import type { TrackerConnectorRegistry } from "../connector.ts";
+import * as AzureDevOpsConnector from "./AzureDevOpsConnector.ts";
 import * as GitHubConnector from "./GitHubConnector.ts";
 import * as GitLabConnector from "./GitLabConnector.ts";
 import * as JiraConnector from "./JiraConnector.ts";
@@ -27,7 +28,14 @@ export const make = Effect.gen(function* () {
   const jira = yield* JiraConnector.make;
   const github = yield* GitHubConnector.make;
   const gitlab = yield* GitLabConnector.make;
-  return TrackerConnectors.of({ linear, jira, github, gitlab });
+  const azureDevOps = yield* AzureDevOpsConnector.make;
+  return TrackerConnectors.of({
+    linear,
+    jira,
+    github,
+    gitlab,
+    "azure-devops": azureDevOps,
+  });
 });
 
 export const layer = Layer.effect(TrackerConnectors, make);

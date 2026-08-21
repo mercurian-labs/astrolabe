@@ -22,11 +22,12 @@ const connection = (overrides: Partial<TrackerConnection> = {}): TrackerConnecti
 
 describe("tracker kinds", () => {
   it("lists one tracker per shipped connector", () => {
-    expect(TRACKER_KINDS).toEqual(["linear", "jira", "github", "gitlab"]);
+    expect(TRACKER_KINDS).toEqual(["linear", "jira", "github", "gitlab", "azure-devops"]);
     expect(TRACKER_KIND_PRESENTATION.linear.name).toBe("Linear");
     expect(TRACKER_KIND_PRESENTATION.jira.name).toBe("Jira");
     expect(TRACKER_KIND_PRESENTATION.github.name).toBe("GitHub Issues");
     expect(TRACKER_KIND_PRESENTATION.gitlab.name).toBe("GitLab");
+    expect(TRACKER_KIND_PRESENTATION["azure-devops"].name).toBe("Azure DevOps");
     expect(TRACKER_KINDS.length).toBeGreaterThan(1);
   });
 
@@ -90,6 +91,30 @@ describe("tracker kinds", () => {
       "Preferences → Access tokens",
     );
     expect(TRACKER_KIND_PRESENTATION.gitlab.credentialHint).toContain("read_api");
+  });
+
+  it("describes Azure DevOps's organization and secret personal access token", () => {
+    expect(TRACKER_KIND_PRESENTATION["azure-devops"].fields).toEqual([
+      {
+        key: "organization",
+        label: "Organization",
+        placeholder: "acme",
+        secret: false,
+      },
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "Your Azure DevOps personal access token",
+        secret: true,
+      },
+    ]);
+    expect(TRACKER_KIND_PRESENTATION["azure-devops"].credentialHint).toContain(
+      "dev.azure.com/<org>",
+    );
+    expect(TRACKER_KIND_PRESENTATION["azure-devops"].credentialHint).toContain(
+      "User settings → Personal access tokens",
+    );
+    expect(TRACKER_KIND_PRESENTATION["azure-devops"].credentialHint).toContain("Work Items (Read)");
   });
 });
 
@@ -207,5 +232,20 @@ describe("presentConnectFailure", () => {
     expect(presentConnectFailure({ _tag: "MercurianTrackerError" }, "linear")).toBe(
       "Could not connect to Linear.",
     );
+  });
+
+  it("builds Azure DevOps's input only when both fields are present", () => {
+    expect(buildConnectInput("azure-devops", {})).toBeNull();
+    expect(buildConnectInput("azure-devops", { organization: "acme", token: "   " })).toBeNull();
+    expect(
+      buildConnectInput("azure-devops", {
+        organization: " https://dev.azure.com/acme ",
+        token: " azure-secret ",
+      }),
+    ).toEqual({
+      kind: "azure-devops",
+      organization: "https://dev.azure.com/acme",
+      token: "azure-secret",
+    });
   });
 });
