@@ -78,7 +78,9 @@ export function condensePlanGraph(graph: PlanGraph): CondensedPlanGraph {
       },
     ];
   });
-  const nodesInSequence = projected.toSorted(
+  // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023
+  // change-by-copy array methods, and this module runs on mobile.
+  const nodesInSequence = [...projected].sort(
     (left, right) => left.item.sequence - right.item.sequence,
   );
   const childrenOf = new Map<string, Array<MercurianCommitId>>();
