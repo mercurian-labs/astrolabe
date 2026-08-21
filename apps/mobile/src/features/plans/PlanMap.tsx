@@ -9,8 +9,8 @@ import {
 import {
   cameraTween,
   centerOn,
-  detailFor,
   edgeWidthFor,
+  MAP_GLYPH_ZOOM,
   fitTransform,
   interpolateSpatialLayout,
   minimapProjection,
@@ -153,7 +153,13 @@ export function PlanMap(props: {
   }, [applyTransform, frame, props.layout.bounds]);
 
   useAnimatedReaction(
-    () => detailFor(zoom.value),
+    // Inline worklet mirror of the shared detailFor: useAnimatedReaction's
+    // derivation runs on the UI thread, and the shared module stays free of
+    // Reanimated directives. Agreement is pinned in planMap.gestures.test.ts.
+    () => {
+      "worklet";
+      return zoom.value < MAP_GLYPH_ZOOM ? ("dot" as const) : ("glyph" as const);
+    },
     (next, previous) => {
       if (next !== previous) runOnJS(setDetail)(next);
     },

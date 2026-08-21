@@ -24,8 +24,10 @@ export function staleSpecLeafIds(graph: PlanGraph): ReadonlySet<string> {
 
 export function planMayBeStaleAt(graph: PlanGraph, commitId: MercurianCommitId): boolean {
   const ancestry = ancestorClosure(graph, commitId);
-  const newestSpec = graph.nodes
-    .toReversed()
+  // .reverse() on a copy, not .toReversed(): Hermes doesn't ship the ES2023
+  // change-by-copy array methods, and this module runs on mobile.
+  const newestSpec = [...graph.nodes]
+    .reverse()
     .find((node) => ancestry.has(node.commitId) && node.item._tag === "spec-revision");
   if (newestSpec === undefined) return false;
   const afterSpec = descendantClosure(graph, newestSpec.commitId);
