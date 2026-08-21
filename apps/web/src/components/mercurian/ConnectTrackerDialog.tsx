@@ -16,18 +16,19 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
 import {
+  buildConnectInput,
   presentConnectFailure,
   TRACKER_KIND_PRESENTATION,
   TRACKER_KINDS,
 } from "./TrackersSettings.logic";
 
 /**
- * Connecting a tracker: pick which one, then hand over a key.
+ * Connecting a tracker: pick which one, then hand over its credential fields.
  *
- * The tracker list is rendered from the shipped connectors, so today it reads
- * as "connect Linear" and grows a step the day a second connector lands. The
- * key lives in this component's state and nowhere else — it is dropped when the
- * dialog closes, and nothing that comes back from the server carries it.
+ * The tracker list and credential fields are rendered from the shipped
+ * connectors' presentation metadata. Field values live in this component's
+ * state and nowhere else — they are dropped when the dialog closes, and
+ * nothing that comes back from the server carries them.
  */
 export function ConnectTrackerDialog({
   open,
@@ -38,27 +39,27 @@ export function ConnectTrackerDialog({
 }) {
   const connectTracker = useConnectTracker();
   const [kind, setKind] = useState<TrackerKind>(TRACKER_KINDS[0] ?? "linear");
-  const [token, setToken] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
   // The credential does not outlive the dialog.
   useEffect(() => {
     if (!open) {
-      setToken("");
+      setValues({});
       setError(null);
       setIsConnecting(false);
     }
   }, [open]);
 
   const presentation = TRACKER_KIND_PRESENTATION[kind];
-  const trimmedToken = token.trim();
+  const connectInput = buildConnectInput(kind, values);
 
   const handleConnect = useCallback(async () => {
-    if (trimmedToken.length === 0 || isConnecting) return;
+    if (connectInput === null || isConnecting) return;
     setIsConnecting(true);
     setError(null);
-    const outcome = await connectTracker({ kind, token: trimmedToken });
+    const outcome = await connectTracker(connectInput);
     setIsConnecting(false);
     if (outcome.ok) {
       // The row arrives through the subscription; there is nothing to insert.
@@ -66,7 +67,7 @@ export function ConnectTrackerDialog({
       return;
     }
     setError(presentConnectFailure(outcome.error as { readonly _tag?: string }, kind));
-  }, [connectTracker, isConnecting, kind, onOpenChange, trimmedToken]);
+  }, [connectInput, connectTracker, isConnecting, kind, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,6 +91,7 @@ export function ConnectTrackerDialog({
                     variant={candidate === kind ? "default" : "outline"}
                     onClick={() => {
                       setKind(candidate);
+                      setValues({});
                       setError(null);
                     }}
                   >
@@ -99,26 +101,34 @@ export function ConnectTrackerDialog({
               </div>
             </div>
           ) : null}
-          <div className="space-y-2">
-            <Label htmlFor="tracker-api-key">{presentation.name} API key</Label>
-            <Input
-              id="tracker-api-key"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={token}
-              placeholder="lin_api_…"
-              onChange={(event) => {
-                setToken(event.currentTarget.value);
-                setError(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void handleConnect();
-                }
-              }}
-            />
+          <div className="space-y-3">
+            {presentation.fields.map((field) => {
+              const id = `tracker-${kind}-${field.key}`;
+              return (
+                <div key={field.key} className="space-y-2">
+                  <Label htmlFor={id}>{field.label}</Label>
+                  <Input
+                    id={id}
+                    type={field.secret ? "password" : "text"}
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={values[field.key] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setValues((current) => ({ ...current, [field.key]: value }));
+                      setError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleConnect();
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
             <p className="text-[13px] leading-[1.45] text-muted-foreground/80">
               {presentation.credentialHint}
             </p>
@@ -135,7 +145,7 @@ export function ConnectTrackerDialog({
           </Button>
           <Button
             onClick={() => void handleConnect()}
-            disabled={trimmedToken.length === 0 || isConnecting}
+            disabled={connectInput === null || isConnecting}
           >
             {isConnecting ? (
               <>

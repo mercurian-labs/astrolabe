@@ -1,4 +1,22 @@
-import type { TrackerConnection, TrackerKind, TrackerStanding } from "@t3tools/contracts";
+import type {
+  MercurianConnectTrackerInput,
+  TrackerConnection,
+  TrackerKind,
+  TrackerStanding,
+} from "@t3tools/contracts";
+
+export interface TrackerCredentialField {
+  readonly key: string;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly secret: boolean;
+}
+
+export interface TrackerKindPresentation {
+  readonly name: string;
+  readonly credentialHint: string;
+  readonly fields: ReadonlyArray<TrackerCredentialField>;
+}
 
 /**
  * What Settings says about a tracker, and where its credentials come from.
@@ -7,16 +25,73 @@ import type { TrackerConnection, TrackerKind, TrackerStanding } from "@t3tools/c
  * trackers from this record, so a new tracker becomes visible in the UI by
  * being added here — there is no second list to keep in step.
  */
-export const TRACKER_KIND_PRESENTATION: Readonly<
-  Record<TrackerKind, { readonly name: string; readonly credentialHint: string }>
-> = {
+export const TRACKER_KIND_PRESENTATION: Readonly<Record<TrackerKind, TrackerKindPresentation>> = {
   linear: {
     name: "Linear",
     credentialHint: "Create a personal API key in Linear under Settings → Security & access.",
+    fields: [
+      {
+        key: "token",
+        label: "Linear API key",
+        placeholder: "lin_api_…",
+        secret: true,
+      },
+    ],
+  },
+  jira: {
+    name: "Jira",
+    credentialHint:
+      "Create an API token at id.atlassian.com under Security → Create and manage API tokens.",
+    fields: [
+      {
+        key: "site",
+        label: "Atlassian site",
+        placeholder: "acme.atlassian.net",
+        secret: false,
+      },
+      {
+        key: "email",
+        label: "Account email",
+        placeholder: "you@acme.com",
+        secret: false,
+      },
+      {
+        key: "token",
+        label: "API token",
+        placeholder: "Your Atlassian API token",
+        secret: true,
+      },
+    ],
   },
 };
 
 export const TRACKER_KINDS = Object.keys(TRACKER_KIND_PRESENTATION) as ReadonlyArray<TrackerKind>;
+
+/** Builds the kind's wire input only when every displayed field is complete. */
+export function buildConnectInput(
+  kind: TrackerKind,
+  values: Readonly<Record<string, string>>,
+): MercurianConnectTrackerInput | null {
+  const read = (key: string) => {
+    const value = values[key]?.trim();
+    return value === undefined || value.length === 0 ? null : value;
+  };
+
+  switch (kind) {
+    case "linear": {
+      const token = read("token");
+      return token === null ? null : { kind, token };
+    }
+    case "jira": {
+      const site = read("site");
+      const email = read("email");
+      const token = read("token");
+      return site === null || email === null || token === null
+        ? null
+        : { kind, site, email, token };
+    }
+  }
+}
 
 export interface StandingPresentation {
   readonly label: string;
