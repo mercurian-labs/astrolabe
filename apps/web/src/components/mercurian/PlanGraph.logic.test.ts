@@ -50,6 +50,16 @@ describe("web plan graph layout", () => {
     }
   });
 
+  it("runs the selected engine — three engines, three arrangements", () => {
+    const graph = buildPlanGraph(merged);
+    const arrangements = layouts.map((name) =>
+      JSON.stringify(
+        dagLayout(graph, { layout: name }).nodes.map(({ commitId, x, y }) => [commitId, x, y]),
+      ),
+    );
+    expect(new Set(arrangements).size).toBe(layouts.length);
+  });
+
   it("keeps native polylines attached to their endpoint nodes", () => {
     for (const name of layouts) {
       const layout = dagLayout(buildPlanGraph(merged), { layout: name });
