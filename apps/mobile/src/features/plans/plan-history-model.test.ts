@@ -39,14 +39,14 @@ const revision = (
 });
 const state = (
   timeline: ReadonlyArray<PlanTimelineItem>,
-  inFlightParent?: string,
+  ...inFlightParents: ReadonlyArray<string>
 ): Pick<PlanSubscriptionState, "detail"> => ({
   detail: {
     timeline,
-    ...(inFlightParent === undefined
-      ? {}
-      : { inFlightTurn: { parentCommitId: id(inFlightParent) } }),
-  } as PlanSubscriptionState["detail"],
+    // Replies stream concurrently across branches (M-158): the snapshot
+    // carries every live turn, so fixtures take as many anchors as they need.
+    inFlightTurns: inFlightParents.map((parent) => ({ parentCommitId: id(parent) })),
+  } as unknown as PlanSubscriptionState["detail"],
 });
 
 describe("plan history model", () => {
@@ -113,6 +113,15 @@ describe("plan history model", () => {
     );
     expect([...model.inFlightUnansweredNodeIds]).toEqual(["query"]);
     expect(model.rows[0]).toMatchObject({ kind: "checkpoint", effects: [] });
+  });
+
+  it("suppresses Unanswered from any branch's live turn, and only from a descendant", () => {
+    const timeline = [message("query", 1, [], "human"), message("other", 2, [], "human")];
+    // Two turns stream at once; only the one descending from this query counts.
+    const both = buildPlanHistoryModel(state(timeline, "query", "other"), LATEST, new Map());
+    expect([...both.inFlightUnansweredNodeIds]).toContain("query");
+    const elsewhere = buildPlanHistoryModel(state(timeline, "other"), LATEST, new Map());
+    expect([...elsewhere.inFlightUnansweredNodeIds]).not.toContain("query");
   });
 
   it("re-roots a merge's ancestry through the chosen parent without moving the current row", () => {
