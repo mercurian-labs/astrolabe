@@ -37,7 +37,6 @@ import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
 import {
   EMPTY_PLAN_COMPOSER_DRAFT,
-  modelChoiceForHead,
   usePlanComposerStore,
   type PlanComposerAttachment,
 } from "../../planComposerStore";
@@ -293,14 +292,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [position, setPosition] = useState<PlanPosition>(LATEST);
   const [pathText, setPathText] = useState<string | null>(null);
   const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
-  const draft = usePlanComposerStore(
-    (state) => state.draftsByPlanId[planId] ?? EMPTY_PLAN_COMPOSER_DRAFT,
-  );
   const setDraftText = usePlanComposerStore((state) => state.setDraftText);
   const addDraftAttachments = usePlanComposerStore((state) => state.addAttachments);
   const removeDraftAttachment = usePlanComposerStore((state) => state.removeAttachment);
   const clearDraft = usePlanComposerStore((state) => state.clearDraft);
   const setDraftModelChoice = usePlanComposerStore((state) => state.setModelChoice);
+  const followDraftGrowth = usePlanComposerStore((state) => state.followGrowth);
+  const adoptLegacyDraft = usePlanComposerStore((state) => state.adoptLegacyDraft);
   // The plan's project is what says which code this space can mention. With no
   // repository set, there is nothing to offer and the menu stays closed.
   const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
@@ -337,9 +335,41 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
    */
   useEffect(() => setPosition((current) => advance(graph, current)), [graph]);
 
+  /**
+   * Live drafts ride their branch exactly the way a live position does — the
+   * same advance, then the session-leaf step-back — so the unsent message is
+   * still in the composer after a reply settles under it. Deterministic and
+   * idempotent, so windows racing the same growth converge.
+   */
+  useEffect(() => {
+    followDraftGrowth(planId, (headId) => {
+      const commitId = headId as MercurianCommitId;
+      if (!graph.byId.has(commitId)) return null;
+      return resolveActingHead(
+        graph,
+        resolveHead(graph, advance(graph, { _tag: "at", commitId, live: true })),
+      );
+    });
+  }, [followDraftGrowth, graph, planId]);
+
   const head = resolveHead(graph, position);
   const actingHead = resolveActingHead(graph, head);
   const viewingSessionLeaf = actingHead !== head;
+  const draft = usePlanComposerStore((state) =>
+    actingHead === null
+      ? EMPTY_PLAN_COMPOSER_DRAFT
+      : (state.draftsByPlan[planId]?.[actingHead] ?? EMPTY_PLAN_COMPOSER_DRAFT),
+  );
+  /**
+   * Whether a draft written here should ride the branch as it grows. Standing
+   * live at a tip: yes. Looking back at an interior commit — or continuing
+   * from a session leaf's parent — the draft waits at the fork it would open.
+   */
+  const draftLive = !viewingSessionLeaf && (position._tag === "latest" || position.live);
+  // A draft from before drafts were branch-scoped meets its first known head.
+  useEffect(() => {
+    if (actingHead !== null) adoptLegacyDraft(planId, actingHead);
+  }, [actingHead, adoptLegacyDraft, planId]);
   const itemsById = useMemo(
     () => new Map(timeline.map((item) => [item.commitId, item] as const)),
     [timeline],
@@ -348,8 +378,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     () => standingModelChoice(graph, itemsById, actingHead),
     [actingHead, graph, itemsById],
   );
-  const modelChoice =
-    modelChoiceForHead(draft, actingHead) ?? standingChoice ?? planningModel.setting;
+  const modelChoice = draft.modelChoice ?? standingChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
   const viewingPast = isViewingPast(graph, position);
   const effectiveRightPaneWidth = width;
@@ -465,7 +494,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       if (sent === null) return false;
       // The stream delivers the message back; there is nothing to refresh.
       setPosition({ _tag: "at", commitId: sent.commitId, live: true });
-      clearDraft(planId);
+      // Only the sending branch's draft leaves; every other branch keeps its own.
+      if (actingHead !== null) clearDraft(planId, actingHead);
       return true;
     },
     [actingHead, appendMessage, clearDraft, modelChoice, planId],
@@ -480,7 +510,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     (query: PlanHumanMessage) => {
       const parentCommitId = graph.byId.get(query.commitId)?.parents[0];
       if (parentCommitId === undefined) return;
-      setDraftText(planId, query.text);
+      // Staged at the fork it would open, anchored there: an edited message
+      // is a reply at its original's parent, not something that rides a tip.
+      setDraftText(planId, parentCommitId, query.text, false);
       if (
         query.attachments === undefined ||
         query.attachments.length === 0 ||
@@ -495,7 +527,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const completeEditAndBranch = useCallback(
     (parentCommitId: MercurianCommitId, attachments: ReadonlyArray<PlanComposerAttachment>) => {
-      addDraftAttachments(planId, attachments);
+      addDraftAttachments(planId, parentCommitId, attachments, false);
       select(parentCommitId);
       setPendingEditAndBranch(null);
     },
@@ -638,7 +670,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 disabled={inFlightTurn !== undefined || inFlightImplement !== undefined}
                 providers={planningModel.providers}
                 selection={modelChoice}
-                onChange={(selection) => setDraftModelChoice(planId, selection, actingHead)}
+                onChange={(selection) => {
+                  if (actingHead !== null) {
+                    setDraftModelChoice(planId, actingHead, selection, draftLive);
+                  }
+                }}
               />
             }
             implementDisabledReason={implementReason}
@@ -650,10 +686,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             // The whole plan holds one turn at a time, wherever it streams —
             // Stop is offered even when the reply is on another branch.
             turnActive={inFlightTurn !== undefined || inFlightImplement !== undefined}
-            onAddAttachments={(added) => addDraftAttachments(planId, added)}
-            onChangeText={(text) => setDraftText(planId, text)}
+            onAddAttachments={(added) => {
+              if (actingHead !== null) addDraftAttachments(planId, actingHead, added, draftLive);
+            }}
+            onChangeText={(text) => {
+              if (actingHead !== null) setDraftText(planId, actingHead, text, draftLive);
+            }}
             onMentionQueryChange={mentions.onMentionQueryChange}
-            onRemoveAttachment={(localId) => removeDraftAttachment(planId, localId)}
+            onRemoveAttachment={(localId) => {
+              if (actingHead !== null) removeDraftAttachment(planId, actingHead, localId);
+            }}
             onSend={send}
             onStop={() => void stopTurn(planId)}
             onImplement={beginImplement}
