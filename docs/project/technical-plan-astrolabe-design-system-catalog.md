@@ -1,6 +1,6 @@
 # Technical Plan — Astrolabe design system and in-app catalog
 
-_Generated from the Goal/AC in [the local Linear issue draft](issue-draft-astrolabe-design-system-catalog.md). The proposed issue title is **Astrolabe design system: map the inherited aesthetic in an in-app catalog**._
+_Generated from the Goal/AC in [M-159 — Astrolabe design system: map the inherited aesthetic in an in-app catalog](https://linear.app/mercurian/issue/M-159/astrolabe-design-system-map-the-inherited-aesthetic-in-an-in-app)._
 
 **Goal, in one sentence:** make Astrolabe's current visual language explicit, complete, inspectable, and executable in a normal `/ds` application route, so the later Astrolabe rebrand changes foundations and recipes instead of rewriting product components.
 
@@ -19,18 +19,18 @@ The transferable idea is therefore **production system + in-app catalog + one to
 
 ## Conventions Detected
 
-| Convention | Evidence | Confidence |
-| --- | --- | --- |
-| Product intent lives in Almagest; contributor and implementation strategy lives in this repository | Almagest `Visual Language` and `Status Vocabulary`; `docs/internals/design-system.md` | High |
-| The inherited appearance remains in place until hard-fork cut-over | `docs/architecture/fork-baseline.md`, ADR 004 §3; Almagest `Visual Language` → “What exists today” | High |
-| Web routes use TanStack Router file routing and generated `routeTree.gen.ts` output | `apps/web/src/routes/*.tsx`, `apps/web/vite.config.ts` | High |
-| Root-level special surfaces bypass the authenticated application shell explicitly | `/pair` and `/connect` handling in `apps/web/src/routes/__root.tsx` | High |
-| Reusable web controls remain leaf modules under `apps/web/src/components/ui/`; Mercurian grammar remains under `apps/web/src/components/mercurian/` | 41 non-test UI primitive modules and the current Mercurian components | High |
-| Color customization is a typed semantic-role contract, not scattered theme CSS | `THEME_COLOR_ROLES`, `ThemeDefinition`, and `APP_THEME_VARIABLES` in `apps/web/src/themePalette.ts`; role mapping in `apps/web/src/index.css` | High |
-| Deterministic synthetic builders are shared by catalog examples and tests | `apps/web/src/test/fixtures/` and the existing `*.stories.tsx` imports | High |
-| Browser component checks use the existing vite-plus Playwright project and axe; full-browser verification is focused, not repo-wide | `apps/web/vite.config.ts`, `.storybook/checks/stories.browser.test.tsx`, `docs/internals/design-system.md` | High |
-| Changes are split into small conventional commits and focused checks | recent `git log`; repository `AGENTS.md`; existing design-system stack M-140 through M-144 | High |
-| Mobile does not inherit a web design by implication | ADR 004 parks `apps/mobile` until Mercurian has a mobile design | High |
+| Convention                                                                                                                                          | Evidence                                                                                                                                      | Confidence |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Product intent lives in Almagest; contributor and implementation strategy lives in this repository                                                  | Almagest `Visual Language` and `Status Vocabulary`; `docs/internals/design-system.md`                                                         | High       |
+| The inherited appearance remains in place until hard-fork cut-over                                                                                  | `docs/architecture/fork-baseline.md`, ADR 004 §3; Almagest `Visual Language` → “What exists today”                                            | High       |
+| Web routes use TanStack Router file routing and generated `routeTree.gen.ts` output                                                                 | `apps/web/src/routes/*.tsx`, `apps/web/vite.config.ts`                                                                                        | High       |
+| Root-level special surfaces bypass the authenticated application shell explicitly                                                                   | `/pair` and `/connect` handling in `apps/web/src/routes/__root.tsx`                                                                           | High       |
+| Reusable web controls remain leaf modules under `apps/web/src/components/ui/`; Mercurian grammar remains under `apps/web/src/components/mercurian/` | 41 non-test UI primitive modules and the current Mercurian components                                                                         | High       |
+| Color customization is a typed semantic-role contract, not scattered theme CSS                                                                      | `THEME_COLOR_ROLES`, `ThemeDefinition`, and `APP_THEME_VARIABLES` in `apps/web/src/themePalette.ts`; role mapping in `apps/web/src/index.css` | High       |
+| Deterministic synthetic builders are shared by catalog examples and tests                                                                           | `apps/web/src/test/fixtures/` and the existing `*.stories.tsx` imports                                                                        | High       |
+| Browser component checks use the existing vite-plus Playwright project and axe; full-browser verification is focused, not repo-wide                 | `apps/web/vite.config.ts`, `.storybook/checks/stories.browser.test.tsx`, `docs/internals/design-system.md`                                    | High       |
+| Changes are split into small conventional commits and focused checks                                                                                | recent `git log`; repository `AGENTS.md`; existing design-system stack M-140 through M-144                                                    | High       |
+| Mobile does not inherit a web design by implication                                                                                                 | ADR 004 parks `apps/mobile` until Mercurian has a mobile design                                                                               | High       |
 
 ## Design
 
