@@ -61,9 +61,11 @@ for example, `owner/repo#123`.
 
 The connection is named after the GitLab username the token authenticates as. Self-hosted
 connections also show their host — for example, `alex · gitlab.example.com` — so connections to
-different GitLab instances are easy to tell apart. Browsing covers issues across the projects the
-token can see. Issue ids include their full project path, such as `group/project#31`, so the same
-issue number in two projects stays distinct. Merge requests never appear.
+different GitLab instances are easy to tell apart. Browsing covers issues across the projects you
+are a member of — up to your twenty most active projects — not every public project the token could
+technically read; search narrows within them. Issue ids include their full project path, such as
+`group/project#31`, so the same issue number in two projects stays distinct. Merge requests never
+appear.
 
 ## What crosses over
 

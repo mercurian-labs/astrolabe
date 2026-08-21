@@ -187,71 +187,141 @@ it.effect("maps transport failures to unreachable refusals", () =>
   ),
 );
 
-it.effect("requests all visible issues, passes search through, and maps exactly five fields", () =>
-  runWith(
-    {
-      respond: () =>
-        Response.json([issueResponse()], {
-          headers: { "x-next-page": "3" },
-        }),
-    },
-    (connector) =>
-      connector
-        .listIssues(credential(connector), {
-          search: "renderer crash",
-          cursor: "2",
-        })
-        .pipe(
-          Effect.map((page) => {
-            assert.deepStrictEqual(
-              [...page.issues],
-              [
-                {
-                  id: "group/project#31",
-                  title: "Ship GitLab support",
-                  description: "",
-                  status: "opened",
-                  url: "https://gitlab.com/group/project/-/issues/31",
-                },
-              ],
-            );
-            assert.deepStrictEqual(Object.keys(page.issues[0] ?? {}).toSorted(), [
-              "description",
-              "id",
-              "status",
-              "title",
-              "url",
-            ]);
-            assert.strictEqual(page.nextCursor, "3");
+const browseRouter =
+  (projectIssues: Readonly<Record<string, ReadonlyArray<unknown>>>) =>
+  (request: HttpClientRequest.HttpClientRequest): Response => {
+    const pathname = new URL(request.url).pathname;
+    if (pathname === "/api/v4/projects") {
+      return Response.json(Object.keys(projectIssues).map((id) => ({ id: Number(id) })));
+    }
+    const match = /^\/api\/v4\/projects\/(\d+)\/issues$/u.exec(pathname);
+    if (match !== null) return Response.json(projectIssues[match[1] ?? ""] ?? []);
+    return new Response(null, { status: 500 });
+  };
 
-            const requestUrl = new URL(seen.requests[0]?.url ?? "");
-            assert.strictEqual(requestUrl.pathname, "/api/v4/issues");
-            assert.strictEqual(requestUrl.searchParams.get("scope"), "all");
-            assert.strictEqual(requestUrl.searchParams.get("order_by"), "updated_at");
-            assert.strictEqual(requestUrl.searchParams.get("sort"), "desc");
-            assert.strictEqual(requestUrl.searchParams.get("per_page"), "50");
-            assert.strictEqual(requestUrl.searchParams.get("page"), "2");
-            assert.strictEqual(requestUrl.searchParams.get("search"), "renderer crash");
-          }),
-        ),
+it.effect(
+  "browses member projects only, merges newest first, passes search through, and maps exactly five fields",
+  () =>
+    runWith(
+      {
+        respond: browseRouter({
+          "7": [
+            issueResponse({ updated_at: "2026-08-19T10:00:00.000Z" }),
+            issueResponse({
+              references: { full: "group/project#8" },
+              title: "Older in project 7",
+              updated_at: "2026-08-18T10:00:00.000Z",
+            }),
+          ],
+          "9": [
+            issueResponse({
+              references: { full: "group/other#2" },
+              title: "Newest in project 9",
+              web_url: "https://gitlab.com/group/other/-/issues/2",
+              updated_at: "2026-08-20T10:00:00.000Z",
+            }),
+          ],
+        }),
+      },
+      (connector) =>
+        connector
+          .listIssues(credential(connector), {
+            search: "renderer crash",
+            cursor: "2026-08-21T00:00:00.000Z",
+          })
+          .pipe(
+            Effect.map((page) => {
+              assert.deepStrictEqual(
+                page.issues.map((issue) => issue.id),
+                ["group/other#2", "group/project#31", "group/project#8"],
+              );
+              assert.deepStrictEqual(Object.keys(page.issues[1] ?? {}).toSorted(), [
+                "description",
+                "id",
+                "status",
+                "title",
+                "url",
+              ]);
+              assert.strictEqual(page.nextCursor, undefined);
+
+              const projectsUrl = new URL(seen.requests[0]?.url ?? "");
+              assert.strictEqual(projectsUrl.pathname, "/api/v4/projects");
+              assert.strictEqual(projectsUrl.searchParams.get("membership"), "true");
+              assert.strictEqual(projectsUrl.searchParams.get("simple"), "true");
+              assert.strictEqual(projectsUrl.searchParams.get("per_page"), "20");
+              assert.isNull(projectsUrl.searchParams.get("scope"));
+
+              const issueRequests = seen.requests
+                .slice(1)
+                .map((request) => new URL(request.url))
+                .toSorted((a, b) => a.pathname.localeCompare(b.pathname));
+              assert.deepStrictEqual(
+                issueRequests.map((url) => url.pathname),
+                ["/api/v4/projects/7/issues", "/api/v4/projects/9/issues"],
+              );
+              for (const url of issueRequests) {
+                assert.strictEqual(url.searchParams.get("order_by"), "updated_at");
+                assert.strictEqual(url.searchParams.get("sort"), "desc");
+                assert.strictEqual(url.searchParams.get("per_page"), "50");
+                assert.strictEqual(url.searchParams.get("search"), "renderer crash");
+                assert.strictEqual(
+                  url.searchParams.get("updated_before"),
+                  "2026-08-21T00:00:00.000Z",
+                );
+                assert.isNull(url.searchParams.get("scope"));
+              }
+            }),
+          ),
+    ),
+);
+
+it.effect("answers an empty browse for a user with no member projects", () =>
+  runWith({ respond: () => Response.json([]) }, (connector) =>
+    connector.listIssues(credential(connector), {}).pipe(
+      Effect.map((page) => {
+        assert.deepStrictEqual([...page.issues], []);
+        assert.strictEqual(page.nextCursor, undefined);
+        assert.strictEqual(seen.requests.length, 1);
+      }),
+    ),
   ),
 );
 
-it.effect("ends pagination when x-next-page is empty or absent", () =>
-  Effect.gen(function* () {
-    yield* runWith(
-      { respond: () => Response.json([], { headers: { "x-next-page": "" } }) },
-      (connector) =>
-        connector
-          .listIssues(credential(connector), {})
-          .pipe(Effect.map((page) => assert.strictEqual(page.nextCursor, undefined))),
-    );
-    yield* runWith({ respond: () => Response.json([]) }, (connector) =>
+it.effect("deduplicates issues two member projects both surface", () =>
+  runWith(
+    {
+      respond: browseRouter({
+        "7": [issueResponse({ updated_at: "2026-08-19T10:00:00.000Z" })],
+        "9": [issueResponse({ updated_at: "2026-08-19T10:00:00.000Z" })],
+      }),
+    },
+    (connector) =>
       connector
         .listIssues(credential(connector), {})
-        .pipe(Effect.map((page) => assert.strictEqual(page.nextCursor, undefined))),
-    );
-  }),
+        .pipe(Effect.map((page) => assert.strictEqual(page.issues.length, 1))),
+  ),
+);
+
+it.effect("offers an updated-at watermark cursor while a member project answers a full page", () =>
+  runWith(
+    {
+      respond: browseRouter({
+        "7": Array.from({ length: 50 }, (_, index) =>
+          issueResponse({
+            references: { full: `group/project#${index + 1}` },
+            updated_at: `2026-08-01T00:00:${String(59 - index).padStart(2, "0")}.000Z`,
+          }),
+        ),
+      }),
+    },
+    (connector) =>
+      connector.listIssues(credential(connector), {}).pipe(
+        Effect.map((page) => {
+          assert.strictEqual(page.issues.length, 50);
+          assert.strictEqual(page.nextCursor, "2026-08-01T00:00:10.000Z");
+        }),
+      ),
+  ),
 );
 
 it.effect("parses nested project references and URL-encodes the full path when reading", () =>

@@ -20,12 +20,30 @@ import {
 } from "../connector.ts";
 
 const DEFAULT_GITLAB_HOST = "https://gitlab.com";
-const ISSUE_PAGE_SIZE = "50";
+const ISSUE_PAGE_SIZE = 50;
+/**
+ * How many member projects the browse spans, most recently active first.
+ * A stated cap, not a silent one: the user docs say the browse covers your
+ * most active projects and that search narrows within them.
+ */
+const MEMBER_PROJECT_LIMIT = 20;
 
 /** Every request this connector can send. The pull-only test reads this. */
 export const GITLAB_REQUESTS = {
   user: { name: "user", method: "GET", pathPattern: "/user" },
-  issues: { name: "issues", method: "GET", pathPattern: "/issues" },
+  /**
+   * The browse is scoped to projects the user is a member of. GitLab's global
+   * `/issues?scope=all` reaches every issue the token can *see* — on
+   * gitlab.com that is the public firehose, which is not anyone's backlog —
+   * and the global endpoint has no membership filter, so the connector spans
+   * the member projects itself.
+   */
+  projects: { name: "projects", method: "GET", pathPattern: "/projects" },
+  projectIssues: {
+    name: "projectIssues",
+    method: "GET",
+    pathPattern: "/projects/{id}/issues",
+  },
   issue: {
     name: "issue",
     method: "GET",
@@ -117,9 +135,14 @@ const GitLabIssueResponse = Schema.Struct({
   description: Schema.optional(Schema.NullOr(Schema.String)),
   state: Schema.String,
   web_url: Schema.String,
+  updated_at: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 const GitLabIssuesResponse = Schema.Array(GitLabIssueResponse);
+
+const GitLabProjectResponse = Schema.Struct({ id: Schema.Number });
+
+const GitLabProjectsResponse = Schema.Array(GitLabProjectResponse);
 
 type GitLabIssueResponse = typeof GitLabIssueResponse.Type;
 
@@ -207,28 +230,72 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  /**
+   * The browse: the newest-updated issues across the member projects, merged.
+   * The cursor is an `updated_at` watermark — page N+1 asks each project for
+   * issues updated strictly before the last issue page N showed. Upstream
+   * churn between pages can shift a boundary issue, the same tolerance every
+   * page-numbered browse in this family accepts.
+   */
   const listIssues: TrackerConnector<"gitlab">["listIssues"] = Effect.fn(
     "GitLabConnector.listIssues",
   )(function* (credential: string, query) {
-    const parsedCursor = query.cursor === undefined ? 1 : Number.parseInt(query.cursor, 10);
-    const page = Number.isSafeInteger(parsedCursor) && parsedCursor >= 1 ? parsedCursor : 1;
-    const search = query.search;
-    const result = yield* send(credential, GITLAB_REQUESTS.issues, {
+    const watermark =
+      query.cursor !== undefined && !Number.isNaN(Date.parse(query.cursor))
+        ? query.cursor
+        : undefined;
+    const search = query.search?.trim();
+
+    // Deliberately spare parameters: gitlab.com has answered 500 to
+    // `membership=true` combined with ordering/filter params, so the request
+    // asks only for membership and lets the cap do the bounding.
+    const projectsResult = yield* send(credential, GITLAB_REQUESTS.projects, {
       urlParams: {
-        scope: "all",
-        order_by: "updated_at",
-        sort: "desc",
-        per_page: ISSUE_PAGE_SIZE,
-        page: String(page),
-        ...(search === undefined || search.trim().length === 0 ? {} : { search }),
+        membership: "true",
+        simple: "true",
+        per_page: String(MEMBER_PROJECT_LIMIT),
       },
     });
-    yield* requireSuccess(result.response);
-    const issues = yield* decodeJson(result.response, GitLabIssuesResponse);
-    const nextCursor = result.response.headers["x-next-page"]?.trim();
+    yield* requireSuccess(projectsResult.response);
+    const projects = yield* decodeJson(projectsResult.response, GitLabProjectsResponse);
+    if (projects.length === 0) return { issues: [] };
+
+    const pages = yield* Effect.forEach(
+      projects,
+      (project) =>
+        Effect.gen(function* () {
+          const result = yield* send(credential, GITLAB_REQUESTS.projectIssues, {
+            path: GITLAB_REQUESTS.projectIssues.pathPattern.replace("{id}", String(project.id)),
+            urlParams: {
+              order_by: "updated_at",
+              sort: "desc",
+              per_page: String(ISSUE_PAGE_SIZE),
+              ...(search === undefined || search.length === 0 ? {} : { search }),
+              ...(watermark === undefined ? {} : { updated_before: watermark }),
+            },
+          });
+          yield* requireSuccess(result.response);
+          return yield* decodeJson(result.response, GitLabIssuesResponse);
+        }),
+      { concurrency: 5 },
+    );
+
+    const merged = pages
+      .flat()
+      .sort((a, b) => Date.parse(b.updated_at ?? "") - Date.parse(a.updated_at ?? ""));
+    const seen = new Set<string>();
+    const distinct = merged.filter((issue) =>
+      seen.has(issue.references.full) ? false : (seen.add(issue.references.full), true),
+    );
+    const taken = distinct.slice(0, ISSUE_PAGE_SIZE);
+    const lastUpdatedAt = taken.at(-1)?.updated_at ?? undefined;
+    const mayHaveMore =
+      distinct.length > ISSUE_PAGE_SIZE || pages.some((page) => page.length === ISSUE_PAGE_SIZE);
     return {
-      issues: issues.map(mapIssue),
-      ...(nextCursor === undefined || nextCursor.length === 0 ? {} : { nextCursor }),
+      issues: taken.map(mapIssue),
+      ...(mayHaveMore && lastUpdatedAt !== undefined && lastUpdatedAt !== null
+        ? { nextCursor: lastUpdatedAt }
+        : {}),
     };
   });
 
