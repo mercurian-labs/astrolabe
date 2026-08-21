@@ -61,8 +61,11 @@ export const escapeJiraJqlString = (value: string): string =>
 
 export function buildJiraJql(search?: string): string {
   const trimmed = search?.trim();
+  // Jira Cloud's /search/jql endpoint rejects unbounded JQL (a query with no
+  // restriction clause), so the browse carries a restriction that restricts
+  // nothing: every issue has an update date after the epoch.
   return trimmed === undefined || trimmed.length === 0
-    ? "ORDER BY updated DESC"
+    ? 'updated >= "1970-01-01" ORDER BY updated DESC'
     : `text ~ "${escapeJiraJqlString(trimmed)}" ORDER BY updated DESC`;
 }
 

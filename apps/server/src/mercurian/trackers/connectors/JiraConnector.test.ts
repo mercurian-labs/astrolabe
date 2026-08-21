@@ -133,7 +133,10 @@ it.effect("escapes quotes and backslashes in JQL and omits empty search", () =>
       JiraConnector.escapeJiraJqlString('say "hi" at C:\\work'),
       'say \\"hi\\" at C:\\\\work',
     );
-    assert.strictEqual(JiraConnector.buildJiraJql("  "), "ORDER BY updated DESC");
+    assert.strictEqual(
+      JiraConnector.buildJiraJql("  "),
+      'updated >= "1970-01-01" ORDER BY updated DESC',
+    );
     assert.strictEqual(
       JiraConnector.buildJiraJql('jira "cloud"'),
       'text ~ "jira \\"cloud\\"" ORDER BY updated DESC',
