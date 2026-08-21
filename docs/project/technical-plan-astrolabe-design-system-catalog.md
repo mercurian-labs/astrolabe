@@ -77,16 +77,22 @@ This is the seam the future brand will use. A state keeps the same meaning and c
 
 Add the following route and catalog-only modules:
 
-- `apps/web/src/routes/ds.tsx` **(new)** — minimal route declaration and development access policy.
+- `apps/web/src/routes/ds.tsx` **(new)** — minimal route declaration plus the validated search-param schema (`page`, optional `entry`) that makes catalog pages addressable.
 - `apps/web/src/routes/ds.lazy.tsx` **(new)** — lazy catalog shell, so the catalog and fixtures do not enter the initial application bundle.
-- `apps/web/src/components/design-system/DesignSystemLayout.tsx` **(new)** — responsive sidebar, search, appearance/theme controls, compact/desktop canvas controls, and `<Outlet>`-free page switching driven by the registry.
+- `apps/web/src/components/design-system/DesignSystemLayout.tsx` **(new)** — responsive sidebar, search, appearance/theme controls, compact/desktop canvas controls, and registry-driven page switching bound to the route's search params.
 - `apps/web/src/components/design-system/DesignSystemPage.tsx` **(new)** — documentation-only `Page`, `Section`, `Preview`, live-token swatch, and source-path components, analogous in responsibility to TanStack's `DsKit` but styled with current Astrolabe roles.
 - `apps/web/src/design-system/catalog.tsx` **(new)** — the single typed navigation/entry registry consumed by layout and tests.
 - `apps/web/src/design-system/foundations.ts` **(new)** — grouping and explanatory metadata over existing CSS/theme sources; never a second token-value table.
 
 `apps/web/src/routes/__root.tsx` gains a narrow `/ds` branch before environment authentication and a bare `<Outlet />` render branch like the existing pair/connect special surfaces. The route must not initialize the application sidebar, environment connection, tracing, providers, repositories, or workspace state. `AppRoot` can continue to supply renderer-wide infrastructure, but catalog entries cannot assume live environment data.
 
-The same route works under browser history on web and hash history in desktop because both already share `getRouter`. It is not added to user navigation. Mobile is explicitly out of scope.
+Catalog pages stay URL-addressable. Rather than 20-odd child route files, the single lazy route carries a validated search-param schema — `?page=foundations-color` and an optional `?entry=…` — and the layout resolves the active page from the registry. This keeps one lazy chunk while preserving what TanStack's child-route design gets for free: reloading returns to the same page, and a pull request or a note can link at a specific state. Unknown or missing values fall back to the overview rather than erroring.
+
+`/ds` stays reachable in production builds. Its data is synthetic, its chunk is lazy, and a build-mode gate would mean the catalog is verified in a configuration that never ships. This also anticipates the marketing-site destination below. The route is simply absent from user navigation.
+
+The same route works under browser history on web and hash history in desktop because both already share `getRouter`. Mobile is explicitly out of scope.
+
+This is the repository's first `createLazyFileRoute`; no route uses one today. Prove the lazy split resolves under vite-plus and under desktop hash history as an early step, before the catalog has enough content for the chunk boundary to matter.
 
 ### 5. Replace CSF stories with framework-agnostic catalog entries
 
@@ -116,7 +122,8 @@ This removes `.storybook/shims/` rather than renaming it.
 The catalog should prove that “completely map” stays true:
 
 - A foundation check compares displayed color-role ids with `THEME_COLOR_ROLES` and evaluates every CSS variable under standard light, standard dark, and each supported built-in theme.
-- An `import.meta.glob` inventory covers every non-test `apps/web/src/components/ui/*.tsx` module. Each module must have at least one catalog entry or an explicit infrastructure-only classification and reason. This includes low-frequency primitives; use count is context, not permission to omit one.
+- An `import.meta.glob` inventory covers every non-test `apps/web/src/components/ui/*.tsx` module (45 today) and classifies each as catalogued, infrastructure-only with a reason, or **unreviewed**. This inventory is an informational audit table: it renders the current numbers on the audit page but does not fail CI. The weekly upstream sync regularly adds `components/ui` modules, and a required check over that directory would put catalog toil on every sync pull request — the recurring maintenance this whole effort exists to remove. New upstream primitives land in `unreviewed` and get triaged when someone next works in that area.
+- The one hard coverage gate is scoped to Mercurian-owned surfaces: every non-test module under `apps/web/src/components/mercurian/` must be catalogued or explicitly classified, because those are the components Astrolabe's own design decisions govern.
 - Every entry is mounted by the browser test project, its optional exercise runs, rendered output is non-empty, and axe passes. Exceptions remain rule-scoped and loudly logged as they are today.
 - A registry test rejects duplicate ids, broken section references, missing source paths, and empty descriptions.
 - A build check confirms `/ds` stays a lazy chunk and does not materially increase the initial renderer entry. Record the before/after entry chunk sizes in the implementing PR.
@@ -129,7 +136,7 @@ The initial navigation maps the current system rather than the future brand:
 
 1. **Overview** — scope, source-of-truth boundaries, current inherited status, and how to review a change.
 2. **Foundations** — color roles/themes, typography, spacing/density, shape/elevation/glass, motion/reduced motion, focus/accessibility, iconography, and responsive behavior.
-3. **Primitives** — actions, form controls, selection, menus/popovers, dialogs/sheets, navigation, feedback, data display, loading/empty, and editor-specific helpers. Every current `components/ui` module appears once in this inventory even when several examples share a page.
+3. **Primitives** — actions, form controls, selection, menus/popovers, dialogs/sheets, navigation, feedback, data display, loading/empty, and editor-specific helpers. Every current `components/ui` module appears once in this inventory — as a catalogued example, an infrastructure-only note, or an unreviewed row — even when several examples share a page.
 4. **Mercurian grammar** — status vocabulary, plan navigation, composer, artifacts, Checkpoint Graph, and implementation handoff.
 5. **Product states** — representative empty, loading, working, interrupted, stale, gated, recovery, narrow-width, long-content, and reduced-motion compositions.
 6. **Audit** — coverage tables for tokens, primitives, product states, themes, a11y exceptions, and unmanaged visual values found during mapping.
@@ -144,13 +151,19 @@ Once `/ds` and the registry checks cover all 23 existing stories:
 - remove Storybook scripts, `.storybook/`, its TypeScript includes, `storybookAliases` from `vite.config.ts`, and all `*.stories.tsx` files after their catalog equivalents land;
 - rename the `stories` browser test project and `test:stories` script to `design-system` / `test:design-system`;
 - replace Storybook-specific CI steps with `test:design-system`; the normal web build already builds the lazy `/ds` route;
-- remove `.github/workflows/storybook-catalog-report.yml` and its downloadable static artifact. The catalog is reviewed through the ordinary application/dev deployment rather than a second static build product;
+- remove `.github/workflows/storybook-catalog-report.yml` and its downloadable static artifact. This knowingly gives up what M-144's goal promised — a catalog viewable from the pull request without checking out the branch — and makes visual review checkout-based or dev-deployment-based instead. That is an acceptable trade for a solo maintainer who checks the branch out anyway, and it removes a second static build product; it should be reconsidered if more than one person reviews visual changes;
 - remove the `esbuild: 0.28.1` workspace override only after a clean install and focused typecheck prove no non-Storybook dependency requires it;
 - regenerate the lockfile through the normal package-manager workflow.
 
 The parity commit is deliberately separate from the deletion commit so regressions are attributable and the old workbench remains available until the replacement is proven.
 
-### 9. Future Astrolabe visual identity
+### 9. Keep the catalog portable to the marketing site
+
+The intended destination for this catalog is a `/ds` route on Mercurian's own marketing site, replacing the parked one. Nothing in this pass builds that, but one constraint is cheap now and expensive to retrofit: the catalog's presentation modules — `DesignSystemLayout`, `DesignSystemPage`, and the entry components — depend only on the theme CSS, the registry contract, and the fixtures. They import no application shell, router context beyond the catalog's own params, environment state, or workspace data.
+
+That keeps the eventual move a matter of porting the token stylesheet and the components being shown, rather than untangling the catalog from the desktop application. It is also the same discipline that keeps `/ds` from quietly depending on live state.
+
+### 10. Future Astrolabe visual identity
 
 At hard-fork cut-over, the catalog stays structurally unchanged. The brand work proceeds in this order:
 
@@ -167,8 +180,8 @@ No future rebrand should require moving product components, rebuilding fixtures,
 
 ### New
 
-- `apps/web/src/routes/ds.tsx`
-- `apps/web/src/routes/ds.lazy.tsx`
+- `apps/web/src/routes/ds.tsx` — route declaration and the `page`/`entry` search-param schema
+- `apps/web/src/routes/ds.lazy.tsx` — the repository's first lazy route
 - `apps/web/src/components/design-system/DesignSystemLayout.tsx`
 - `apps/web/src/components/design-system/DesignSystemPage.tsx`
 - `apps/web/src/design-system/catalog.tsx`
@@ -199,14 +212,15 @@ No future rebrand should require moving product components, rebuilding fixtures,
 
 - [ ] Record baseline facts: Storybook story count/state ids, browser-check count, initial web entry chunk size, current standard light/dark computed foundation values, and the raw Mercurian status-color occurrences.
 - [ ] Add the typed framework-agnostic catalog contract and registry tests (duplicate ids, section integrity, source paths, descriptions).
-- [ ] Add the lazy standalone `/ds` route and catalog shell using only current semantic roles; prove it loads in web and desktop routing without an authenticated environment.
+- [ ] Prove the repository's first `createLazyFileRoute` splits and resolves under vite-plus, in the production build, and under desktop hash history — before building catalog content on top of it.
+- [ ] Add the lazy standalone `/ds` route and catalog shell using only current semantic roles; prove it loads in web and desktop routing without an authenticated environment, and that `?page=`/`?entry=` survive a reload.
 - [ ] Move the foundations story into catalog entries and add complete live sections for color roles/themes, typography, spacing/density, shape/elevation/glass, motion, focus, iconography, and breakpoints.
-- [ ] Add the primitive inventory glob and explicit registered/infrastructure-only coverage for every current `components/ui` module.
+- [ ] Add the primitive inventory glob as a non-blocking audit over `components/ui` (catalogued / infrastructure-only / unreviewed), and the blocking coverage gate over `components/mercurian`.
 - [ ] Migrate the 23 existing Storybook states to co-located catalog entries with the same fixtures, labels, layouts, and bounded interaction.
 - [ ] Replace alias-dependent examples with explicit presentational seams or fixture props; do not add a catalog transport, fake server, or alias map.
 - [ ] Add product-semantic status aliases and migrate current raw Mercurian status colors family by family with pixel-equivalence proof.
 - [ ] Move the browser harness from portable stories to catalog entries; retain non-empty render, exercise, axe, and loudly logged rule-scoped exceptions.
-- [ ] Add the audit page and checks showing 100% color-role coverage, 100% primitive-module classification, all existing scenarios, theme modes, exceptions, and unmanaged visual values.
+- [ ] Add the audit page and checks showing 100% color-role coverage, Mercurian-component classification, the `components/ui` inventory counts including unreviewed, all existing scenarios, theme modes, exceptions, and unmanaged visual values.
 - [ ] Verify `/ds` is lazy and the initial renderer bundle remains within the measured baseline tolerance.
 - [ ] Update contributor strategy and ADR wording after parity is demonstrated.
 - [ ] In a separate commit, remove Storybook packages, config, scripts, aliases, CI build/artifact/report workflow, migrated story files, and—if no longer required—the esbuild override; regenerate the lockfile.
@@ -219,7 +233,8 @@ No future rebrand should require moving product components, rebuilding fixtures,
 
 - [ ] `THEME_COLOR_ROLES` and the foundations catalog have exact set equality.
 - [ ] Every declared theme/mode resolves every role to a valid live CSS color.
-- [ ] Every non-test `components/ui/*.tsx` module is registered or explicitly classified infrastructure-only.
+- [ ] Every non-test `components/mercurian/*.tsx` module is registered or explicitly classified — this one fails the build.
+- [ ] The `components/ui` inventory resolves every module into catalogued, infrastructure-only, or unreviewed, and reports the counts without failing.
 - [ ] Registry ids are unique; sections and source paths resolve; catalog copy is non-empty.
 - [ ] Product-semantic status roles each have light and dark values and preserve non-color meaning through labels/icons/position.
 
@@ -232,7 +247,8 @@ No future rebrand should require moving product components, rebuilding fixtures,
 
 ### Routing and performance
 
-- [ ] `/ds` loads without a server connection or authenticated environment in the web client.
+- [ ] `/ds` loads without a server connection or authenticated environment in the web client, in both development and a production build.
+- [ ] A deep link to `?page=…&entry=…` restores that page on reload; unknown values fall back to the overview instead of erroring.
 - [ ] Desktop hash navigation reaches the same route without changing normal desktop startup behavior.
 - [ ] Normal `/`, `/pair`, `/connect`, settings, plan, and coding-session routing retain their current auth/shell behavior.
 - [ ] The production build emits the catalog as a lazy chunk; the initial renderer entry stays within the recorded tolerance.
@@ -242,6 +258,7 @@ No future rebrand should require moving product components, rebuilding fixtures,
 - [ ] Before/after computed styles or curated screenshots match for each migrated status family in standard light and dark.
 - [ ] Existing focused component tests remain green; assertions that referenced raw Tailwind palette classes are updated to assert the semantic role instead.
 - [ ] No production component imports from `components/design-system` or `design-system/catalog`.
+- [ ] The catalog's presentation modules import no application shell, environment, or workspace state, keeping the marketing-site port viable.
 
 ### Storybook removal
 
