@@ -8,7 +8,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import preview from "../preview";
 
-setProjectAnnotations(preview);
+if (preview === undefined) {
+  throw new Error("Storybook preview default export is undefined");
+}
+
+try {
+  setProjectAnnotations(preview);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  throw new Error(`Failed to set Storybook project annotations: ${message}`, { cause: error });
+}
 
 type StoryModule = Store_CSFExports<ReactRenderer>;
 
@@ -28,8 +37,16 @@ const formatViolations = (violations: axe.Result[]) =>
     .join("\n");
 
 describe("Storybook catalog", () => {
-  for (const storyModule of Object.values(storyModules)) {
-    const stories = composeStories(storyModule) as Record<string, ComposedStoryFn<ReactRenderer>>;
+  for (const [modulePath, storyModule] of Object.entries(storyModules)) {
+    let stories: Record<string, ComposedStoryFn<ReactRenderer>>;
+    try {
+      stories = composeStories(storyModule) as Record<string, ComposedStoryFn<ReactRenderer>>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to compose Storybook module ${modulePath}: ${message}`, {
+        cause: error,
+      });
+    }
 
     for (const story of Object.values(stories)) {
       it(story.id || story.storyName, async () => {
