@@ -95,6 +95,7 @@ interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
+  changeRequestsAllowed?: boolean;
 }
 
 interface PendingDefaultBranchAction {
@@ -971,6 +972,7 @@ export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
   draftId,
+  changeRequestsAllowed = true,
 }: GitActionsControlProps) {
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
@@ -1146,13 +1148,31 @@ export default function GitActionsControl({
   }, [gitStatusForActions?.isDefaultRef]);
 
   const gitActionMenuItems = useMemo(
-    () => buildMenuItems(gitStatusForActions, isGitActionRunning, hasPrimaryRemote),
-    [gitStatusForActions, hasPrimaryRemote, isGitActionRunning],
+    () =>
+      buildMenuItems(
+        gitStatusForActions,
+        isGitActionRunning,
+        hasPrimaryRemote,
+        changeRequestsAllowed,
+      ),
+    [changeRequestsAllowed, gitStatusForActions, hasPrimaryRemote, isGitActionRunning],
   );
   const quickAction = useMemo(
     () =>
-      resolveQuickAction(gitStatusForActions, isGitActionRunning, isDefaultRef, hasPrimaryRemote),
-    [gitStatusForActions, hasPrimaryRemote, isDefaultRef, isGitActionRunning],
+      resolveQuickAction(
+        gitStatusForActions,
+        isGitActionRunning,
+        isDefaultRef,
+        hasPrimaryRemote,
+        changeRequestsAllowed,
+      ),
+    [
+      changeRequestsAllowed,
+      gitStatusForActions,
+      hasPrimaryRemote,
+      isDefaultRef,
+      isGitActionRunning,
+    ],
   );
   const quickActionDisabledReason = quickAction.disabled
     ? (quickAction.hint ?? "This action is currently unavailable.")
@@ -1165,6 +1185,14 @@ export default function GitActionsControl({
         terminology: changeRequestTerminology,
       })
     : null;
+
+  useEffect(() => {
+    if (changeRequestsAllowed) return;
+    setPendingDefaultBranchAction((pending) => {
+      if (pending?.action === "create_pr") return null;
+      return pending?.action === "commit_push_pr" ? { ...pending, action: "commit_push" } : pending;
+    });
+  }, [changeRequestsAllowed]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -1255,29 +1283,34 @@ export default function GitActionsControl({
       progressToastId,
       filePaths,
     }: RunGitActionWithToastInput) => {
+      if (action === "create_pr" && !changeRequestsAllowed) return;
+      const resolvedAction =
+        action === "commit_push_pr" && !changeRequestsAllowed ? "commit_push" : action;
       const actionStatus = statusOverride ?? gitStatusForActions;
       const actionBranch = actionStatus?.refName ?? null;
       const actionIsDefaultBranch = featureBranch ? false : isDefaultRef;
       const actionCanCommit =
-        action === "commit" || action === "commit_push" || action === "commit_push_pr";
+        resolvedAction === "commit" ||
+        resolvedAction === "commit_push" ||
+        resolvedAction === "commit_push_pr";
       const includesCommit =
         actionCanCommit &&
-        (action === "commit" || !!actionStatus?.hasWorkingTreeChanges || featureBranch);
+        (resolvedAction === "commit" || !!actionStatus?.hasWorkingTreeChanges || featureBranch);
       if (
         !skipDefaultBranchPrompt &&
-        requiresDefaultBranchConfirmation(action, actionIsDefaultBranch) &&
+        requiresDefaultBranchConfirmation(resolvedAction, actionIsDefaultBranch) &&
         actionBranch
       ) {
         if (
-          action !== "push" &&
-          action !== "create_pr" &&
-          action !== "commit_push" &&
-          action !== "commit_push_pr"
+          resolvedAction !== "push" &&
+          resolvedAction !== "create_pr" &&
+          resolvedAction !== "commit_push" &&
+          resolvedAction !== "commit_push_pr"
         ) {
           return;
         }
         setPendingDefaultBranchAction({
-          action,
+          action: resolvedAction,
           branchName: actionBranch,
           includesCommit,
           ...(commitMessage ? { commitMessage } : {}),
@@ -1289,13 +1322,13 @@ export default function GitActionsControl({
       onConfirmed?.();
 
       const progressStages = buildGitActionProgressStages({
-        action,
+        action: resolvedAction,
         hasCustomCommitMessage: !!commitMessage?.trim(),
         hasWorkingTreeChanges: !!actionStatus?.hasWorkingTreeChanges,
         featureBranch,
         terminology: changeRequestTerminology,
         shouldPushBeforePr:
-          action === "create_pr" &&
+          resolvedAction === "create_pr" &&
           (!actionStatus?.hasUpstream || (actionStatus?.aheadCount ?? 0) > 0),
       });
       const scopedToastData = threadToastData ? { ...threadToastData } : undefined;
@@ -1390,7 +1423,7 @@ export default function GitActionsControl({
 
       const result = await runImmediateGitAction.run({
         actionId,
-        action,
+        action: resolvedAction,
         ...(commitMessage ? { commitMessage } : {}),
         ...(featureBranch ? { featureBranch } : {}),
         ...(filePaths ? { filePaths } : {}),
@@ -1428,7 +1461,10 @@ export default function GitActionsControl({
         children: string;
         onClick: () => void;
       } | null = null;
-      if (toastCta.kind === "run_action") {
+      if (
+        toastCta.kind === "run_action" &&
+        (toastCta.action.kind !== "create_pr" || changeRequestsAllowed)
+      ) {
         toastActionProps = {
           children: toastCta.label,
           onClick: () => {

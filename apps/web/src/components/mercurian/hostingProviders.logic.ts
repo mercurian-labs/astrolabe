@@ -208,3 +208,15 @@ export function repositoryHostingStanding(
     account: standing.account,
   };
 }
+
+/** Change requests exist only when the repository's detected host is authenticated. */
+export function changeRequestsAllowed(
+  hosting: MercurianRepositoryHosting | null,
+  discovery: SourceControlDiscoveryResult | null,
+): boolean {
+  return (
+    hosting !== null &&
+    hosting.provider !== "unknown" &&
+    providerStanding(discovery, hosting.provider).kind === "authenticated"
+  );
+}

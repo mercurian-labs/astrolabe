@@ -46,12 +46,12 @@ interface ProjectScriptsControlProps {
   keybindings: ResolvedKeybindingsConfig;
   preferredScriptId?: string | null;
   onRunScript: (script: ProjectScript) => void;
-  onAddScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
-  onUpdateScript: (
+  onAddScript?: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
+  onUpdateScript?: (
     scriptId: string,
     input: NewProjectScriptInput,
   ) => Promise<ProjectScriptActionResult>;
-  onDeleteScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
+  onDeleteScript?: (scriptId: string) => Promise<ProjectScriptActionResult>;
 }
 
 export default function ProjectScriptsControl({
@@ -69,6 +69,7 @@ export default function ProjectScriptsControl({
     imports: false,
   });
   const [editorRequest, setEditorRequest] = useState<ProjectScriptEditorRequest | null>(null);
+  const canManageScripts = Boolean(onAddScript && onUpdateScript && onDeleteScript);
 
   const primaryScript = useMemo(() => {
     if (preferredScriptId) {
@@ -79,7 +80,7 @@ export default function ProjectScriptsControl({
   }, [preferredScriptId, scripts]);
   const importableScripts = useMemo(
     () =>
-      fileScripts.filter(
+      (canManageScripts ? fileScripts : NO_FILE_SCRIPTS).filter(
         (fileScript) =>
           !scripts.some(
             (script) =>
@@ -87,7 +88,7 @@ export default function ProjectScriptsControl({
               script.name.toLowerCase() === fileScript.name.toLowerCase(),
           ),
       ),
-    [fileScripts, scripts],
+    [canManageScripts, fileScripts, scripts],
   );
   const dropdownItemClassName =
     "data-highlighted:bg-transparent data-highlighted:text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-highlighted:hover:bg-accent data-highlighted:hover:text-accent-foreground data-highlighted:focus-visible:bg-accent data-highlighted:focus-visible:text-accent-foreground";
@@ -102,12 +103,19 @@ export default function ProjectScriptsControl({
   };
 
   const submitScript = useCallback(
-    (scriptId: string | null, input: NewProjectScriptInput) =>
-      scriptId === null ? onAddScript(input) : onUpdateScript(scriptId, input),
+    (scriptId: string | null, input: NewProjectScriptInput) => {
+      if (scriptId === null) {
+        if (!onAddScript) throw new Error("Adding project scripts is unavailable.");
+        return onAddScript(input);
+      }
+      if (!onUpdateScript) throw new Error("Editing project scripts is unavailable.");
+      return onUpdateScript(scriptId, input);
+    },
     [onAddScript, onUpdateScript],
   );
 
   const importFileScript = async (fileScript: T3ProjectFileScript) => {
+    if (!onAddScript) return;
     const payload: NewProjectScriptInput = {
       name: fileScript.name,
       command: fileScript.command,
@@ -211,33 +219,37 @@ export default function ProjectScriptsControl({
                           {shortcutLabel}
                         </MenuShortcut>
                       )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        className="absolute right-0 top-1/2 size-6 -translate-y-1/2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-visible:opacity-100 group-focus-visible:pointer-events-auto"
-                        aria-label={`Edit ${script.name}`}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          openEditDialog(script);
-                        }}
-                      >
-                        <SettingsIcon className="size-3.5" />
-                      </Button>
+                      {canManageScripts && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="absolute right-0 top-1/2 size-6 -translate-y-1/2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-visible:opacity-100 group-focus-visible:pointer-events-auto"
+                          aria-label={`Edit ${script.name}`}
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                          }}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            openEditDialog(script);
+                          }}
+                        >
+                          <SettingsIcon className="size-3.5" />
+                        </Button>
+                      )}
                     </span>
                   </MenuItem>
                 );
               })}
               {importMenuItems}
-              <MenuItem className={dropdownItemClassName} onClick={openAddDialog}>
-                <PlusIcon className="size-4" />
-                Add action
-              </MenuItem>
+              {canManageScripts && (
+                <MenuItem className={dropdownItemClassName} onClick={openAddDialog}>
+                  <PlusIcon className="size-4" />
+                  Add action
+                </MenuItem>
+              )}
             </MenuPopup>
           </Menu>
         </Group>
@@ -262,7 +274,7 @@ export default function ProjectScriptsControl({
             </MenuItem>
           </MenuPopup>
         </Menu>
-      ) : (
+      ) : canManageScripts ? (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -285,15 +297,17 @@ export default function ProjectScriptsControl({
           </TooltipTrigger>
           <TooltipPopup side="top">Add action</TooltipPopup>
         </Tooltip>
-      )}
+      ) : null}
 
-      <ProjectScriptEditorDialog
-        request={editorRequest}
-        scripts={scripts}
-        onSubmit={submitScript}
-        onDelete={(scriptId) => void onDeleteScript(scriptId)}
-        onClose={() => setEditorRequest(null)}
-      />
+      {canManageScripts && onDeleteScript && (
+        <ProjectScriptEditorDialog
+          request={editorRequest}
+          scripts={scripts}
+          onSubmit={submitScript}
+          onDelete={(scriptId) => void onDeleteScript(scriptId)}
+          onClose={() => setEditorRequest(null)}
+        />
+      )}
     </>
   );
 }

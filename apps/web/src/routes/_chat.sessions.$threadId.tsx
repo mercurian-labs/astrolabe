@@ -3,7 +3,9 @@ import {
   ThreadId,
   type EnvironmentId,
   type MercurianCommitId,
+  type MercurianRepositoryId,
   type PlanId,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
@@ -30,6 +32,9 @@ export function SessionThreadRouteContent(props: {
   readonly sessionLeafCommitId: MercurianCommitId | null;
   readonly planTitle: string | null;
   readonly threadTitle: string;
+  readonly threadRef: ScopedThreadRef;
+  readonly worktreePath: string | null;
+  readonly repositoryId: MercurianRepositoryId | null;
 }) {
   const backToPlanLink =
     props.planId === null ? (
@@ -72,6 +77,9 @@ export function SessionThreadRouteContent(props: {
               planTitle={props.planTitle}
               threadId={props.threadId}
               threadTitle={props.threadTitle}
+              threadRef={props.threadRef}
+              worktreePath={props.worktreePath}
+              repositoryId={props.repositoryId}
             />
           }
         />
@@ -109,7 +117,7 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
   const owningSession =
     owningPlan?.codingSessions.find((session) => session.threadId === threadId) ?? null;
 
-  if (environmentId === null) return null;
+  if (environmentId === null || threadRef === null) return null;
 
   const bootstrapComplete = shellState.data?.snapshot._tag === "Some";
   const renderState =
@@ -139,6 +147,9 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       sessionLeafCommitId={owningSession?.commitId ?? null}
       planTitle={owningPlan?.title ?? null}
       threadTitle={serverThreadShell?.title ?? serverThreadDetail?.title ?? "Coding session"}
+      threadRef={threadRef}
+      worktreePath={serverThreadShell?.worktreePath ?? null}
+      repositoryId={owningSession?.repositoryId ?? null}
     />
   );
 }

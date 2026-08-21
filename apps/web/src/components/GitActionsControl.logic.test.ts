@@ -12,6 +12,52 @@ import {
   resolveThreadBranchMetadataPatch,
 } from "./GitActionsControl.logic";
 
+describe("when: change request creation is not allowed", () => {
+  it("omits create PR from the menu", () => {
+    const items = buildMenuItems(status({ aheadCount: 2, pr: null }), false, true, false);
+    assert.deepEqual(
+      items.map((item) => item.id),
+      ["commit", "push"],
+    );
+  });
+
+  it("degrades commit, push, and PR to commit and push", () => {
+    const quick = resolveQuickAction(
+      status({ hasWorkingTreeChanges: true, pr: null }),
+      false,
+      false,
+      true,
+      false,
+    );
+    assert.deepInclude(quick, {
+      kind: "run_action",
+      action: "commit_push",
+      label: "Commit & push",
+    });
+  });
+
+  it("keeps viewing an existing PR available", () => {
+    const existingPr = {
+      number: 10,
+      title: "Open PR",
+      url: "https://example.com/pr/10",
+      baseRef: "main",
+      headRef: "feature/test",
+      state: "open" as const,
+    };
+    const quick = resolveQuickAction(status({ pr: existingPr }), false, false, true, false);
+    const items = buildMenuItems(status({ pr: existingPr }), false, true, false);
+    assert.deepInclude(quick, { kind: "open_pr", label: "View PR" });
+    assert.deepInclude(
+      items.find((item) => item.id === "pr"),
+      {
+        kind: "open_pr",
+        label: "View PR",
+      },
+    );
+  });
+});
+
 function status(overrides: Partial<VcsStatusResult> = {}): VcsStatusResult {
   return {
     isRepo: true,

@@ -1,4 +1,11 @@
-import { EnvironmentId, MercurianCommitId, PlanId, ThreadId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  EnvironmentId,
+  MercurianCommitId,
+  MercurianRepositoryId,
+  PlanId,
+  ThreadId,
+} from "@t3tools/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -31,8 +38,16 @@ vi.mock("../components/mercurian/CodingSessionHeader", () => ({
     readonly planId: PlanId | null;
     readonly planTitle: string | null;
     readonly threadTitle: string;
+    readonly threadRef: { readonly environmentId: string; readonly threadId: string };
+    readonly worktreePath: string | null;
+    readonly repositoryId: string | null;
   }) => (
-    <nav aria-label="Coding session breadcrumb">
+    <nav
+      aria-label="Coding session breadcrumb"
+      data-thread-ref={`${props.threadRef.environmentId}:${props.threadRef.threadId}`}
+      data-worktree-path={props.worktreePath ?? ""}
+      data-repository-id={props.repositoryId ?? ""}
+    >
       <a href={props.planId === null ? "/" : `/plans/${props.planId}`}>
         {props.planTitle ?? "Plans"}
       </a>
@@ -62,6 +77,9 @@ import { SessionThreadRouteContent } from "./_chat.sessions.$threadId";
 
 const environmentId = EnvironmentId.make("environment-test");
 const threadId = ThreadId.make("thread-test");
+const threadRef = scopeThreadRef(environmentId, threadId);
+const worktreePath = "/repo/worktrees/session";
+const repositoryId = MercurianRepositoryId.make("repository-test");
 
 describe("session thread route", () => {
   it("renders ChatView for an existing thread", () => {
@@ -76,6 +94,9 @@ describe("session thread route", () => {
         sessionLeafCommitId={MercurianCommitId.make("session-leaf")}
         planTitle="Reviewed plan"
         threadTitle="Coding session title"
+        threadRef={threadRef}
+        worktreePath={worktreePath}
+        repositoryId={repositoryId}
       />,
     );
 
@@ -85,6 +106,9 @@ describe("session thread route", () => {
     expect(markup).toContain('href="/plans/plan-test"');
     expect(markup).toContain("Reviewed plan");
     expect(markup).toContain("Coding session title");
+    expect(markup).toContain('data-thread-ref="environment-test:thread-test"');
+    expect(markup).toContain('data-worktree-path="/repo/worktrees/session"');
+    expect(markup).toContain('data-repository-id="repository-test"');
     expect(markup).toContain('data-session-plan-panel="plan-test:session-leaf"');
     expect(markup).toContain("Standing plan");
     expect(markup).not.toContain("Thread breadcrumb");
@@ -104,6 +128,9 @@ describe("session thread route", () => {
         sessionLeafCommitId={MercurianCommitId.make("session-leaf")}
         planTitle="Reviewed plan"
         threadTitle="Coding session title"
+        threadRef={threadRef}
+        worktreePath={worktreePath}
+        repositoryId={repositoryId}
       />,
     );
 
@@ -122,6 +149,9 @@ describe("session thread route", () => {
         sessionLeafCommitId={null}
         planTitle={null}
         threadTitle="Coding session title"
+        threadRef={threadRef}
+        worktreePath={worktreePath}
+        repositoryId={repositoryId}
       />,
     );
     expect(fallbackMarkup).toContain('href="/"');
@@ -139,6 +169,9 @@ describe("session thread route", () => {
         sessionLeafCommitId={null}
         planTitle={null}
         threadTitle="Detached session"
+        threadRef={threadRef}
+        worktreePath={null}
+        repositoryId={null}
       />,
     );
 

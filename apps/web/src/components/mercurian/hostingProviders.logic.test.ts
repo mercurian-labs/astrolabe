@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildProviderReadiness,
+  changeRequestsAllowed,
   providerStanding,
   readyProviderKinds,
   repositoryHostingStanding,
@@ -217,5 +218,38 @@ describe("repositoryHostingStanding", () => {
       }),
     ]);
     expect(readyProviderKinds(result)).toEqual([]);
+  });
+});
+
+describe("changeRequestsAllowed", () => {
+  it("allows only a known, installed, authenticated repository host", () => {
+    expect(
+      changeRequestsAllowed(hosting("github", "GitHub"), discovery([provider("github")])),
+    ).toBe(true);
+    expect(
+      changeRequestsAllowed(
+        hosting("github", "GitHub"),
+        discovery([
+          provider("github", {
+            auth: {
+              status: "unauthenticated",
+              account: Option.none(),
+              host: Option.none(),
+              detail: Option.none(),
+            },
+          }),
+        ]),
+      ),
+    ).toBe(false);
+    expect(
+      changeRequestsAllowed(
+        hosting("github", "GitHub"),
+        discovery([provider("github", { status: "missing" })]),
+      ),
+    ).toBe(false);
+    expect(changeRequestsAllowed(hosting("unknown", "git.example.test"), discovery([]))).toBe(
+      false,
+    );
+    expect(changeRequestsAllowed(null, discovery([provider("github")]))).toBe(false);
   });
 });
