@@ -97,7 +97,7 @@ jobs:
         run: vp run --filter @t3tools/web storybook:build
 
       - name: Install Playwright Chromium
-        run: pnpm --filter @t3tools/web exec playwright install chromium
+        run: apps/web/node_modules/.bin/playwright install --with-deps chromium
 
       - name: Test Storybook stories
         run: vp run --filter @t3tools/web test:stories
