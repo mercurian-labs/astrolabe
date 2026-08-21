@@ -227,7 +227,11 @@ export function PlanMap(props: {
       .onEnd((event, success) => {
         if (success) runOnJS(handleTap)(event.x, event.y, tx.value, ty.value, zoom.value);
       });
-    return Gesture.Exclusive(Gesture.Simultaneous(pan, pinch), tap);
+    // Race, not Exclusive: Exclusive makes the tap wait for the pan to fail,
+    // and the pan's failure resolves at touch-up — the same moment the tap
+    // ends, so the tap was swallowed. Racing lets whichever activates first
+    // win: a stationary touch is a tap, any movement past minDistance is a pan.
+    return Gesture.Race(Gesture.Simultaneous(pan, pinch), tap);
   }, [handleTap, panStart, pinchStart, tx, ty, zoom]);
 
   const currentPath = useMemo(
@@ -250,7 +254,15 @@ export function PlanMap(props: {
   const border = useThemeColor("--color-border");
   const primary = useThemeColor("--color-primary");
 
-  const onLayout = (event: LayoutChangeEvent) => setFrame(event.nativeEvent.layout);
+  const onLayout = (event: LayoutChangeEvent) => {
+    // Width and height only: the layout event also carries the view's x/y
+    // within its parent (the header's height, here), and the viewport spreads
+    // frame over { x: 0, y: 0 } — carrying that origin through would fit and
+    // centre the camera against an offset viewport, so nodes would draw where
+    // taps do not land.
+    const { width, height } = event.nativeEvent.layout;
+    setFrame({ width, height });
+  };
   const fit = () => flyTo(fitTransform(props.layout.bounds, { x: 0, y: 0, ...frame }));
   const jumpToCurrent = () => {
     if (props.currentCommitId === null) return;
