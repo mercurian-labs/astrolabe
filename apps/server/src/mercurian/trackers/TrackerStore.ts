@@ -42,8 +42,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
-  JiraConnectTrackerInput,
-  LinearConnectTrackerInput,
+  MercurianConnectTrackerInput,
   TrackerAuthError,
   TrackerConnectionNotFoundError,
   TrackerUnreachableError,
@@ -58,7 +57,11 @@ import {
   PersistenceDecodeError,
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
-import type { TrackerConnectorRefusal, TrackerConnectorRegistry } from "./connector.ts";
+import type {
+  TrackerConnector,
+  TrackerConnectorRefusal,
+  TrackerConnectorRegistry,
+} from "./connector.ts";
 import { TrackerConnectors } from "./connectors/registry.ts";
 import {
   TrackerConnectionId,
@@ -92,16 +95,14 @@ export type TrackerStoreError = TrackerStoreRefusal | PersistenceSqlError | Pers
 // Inputs
 // ===============================
 
-export const ConnectTrackerInput = Schema.Union([
-  Schema.Struct({
-    ...LinearConnectTrackerInput.fields,
-    createdAt: Schema.DateTimeUtcFromString,
-  }),
-  Schema.Struct({
-    ...JiraConnectTrackerInput.fields,
-    createdAt: Schema.DateTimeUtcFromString,
-  }),
-]);
+export const ConnectTrackerInput = MercurianConnectTrackerInput.mapMembers((members) =>
+  members.map((member) =>
+    Schema.Struct({
+      ...member.fields,
+      createdAt: Schema.DateTimeUtcFromString,
+    }),
+  ),
+);
 export type ConnectTrackerInput = typeof ConnectTrackerInput.Type;
 
 export const DisconnectTrackerInput = Schema.Struct({ connectionId: TrackerConnectionId });
@@ -196,7 +197,7 @@ function toTrackerStoreError(sqlOperation: string, decodeOperation: string) {
 const packCredential = <K extends TrackerKind>(
   connectors: TrackerConnectorRegistry,
   input: Extract<ConnectTrackerInput, { readonly kind: K }>,
-): string => connectors[input.kind].packCredential(input);
+): string => (connectors[input.kind] as TrackerConnector<K>).packCredential(input);
 
 export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerStoreOptions = {}) {
   const sql = yield* SqlClient.SqlClient;

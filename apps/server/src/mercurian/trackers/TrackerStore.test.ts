@@ -116,6 +116,38 @@ const makeJiraStubConnector = (): JiraStubConnector => {
   return state;
 };
 
+interface GitHubStubConnector {
+  readonly connector: TrackerConnector<"github">;
+  refusal: TrackerConnectorRefusal | null;
+  readonly tokensSeen: Array<string>;
+}
+
+const makeGitHubStubConnector = (): GitHubStubConnector => {
+  const state: GitHubStubConnector = {
+    refusal: null,
+    tokensSeen: [],
+    connector: {
+      kind: "github",
+      packCredential: (input) => input.token,
+      probe: (token) => {
+        state.tokensSeen.push(token);
+        return state.refusal === null
+          ? Effect.succeed({ label: "octocat" })
+          : Effect.fail(state.refusal);
+      },
+      listIssues: (token) => {
+        state.tokensSeen.push(token);
+        return state.refusal === null ? Effect.succeed({ issues: [] }) : Effect.fail(state.refusal);
+      },
+      getIssue: (token) => {
+        state.tokensSeen.push(token);
+        return state.refusal === null ? Effect.succeed(null) : Effect.fail(state.refusal);
+      },
+    },
+  };
+  return state;
+};
+
 /** The secret store as a Map, so a test can look at exactly what was filed. */
 interface StubSecrets {
   readonly files: Map<string, string>;
@@ -167,6 +199,7 @@ const makeStubSecrets = (): StubSecrets => {
 interface Harness {
   readonly connector: StubConnector;
   readonly jiraConnector: JiraStubConnector;
+  readonly githubConnector: GitHubStubConnector;
   readonly secrets: StubSecrets;
 }
 
@@ -189,6 +222,7 @@ const withStore = <A, E>(
 
     const connector = makeStubConnector();
     const jiraConnector = makeJiraStubConnector();
+    const githubConnector = makeGitHubStubConnector();
     const secrets = makeStubSecrets();
     const store = yield* TrackerStore.make({ standingCacheTtl: Duration.zero }).pipe(
       Effect.provide(
@@ -196,12 +230,13 @@ const withStore = <A, E>(
           TrackerConnectorRegistry.layerWith({
             linear: connector.connector,
             jira: jiraConnector.connector,
+            github: githubConnector.connector,
           }),
           secrets.layer,
         ),
       ),
     );
-    return yield* body(store, { connector, jiraConnector, secrets });
+    return yield* body(store, { connector, jiraConnector, githubConnector, secrets });
   });
 
 const layer = it.layer(Layer.provideMerge(MercurianSqlite.layerMemory, NodeServicesLayer));

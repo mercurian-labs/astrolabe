@@ -37,6 +37,20 @@ Mercurian checks both the site and the credentials before saving anything. Once 
 connection is named after the Jira site it reaches. The site, email, and token are kept together in
 the server's protected secret store and are never shown again.
 
+## Connecting GitHub
+
+1. In GitHub, open **Settings → Developer settings → Personal access tokens** and create either a
+   classic token with the `repo` scope or a fine-grained token with read access to repository
+   metadata and issues for the repositories you want to browse.
+2. In Mercurian, go to **Settings → Trackers**, press **Connect tracker**, and choose
+   **GitHub Issues**.
+3. Paste the token and press **Connect**.
+
+The connection is named after the GitHub account the token authenticates as. Browsing covers your
+repositories and your organizations' repositories. Repositories you can reach only as an outside
+collaborator are not included. Pull requests never appear, and issue ids include their repository —
+for example, `owner/repo#123`.
+
 ## What crosses over
 
 Whatever the tracker, an issue arrives as exactly five things:
