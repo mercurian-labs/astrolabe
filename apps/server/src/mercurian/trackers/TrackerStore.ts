@@ -42,6 +42,8 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
+  JiraConnectTrackerInput,
+  LinearConnectTrackerInput,
   TrackerAuthError,
   TrackerConnectionNotFoundError,
   TrackerUnreachableError,
@@ -56,7 +58,7 @@ import {
   PersistenceDecodeError,
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
-import type { TrackerConnectorRefusal } from "./connector.ts";
+import type { TrackerConnectorRefusal, TrackerConnectorRegistry } from "./connector.ts";
 import { TrackerConnectors } from "./connectors/registry.ts";
 import {
   TrackerConnectionId,
@@ -90,12 +92,16 @@ export type TrackerStoreError = TrackerStoreRefusal | PersistenceSqlError | Pers
 // Inputs
 // ===============================
 
-export const ConnectTrackerInput = Schema.Struct({
-  kind: TrackerKind,
-  /** The credential. Validated before anything is written, then filed away. */
-  token: Schema.String,
-  createdAt: Schema.DateTimeUtcFromString,
-});
+export const ConnectTrackerInput = Schema.Union([
+  Schema.Struct({
+    ...LinearConnectTrackerInput.fields,
+    createdAt: Schema.DateTimeUtcFromString,
+  }),
+  Schema.Struct({
+    ...JiraConnectTrackerInput.fields,
+    createdAt: Schema.DateTimeUtcFromString,
+  }),
+]);
 export type ConnectTrackerInput = typeof ConnectTrackerInput.Type;
 
 export const DisconnectTrackerInput = Schema.Struct({ connectionId: TrackerConnectionId });
@@ -187,6 +193,11 @@ function toTrackerStoreError(sqlOperation: string, decodeOperation: string) {
           : new PersistenceSqlError({ operation: sqlOperation, cause });
 }
 
+const packCredential = <K extends TrackerKind>(
+  connectors: TrackerConnectorRegistry,
+  input: Extract<ConnectTrackerInput, { readonly kind: K }>,
+): string => connectors[input.kind].packCredential(input);
+
 export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerStoreOptions = {}) {
   const sql = yield* SqlClient.SqlClient;
   const secrets = yield* ServerSecretStore;
@@ -242,7 +253,7 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
-  const readToken = Effect.fn("TrackerStore.readToken")(function* (
+  const readCredential = Effect.fn("TrackerStore.readCredential")(function* (
     connection: TrackerConnectionRecord,
   ) {
     const stored = yield* secrets.get(trackerSecretName(connection.connectionId));
@@ -261,7 +272,7 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
 
   /**
    * Standing, probed live and cached per connection for a minute. The key is
-   * the connection, never its credential: the token stays in the secret store
+   * the connection, never its credential: the value stays in the secret store
    * and in the one request that uses it.
    *
    * A *lookup* failure — the secret store itself broke — is deliberately not
@@ -318,10 +329,11 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
 
   const connect: TrackerStore["Service"]["connect"] = (input) =>
     Effect.gen(function* () {
+      const credential = packCredential(connectors, input);
       // The probe comes first and its refusal returns as-is: nothing is written
       // until the tracker itself has said the credential works.
       const probed = yield* connectors[input.kind]
-        .probe(input.token)
+        .probe(credential)
         .pipe(Effect.mapError(toStoreRefusal(input.kind)));
 
       const connectionId = TrackerConnectionId.make(yield* crypto.randomUUIDv4);
@@ -334,7 +346,7 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
       } satisfies TrackerConnectionRecord;
 
       const secretName = trackerSecretName(connectionId);
-      yield* secrets.set(secretName, encoder.encode(input.token));
+      yield* secrets.set(secretName, encoder.encode(credential));
       // A credential with no connection to belong to is an orphan, so the row
       // failing takes the secret down with it.
       yield* sql
@@ -388,11 +400,11 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
   const listIssues: TrackerStore["Service"]["listIssues"] = (input) =>
     Effect.gen(function* () {
       const connection = yield* requireConnection(input.connectionId);
-      const token = yield* readToken(connection);
+      const credential = yield* readCredential(connection);
       // Straight through to the connector and straight back out. Nothing here
       // writes: there is no issue table, and there never will be one.
       return yield* connectors[connection.kind]
-        .listIssues(token, {
+        .listIssues(credential, {
           ...(input.search === undefined ? {} : { search: input.search }),
           ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
         })
@@ -406,9 +418,9 @@ export const make = Effect.fn("TrackerStore.make")(function* (options: TrackerSt
   const getIssue: TrackerStore["Service"]["getIssue"] = (input) =>
     Effect.gen(function* () {
       const connection = yield* requireConnection(input.connectionId);
-      const token = yield* readToken(connection);
+      const credential = yield* readCredential(connection);
       return yield* connectors[connection.kind]
-        .getIssue(token, input.issueId)
+        .getIssue(credential, input.issueId)
         .pipe(Effect.mapError(toStoreRefusal(connection.kind)));
     }).pipe(
       Effect.mapError(

@@ -128,9 +128,17 @@ import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import * as ProcessRunner from "./processRunner.ts";
 
-const stubTrackerConnector: TrackerConnector = {
+const stubTrackerConnector: TrackerConnector<"linear"> = {
   kind: "linear",
+  packCredential: (input) => input.token,
   probe: () => Effect.succeed({ label: "Linear" }),
+  listIssues: () => Effect.succeed({ issues: [] }),
+  getIssue: () => Effect.succeed(null),
+};
+const stubJiraTrackerConnector: TrackerConnector<"jira"> = {
+  kind: "jira",
+  packCredential: (input) => JSON.stringify(input),
+  probe: () => Effect.succeed({ label: "Jira" }),
   listIssues: () => Effect.succeed({ issues: [] }),
   getIssue: () => Effect.succeed(null),
 };
@@ -421,7 +429,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     planningAssistant?: Partial<PlanningAssistant.PlanningAssistant["Service"]>;
-    trackerConnector?: TrackerConnector;
+    trackerConnector?: TrackerConnector<"linear">;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
     serverSettings?: Partial<ServerSettings.ServerSettingsService["Service"]>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncher["Service"]>;
@@ -1047,6 +1055,7 @@ const buildAppUnderTest = (options?: {
             Layer.provide(
               TrackerConnectorRegistry.layerWith({
                 linear: options?.layers?.trackerConnector ?? stubTrackerConnector,
+                jira: stubJiraTrackerConnector,
               }),
             ),
             Layer.provide(ServerSecretStore.layer),

@@ -44,7 +44,7 @@ const stubHttpClient = (options: StubOptions) =>
 
 const runWith = <A, E>(
   options: StubOptions,
-  body: (connector: TrackerConnector) => Effect.Effect<A, E, never>,
+  body: (connector: TrackerConnector<"linear">) => Effect.Effect<A, E, never>,
 ) =>
   LinearConnector.make.pipe(
     Effect.flatMap(body),

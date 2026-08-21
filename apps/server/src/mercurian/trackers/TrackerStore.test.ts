@@ -33,7 +33,7 @@ const at = (iso: string) => DateTime.makeUnsafe(iso);
  * next, which is how a key revoked in Linear is simulated without a network.
  */
 interface StubConnector {
-  readonly connector: TrackerConnector;
+  readonly connector: TrackerConnector<"linear">;
   refusal: TrackerConnectorRefusal | null;
   readonly tokensSeen: Array<string>;
 }
@@ -44,6 +44,7 @@ const makeStubConnector = (): StubConnector => {
     tokensSeen: [],
     connector: {
       kind: "linear",
+      packCredential: (input) => input.token,
       probe: (token) => {
         state.tokensSeen.push(token);
         return state.refusal === null
@@ -77,6 +78,38 @@ const makeStubConnector = (): StubConnector => {
               status: "In Progress",
             })
           : Effect.fail(state.refusal);
+      },
+    },
+  };
+  return state;
+};
+
+interface JiraStubConnector {
+  readonly connector: TrackerConnector<"jira">;
+  refusal: TrackerConnectorRefusal | null;
+  readonly credentialsSeen: Array<string>;
+}
+
+const makeJiraStubConnector = (): JiraStubConnector => {
+  const state: JiraStubConnector = {
+    refusal: null,
+    credentialsSeen: [],
+    connector: {
+      kind: "jira",
+      packCredential: (input) => `packed:${input.site}|${input.email}|${input.token}`,
+      probe: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null
+          ? Effect.succeed({ label: "Acme Jira" })
+          : Effect.fail(state.refusal);
+      },
+      listIssues: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null ? Effect.succeed({ issues: [] }) : Effect.fail(state.refusal);
+      },
+      getIssue: (credential) => {
+        state.credentialsSeen.push(credential);
+        return state.refusal === null ? Effect.succeed(null) : Effect.fail(state.refusal);
       },
     },
   };
@@ -133,6 +166,7 @@ const makeStubSecrets = (): StubSecrets => {
 
 interface Harness {
   readonly connector: StubConnector;
+  readonly jiraConnector: JiraStubConnector;
   readonly secrets: StubSecrets;
 }
 
@@ -154,16 +188,20 @@ const withStore = <A, E>(
     yield* sql`DELETE FROM tracker_connections`;
 
     const connector = makeStubConnector();
+    const jiraConnector = makeJiraStubConnector();
     const secrets = makeStubSecrets();
     const store = yield* TrackerStore.make({ standingCacheTtl: Duration.zero }).pipe(
       Effect.provide(
         Layer.merge(
-          TrackerConnectorRegistry.layerWith({ linear: connector.connector }),
+          TrackerConnectorRegistry.layerWith({
+            linear: connector.connector,
+            jira: jiraConnector.connector,
+          }),
           secrets.layer,
         ),
       ),
     );
-    return yield* body(store, { connector, secrets });
+    return yield* body(store, { connector, jiraConnector, secrets });
   });
 
 const layer = it.layer(Layer.provideMerge(MercurianSqlite.layerMemory, NodeServicesLayer));
@@ -178,7 +216,7 @@ const countConnections = Effect.gen(function* () {
 
 layer("TrackerStore", (it) => {
   it.effect("connects a tracker, files its credential, and reports it connected", () =>
-    withStore((store, { secrets }) =>
+    withStore((store, { connector, secrets }) =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         const status = yield* store.connect({
@@ -196,6 +234,7 @@ layer("TrackerStore", (it) => {
         const secretName = `mercurian-tracker-${status.connection.connectionId}`;
         assert.strictEqual(secrets.files.get(secretName), "lin_api_test");
         assert.strictEqual(secrets.files.size, 1);
+        assert.deepStrictEqual(connector.tokensSeen, ["lin_api_test"]);
 
         const snapshot = yield* store.getSnapshot;
         assert.deepStrictEqual(
@@ -225,6 +264,51 @@ layer("TrackerStore", (it) => {
             assert.notStrictEqual(value, "lin_api_test");
           }
         }
+      }),
+    ),
+  );
+
+  it.effect("packs Jira credentials once and uses the stored value for later calls", () =>
+    withStore((store, { jiraConnector, secrets }) =>
+      Effect.gen(function* () {
+        const status = yield* store.connect({
+          kind: "jira",
+          site: "acme.atlassian.net",
+          email: "dev@acme.com",
+          token: "jira-secret",
+          createdAt: at("2026-08-06T00:00:00.000Z"),
+        });
+        const packed = "packed:acme.atlassian.net|dev@acme.com|jira-secret";
+        const secretName = `mercurian-tracker-${status.connection.connectionId}`;
+        assert.strictEqual(secrets.files.get(secretName), packed);
+        assert.deepStrictEqual(jiraConnector.credentialsSeen, [packed]);
+
+        yield* store.listIssues({ connectionId: status.connection.connectionId });
+        yield* store.getIssue({
+          connectionId: status.connection.connectionId,
+          issueId: "ACME-1",
+        });
+        assert.deepStrictEqual(jiraConnector.credentialsSeen, [packed, packed, packed]);
+      }),
+    ),
+  );
+
+  it.effect("creates nothing when Jira refuses its packed credential", () =>
+    withStore((store, { jiraConnector, secrets }) =>
+      Effect.gen(function* () {
+        jiraConnector.refusal = trackerAuthRefusal;
+        const refusal = yield* Effect.flip(
+          store.connect({
+            kind: "jira",
+            site: "acme.atlassian.net",
+            email: "dev@acme.com",
+            token: "wrong",
+            createdAt: at("2026-08-06T00:00:00.000Z"),
+          }),
+        );
+        assert.strictEqual(refusal._tag, "TrackerAuthError");
+        assert.strictEqual(secrets.files.size, 0);
+        assert.strictEqual(yield* countConnections, 0);
       }),
     ),
   );
