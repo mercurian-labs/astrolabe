@@ -3,21 +3,31 @@ import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 
 /**
- * What a plan's composer is holding but has not sent.
+ * What a plan's composer is holding but has not sent — per branch position.
  *
  * Client-local by design (ADR 002 §5): an unsent message is not a fact about
  * the plan, it is a fact about this browser. Leave the planning space and come
  * back and it is still there, because it never went anywhere.
  *
- * Keyed by plan, not by window. Two tabs on one plan share the draft the way
- * they share a text file — the last keystroke wins, and neither is authoritative
- * over the other.
+ * Keyed by plan and by the head commit the draft was composed at, not by
+ * window. A draft is a reply written *somewhere*: switching branches shows
+ * that branch's own draft, never another's. Two tabs standing on one branch
+ * share its draft the way they share a text file — the last keystroke wins,
+ * and neither is authoritative over the other.
+ *
+ * A draft composed while standing live at a branch tip rides the branch as it
+ * grows ({@link followGrowth}); one composed looking back — an edit-and-branch
+ * staging, or typing at an earlier checkpoint — waits at the fork it would
+ * open. Liveness is recorded at write time because it is not derivable later:
+ * the moment a child lands is the moment the two kinds must part ways.
  *
  * Distinct from `planDraftStore`, which holds the *unborn* plan: that draft is
  * keyed by project and its send creates a plan. Different lifecycle, different
  * key, so they are different stores.
  */
-export const PLAN_COMPOSER_DRAFTS_STORAGE_KEY = "mercurian:plan-composer-drafts:v1";
+export const PLAN_COMPOSER_DRAFTS_STORAGE_KEY = "mercurian:plan-composer-drafts:v2";
+/** The pre-branch-scoped blob; read once into `legacyByPlanId`, then removed. */
+export const PLAN_COMPOSER_DRAFTS_LEGACY_STORAGE_KEY = "mercurian:plan-composer-drafts:v1";
 
 export interface PlanComposerAttachment {
   /** Client-local, for keying the chip row and removing one. */
@@ -38,17 +48,42 @@ export interface PlanComposerAttachment {
 export interface PlanComposerDraft {
   readonly text: string;
   readonly attachments: ReadonlyArray<PlanComposerAttachment>;
-  /** A draft-only flip, scoped to the branch head where it was made. */
+  /** Composed while standing live at a branch tip — rides the branch forward. */
+  readonly live: boolean;
+  /**
+   * A draft-only model flip. The head it applies at is the slot's own key;
+   * riding forward strips it, preserving "a flip only applies where it was
+   * made."
+   */
+  readonly modelChoice?: PlanningModelSelection;
+}
+
+export const EMPTY_PLAN_COMPOSER_DRAFT: PlanComposerDraft = {
+  text: "",
+  attachments: [],
+  live: true,
+};
+
+/** The v1 shape: one draft per plan, the flip carrying its own head scope. */
+interface LegacyPlanComposerDraft {
+  readonly text: string;
+  readonly attachments: ReadonlyArray<PlanComposerAttachment>;
   readonly modelChoice?: {
     readonly directive: PlanningModelSelection;
     readonly atHead: string | null;
   };
 }
 
-export const EMPTY_PLAN_COMPOSER_DRAFT: PlanComposerDraft = { text: "", attachments: [] };
+type DraftsByPlan = Record<string, Record<string, PlanComposerDraft>>;
+type LegacyByPlanId = Record<string, LegacyPlanComposerDraft>;
 
-interface PersistedPlanComposerDrafts {
-  readonly draftsByPlanId?: Record<string, PlanComposerDraft>;
+interface PersistedPlanComposerState {
+  readonly draftsByPlan?: DraftsByPlan;
+  readonly legacyByPlanId?: LegacyByPlanId;
+}
+
+interface PersistedLegacyPlanComposerDrafts {
+  readonly draftsByPlanId?: Record<string, LegacyPlanComposerDraft>;
 }
 
 function isAttachment(value: unknown): value is PlanComposerAttachment {
@@ -76,7 +111,9 @@ function isModelSelection(value: unknown): value is PlanningModelSelection {
   );
 }
 
-function isModelChoice(value: unknown): value is NonNullable<PlanComposerDraft["modelChoice"]> {
+function isLegacyModelChoice(
+  value: unknown,
+): value is NonNullable<LegacyPlanComposerDraft["modelChoice"]> {
   if (!value || typeof value !== "object") return false;
   const choice = value as {
     readonly directive?: unknown;
@@ -95,7 +132,19 @@ function isDraft(value: unknown): value is PlanComposerDraft {
     typeof draft.text === "string" &&
     Array.isArray(draft.attachments) &&
     draft.attachments.every(isAttachment) &&
-    (draft.modelChoice === undefined || isModelChoice(draft.modelChoice))
+    typeof draft.live === "boolean" &&
+    (draft.modelChoice === undefined || isModelSelection(draft.modelChoice))
+  );
+}
+
+function isLegacyDraft(value: unknown): value is LegacyPlanComposerDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<LegacyPlanComposerDraft>;
+  return (
+    typeof draft.text === "string" &&
+    Array.isArray(draft.attachments) &&
+    draft.attachments.every(isAttachment) &&
+    (draft.modelChoice === undefined || isLegacyModelChoice(draft.modelChoice))
   );
 }
 
@@ -103,26 +152,47 @@ function isDraft(value: unknown): value is PlanComposerDraft {
 const isEmptyDraft = (draft: PlanComposerDraft) =>
   draft.text.length === 0 && draft.attachments.length === 0 && draft.modelChoice === undefined;
 
-/** A flip only applies where it was made; another branch reads its history. */
-export function modelChoiceForHead(
-  draft: PlanComposerDraft,
-  head: string | null,
-): PlanningModelSelection | undefined {
-  return draft.modelChoice?.atHead === head ? draft.modelChoice.directive : undefined;
-}
-
 /**
  * What a stored blob means, with anything unrecognizable dropped rather than
  * trusted. Storage is user-writable and version-skewed; a draft that will not
  * decode is a draft that was never there.
  */
-export function parsePersistedDrafts(raw: string | null): Record<string, PlanComposerDraft> {
+export function parsePersistedState(raw: string | null): {
+  draftsByPlan: DraftsByPlan;
+  legacyByPlanId: LegacyByPlanId;
+} {
+  if (!raw) return { draftsByPlan: {}, legacyByPlanId: {} };
+  try {
+    const parsed = JSON.parse(raw) as PersistedPlanComposerState;
+    const draftsByPlan: DraftsByPlan = {};
+    for (const [planId, byHead] of Object.entries(parsed.draftsByPlan ?? {})) {
+      if (!byHead || typeof byHead !== "object") continue;
+      const kept = Object.fromEntries(
+        Object.entries(byHead).filter((entry): entry is [string, PlanComposerDraft] =>
+          isDraft(entry[1]),
+        ),
+      );
+      if (Object.keys(kept).length > 0) draftsByPlan[planId] = kept;
+    }
+    const legacyByPlanId = Object.fromEntries(
+      Object.entries(parsed.legacyByPlanId ?? {}).filter(
+        (entry): entry is [string, LegacyPlanComposerDraft] => isLegacyDraft(entry[1]),
+      ),
+    );
+    return { draftsByPlan, legacyByPlanId };
+  } catch {
+    return { draftsByPlan: {}, legacyByPlanId: {} };
+  }
+}
+
+/** The v1 blob, read only to carry its drafts into `legacyByPlanId`. */
+export function parseLegacyDrafts(raw: string | null): LegacyByPlanId {
   if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw) as PersistedPlanComposerDrafts;
+    const parsed = JSON.parse(raw) as PersistedLegacyPlanComposerDrafts;
     return Object.fromEntries(
       Object.entries(parsed.draftsByPlanId ?? {}).filter(
-        (entry): entry is [string, PlanComposerDraft] => isDraft(entry[1]),
+        (entry): entry is [string, LegacyPlanComposerDraft] => isLegacyDraft(entry[1]),
       ),
     );
   } catch {
@@ -131,38 +201,67 @@ export function parsePersistedDrafts(raw: string | null): Record<string, PlanCom
 }
 
 /**
- * The drafts as storage should hold them: session-only images are dropped on
+ * The state as storage should hold it: session-only images are dropped on
  * the way out rather than on the way in, so the composer keeps showing every
- * image it accepted and only a reload can lose one.
+ * image it accepted and only a reload can lose one. Unadopted legacy drafts
+ * persist too — they wait for their plan to be opened.
  */
-export function toPersistableDrafts(
-  draftsByPlanId: Readonly<Record<string, PlanComposerDraft>>,
-): Record<string, PlanComposerDraft> {
-  return Object.fromEntries(
-    Object.entries(draftsByPlanId).map(([planId, draft]) => [
-      planId,
-      {
-        text: draft.text,
-        attachments: draft.attachments.filter((one) => one.persistable),
-        ...(draft.modelChoice === undefined ? {} : { modelChoice: draft.modelChoice }),
-      },
-    ]),
-  );
+export function toPersistableState(
+  draftsByPlan: Readonly<DraftsByPlan>,
+  legacyByPlanId: Readonly<LegacyByPlanId>,
+): PersistedPlanComposerState {
+  const persistable: DraftsByPlan = {};
+  for (const [planId, byHead] of Object.entries(draftsByPlan)) {
+    persistable[planId] = Object.fromEntries(
+      Object.entries(byHead).map(([headId, draft]) => [
+        headId,
+        {
+          text: draft.text,
+          attachments: draft.attachments.filter((one) => one.persistable),
+          live: draft.live,
+          ...(draft.modelChoice === undefined ? {} : { modelChoice: draft.modelChoice }),
+        },
+      ]),
+    );
+  }
+  return {
+    draftsByPlan: persistable,
+    ...(Object.keys(legacyByPlanId).length === 0 ? {} : { legacyByPlanId }),
+  };
 }
 
-function readPersistedDrafts(): Record<string, PlanComposerDraft> {
-  if (typeof window === "undefined") return {};
-  return parsePersistedDrafts(window.localStorage.getItem(PLAN_COMPOSER_DRAFTS_STORAGE_KEY));
+function readPersistedState(): { draftsByPlan: DraftsByPlan; legacyByPlanId: LegacyByPlanId } {
+  if (typeof window === "undefined") return { draftsByPlan: {}, legacyByPlanId: {} };
+  const rawV2 = window.localStorage.getItem(PLAN_COMPOSER_DRAFTS_STORAGE_KEY);
+  const state = parsePersistedState(rawV2);
+  // One-shot v1 migration: its drafts become legacy entries, adopted onto a
+  // real head the next time each plan's space is opened.
+  const rawV1 = window.localStorage.getItem(PLAN_COMPOSER_DRAFTS_LEGACY_STORAGE_KEY);
+  if (rawV1 !== null) {
+    const legacy = parseLegacyDrafts(rawV1);
+    state.legacyByPlanId = { ...legacy, ...state.legacyByPlanId };
+    try {
+      window.localStorage.setItem(
+        PLAN_COMPOSER_DRAFTS_STORAGE_KEY,
+        JSON.stringify(toPersistableState(state.draftsByPlan, state.legacyByPlanId)),
+      );
+      window.localStorage.removeItem(PLAN_COMPOSER_DRAFTS_LEGACY_STORAGE_KEY);
+    } catch {
+      // Storage errors must never block composing.
+    }
+  }
+  return state;
 }
 
-function persistDrafts(draftsByPlanId: Readonly<Record<string, PlanComposerDraft>>): void {
+function persistState(state: {
+  draftsByPlan: Readonly<DraftsByPlan>;
+  legacyByPlanId: Readonly<LegacyByPlanId>;
+}): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       PLAN_COMPOSER_DRAFTS_STORAGE_KEY,
-      JSON.stringify({
-        draftsByPlanId: toPersistableDrafts(draftsByPlanId),
-      } satisfies PersistedPlanComposerDrafts),
+      JSON.stringify(toPersistableState(state.draftsByPlan, state.legacyByPlanId)),
     );
   } catch {
     // Storage errors must never block composing.
@@ -177,79 +276,173 @@ function persistDrafts(draftsByPlanId: Readonly<Record<string, PlanComposerDraft
  * feel as a dropped frame. Typing costs nothing until it stops.
  */
 const PERSIST_DEBOUNCE_MS = 300;
-const persistDebouncer = new Debouncer(persistDrafts, { wait: PERSIST_DEBOUNCE_MS });
+const persistDebouncer = new Debouncer(persistState, { wait: PERSIST_DEBOUNCE_MS });
 
 interface PlanComposerStore {
-  readonly draftsByPlanId: Record<string, PlanComposerDraft>;
-  readonly setDraftText: (planId: string, text: string) => void;
+  readonly draftsByPlan: DraftsByPlan;
+  readonly legacyByPlanId: LegacyByPlanId;
+  readonly setDraftText: (planId: string, headId: string, text: string, live: boolean) => void;
   readonly addAttachments: (
     planId: string,
+    headId: string,
     attachments: ReadonlyArray<PlanComposerAttachment>,
+    live: boolean,
   ) => void;
-  readonly removeAttachment: (planId: string, localId: string) => void;
+  readonly removeAttachment: (planId: string, headId: string, localId: string) => void;
   readonly setModelChoice: (
     planId: string,
+    headId: string,
     directive: PlanningModelSelection,
-    atHead: string | null,
+    live: boolean,
   ) => void;
   /** What sending does: the message left, so the draft of it is gone. */
-  readonly clearDraft: (planId: string) => void;
+  readonly clearDraft: (planId: string, headId: string) => void;
+  /**
+   * The branch grew; live drafts ride it. `resolve` answers where a draft's
+   * head now stands (the surface derives it from the graph the way a live
+   * position advances); `null` or the same head means stay. A move strips the
+   * model flip — it only applied where it was made — and a move whose
+   * destination already holds a draft yields to it: the standing draft was
+   * composed *at* that head and is the fresher intent. Idempotent, so every
+   * window racing the same growth converges.
+   */
+  readonly followGrowth: (planId: string, resolve: (headId: string) => string | null) => void;
+  /**
+   * A pre-branch-scoped draft meets its first known head: the plan's legacy
+   * draft (if any) becomes that head's draft, keeping its flip only when the
+   * flip was scoped to this very head. A head that already holds a draft
+   * wins; the legacy entry is spent either way.
+   */
+  readonly adoptLegacyDraft: (planId: string, headId: string) => void;
 }
 
 const withDraft = (
   state: PlanComposerStore,
   planId: string,
+  headId: string,
+  live: boolean,
   next: (draft: PlanComposerDraft) => PlanComposerDraft,
 ) => {
-  const draft = next(state.draftsByPlanId[planId] ?? EMPTY_PLAN_COMPOSER_DRAFT);
+  const byHead = state.draftsByPlan[planId] ?? {};
+  const existing = byHead[headId];
+  const draft = next(existing ?? { ...EMPTY_PLAN_COMPOSER_DRAFT, live });
   if (isEmptyDraft(draft)) {
-    if (state.draftsByPlanId[planId] === undefined) return state;
-    const { [planId]: _removed, ...rest } = state.draftsByPlanId;
-    return { draftsByPlanId: rest };
+    if (existing === undefined) return state;
+    const { [headId]: _removed, ...restHeads } = byHead;
+    if (Object.keys(restHeads).length > 0) {
+      return { draftsByPlan: { ...state.draftsByPlan, [planId]: restHeads } };
+    }
+    const { [planId]: _removedPlan, ...restPlans } = state.draftsByPlan;
+    return { draftsByPlan: restPlans };
   }
-  return { draftsByPlanId: { ...state.draftsByPlanId, [planId]: draft } };
+  return {
+    draftsByPlan: { ...state.draftsByPlan, [planId]: { ...byHead, [headId]: draft } },
+  };
 };
 
 export const usePlanComposerStore = create<PlanComposerStore>((set) => ({
-  draftsByPlanId: readPersistedDrafts(),
-  setDraftText: (planId, text) =>
+  ...readPersistedState(),
+  setDraftText: (planId, headId, text, live) =>
     set((state) =>
-      state.draftsByPlanId[planId]?.text === text
+      state.draftsByPlan[planId]?.[headId]?.text === text
         ? state
-        : withDraft(state, planId, (draft) => ({ ...draft, text })),
+        : withDraft(state, planId, headId, live, (draft) => ({ ...draft, text })),
     ),
-  addAttachments: (planId, attachments) =>
+  addAttachments: (planId, headId, attachments, live) =>
     set((state) =>
       attachments.length === 0
         ? state
-        : withDraft(state, planId, (draft) => ({
+        : withDraft(state, planId, headId, live, (draft) => ({
             ...draft,
             attachments: [...draft.attachments, ...attachments],
           })),
     ),
-  removeAttachment: (planId, localId) =>
+  removeAttachment: (planId, headId, localId) =>
     set((state) =>
-      withDraft(state, planId, (draft) => ({
+      state.draftsByPlan[planId]?.[headId] === undefined
+        ? state
+        : withDraft(state, planId, headId, true, (draft) => ({
+            ...draft,
+            attachments: draft.attachments.filter((one) => one.localId !== localId),
+          })),
+    ),
+  setModelChoice: (planId, headId, directive, live) =>
+    set((state) =>
+      withDraft(state, planId, headId, live, (draft) => ({
         ...draft,
-        attachments: draft.attachments.filter((one) => one.localId !== localId),
+        modelChoice: directive,
       })),
     ),
-  setModelChoice: (planId, directive, atHead) =>
-    set((state) =>
-      withDraft(state, planId, (draft) => ({
-        ...draft,
-        modelChoice: { directive, atHead },
-      })),
-    ),
-  clearDraft: (planId) =>
+  clearDraft: (planId, headId) =>
     set((state) => {
-      if (state.draftsByPlanId[planId] === undefined) return state;
-      const { [planId]: _removed, ...rest } = state.draftsByPlanId;
-      return { draftsByPlanId: rest };
+      const byHead = state.draftsByPlan[planId];
+      if (byHead?.[headId] === undefined) return state;
+      const { [headId]: _removed, ...restHeads } = byHead;
+      if (Object.keys(restHeads).length > 0) {
+        return { draftsByPlan: { ...state.draftsByPlan, [planId]: restHeads } };
+      }
+      const { [planId]: _removedPlan, ...restPlans } = state.draftsByPlan;
+      return { draftsByPlan: restPlans };
+    }),
+  followGrowth: (planId, resolve) =>
+    set((state) => {
+      const byHead = state.draftsByPlan[planId];
+      if (byHead === undefined) return state;
+      let moved = false;
+      const next: Record<string, PlanComposerDraft> = {};
+      for (const [headId, draft] of Object.entries(byHead)) {
+        if (!draft.live) {
+          next[headId] = draft;
+          continue;
+        }
+        const target = resolve(headId);
+        if (target === null || target === headId) {
+          next[headId] = draft;
+          continue;
+        }
+        moved = true;
+        if (byHead[target] !== undefined || next[target] !== undefined) continue;
+        const { modelChoice: _stripped, ...rest } = draft;
+        next[target] = rest;
+      }
+      if (!moved) return state;
+      if (Object.keys(next).length === 0) {
+        const { [planId]: _removedPlan, ...restPlans } = state.draftsByPlan;
+        return { draftsByPlan: restPlans };
+      }
+      return { draftsByPlan: { ...state.draftsByPlan, [planId]: next } };
+    }),
+  adoptLegacyDraft: (planId, headId) =>
+    set((state) => {
+      const legacy = state.legacyByPlanId[planId];
+      if (legacy === undefined) return state;
+      const { [planId]: _spent, ...restLegacy } = state.legacyByPlanId;
+      const byHead = state.draftsByPlan[planId] ?? {};
+      if (byHead[headId] !== undefined) return { legacyByPlanId: restLegacy };
+      const modelChoice =
+        legacy.modelChoice !== undefined && legacy.modelChoice.atHead === headId
+          ? legacy.modelChoice.directive
+          : undefined;
+      const adopted: PlanComposerDraft = {
+        text: legacy.text,
+        attachments: legacy.attachments,
+        live: true,
+        ...(modelChoice === undefined ? {} : { modelChoice }),
+      };
+      if (isEmptyDraft(adopted)) return { legacyByPlanId: restLegacy };
+      return {
+        legacyByPlanId: restLegacy,
+        draftsByPlan: { ...state.draftsByPlan, [planId]: { ...byHead, [headId]: adopted } },
+      };
     }),
 }));
 
-usePlanComposerStore.subscribe((state) => persistDebouncer.maybeExecute(state.draftsByPlanId));
+usePlanComposerStore.subscribe((state) =>
+  persistDebouncer.maybeExecute({
+    draftsByPlan: state.draftsByPlan,
+    legacyByPlanId: state.legacyByPlanId,
+  }),
+);
 
 // Closing the tab is the one moment that cannot wait for the debounce.
 if (typeof window !== "undefined") {
