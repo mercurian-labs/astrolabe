@@ -8,7 +8,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
-import { MercurianCommitId, PlanId, ThreadId } from "@t3tools/contracts";
+import { PlanId, ThreadId } from "@t3tools/contracts";
 
 import {
   isPersistenceError,
@@ -50,6 +50,9 @@ export class CodingSessionStore extends Context.Service<
     readonly getByThreadId: (
       threadId: ThreadId,
     ) => Effect.Effect<Option.Option<CodingSessionRecord>, CodingSessionStoreError>;
+    readonly getByWorktreePath: (
+      worktreePath: string,
+    ) => Effect.Effect<Option.Option<CodingSessionRecord>, CodingSessionStoreError>;
     readonly updateBranch: (
       threadId: ThreadId,
       branch: string,
@@ -64,6 +67,7 @@ export class CodingSessionStore extends Context.Service<
 
 const PlanRequest = Schema.Struct({ planId: PlanId });
 const ThreadRequest = Schema.Struct({ threadId: ThreadId });
+const WorktreeRequest = Schema.Struct({ worktreePath: Schema.String });
 const BranchRequest = Schema.Struct({ threadId: ThreadId, branch: Schema.String });
 const NoRequest = Schema.Struct({});
 
@@ -119,6 +123,12 @@ export const make = Effect.gen(function* () {
     execute: ({ threadId }) =>
       sql`SELECT ${columns} FROM coding_sessions WHERE thread_id = ${threadId}`,
   });
+  const findByWorktree = SqlSchema.findOneOption({
+    Request: WorktreeRequest,
+    Result: CodingSessionRecord,
+    execute: ({ worktreePath }) =>
+      sql`SELECT ${columns} FROM coding_sessions WHERE worktree_path = ${worktreePath}`,
+  });
   const updateBranchRow = SqlSchema.void({
     Request: BranchRequest,
     execute: ({ threadId, branch }) => sql`
@@ -164,6 +174,8 @@ export const make = Effect.gen(function* () {
     listAll: mapError(listAllRows({}), "CodingSessionStore.listAll"),
     getByThreadId: (threadId) =>
       mapError(findByThread({ threadId }), "CodingSessionStore.getByThreadId"),
+    getByWorktreePath: (worktreePath) =>
+      mapError(findByWorktree({ worktreePath }), "CodingSessionStore.getByWorktreePath"),
     updateBranch: (threadId, branch) =>
       mapError(
         updateBranchRow({ threadId, branch }).pipe(Effect.andThen(announceThread(threadId))),

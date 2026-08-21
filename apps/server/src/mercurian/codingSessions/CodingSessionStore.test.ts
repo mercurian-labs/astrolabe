@@ -2,8 +2,10 @@ import { assert, it } from "@effect/vitest";
 import { MercurianCommitId, MercurianRepositoryId, PlanId, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
@@ -49,12 +51,21 @@ layer("CodingSessionStore", (it) => {
       const byThread = yield* store.getByThreadId(record.threadId);
       assert.ok(Option.isSome(byThread));
       assert.strictEqual(byThread.value.commitId, record.commitId);
+      const byWorktree = yield* store.getByWorktreePath(record.worktreePath);
+      assert.ok(Option.isSome(byWorktree));
+      assert.strictEqual(byWorktree.value.threadId, record.threadId);
 
       yield* store.updateBranch(record.threadId, "renamed/session");
+      const change = yield* store.changes.pipe(
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
       yield* store.attachPullRequest({
         threadId: record.threadId,
         prUrl: "https://example.test/pr/1",
       });
+      const announcedPlan = yield* Fiber.join(change);
+      assert.deepStrictEqual(Option.getOrNull(announcedPlan), record.planId);
       yield* store.end({
         threadId: record.threadId,
         endedAt: at("2026-08-14T13:00:00.000Z"),
