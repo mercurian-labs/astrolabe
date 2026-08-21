@@ -91,6 +91,14 @@
       "types": "./src/state/planFreshness.ts",
       "default": "./src/state/planFreshness.ts"
     },
+    "./state/plan-splits": {
+      "types": "./src/state/planSplits.ts",
+      "default": "./src/state/planSplits.ts"
+    },
+    "./state/coding-session-draft": {
+      "types": "./src/state/codingSessionDraft.ts",
+      "default": "./src/state/codingSessionDraft.ts"
+    },
     "./state/plan-checkpoints": {
       "types": "./src/state/planCheckpoints.ts",
       "default": "./src/state/planCheckpoints.ts"

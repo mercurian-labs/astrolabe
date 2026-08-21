@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
+import { createMercurianRepositoryAtoms } from "@t3tools/client-runtime/state/mercurian-repositories";
 import type {
   EnvironmentId,
   MercurianCommitId,
@@ -11,6 +12,7 @@ import type {
   PlanStreamItem,
   PlanTurnRefusalReason,
   PlanningTreeSnapshot,
+  MercurianRepositoriesSnapshot,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
@@ -22,6 +24,7 @@ import { useEnvironmentQuery } from "./query";
 import { useAtomCommand } from "./use-atom-command";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
+export const mercurianRepositories = createMercurianRepositoryAtoms(connectionAtomRuntime);
 
 const EMPTY_TREE_ATOM = Atom.make(
   AsyncResult.initial<
@@ -32,6 +35,10 @@ const EMPTY_TREE_ATOM = Atom.make(
 
 const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [] };
 const EMPTY_READY_COMMITS = new Map<MercurianCommitId, PlanImplementReady>();
+const EMPTY_REPOSITORIES: MercurianRepositoriesSnapshot = {
+  repositories: [],
+  projectRepositories: [],
+};
 
 function errorMessage<A>(result: AsyncResult.AsyncResult<A, unknown>, fallback: string) {
   if (result._tag !== "Failure") return null;
@@ -104,4 +111,17 @@ export function useUnarchivePlan(environmentId: EnvironmentId | null) {
       environmentId === null ? Promise.resolve(null) : run({ environmentId, input }),
     [environmentId, run],
   );
+}
+
+export function useMercurianRepositories(environmentId: EnvironmentId | null) {
+  const query = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : mercurianRepositories.repositories({ environmentId, input: {} }),
+  );
+  return {
+    snapshot: query.data?.snapshot ?? EMPTY_REPOSITORIES,
+    isPending: environmentId !== null && query.data === null && query.isPending,
+    error: query.error,
+  } as const;
 }

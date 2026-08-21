@@ -10,9 +10,13 @@ import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
 import { useThemeColor } from "../../lib/useThemeColor";
 import type { PlanHistoryRow, PlanHistorySwitch } from "./plan-history-model";
+import { ReadyBadge, StalePlanBadge, StaleSpecBadge } from "./MercurianBadges";
 
 export function PlanHistoryItem(props: {
   readonly row: PlanHistoryRow;
+  readonly ready: boolean;
+  readonly stalePlan: boolean;
+  readonly staleSpec: boolean;
   readonly onSelect: (row: PlanHistoryRow) => void;
   readonly onOpenSwitch: (row: PlanHistoryRow, selection: PlanHistorySwitch) => void;
 }) {
@@ -98,6 +102,9 @@ export function PlanHistoryItem(props: {
       )}
 
       <View className="mt-2 flex-row items-center justify-end gap-2">
+        {props.ready ? <ReadyBadge /> : null}
+        {props.stalePlan ? <StalePlanBadge /> : null}
+        {props.staleSpec ? <StaleSpecBadge /> : null}
         {props.row.siblings === undefined ? null : (
           <DivergenceBadge
             selection={props.row.siblings}

@@ -1,24 +1,53 @@
+import { StackActions, useNavigation, useRoute } from "@react-navigation/native";
+import { buildPlanGraph, type PlanGraph } from "@t3tools/client-runtime/state/plan-graph";
 import { resolveImplementFrom } from "@t3tools/client-runtime/state/plan-node-popover";
-import type { PlanGraph } from "@t3tools/client-runtime/state/plan-graph";
-import type { MercurianCommitId, PlanId } from "@t3tools/contracts";
-import { useCallback } from "react";
+import { EnvironmentId, type MercurianCommitId, type PlanId } from "@t3tools/contracts";
+import { useCallback, useMemo } from "react";
 
-const IMPLEMENT_UNAVAILABLE_REASON =
-  "Implementing from a checkpoint arrives with the implement flow.";
+import { usePlanDetail } from "../../state/mercurian";
+import { useImplementFlow } from "./useImplementFlow";
 
-/** Stable seam for M-150; this issue deliberately exposes no implement mutation. */
-export function useImplementFromHere(_planId: PlanId) {
-  return useCallback(
-    (graph: PlanGraph, fromCommitId: MercurianCommitId) =>
-      implementFromHereUnavailable(graph, fromCommitId),
-    [],
-  );
+export interface ImplementFromHereAvailability {
+  readonly status: "available";
+  readonly parentCommitId: MercurianCommitId | null;
+  readonly begin: () => void;
+  readonly failure: string | null;
 }
 
-export function implementFromHereUnavailable(graph: PlanGraph, fromCommitId: MercurianCommitId) {
-  return {
-    status: "unavailable" as const,
-    reason: IMPLEMENT_UNAVAILABLE_REASON,
-    parentCommitId: resolveImplementFrom(graph, fromCommitId),
-  };
+/** The node-sheet seam shared by history and map entry points. */
+export function useImplementFromHere(planId: PlanId) {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const environmentId = EnvironmentId.make(
+    String((route.params as { readonly environmentId: string }).environmentId),
+  );
+  const state = usePlanDetail(environmentId, planId);
+  const graph = useMemo(
+    () => buildPlanGraph(state.detail?.timeline ?? []),
+    [state.detail?.timeline],
+  );
+  const flow = useImplementFlow({
+    environmentId,
+    planId,
+    graph,
+    onReviewPlan: () => {
+      navigation.dispatch(
+        StackActions.popTo("Plan", {
+          environmentId: String(environmentId),
+          planId: String(planId),
+          view: "artifact",
+        }),
+      );
+    },
+  });
+
+  return useCallback(
+    (commitGraph: PlanGraph, fromCommitId: MercurianCommitId): ImplementFromHereAvailability => ({
+      status: "available",
+      parentCommitId: resolveImplementFrom(commitGraph, fromCommitId),
+      begin: () => flow.beginImplementFrom(fromCommitId),
+      failure: flow.failure,
+    }),
+    [flow.beginImplementFrom, flow.failure],
+  );
 }

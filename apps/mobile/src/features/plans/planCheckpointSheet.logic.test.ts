@@ -3,7 +3,6 @@ import { buildPlanGraph } from "@t3tools/client-runtime/state/plan-graph";
 import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 
 import { checkpointSheetActions, positionForGoHere } from "./planCheckpointSheet.logic";
-import { implementFromHereUnavailable } from "./useImplementFromHere";
 
 const id = (value: string) => MercurianCommitId.make(value);
 const commit = (name: string, sequence: number, parents: string[]): PlanTimelineItem => ({
@@ -18,24 +17,19 @@ const commit = (name: string, sequence: number, parents: string[]): PlanTimeline
 });
 
 describe("checkpoint sheet acts", () => {
-  it("renders implement as unavailable and excludes edit and session destinations", () => {
-    const graph = buildPlanGraph([commit("root", 1, [])]);
-    const unavailable = implementFromHereUnavailable(graph, id("root"));
+  it("renders implement as available and excludes edit and session destinations", () => {
     expect(
-      checkpointSheetActions(
-        ["continue", "edit-and-branch", "implement", "open-session"],
-        unavailable,
-      ),
+      checkpointSheetActions(["continue", "edit-and-branch", "implement", "open-session"], {
+        status: "available",
+      }),
     ).toEqual([
       { key: "continue", label: "Go here", disabled: false },
       {
         key: "implement",
         label: "Implement from here",
-        disabled: true,
-        reason: "Implementing from a checkpoint arrives with the implement flow.",
+        disabled: false,
       },
     ]);
-    expect(unavailable.parentCommitId).toBe(id("root"));
   });
 
   it("omits implement when the shared reading does not offer it", () => {

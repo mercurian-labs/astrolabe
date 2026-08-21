@@ -1,5 +1,6 @@
 import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
 import { ancestorClosure, buildPlanGraph } from "@t3tools/client-runtime/state/plan-graph";
+import { implementDisabledReason } from "@t3tools/client-runtime/state/plan-splits";
 import { standingModelChoice } from "@t3tools/client-runtime/state/plan-model-choice";
 import {
   isViewingPast,
@@ -8,11 +9,11 @@ import {
 } from "@t3tools/client-runtime/state/plan-position";
 import {
   EnvironmentId,
-  type MercurianCommitId,
+  MercurianCommitId,
   type PlanInFlightTurn,
   PlanId,
 } from "@t3tools/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
@@ -28,6 +29,7 @@ import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { PlanArtifactPane } from "./PlanArtifactPane";
 import { PlanComposerBar } from "./PlanComposerBar";
 import { PlanTimelineList } from "./PlanTimelineList";
+import { useImplementFlow } from "./useImplementFlow";
 
 /** A stable empty array keeps the visible-turn memo from re-running. */
 const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
@@ -35,6 +37,7 @@ const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 type PlanRouteScreenProps = StaticScreenProps<{
   readonly environmentId: string;
   readonly planId: string;
+  readonly view?: "artifact";
 }>;
 
 function firstRouteParam(value: string | string[] | undefined): string | null {
@@ -60,6 +63,7 @@ export function PlanRouteScreen({ route }: PlanRouteScreenProps) {
     <PlanRouteContent
       environmentId={EnvironmentId.make(environmentIdRaw)}
       planId={PlanId.make(planIdRaw)}
+      initialView={route.params.view}
     />
   );
 }
@@ -67,6 +71,7 @@ export function PlanRouteScreen({ route }: PlanRouteScreenProps) {
 function PlanRouteContent(props: {
   readonly environmentId: EnvironmentId;
   readonly planId: PlanId;
+  readonly initialView?: "artifact";
 }) {
   const navigation = useNavigation();
   const iconColor = useThemeColor("--color-icon");
@@ -85,8 +90,8 @@ function PlanRouteContent(props: {
   const transientPositionKey = planPositionKey(props.environmentId, props.planId);
 
   useEffect(() => {
-    setView("conversation");
-  }, [props.planId]);
+    setView(props.initialView ?? "conversation");
+  }, [props.initialView, props.planId]);
 
   useEffect(() => {
     return () => resetPlanPosition(transientPositionKey);
@@ -143,6 +148,32 @@ function PlanRouteContent(props: {
     });
   const title = detail?.plan.title ?? "Plan";
   const viewingPast = isViewingPast(graph, planPosition.position);
+  const implementReason = implementDisabledReason({
+    turnActive,
+    planTextEmpty: detail?.planText.trim().length === 0,
+    isDraft: false,
+  });
+  const implementFlow = useImplementFlow({
+    environmentId: props.environmentId,
+    planId: props.planId,
+    graph,
+    onReviewPlan: () => setView("artifact"),
+  });
+  const presentedProposalTurnRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const proposal = detail?.implementProposal;
+    if (proposal === undefined) {
+      presentedProposalTurnRef.current = null;
+      return;
+    }
+    if (presentedProposalTurnRef.current === proposal.turnId) return;
+    presentedProposalTurnRef.current = proposal.turnId;
+    navigation.navigate("PlanImplement", {
+      environmentId: String(props.environmentId),
+      planId: String(props.planId),
+    });
+  }, [detail?.implementProposal, navigation, props.environmentId, props.planId]);
 
   return (
     <View className="flex-1 bg-screen">
@@ -267,6 +298,11 @@ function PlanRouteContent(props: {
               turnActive={turnActive}
               activeTurnId={visibleInFlight?.turnId ?? visibleInFlightImplement?.turnId}
               turnRefusal={state.turnRefusal}
+              implementDisabledReason={implementReason}
+              implementNotice={
+                implementFlow.failure ?? implementFailureNotice(state.implementFailure)
+              }
+              onImplement={() => implementFlow.beginImplementFrom(actingHead)}
               onSent={(commitId: MercurianCommitId) => planPosition.standAt(commitId)}
             />
           </View>
@@ -274,4 +310,9 @@ function PlanRouteContent(props: {
       )}
     </View>
   );
+}
+
+function implementFailureNotice(reason: ReturnType<typeof usePlanDetail>["implementFailure"]) {
+  if (reason === null || reason === "stopped") return null;
+  return "The assistant couldn't produce a usable analysis; nothing landed.";
 }

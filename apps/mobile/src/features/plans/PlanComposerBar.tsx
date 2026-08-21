@@ -46,6 +46,9 @@ export function PlanComposerBar(props: {
   /** The live turn on this branch — what Stop addresses (M-158). */
   readonly activeTurnId?: PlanTurnId | undefined;
   readonly turnRefusal: PlanTurnRefusalReason | null;
+  readonly implementDisabledReason: string | null;
+  readonly implementNotice: string | null;
+  readonly onImplement: () => void;
   readonly onSent: (commitId: MercurianCommitId) => void;
 }) {
   const key = planComposerDraftKey(props.environmentId, props.planId);
@@ -115,6 +118,9 @@ export function PlanComposerBar(props: {
         {refusalNotice ? (
           <Text className="mb-1 px-2 text-xs text-danger-foreground">{refusalNotice}</Text>
         ) : null}
+        {props.implementNotice ? (
+          <Text className="mb-1 px-2 text-xs text-danger-foreground">{props.implementNotice}</Text>
+        ) : null}
         <View className="rounded-[22px] border border-border bg-sheet px-2 pb-2 pt-2">
           <ComposerEditor
             multiline
@@ -127,6 +133,16 @@ export function PlanComposerBar(props: {
             textStyle={{ color: foreground, fontFamily: regularFontFamily, fontSize: 16 }}
           />
           <View className="mt-1 flex-row items-center gap-2">
+            <ControlPill
+              accessibilityLabel={
+                props.implementDisabledReason === null
+                  ? "Implement plan"
+                  : `Implement plan. ${props.implementDisabledReason}`
+              }
+              disabled={props.implementDisabledReason !== null}
+              label="Implement"
+              onPress={props.onImplement}
+            />
             <View className="min-w-0 flex-1">
               <ComposerToolbarTrigger
                 accessibilityLabel="Choose planning model"

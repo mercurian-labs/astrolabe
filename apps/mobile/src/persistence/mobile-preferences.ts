@@ -5,7 +5,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import type { SidebarProjectGroupingMode } from "@t3tools/contracts";
+import type { ModelSelection, SidebarProjectGroupingMode } from "@t3tools/contracts";
 
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
@@ -34,6 +34,7 @@ export interface Preferences {
    * default flat list — see `resolveThreadListV2Enabled`.
    */
   readonly legacyThreadListEnabled?: boolean;
+  readonly codingSessionModelSelection?: ModelSelection;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -86,6 +87,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
     legacyThreadListEnabled?: boolean;
+    codingSessionModelSelection?: ModelSelection;
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -124,6 +126,19 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.legacyThreadListEnabled === "boolean") {
     preferences.legacyThreadListEnabled = parsed.legacyThreadListEnabled;
+  }
+  const sessionModel = parsed.codingSessionModelSelection as unknown;
+  if (
+    typeof sessionModel === "object" &&
+    sessionModel !== null &&
+    "instanceId" in sessionModel &&
+    typeof sessionModel.instanceId === "string" &&
+    sessionModel.instanceId.length > 0 &&
+    "model" in sessionModel &&
+    typeof sessionModel.model === "string" &&
+    sessionModel.model.trim().length > 0
+  ) {
+    preferences.codingSessionModelSelection = sessionModel as ModelSelection;
   }
   return preferences;
 }
