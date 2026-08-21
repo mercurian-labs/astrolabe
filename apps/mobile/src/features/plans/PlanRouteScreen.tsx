@@ -8,7 +8,12 @@ import {
   resolveHead,
   type PlanPosition,
 } from "@t3tools/client-runtime/state/plan-position";
-import { EnvironmentId, type MercurianCommitId, PlanId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type MercurianCommitId,
+  type PlanInFlightTurn,
+  PlanId,
+} from "@t3tools/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 
@@ -23,6 +28,9 @@ import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { PlanArtifactPane } from "./PlanArtifactPane";
 import { PlanComposerBar } from "./PlanComposerBar";
 import { PlanTimelineList } from "./PlanTimelineList";
+
+/** A stable empty array keeps the visible-turn memo from re-running. */
+const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 
 type PlanRouteScreenProps = StaticScreenProps<{
   readonly environmentId: string;
@@ -110,7 +118,22 @@ function PlanRouteContent(props: {
     () => standingModelChoice(graph, itemsById, actingHead),
     [actingHead, graph, itemsById],
   );
-  const turnActive = detail?.inFlightTurn !== undefined || detail?.inFlightImplement !== undefined;
+  // Replies stream concurrently across branches (M-158): the composer wears
+  // Stop only for the turn on the branch you stand on, and a reply on another
+  // branch never gates this one. Mirrors PlanningSpace's derivation.
+  const inFlightTurns = detail?.inFlightTurns ?? EMPTY_IN_FLIGHT_TURNS;
+  const visibleInFlight = useMemo(() => {
+    if (inFlightTurns.length === 0) return undefined;
+    if (head === null) return inFlightTurns[0];
+    return inFlightTurns.find((turn) => visibleCommitIds.has(turn.parentCommitId));
+  }, [head, inFlightTurns, visibleCommitIds]);
+  const inFlightImplement = detail?.inFlightImplement;
+  const visibleInFlightImplement = useMemo(() => {
+    if (inFlightImplement === undefined) return undefined;
+    if (head === null) return inFlightImplement;
+    return visibleCommitIds.has(inFlightImplement.parentCommitId) ? inFlightImplement : undefined;
+  }, [head, inFlightImplement, visibleCommitIds]);
+  const turnActive = visibleInFlight !== undefined || visibleInFlightImplement !== undefined;
   const toggleArtifact = () =>
     setView((current) => (current === "artifact" ? "conversation" : "artifact"));
   const title = detail?.plan.title ?? "Plan";
@@ -181,20 +204,23 @@ function PlanRouteContent(props: {
             <PlanTimelineList
               timeline={timeline}
               visibleCommitIds={visibleCommitIds}
-              inFlightTurn={detail.inFlightTurn}
-              inFlightImplement={detail.inFlightImplement}
+              inFlightTurn={visibleInFlight}
+              inFlightImplement={visibleInFlightImplement}
               codingSessions={detail.codingSessions}
               providers={planningModel.providers}
               onAnswerQuestion={(answers) => {
+                if (visibleInFlight === undefined) return;
                 void answerQuestion({
                   environmentId: props.environmentId,
-                  input: { planId: props.planId, answers },
+                  input: { planId: props.planId, turnId: visibleInFlight.turnId, answers },
                 });
               }}
               onStop={() => {
+                const turnId = visibleInFlightImplement?.turnId ?? visibleInFlight?.turnId;
+                if (turnId === undefined) return;
                 void stopTurn({
                   environmentId: props.environmentId,
-                  input: { planId: props.planId },
+                  input: { planId: props.planId, turnId },
                 });
               }}
             />
@@ -206,6 +232,7 @@ function PlanRouteContent(props: {
               workspaceSetting={planningModel.setting}
               providers={planningModel.providers}
               turnActive={turnActive}
+              activeTurnId={visibleInFlight?.turnId ?? visibleInFlightImplement?.turnId}
               turnRefusal={state.turnRefusal}
               onSent={(commitId: MercurianCommitId) =>
                 setPosition({ _tag: "at", commitId, live: true })

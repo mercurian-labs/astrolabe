@@ -13,6 +13,7 @@ import {
   type PlanningModelSelection,
   type PlanTurnRefusalReason,
   type ServerProvider,
+  type PlanTurnId,
 } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
 import { Keyboard, View } from "react-native";
@@ -42,6 +43,8 @@ export function PlanComposerBar(props: {
   readonly workspaceSetting: PlanningModelSelection | null;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly turnActive: boolean;
+  /** The live turn on this branch — what Stop addresses (M-158). */
+  readonly activeTurnId?: PlanTurnId | undefined;
   readonly turnRefusal: PlanTurnRefusalReason | null;
   readonly onSent: (commitId: MercurianCommitId) => void;
 }) {
@@ -74,7 +77,11 @@ export function PlanComposerBar(props: {
   const handleControl = async () => {
     if (!control.enabled) return;
     if (control.face === "stop") {
-      await stop({ environmentId: props.environmentId, input: { planId: props.planId } });
+      if (props.activeTurnId === undefined) return;
+      await stop({
+        environmentId: props.environmentId,
+        input: { planId: props.planId, turnId: props.activeTurnId },
+      });
       return;
     }
     const text = draft.text.trim();
