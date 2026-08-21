@@ -79,6 +79,18 @@
       "types": "./src/state/planGraph.ts",
       "default": "./src/state/planGraph.ts"
     },
+    "./state/plan-map": {
+      "types": "./src/state/planMap.ts",
+      "default": "./src/state/planMap.ts"
+    },
+    "./state/plan-node-popover": {
+      "types": "./src/state/planNodePopover.ts",
+      "default": "./src/state/planNodePopover.ts"
+    },
+    "./state/plan-freshness": {
+      "types": "./src/state/planFreshness.ts",
+      "default": "./src/state/planFreshness.ts"
+    },
     "./state/plan-checkpoints": {
       "types": "./src/state/planCheckpoints.ts",
       "default": "./src/state/planCheckpoints.ts"
@@ -199,10 +211,13 @@
   "dependencies": {
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
+    "d3-dag": "^1.2.2",
+    "d3-interpolate": "^3.0.1",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/d3-interpolate": "^3.0.4",
     "vite-plus": "catalog:"
   }
 }

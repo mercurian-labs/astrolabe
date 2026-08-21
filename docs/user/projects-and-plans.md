@@ -216,6 +216,11 @@ from here** to move there. The same details are available from the information b
 Columns rows. The popover records model facts, changes, warnings, readiness, and the acts available
 from that checkpoint without moving you merely because it opened.
 
+On mobile, open **History** and use the map button to see the graph full-screen. Pinch around a
+point to zoom, drag to pan, and use the fit or current-position buttons if you lose your place. Tap
+a node to read it in a sheet; the tap itself never moves the planning space. **Go here** in the
+sheet is the explicit act that changes where you are standing.
+
 After moving, the conversation shows the path through that checkpoint, the plan shows what it said
 at the time, and the Checkpoint Graph highlights where you are standing. The conversation is always
 one path — a branch you are not on is a different conversation, not more of this one. Nothing is

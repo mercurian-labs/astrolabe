@@ -72,6 +72,11 @@ import {
   planNodeStatusDots,
 } from "./DagExplorer.logic";
 import {
+  interpolateSpatialLayout,
+  settledSpatialLayout,
+  type AnimatedSpatialLayout,
+} from "@t3tools/client-runtime/state/plan-map";
+import {
   COLUMN_PANE_WIDTH,
   COLUMN_STRIP_WIDTH,
   columnLayout,
@@ -2039,71 +2044,6 @@ function useTween() {
   );
 
   return [start, cancel] as const;
-}
-
-type AnimatedSpatialNode = SpatialNode & {
-  readonly opacity: number;
-  readonly scale: number;
-};
-
-type AnimatedSpatialLayout = Omit<SpatialLayout, "nodes"> & {
-  readonly nodes: ReadonlyArray<AnimatedSpatialNode>;
-};
-
-function settledSpatialLayout(layout: SpatialLayout): AnimatedSpatialLayout {
-  return {
-    ...layout,
-    nodes: layout.nodes.map((node) => ({ ...node, opacity: 1, scale: 1 })),
-  };
-}
-
-function interpolateSpatialLayout(
-  from: AnimatedSpatialLayout,
-  to: SpatialLayout,
-  progress: number,
-): AnimatedSpatialLayout {
-  if (progress >= 1) return settledSpatialLayout(to);
-  const eased = 1 - (1 - progress) ** 3;
-  const fromById = new Map(from.nodes.map((node) => [node.commitId as string, node]));
-  const positions = new Map<string, SpatialPoint>();
-  const nodes = to.nodes.map((node): AnimatedSpatialNode => {
-    const previous = fromById.get(node.commitId);
-    const x = previous === undefined ? node.x : previous.x + (node.x - previous.x) * eased;
-    const y = previous === undefined ? node.y : previous.y + (node.y - previous.y) * eased;
-    positions.set(node.commitId, { x, y });
-    return {
-      ...node,
-      x,
-      y,
-      opacity: previous === undefined ? eased : previous.opacity + (1 - previous.opacity) * eased,
-      scale: previous === undefined ? eased : previous.scale + (1 - previous.scale) * eased,
-    };
-  });
-  const fromEdgesById = new Map(
-    from.edges.map((edge) => [`${edge.fromCommitId}\0${edge.toCommitId}`, edge]),
-  );
-  const edges = to.edges.map((edge) => {
-    const fromPoint = positions.get(edge.fromCommitId)!;
-    const toPoint = positions.get(edge.toCommitId)!;
-    const previous = fromEdgesById.get(`${edge.fromCommitId}\0${edge.toCommitId}`);
-    const points =
-      previous !== undefined && previous.points.length === edge.points.length
-        ? edge.points.map((point, index) => {
-            if (index === 0) return fromPoint;
-            if (index === edge.points.length - 1) return toPoint;
-            const oldPoint = previous.points[index]!;
-            return {
-              x: oldPoint.x + (point.x - oldPoint.x) * eased,
-              y: oldPoint.y + (point.y - oldPoint.y) * eased,
-            };
-          })
-        : [fromPoint, toPoint];
-    return {
-      ...edge,
-      points,
-    };
-  });
-  return { ...to, edges, nodes, positions };
 }
 
 /**
