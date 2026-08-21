@@ -67,7 +67,7 @@ export function PlanCheckpointSheet({ route }: Props) {
           suppressUnanswered: isUnansweredCheckpointInFlight(
             node,
             commitGraph,
-            state.detail?.inFlightTurn?.parentCommitId,
+            (state.detail?.inFlightTurns ?? []).map((turn) => turn.parentCommitId),
           ),
         });
   const implement = implementFromHere(commitGraph, commitId);
