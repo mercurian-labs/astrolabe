@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "t3-walk",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "T3CODE_MOCK_PROVIDER=true",
+        "vp",
+        "run",
+        "dev",
+        "--home-dir",
+        "/private/tmp/claude-501/-Users-venkk-dev-mercurian-astrolabe--claude-worktrees-nice-chatelet-0c0433/da2e9cfd-42e4-425c-bddb-377ba5ffd26a/scratchpad/t3-walk/home",
+        "--host",
+        "127.0.0.1"
+      ],
+      "port": 5733
+    },
+    {
+      "name": "t3-walk-web",
+      "url": "http://localhost:6826",
+      "port": 6826
+    }
+  ]
+}

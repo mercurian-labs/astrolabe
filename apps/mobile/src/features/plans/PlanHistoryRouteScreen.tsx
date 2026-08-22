@@ -6,9 +6,11 @@ import { Platform, View } from "react-native";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { EmptyState } from "../../components/EmptyState";
+import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePlanDetail } from "../../state/mercurian";
 import { usePlanPosition } from "../../state/plan-position";
+import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { buildPlanHistoryModel } from "./plan-history-model";
 import { PlanHistoryScreen } from "./PlanHistoryScreen";
 
@@ -47,6 +49,7 @@ function PlanHistoryRouteContent(props: {
   readonly planId: PlanId;
 }) {
   const navigation = useNavigation();
+  const iconColor = useThemeColor("--color-icon");
   const state = usePlanDetail(props.environmentId, props.planId);
   const timeline = state.detail?.timeline ?? [];
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
@@ -56,14 +59,50 @@ function PlanHistoryRouteContent(props: {
       buildPlanHistoryModel({ detail: state.detail }, position.position, position.parentChoices),
     [position.parentChoices, position.position, state.detail],
   );
+  const openMap = () =>
+    navigation.navigate("PlanMap", {
+      environmentId: String(props.environmentId),
+      planId: String(props.planId),
+    });
 
   return (
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions
-        options={{ title: "History", headerShown: Platform.OS !== "android" }}
+        optionsVersion={[String(props.environmentId), String(props.planId)]}
+        options={{
+          title: "History",
+          headerShown: Platform.OS !== "android",
+          headerTintColor: iconColor,
+          unstable_headerRightItems:
+            Platform.OS === "ios"
+              ? () => [
+                  withNativeGlassHeaderItem({
+                    accessibilityLabel: "Show checkpoint map",
+                    icon: {
+                      name: "point.3.connected.trianglepath.dotted",
+                      type: "sfSymbol",
+                    } as const,
+                    identifier: "plan-map",
+                    label: "",
+                    onPress: openMap,
+                    type: "button",
+                  }),
+                ]
+              : undefined,
+        }}
       />
       {Platform.OS === "android" ? (
-        <AndroidScreenHeader title="History" onBack={() => navigation.goBack()} />
+        <AndroidScreenHeader
+          title="History"
+          onBack={() => navigation.goBack()}
+          actions={[
+            {
+              accessibilityLabel: "Show checkpoint map",
+              icon: "point.3.connected.trianglepath.dotted",
+              onPress: openMap,
+            },
+          ]}
+        />
       ) : null}
       {state.detail === null ? (
         <View className="flex-1 items-center justify-center px-6">

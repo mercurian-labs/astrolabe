@@ -36,7 +36,9 @@ import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteSc
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
 import { PlanListRouteScreen } from "./features/plans/PlanListRouteScreen";
 import { PlanBranchesSheet } from "./features/plans/PlanBranchesSheet";
+import { PlanCheckpointSheet } from "./features/plans/PlanCheckpointSheet";
 import { PlanHistoryRouteScreen } from "./features/plans/PlanHistoryRouteScreen";
+import { PlanMapRouteScreen } from "./features/plans/PlanMapRouteScreen";
 import { PlanRouteScreen } from "./features/plans/PlanRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
 import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
@@ -424,6 +426,20 @@ export const RootStack = createNativeStackNavigator({
       screen: PlanHistoryRouteScreen,
       linking: "plans/:environmentId/:planId/history",
       options: GLASS_HEADER_OPTIONS,
+    }),
+    PlanMap: createNativeStackScreen({
+      screen: PlanMapRouteScreen,
+      linking: "plans/:environmentId/:planId/map",
+      options: SOLID_HEADER_OPTIONS,
+    }),
+    PlanCheckpoint: createNativeStackScreen({
+      screen: PlanCheckpointSheet,
+      linking: "plans/:environmentId/:planId/checkpoint/:commitId",
+      options: {
+        presentation: "formSheet",
+        sheetAllowedDetents: [0.55, 0.92],
+        sheetGrabberVisible: true,
+      },
     }),
     PlanBranches: createNativeStackScreen({
       screen: PlanBranchesSheet,

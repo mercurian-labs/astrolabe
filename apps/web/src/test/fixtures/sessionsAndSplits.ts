@@ -15,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
-import { at, commitId } from "./timeline";
+import { at, commitId } from "./timeline.ts";
 
 type CodingSessionRecordOverrides = Partial<
   Omit<PlanCodingSessionRecordType, "commitId" | "repositoryId" | "threadId">

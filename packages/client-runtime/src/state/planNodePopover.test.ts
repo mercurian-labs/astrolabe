@@ -7,7 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { planCodingSessionRecord } from "../../test/fixtures/sessionsAndSplits";
+import { planCodingSessionRecord } from "../../../../apps/web/src/test/fixtures/sessionsAndSplits.ts";
 import {
   at,
   codingSessionLeaf,
@@ -15,10 +15,10 @@ import {
   message,
   planRevision,
   specRevision,
-} from "../../test/fixtures/timeline";
+} from "../../../../apps/web/src/test/fixtures/timeline.ts";
 
-import { condensePlanGraph } from "./PlanCheckpoints.logic";
-import { buildPlanGraph } from "./PlanGraph.logic";
+import { condensePlanGraph } from "./planCheckpoints.ts";
+import { buildPlanGraph } from "./planGraph.ts";
 import {
   codingSessionStatus,
   derivePlanNodePopover,
@@ -26,7 +26,7 @@ import {
   offeredActs,
   planMovedPastSplit,
   resolveImplementFrom,
-} from "./PlanNodePopover.logic";
+} from "./planNodePopover.ts";
 
 const model = (provider: string, name: string): PlanningModelSelection => ({
   provider: ProviderDriverKind.make(provider),
