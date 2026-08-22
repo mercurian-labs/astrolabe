@@ -2,9 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { PlanTimelineItem } from "@t3tools/contracts";
 
-import { commitId as id, message } from "../../test/fixtures/timeline";
+import { commitId as id, message, planRevision, specRevision } from "../../test/fixtures/timeline";
 
 import { columnLayout, columnViewWidthCap, defaultBranchChoices } from "./PlanColumns.logic";
+import { condensePlanGraph } from "./PlanCheckpoints.logic";
+import { threadLayout } from "./PlanThread.logic";
 import { buildPlanGraph, type PlanGraph } from "./PlanGraph.logic";
 
 const commit = (name: string, sequence: number, parents: ReadonlyArray<string>): PlanTimelineItem =>
@@ -248,6 +250,35 @@ describe("columnLayout", () => {
 });
 
 describe("columnViewWidthCap", () => {
+  it("agrees with the thread layout on reanchored forks, with no duplicate rows", () => {
+    // The column halves of the checkpoint reanchoring cases: a fork from a
+    // terminal response and a fork from a trailing revision each read the
+    // same rows in columns as in the thread, each row exactly once.
+    const histories = [
+      [
+        message("query", { sequence: 1, parents: [], authorKind: "human" }),
+        message("response", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        message("fork", { sequence: 3, parents: ["response"], authorKind: "human" }),
+        message("main", { sequence: 4, parents: ["response"], authorKind: "human" }),
+      ],
+      [
+        message("query", { sequence: 1, parents: [], authorKind: "human" }),
+        planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+        specRevision("spec", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
+        message("fork", { sequence: 4, parents: ["spec"], authorKind: "human" }),
+        message("main", { sequence: 5, parents: ["spec"], authorKind: "human" }),
+      ],
+    ];
+    for (const history of histories) {
+      const graph = condensePlanGraph(buildPlanGraph(history));
+      const threadIds = threadLayout(graph, id("fork"), new Map()).rows.map((row) => row.commitId);
+      const columns = columnLayout(graph, id("fork"), defaultBranchChoices(graph, id("fork")));
+      const columnIds = columns.panes.flatMap((pane) => pane.rows.map((row) => row.commitId));
+      expect(columnIds).toEqual(threadIds);
+      expect(new Set(columnIds).size).toBe(columnIds.length);
+    }
+  });
+
   it("caps at every pane expanded plus their shared flexible room", () => {
     const graph = buildPlanGraph(nestedFork);
     const panes = columnLayout(graph, id("end"), defaultBranchChoices(graph, id("end"))).panes;

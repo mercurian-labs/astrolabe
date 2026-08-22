@@ -79,6 +79,14 @@
       "types": "./src/state/planGraph.ts",
       "default": "./src/state/planGraph.ts"
     },
+    "./state/plan-checkpoints": {
+      "types": "./src/state/planCheckpoints.ts",
+      "default": "./src/state/planCheckpoints.ts"
+    },
+    "./state/plan-thread": {
+      "types": "./src/state/planThread.ts",
+      "default": "./src/state/planThread.ts"
+    },
     "./state/plan-position": {
       "types": "./src/state/planPosition.ts",
       "default": "./src/state/planPosition.ts"

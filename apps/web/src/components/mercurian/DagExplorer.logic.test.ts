@@ -22,6 +22,7 @@ import {
   minimapPointToWorld,
   minimapProjection,
   minimapSize,
+  planNodeStatusDots,
   proximityScale,
   radiusFor,
   visibleWorldRect,
@@ -52,6 +53,23 @@ const timeline: ReadonlyArray<PlanTimelineItem> = [
 ];
 
 const viewBox = { x: -100, y: -50, width: 400, height: 300 };
+
+describe("planNodeStatusDots", () => {
+  it("orders readiness before spec and plan staleness with their status colors", () => {
+    expect(planNodeStatusDots({ ready: true, staleSpec: true, stalePlan: true })).toEqual([
+      { key: "ready", fillClass: "fill-emerald-500" },
+      { key: "stale-spec", fillClass: "fill-amber-500" },
+      { key: "stale-plan", fillClass: "fill-orange-500" },
+    ]);
+  });
+
+  it("returns only applicable marks and none for an unmarked node", () => {
+    expect(planNodeStatusDots({ ready: false, staleSpec: true, stalePlan: false })).toEqual([
+      { key: "stale-spec", fillClass: "fill-amber-500" },
+    ]);
+    expect(planNodeStatusDots({ ready: false, staleSpec: false, stalePlan: false })).toEqual([]);
+  });
+});
 
 describe("zoomAtPoint", () => {
   it("keeps the world point under the cursor fixed", () => {

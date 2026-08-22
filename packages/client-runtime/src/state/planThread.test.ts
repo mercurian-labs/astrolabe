@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PlanTimelineItem } from "@t3tools/contracts";
+import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 
-import { commitId as id, message } from "../../test/fixtures/timeline";
+import { condensePlanGraph } from "./planCheckpoints.ts";
+import { buildPlanGraph } from "./planGraph.ts";
+import { branchOption, mostRecentTip, threadLayout } from "./planThread.ts";
 
-import { condensePlanGraph } from "./PlanCheckpoints.logic";
-import { buildPlanGraph } from "./PlanGraph.logic";
-import { branchOption, mostRecentTip, threadLayout } from "./PlanThread.logic";
+const id = (value: string) => MercurianCommitId.make(value);
 
 const commit = (
   name: string,
@@ -17,14 +17,16 @@ const commit = (
     readonly published: boolean;
     readonly text: string;
   }> = {},
-): PlanTimelineItem =>
-  message(name, {
-    sequence,
-    parents,
-    published: overrides.published ?? false,
-    text: overrides.text ?? name,
-    createdAt: overrides.createdAt ?? "2026-08-03T00:00:00.000Z",
-  });
+): PlanTimelineItem => ({
+  _tag: "message",
+  commitId: id(name),
+  sequence,
+  parents: parents.map(id),
+  published: overrides.published ?? false,
+  authorKind: "human",
+  text: overrides.text ?? name,
+  createdAt: overrides.createdAt ?? "2026-08-03T00:00:00.000Z",
+});
 
 /** a → b → c. */
 const chain: ReadonlyArray<PlanTimelineItem> = [
@@ -169,13 +171,13 @@ describe("branchOption", () => {
       createdAt: "2026-08-03T01:00:00.000Z",
       text: "  Try checkpoint grouping\nwith details",
     });
-    const response = message("response", {
-      sequence: 2,
-      parents: ["query"],
+    const response: PlanTimelineItem = {
+      ...commit("response", 2, ["query"], {
+        createdAt: "2026-08-03T02:00:00.000Z",
+        text: "The assistant's response",
+      }),
       authorKind: "assistant",
-      createdAt: "2026-08-03T02:00:00.000Z",
-      text: "The assistant's response",
-    });
+    };
     const graph = condensePlanGraph(buildPlanGraph([query, response]));
 
     expect(branchOption(graph, id("response"))).toMatchObject({
