@@ -1,30 +1,24 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { message, planRevision } from "../../test/fixtures/timeline";
+import { lastPlanRevision, saveRefusalNotice, snapshotTextIsForPath } from "./planArtifact.ts";
 
-import { lastPlanRevision, saveRefusalNotice, snapshotTextIsForPath } from "./PlanArtifact.logic";
-
+const message = (createdAt: string) =>
+  ({ _tag: "message", authorKind: "human", createdAt }) as const;
 const revision = (authorKind: "human" | "assistant", createdAt: string) =>
-  planRevision(`${authorKind}-${createdAt}`, { authorKind, createdAt });
+  ({ _tag: "plan-revision", authorKind, createdAt }) as const;
 const splitRevision = (authorKind: "human" | "assistant", createdAt: string) =>
-  planRevision(`${authorKind}-${createdAt}`, {
-    authorKind,
-    createdAt,
-    split: { repository: "repository" },
-  });
+  ({ _tag: "plan-revision", authorKind, createdAt, split: {} }) as const;
 
 describe("lastPlanRevision", () => {
   it("has nothing to attribute on a plan born blank", () => {
-    expect(
-      lastPlanRevision([message("message", { createdAt: "2026-08-03T00:00:00.000Z" })]),
-    ).toBeNull();
+    expect(lastPlanRevision([message("2026-08-03T00:00:00.000Z")])).toBeNull();
   });
 
   it("reads the latest revision, not the latest commit", () => {
     const attribution = lastPlanRevision([
-      message("message-1", { createdAt: "2026-08-03T00:00:00.000Z" }),
+      message("2026-08-03T00:00:00.000Z"),
       revision("human", "2026-08-03T00:01:00.000Z"),
-      message("message-2", { createdAt: "2026-08-03T00:02:00.000Z" }),
+      message("2026-08-03T00:02:00.000Z"),
     ]);
     expect(attribution).toEqual({ authorKind: "human", createdAt: "2026-08-03T00:01:00.000Z" });
   });
@@ -49,9 +43,10 @@ describe("lastPlanRevision", () => {
   });
 });
 
-const msg = (commitId: string) => message(commitId);
-const rev = (commitId: string) => planRevision(commitId);
-const splitRev = (commitId: string) => planRevision(commitId, { split: { repository: "repo-1" } });
+const msg = (commitId: string) => ({ _tag: "message", commitId }) as const;
+const rev = (commitId: string) => ({ _tag: "plan-revision", commitId }) as const;
+const splitRev = (commitId: string) =>
+  ({ _tag: "plan-revision", commitId, split: { repositoryId: "repo-1" } }) as const;
 
 describe("snapshotTextIsForPath", () => {
   it("trusts the snapshot while the history is one line", () => {

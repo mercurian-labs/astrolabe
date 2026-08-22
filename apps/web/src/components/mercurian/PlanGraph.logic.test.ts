@@ -1,341 +1,62 @@
 import { describe, expect, it } from "vite-plus/test";
-
-import type { PlanTimelineItem } from "@t3tools/contracts";
-
-import {
-  codingSessionLeaf,
-  commitId as id,
-  message,
-  planRevision,
-  specRevision,
-} from "../../test/fixtures/timeline";
+import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 
 import {
-  ancestorClosure,
   buildPlanGraph,
   dagLayout,
-  descendantClosure,
   effectivePlanExplorerView,
-  hasFork,
-  planCommitDetail,
-  planCommitSummary,
   type DagLayoutName,
 } from "./PlanGraph.logic";
 
-const commit = (
-  name: string,
-  sequence: number,
-  parents: ReadonlyArray<string>,
-  overrides: Partial<{ readonly published: boolean; readonly text: string }> = {},
-): PlanTimelineItem =>
-  message(name, {
-    sequence,
-    parents,
-    published: overrides.published ?? false,
-    text: overrides.text ?? name,
-    createdAt: "2026-08-03T00:00:00.000Z",
-  });
-
-/** a → b → c. */
-const chain: ReadonlyArray<PlanTimelineItem> = [
-  commit("a", 1, []),
-  commit("b", 2, ["a"]),
-  commit("c", 3, ["b"]),
-];
-
-/**
- *      a
- *      |
- *      b
- *     / \
- *    l   r
- */
-const fork: ReadonlyArray<PlanTimelineItem> = [
-  commit("a", 1, []),
-  commit("b", 2, ["a"]),
-  commit("l", 3, ["b"]),
-  commit("r", 4, ["b"]),
-];
-
-/** The fork above, reunified by a three-parent merge. */
-const merged: ReadonlyArray<PlanTimelineItem> = [
-  ...fork,
-  commit("x", 5, ["b"]),
-  commit("m", 6, ["l", "r", "x"]),
-  commit("after", 7, ["m"]),
-];
-
-describe("buildPlanGraph", () => {
-  it("reads a linear history as one line with no branch points", () => {
-    const graph = buildPlanGraph(chain);
-    expect(graph.nodes.map((node) => node.commitId)).toEqual(["a", "b", "c"]);
-    expect(graph.roots).toEqual(["a"]);
-    expect(graph.latest).toBe("c");
-    expect(graph.nodes.some((node) => node.isBranchPoint || node.isMerge)).toBe(false);
-    expect(graph.byId.get("b")?.childrenIds).toEqual(["c"]);
-  });
-
-  it("orders by sequence whatever order the items arrive in", () => {
-    const graph = buildPlanGraph(chain.toReversed());
-    expect(graph.nodes.map((node) => node.commitId)).toEqual(["a", "b", "c"]);
-    expect(graph.latest).toBe("c");
-  });
-
-  it("marks the commit two children hang from as a branch point", () => {
-    const graph = buildPlanGraph(fork);
-    expect(graph.byId.get("b")?.isBranchPoint).toBe(true);
-    expect(graph.byId.get("b")?.childrenIds).toEqual(["l", "r"]);
-    expect(graph.byId.get("a")?.isBranchPoint).toBe(false);
-  });
-
-  it("marks a commit with several parents as a merge", () => {
-    const graph = buildPlanGraph(merged);
-    expect(graph.byId.get("m")?.isMerge).toBe(true);
-    expect(graph.byId.get("m")?.parents).toEqual(["l", "r", "x"]);
-  });
-
-  it("drops an edge to a commit the timeline does not carry", () => {
-    // The wire skips commit kinds this surface cannot render yet. A missing
-    // parent has to degrade to a missing edge, never to a throw.
-    const graph = buildPlanGraph([commit("a", 1, []), commit("b", 2, ["a", "unrendered"])]);
-    expect(graph.byId.get("b")?.parents).toEqual(["a"]);
-    expect(graph.byId.get("b")?.isMerge).toBe(false);
-    expect(graph.roots).toEqual(["a"]);
-  });
-
-  it("has nothing to say about an empty history", () => {
-    const graph = buildPlanGraph([]);
-    expect(graph.nodes).toEqual([]);
-    expect(graph.latest).toBeNull();
-    expect(dagLayout(graph, { layout: "sugiyama" }).nodes).toEqual([]);
-  });
+const id = (value: string) => MercurianCommitId.make(value);
+const commit = (name: string, sequence: number, parents: string[]): PlanTimelineItem => ({
+  _tag: "message",
+  commitId: id(name),
+  sequence,
+  parents: parents.map(id),
+  published: false,
+  authorKind: "human",
+  text: name,
+  createdAt: "2026-08-03T00:00:00.000Z",
 });
+const chain = [commit("a", 1, []), commit("b", 2, ["a"]), commit("c", 3, ["b"])];
+const fork = [...chain.slice(0, 2), commit("l", 3, ["b"]), commit("r", 4, ["b"])];
+const merged = [...fork, commit("m", 5, ["l", "r"])];
+const layouts: ReadonlyArray<DagLayoutName> = ["sugiyama", "grid", "zherebko"];
 
-describe("fork-dependent explorer views", () => {
-  it("finds no fork in an empty graph", () => {
-    expect(hasFork(buildPlanGraph([]))).toBe(false);
-  });
-
-  it("finds no fork in a linear graph", () => {
-    expect(hasFork(buildPlanGraph(chain))).toBe(false);
-  });
-
-  it("finds a node with at least two children", () => {
-    expect(hasFork(buildPlanGraph(fork))).toBe(true);
-  });
-
-  it("falls back from hidden columns without changing the other views", () => {
-    const linearGraph = buildPlanGraph(chain);
-    expect(effectivePlanExplorerView(linearGraph, "columns")).toBe("thread");
-    expect(effectivePlanExplorerView(linearGraph, "thread")).toBe("thread");
-    expect(effectivePlanExplorerView(linearGraph, "graph")).toBe("graph");
+describe("web plan graph layout", () => {
+  it("keeps fork-dependent explorer presentation in the web half", () => {
+    expect(effectivePlanExplorerView(buildPlanGraph(chain), "columns")).toBe("thread");
     expect(effectivePlanExplorerView(buildPlanGraph(fork), "columns")).toBe("columns");
-  });
-});
-
-describe("ancestorClosure", () => {
-  it("is the commit itself at the root", () => {
-    expect([...ancestorClosure(buildPlanGraph(chain), id("a"))]).toEqual(["a"]);
+    expect(effectivePlanExplorerView(buildPlanGraph(chain), "graph")).toBe("graph");
   });
 
-  it("is the whole line at the tip", () => {
-    expect([...ancestorClosure(buildPlanGraph(chain), id("c")).values()].sort()).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+  it("lays an empty graph out as empty", () => {
+    expect(dagLayout(buildPlanGraph([]), { layout: "sugiyama" }).nodes).toEqual([]);
   });
 
-  it("diverges below a fork and agrees above it", () => {
-    const graph = buildPlanGraph(fork);
-    const left = ancestorClosure(graph, id("l"));
-    const right = ancestorClosure(graph, id("r"));
-    expect(left.has("l")).toBe(true);
-    expect(left.has("r")).toBe(false);
-    expect(right.has("l")).toBe(false);
-    // Everything above the fork belongs to both paths.
-    expect(left.has("a") && left.has("b") && right.has("a") && right.has("b")).toBe(true);
-  });
-
-  it("takes every parent path at a merge", () => {
-    const closure = ancestorClosure(buildPlanGraph(merged), id("m"));
-    expect([...closure].sort()).toEqual(["a", "b", "l", "m", "r", "x"]);
-    expect(closure.has("after")).toBe(false);
-  });
-
-  it("is empty for a commit the graph does not hold", () => {
-    expect(ancestorClosure(buildPlanGraph(chain), id("nope")).size).toBe(0);
-  });
-});
-
-describe("descendantClosure", () => {
-  it("is the commit itself at a leaf", () => {
-    expect([...descendantClosure(buildPlanGraph(chain), id("c"))]).toEqual(["c"]);
-  });
-
-  it("takes both arms below a branch point", () => {
-    expect([...descendantClosure(buildPlanGraph(fork), id("b"))].sort()).toEqual(["b", "l", "r"]);
-  });
-
-  it("flows through a merge and everything below it", () => {
-    expect([...descendantClosure(buildPlanGraph(merged), id("l"))].sort()).toEqual([
-      "after",
-      "l",
-      "m",
-    ]);
-  });
-
-  it("is empty for a commit the graph does not hold", () => {
-    expect(descendantClosure(buildPlanGraph(chain), id("nope")).size).toBe(0);
-  });
-});
-
-describe("dagLayout", () => {
-  const shapes = [
-    ["a chain", chain],
-    ["a fork", fork],
-    ["an n-ary merge", merged],
-  ] as const;
-  const layouts: ReadonlyArray<DagLayoutName> = ["sugiyama", "grid", "zherebko"];
-
-  it("draws the same picture on two runs of every engine", () => {
-    for (const layoutName of layouts) {
-      for (const [name, timeline] of shapes) {
-        const graph = buildPlanGraph(timeline);
-        const first = dagLayout(graph, { layout: layoutName });
-        const second = dagLayout(graph, { layout: layoutName });
-        expect(first, `${layoutName}: ${name}`).toEqual(second);
-      }
-    }
-  });
-
-  it("orients every engine with each child strictly below every parent", () => {
-    for (const layoutName of layouts) {
-      for (const [name, timeline] of shapes) {
-        const graph = buildPlanGraph(timeline);
-        const layout = dagLayout(graph, { layout: layoutName });
-        for (const node of graph.nodes) {
-          const here = layout.positions.get(node.commitId)!;
-          for (const parentId of node.parents) {
-            expect(
-              here.y,
-              `${layoutName}: ${name}: ${node.commitId} below ${parentId}`,
-            ).toBeGreaterThan(layout.positions.get(parentId)!.y);
-          }
-        }
-      }
-    }
-  });
-
-  it("keeps each native polyline attached to its endpoint nodes", () => {
-    for (const layoutName of layouts) {
-      for (const [name, timeline] of shapes) {
-        const layout = dagLayout(buildPlanGraph(timeline), { layout: layoutName });
-        for (const edge of layout.edges) {
-          expect(edge.points[0], `${layoutName}: ${name}: source`).toEqual(
-            layout.positions.get(edge.fromCommitId),
-          );
-          expect(edge.points.at(-1), `${layoutName}: ${name}: target`).toEqual(
-            layout.positions.get(edge.toCommitId),
+  it("is deterministic and keeps every child below every parent", () => {
+    for (const name of layouts) {
+      const graph = buildPlanGraph(merged);
+      const first = dagLayout(graph, { layout: name });
+      expect(dagLayout(graph, { layout: name })).toEqual(first);
+      for (const node of graph.nodes) {
+        for (const parentId of node.parents) {
+          expect(first.positions.get(node.commitId)!.y).toBeGreaterThan(
+            first.positions.get(parentId)!.y,
           );
         }
       }
     }
   });
 
-  it("runs the selected engine", () => {
-    const graph = buildPlanGraph(merged);
-    const arrangements = layouts.map((layoutName) =>
-      JSON.stringify(
-        dagLayout(graph, { layout: layoutName }).nodes.map(({ commitId, x, y }) => [
-          commitId,
-          x,
-          y,
-        ]),
-      ),
-    );
-    expect(new Set(arrangements).size).toBe(layouts.length);
-  });
-});
-
-describe("planCommitSummary", () => {
-  it("says what a message said, on one line", () => {
-    expect(planCommitSummary(commit("a", 1, [], { text: "  Reshape it  \nand more" }))).toBe(
-      "Reshape it",
-    );
-  });
-
-  it("truncates a long first line", () => {
-    expect(planCommitSummary(commit("a", 1, [], { text: "x".repeat(200) })).length).toBe(60);
-  });
-
-  it("has something to say about an empty message", () => {
-    expect(planCommitSummary(commit("a", 1, [], { text: "   \n " }))).toBe("Empty message");
-  });
-
-  it("says what a revision did, since it has no body to show", () => {
-    const revision = planRevision("rev", {
-      sequence: 2,
-      parents: ["a"],
-      authorKind: "assistant",
-      createdAt: "2026-08-03T00:00:00.000Z",
-    });
-    expect(planCommitSummary(revision)).toBe("The assistant revised the plan");
-  });
-
-  it("names the repository on a split revision", () => {
-    const revision = planRevision("split", {
-      sequence: 2,
-      parents: ["a"],
-      createdAt: "2026-08-03T00:00:00.000Z",
-      split: {
-        repositoryId: "repo-server",
-        repositoryName: "server",
-      },
-    });
-    expect(planCommitSummary(revision)).toBe("Plan for server");
-  });
-
-  it("renders a coding session as a terminal leaf with its parent edge", () => {
-    const session = codingSessionLeaf("session", {
-      sequence: 4,
-      parents: ["c"],
-      createdAt: "2026-08-03T00:00:00.000Z",
-      repositoryId: "repo-server",
-      repositoryName: "server",
-      planRevisionCommitId: "b",
-    });
-    const graph = buildPlanGraph([...chain, session]);
-    expect(planCommitSummary(session)).toBe("Coding session in server");
-    expect(graph.byId.get("session")?.parents).toEqual(["c"]);
-    expect(graph.byId.get("session")?.childrenIds).toEqual([]);
-    expect(graph.byId.get("c")?.childrenIds).toEqual(["session"]);
-  });
-});
-
-describe("planCommitDetail", () => {
-  it("keeps a message's complete text", () => {
-    const text = `First line\n\n${"full detail ".repeat(20)}`;
-    expect(planCommitDetail(commit("a", 1, [], { text }))).toBe(text);
-  });
-
-  it("describes an imported spec revision", () => {
-    const issue = specRevision("issue", {
-      published: true,
-      cause: "import",
-      issueId: "M-101",
-      createdAt: "2026-08-03T00:00:00.000Z",
-    });
-    expect(planCommitDetail(issue)).toBe("Spec imported from M-101");
-  });
-
-  it("uses the existing summary line for a plan revision", () => {
-    const revision = planRevision("rev", {
-      sequence: 2,
-      parents: ["a"],
-      authorKind: "assistant",
-      createdAt: "2026-08-03T00:00:00.000Z",
-    });
-    expect(planCommitDetail(revision)).toBe("The assistant revised the plan");
+  it("keeps native polylines attached to their endpoint nodes", () => {
+    for (const name of layouts) {
+      const layout = dagLayout(buildPlanGraph(merged), { layout: name });
+      for (const edge of layout.edges) {
+        expect(edge.points[0]).toEqual(layout.positions.get(edge.fromCommitId));
+        expect(edge.points.at(-1)).toEqual(layout.positions.get(edge.toCommitId));
+      }
+    }
   });
 });

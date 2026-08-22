@@ -75,6 +75,26 @@
       "types": "./src/state/planListing.ts",
       "default": "./src/state/planListing.ts"
     },
+    "./state/plan-graph": {
+      "types": "./src/state/planGraph.ts",
+      "default": "./src/state/planGraph.ts"
+    },
+    "./state/plan-position": {
+      "types": "./src/state/planPosition.ts",
+      "default": "./src/state/planPosition.ts"
+    },
+    "./state/plan-model-choice": {
+      "types": "./src/state/planModelChoice.ts",
+      "default": "./src/state/planModelChoice.ts"
+    },
+    "./state/plan-composer": {
+      "types": "./src/state/planComposer.ts",
+      "default": "./src/state/planComposer.ts"
+    },
+    "./state/plan-artifact": {
+      "types": "./src/state/planArtifact.ts",
+      "default": "./src/state/planArtifact.ts"
+    },
     "./state/mercurian-repositories": {
       "types": "./src/state/mercurianRepositories.ts",
       "default": "./src/state/mercurianRepositories.ts"

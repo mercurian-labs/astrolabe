@@ -8,10 +8,17 @@ import {
 
 import {
   implementFailureNotice,
+  modelChoiceForHead,
   planningModelGateNotice,
+  providerLabel,
   resolveComposerControl,
   turnRefusalNotice,
-} from "./PlanComposer.logic";
+} from "./planComposer.ts";
+
+const selection: PlanningModelSelection = {
+  provider: ProviderDriverKind.make("claudeAgent"),
+  model: "opus",
+};
 
 describe("resolveComposerControl", () => {
   it("shows Send, enabled, when there is content and nothing running", () => {
@@ -151,5 +158,18 @@ describe("turnRefusalNotice", () => {
     expect(turnRefusalNotice(null, "not-signed-in")).toBe(
       "The message was sent, but the provider isn't signed in on this machine.",
     );
+  });
+});
+
+describe("shared model presentation", () => {
+  it("uses the known display name and title-cases an unknown driver", () => {
+    expect(providerLabel(ProviderDriverKind.make("claudeAgent"))).toBe("Claude");
+    expect(providerLabel(ProviderDriverKind.make("my_custom-provider"))).toBe("My Custom Provider");
+  });
+
+  it("honors a draft flip only at the head where it was made", () => {
+    const draft = { modelChoice: { directive: selection, atHead: "left" } };
+    expect(modelChoiceForHead(draft, "left")).toEqual(selection);
+    expect(modelChoiceForHead(draft, "right")).toBeUndefined();
   });
 });

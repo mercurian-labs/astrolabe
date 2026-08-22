@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PlanTimelineItem } from "@t3tools/contracts";
+import { MercurianCommitId, type PlanTimelineItem } from "@t3tools/contracts";
 
-import { codingSessionLeaf, commitId as id, message } from "../../test/fixtures/timeline";
-
-import { buildPlanGraph } from "./PlanGraph.logic";
+import { buildPlanGraph } from "./planGraph.ts";
 import {
   advance,
   isViewingPast,
@@ -12,14 +10,24 @@ import {
   positionAfterPick,
   resolveActingHead,
   resolveHead,
-} from "./PlanPosition.logic";
+} from "./planPosition.ts";
 
-const commit = (name: string, sequence: number, parents: ReadonlyArray<string>): PlanTimelineItem =>
-  message(name, {
-    sequence,
-    parents,
-    createdAt: "2026-08-03T00:00:00.000Z",
-  });
+const id = (value: string) => MercurianCommitId.make(value);
+
+const commit = (
+  name: string,
+  sequence: number,
+  parents: ReadonlyArray<string>,
+): PlanTimelineItem => ({
+  _tag: "message",
+  commitId: id(name),
+  sequence,
+  parents: parents.map(id),
+  published: false,
+  authorKind: "human",
+  text: name,
+  createdAt: "2026-08-03T00:00:00.000Z",
+});
 
 /** a → b → c. */
 const chain = buildPlanGraph([commit("a", 1, []), commit("b", 2, ["a"]), commit("c", 3, ["b"])]);
@@ -66,14 +74,18 @@ describe("resolveHead", () => {
 
 describe("resolveActingHead", () => {
   it("keeps a viewed coding-session leaf visible but acts from its parent", () => {
-    const session = codingSessionLeaf("session", {
+    const session = {
+      _tag: "coding-session",
+      commitId: id("session"),
       sequence: 4,
-      parents: ["c"],
+      parents: [id("c")],
+      published: false,
+      authorKind: "human",
       createdAt: "2026-08-03T00:00:00.000Z",
-      repositoryId: "repo",
+      repositoryId: "repo" as never,
       repositoryName: "server",
-      planRevisionCommitId: "b",
-    });
+      planRevisionCommitId: id("b"),
+    } satisfies PlanTimelineItem;
     const graph = buildPlanGraph([...chain.nodes.map(({ item }) => item), session]);
     expect(resolveHead(graph, positionAfterPick(graph, session.commitId))).toBe(id("session"));
     expect(resolveActingHead(graph, session.commitId)).toBe(id("c"));

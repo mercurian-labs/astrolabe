@@ -6,18 +6,15 @@ import {
   isProviderAvailable,
   type PlanningModelResolution,
   type PlanningModelSelection,
-  PROVIDER_DISPLAY_NAMES,
   type ProviderDriverKind,
   type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
 
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../../providerInstances";
-import { formatProviderDriverKindLabel } from "../../providerModels";
+import { providerLabel } from "@t3tools/client-runtime/state/plan-composer";
 
-export function providerLabel(provider: ProviderDriverKind): string {
-  return PROVIDER_DISPLAY_NAMES[provider] ?? formatProviderDriverKindLabel(provider);
-}
+export { providerLabel } from "@t3tools/client-runtime/state/plan-composer";
 
 /**
  * Whether an instance could run a turn on this machine right now — the same

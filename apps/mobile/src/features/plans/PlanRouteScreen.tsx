@@ -1,11 +1,36 @@
-import { type StaticScreenProps } from "@react-navigation/native";
-import { EnvironmentId, PlanId } from "@t3tools/contracts";
-import { useEffect } from "react";
-import { ScrollView } from "react-native";
+import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
+import { ancestorClosure, buildPlanGraph } from "@t3tools/client-runtime/state/plan-graph";
+import { standingModelChoice } from "@t3tools/client-runtime/state/plan-model-choice";
+import {
+  advance,
+  LATEST,
+  resolveActingHead,
+  resolveHead,
+  type PlanPosition,
+} from "@t3tools/client-runtime/state/plan-position";
+import {
+  EnvironmentId,
+  type MercurianCommitId,
+  type PlanInFlightTurn,
+  PlanId,
+} from "@t3tools/contracts";
+import { useEffect, useMemo, useState } from "react";
+import { Platform, View } from "react-native";
 
+import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { EmptyState } from "../../components/EmptyState";
+import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { useMercurianTree, useVisitPlan } from "../../state/mercurian";
+import { mercurianPlanning, usePlanDetail, useVisitPlan } from "../../state/mercurian";
+import { usePlanningModel } from "../../state/mercurianWorkspace";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
+import { PlanArtifactPane } from "./PlanArtifactPane";
+import { PlanComposerBar } from "./PlanComposerBar";
+import { PlanTimelineList } from "./PlanTimelineList";
+
+/** A stable empty array keeps the visible-turn memo from re-running. */
+const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 
 type PlanRouteScreenProps = StaticScreenProps<{
   readonly environmentId: string;
@@ -19,35 +44,203 @@ function firstRouteParam(value: string | string[] | undefined): string | null {
 export function PlanRouteScreen({ route }: PlanRouteScreenProps) {
   const environmentIdRaw = firstRouteParam(route.params.environmentId);
   const planIdRaw = firstRouteParam(route.params.planId);
-  const environmentId = environmentIdRaw ? EnvironmentId.make(environmentIdRaw) : null;
-  const planId = planIdRaw ? PlanId.make(planIdRaw) : null;
-  const tree = useMercurianTree(environmentId);
-  const visitPlan = useVisitPlan(environmentId);
-  const row = tree.snapshot.plans.find((plan) => plan.planId === planId) ?? null;
-
-  useEffect(() => {
-    if (row === null) return;
-    void visitPlan({ planId: row.planId });
-  }, [row?.planId, row?.updatedAt, visitPlan]);
-
-  return (
-    <>
-      <NativeStackScreenOptions options={{ title: row?.title ?? "Plan" }} />
-      <ScrollView
-        className="flex-1 bg-screen"
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }}
-      >
+  if (!environmentIdRaw || !planIdRaw) {
+    return (
+      <View className="flex-1 items-center justify-center bg-screen px-6">
+        <NativeStackScreenOptions options={{ title: "Plan" }} />
         <EmptyState
-          title={row?.title ?? (tree.isPending ? "Opening plan" : "Plan unavailable")}
-          detail={
-            row
-              ? "The mobile planning space arrives with M-147."
-              : (tree.error ?? "This plan is not available in the current workspace snapshot.")
-          }
+          title="Plan unavailable"
+          detail="This plan link is missing its environment or plan identity."
           variant="plain"
         />
-      </ScrollView>
-    </>
+      </View>
+    );
+  }
+  return (
+    <PlanRouteContent
+      environmentId={EnvironmentId.make(environmentIdRaw)}
+      planId={PlanId.make(planIdRaw)}
+    />
+  );
+}
+
+function PlanRouteContent(props: {
+  readonly environmentId: EnvironmentId;
+  readonly planId: PlanId;
+}) {
+  const navigation = useNavigation();
+  const iconColor = useThemeColor("--color-icon");
+  const state = usePlanDetail(props.environmentId, props.planId);
+  const planningModel = usePlanningModel(props.environmentId);
+  const visitPlan = useVisitPlan(props.environmentId);
+  const answerQuestion = useAtomCommand(mercurianPlanning.answerPlanningQuestion, {
+    reportFailure: false,
+  });
+  const stopTurn = useAtomCommand(mercurianPlanning.stopPlanningTurn, { reportFailure: false });
+  const [position, setPosition] = useState<PlanPosition>(LATEST);
+  const [view, setView] = useState<"conversation" | "artifact">("conversation");
+  const detail = state.detail;
+  const timeline = detail?.timeline ?? [];
+  const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+
+  useEffect(() => {
+    setPosition(LATEST);
+    setView("conversation");
+  }, [props.planId]);
+
+  useEffect(() => {
+    setPosition((current) => advance(graph, current));
+  }, [graph]);
+
+  useEffect(() => {
+    if (detail === null) return;
+    void visitPlan({ planId: detail.plan.planId });
+  }, [detail?.plan.updatedAt, detail?.plan.planId, visitPlan]);
+
+  const head = resolveHead(graph, position);
+  const actingHead = resolveActingHead(graph, head);
+  const visibleCommitIds = useMemo(
+    () =>
+      head === null
+        ? new Set(timeline.map((item) => item.commitId as string))
+        : ancestorClosure(graph, head),
+    [graph, head, timeline],
+  );
+  const visibleTimeline = useMemo(
+    () => timeline.filter((item) => visibleCommitIds.has(item.commitId)),
+    [timeline, visibleCommitIds],
+  );
+  const itemsById = useMemo(
+    () => new Map(timeline.map((item) => [item.commitId as string, item])),
+    [timeline],
+  );
+  const standingChoice = useMemo(
+    () => standingModelChoice(graph, itemsById, actingHead),
+    [actingHead, graph, itemsById],
+  );
+  // Replies stream concurrently across branches (M-158): the composer wears
+  // Stop only for the turn on the branch you stand on, and a reply on another
+  // branch never gates this one. Mirrors PlanningSpace's derivation.
+  const inFlightTurns = detail?.inFlightTurns ?? EMPTY_IN_FLIGHT_TURNS;
+  const visibleInFlight = useMemo(() => {
+    if (inFlightTurns.length === 0) return undefined;
+    if (head === null) return inFlightTurns[0];
+    return inFlightTurns.find((turn) => visibleCommitIds.has(turn.parentCommitId));
+  }, [head, inFlightTurns, visibleCommitIds]);
+  const inFlightImplement = detail?.inFlightImplement;
+  const visibleInFlightImplement = useMemo(() => {
+    if (inFlightImplement === undefined) return undefined;
+    if (head === null) return inFlightImplement;
+    return visibleCommitIds.has(inFlightImplement.parentCommitId) ? inFlightImplement : undefined;
+  }, [head, inFlightImplement, visibleCommitIds]);
+  const turnActive = visibleInFlight !== undefined || visibleInFlightImplement !== undefined;
+  const toggleArtifact = () =>
+    setView((current) => (current === "artifact" ? "conversation" : "artifact"));
+  const title = detail?.plan.title ?? "Plan";
+
+  return (
+    <View className="flex-1 bg-screen">
+      <NativeStackScreenOptions
+        optionsVersion={[title, view]}
+        options={{
+          title,
+          headerShown: Platform.OS !== "android",
+          headerTintColor: iconColor,
+          unstable_headerRightItems:
+            Platform.OS === "ios"
+              ? () => [
+                  withNativeGlassHeaderItem({
+                    accessibilityLabel:
+                      view === "artifact" ? "Hide plan artifact" : "Show plan artifact",
+                    icon: {
+                      name: view === "artifact" ? "text.bubble" : "doc.text",
+                      type: "sfSymbol",
+                    } as const,
+                    identifier: "plan-artifact",
+                    label: "",
+                    onPress: toggleArtifact,
+                    type: "button",
+                  }),
+                ]
+              : undefined,
+        }}
+      />
+      {Platform.OS === "android" ? (
+        <AndroidScreenHeader
+          title={title}
+          onBack={() => navigation.goBack()}
+          actions={[
+            {
+              accessibilityLabel: view === "artifact" ? "Hide plan artifact" : "Show plan artifact",
+              icon: view === "artifact" ? "text.bubble" : "doc.text",
+              onPress: toggleArtifact,
+            },
+          ]}
+        />
+      ) : null}
+      {detail === null ? (
+        <View className="flex-1 items-center justify-center px-6">
+          <EmptyState
+            title={state.isPending ? "Opening plan" : "Plan unavailable"}
+            detail={state.error ?? "This plan is not available in the current environment."}
+            variant="plain"
+          />
+        </View>
+      ) : (
+        <>
+          {view === "artifact" ? (
+            <View className="flex-1 border-b border-border">
+              <PlanArtifactPane
+                environmentId={props.environmentId}
+                planId={props.planId}
+                head={head}
+                timeline={timeline}
+                visibleTimeline={visibleTimeline}
+                snapshotText={detail.planText}
+              />
+            </View>
+          ) : null}
+          <View className="flex-1">
+            <PlanTimelineList
+              timeline={timeline}
+              visibleCommitIds={visibleCommitIds}
+              inFlightTurn={visibleInFlight}
+              inFlightImplement={visibleInFlightImplement}
+              codingSessions={detail.codingSessions}
+              providers={planningModel.providers}
+              onAnswerQuestion={(answers) => {
+                if (visibleInFlight === undefined) return;
+                void answerQuestion({
+                  environmentId: props.environmentId,
+                  input: { planId: props.planId, turnId: visibleInFlight.turnId, answers },
+                });
+              }}
+              onStop={() => {
+                const turnId = visibleInFlightImplement?.turnId ?? visibleInFlight?.turnId;
+                if (turnId === undefined) return;
+                void stopTurn({
+                  environmentId: props.environmentId,
+                  input: { planId: props.planId, turnId },
+                });
+              }}
+            />
+            <PlanComposerBar
+              environmentId={props.environmentId}
+              planId={props.planId}
+              actingHead={actingHead}
+              standingChoice={standingChoice}
+              workspaceSetting={planningModel.setting}
+              providers={planningModel.providers}
+              turnActive={turnActive}
+              activeTurnId={visibleInFlight?.turnId ?? visibleInFlightImplement?.turnId}
+              turnRefusal={state.turnRefusal}
+              onSent={(commitId: MercurianCommitId) =>
+                setPosition({ _tag: "at", commitId, live: true })
+              }
+            />
+          </View>
+        </>
+      )}
+    </View>
   );
 }
