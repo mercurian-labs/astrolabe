@@ -145,7 +145,7 @@ Unlike TanStack's public phase-one registry, Astrolabe does not need copy-paste 
 
 ### 8. Remove Storybook only after parity
 
-Once `/ds` and the registry checks cover all 23 existing stories:
+Once `/ds` and the registry checks cover all 24 existing stories:
 
 - remove `@storybook/react`, `@storybook/react-vite`, and `storybook` from `apps/web/package.json`;
 - remove Storybook scripts, `.storybook/`, its TypeScript includes, `storybookAliases` from `vite.config.ts`, and all `*.stories.tsx` files after their catalog equivalents land;
@@ -216,7 +216,7 @@ No future rebrand should require moving product components, rebuilding fixtures,
 - [ ] Add the lazy standalone `/ds` route and catalog shell using only current semantic roles; prove it loads in web and desktop routing without an authenticated environment, and that `?page=`/`?entry=` survive a reload.
 - [ ] Move the foundations story into catalog entries and add complete live sections for color roles/themes, typography, spacing/density, shape/elevation/glass, motion, focus, iconography, and breakpoints.
 - [ ] Add the primitive inventory glob as a non-blocking audit over `components/ui` (catalogued / infrastructure-only / unreviewed), and the blocking coverage gate over `components/mercurian`.
-- [ ] Migrate the 23 existing Storybook states to co-located catalog entries with the same fixtures, labels, layouts, and bounded interaction.
+- [ ] Migrate the 24 existing Storybook states (23 Mercurian + 1 foundations) to co-located catalog entries with the same fixtures, labels, layouts, and bounded interaction.
 - [ ] Replace alias-dependent examples with explicit presentational seams or fixture props; do not add a catalog transport, fake server, or alias map.
 - [ ] Add product-semantic status aliases and migrate current raw Mercurian status colors family by family with pixel-equivalence proof.
 - [ ] Move the browser harness from portable stories to catalog entries; retain non-empty render, exercise, axe, and loudly logged rule-scoped exceptions.
@@ -262,7 +262,7 @@ No future rebrand should require moving product components, rebuilding fixtures,
 
 ### Storybook removal
 
-- [ ] Catalog scenario count and ids meet or exceed the 23-story baseline before deletion.
+- [ ] Catalog scenario count and ids meet or exceed the 24-story baseline before deletion (measured 2026-08-22: `vp test run --project stories` reports 24 passing checks; the earlier "23" in this plan was wrong).
 - [ ] A clean install, web typecheck, design-system browser project, and web build pass without Storybook packages or aliases.
 - [ ] Lockfile no longer contains Storybook packages; the esbuild override is removed if the clean-install proof permits.
 - [ ] CI has no Storybook build, artifact, comment workflow, or Storybook-named step, while browser render/a11y coverage remains required inside the existing `Test` job.
