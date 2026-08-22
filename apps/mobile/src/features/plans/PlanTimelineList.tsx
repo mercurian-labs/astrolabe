@@ -17,6 +17,7 @@ import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import { ControlPill } from "../../components/ControlPill";
 import { cn } from "../../lib/cn";
+import { IMPLEMENT_ANALYZING_COPY } from "./mobileImplementCopy";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { PlanMarkdown } from "./markdownStyles";
 import { derivePlanTimelineRows, type PlanTimelineRow } from "./planTimelineRows";
@@ -124,7 +125,7 @@ function PlanTimelineRowView(props: {
         <View className="flex-row items-center gap-2">
           <ActivityIndicator size="small" />
           <Text className="min-w-0 flex-1 text-sm text-foreground-muted">
-            Checking whether this plan is ready to implement…
+            {IMPLEMENT_ANALYZING_COPY}
           </Text>
           <ControlPill label="Stop" variant="danger" onPress={props.onStop} />
         </View>

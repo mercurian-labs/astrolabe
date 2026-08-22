@@ -9,6 +9,9 @@ import type { PlanHistoryModel, PlanHistoryRow, PlanHistorySwitch } from "./plan
 
 export function PlanHistoryScreen(props: {
   readonly model: PlanHistoryModel;
+  readonly readyCommitIds: ReadonlySet<string>;
+  readonly stalePlanIds: ReadonlySet<string>;
+  readonly staleSpecIds: ReadonlySet<string>;
   readonly onSelect: (row: PlanHistoryRow) => void;
   readonly onOpenSwitch: (row: PlanHistoryRow, selection: PlanHistorySwitch) => void;
 }) {
@@ -16,9 +19,22 @@ export function PlanHistoryScreen(props: {
   const currentIndex = props.model.rows.findIndex((row) => row.current);
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<PlanHistoryRow>) => (
-      <PlanHistoryItem row={item} onSelect={props.onSelect} onOpenSwitch={props.onOpenSwitch} />
+      <PlanHistoryItem
+        row={item}
+        ready={props.readyCommitIds.has(item.commitId)}
+        stalePlan={props.stalePlanIds.has(item.commitId)}
+        staleSpec={props.staleSpecIds.has(item.commitId)}
+        onSelect={props.onSelect}
+        onOpenSwitch={props.onOpenSwitch}
+      />
     ),
-    [props.onOpenSwitch, props.onSelect],
+    [
+      props.onOpenSwitch,
+      props.onSelect,
+      props.readyCommitIds,
+      props.stalePlanIds,
+      props.staleSpecIds,
+    ],
   );
 
   return (

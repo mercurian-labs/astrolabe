@@ -163,7 +163,7 @@ export function PlanCheckpointSheet({ route }: Props) {
           {reading.movedPastPlan ? (
             <Warning
               title="Planning moved on"
-              detail={`Planning continued past the ${reading.movedPastRepositoryName ?? "repository"} split.`}
+              detail={`Planning continued past the ${reading.movedPastRepositoryName ?? "repository"} plan.`}
             />
           ) : null}
           {reading.ready === undefined ? null : (
@@ -180,14 +180,17 @@ export function PlanCheckpointSheet({ route }: Props) {
                 disabled={action.disabled}
                 key={action.key}
                 onPress={() => {
-                  if (action.key !== "continue") return;
-                  position.pick(commitId);
-                  navigation.dispatch(
-                    StackActions.popTo("Plan", {
-                      environmentId: String(environmentId),
-                      planId: String(planId),
-                    }),
-                  );
+                  if (action.key === "implement") {
+                    implement.begin();
+                  } else {
+                    position.pick(commitId);
+                    navigation.dispatch(
+                      StackActions.popTo("Plan", {
+                        environmentId: String(environmentId),
+                        planId: String(planId),
+                      }),
+                    );
+                  }
                 }}
               >
                 <Text className="text-sm font-t3-bold text-foreground">{action.label}</Text>

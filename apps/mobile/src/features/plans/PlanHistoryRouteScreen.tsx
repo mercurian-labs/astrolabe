@@ -1,5 +1,7 @@
 import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
+import { condensePlanGraph, mapMarksToNodes } from "@t3tools/client-runtime/state/plan-checkpoints";
 import { buildPlanGraph } from "@t3tools/client-runtime/state/plan-graph";
+import { stalePlanLeafIds, staleSpecLeafIds } from "@t3tools/client-runtime/state/plan-freshness";
 import { EnvironmentId, PlanId } from "@t3tools/contracts";
 import { useMemo } from "react";
 import { Platform, View } from "react-native";
@@ -53,7 +55,20 @@ function PlanHistoryRouteContent(props: {
   const state = usePlanDetail(props.environmentId, props.planId);
   const timeline = state.detail?.timeline ?? [];
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
+  const displayGraph = useMemo(() => condensePlanGraph(graph), [graph]);
   const position = usePlanPosition(props.environmentId, props.planId, graph);
+  const stalePlanIds = useMemo(
+    () => mapMarksToNodes(stalePlanLeafIds(graph), displayGraph.nodeIdByCommit),
+    [displayGraph.nodeIdByCommit, graph],
+  );
+  const staleSpecIds = useMemo(
+    () => mapMarksToNodes(staleSpecLeafIds(graph), displayGraph.nodeIdByCommit),
+    [displayGraph.nodeIdByCommit, graph],
+  );
+  const readyCommitIds = useMemo(
+    () => mapMarksToNodes(state.readyCommits.keys(), displayGraph.nodeIdByCommit),
+    [displayGraph.nodeIdByCommit, state.readyCommits],
+  );
   const model = useMemo(
     () =>
       buildPlanHistoryModel({ detail: state.detail }, position.position, position.parentChoices),
@@ -115,9 +130,15 @@ function PlanHistoryRouteContent(props: {
       ) : (
         <PlanHistoryScreen
           model={model}
+          readyCommitIds={readyCommitIds}
+          stalePlanIds={stalePlanIds}
+          staleSpecIds={staleSpecIds}
           onSelect={(row) => {
-            position.pick(row.commitId);
-            navigation.goBack();
+            navigation.navigate("PlanCheckpoint", {
+              environmentId: String(props.environmentId),
+              planId: String(props.planId),
+              commitId: String(row.commitId),
+            });
           }}
           onOpenSwitch={(row, selection) => {
             navigation.navigate("PlanBranches", {

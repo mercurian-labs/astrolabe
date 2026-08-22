@@ -12,7 +12,9 @@ export interface MobileCheckpointAct {
 
 export function checkpointSheetActions(
   offered: ReadonlyArray<PlanNodePopoverAct>,
-  implement: { readonly status: "unavailable"; readonly reason: string },
+  implement:
+    | { readonly status: "available"; readonly failure?: string | null }
+    | { readonly status: "unavailable"; readonly reason: string },
 ): ReadonlyArray<MobileCheckpointAct> {
   return [
     ...(offered.includes("continue")
@@ -23,8 +25,12 @@ export function checkpointSheetActions(
           {
             key: "implement" as const,
             label: "Implement from here",
-            disabled: true,
-            reason: implement.reason,
+            disabled: implement.status === "unavailable",
+            ...(implement.status === "unavailable"
+              ? { reason: implement.reason }
+              : implement.failure
+                ? { reason: implement.failure }
+                : {}),
           },
         ]
       : []),

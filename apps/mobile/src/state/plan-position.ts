@@ -64,6 +64,13 @@ export function standAtPlanPosition(key: string, commitId: MercurianCommitId): v
   }));
 }
 
+export function pinPlanPosition(key: string, commitId: MercurianCommitId): void {
+  updatePlanPositionState(key, (state) => ({
+    ...state,
+    position: { _tag: "at", commitId, live: false },
+  }));
+}
+
 export function backToNowPlanPosition(key: string): void {
   updatePlanPositionState(key, (state) =>
     state.position._tag === "latest" ? state : { ...state, position: LATEST },

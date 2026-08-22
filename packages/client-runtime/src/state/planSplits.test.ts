@@ -2,17 +2,24 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { MercurianRepositoryId, type PlanTimelineItem } from "@t3tools/contracts";
 
-import { planImplementProposal, planSplitProposal } from "../../test/fixtures/sessionsAndSplits";
-import { commitId, message, planRevision } from "../../test/fixtures/timeline";
+import {
+  planImplementProposal,
+  planSplitProposal,
+} from "../../../../apps/web/src/test/fixtures/sessionsAndSplits.ts";
+import {
+  commitId,
+  message,
+  planRevision,
+} from "../../../../apps/web/src/test/fixtures/timeline.ts";
 
-import { buildPlanGraph } from "./PlanGraph.logic";
+import { buildPlanGraph } from "./planGraph.ts";
 import {
   confirmPayload,
   existingSplitsAt,
   implementDisabledReason,
   implementFlowAction,
   partitionProposal,
-} from "./splits.logic";
+} from "./planSplits.ts";
 
 const repositoryId = MercurianRepositoryId.make("repo-server");
 const otherRepositoryId = MercurianRepositoryId.make("repo-web");

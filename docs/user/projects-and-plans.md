@@ -195,6 +195,11 @@ pressed Implement, and leaves you standing at that original commit. The sheet st
 list with one **You added a plan for {repository}** row per new branch. Choose a row to go to that
 repository's plan and keep planning there; the plan on the original line stays unchanged.
 
+On your phone, you can try to implement from the planning space, from history, or from a checkpoint
+on the map. The phone shows the same stale-plan warning and repository confirmation as desktop,
+then opens a coding-session draft where you choose the branch, access mode, and model before
+starting.
+
 ## The Checkpoint Graph
 
 The Checkpoint Graph shows every continuable checkpoint in the plan: complete turns, unanswered

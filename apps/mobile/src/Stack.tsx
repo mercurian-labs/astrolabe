@@ -37,6 +37,8 @@ import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewR
 import { PlanListRouteScreen } from "./features/plans/PlanListRouteScreen";
 import { PlanBranchesSheet } from "./features/plans/PlanBranchesSheet";
 import { PlanCheckpointSheet } from "./features/plans/PlanCheckpointSheet";
+import { PlanImplementSheet } from "./features/plans/PlanImplementSheet";
+import { CodingSessionDraftSheet } from "./features/plans/CodingSessionDraftSheet";
 import { PlanHistoryRouteScreen } from "./features/plans/PlanHistoryRouteScreen";
 import { PlanMapRouteScreen } from "./features/plans/PlanMapRouteScreen";
 import { PlanRouteScreen } from "./features/plans/PlanRouteScreen";
@@ -447,6 +449,24 @@ export const RootStack = createNativeStackNavigator({
       options: {
         presentation: "formSheet",
         sheetAllowedDetents: [0.45, 0.75],
+        sheetGrabberVisible: true,
+      },
+    }),
+    PlanImplement: createNativeStackScreen({
+      screen: PlanImplementSheet,
+      linking: "plans/:environmentId/:planId/implement",
+      options: {
+        presentation: "formSheet",
+        sheetAllowedDetents: [0.55, 0.92],
+        sheetGrabberVisible: true,
+      },
+    }),
+    SessionDraft: createNativeStackScreen({
+      screen: CodingSessionDraftSheet,
+      linking: "session-draft/:environmentId/:planId/:parentCommitId",
+      options: {
+        presentation: "formSheet",
+        sheetAllowedDetents: [0.55, 0.92],
         sheetGrabberVisible: true,
       },
     }),
