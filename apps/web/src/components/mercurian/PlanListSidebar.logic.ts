@@ -1,7 +1,7 @@
+import { filterPlansByProjectScope } from "@t3tools/client-runtime/state/plan-listing";
 import { sortPlansNewestArchivedFirst } from "./ArchivedPlansPanel.logic";
 import {
   partitionPlansByLifecycle,
-  resolvePlanRowStatus,
   resolveTreeSelection,
   sortPlansNewestFirst,
   type PlanLifecycleFields,
@@ -9,8 +9,15 @@ import {
   type TreeSelection,
 } from "./planListing.logic";
 
-export const ARCHIVED_PLAN_INITIAL_COUNT = 10;
-export const ARCHIVED_PLAN_PAGE_COUNT = 25;
+export {
+  ARCHIVED_PLAN_INITIAL_COUNT,
+  ARCHIVED_PLAN_PAGE_COUNT,
+  filterPlansByProjectScope,
+  pageArchivedPlans,
+  resolvePlanCardStatus,
+  type ArchivedPlansPage,
+  type PlanCardStatus,
+} from "@t3tools/client-runtime/state/plan-listing";
 
 interface ProjectScopedFields {
   readonly projectId: string;
@@ -45,16 +52,6 @@ export function resolveSidebarSelection(pathname: string): SidebarSelection {
   };
 }
 
-/** Apply the ephemeral project scope without changing the list's source order. */
-export function filterPlansByProjectScope<T extends ProjectScopedFields>(
-  plans: readonly T[],
-  projectScopeId: string | null,
-): T[] {
-  return projectScopeId === null
-    ? [...plans]
-    : plans.filter((plan) => plan.projectId === projectScopeId);
-}
-
 /** The flat sidebar's two lifecycle sections, each in the order it is drawn. */
 export function partitionSidebarPlans<T extends SidebarPlanFields>(
   plans: readonly T[],
@@ -68,11 +65,6 @@ export function partitionSidebarPlans<T extends SidebarPlanFields>(
   };
 }
 
-export interface PlanCardStatus {
-  readonly slot: "awaiting-input" | "working" | null;
-  readonly unread: boolean;
-}
-
 interface CodingSessionDetailFields {
   readonly branch: string;
   readonly endedAt: string | null;
@@ -80,39 +72,6 @@ interface CodingSessionDetailFields {
 
 export function codingSessionDetailLabel(session: CodingSessionDetailFields): string {
   return `${session.endedAt === null ? "Running" : "Ended"} · ${session.branch}`;
-}
-
-/**
- * The card header carries live state; unseen activity belongs to title weight.
- * They are resolved independently so a working, unread card can say both.
- */
-export function resolvePlanCardStatus(row: PlanRowStatusFields): PlanCardStatus {
-  const status = resolvePlanRowStatus(row);
-  const unread =
-    resolvePlanRowStatus({ ...row, hasPendingInput: false, isWorking: false }) === "unseen";
-  return {
-    slot: status === "awaiting-input" || status === "working" ? status : null,
-    unread,
-  };
-}
-
-export interface ArchivedPlansPage<T> {
-  readonly visible: T[];
-  readonly hiddenCount: number;
-  readonly nextPageCount: number;
-}
-
-/** Page zero is the recent ten; each subsequent page exposes 25 more. */
-export function pageArchivedPlans<T>(plans: readonly T[], page = 0): ArchivedPlansPage<T> {
-  const normalizedPage = Math.max(0, Math.floor(page));
-  const visibleCount = ARCHIVED_PLAN_INITIAL_COUNT + normalizedPage * ARCHIVED_PLAN_PAGE_COUNT;
-  const visible = plans.slice(0, visibleCount);
-  const hiddenCount = plans.length - visible.length;
-  return {
-    visible,
-    hiddenCount,
-    nextPageCount: Math.min(hiddenCount, ARCHIVED_PLAN_PAGE_COUNT),
-  };
 }
 
 /** Jump keys follow active cards exactly as the flat list draws them. */

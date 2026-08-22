@@ -4,12 +4,9 @@ import { planTreeRow } from "../../test/fixtures/plan";
 
 import {
   codingSessionDetailLabel,
-  filterPlansByProjectScope,
   listJumpTargets,
-  pageArchivedPlans,
   partitionSidebarPlans,
   resolveDraftRows,
-  resolvePlanCardStatus,
   resolveSidebarSelection,
 } from "./PlanListSidebar.logic";
 
@@ -48,18 +45,6 @@ const plan = (
     isWorking: overrides.isWorking ?? false,
   });
 
-describe("filterPlansByProjectScope", () => {
-  const plans = [plan("a"), plan("b", { projectId: "project-b" })];
-
-  it("keeps every project in the default scope", () => {
-    expect(filterPlansByProjectScope(plans, null).map((row) => row.planId)).toEqual(["a", "b"]);
-  });
-
-  it("keeps only the selected project's plans", () => {
-    expect(filterPlansByProjectScope(plans, "project-b").map((row) => row.planId)).toEqual(["b"]);
-  });
-});
-
 describe("partitionSidebarPlans", () => {
   it("splits active from archived and applies each section's newest-first order", () => {
     const rows = partitionSidebarPlans(
@@ -91,60 +76,6 @@ describe("partitionSidebarPlans", () => {
 
     expect(rows.active.map((row) => row.planId)).toEqual(["active-b"]);
     expect(rows.archived.map((row) => row.planId)).toEqual(["archived-b"]);
-  });
-});
-
-describe("resolvePlanCardStatus", () => {
-  it("puts working and awaiting-input in the slot using the existing priority", () => {
-    expect(resolvePlanCardStatus(plan("working", { isWorking: true })).slot).toBe("working");
-    expect(
-      resolvePlanCardStatus(plan("asking", { hasPendingInput: true, isWorking: true })).slot,
-    ).toBe("awaiting-input");
-  });
-
-  it("maps unseen activity to title weight, independently of the live slot", () => {
-    const updatedAt = "2026-08-08T00:00:00.000Z";
-    expect(
-      resolvePlanCardStatus(
-        plan("unread-working", {
-          updatedAt,
-          visitedAt: "2026-08-02T00:00:00.000Z",
-          isWorking: true,
-        }),
-      ),
-    ).toEqual({ slot: "working", unread: true });
-    expect(resolvePlanCardStatus(plan("unread", { updatedAt, visitedAt: undefined }))).toEqual({
-      slot: null,
-      unread: true,
-    });
-    expect(resolvePlanCardStatus(plan("quiet"))).toEqual({ slot: null, unread: false });
-  });
-});
-
-describe("pageArchivedPlans", () => {
-  const plans = Array.from({ length: 70 }, (_, index) => ({ planId: `plan-${index}` }));
-
-  it("shows 10 initially, then 25 more per page", () => {
-    expect(pageArchivedPlans(plans, 0)).toMatchObject({
-      visible: plans.slice(0, 10),
-      hiddenCount: 60,
-      nextPageCount: 25,
-    });
-    expect(pageArchivedPlans(plans, 1)).toMatchObject({
-      visible: plans.slice(0, 35),
-      hiddenCount: 35,
-      nextPageCount: 25,
-    });
-    expect(pageArchivedPlans(plans, 2)).toMatchObject({
-      visible: plans.slice(0, 60),
-      hiddenCount: 10,
-      nextPageCount: 10,
-    });
-  });
-
-  it("resets to the first ten when the caller resets the page index", () => {
-    expect(pageArchivedPlans(plans, 2).visible).toHaveLength(60);
-    expect(pageArchivedPlans(plans, 0).visible).toHaveLength(10);
   });
 });
 

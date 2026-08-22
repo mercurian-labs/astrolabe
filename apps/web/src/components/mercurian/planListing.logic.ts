@@ -1,21 +1,18 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
+import type {
+  PlanLifecycleFields,
+  PlanRowStatus,
+} from "@t3tools/client-runtime/state/plan-listing";
 
-/** Structural shapes, not the wire types: these helpers only read listing fields. */
-interface PlanRowFields {
-  readonly planId: string;
-  readonly updatedAt: string;
-}
-
-/** What a plan's lifecycle state is, as any listing of plans reads it. */
-export interface PlanLifecycleFields {
-  readonly archivedAt: string | null;
-  readonly hasPublishedCommits: boolean;
-}
-
-interface ProjectRowFields {
-  readonly projectId: string;
-  readonly createdAt: string;
-}
+export {
+  partitionPlansByLifecycle,
+  resolvePlanRowStatus,
+  sortPlansNewestFirst,
+  sortProjectsForTree,
+  type PlanLifecycleFields,
+  type PlanRowStatus,
+  type PlanRowStatusFields,
+} from "@t3tools/client-runtime/state/plan-listing";
 
 /** Which plan or workspace destination the current route belongs to. */
 export interface TreeSelection {
@@ -61,33 +58,6 @@ export function resolveTreeActivePlanId(
   );
 }
 
-export function sortPlansNewestFirst<T extends Pick<PlanRowFields, "updatedAt" | "planId">>(
-  plans: readonly T[],
-): T[] {
-  return [...plans].sort((left, right) => {
-    if (left.updatedAt === right.updatedAt) {
-      return left.planId.localeCompare(right.planId);
-    }
-    return left.updatedAt < right.updatedAt ? 1 : -1;
-  });
-}
-
-/** Active plans and archived ones, split the one way every surface needs them. */
-export function partitionPlansByLifecycle<T extends Pick<PlanLifecycleFields, "archivedAt">>(
-  plans: readonly T[],
-): { readonly active: T[]; readonly archived: T[] } {
-  const active: T[] = [];
-  const archived: T[] = [];
-  for (const plan of plans) {
-    if (plan.archivedAt === null) {
-      active.push(plan);
-    } else {
-      archived.push(plan);
-    }
-  }
-  return { active, archived };
-}
-
 /** Archive always exists; delete exists only while the plan is fully private. */
 export function resolvePlanRowActions(plan: Pick<PlanLifecycleFields, "hasPublishedCommits">): {
   readonly canArchive: boolean;
@@ -118,39 +88,11 @@ export function resolveAdjacentId<T>(input: {
   return currentIndex < ids.length - 1 ? (ids[currentIndex + 1] ?? null) : null;
 }
 
-/** The three things a plan row can be saying, in priority order. */
-export type PlanRowStatus = "awaiting-input" | "working" | "unseen";
-
 const PLAN_STATUS_PRIORITY: Record<PlanRowStatus, number> = {
   "awaiting-input": 3,
   working: 2,
   unseen: 1,
 };
-
-/** Server facts and visit timestamps used to resolve a plan's presentation status. */
-export interface PlanRowStatusFields {
-  readonly hasPendingInput: boolean;
-  readonly isWorking: boolean;
-  readonly updatedAt: string;
-  readonly visitedAt?: string | undefined;
-}
-
-function hasUnseenActivity(row: PlanRowStatusFields): boolean {
-  const updatedAt = Date.parse(row.updatedAt);
-  if (Number.isNaN(updatedAt)) return false;
-  if (row.visitedAt === undefined) return true;
-  const visitedAt = Date.parse(row.visitedAt);
-  if (Number.isNaN(visitedAt)) return true;
-  return updatedAt > visitedAt;
-}
-
-/** The one status a plan row shows, or nothing at all for a quiet row. */
-export function resolvePlanRowStatus(row: PlanRowStatusFields): PlanRowStatus | null {
-  if (row.hasPendingInput) return "awaiting-input";
-  if (row.isWorking) return "working";
-  if (hasUnseenActivity(row)) return "unseen";
-  return null;
-}
 
 /** The most urgent status among children, retained for future plan rollups. */
 export function resolveRollupStatus(
@@ -186,13 +128,4 @@ export function buildPlanRowMenuItems(
         ]
       : []),
   ];
-}
-
-export function sortProjectsForTree<T extends ProjectRowFields>(projects: readonly T[]): T[] {
-  return [...projects].sort((left, right) => {
-    if (left.createdAt === right.createdAt) {
-      return left.projectId.localeCompare(right.projectId);
-    }
-    return left.createdAt < right.createdAt ? -1 : 1;
-  });
 }
