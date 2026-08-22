@@ -45,10 +45,16 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { forkParked } from "../serverActivation.ts";
+import { CodingSessionStore } from "../mercurian/codingSessions/CodingSessionStore.ts";
+import type { CodingSessionRecord } from "../mercurian/codingSessions/schema.ts";
 
 export class AgentAwarenessRelay extends Context.Service<
   AgentAwarenessRelay,
   {
+    readonly publishState: (
+      threadId: ThreadId,
+      state: RelayAgentActivityState | null,
+    ) => Effect.Effect<void>;
     readonly publishThread: (threadId: ThreadId) => Effect.Effect<void>;
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
   }
@@ -130,6 +136,29 @@ export function sanitizeRelayAgentActivityState(
     .slice(0, RELAY_AGENT_ACTIVITY_DETAIL_MAX_LENGTH)
     .trim();
   return detail ? { ...rest, detail } : rest;
+}
+
+export function applyMercurianSessionAwareness(
+  state: RelayAgentActivityState | null,
+  session: CodingSessionRecord | null,
+  environmentId: EnvironmentId,
+): RelayAgentActivityState | null {
+  if (state === null || session === null) {
+    return state;
+  }
+
+  const sessionState = {
+    ...state,
+    deepLink: `/sessions/${environmentId}/${session.threadId}`,
+  };
+  if (session.endedAt === null || session.outcome === null) {
+    return sessionState;
+  }
+  return {
+    ...sessionState,
+    phase: session.outcome === "failed" ? "failed" : "completed",
+    headline: "Session ended",
+  };
 }
 
 function relayEnvironmentClient(token: string) {
@@ -295,6 +324,7 @@ export const make = Effect.gen(function* () {
   const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
   const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const codingSessionStore = yield* CodingSessionStore;
   const crypto = yield* Crypto.Crypto;
   const cloudLinkKeyPair = yield* getOrCreateEnvironmentKeyPairFromSecretStore(secrets);
   const activeSnapshotPublishedRef = yield* Ref.make(false);
@@ -341,7 +371,9 @@ export const make = Effect.gen(function* () {
   const publishConfirmDeadlines = new Map<ThreadId, number>();
   let schedulePublishConfirm: (threadId: ThreadId) => Effect.Effect<void> = () => Effect.void;
 
-  const publishThreadUnsafe = Effect.fn("publishThreadUnsafe")(function* (threadId: ThreadId) {
+  const preparePublish = Effect.fn("AgentAwarenessRelay.preparePublish")(function* (
+    threadId: ThreadId,
+  ) {
     const publishAgentActivity = yield* readPublishAgentActivityEnabled.pipe(
       Effect.orElseSucceed(() => false),
     );
@@ -349,71 +381,119 @@ export const make = Effect.gen(function* () {
       yield* Effect.logDebug("agent activity publish skipped; publication disabled", {
         threadId,
       });
-      return;
+      return null;
     }
     const relayConfig = yield* readRelayConfig.pipe(Effect.orElseSucceed(() => null));
     if (!relayConfig) {
       yield* Effect.logDebug("agent activity publish skipped; relay link credentials unavailable", {
         threadId,
       });
+      return null;
+    }
+    const environmentId = yield* serverEnvironment.getEnvironmentId;
+    const relayClient = yield* makeRelayClient(relayConfig);
+    return { environmentId, relayClient, relayConfig };
+  });
+
+  const publishPreparedState = Effect.fn("AgentAwarenessRelay.publishPreparedState")(function* (
+    threadId: ThreadId,
+    state: RelayAgentActivityState | null,
+    context: NonNullable<Effect.Success<ReturnType<typeof preparePublish>>>,
+    metadata: {
+      readonly projectId: string | null;
+      readonly reason: string;
+    },
+  ) {
+    const publishIdentity = agentAwarenessPublishIdentity(state);
+    const publishedStateByThread = yield* Ref.get(publishedStateByThreadRef);
+    if (publishedStateByThread.get(threadId) === publishIdentity) {
+      yield* Effect.logDebug("agent activity publish skipped; projected state unchanged", {
+        environmentId: context.environmentId,
+        threadId,
+        reason: metadata.reason,
+      });
       return;
     }
-    const relayClient = yield* makeRelayClient(relayConfig);
-    const environmentId = yield* serverEnvironment.getEnvironmentId;
 
-    const publishState = (input: {
-      readonly projectId: string | null;
-      readonly state: RelayAgentActivityState | null;
-      readonly reason: string;
-    }) =>
-      Effect.gen(function* () {
-        const proof = yield* makePublishProof({
-          privateKey: cloudLinkKeyPair.privateKey,
-          relayIssuer: relayConfig.issuer,
-          environmentId,
-          threadId,
-          state: input.state,
-          jti: yield* crypto.randomUUIDv4,
-        });
+    const proof = yield* makePublishProof({
+      privateKey: cloudLinkKeyPair.privateKey,
+      relayIssuer: context.relayConfig.issuer,
+      environmentId: context.environmentId,
+      threadId,
+      state,
+      jti: yield* crypto.randomUUIDv4,
+    });
 
-        yield* Effect.logInfo("publishing agent activity for thread", {
-          environmentId,
-          threadId,
-          projectId: input.projectId,
-          statePhase: input.state?.phase ?? null,
-          hasState: input.state !== null,
-          reason: input.reason,
-        });
+    yield* Effect.logInfo("publishing agent activity for thread", {
+      environmentId: context.environmentId,
+      threadId,
+      projectId: metadata.projectId,
+      statePhase: state?.phase ?? null,
+      hasState: state !== null,
+      reason: metadata.reason,
+    });
 
-        const response = yield* relayClient.server.publishAgentActivity({
-          params: {
-            environmentId,
-            threadId,
-          },
-          payload: {
-            state: input.state,
-            proof,
-          },
-        });
+    const response = yield* context.relayClient.server.publishAgentActivity({
+      params: {
+        environmentId: context.environmentId,
+        threadId,
+      },
+      payload: {
+        state,
+        proof,
+      },
+    });
 
-        yield* Effect.logInfo("agent activity publish completed", {
-          environmentId,
-          threadId,
-          ok: response.ok,
-          deliveries: deliveryStats(response.deliveries),
-        });
-      });
+    yield* Effect.logInfo("agent activity publish completed", {
+      environmentId: context.environmentId,
+      threadId,
+      ok: response.ok,
+      deliveries: deliveryStats(response.deliveries),
+    });
+    yield* Ref.update(publishedStateByThreadRef, (publishedStates) => {
+      const nextPublishedStates = new Map(publishedStates);
+      nextPublishedStates.set(threadId, publishIdentity);
+      return nextPublishedStates;
+    });
+  });
+
+  const publishStateUnsafe = Effect.fn("publishStateUnsafe")(function* (
+    threadId: ThreadId,
+    state: RelayAgentActivityState | null,
+  ) {
+    const context = yield* preparePublish(threadId);
+    if (context === null) return;
+    yield* publishPreparedState(threadId, sanitizeRelayAgentActivityState(state), context, {
+      projectId: null,
+      reason: "external-state",
+    });
+  });
+
+  const publishThreadUnsafe = Effect.fn("publishThreadUnsafe")(function* (threadId: ThreadId) {
+    const context = yield* preparePublish(threadId);
+    if (context === null) return;
 
     const thread = yield* snapshotQuery.getThreadShellById(threadId);
     const project = Option.isSome(thread)
       ? yield* snapshotQuery.getProjectShellById(thread.value.projectId)
       : Option.none<OrchestrationProjectShell>();
-    const snapshot = resolveAgentAwarenessRelayPublishSnapshot({
-      environmentId,
+    const resolvedSnapshot = resolveAgentAwarenessRelayPublishSnapshot({
+      environmentId: context.environmentId,
       threadId,
       thread,
       project,
     });
+    const session = yield* codingSessionStore.getByThreadId(threadId);
+    const snapshot = {
+      ...resolvedSnapshot,
+      state: sanitizeRelayAgentActivityState(
+        applyMercurianSessionAwareness(
+          resolvedSnapshot.state,
+          Option.getOrNull(session),
+          context.environmentId,
+        ),
+      ),
+    };
     const publishIdentity = agentAwarenessPublishIdentity(snapshot.state);
     const publishedStateByThread = yield* Ref.get(publishedStateByThreadRef);
     if (publishedStateByThread.get(threadId) === publishIdentity) {
@@ -423,7 +503,7 @@ export const make = Effect.gen(function* () {
       // and publish a tombstone immediately, skipping the deferral window.
       publishConfirmDeadlines.delete(threadId);
       yield* Effect.logDebug("agent activity publish skipped; projected state unchanged", {
-        environmentId,
+        environmentId: context.environmentId,
         threadId,
         reason: snapshot.reason,
       });
@@ -450,7 +530,7 @@ export const make = Effect.gen(function* () {
       if (deadline === undefined) {
         publishConfirmDeadlines.set(threadId, nowMs + 5_000);
         yield* Effect.logInfo("agent activity publish deferred pending confirmation", {
-          environmentId,
+          environmentId: context.environmentId,
           threadId,
           reason: snapshot.reason,
           statePhase: snapshot.state?.phase ?? null,
@@ -464,7 +544,7 @@ export const make = Effect.gen(function* () {
       }
       publishConfirmDeadlines.delete(threadId);
       yield* Effect.logInfo("agent activity deferred publish confirmed", {
-        environmentId,
+        environmentId: context.environmentId,
         threadId,
         reason: snapshot.reason,
         statePhase: snapshot.state?.phase ?? null,
@@ -476,28 +556,34 @@ export const make = Effect.gen(function* () {
 
     if (snapshot.reason === "thread-not-found") {
       yield* Effect.logDebug("publishing agent activity tombstone; thread not found", {
-        environmentId,
+        environmentId: context.environmentId,
         threadId,
       });
     } else if (snapshot.reason === "project-not-found") {
       yield* Effect.logDebug("publishing agent activity tombstone; project not found", {
-        environmentId,
+        environmentId: context.environmentId,
         threadId,
         projectId: snapshot.projectId,
       });
     }
 
-    yield* publishState({
+    yield* publishPreparedState(threadId, snapshot.state, context, {
       projectId: snapshot.projectId,
-      state: snapshot.state,
       reason: snapshot.reason,
     });
-    yield* Ref.update(publishedStateByThreadRef, (publishedStates) => {
-      const nextPublishedStates = new Map(publishedStates);
-      nextPublishedStates.set(threadId, publishIdentity);
-      return nextPublishedStates;
-    });
   });
+
+  const publishState: AgentAwarenessRelay["Service"]["publishState"] = (threadId, state) =>
+    publishStateUnsafe(threadId, state).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("agent activity state publish failed", {
+          threadId,
+          cause: Cause.pretty(cause),
+        }),
+      ),
+      Effect.withSpan("AgentAwarenessRelay.publishState"),
+      withRelayClientTracing,
+    );
 
   const publishThread: AgentAwarenessRelay["Service"]["publishThread"] = (threadId) =>
     publishThreadUnsafe(threadId).pipe(
@@ -632,6 +718,7 @@ export const make = Effect.gen(function* () {
   );
 
   return AgentAwarenessRelay.of({
+    publishState,
     publishThread,
     start,
   });

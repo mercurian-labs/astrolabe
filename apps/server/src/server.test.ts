@@ -1043,7 +1043,7 @@ const buildAppUnderTest = (options?: {
           tryImplement: () => Effect.void,
           stopTurn: () => Effect.void,
           answerQuestion: () => Effect.void,
-          status: Effect.succeed(new Map()),
+          status: Effect.succeed(new Map<PlanId, PlanningAssistant.PlanTurnStatus>()),
           changes: Stream.empty,
           frames: () => Stream.empty,
           inFlightTurns: () => Effect.succeed([]),

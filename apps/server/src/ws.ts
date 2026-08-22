@@ -115,6 +115,7 @@ import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionSto
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import { toWireCodingSessionRecord } from "./mercurian/codingSessions/wire.ts";
 import {
+  type PlanRowStatus,
   toWirePlanCommitEvent,
   composePlanRowStatus,
   toWirePlanDetail,
@@ -1182,7 +1183,15 @@ const makeWsRpcLayer = (
                 ),
               ),
         );
-        const composedStatus = new Map(status);
+        const composedStatus = new Map<PlanId, PlanRowStatus>(
+          [...status].map(([planId, planStatus]) => [
+            planId,
+            {
+              isWorking: planStatus.isWorking,
+              hasPendingInput: planStatus.hasPendingInput,
+            },
+          ]),
+        );
         const byPlan = new Map<PlanId, Array<ReturnType<typeof toWireCodingSessionRecord>>>();
         const liveStatusByPlan = new Map<
           PlanId,

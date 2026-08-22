@@ -16,11 +16,20 @@ import type {
   RelayAgentActivityPublishProofPayload,
   RelayAgentActivityState,
 } from "@t3tools/contracts/relay";
-import { CommandId, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  CommandId,
+  MercurianCommitId,
+  MercurianRepositoryId,
+  PlanId,
+  ProviderInstanceId,
+  ThreadId as ThreadIdSchema,
+  TrimmedNonEmptyString,
+} from "@t3tools/contracts";
 import { RelayClientTracer } from "@t3tools/shared/relayTracing";
 import { RELAY_ACTIVITY_PUBLISH_TYP, verifyRelayJwt } from "@t3tools/shared/relayJwt";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -30,6 +39,8 @@ import * as Tracer from "effect/Tracer";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import { CodingSessionStore } from "../mercurian/codingSessions/CodingSessionStore.ts";
+import type { CodingSessionRecord } from "../mercurian/codingSessions/schema.ts";
 import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
@@ -95,6 +106,24 @@ function makeMemorySecretStore() {
     store,
     setString: (name: string, value: string) => store.set(name, encodeSecret(value)),
   };
+}
+
+function codingSessionStoreLayer(
+  getByThreadId: CodingSessionStore["Service"]["getByThreadId"] = () =>
+    Effect.succeed(Option.none()),
+) {
+  return Layer.mock(CodingSessionStore)({
+    record: () => Effect.void,
+    recordInTransaction: () => Effect.void,
+    announce: () => Effect.void,
+    listForPlan: () => Effect.succeed([]),
+    listAll: Effect.succeed([]),
+    getByThreadId,
+    updateBranch: () => Effect.void,
+    end: () => Effect.void,
+    attachPullRequest: () => Effect.void,
+    changes: Stream.empty,
+  });
 }
 
 describe.sequential("signRelayAgentActivityPublishProof", () => {
@@ -242,6 +271,55 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
         detail: "x".repeat(200),
       })?.detail,
     ).toHaveLength(160);
+  });
+
+  it("rewrites coding-session links and makes ended outcomes terminal", () => {
+    const environmentId = "env-1" as EnvironmentId;
+    const threadId = ThreadIdSchema.make("session-thread");
+    const session = {
+      commitId: MercurianCommitId.make("commit-1"),
+      planId: PlanId.make("plan-1"),
+      repositoryId: MercurianRepositoryId.make("repository-1"),
+      threadId,
+      branch: TrimmedNonEmptyString.make("main"),
+      worktreePath: TrimmedNonEmptyString.make("/workspace"),
+      baseRef: TrimmedNonEmptyString.make("main"),
+      startedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+      endedAt: null,
+      outcome: null,
+      prUrl: null,
+    } satisfies CodingSessionRecord;
+
+    expect(
+      AgentAwarenessRelay.applyMercurianSessionAwareness(state, session, environmentId),
+    ).toMatchObject({ deepLink: "/sessions/env-1/session-thread", phase: "running" });
+    expect(
+      AgentAwarenessRelay.applyMercurianSessionAwareness(
+        state,
+        {
+          ...session,
+          endedAt: DateTime.makeUnsafe("2026-08-20T13:00:00.000Z"),
+          outcome: "failed",
+        },
+        environmentId,
+      ),
+    ).toMatchObject({ phase: "failed", headline: "Session ended" });
+    for (const outcome of ["completed", "stopped"] as const) {
+      expect(
+        AgentAwarenessRelay.applyMercurianSessionAwareness(
+          state,
+          {
+            ...session,
+            endedAt: DateTime.makeUnsafe("2026-08-20T13:00:00.000Z"),
+            outcome,
+          },
+          environmentId,
+        ),
+      ).toMatchObject({ phase: "completed", headline: "Session ended" });
+    }
+    expect(AgentAwarenessRelay.applyMercurianSessionAwareness(state, null, environmentId)).toEqual(
+      state,
+    );
   });
 
   it("resolves a null publish state when a thread or project snapshot disappeared", () => {
@@ -514,6 +592,7 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
           }),
           Layer.succeed(OrchestrationEngineService, orchestrationEngine),
           Layer.succeed(ProjectionSnapshotQuery, snapshotQuery),
+          codingSessionStoreLayer(),
         );
 
         yield* Effect.gen(function* () {
@@ -552,14 +631,18 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
     ),
   );
 
-  it.effect("publishes agent activity to the relay transport URL, not the relay issuer", () =>
+  it.effect("publishState shares the opted-in, deduplicated relay transport core", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const originalFetch = globalThis.fetch;
         const context = yield* Effect.context<never>();
         const runFork = Effect.runForkWith(context);
         const events = yield* Queue.unbounded<OrchestrationEvent>();
-        const fetchSeen = yield* Deferred.make<URL>();
+        const threadFetchSeen = yield* Deferred.make<URL>();
+        const requests: Array<{
+          readonly url: URL;
+          readonly readBody: () => Promise<{ readonly state: unknown }>;
+        }> = [];
         const userSpans: Array<string> = [];
         const productSpans: Array<string> = [];
         const collectingTracer = (spans: Array<string>) =>
@@ -641,13 +724,32 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
           },
         } satisfies ExecutionEnvironmentDescriptor;
 
-        globalThis.fetch = ((input: Parameters<typeof fetch>[0]) => {
+        globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
           const url = new URL(
             typeof input === "string" || input instanceof URL
               ? input
               : (input as unknown as { readonly url: string }).url,
           );
-          runFork(Deferred.succeed(fetchSeen, url));
+          const readBody = () => {
+            if (typeof input === "object" && input !== null && "clone" in input) {
+              const request = input as unknown as {
+                clone: () => { readonly json: () => Promise<{ readonly state: unknown }> };
+              };
+              return request.clone().json();
+            }
+            const body = init?.body;
+            const text =
+              typeof body === "string"
+                ? body
+                : ArrayBuffer.isView(body)
+                  ? new TextDecoder().decode(body)
+                  : "";
+            return Promise.resolve(JSON.parse(text) as { readonly state: unknown });
+          };
+          requests.push({ url, readBody });
+          if (url.pathname.includes(String(threadId))) {
+            runFork(Deferred.succeed(threadFetchSeen, url));
+          }
           return Promise.resolve(Response.json({ ok: true, deliveries: [] }));
         }) as unknown as typeof fetch;
         yield* Effect.addFinalizer(() =>
@@ -679,14 +781,36 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
             getThreadShellById: () => Effect.succeed(Option.some(thread)),
             getProjectShellById: () => Effect.succeed(Option.some(project)),
           } as unknown as ProjectionSnapshotQueryShape),
+          codingSessionStoreLayer(),
         );
 
         yield* Effect.gen(function* () {
           const relay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
+          const externalThreadId = ThreadIdSchema.make("mercurian:plan:plan-1");
+          const externalState = {
+            ...state,
+            environmentId,
+            threadId: externalThreadId,
+          };
+          yield* relay.publishState(externalThreadId, externalState);
+          expect(requests).toHaveLength(0);
+
           yield* secrets.setString(RELAY_URL_SECRET, "https://transport.example.test");
           yield* secrets.setString(RELAY_ISSUER_SECRET, "https://issuer.example.test");
           yield* secrets.setString(RELAY_ENVIRONMENT_CREDENTIAL_SECRET, "relay-credential");
           yield* secrets.setString(PUBLISH_AGENT_ACTIVITY_SECRET, "true");
+          yield* relay.publishState(externalThreadId, externalState);
+          yield* relay.publishState(externalThreadId, {
+            ...externalState,
+            updatedAt: "2026-08-20T13:00:00Z",
+          });
+          yield* relay.publishState(externalThreadId, null);
+          expect(requests).toHaveLength(2);
+          const externalPayloads = yield* Effect.forEach(requests, ({ readBody }) =>
+            Effect.promise(readBody),
+          );
+          expect(externalPayloads.map((payload) => payload.state)).toEqual([externalState, null]);
+
           yield* relay.start();
           yield* Queue.offer(events, {
             type: "thread.activity-appended",
@@ -705,8 +829,9 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
             occurredAt: now,
           } as unknown as OrchestrationEvent);
 
-          const url = yield* Deferred.await(fetchSeen).pipe(Effect.timeout("2 seconds"));
+          const url = yield* Deferred.await(threadFetchSeen).pipe(Effect.timeout("2 seconds"));
           expect(url.origin).toBe("https://transport.example.test");
+          expect(requests).toHaveLength(3);
           expect(productSpans).toContain("makePublishProof");
           expect(userSpans).not.toContain("makePublishProof");
         }).pipe(
