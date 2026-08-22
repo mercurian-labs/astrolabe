@@ -113,17 +113,10 @@ describe("mobile implement sheet state", () => {
     ).toEqual(["server", "web"]);
   });
 
-  it("builds ready draft input from the proposal parent and repository", () => {
-    expect(
-      sessionDraftParams("plan", commitId("ready"), {
-        repositoryId: serverId,
-        repositoryName: "server",
-      }),
-    ).toEqual({
+  it("builds the stable draft route identity from plan and parent", () => {
+    expect(sessionDraftParams("plan", commitId("ready"))).toEqual({
       planId: "plan",
       parentCommitId: "ready",
-      repositoryId: "server",
-      repositoryName: "server",
     });
   });
 });

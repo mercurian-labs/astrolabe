@@ -3,6 +3,7 @@ import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import type { PendingApproval } from "../../lib/threadActivity";
+import { useCodingSessionScreen } from "../plans/SessionScreenContext";
 
 export interface PendingApprovalCardProps {
   readonly approval: PendingApproval;
@@ -14,6 +15,7 @@ export interface PendingApprovalCardProps {
 }
 
 export function PendingApprovalCard(props: PendingApprovalCardProps) {
+  const codingSessionScreen = useCodingSessionScreen();
   // Opaque for the same reason as PendingUserInputCard: nothing blurs the feed
   // behind this card, so a translucent surface bleeds messages through it.
   return (
@@ -53,6 +55,17 @@ export function PendingApprovalCard(props: PendingApprovalCardProps) {
         >
           <Text className="font-t3-bold text-sm text-rose-700 dark:text-rose-300">Decline</Text>
         </Pressable>
+        {codingSessionScreen === null ? null : (
+          <Pressable
+            className="items-center justify-center rounded-[14px] bg-rose-100 px-3.5 py-3 dark:bg-rose-500/18"
+            disabled={props.respondingApprovalId === props.approval.requestId}
+            onPress={() => void props.onRespond(props.approval.requestId, "cancel")}
+          >
+            <Text className="font-t3-bold text-sm text-rose-700 dark:text-rose-300">
+              Cancel turn
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );

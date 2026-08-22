@@ -11,7 +11,7 @@ describe("parseActiveThreadPath", () => {
   });
 
   it("decodes route components", () => {
-    expect(parseActiveThreadPath("/threads/local%20machine/thread%2Fone/review")).toEqual({
+    expect(parseActiveThreadPath("/sessions/local%20machine/thread%2Fone")).toEqual({
       environmentId: "local machine",
       threadId: "thread/one",
     });

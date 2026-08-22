@@ -1,18 +1,17 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { StackActions, type StaticScreenProps, useNavigation } from "@react-navigation/native";
+import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
 import {
   CODING_SESSION_RUNTIME_MODES,
   localBranchOptions,
   seedBaseRef,
   startCodingSessionPayload,
-  type CodingSessionDraft,
 } from "@t3tools/client-runtime/state/coding-session-draft";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { EnvironmentId, MercurianRepositoryId, PlanId } from "@t3tools/contracts";
+import { EnvironmentId, MercurianCommitId, PlanId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Switch, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Platform, Pressable, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidSheetHeader } from "../../components/AndroidScreenHeader";
@@ -22,7 +21,7 @@ import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironmentServerConfig } from "../../state/entities";
-import { mercurianPlanning, useMercurianRepositories } from "../../state/mercurian";
+import { mercurianPlanning, useMercurianRepositories, usePlanDetail } from "../../state/mercurian";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { useBranches } from "../../state/queries";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -31,13 +30,18 @@ import {
   codingSessionStartDisabledReason,
   seedSessionModelSelection,
 } from "./codingSessionDraftSheet.logic";
+import {
+  clearMobileCodingSessionDraft,
+  openMobileCodingSessionDraft,
+  updateMobileCodingSessionDraft,
+  useMobileCodingSessionDraft,
+} from "./codingSessionDraft";
+import { navigateToCodingSession } from "./sessionNavigation";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;
   readonly planId: string;
   readonly parentCommitId: string;
-  readonly repositoryId: string;
-  readonly repositoryName: string;
 }>;
 
 export function CodingSessionDraftSheet({ route }: Props) {
@@ -47,10 +51,12 @@ export function CodingSessionDraftSheet({ route }: Props) {
   const track = String(useThemeColor("--color-secondary-border"));
   const environmentId = EnvironmentId.make(route.params.environmentId);
   const planId = PlanId.make(route.params.planId);
-  const repositoryId = MercurianRepositoryId.make(route.params.repositoryId);
+  const parentCommitId = MercurianCommitId.make(route.params.parentCommitId);
+  const plan = usePlanDetail(environmentId, planId);
+  const ready = plan.readyCommits.get(parentCommitId) ?? null;
   const repositories = useMercurianRepositories(environmentId);
   const repository = repositories.snapshot.repositories.find(
-    (candidate) => candidate.repositoryId === repositoryId,
+    (candidate) => candidate.repositoryId === ready?.repositoryId,
   );
   const branches = useBranches({ environmentId, cwd: repository?.path ?? null });
   const refs = useMemo(() => localBranchOptions(branches.data?.refs ?? []), [branches.data?.refs]);
@@ -60,41 +66,72 @@ export function CodingSessionDraftSheet({ route }: Props) {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const modelOptions = useMemo(() => buildModelOptions(config, null), [config]);
   const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  const [baseRef, setBaseRef] = useState("");
-  const [startFromOrigin, setStartFromOrigin] = useState(
-    () => config?.settings.newWorktreesStartFromOrigin ?? true,
+  const draft = useMobileCodingSessionDraft(String(planId), String(parentCommitId));
+  const seededBaseRef = useMemo(() => seedBaseRef(refs), [refs]);
+  const seededModelSelection = useMemo(
+    () => seedSessionModelSelection(modelOptions, preferences?.codingSessionModelSelection),
+    [modelOptions, preferences?.codingSessionModelSelection],
   );
-  const originSeededRef = useRef(config !== null);
-  const [runtimeMode, setRuntimeMode] = useState<CodingSessionDraft["runtimeMode"]>("full-access");
-  const [modelSelection, setModelSelection] = useState(() =>
-    seedSessionModelSelection(modelOptions, preferences?.codingSessionModelSelection),
-  );
+  const baseRef = draft?.baseRef ?? seededBaseRef;
+  const startFromOrigin =
+    draft?.startFromOrigin ?? config?.settings.newWorktreesStartFromOrigin ?? true;
+  const runtimeMode = draft?.runtimeMode ?? "full-access";
+  const modelSelection = draft?.modelSelection ?? seededModelSelection;
   const [starting, setStarting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const start = useAtomCommand(mercurianPlanning.startCodingSession, { reportFailure: false });
 
   useEffect(() => {
-    if (baseRef.length === 0 && refs.length > 0) setBaseRef(seedBaseRef(refs));
-  }, [baseRef.length, refs]);
+    if (
+      draft !== null ||
+      ready === null ||
+      seededBaseRef.length === 0 ||
+      seededModelSelection === null ||
+      config === null ||
+      preferences === null
+    ) {
+      return;
+    }
+    openMobileCodingSessionDraft(
+      buildMobileCodingSessionDraft({
+        planId: String(planId),
+        parentCommitId: String(parentCommitId),
+        repositoryId: String(ready.repositoryId),
+        repositoryName: ready.repositoryName,
+        baseRef: seededBaseRef,
+        startFromOrigin: config.settings.newWorktreesStartFromOrigin,
+        runtimeMode: "full-access",
+        modelSelection: seededModelSelection,
+      }),
+    );
+  }, [
+    config,
+    draft,
+    parentCommitId,
+    planId,
+    preferences,
+    ready,
+    seededBaseRef,
+    seededModelSelection,
+  ]);
   useEffect(() => {
-    if (config === null || originSeededRef.current) return;
-    originSeededRef.current = true;
-    setStartFromOrigin(config.settings.newWorktreesStartFromOrigin);
-  }, [config]);
-  useEffect(() => {
+    if (draft === null) return;
     const selectedAvailable = modelOptions.some(
       (option) =>
-        option.selection.instanceId === modelSelection?.instanceId &&
-        option.selection.model === modelSelection.model,
+        option.selection.instanceId === draft.modelSelection.instanceId &&
+        option.selection.model === draft.modelSelection.model,
     );
-    if (!selectedAvailable) {
-      setModelSelection(
-        seedSessionModelSelection(modelOptions, preferences?.codingSessionModelSelection),
-      );
+    if (!selectedAvailable && seededModelSelection !== null) {
+      updateMobileCodingSessionDraft(String(planId), String(parentCommitId), {
+        modelSelection: seededModelSelection,
+      });
     }
-  }, [modelOptions, modelSelection, preferences?.codingSessionModelSelection]);
+  }, [draft, modelOptions, parentCommitId, planId, seededModelSelection]);
 
-  const disabledReason = codingSessionStartDisabledReason({ baseRef, modelSelection, starting });
+  const disabledReason =
+    ready === null
+      ? "This checkpoint is no longer ready to implement."
+      : codingSessionStartDisabledReason({ baseRef, modelSelection, starting });
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -113,7 +150,7 @@ export function CodingSessionDraftSheet({ route }: Props) {
       >
         <View className="rounded-2xl border border-border bg-card p-4">
           <Text className="text-base font-t3-bold text-foreground">
-            {route.params.repositoryName}
+            {ready?.repositoryName ?? "Repository unavailable"}
           </Text>
           <Text className="mt-1 text-xs text-foreground-muted">
             Implements commit {route.params.parentCommitId.slice(0, 8)}
@@ -132,7 +169,11 @@ export function CodingSessionDraftSheet({ route }: Props) {
               key={ref.name}
               label={ref.name}
               selected={baseRef === ref.name}
-              onPress={() => setBaseRef(ref.name)}
+              onPress={() =>
+                updateMobileCodingSessionDraft(String(planId), String(parentCommitId), {
+                  baseRef: ref.name,
+                })
+              }
             />
           ))}
         </DraftSection>
@@ -145,7 +186,11 @@ export function CodingSessionDraftSheet({ route }: Props) {
             ios_backgroundColor={track}
             trackColor={{ false: track, true: activeTrack }}
             value={startFromOrigin}
-            onValueChange={setStartFromOrigin}
+            onValueChange={(value) =>
+              updateMobileCodingSessionDraft(String(planId), String(parentCommitId), {
+                startFromOrigin: value,
+              })
+            }
           />
         </View>
 
@@ -155,7 +200,11 @@ export function CodingSessionDraftSheet({ route }: Props) {
               key={mode.value}
               label={mode.label}
               selected={runtimeMode === mode.value}
-              onPress={() => setRuntimeMode(mode.value)}
+              onPress={() =>
+                updateMobileCodingSessionDraft(String(planId), String(parentCommitId), {
+                  runtimeMode: mode.value,
+                })
+              }
             />
           ))}
         </DraftSection>
@@ -174,7 +223,11 @@ export function CodingSessionDraftSheet({ route }: Props) {
                     modelSelection?.instanceId === model.selection.instanceId &&
                     modelSelection.model === model.selection.model
                   }
-                  onPress={() => setModelSelection(model.selection)}
+                  onPress={() =>
+                    updateMobileCodingSessionDraft(String(planId), String(parentCommitId), {
+                      modelSelection: model.selection,
+                    })
+                  }
                 />
               ))}
             </View>
@@ -198,35 +251,40 @@ export function CodingSessionDraftSheet({ route }: Props) {
             disabledReason === null ? "bg-primary" : "bg-subtle-strong",
           )}
           onPress={async () => {
-            if (modelSelection === null || disabledReason !== null) return;
+            if (modelSelection === null || disabledReason !== null || ready === null) return;
             setFailure(null);
             setStarting(true);
-            const draft = buildMobileCodingSessionDraft({
-              planId: String(planId),
-              parentCommitId: route.params.parentCommitId,
-              repositoryId: String(repositoryId),
-              repositoryName: route.params.repositoryName,
-              baseRef,
-              startFromOrigin,
-              runtimeMode,
-              modelSelection,
+            const startingDraft =
+              draft ??
+              buildMobileCodingSessionDraft({
+                planId: String(planId),
+                parentCommitId: String(parentCommitId),
+                repositoryId: String(ready.repositoryId),
+                repositoryName: ready.repositoryName,
+                baseRef,
+                startFromOrigin,
+                runtimeMode,
+                modelSelection,
+              });
+            const result = await start({
+              environmentId,
+              input: startCodingSessionPayload(startingDraft),
             });
-            const result = await start({ environmentId, input: startCodingSessionPayload(draft) });
             setStarting(false);
             if (result._tag === "Failure") {
               const error = squashAtomCommandFailure(result);
-              setFailure(
-                error instanceof Error ? error.message : "The coding session could not be started.",
-              );
+              const message =
+                error instanceof Error ? error.message : "The coding session could not be started.";
+              setFailure(message);
+              Alert.alert("Could not start coding session", message);
               return;
             }
             void savePreferences({ codingSessionModelSelection: modelSelection });
-            // Interim M-151 seam: the session view will replace this existing Thread destination.
-            navigation.dispatch(
-              StackActions.replace("Thread", {
-                environmentId: String(environmentId),
-                threadId: String(result.value.threadId),
-              }),
+            clearMobileCodingSessionDraft(String(planId), String(parentCommitId));
+            navigateToCodingSession(
+              navigation,
+              { environmentId, threadId: result.value.threadId },
+              { replace: true },
             );
           }}
         >

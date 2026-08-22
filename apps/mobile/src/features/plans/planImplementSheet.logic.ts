@@ -57,15 +57,9 @@ export function landedPlansFromConfirmation(
   });
 }
 
-export function sessionDraftParams(
-  planId: string,
-  parentCommitId: MercurianCommitId,
-  repository: { readonly repositoryId: string; readonly repositoryName: string },
-) {
+export function sessionDraftParams(planId: string, parentCommitId: MercurianCommitId) {
   return {
     planId,
     parentCommitId: String(parentCommitId),
-    repositoryId: String(repository.repositoryId),
-    repositoryName: repository.repositoryName,
   } as const;
 }

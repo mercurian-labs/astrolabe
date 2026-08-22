@@ -17,7 +17,7 @@ const commit = (name: string, sequence: number, parents: string[]): PlanTimeline
 });
 
 describe("checkpoint sheet acts", () => {
-  it("renders implement as available and excludes edit and session destinations", () => {
+  it("renders implement and the now-addressable session destination", () => {
     expect(
       checkpointSheetActions(["continue", "edit-and-branch", "implement", "open-session"], {
         status: "available",
@@ -29,6 +29,7 @@ describe("checkpoint sheet acts", () => {
         label: "Implement from here",
         disabled: false,
       },
+      { key: "open-session", label: "Open session", disabled: false },
     ]);
   });
 
@@ -38,7 +39,7 @@ describe("checkpoint sheet acts", () => {
         status: "unavailable",
         reason: "Later",
       }).map((act) => act.key),
-    ).toEqual(["continue"]);
+    ).toEqual(["continue", "open-session"]);
   });
 
   it("wires Go here through the shared position-after-pick semantics", () => {

@@ -32,6 +32,8 @@ import { applyProviderOptionSelection, providerOptionValueLabels } from "../../l
 import { useThemeColor } from "../../lib/useThemeColor";
 import { pendingModelAfterPress } from "./thread-settings-sheet-state";
 import type { ThreadSettingsSheetCloseReason } from "./use-thread-settings-sheet-presentation";
+import { useCodingSessionScreen } from "../plans/SessionScreenContext";
+import { codingSessionRuntimeModeChoices } from "../plans/sessionSettings.logic";
 
 /**
  * The everyday harnesses stay expanded; every other provider (OpenRouter
@@ -66,6 +68,7 @@ const RUNTIME_MODE_CHOICES: ReadonlyArray<{
  */
 export function threadSettingsSummaryLabel(input: {
   readonly modelLabel: string;
+  readonly providerLabel?: string;
   readonly optionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
@@ -73,6 +76,7 @@ export function threadSettingsSummaryLabel(input: {
   const runtime = RUNTIME_MODE_CHOICES.find((choice) => choice.mode === input.runtimeMode);
   return [
     input.modelLabel,
+    ...(input.providerLabel === undefined ? [] : [input.providerLabel]),
     ...providerOptionValueLabels(input.optionDescriptors),
     ...(runtime ? [runtime.shortLabel] : []),
     ...(input.interactionMode === "plan" ? ["Plan"] : []),
@@ -313,6 +317,7 @@ export function ThreadSettingsSheet(props: {
   readonly runtimeMode: RuntimeMode;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
 }) {
+  const codingSessionScreen = useCodingSessionScreen();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [showLegacyToggle, setShowLegacyToggle] = useState(false);
@@ -442,12 +447,17 @@ export function ThreadSettingsSheet(props: {
           (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
         )
       : undefined;
+  const runtimeModeChoices = codingSessionRuntimeModeChoices(
+    RUNTIME_MODE_CHOICES,
+    props.runtimeMode,
+    codingSessionScreen !== null,
+  );
 
   const submenuContent =
     submenu?.kind === "runtime"
       ? {
           title: "Runtime",
-          rows: RUNTIME_MODE_CHOICES.map((choice) => ({
+          rows: runtimeModeChoices.map((choice) => ({
             id: choice.mode,
             label: choice.label,
             selected: choice.mode === props.runtimeMode,
@@ -616,9 +626,7 @@ export function ThreadSettingsSheet(props: {
             })}
             <DisclosureRow
               label="Runtime"
-              value={
-                RUNTIME_MODE_CHOICES.find((choice) => choice.mode === props.runtimeMode)?.label
-              }
+              value={runtimeModeChoices.find((choice) => choice.mode === props.runtimeMode)?.label}
               onPress={() => setSubmenu({ kind: "runtime" })}
             />
             <Pressable

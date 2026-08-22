@@ -75,6 +75,7 @@ import {
   ThreadInspectorContentStack,
   type ThreadInspectorMode,
 } from "./thread-inspector-content-stack";
+import { useCodingSessionScreen } from "../plans/SessionScreenContext";
 
 interface ThreadInspectorSelection {
   readonly routeThreadIdentity: string | null;
@@ -180,6 +181,7 @@ function ThreadRouteContent(
     readonly selectedThreadDetailState: ReturnType<typeof useSelectedThreadDetailState>;
   },
 ) {
+  const codingSessionScreen = useCodingSessionScreen();
   const {
     fileInspector,
     layout,
@@ -299,7 +301,7 @@ function ThreadRouteContent(
   /* ─── Native header theming ──────────────────────────────────────── */
   const usesNativeHeaderGlass = NATIVE_LIQUID_GLASS_SUPPORTED;
   const headerSubtitle = [
-    selectedThreadProject?.title ?? null,
+    codingSessionScreen?.planTitle ?? selectedThreadProject?.title ?? null,
     selectedEnvironmentConnection?.environmentLabel ?? null,
   ]
     .filter(Boolean)
@@ -668,15 +670,25 @@ function ThreadRouteContent(
         onPress: togglePrimarySidebar,
         type: "button" as const,
       }),
-      withNativeGlassHeaderItem({
-        accessibilityLabel: "New task",
-        icon: { name: "square.and.pencil", type: "sfSymbol" as const },
-        identifier: "thread-left-new-task",
-        onPress: () => navigation.navigate("NewTaskSheet", { screen: "NewTask" }),
-        type: "button" as const,
-      }),
+      ...(codingSessionScreen === null
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "New task",
+              icon: { name: "square.and.pencil", type: "sfSymbol" as const },
+              identifier: "thread-left-new-task",
+              onPress: () => navigation.navigate("NewTaskSheet", { screen: "NewTask" }),
+              type: "button" as const,
+            }),
+          ]
+        : []),
     ],
-    [panes.primarySidebarVisible, props.onReturnToThread, navigation, togglePrimarySidebar],
+    [
+      codingSessionScreen,
+      panes.primarySidebarVisible,
+      props.onReturnToThread,
+      navigation,
+      togglePrimarySidebar,
+    ],
   );
   const androidHeaderActions = useMemo<ReadonlyArray<AndroidHeaderAction>>(() => {
     if (Platform.OS !== "android") return [];
@@ -773,6 +785,7 @@ function ThreadRouteContent(
           connectionError={routeConnectionError}
           environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
           selectedThreadFeed={composer.selectedThreadFeed}
+          checkpoints={selectedThreadDetail?.checkpoints ?? []}
           activeWorkStartedAt={composer.activeWorkStartedAt}
           activePendingApproval={requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}

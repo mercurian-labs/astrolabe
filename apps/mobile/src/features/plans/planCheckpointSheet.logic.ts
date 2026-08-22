@@ -4,7 +4,7 @@ import type { PlanNodePopoverAct } from "@t3tools/client-runtime/state/plan-node
 import type { MercurianCommitId } from "@t3tools/contracts";
 
 export interface MobileCheckpointAct {
-  readonly key: "continue" | "implement";
+  readonly key: "continue" | "implement" | "open-session";
   readonly label: string;
   readonly disabled: boolean;
   readonly reason?: string;
@@ -33,6 +33,9 @@ export function checkpointSheetActions(
                 : {}),
           },
         ]
+      : []),
+    ...(offered.includes("open-session")
+      ? [{ key: "open-session" as const, label: "Open session", disabled: false }]
       : []),
   ];
 }

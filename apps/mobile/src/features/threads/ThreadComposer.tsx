@@ -67,6 +67,7 @@ import { useComposerPathSearch } from "../../state/use-composer-path-search";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
 import { ThreadSettingsSheet, threadSettingsSummaryLabel } from "./ThreadSettingsSheet";
 import { useThreadSettingsSheetPresentation } from "./use-thread-settings-sheet-presentation";
+import { useCodingSessionScreen } from "../plans/SessionScreenContext";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -264,6 +265,7 @@ const ComposerConnectionStatusPill = memo(function ComposerConnectionStatusPill(
 });
 
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
+  const codingSessionScreen = useCodingSessionScreen();
   const isDarkMode = useColorScheme() === "dark";
   const foregroundColor = useThemeColor("--color-foreground");
   const bodyText = useScaledTextRole("body");
@@ -283,7 +285,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   // Opening and closing count as active so the composer stays expanded while
   // focus moves between its native editor and the settings modal.
   const isExpanded = isFocused || settingsSheetPresentation.isActive;
-  const canSend = hasContent;
+  const canSend = hasContent && !(codingSessionScreen !== null && props.activeThreadBusy);
 
   // Notify the parent from the derived value, not focus events: the parent
   // sizes the feed inset from this, and blur-during-sheet would otherwise
@@ -319,9 +321,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.selectedThread.session?.status === "starting";
 
   const sendLabel =
-    props.connectionState !== "connected" || props.activeThreadBusy || props.queueCount > 0
-      ? "Queue"
-      : "Send";
+    codingSessionScreen !== null && props.activeThreadBusy
+      ? "Send"
+      : props.connectionState !== "connected" || props.activeThreadBusy || props.queueCount > 0
+        ? "Queue"
+        : "Send";
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const currentInteractionMode = props.selectedThread.interactionMode ?? "default";
@@ -524,6 +528,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
 
   const handleSend = useCallback(async () => {
+    if (codingSessionScreen !== null && props.activeThreadBusy) return;
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
@@ -541,7 +546,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       inFlightThreadIdsRef.current.delete(threadKey);
     }
   }, [
+    codingSessionScreen,
     onSendMessage,
+    props.activeThreadBusy,
     props.environmentId,
     props.environmentLabel,
     props.selectedThread.id,
@@ -618,6 +625,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   );
   const settingsSummaryLabel = threadSettingsSummaryLabel({
     modelLabel: currentModelOption?.label ?? currentModelSelection.model,
+    ...(codingSessionScreen === null
+      ? {}
+      : {
+          providerLabel:
+            currentModelOption?.providerLabel ?? String(currentModelSelection.instanceId),
+        }),
     optionDescriptors: providerOptionDescriptors,
     runtimeMode: currentRuntimeMode,
     interactionMode: currentInteractionMode,
@@ -824,7 +837,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         ) : null}
 
         {/* Queue count */}
-        {props.queueCount > 0 ? (
+        {props.queueCount > 0 && !(codingSessionScreen !== null && props.activeThreadBusy) ? (
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
             <Text className="pt-2 text-xs text-foreground-muted">
               {props.queueCount} queued message{props.queueCount === 1 ? "" : "s"} will send
