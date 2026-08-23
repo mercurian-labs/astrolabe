@@ -18,7 +18,14 @@ import {
   RADIUS_TOKENS,
   SPACING_STEPS,
   TYPOGRAPHY_TOKENS,
+  UNMANAGED_ELEVATIONS,
 } from "./foundations";
+import {
+  declaredMercurianModulePaths,
+  declaredUiModulePaths,
+  mercurianCoverageRows,
+  uiInventoryRows,
+} from "./coverage";
 import { DAG_EXPLORER_CATALOG_ENTRIES } from "../components/mercurian/DagExplorer.catalog";
 import { PLAN_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/PlanArtifact.catalog";
 import { PLAN_COMPOSER_CATALOG_ENTRIES } from "../components/mercurian/PlanComposer.catalog";
@@ -49,6 +56,11 @@ export const CATALOG_SECTIONS = [
     id: "checkpoint-graph",
     title: "Checkpoint Graph",
     description: "Timeline, node detail, and history exploration states.",
+  },
+  {
+    id: "audit",
+    title: "Audit",
+    description: "Executable coverage, exceptions, and unmanaged values.",
   },
 ] as const;
 
@@ -261,6 +273,7 @@ function FoundationsSpacingPage() {
                 <div
                   aria-label={`Spacing step ${step}`}
                   className="h-3 max-w-full rounded-full bg-primary"
+                  role="img"
                   style={{ width: `calc(var(--spacing) * ${step})` }}
                 />
               </div>
@@ -309,6 +322,17 @@ function FoundationsShapePage() {
               <LiveTokenValue variable={token} />
             </Preview>
           ))}
+        </div>
+        <div className="rounded-xl border border-border bg-muted p-4">
+          <h3 className="font-medium">Unmanaged component elevations</h3>
+          <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
+            {UNMANAGED_ELEVATIONS.map(({ owner, sourcePath, value }) => (
+              <li key={sourcePath}>
+                <span className="font-medium text-foreground">{owner}:</span> {value} ·{" "}
+                <code className="font-mono text-xs">{sourcePath}</code>
+              </li>
+            ))}
+          </ul>
         </div>
       </Section>
       <SourcePath path="src/index.css" />
@@ -384,7 +408,12 @@ function FoundationsBreakpointsPage() {
       title="Breakpoints and responsive behavior"
     >
       <Section id="breakpoint-scale" title="Viewport tiers">
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <div
+          aria-label="Breakpoint tiers table"
+          className="overflow-x-auto rounded-xl border border-border bg-card"
+          role="region"
+          tabIndex={0}
+        >
           <table className="w-full min-w-lg border-collapse text-left text-sm">
             <thead className="bg-muted text-xs text-muted-foreground uppercase">
               <tr>
@@ -420,6 +449,200 @@ function FoundationsBreakpointsPage() {
         </div>
       </Section>
       <SourcePath path="src/index.css · Tailwind v4 theme" />
+    </Page>
+  );
+}
+
+function AuditPage() {
+  const sectionCounts = CATALOG_SECTIONS.map((section) => ({
+    ...section,
+    count: CATALOG_ENTRIES.filter((entry) => entry.section === section.id).length,
+  }));
+  const mercurianModulePaths = declaredMercurianModulePaths(CATALOG_ENTRIES);
+  const mercurianRows = mercurianCoverageRows(CATALOG_ENTRIES, mercurianModulePaths);
+  const uiModulePaths = declaredUiModulePaths(CATALOG_ENTRIES);
+  const uiRows = uiInventoryRows(CATALOG_ENTRIES, uiModulePaths);
+  const uiCounts = (["catalogued", "infrastructure-only"] as const).map((category) => ({
+    category,
+    count: uiRows.filter((row) => row.category === category).length,
+  }));
+  const axeExceptions = CATALOG_ENTRIES.flatMap((entry) =>
+    (entry.axeExceptions ?? []).map((exception) => ({ entryId: entry.id, ...exception })),
+  );
+
+  return (
+    <Page
+      description="The catalog registry and declared classifications are the source of every count and row on this page."
+      eyebrow="Design system"
+      title="Audit"
+    >
+      <Section id="entry-counts" title="Registry entries by section">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {sectionCounts.map(({ id, title, description, count }) => (
+            <Preview label={`${title} entry count`} key={id}>
+              <p className="text-3xl font-semibold tabular-nums">{count}</p>
+              <h3 className="mt-2 font-medium">{title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            </Preview>
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        description="Every Mercurian-owned component module must be catalogued or carry one explicit classification."
+        id="mercurian-coverage"
+        title="Mercurian coverage gate"
+      >
+        <div
+          aria-label="Mercurian coverage table"
+          className="overflow-x-auto rounded-xl border border-border bg-card"
+          role="region"
+          tabIndex={0}
+        >
+          <table className="w-full min-w-3xl border-collapse text-left text-sm">
+            <thead className="bg-muted text-xs text-muted-foreground uppercase">
+              <tr>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Module
+                </th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Coverage
+                </th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Reason
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {mercurianRows.map(({ modulePath, category, reason }) => (
+                <tr key={modulePath}>
+                  <th className="px-4 py-3 font-mono text-xs font-medium" scope="row">
+                    {modulePath}
+                  </th>
+                  <td className="px-4 py-3">{category}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {reason ?? "Covered by one or more catalog entries."}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section
+        description="This table shows only modules known statically through catalog entries or explicit classifications."
+        id="ui-inventory"
+        title="UI primitive inventory"
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {uiCounts.map(({ category, count }) => (
+            <div className="rounded-xl border border-border bg-card p-4" key={category}>
+              <p className="text-3xl font-semibold tabular-nums">{count}</p>
+              <p className="mt-1 text-sm font-medium">{category}</p>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-warning bg-warning-surface p-4 text-warning-foreground">
+          <h3 className="font-medium">Unreviewed modules are enumerated by the coverage test</h3>
+          <p className="mt-1 text-sm">
+            Upstream additions default to unreviewed without failing CI and do not appear in this
+            page until they are catalogued or explicitly classified.
+          </p>
+        </div>
+        <div
+          aria-label="UI primitive inventory table"
+          className="overflow-x-auto rounded-xl border border-border bg-card"
+          role="region"
+          tabIndex={0}
+        >
+          <table className="w-full min-w-2xl border-collapse text-left text-sm">
+            <thead className="bg-muted text-xs text-muted-foreground uppercase">
+              <tr>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Module
+                </th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Classification
+                </th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Reason
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {uiRows.map(({ modulePath, category, reason }) => (
+                <tr key={modulePath}>
+                  <th className="px-4 py-3 font-mono text-xs font-medium" scope="row">
+                    {modulePath}
+                  </th>
+                  <td className={`px-4 py-3 ${category === "unreviewed" ? "font-semibold" : ""}`}>
+                    {category}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {reason ?? "Defaults to unreviewed until explicitly triaged."}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section id="axe-exceptions" title="Axe exceptions">
+        <div
+          aria-label="Axe exceptions table"
+          className="overflow-x-auto rounded-xl border border-border bg-card"
+          role="region"
+          tabIndex={0}
+        >
+          <table className="w-full min-w-2xl border-collapse text-left text-sm">
+            <thead className="bg-muted text-xs text-muted-foreground uppercase">
+              <tr>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Entry
+                </th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Rule
+                </th>
+                <th className="px-4 py-3 font-medium" scope="col">
+                  Reason
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {axeExceptions.map(({ entryId, ruleId, reason }) => (
+                <tr key={`${entryId}-${ruleId}`}>
+                  <th className="px-4 py-3 font-mono text-xs font-medium" scope="row">
+                    {entryId}
+                  </th>
+                  <td className="px-4 py-3 font-mono text-xs">{ruleId}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section
+        description="These values remain owned by production components and are not promoted to shared tokens by the catalog."
+        id="unmanaged-values"
+        title="Unmanaged values"
+      >
+        <ul className="space-y-3 rounded-xl border border-border bg-card p-5 text-sm">
+          {UNMANAGED_ELEVATIONS.map(({ owner, sourcePath, value }) => (
+            <li key={sourcePath}>
+              <span className="font-medium">{owner}</span>: {value}
+              <code className="mt-1 block font-mono text-xs text-muted-foreground">
+                {sourcePath}
+              </code>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <SourcePath path="src/design-system/catalog.tsx · src/design-system/coverage.ts" />
     </Page>
   );
 }
@@ -518,6 +741,16 @@ export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
   ...PLAN_TIMELINE_CATALOG_ENTRIES,
   ...PLAN_NODE_POPOVER_CATALOG_ENTRIES,
   ...DAG_EXPLORER_CATALOG_ENTRIES,
+  {
+    id: "audit",
+    section: "audit",
+    title: "Audit",
+    description: "Registry counts, source coverage, exceptions, and unmanaged values.",
+    sourcePath: "src/design-system/coverage.ts",
+    render: () => <AuditPage />,
+    layout: "document",
+    preferredCanvas: "wide",
+  },
 ];
 
 export const OVERVIEW_ENTRY_ID = "overview";

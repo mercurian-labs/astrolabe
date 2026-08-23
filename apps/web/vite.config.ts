@@ -102,7 +102,10 @@ const storiesTestProject = {
   },
   test: {
     name: "stories",
-    include: [".storybook/checks/**/*.browser.test.{ts,tsx}"],
+    include: [
+      ".storybook/checks/**/*.browser.test.{ts,tsx}",
+      "src/design-system/**/*.browser.test.{ts,tsx}",
+    ],
     browser: {
       enabled: true,
       headless: true,
