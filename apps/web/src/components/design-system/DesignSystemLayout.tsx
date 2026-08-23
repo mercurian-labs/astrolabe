@@ -1,3 +1,4 @@
+import { ChevronRightIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { foundationsThemes } from "../../foundations/foundations.logic";
@@ -13,6 +14,7 @@ import {
   resolveCatalogPage,
   type CatalogCanvasWidth,
   type CatalogEntry,
+  type CatalogSectionId,
   type CatalogViewportTag,
 } from "../../design-system/catalog";
 
@@ -95,6 +97,13 @@ export function DesignSystemLayout({
   const activeEntry = resolveCatalogPage(search.page);
   const themes = foundationsThemes();
   const [filter, setFilter] = useState("");
+  const [expandedSections, setExpandedSections] = useState<Record<CatalogSectionId, boolean>>(
+    () =>
+      Object.fromEntries(CATALOG_SECTIONS.map((section) => [section.id, true])) as Record<
+        CatalogSectionId,
+        boolean
+      >,
+  );
   const [themeId, setThemeId] = useState("standard");
   const [appearance, setAppearance] = useState<ThemeAppearance>(() =>
     typeof document !== "undefined" && document.documentElement.classList.contains("dark")
@@ -162,6 +171,12 @@ export function DesignSystemLayout({
     document.getElementById(search.entry)?.scrollIntoView({ block: "start" });
   }, [activeEntry.id, search.entry]);
 
+  useEffect(() => {
+    setExpandedSections((current) =>
+      current[activeEntry.section] ? current : { ...current, [activeEntry.section]: true },
+    );
+  }, [activeEntry.section]);
+
   const canvasClass = CANVAS_WIDTHS.find(({ id }) => id === canvasWidth)?.className ?? "max-w-none";
   const renderContext = { themeId, appearance } as const;
 
@@ -193,6 +208,7 @@ export function DesignSystemLayout({
           {CATALOG_SECTIONS.map((section) => {
             const entries = filteredEntries.filter((entry) => entry.section === section.id);
             if (entries.length === 0) return null;
+            const expanded = normalizedFilter.length > 0 || expandedSections[section.id];
             const groupedEntries = entries.reduce((groups, entry) => {
               const group = entry.group ?? "";
               const current = groups.get(group) ?? [];
@@ -202,40 +218,60 @@ export function DesignSystemLayout({
             }, new Map<string, Array<CatalogEntry>>());
             return (
               <section className="mb-5" key={section.id}>
-                <h2 className="mb-1 px-2 text-xs font-medium text-muted-foreground uppercase">
-                  {section.title}
+                <h2 className="mb-1">
+                  <button
+                    aria-expanded={expanded}
+                    className="flex w-full items-center gap-1 px-2 text-left text-xs font-medium text-muted-foreground uppercase"
+                    onClick={() =>
+                      setExpandedSections((current) => ({
+                        ...current,
+                        [section.id]: !current[section.id],
+                      }))
+                    }
+                    type="button"
+                  >
+                    <ChevronRightIcon
+                      aria-hidden
+                      className={`size-3 shrink-0 transition-transform motion-reduce:transition-none ${
+                        expanded ? "rotate-90" : ""
+                      }`}
+                    />
+                    {section.title}
+                  </button>
                 </h2>
-                {[...groupedEntries].map(([group, grouped]) => (
-                  <div className={group ? "mt-3" : undefined} key={group || section.id}>
-                    {group ? (
-                      <h3 className="mb-1 px-2 text-xs font-medium text-foreground">{group}</h3>
-                    ) : null}
-                    <ul className="space-y-1">
-                      {grouped.map((entry) => {
-                        const active = entry.id === activeEntry.id;
-                        return (
-                          <li key={entry.id}>
-                            <button
-                              aria-current={active ? "page" : undefined}
-                              className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
-                                active
-                                  ? "bg-accent font-medium text-accent-foreground"
-                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                              }`}
-                              onClick={() => {
-                                setCanvasWidth(entry.preferredCanvas);
-                                onSearchChange({ page: entry.id });
-                              }}
-                              type="button"
-                            >
-                              {entry.title}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
+                {expanded
+                  ? [...groupedEntries].map(([group, grouped]) => (
+                      <div className={group ? "mt-3" : undefined} key={group || section.id}>
+                        {group ? (
+                          <h3 className="mb-1 px-2 text-xs font-medium text-foreground">{group}</h3>
+                        ) : null}
+                        <ul className="space-y-1">
+                          {grouped.map((entry) => {
+                            const active = entry.id === activeEntry.id;
+                            return (
+                              <li key={entry.id}>
+                                <button
+                                  aria-current={active ? "page" : undefined}
+                                  className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                                    active
+                                      ? "bg-accent font-medium text-accent-foreground"
+                                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  }`}
+                                  onClick={() => {
+                                    setCanvasWidth(entry.preferredCanvas);
+                                    onSearchChange({ page: entry.id });
+                                  }}
+                                  type="button"
+                                >
+                                  {entry.title}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))
+                  : null}
               </section>
             );
           })}
