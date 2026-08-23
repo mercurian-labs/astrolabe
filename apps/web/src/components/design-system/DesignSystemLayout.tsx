@@ -99,7 +99,7 @@ export function DesignSystemLayout({
   const [filter, setFilter] = useState("");
   const [expandedSections, setExpandedSections] = useState<Record<CatalogSectionId, boolean>>(
     () =>
-      Object.fromEntries(CATALOG_SECTIONS.map((section) => [section.id, true])) as Record<
+      Object.fromEntries(CATALOG_SECTIONS.map((section) => [section.id, false])) as Record<
         CatalogSectionId,
         boolean
       >,
