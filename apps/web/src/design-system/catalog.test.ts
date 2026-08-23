@@ -12,6 +12,32 @@ import { FOUNDATION_COLOR_ROLES } from "./foundations";
 
 const overview: CatalogEntry = CATALOG_ENTRIES[0]!;
 
+const MIGRATED_STORY_TITLES = [
+  "Awaiting input",
+  "Working",
+  "Unseen updates",
+  "Sessions running and ended",
+  "Plan hover card",
+  "Ready to send",
+  "Assistant working",
+  "No model chosen yet",
+  "Not signed in",
+  "Reading",
+  "Editing",
+  "Reply streaming on this branch",
+  "Imported from an issue",
+  "No spec yet",
+  "Plan may be stale",
+  "Structured question",
+  "Assistant replying",
+  "Turn with a model switch",
+  "Coding-session leaf",
+  "Thread view",
+  "Columns at a fork",
+  "Graph map",
+  "Stale artifacts flagged",
+] as const;
+
 function entry(overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
     ...overview,
@@ -63,5 +89,17 @@ describe("design-system catalog registry", () => {
     expect(resolveCatalogPage("foundations-color").id).toBe("foundations-color");
     expect(resolveCatalogPage(undefined).id).toBe("overview");
     expect(resolveCatalogPage("does-not-exist").id).toBe("overview");
+  });
+
+  it("registers and resolves every migrated Mercurian story state", () => {
+    const migratedEntries = CATALOG_ENTRIES.filter(({ section }) =>
+      ["mercurian-grammar", "checkpoint-graph"].includes(section),
+    );
+
+    expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
+    expect(migratedEntries).toHaveLength(23);
+    for (const migratedEntry of migratedEntries) {
+      expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
+    }
   });
 });

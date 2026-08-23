@@ -19,6 +19,15 @@ import {
   SPACING_STEPS,
   TYPOGRAPHY_TOKENS,
 } from "./foundations";
+import { DAG_EXPLORER_CATALOG_ENTRIES } from "../components/mercurian/DagExplorer.catalog";
+import { PLAN_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/PlanArtifact.catalog";
+import { PLAN_COMPOSER_CATALOG_ENTRIES } from "../components/mercurian/PlanComposer.catalog";
+import { PLAN_LIST_SIDEBAR_CATALOG_ENTRIES } from "../components/mercurian/PlanListSidebar.catalog";
+import { PLAN_NODE_POPOVER_CATALOG_ENTRIES } from "../components/mercurian/PlanNodePopover.catalog";
+import { PLAN_STATUS_DOT_CATALOG_ENTRIES } from "../components/mercurian/PlanStatusDot.catalog";
+import { PLAN_TIMELINE_CATALOG_ENTRIES } from "../components/mercurian/PlanTimeline.catalog";
+import { SPEC_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/SpecArtifact.catalog";
+import { STALE_PLAN_WARNING_CATALOG_ENTRIES } from "../components/mercurian/StalePlanWarning.catalog";
 
 export const CATALOG_SECTIONS = [
   {
@@ -30,6 +39,16 @@ export const CATALOG_SECTIONS = [
     id: "foundations",
     title: "Foundations",
     description: "The inherited visual system rendered from production tokens.",
+  },
+  {
+    id: "mercurian-grammar",
+    title: "Mercurian grammar",
+    description: "Status, plan navigation, composer, and artifact states.",
+  },
+  {
+    id: "checkpoint-graph",
+    title: "Checkpoint Graph",
+    description: "Timeline, node detail, and history exploration states.",
   },
 ] as const;
 
@@ -51,6 +70,7 @@ export type CatalogRenderContext = Readonly<{
 export type CatalogEntry = Readonly<{
   id: string;
   section: CatalogSectionId;
+  group?: string;
   title: string;
   description: string;
   sourcePath: string;
@@ -59,6 +79,7 @@ export type CatalogEntry = Readonly<{
   preferredCanvas: CatalogCanvasWidth;
   viewportTags?: ReadonlyArray<CatalogViewportTag>;
   exercise?: (container: HTMLElement) => void | Promise<void>;
+  setup?: () => (() => void) | void;
   axeExceptions?: ReadonlyArray<CatalogAxeException>;
 }>;
 
@@ -403,7 +424,7 @@ function FoundationsBreakpointsPage() {
   );
 }
 
-export const CATALOG_ENTRIES = [
+export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
   {
     id: "overview",
     section: "overview",
@@ -488,7 +509,16 @@ export const CATALOG_ENTRIES = [
     preferredCanvas: "desktop",
     viewportTags: ["narrow", "desktop"],
   },
-] satisfies ReadonlyArray<CatalogEntry>;
+  ...PLAN_STATUS_DOT_CATALOG_ENTRIES,
+  ...PLAN_LIST_SIDEBAR_CATALOG_ENTRIES,
+  ...PLAN_COMPOSER_CATALOG_ENTRIES,
+  ...PLAN_ARTIFACT_CATALOG_ENTRIES,
+  ...SPEC_ARTIFACT_CATALOG_ENTRIES,
+  ...STALE_PLAN_WARNING_CATALOG_ENTRIES,
+  ...PLAN_TIMELINE_CATALOG_ENTRIES,
+  ...PLAN_NODE_POPOVER_CATALOG_ENTRIES,
+  ...DAG_EXPLORER_CATALOG_ENTRIES,
+];
 
 export const OVERVIEW_ENTRY_ID = "overview";
 

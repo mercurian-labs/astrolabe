@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import { foundationsThemes } from "../../foundations/foundations.logic";
 import {
@@ -12,6 +12,7 @@ import {
   CATALOG_SECTIONS,
   resolveCatalogPage,
   type CatalogCanvasWidth,
+  type CatalogEntry,
 } from "../../design-system/catalog";
 
 export type DesignSystemSearch = Readonly<{
@@ -33,6 +34,33 @@ function applyCatalogPalette(themeId: string, appearance: ThemeAppearance) {
   const root = document.documentElement;
   root.classList.toggle("dark", appearance === "dark");
   applyThemePalette(themeId === "standard" ? appearance : themeId, appearance);
+}
+
+function CatalogEntryCanvas({
+  entry,
+  renderContext,
+}: {
+  entry: CatalogEntry;
+  renderContext: Parameters<CatalogEntry["render"]>[0];
+}) {
+  const [setupComplete, setSetupComplete] = useState(entry.setup === undefined);
+
+  useLayoutEffect(() => {
+    if (entry.setup === undefined) return;
+    const cleanup = entry.setup();
+    setSetupComplete(true);
+    return cleanup;
+  }, [entry]);
+
+  if (!setupComplete) return null;
+
+  return entry.layout === "preview" ? (
+    <div className="flex min-h-full min-w-0 items-center justify-center p-6">
+      {entry.render(renderContext)}
+    </div>
+  ) : (
+    <div className="flex min-h-full min-w-0 flex-col">{entry.render(renderContext)}</div>
+  );
 }
 
 export function DesignSystemLayout({
@@ -58,8 +86,10 @@ export function DesignSystemLayout({
     () =>
       normalizedFilter.length === 0
         ? CATALOG_ENTRIES
-        : CATALOG_ENTRIES.filter(({ title, description, id }) =>
-            `${title} ${description} ${id}`.toLocaleLowerCase().includes(normalizedFilter),
+        : CATALOG_ENTRIES.filter(({ title, description, group, id }) =>
+            `${title} ${description} ${group ?? ""} ${id}`
+              .toLocaleLowerCase()
+              .includes(normalizedFilter),
           ),
     [normalizedFilter],
   );
@@ -124,35 +154,49 @@ export function DesignSystemLayout({
           {CATALOG_SECTIONS.map((section) => {
             const entries = filteredEntries.filter((entry) => entry.section === section.id);
             if (entries.length === 0) return null;
+            const groupedEntries = entries.reduce((groups, entry) => {
+              const group = entry.group ?? "";
+              const current = groups.get(group) ?? [];
+              current.push(entry);
+              groups.set(group, current);
+              return groups;
+            }, new Map<string, Array<CatalogEntry>>());
             return (
               <section className="mb-5" key={section.id}>
                 <h2 className="mb-1 px-2 text-xs font-medium text-muted-foreground uppercase">
                   {section.title}
                 </h2>
-                <ul className="space-y-1">
-                  {entries.map((entry) => {
-                    const active = entry.id === activeEntry.id;
-                    return (
-                      <li key={entry.id}>
-                        <button
-                          aria-current={active ? "page" : undefined}
-                          className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
-                            active
-                              ? "bg-accent font-medium text-accent-foreground"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                          }`}
-                          onClick={() => {
-                            setCanvasWidth(entry.preferredCanvas);
-                            onSearchChange({ page: entry.id });
-                          }}
-                          type="button"
-                        >
-                          {entry.title}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                {[...groupedEntries].map(([group, grouped]) => (
+                  <div className={group ? "mt-3" : undefined} key={group || section.id}>
+                    {group ? (
+                      <h3 className="mb-1 px-2 text-xs font-medium text-foreground">{group}</h3>
+                    ) : null}
+                    <ul className="space-y-1">
+                      {grouped.map((entry) => {
+                        const active = entry.id === activeEntry.id;
+                        return (
+                          <li key={entry.id}>
+                            <button
+                              aria-current={active ? "page" : undefined}
+                              className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                                active
+                                  ? "bg-accent font-medium text-accent-foreground"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                              }`}
+                              onClick={() => {
+                                setCanvasWidth(entry.preferredCanvas);
+                                onSearchChange({ page: entry.id });
+                              }}
+                              type="button"
+                            >
+                              {entry.title}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
               </section>
             );
           })}
@@ -218,7 +262,11 @@ export function DesignSystemLayout({
 
         <div className="min-h-0 flex-1 overflow-auto bg-background">
           <div className={`mx-auto min-h-full w-full ${canvasClass}`}>
-            {activeEntry.render(renderContext)}
+            <CatalogEntryCanvas
+              entry={activeEntry}
+              key={activeEntry.id}
+              renderContext={renderContext}
+            />
           </div>
         </div>
       </section>
