@@ -8,11 +8,9 @@
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
-    "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build -o dist/storybook",
     "typecheck": "tsgo --noEmit",
     "test": "vp test run --passWithNoTests --project unit",
-    "test:stories": "vp test run --project stories"
+    "test:design-system": "vp test run --project design-system"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -54,8 +52,6 @@
     "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@rolldown/plugin-babel": "^0.2.0",
-    "@storybook/react": "^9.1.20",
-    "@storybook/react-vite": "^9.1.20",
     "@tailwindcss/vite": "^4.0.0",
     "@tanstack/router-plugin": "^1.161.0",
     "@types/babel__core": "^7.20.5",
@@ -71,7 +67,6 @@
     "compression": "^1.8.1",
     "msw": "2.12.11",
     "playwright": "1.60.0",
-    "storybook": "^9.1.20",
     "tailwindcss": "^4.0.0",
     "vite": "catalog:",
     "vite-plus": "catalog:"

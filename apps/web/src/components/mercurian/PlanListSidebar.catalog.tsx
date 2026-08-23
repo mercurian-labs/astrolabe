@@ -11,7 +11,7 @@ const runningSession = planCodingSessionRecord("running", {
 const endedSession = planCodingSessionRecord("ended", {
   repositoryId: "repo-web",
   threadId: "ended-session",
-  branch: "venk/m-142-storybook-theme",
+  branch: "venk/m-142-design-system-theme",
   endedAt: "2026-08-18T01:00:00.000Z",
   outcome: "completed",
 });

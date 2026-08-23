@@ -1,3 +1,9 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import axe from "axe-core";
@@ -26,8 +32,16 @@ describe.skipIf(typeof document === "undefined")("design-system catalog", () => 
       const root = createRoot(container);
 
       try {
+        const entryNode = entry.render({ themeId: "standard", appearance: "light" });
+        const rootRoute = createRootRoute({ component: () => entryNode });
+        const router = createRouter({
+          routeTree: rootRoute,
+          history: createMemoryHistory({ initialEntries: ["/"] }),
+        });
+
         await act(async () => {
-          root.render(entry.render({ themeId: "standard", appearance: "light" }));
+          root.render(<RouterProvider router={router} />);
+          await router.load();
         });
 
         expect(container.innerHTML, `${entry.id} rendered no content`).not.toBe("");
