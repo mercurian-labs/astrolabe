@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { foundationsThemes } from "../../foundations/foundations.logic";
 import {
@@ -13,6 +13,7 @@ import {
   resolveCatalogPage,
   type CatalogCanvasWidth,
   type CatalogEntry,
+  type CatalogViewportTag,
 } from "../../design-system/catalog";
 
 export type DesignSystemSearch = Readonly<{
@@ -29,6 +30,27 @@ const CANVAS_WIDTHS: ReadonlyArray<{
   { id: "desktop", label: "Desktop", className: "max-w-5xl" },
   { id: "wide", label: "Wide", className: "max-w-none" },
 ];
+
+const VIEWPORT_TAG_LABELS: Record<CatalogViewportTag, string> = {
+  narrow: "narrow",
+  desktop: "desktop",
+  "increased-text": "increased text",
+  "reduced-motion": "reduced motion",
+};
+
+type InlineStyleSnapshot = Readonly<{
+  value: string;
+  priority: string;
+}>;
+
+function restoreInlineStyle(
+  style: CSSStyleDeclaration,
+  property: string,
+  snapshot: InlineStyleSnapshot,
+) {
+  if (snapshot.value) style.setProperty(property, snapshot.value, snapshot.priority);
+  else style.removeProperty(property);
+}
 
 function applyCatalogPalette(themeId: string, appearance: ThemeAppearance) {
   const root = document.documentElement;
@@ -80,6 +102,9 @@ export function DesignSystemLayout({
       : "light",
   );
   const [canvasWidth, setCanvasWidth] = useState<CatalogCanvasWidth>(activeEntry.preferredCanvas);
+  const [increasedText, setIncreasedText] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const originalRootFontSize = useRef<InlineStyleSnapshot | null>(null);
 
   const normalizedFilter = filter.trim().toLocaleLowerCase();
   const filteredEntries = useMemo(
@@ -98,6 +123,11 @@ export function DesignSystemLayout({
     const root = document.documentElement;
     const originalDark = root.classList.contains("dark");
     const originalThemeId = root.dataset.themeId;
+    const originalFontSize = {
+      value: root.style.getPropertyValue("font-size"),
+      priority: root.style.getPropertyPriority("font-size"),
+    };
+    originalRootFontSize.current = originalFontSize;
     const originalVariables = THEME_COLOR_ROLES.map((role) => {
       const variable = getThemeColorVariable(role);
       return [variable, root.style.getPropertyValue(variable)] as const;
@@ -107,6 +137,7 @@ export function DesignSystemLayout({
       root.classList.toggle("dark", originalDark);
       if (originalThemeId === undefined) delete root.dataset.themeId;
       else root.dataset.themeId = originalThemeId;
+      restoreInlineStyle(root.style, "font-size", originalFontSize);
       for (const [variable, value] of originalVariables) {
         if (value) root.style.setProperty(variable, value);
         else root.style.removeProperty(variable);
@@ -117,6 +148,14 @@ export function DesignSystemLayout({
   useEffect(() => {
     applyCatalogPalette(themeId, appearance);
   }, [appearance, themeId]);
+
+  useEffect(() => {
+    const originalFontSize = originalRootFontSize.current;
+    if (originalFontSize === null) return;
+
+    if (increasedText) document.documentElement.style.fontSize = "18px";
+    else restoreInlineStyle(document.documentElement.style, "font-size", originalFontSize);
+  }, [increasedText]);
 
   useEffect(() => {
     if (!search.entry) return;
@@ -241,6 +280,34 @@ export function DesignSystemLayout({
             ))}
           </fieldset>
 
+          <fieldset className="flex gap-1" aria-label="Canvas conditions">
+            <button
+              aria-pressed={increasedText}
+              className={`h-9 rounded-md border px-3 text-sm ${
+                increasedText
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-background text-foreground hover:bg-muted"
+              }`}
+              onClick={() => setIncreasedText((enabled) => !enabled)}
+              type="button"
+            >
+              Increased text
+            </button>
+            <button
+              aria-pressed={reducedMotion}
+              className={`h-9 rounded-md border px-3 text-sm ${
+                reducedMotion
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-background text-foreground hover:bg-muted"
+              }`}
+              onClick={() => setReducedMotion((enabled) => !enabled)}
+              title="Suppresses all animation and transitions within the catalog canvas."
+              type="button"
+            >
+              Reduced motion
+            </button>
+          </fieldset>
+
           <fieldset className="ms-auto flex gap-1" aria-label="Canvas width">
             {CANVAS_WIDTHS.map(({ id, label }) => (
               <button
@@ -258,10 +325,35 @@ export function DesignSystemLayout({
               </button>
             ))}
           </fieldset>
+
+          {activeEntry.viewportTags?.length ? (
+            <div aria-label="Declared viewport tags" className="flex w-full flex-wrap gap-1.5">
+              {activeEntry.viewportTags.map((tag) => (
+                <span
+                  className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground"
+                  key={tag}
+                >
+                  {VIEWPORT_TAG_LABELS[tag]}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </header>
 
         <div className="min-h-0 flex-1 overflow-auto bg-background">
-          <div className={`mx-auto min-h-full w-full ${canvasClass}`}>
+          <style>{`
+            .design-system-reduced-motion *,
+            .design-system-reduced-motion *::before,
+            .design-system-reduced-motion *::after {
+              animation: none !important;
+              transition: none !important;
+            }
+          `}</style>
+          <div
+            className={`mx-auto min-h-full w-full ${canvasClass} ${
+              reducedMotion ? "design-system-reduced-motion" : ""
+            }`}
+          >
             <CatalogEntryCanvas
               entry={activeEntry}
               key={activeEntry.id}

@@ -5,6 +5,7 @@ import {
   assertValidCatalogRegistry,
   CATALOG_ENTRIES,
   CATALOG_SECTIONS,
+  CATALOG_VIEWPORT_TAGS,
   resolveCatalogPage,
   type CatalogEntry,
 } from "./catalog";
@@ -49,6 +50,18 @@ function entry(overrides: Partial<CatalogEntry> = {}): CatalogEntry {
 describe("design-system catalog registry", () => {
   it("accepts the shipped registry", () => {
     expect(() => assertValidCatalogRegistry(CATALOG_SECTIONS, CATALOG_ENTRIES)).not.toThrow();
+  });
+
+  it("only uses known viewport tags", () => {
+    const knownTags = new Set<string>(CATALOG_VIEWPORT_TAGS);
+
+    for (const catalogEntry of CATALOG_ENTRIES) {
+      for (const tag of catalogEntry.viewportTags ?? []) {
+        expect(knownTags.has(tag), `${catalogEntry.id} declares unknown viewport tag ${tag}`).toBe(
+          true,
+        );
+      }
+    }
   });
 
   it("rejects duplicate entry ids", () => {

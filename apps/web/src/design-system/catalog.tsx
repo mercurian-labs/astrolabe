@@ -67,7 +67,13 @@ export const CATALOG_SECTIONS = [
 export type CatalogSectionId = (typeof CATALOG_SECTIONS)[number]["id"];
 export type CatalogCanvasWidth = "compact" | "desktop" | "wide";
 export type CatalogLayout = "document" | "preview";
-export type CatalogViewportTag = "narrow" | "desktop" | "increased-text" | "reduced-motion";
+export const CATALOG_VIEWPORT_TAGS = [
+  "narrow",
+  "desktop",
+  "increased-text",
+  "reduced-motion",
+] as const;
+export type CatalogViewportTag = (typeof CATALOG_VIEWPORT_TAGS)[number];
 
 export type CatalogAxeException = Readonly<{
   ruleId: string;
