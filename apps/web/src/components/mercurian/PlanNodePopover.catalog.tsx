@@ -1,7 +1,7 @@
 import { MercurianRepositoryId, ProviderDriverKind } from "@t3tools/contracts";
 import type { ComponentProps } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
 
+import type { CatalogEntry } from "../../design-system/catalog";
 import { planCodingSessionRecord } from "../../test/fixtures/sessionsAndSplits";
 import { codingSessionLeaf, message, planRevision, timeline } from "../../test/fixtures/timeline";
 import { condensePlanGraph } from "./PlanCheckpoints.logic";
@@ -14,7 +14,7 @@ const popoverArgs = (
 ): ComponentProps<typeof PlanNodePopoverContent> => {
   const commitGraph = buildPlanGraph(items);
   const node = condensePlanGraph(commitGraph).byId.get(nodeId);
-  if (node === undefined) throw new Error(`Missing story node: ${nodeId}`);
+  if (node === undefined) throw new Error(`Missing catalog node: ${nodeId}`);
   return {
     codingSessions: [],
     commitGraph,
@@ -72,36 +72,46 @@ const sessionTimeline = timeline(
   }),
 );
 
-const meta = {
-  title: "Mercurian/Checkpoint Graph/Node Popover",
-  component: PlanNodePopoverContent,
-  parameters: { layout: "centered" },
-} satisfies Meta<typeof PlanNodePopoverContent>;
-
-export default meta;
-type Story = StoryObj<typeof meta>;
-
-export const TurnWithAModelSwitch: Story = {
-  name: "Turn with a model switch",
-  args: {
-    ...popoverArgs(modelSwitchTimeline, "switch-response"),
-    stalePlan: true,
-    staleSpec: true,
+export const PLAN_NODE_POPOVER_CATALOG_ENTRIES = [
+  {
+    id: "plan-node-popover-turn-with-a-model-switch",
+    section: "checkpoint-graph",
+    group: "PlanNodePopover",
+    title: "Turn with a model switch",
+    description: "Checkpoint detail for a turn that crossed provider and model boundaries.",
+    sourcePath: "src/components/mercurian/PlanNodePopover.tsx",
+    render: () => (
+      <PlanNodePopoverContent
+        {...popoverArgs(modelSwitchTimeline, "switch-response")}
+        stalePlan
+        staleSpec
+      />
+    ),
+    layout: "preview",
+    preferredCanvas: "compact",
   },
-};
-
-export const CodingSessionLeaf: Story = {
-  name: "Coding-session leaf",
-  args: {
-    ...popoverArgs(sessionTimeline, "session"),
-    codingSessions: [
-      planCodingSessionRecord("session", {
-        repositoryId: "repo-web",
-        threadId: "identity-catalog-session",
-        branch: "venk/m-143-story-catalog",
-        baseRef: "main",
-        prUrl: "https://example.com/pull/143",
-      }),
-    ],
+  {
+    id: "plan-node-popover-coding-session-leaf",
+    section: "checkpoint-graph",
+    group: "PlanNodePopover",
+    title: "Coding-session leaf",
+    description: "Checkpoint detail for a completed coding-session branch.",
+    sourcePath: "src/components/mercurian/PlanNodePopover.tsx",
+    render: () => (
+      <PlanNodePopoverContent
+        {...popoverArgs(sessionTimeline, "session")}
+        codingSessions={[
+          planCodingSessionRecord("session", {
+            repositoryId: "repo-web",
+            threadId: "identity-catalog-session",
+            branch: "venk/m-143-story-catalog",
+            baseRef: "main",
+            prUrl: "https://example.com/pull/143",
+          }),
+        ]}
+      />
+    ),
+    layout: "preview",
+    preferredCanvas: "compact",
   },
-};
+] satisfies ReadonlyArray<CatalogEntry>;

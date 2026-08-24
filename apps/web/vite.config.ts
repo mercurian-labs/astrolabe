@@ -14,7 +14,6 @@ import pkg from "./package.json" with { type: "json" };
 import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
-import { storybookAliases } from "./.storybook/shims/aliases";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -85,7 +84,7 @@ const unitTestProject = {
   },
 } satisfies TestProjectInlineConfiguration;
 
-const storiesTestProject = {
+const designSystemTestProject = {
   extends: true,
   optimizeDeps: {
     // Vitest discovers these browser-client deps on first run; listing them prevents a cold-cache reload mid-import.
@@ -97,12 +96,9 @@ const storiesTestProject = {
       "effect/SchemaGetter",
     ],
   },
-  resolve: {
-    alias: storybookAliases,
-  },
   test: {
-    name: "stories",
-    include: [".storybook/checks/**/*.browser.test.{ts,tsx}"],
+    name: "design-system",
+    include: ["src/design-system/**/*.browser.test.{ts,tsx}"],
     browser: {
       enabled: true,
       headless: true,
@@ -293,7 +289,7 @@ export default defineConfig(() => {
       sourcemap: buildSourcemap,
     },
     test: {
-      projects: [defineProject(unitTestProject), defineProject(storiesTestProject)],
+      projects: [defineProject(unitTestProject), defineProject(designSystemTestProject)],
     },
   };
 });

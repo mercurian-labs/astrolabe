@@ -76,7 +76,6 @@ minimumReleaseAgeExclude:
   - effect@4.0.0-beta.103
 
 overrides:
-  esbuild: 0.28.1
   "@clerk/backend": "catalog:"
   "@clerk/clerk-js": "catalog:"
   "@clerk/clerk-js>@base-org/account": "-"
