@@ -67,6 +67,8 @@ export function planningModelGateNotice(
         }
         case "model-unavailable":
           return "This model is not available on this machine's instance — choose another model.";
+        case "option-unavailable":
+          return "This model's recorded reasoning depth is not available on this machine's instance — choose another depth or update the agent.";
         default:
           return null;
       }
@@ -96,6 +98,8 @@ export function turnRefusalNotice(
     }
     case "model-unavailable":
       return "The message was sent, but the planning model is not available on this machine.";
+    case "option-unavailable":
+      return "The message was sent, but the planning model's recorded reasoning depth is not available on this machine.";
     case "turn-active":
       return "The assistant is already replying on this branch.";
     default:

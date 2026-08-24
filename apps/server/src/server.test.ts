@@ -4608,7 +4608,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
               projectId: project.projectId,
               message: "Reshape the sidebar",
-              modelChoice: { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" },
+              modelChoice: {
+                provider: ProviderDriverKind.make("codex"),
+                model: "gpt-5.4",
+                options: [{ id: "effort", value: "high" }],
+              },
             });
             const appended = yield* client[MERCURIAN_WS_METHODS.appendPlanMessage]({
               planId: created.plan.planId,
@@ -4673,6 +4677,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepEqual(root.ranUnder, {
           provider: ProviderDriverKind.make("codex"),
           model: "gpt-5.4",
+          options: [{ id: "effort", value: "high" }],
         });
       }
       // The old-client path omits a directive. The server inherits and

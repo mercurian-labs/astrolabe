@@ -9,7 +9,7 @@ import type { PlanGraph } from "./PlanGraph.logic";
 /**
  * The branch's standing model choice at one position.
  *
- * Checkpoint history is walked self-first through the first parent. A recorded pair is
+ * Checkpoint history is walked self-first through the first parent. A recorded choice is
  * the standing choice descendants inherit; a bare history has no choice.
  */
 export function standingModelChoice(
@@ -21,7 +21,7 @@ export function standingModelChoice(
   for (let step = 0; current !== undefined && step <= graph.nodes.length; step += 1) {
     const item = itemsById.get(current);
     if (item?._tag === "message" && item.ranUnder !== undefined) {
-      return { provider: item.ranUnder.provider, model: item.ranUnder.model };
+      return item.ranUnder;
     }
     current = graph.byId.get(current)?.parents[0];
   }

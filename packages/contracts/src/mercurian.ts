@@ -465,6 +465,7 @@ export const PlanTurnRefusalReason = Schema.Literals([
   "no-instance",
   "not-signed-in",
   "model-unavailable",
+  "option-unavailable",
   "turn-active",
 ]);
 export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
@@ -913,6 +914,7 @@ export const ImplementBlockedReason = Schema.Literals([
   "no-instance",
   "not-signed-in",
   "model-unavailable",
+  "option-unavailable",
 ]);
 export type ImplementBlockedReason = typeof ImplementBlockedReason.Type;
 

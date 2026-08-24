@@ -44,6 +44,22 @@ describe("standingModelChoice", () => {
     expect(derive(timeline, "right")).toEqual({ provider: claude, model: "opus" });
   });
 
+  it("carries options from the nearest ancestor across a fork with mixed history", () => {
+    const triple = {
+      provider: codex,
+      model: "gpt-5.4",
+      options: [{ id: "effort", value: "high" }],
+    } as const;
+    const timeline = [
+      message("root", { ranUnder: { provider: claude, model: "opus" } }),
+      message("middle", { sequence: 2, parents: ["root"], ranUnder: triple }),
+      message("left", { sequence: 3, parents: ["middle"] }),
+      message("right", { sequence: 4, parents: ["middle"] }),
+    ];
+
+    expect(derive(timeline, "right")).toEqual(triple);
+  });
+
   it("walks past interleaved spec and plan revisions", () => {
     const timeline: ReadonlyArray<PlanTimelineItem> = [
       message("root", { ranUnder: { provider: codex, model: "gpt-5.4" } }),

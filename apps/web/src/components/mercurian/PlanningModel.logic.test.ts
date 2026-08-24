@@ -7,17 +7,21 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { describePlanningModel } from "./PlanningModel.logic";
+import { describePlanningModel, planningModelOptionLabels } from "./PlanningModel.logic";
 
 const claude = ProviderDriverKind.make("claudeAgent");
 const claudeDefault = ProviderInstanceId.make("claudeAgent");
 const claudeWork = ProviderInstanceId.make("claude_work");
 
-const model = (slug: string, name?: string): ServerProvider["models"][number] => ({
+const model = (
+  slug: string,
+  name?: string,
+  capabilities: ServerProvider["models"][number]["capabilities"] = null,
+): ServerProvider["models"][number] => ({
   slug,
   name: name ?? slug,
   isCustom: false,
-  capabilities: null,
+  capabilities,
 });
 
 const provider = (
@@ -174,5 +178,76 @@ describe("describePlanningModel", () => {
     ];
 
     expect(describeAgainst(selection("claudeAgent", "opus"), providers).kind).toBe("resolved");
+  });
+
+  it("names an unavailable recorded depth and its unlocking upgrade", () => {
+    const providers = [
+      provider({
+        instanceId: claudeDefault,
+        driver: claude,
+        displayName: "Claude Code",
+        models: [
+          model("opus", "Opus", {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Reasoning effort",
+                type: "select",
+                options: [{ id: "high", label: "High" }],
+              },
+            ],
+          }),
+        ],
+        versionAdvisory: {
+          status: "behind_latest",
+          currentVersion: "1.0.0",
+          latestVersion: "2.4.0",
+          updateCommand: "npm i -g claude",
+          canUpdate: true,
+          checkedAt: "2026-08-01T00:00:00.000Z",
+          message: null,
+        },
+      }),
+    ];
+    const recorded = {
+      ...selection("claudeAgent", "opus"),
+      options: [{ id: "effort", value: "max" }],
+    } satisfies PlanningModelSelection;
+    const display = describeAgainst(recorded, providers);
+
+    expect(display.kind).toBe("unresolved");
+    if (display.kind !== "unresolved") return;
+    expect(display.message).toContain("recorded reasoning depth (max)");
+    expect(display.message).toContain("Update Claude Code to 2.4.0 to unlock it.");
+  });
+
+  it("formats offered option labels and falls back to raw recorded values", () => {
+    const providers = [
+      provider({
+        instanceId: claudeDefault,
+        driver: claude,
+        models: [
+          model("opus", "Opus", {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Reasoning effort",
+                type: "select",
+                options: [{ id: "high", label: "High" }],
+              },
+            ],
+          }),
+        ],
+      }),
+    ];
+    const recorded = {
+      ...selection("claudeAgent", "opus"),
+      options: [
+        { id: "effort", value: "high" },
+        { id: "missing", value: "max" },
+      ],
+    } satisfies PlanningModelSelection;
+
+    expect(planningModelOptionLabels(recorded, providers)).toEqual(["High", "max"]);
   });
 });

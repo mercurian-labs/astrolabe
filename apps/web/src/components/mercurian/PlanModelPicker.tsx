@@ -9,7 +9,7 @@ import {
   planningSelectionForInstanceModel,
 } from "./PlanModelPicker.logic";
 
-/** Thin adapter from Mercurian's instance-free pair to T3's session picker. */
+/** Thin adapter from Mercurian's instance-free choice to T3's session picker. */
 export function PlanModelPicker({
   selection,
   providers,
@@ -41,7 +41,7 @@ export function PlanModelPicker({
         planningModelDisabledReason(state.entries, providers, instanceId, model)
       }
       onInstanceModelChange={(instanceId, model) => {
-        const next = planningSelectionForInstanceModel(state.entries, instanceId, model);
+        const next = planningSelectionForInstanceModel(state.entries, instanceId, model, selection);
         if (next !== null) onChange(next);
       }}
     />

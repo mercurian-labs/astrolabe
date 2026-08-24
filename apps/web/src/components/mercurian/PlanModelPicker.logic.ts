@@ -1,5 +1,7 @@
 import {
   defaultInstanceIdForDriver,
+  type ModelCapabilities,
+  type ProviderOptionSelections,
   ProviderInstanceId,
   resolvePlanningModel,
   type PlanningModelResolution,
@@ -34,9 +36,36 @@ export function planningSelectionForInstanceModel(
   entries: ReadonlyArray<ProviderInstanceEntry>,
   instanceId: ProviderInstanceId,
   model: string,
+  currentSelection: PlanningModelSelection | null = null,
 ): PlanningModelSelection | null {
   const entry = entries.find((candidate) => candidate.instanceId === instanceId);
-  return entry === undefined ? null : { provider: entry.driverKind, model };
+  if (entry === undefined) return null;
+  const capabilities = entry.models.find((candidate) => candidate.slug === model)?.capabilities;
+  const options = retainOfferedOptions(currentSelection?.options, capabilities);
+  return {
+    provider: entry.driverKind,
+    model,
+    ...(options === undefined ? {} : { options }),
+  };
+}
+
+/** Keep only recorded options the newly selected model offers unchanged. */
+export function retainOfferedOptions(
+  options: ProviderOptionSelections | undefined,
+  capabilities: ModelCapabilities | null | undefined,
+): ProviderOptionSelections | undefined {
+  if (options === undefined) return undefined;
+  const descriptors = capabilities?.optionDescriptors ?? [];
+  const retained = options.filter((selection) => {
+    const descriptor = descriptors.find((candidate) => candidate.id === selection.id);
+    if (descriptor === undefined) return false;
+    if (descriptor.type === "boolean") return typeof selection.value === "boolean";
+    return (
+      typeof selection.value === "string" &&
+      descriptor.options.some((option) => option.id === selection.value)
+    );
+  });
+  return retained.length === 0 ? undefined : retained;
 }
 
 /**

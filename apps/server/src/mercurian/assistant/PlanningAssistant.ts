@@ -57,6 +57,7 @@ import {
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanStreamItem,
+  planningModelSelectionsEqual,
   type PlanningModelSelection,
   PlanTurnActiveError,
   PlanTurnId,
@@ -154,7 +155,7 @@ interface PlanSession {
   readonly planId: PlanId;
   readonly threadId: ThreadId;
   readonly instanceId: ProviderInstanceId;
-  readonly model: string;
+  readonly modelSelection: PlanningModelSelection;
   /** The tip the session last settled on — what a continuation must extend. */
   readonly tipCommitId: CommitId;
 }
@@ -1021,7 +1022,7 @@ export const make = Effect.gen(function* () {
     readonly planId: PlanId;
     readonly parentCommitId: CommitId;
     readonly instanceId: ProviderInstanceId;
-    readonly model: string;
+    readonly modelSelection: PlanningModelSelection;
     readonly materials: RebuildMaterials;
   }) {
     const { materials } = input;
@@ -1032,7 +1033,13 @@ export const make = Effect.gen(function* () {
       ...(materials.additionalDirectories.length === 0
         ? {}
         : { additionalDirectories: materials.additionalDirectories }),
-      modelSelection: { instanceId: input.instanceId, model: input.model },
+      modelSelection: {
+        instanceId: input.instanceId,
+        model: input.modelSelection.model,
+        ...(input.modelSelection.options === undefined
+          ? {}
+          : { options: input.modelSelection.options }),
+      },
       isolateProviderSettings: true,
       // The most restrictive tier the contract has; combined with the
       // approval auto-policy this is the read-only guarantee (Design §3).
@@ -1046,7 +1053,7 @@ export const make = Effect.gen(function* () {
       planId: input.planId,
       threadId: materials.threadId,
       instanceId: input.instanceId,
-      model: input.model,
+      modelSelection: input.modelSelection,
       tipCommitId: input.parentCommitId,
     });
   });
@@ -1064,6 +1071,13 @@ export const make = Effect.gen(function* () {
       if (resolution._tag === "unresolved") {
         return yield* refuse(input.planId, resolution.reason);
       }
+      const resolvedSelection = {
+        provider: resolution.provider,
+        model: resolution.model,
+        ...(effectiveSelection?.options === undefined
+          ? {}
+          : { options: effectiveSelection.options }),
+      } satisfies PlanningModelSelection;
 
       const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
       const turnId = yield* mintTurnId;
@@ -1084,7 +1098,7 @@ export const make = Effect.gen(function* () {
       const existing =
         branchSession !== undefined &&
         branchSession.instanceId === resolution.instanceId &&
-        branchSession.model === resolution.model
+        planningModelSelectionsEqual(branchSession.modelSelection, resolvedSelection)
           ? branchSession
           : undefined;
       const canContinue = existing !== undefined;
@@ -1126,7 +1140,7 @@ export const make = Effect.gen(function* () {
         turnId,
         threadId,
         parentCommitId: input.parentCommitId,
-        modelSelection: { provider: resolution.provider, model: resolution.model },
+        modelSelection: resolvedSelection,
         text: "",
         grounding: [],
         groundingKeys: new Set(),
@@ -1166,7 +1180,7 @@ export const make = Effect.gen(function* () {
             planId: input.planId,
             parentCommitId: input.parentCommitId,
             instanceId: resolution.instanceId,
-            model: resolution.model,
+            modelSelection: resolvedSelection,
             materials,
           });
         }
@@ -1202,7 +1216,7 @@ export const make = Effect.gen(function* () {
           planId: input.planId,
           parentCommitId: input.parentCommitId,
           instanceId: resolution.instanceId,
-          model: resolution.model,
+          modelSelection: resolvedSelection,
           materials: fallback,
         });
       }).pipe(Effect.result);
@@ -1301,6 +1315,13 @@ export const make = Effect.gen(function* () {
       if (resolution._tag === "unresolved") {
         return yield* new ImplementBlockedError({ reason: resolution.reason });
       }
+      const resolvedSelection = {
+        provider: resolution.provider,
+        model: resolution.model,
+        ...(effectiveSelection?.options === undefined
+          ? {}
+          : { options: effectiveSelection.options }),
+      } satisfies PlanningModelSelection;
 
       // The standing proposal is singular per plan, so its analysis is too:
       // a second implement anywhere in the plan waits for the first, while
@@ -1334,7 +1355,7 @@ export const make = Effect.gen(function* () {
         turnId,
         threadId: materials.threadId,
         parentCommitId: context.atCommitId,
-        modelSelection: { provider: resolution.provider, model: resolution.model },
+        modelSelection: resolvedSelection,
         text: "",
         grounding: [],
         groundingKeys: new Set(),
@@ -1383,7 +1404,13 @@ export const make = Effect.gen(function* () {
           ...(materials.additionalDirectories.length === 0
             ? {}
             : { additionalDirectories: materials.additionalDirectories }),
-          modelSelection: { instanceId: resolution.instanceId, model: resolution.model },
+          modelSelection: {
+            instanceId: resolution.instanceId,
+            model: resolution.model,
+            ...(resolvedSelection.options === undefined
+              ? {}
+              : { options: resolvedSelection.options }),
+          },
           isolateProviderSettings: true,
           runtimeMode: "approval-required",
         });
