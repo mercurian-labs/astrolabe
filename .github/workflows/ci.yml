@@ -108,6 +108,9 @@ jobs:
 
       - name: Upload thread transfer result
         if: always()
+        # A storage-quota failure on this reporting aid must not fail the
+        # required Test check or skip the steps after it.
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: thread-transfer-results
