@@ -28,26 +28,31 @@ amended 2026-08-24). This plan covers the shell and redesign only; no editing ca
 
 ### Where the surface sits
 
-`/ds` keeps its path — it is already the catalog's address, deep links in circulation stay
-valid, and the route files already exist — but stops being a parallel app:
+The route is renamed to **`/design-lab`** — the surface's real name, matching the vault note
+and the settings link that now advertises it — and stops being a parallel app. `/ds` ceases to
+exist: no legacy redirect (it was a dev-only address; muscle memory adjusts), and the route
+files are renamed, not duplicated (`routes/ds.tsx` → `routes/design-lab.tsx`, `routes/ds.lazy.tsx`
+→ `routes/design-lab.lazy.tsx`, with the route id updated to `/design-lab`).
 
 - **Remove both `/ds` special cases from `__root.tsx`**: the `beforeLoad` branch that hands
   `/ds` a `hosted-static` auth-gate context (line 66) and the early `return <Outlet />` that
-  bypasses the shell (line 116). After this, `/ds` renders through `AppSidebarLayout` like
-  every authenticated surface, with the plan-list left sidebar present (the pathname's first
-  segment is `ds`, not `settings`, so `PlanListSidebar` keeps its normal project-tree content —
-  "inside the normal app shell" with no sidebar special-casing).
-- **`ds.tsx` gains a `beforeLoad`** mirroring `settings.tsx`: redirect to `/pair` unless the
-  auth-gate status is `authenticated` or `hosted-static`, and — first — **redirect to `/`
-  when `!import.meta.env.DEV`**. In production builds the guard collapses to an unconditional
-  redirect: the route is unreachable.
-- **Production bundles carry no catalog code.** `ds.lazy.tsx` keeps the lazy split, and the
-  layout import inside it is wrapped in an `import.meta.env.DEV` conditional so Vite's static
-  replacement dead-branch-eliminates the dynamic import in production — the catalog chunk
-  (registry, entries, layout) is never emitted. The route-tree entry for `/ds` still exists as
-  a few bytes of redirect logic; that is the closest a file-based route tree gets to "not
-  served", and the AC's observable form — production offers no entry point and never renders
-  the surface — holds. Verified explicitly in the test plan.
+  bypasses the shell (line 116). Nothing replaces them: `/design-lab` renders through
+  `AppSidebarLayout` like every authenticated surface, with the plan-list left sidebar present
+  (the pathname's first segment is `design-lab`, not `settings`, so `PlanListSidebar` keeps
+  its normal project-tree content — "inside the normal app shell" with no sidebar
+  special-casing).
+- **`design-lab.tsx` gains a `beforeLoad`** mirroring `settings.tsx`: redirect to `/pair`
+  unless the auth-gate status is `authenticated` or `hosted-static`, and — first — **redirect
+  to `/` when `!import.meta.env.DEV`**. In production builds the guard collapses to an
+  unconditional redirect: the route is unreachable.
+- **Production bundles carry no catalog code.** `design-lab.lazy.tsx` keeps the lazy split,
+  and the layout import inside it is wrapped in an `import.meta.env.DEV` conditional so
+  Vite's static replacement dead-branch-eliminates the dynamic import in production — the
+  catalog chunk (registry, entries, layout) is never emitted. The route-tree entry for
+  `/design-lab` still exists as a few bytes of redirect logic; that is the closest a
+  file-based route tree gets to "not served", and the AC's observable form — production
+  offers no entry point and never renders the surface — holds. Verified explicitly in the
+  test plan.
 
 The dev-only stance also retires the reason `/ds` bypassed authentication (it had to render
 without a backend); development runs always have one.
@@ -77,8 +82,8 @@ Structure mirrors `settings.tsx`'s `SettingsContentLayout`:
 - **Palette restore is kept as-is**: the mount-time snapshot of root theme variables and the
   unmount restore (`DesignSystemLayout.tsx:131–155`). Inside the shell this machinery is what
   guarantees leaving the Lab returns the user's real theme — and its app-wide repaint while
-  on `/ds` is now a feature, not a leak: it is the first taste of the Lab painting the live
-  app (the M-162 mechanism).
+  on `/design-lab` is now a feature, not a leak: it is the first taste of the Lab painting
+  the live app (the M-162 mechanism).
 
 Navigation state logic currently inline in the layout (section grouping, filter matching,
 expanded-section behavior) is extracted to **`designLabNav.logic.ts`** with a colocated test,
@@ -87,8 +92,9 @@ per the `*.logic.ts` convention.
 ### Document pages restyled, entry data untouched
 
 The catalog registry (`catalog.tsx`, `*.catalog.tsx` files, `foundations.ts`, `coverage.ts`)
-does not change — same entries, same ids, same search-param navigation (`ds.tsx`'s
-`validateDesignSystemSearch` stays). The redesign lands in the shared presentation layer:
+does not change — same entries, same ids, same search-param navigation
+(`validateDesignSystemSearch` moves with the renamed route file, otherwise unchanged). The
+redesign lands in the shared presentation layer:
 
 - `DesignSystemPage.tsx`'s `Page` / `Section` / `Preview` / token primitives keep their
   public API (so no `*.catalog.tsx` file is touched) but restyle to the settings grammar:
@@ -102,25 +108,28 @@ does not change — same entries, same ids, same search-param navigation (`ds.ts
 `AppearanceSettingsPanel` (`SettingsPanels.tsx:941`) gains a final, `import.meta.env.DEV`-gated
 `SettingsSection id="design-lab" title="Design Lab"` containing one `SettingsRow` — description
 ("The dev-only workbench where Astrolabe's visual language is explored") and a control button
-that navigates to `/ds`. Gated at render, the section simply does not exist in production
-builds, matching the route's own gate.
+that navigates to `/design-lab`. Gated at render, the section simply does not exist in
+production builds, matching the route's own gate.
 
 ### Documentation
 
 `docs/internals/design-system.md` describes `/ds` as a standalone hosted-static-capable route;
-its route facts change (inside the shell, authenticated, dev-only, no static deployment
-story). That is a rules change under the doc's own update policy — one focused edit to the
-"Tooling decision" section.
+its route facts change (renamed to `/design-lab`, inside the shell, authenticated, dev-only,
+no static deployment story). That is a rules change under the doc's own update policy — one
+focused edit to the "Tooling decision" section, plus updating the doc's other `/ds` mentions
+to the new address.
 
 ## File & Module Layout
 
 Changed:
 
 - `apps/web/src/routes/__root.tsx` — remove the two `/ds` special cases.
-- `apps/web/src/routes/ds.tsx` — add `beforeLoad` (dev gate, then auth gate); search
-  validation unchanged.
-- `apps/web/src/routes/ds.lazy.tsx` — render `DesignLabLayout` through a DEV-guarded dynamic
-  import; production renders nothing (unreachable anyway).
+- `apps/web/src/routes/ds.tsx` → **renamed** `apps/web/src/routes/design-lab.tsx` — route id
+  becomes `/design-lab`; add `beforeLoad` (dev gate, then auth gate); search validation
+  unchanged.
+- `apps/web/src/routes/ds.lazy.tsx` → **renamed** `apps/web/src/routes/design-lab.lazy.tsx` —
+  render `DesignLabLayout` through a DEV-guarded dynamic import; production renders nothing
+  (unreachable anyway).
 - `apps/web/src/components/settings/SettingsPanels.tsx` — DEV-gated Design Lab section in
   `AppearanceSettingsPanel`.
 - `apps/web/src/components/design-system/DesignSystemPage.tsx` — restyle primitives to the
@@ -154,14 +163,18 @@ the layout), the `design-system` vite-plus project, CI.
       and search-param navigation from `DesignSystemLayout.tsx` unchanged.
 - [ ] Restyle `DesignSystemPage.tsx` primitives to the settings grammar without changing
       their props.
-- [ ] Point `ds.lazy.tsx` at `DesignLabLayout` via a DEV-guarded dynamic import; delete
-      `DesignSystemLayout.tsx`.
-- [ ] Add `beforeLoad` to `ds.tsx`: redirect `/` when `!import.meta.env.DEV`, else the
-      settings-style auth redirect to `/pair`.
+- [ ] Rename `routes/ds.tsx` → `routes/design-lab.tsx` and `routes/ds.lazy.tsx` →
+      `routes/design-lab.lazy.tsx` (route id `/design-lab`; regenerated route tree; no `/ds`
+      redirect left behind).
+- [ ] Point `design-lab.lazy.tsx` at `DesignLabLayout` via a DEV-guarded dynamic import;
+      delete `DesignSystemLayout.tsx`.
+- [ ] Add `beforeLoad` to `design-lab.tsx`: redirect `/` when `!import.meta.env.DEV`, else
+      the settings-style auth redirect to `/pair`.
 - [ ] Remove the `/ds` `hosted-static` branch and the early-`Outlet` branch from
       `__root.tsx`.
 - [ ] Add the DEV-gated Design Lab section + link to `AppearanceSettingsPanel`.
-- [ ] Update `docs/internals/design-system.md`'s route description.
+- [ ] Update `docs/internals/design-system.md`'s route description and its `/ds` mentions to
+      `/design-lab`.
 - [ ] Do not add dependencies; do not touch the catalog registry, coverage modules, or the
       `design-system` test project config.
 
@@ -180,17 +193,18 @@ Browser (`vp run --filter @t3tools/web test:design-system` — must stay green u
 
 Manual AC walk (dev build, `test-t3-app` flow):
 
-- [ ] `/ds` renders inside the app shell: left sidebar present, topbar header, right-hand
-      nav column; old standalone chrome gone.
+- [ ] `/design-lab` renders inside the app shell: left sidebar present, topbar header,
+      right-hand nav column; old standalone chrome gone.
+- [ ] `/ds` no longer resolves (the router's not-found handling applies).
 - [ ] Nav column selects every section; entries render; `?page`/`?entry` deep links land.
-- [ ] Palette/appearance switching on `/ds` repaints, and leaving `/ds` restores the user's
-      real theme.
-- [ ] Appearance settings page shows the Design Lab section and its link opens `/ds`.
+- [ ] Palette/appearance switching on `/design-lab` repaints, and leaving `/design-lab`
+      restores the user's real theme.
+- [ ] Appearance settings page shows the Design Lab section and its link opens `/design-lab`.
 - [ ] Escape/back leaves the surface without residue (theme, font-size restored).
 
 Production gate (explicit, because the AC demands it):
 
 - [ ] `vp build` the web app; assert no chunk in `dist/` contains catalog registry code
-      (grep for a registry-unique string, e.g. a catalog entry id); assert `/ds` in the
-      served production build redirects to `/` and the Appearance page shows no Design Lab
-      section.
+      (grep for a registry-unique string, e.g. a catalog entry id); assert `/design-lab` in
+      the served production build redirects to `/` and the Appearance page shows no Design
+      Lab section.
