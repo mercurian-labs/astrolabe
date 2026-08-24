@@ -1072,6 +1072,20 @@ export function AppearanceSettingsPanel() {
       </SettingsSection>
 
       <TypographySection />
+
+      {import.meta.env.DEV ? (
+        <SettingsSection id="design-lab" title="Design Lab">
+          <SettingsRow
+            title="Visual language workbench"
+            description="The dev-only workbench where Astrolabe's visual language is explored."
+            control={
+              <Button render={<Link to="/design-lab" />} size="xs" variant="outline">
+                Open Design Lab
+              </Button>
+            }
+          />
+        </SettingsSection>
+      ) : null}
     </SettingsPageContainer>
   );
 }
