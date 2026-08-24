@@ -13,14 +13,14 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-8 sm:px-8 lg:px-12">
-      <header className="space-y-2">
+    <main className="mx-auto flex w-full max-w-4xl flex-col gap-12 px-4 pt-10 pb-7 sm:px-8 sm:pt-12 sm:pb-10">
+      <header className="space-y-2 px-3 sm:px-4">
         {eyebrow ? (
           <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-foreground">{title}</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
       </header>
       {children}
@@ -40,9 +40,12 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={`${id}-heading`} className="space-y-4" id={id}>
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold" id={`${id}-heading`}>
+    <section aria-labelledby={`${id}-heading`} className="space-y-3" id={id}>
+      <div className="min-h-8 space-y-1 px-3 sm:px-4">
+        <h2
+          className="text-lg font-semibold tracking-[-0.025em] text-foreground"
+          id={`${id}-heading`}
+        >
           {title}
         </h2>
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
