@@ -67,7 +67,7 @@ export const vendoredComponents = [
 
 /** Workspace-local packages are first-party; they are not third-party notices. */
 const firstPartyScopes = ["@t3tools/", "@mercurian/"];
-const firstPartyNames = ["t3"];
+const firstPartyNames = new Set(["t3"]);
 
 const licenseFileNames = ["LICENSE", "LICENCE", "NOTICE", "COPYING"];
 
@@ -91,7 +91,7 @@ const PackageManifestSchema = Schema.Struct({
 const decodePackageManifest = Schema.decodeEffect(Schema.fromJsonString(PackageManifestSchema));
 
 const isFirstParty = (name: string): boolean =>
-  firstPartyNames.includes(name) || firstPartyScopes.some((scope) => name.startsWith(scope));
+  firstPartyNames.has(name) || firstPartyScopes.some((scope) => name.startsWith(scope));
 
 const readLicenseDeclaration = (manifest: {
   readonly license?: unknown;
