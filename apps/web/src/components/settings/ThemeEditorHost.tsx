@@ -1,12 +1,17 @@
 import { useAtomValue } from "@effect/atom-react";
+import { XIcon } from "lucide-react";
 import { useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 
+import { useDesignLabOverridesStore } from "../../designLabOverrides";
 import { useTheme } from "../../hooks/useTheme";
 import { resolveShortcutCommand } from "../../keybindings";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { getThemeDefinition, type ThemeAppearance, type ThemeDefinition } from "../../themePalette";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { Button } from "../ui/button";
 import { ThemeEditorPanel } from "./ThemeEditorPanel";
+import { ThemeEditorSurface, type ThemeEditorSurfaceRenderState } from "./ThemeEditorSurface";
 import { toggleThemeEditorForTheme, useThemeEditorStore } from "./themeEditorStore";
 
 /**
@@ -19,6 +24,7 @@ export function ThemeEditorHost() {
   const closeThemeEditor = useThemeEditorStore((store) => store.closeThemeEditor);
   const { theme, setTheme, themeHalves, refreshTheme, resolvedTheme } = useTheme();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const designLabSlot = useDesignLabOverridesStore((store) => store.themeEditorSlot);
 
   // The editor owns its own chord. It used to ride the command palette's
   // listener, which made a live feature a tenant of a surface it has nothing
@@ -105,6 +111,12 @@ export function ThemeEditorHost() {
     },
     [refreshTheme, setTheme, theme, themeHalves],
   );
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) closeThemeEditor();
+    },
+    [closeThemeEditor],
+  );
 
   if (!session) return null;
 
@@ -116,18 +128,64 @@ export function ThemeEditorHost() {
   const seedTheme = session.seedThemeId ? (getThemeDefinition(session.seedThemeId) ?? null) : null;
 
   return (
-    <ThemeEditorPanel
+    <ThemeEditorSurface
       editingTheme={editingTheme}
       initialAppearance={session.initialAppearance}
       key={session.id}
-      onOpenChange={(open) => {
-        if (!open) closeThemeEditor();
-      }}
+      onOpenChange={handleOpenChange}
       onSaved={handleSaved}
       open
       restoreTheme={refreshTheme}
       seedName={session.seedName ?? undefined}
       seedTheme={seedTheme}
-    />
+    >
+      {(surface) =>
+        designLabSlot ? (
+          createPortal(
+            <DockedThemeEditor onOpenChange={handleOpenChange} surface={surface} />,
+            designLabSlot,
+          )
+        ) : (
+          <ThemeEditorPanel onOpenChange={handleOpenChange} surface={surface} />
+        )
+      }
+    </ThemeEditorSurface>
+  );
+}
+
+function DockedThemeEditor({
+  onOpenChange,
+  surface,
+}: {
+  onOpenChange: (open: boolean) => void;
+  surface: ThemeEditorSurfaceRenderState;
+}) {
+  return (
+    <div
+      aria-label={surface.ariaLabel}
+      className="flex min-h-[36rem] flex-col overflow-hidden rounded-xl border border-border bg-card text-foreground"
+      data-theme-editor-panel
+      ref={(node) => {
+        surface.panelRef.current = node;
+      }}
+      role="region"
+    >
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-medium">{surface.title}</h2>
+          <p className="truncate text-xs text-muted-foreground">{surface.subtitle}</p>
+        </div>
+        {surface.inspectorControl}
+        <Button
+          aria-label="Close the theme editor"
+          size="icon-xs"
+          variant="ghost"
+          onClick={() => onOpenChange(false)}
+        >
+          <XIcon />
+        </Button>
+      </div>
+      {surface.content}
+    </div>
   );
 }

@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 
+import { AxisColorPage } from "./axes/AxisColorPage";
+import { AxisElevationPage } from "./axes/AxisElevationPage";
+import { AxisShapePage } from "./axes/AxisShapePage";
+import { AxisTypographyPage } from "./axes/AxisTypographyPage";
 import {
   LiveTokenSwatch,
   LiveTokenValue,
@@ -37,6 +41,11 @@ import { SPEC_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/SpecArtif
 import { STALE_PLAN_WARNING_CATALOG_ENTRIES } from "../components/mercurian/StalePlanWarning.catalog";
 
 export const CATALOG_SECTIONS = [
+  {
+    id: "axes",
+    title: "Axes",
+    description: "Live controls for the visual stances that shape the running application.",
+  },
   {
     id: "overview",
     title: "Overview",
@@ -654,6 +663,47 @@ function AuditPage() {
 }
 
 export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
+  {
+    id: "axis-color",
+    section: "axes",
+    title: "Color",
+    description: "Edit a live theme draft across both appearance halves.",
+    sourcePath: "src/design-system/axes/AxisColorPage.tsx",
+    render: () => <AxisColorPage />,
+    layout: "document",
+    preferredCanvas: "wide",
+  },
+  {
+    id: "axis-shape",
+    section: "axes",
+    title: "Shape",
+    description: "Tune the root corner-radius stance across the running application.",
+    sourcePath: "src/design-system/axes/AxisShapePage.tsx",
+    render: () => <AxisShapePage />,
+    layout: "document",
+    preferredCanvas: "desktop",
+  },
+  {
+    id: "axis-typography",
+    section: "axes",
+    title: "Typography",
+    description: "Tune interface, prompt, and code voices and sizes live.",
+    sourcePath: "src/design-system/axes/AxisTypographyPage.tsx",
+    render: () => <AxisTypographyPage />,
+    layout: "document",
+    preferredCanvas: "desktop",
+    viewportTags: ["increased-text"],
+  },
+  {
+    id: "axis-elevation",
+    section: "axes",
+    title: "Elevation & glass",
+    description: "Tune shadow, border, blur, opacity, and saturation stances live.",
+    sourcePath: "src/design-system/axes/AxisElevationPage.tsx",
+    render: () => <AxisElevationPage />,
+    layout: "document",
+    preferredCanvas: "desktop",
+  },
   {
     id: "overview",
     section: "overview",

@@ -79,6 +79,7 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useClientSettings } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
 import { readLocalApi } from "../localApi";
+import { useDesignLabOverridesStore } from "../designLabOverrides";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
@@ -1546,6 +1547,22 @@ function OpenCommandPaletteDialog(props: {
       openOverlayMode("files");
     },
   });
+
+  if (import.meta.env.DEV) {
+    actionItems.push({
+      kind: "action",
+      value: "action:design-lab",
+      searchTerms: ["design lab", "axes", "catalog"],
+      title: "Open Design Lab",
+      icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/design-lab",
+          search: useDesignLabOverridesStore.getState().lastLabLocation ?? {},
+        });
+      },
+    });
+  }
 
   actionItems.push({
     kind: "action",
