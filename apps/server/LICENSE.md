@@ -1,18 +1,6 @@
-Copyright (c) 2026 Mercurian. All rights reserved.
-
-This software and its source code are proprietary and confidential. No license or right
-to use, copy, modify, merge, publish, distribute, sublicense, or sell any part of this
-software is granted except under a separate written agreement with Mercurian.
-
-## Provenance
-
-This software is derived from T3 Code (https://github.com/pingdotgg/t3code), used under
-the MIT License. That license continues to govern the code inherited from T3 Code, and
-its full text and permission notice are reproduced below.
-
-```
 MIT License
 
+Copyright (c) 2026 Mercurian
 Copyright (c) 2026 T3 Tools Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -32,19 +20,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
 
-## Third-party components
+---
 
-This package incorporates third-party components that remain subject to their own
-license terms. See `THIRD-PARTY-NOTICES.md` in this package for the full enumeration
-and their notices.
-
-## No warranty
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
-OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
+This software is derived from T3 Code (https://github.com/pingdotgg/t3code).
+It incorporates third-party components that remain subject to their own license
+terms; see `THIRD-PARTY-NOTICES.md` in this package for the full enumeration and
+their notices.

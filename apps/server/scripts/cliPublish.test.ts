@@ -10,7 +10,7 @@ import {
 
 const sourcePackageJson: PublishPackageJson = {
   name: "t3",
-  license: "SEE LICENSE IN LICENSE.md",
+  license: "MIT",
   repository: {
     type: "git",
     url: "https://github.com/pingdotgg/t3code",
@@ -86,17 +86,14 @@ describe("server CLI publish manifest", () => {
       overrides: {},
     };
 
-    assert.equal(
-      createPublishPackageJson(sourcePackageJson, options).license,
-      "SEE LICENSE IN LICENSE.md",
-    );
+    assert.equal(createPublishPackageJson(sourcePackageJson, options).license, "MIT");
     assert.equal(
       createPublishPackageJson(sourcePackageJson, {
         ...options,
         publishName: "@mercurian/astrolabe",
         publishBin: "astrolabe",
       }).license,
-      "SEE LICENSE IN LICENSE.md",
+      "MIT",
     );
   });
 

@@ -34,15 +34,17 @@ This document covers the unified release workflow for stable and nightly desktop
 
 ## Licensing and third-party notices
 
-Astrolabe is proprietary. The root `LICENSE` states Mercurian's reserved rights; `NOTICE.md` holds
-T3 Code's MIT license verbatim, which continues to govern the inherited code. Neither file is
-generated — but everything they promise a recipient must actually be in the artifact, so each
-release channel carries licensing payload:
+Astrolabe is MIT licensed. The root `LICENSE` carries both copyright lines — Mercurian's and
+T3 Tools', the fork's upstream — because MIT requires the original notice to travel with the code.
+`NOTICE.md` additionally preserves upstream's license file verbatim as the provenance record.
 
-- **CLI package (`@mercurian/astrolabe`)** — publishes `"license": "SEE LICENSE IN LICENSE.md"`,
-  carried from `apps/server/package.json` through the publish manifest. npm includes
-  `apps/server/LICENSE.md` in the tarball automatically; `THIRD-PARTY-NOTICES.md` is added to the
-  manifest's `files` explicitly because npm does not auto-include it.
+MIT's notice-retention clause applies to our dependencies too, so each release channel carries a
+licensing payload:
+
+- **CLI package (`@mercurian/astrolabe`)** — publishes `"license": "MIT"`, carried from
+  `apps/server/package.json` through the publish manifest. npm includes `apps/server/LICENSE.md` in
+  the tarball automatically; `THIRD-PARTY-NOTICES.md` is added to the manifest's `files` explicitly
+  because npm does not auto-include it.
 - **Desktop installers** — `THIRD-PARTY-NOTICES.md` ships as an extra resource beside Electron's
   own `LICENSE.electron.txt` and `LICENSES.chromium.html`.
 
@@ -57,12 +59,6 @@ To inspect what a release would carry:
 ```sh
 node scripts/generate-third-party-notices.ts --out /tmp/THIRD-PARTY-NOTICES.md
 ```
-
-One-time remediation, still outstanding: `@mercurian/astrolabe@0.0.1` was published to the public
-npm registry carrying `"license": "MIT"`. It must be unpublished if npm's policy still allows it,
-and otherwise deprecated with a message pointing at the corrected terms. This needs npm owner
-credentials, so it is an operator step rather than something CI performs. Record the outcome here
-once done.
 
 ## Required release credentials
 

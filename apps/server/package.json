@@ -1,7 +1,7 @@
 {
   "name": "t3",
   "version": "0.0.33",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pingdotgg/t3code",

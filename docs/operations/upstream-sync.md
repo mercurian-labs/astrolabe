@@ -42,16 +42,18 @@ release workflow records `skipped_not_configured` and continues without failing 
 
 ## License files during a sync
 
-The root `LICENSE` is Mercurian-owned and no longer tracks upstream: it states Mercurian's reserved
-rights and points at `NOTICE.md`, which holds T3 Code's MIT license verbatim. A sync that touches
-either file needs deliberate resolution rather than a merge:
+Astrolabe is MIT licensed, the same license as upstream, so a sync rarely produces license conflicts.
+Two files still need deliberate handling:
 
-- Conflicts in `LICENSE` — keep the Mercurian text. Do not accept upstream's MIT file back.
-- Upstream edits to their own license — apply them to `NOTICE.md`, not to `LICENSE`, so the
-  inherited notice stays accurate. `diff NOTICE.md <(git show upstream/main:LICENSE)` should be
-  empty after the resolution.
-- `apps/server/package.json` declares `"license": "SEE LICENSE IN LICENSE.md"`. Upstream declares
-  MIT there, so this single line conflicts on any sync that touches the manifest; keep ours.
+- The root `LICENSE` is MIT text carrying both copyright lines, Mercurian's and T3 Tools'. Upstream's
+  carries only theirs, so a conflict here resolves to ours — keep both lines rather than accepting
+  upstream's file wholesale, which would drop Mercurian's copyright.
+- `NOTICE.md` preserves upstream's license file verbatim as the provenance record. If upstream edits
+  their own license, apply the edit here, not to `LICENSE`. `diff NOTICE.md <(git show
+upstream/main:LICENSE)` should be empty after the resolution.
+
+`apps/server/package.json` declares `"license": "MIT"`, matching upstream, so that line no longer
+conflicts.
 
 ## Upstream sync cadence
 
