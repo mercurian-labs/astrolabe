@@ -5,10 +5,12 @@ import {
   createVpPmPublishArgs,
   MERCURIAN_REPOSITORY_URL,
   type PublishPackageJson,
+  THIRD_PARTY_NOTICES_FILE,
 } from "./cliPublish.ts";
 
 const sourcePackageJson: PublishPackageJson = {
   name: "t3",
+  license: "SEE LICENSE IN LICENSE.md",
   repository: {
     type: "git",
     url: "https://github.com/pingdotgg/t3code",
@@ -75,6 +77,47 @@ describe("server CLI publish manifest", () => {
     assert.deepEqual(sourcePackageJson.bin, {
       t3: "./dist/bin.mjs",
     });
+  });
+
+  it("carries the source license into the publish manifest with and without identity overrides", () => {
+    const options = {
+      version: "1.2.3",
+      dependencies: {},
+      overrides: {},
+    };
+
+    assert.equal(
+      createPublishPackageJson(sourcePackageJson, options).license,
+      "SEE LICENSE IN LICENSE.md",
+    );
+    assert.equal(
+      createPublishPackageJson(sourcePackageJson, {
+        ...options,
+        publishName: "@mercurian/astrolabe",
+        publishBin: "astrolabe",
+      }).license,
+      "SEE LICENSE IN LICENSE.md",
+    );
+  });
+
+  it("ships the generated third-party notices alongside dist, without duplicating the entry", () => {
+    const options = {
+      version: "1.2.3",
+      dependencies: {},
+      overrides: {},
+    };
+
+    assert.deepEqual(createPublishPackageJson(sourcePackageJson, options).files, [
+      "dist",
+      THIRD_PARTY_NOTICES_FILE,
+    ]);
+    assert.deepEqual(
+      createPublishPackageJson(
+        { ...sourcePackageJson, files: ["dist", THIRD_PARTY_NOTICES_FILE] },
+        options,
+      ).files,
+      ["dist", THIRD_PARTY_NOTICES_FILE],
+    );
   });
 
   it("rejects a publish bin override when the source exposes multiple bins", () => {

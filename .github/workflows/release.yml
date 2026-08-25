@@ -770,6 +770,11 @@ jobs:
             chmod +x "$target_dir"/t3-resource-monitor 2>/dev/null || true
           done
 
+      - name: Generate third-party notices
+        run: |
+          node scripts/generate-third-party-notices.ts \
+            --out apps/server/THIRD-PARTY-NOTICES.md
+
       - name: Publish CLI package
         run: |
           node apps/server/scripts/cli.ts publish \

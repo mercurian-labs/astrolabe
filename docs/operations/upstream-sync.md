@@ -40,6 +40,19 @@ npm install --global @mercurian/astrolabe@nightly
 The hosted web app is outside the current release scope. When the Vercel secrets are absent, the
 release workflow records `skipped_not_configured` and continues without failing the release.
 
+## License files during a sync
+
+The root `LICENSE` is Mercurian-owned and no longer tracks upstream: it states Mercurian's reserved
+rights and points at `NOTICE.md`, which holds T3 Code's MIT license verbatim. A sync that touches
+either file needs deliberate resolution rather than a merge:
+
+- Conflicts in `LICENSE` — keep the Mercurian text. Do not accept upstream's MIT file back.
+- Upstream edits to their own license — apply them to `NOTICE.md`, not to `LICENSE`, so the
+  inherited notice stays accurate. `diff NOTICE.md <(git show upstream/main:LICENSE)` should be
+  empty after the resolution.
+- `apps/server/package.json` declares `"license": "SEE LICENSE IN LICENSE.md"`. Upstream declares
+  MIT there, so this single line conflicts on any sync that touches the manifest; keep ours.
+
 ## Upstream sync cadence
 
 `.github/workflows/upstream-sync.yml` runs every Monday at 13:00 UTC and supports manual

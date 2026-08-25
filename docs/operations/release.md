@@ -32,6 +32,38 @@ This document covers the unified release workflow for stable and nightly desktop
   - nightly releases are aliased to the `nightly` hosted app channel
 - Signing is optional and auto-detected per platform from secrets.
 
+## Licensing and third-party notices
+
+Astrolabe is proprietary. The root `LICENSE` states Mercurian's reserved rights; `NOTICE.md` holds
+T3 Code's MIT license verbatim, which continues to govern the inherited code. Neither file is
+generated — but everything they promise a recipient must actually be in the artifact, so each
+release channel carries licensing payload:
+
+- **CLI package (`@mercurian/astrolabe`)** — publishes `"license": "SEE LICENSE IN LICENSE.md"`,
+  carried from `apps/server/package.json` through the publish manifest. npm includes
+  `apps/server/LICENSE.md` in the tarball automatically; `THIRD-PARTY-NOTICES.md` is added to the
+  manifest's `files` explicitly because npm does not auto-include it.
+- **Desktop installers** — `THIRD-PARTY-NOTICES.md` ships as an extra resource beside Electron's
+  own `LICENSE.electron.txt` and `LICENSES.chromium.html`.
+
+`THIRD-PARTY-NOTICES.md` is generated at build time by `scripts/generate-third-party-notices.ts` and
+is git-ignored on purpose: a committed copy drifts from the dependency set it describes and nothing
+in CI would catch it. The release workflow generates it before the CLI publish step, and
+`scripts/build-desktop-artifact.ts` generates it during staging. The generator fails the build if a
+vendored license file is missing rather than shipping an artifact with an incomplete notice.
+
+To inspect what a release would carry:
+
+```sh
+node scripts/generate-third-party-notices.ts --out /tmp/THIRD-PARTY-NOTICES.md
+```
+
+One-time remediation, still outstanding: `@mercurian/astrolabe@0.0.1` was published to the public
+npm registry carrying `"license": "MIT"`. It must be unpublished if npm's policy still allows it,
+and otherwise deprecated with a message pointing at the corrected terms. This needs npm owner
+credentials, so it is an operator step rather than something CI performs. Record the outcome here
+once done.
+
 ## Required release credentials
 
 Stable releases require these GitHub Actions secrets in addition to the platform and deployment
