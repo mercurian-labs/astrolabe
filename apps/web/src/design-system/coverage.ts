@@ -72,6 +72,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Available planning models and provider resolution come from the primary environment's settings.",
   },
+  "src/components/mercurian/PlanTraitsPicker.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "The depth levels it offers come from the resolved provider instance's live model descriptors.",
+  },
   "src/components/mercurian/PlanningSpace.tsx": {
     category: "composition-shell",
     reason:
