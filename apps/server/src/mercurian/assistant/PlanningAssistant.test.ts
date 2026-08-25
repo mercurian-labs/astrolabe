@@ -46,6 +46,20 @@ const claudeInstance = ProviderInstanceId.make("claudeAgent");
 const codex = ProviderDriverKind.make("codex");
 const codexInstance = ProviderInstanceId.make("codex");
 
+const reasoningCapabilities = {
+  optionDescriptors: [
+    {
+      id: "effort",
+      label: "Reasoning effort",
+      type: "select" as const,
+      options: [
+        { id: "low", label: "Low" },
+        { id: "high", label: "High" },
+      ],
+    },
+  ],
+};
+
 const providerSnapshot: ServerProvider = {
   instanceId: claudeInstance,
   driver: claude,
@@ -55,7 +69,7 @@ const providerSnapshot: ServerProvider = {
   status: "ready",
   auth: { status: "authenticated" },
   checkedAt: "2026-08-08T00:00:00.000Z",
-  models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
+  models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: reasoningCapabilities }],
   slashCommands: [],
   skills: [],
 };
@@ -301,9 +315,15 @@ describe("PlanningAssistant", () => {
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const store = yield* PlanningStore.PlanningStore;
+      const settings = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const harness = yield* ProviderHarness;
       const { created, root } = yield* seedPlan();
       const frames = yield* subscribeFrames(created.plan.planId);
+      yield* settings.recordLastUsedPlanningModel({
+        provider: claude,
+        model: "opus",
+        options: [{ id: "effort", value: "high" }],
+      });
 
       yield* assistant.startTurn({
         planId: created.plan.planId,
@@ -315,7 +335,11 @@ describe("PlanningAssistant", () => {
       // the first turn carried the appendix.
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.runtimeMode, "approval-required");
-      assert.strictEqual(session.modelSelection?.model, "opus");
+      assert.deepStrictEqual(session.modelSelection, {
+        instanceId: claudeInstance,
+        model: "opus",
+        options: [{ id: "effort", value: "high" }],
+      });
       assert.strictEqual(session.isolateProviderSettings, true);
       const firstTurn = yield* Queue.take(harness.sendTurns);
       assert.ok(firstTurn.input?.includes("planning assistant"));
@@ -369,7 +393,11 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(reply.text, "Here is the shape.");
       assert.strictEqual(reply.interrupted, undefined);
       assert.strictEqual(reply.grounding?.length, 1);
-      assert.deepStrictEqual(reply.generatedBy, { provider: claude, model: "opus" });
+      assert.deepStrictEqual(reply.generatedBy, {
+        provider: claude,
+        model: "opus",
+        options: [{ id: "effort", value: "high" }],
+      });
       assert.deepStrictEqual([...reply.parents], [root.commitId]);
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
@@ -1008,6 +1036,125 @@ describe("PlanningAssistant", () => {
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.providerInstanceId, claudeInstance);
       assert.strictEqual(session.modelSelection?.model, "opus");
+      assert.strictEqual(session.modelSelection?.options, undefined);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("continues the same option triple and rebuilds when depth alone changes", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const project = yield* store.createProject({
+        name: "Astrolabe",
+        createdAt: at("2026-08-08T00:27:00.000Z"),
+      });
+      const high = {
+        provider: claude,
+        model: "opus",
+        options: [{ id: "effort", value: "high" }],
+      } as const;
+      const created = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Start deep",
+        modelChoice: high,
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:27:00.000Z"),
+      });
+      const root = created.timeline[0]!;
+      assert.ok(root._tag === "message" && root.ranUnder !== undefined);
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: root.text,
+        ranUnder: root.ranUnder,
+      });
+      const firstSession = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(firstSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "First" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(firstSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames);
+      const firstReply = (yield* store.getPlanSnapshot({
+        planId: created.plan.planId,
+      })).timeline.at(-1)!;
+
+      const same = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: firstReply.commitId,
+        text: "Stay deep",
+        modelChoice: { ...high, options: high.options.toReversed() },
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:28:00.000Z"),
+      });
+      assert.ok(same.ranUnder !== undefined);
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: same.commitId,
+        text: same.text,
+        ranUnder: same.ranUnder,
+      });
+      const continued = yield* Queue.take(harness.sendTurns);
+      assert.strictEqual(continued.threadId, firstSession.threadId);
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(firstSession.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "Second" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(firstSession.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames);
+      const secondReply = (yield* store.getPlanSnapshot({
+        planId: created.plan.planId,
+      })).timeline.at(-1)!;
+
+      const shallow = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: secondReply.commitId,
+        text: "Use less depth",
+        modelChoice: {
+          provider: claude,
+          model: "opus",
+          options: [{ id: "effort", value: "low" }],
+        },
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:29:00.000Z"),
+      });
+      assert.ok(shallow.ranUnder !== undefined);
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: shallow.commitId,
+        text: shallow.text,
+        ranUnder: shallow.ranUnder,
+      });
+      assert.strictEqual(yield* Queue.take(harness.stops), firstSession.threadId);
+      const rebuilt = yield* Queue.take(harness.startSessions);
+      assert.deepStrictEqual(rebuilt.modelSelection, {
+        instanceId: claudeInstance,
+        model: "opus",
+        options: [{ id: "effort", value: "low" }],
+      });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
@@ -1543,6 +1690,12 @@ describe("PlanningAssistant", () => {
       { provider: claude, model: "sonnet" },
       [providerSnapshot],
       "model-unavailable",
+    ],
+    [
+      "an override whose recorded option is absent",
+      { provider: claude, model: "opus", options: [{ id: "effort", value: "max" }] },
+      [providerSnapshot],
+      "option-unavailable",
     ],
   ] as const) {
     it.effect(`refuses ${label}`, () =>

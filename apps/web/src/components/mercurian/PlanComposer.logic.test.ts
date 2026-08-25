@@ -86,6 +86,9 @@ describe("planningModelGateNotice", () => {
     expect(
       planningModelGateNotice(selection, { _tag: "unresolved", reason: "model-unavailable" }),
     ).toContain("not available");
+    expect(
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "option-unavailable" }),
+    ).toContain("reasoning depth");
   });
 
   it("keeps the established gate wording", () => {
@@ -111,12 +114,13 @@ describe("planningModelGateNotice", () => {
     );
   });
 
-  it("uses distinct wording for all four can't-reply states", () => {
+  it("uses distinct wording for all five can't-reply states", () => {
     const notices = [
       planningModelGateNotice(null, { _tag: "unset" }),
       planningModelGateNotice(selection, { _tag: "unresolved", reason: "no-instance" }),
       planningModelGateNotice(selection, { _tag: "unresolved", reason: "not-signed-in" }),
       planningModelGateNotice(selection, { _tag: "unresolved", reason: "model-unavailable" }),
+      planningModelGateNotice(selection, { _tag: "unresolved", reason: "option-unavailable" }),
     ];
 
     expect(new Set(notices).size).toBe(notices.length);
@@ -135,6 +139,7 @@ describe("turnRefusalNotice", () => {
       "no-instance",
       "not-signed-in",
       "model-unavailable",
+      "option-unavailable",
       "turn-active",
     ] as const) {
       expect(turnRefusalNotice(selection, reason).length).toBeGreaterThan(0);

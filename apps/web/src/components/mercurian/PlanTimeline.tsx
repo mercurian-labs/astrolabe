@@ -43,7 +43,7 @@ import { MessageCopyButton } from "../chat/MessageCopyButton";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { providerLabel } from "./PlanningModel.logic";
+import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
 import { codingSessionRecordFor, codingSessionStatus } from "./PlanNodePopover.logic";
 
 /**
@@ -310,9 +310,11 @@ export function ModelAttribution({
     providers
       .flatMap((provider) => (provider.driver === selection.provider ? provider.models : []))
       .find((model) => model.slug === selection.model)?.name ?? selection.model;
+  const optionLabels = planningModelOptionLabels(selection, providers);
   return (
     <span className="text-[11px] text-muted-foreground/65">
       {providerLabel(selection.provider)} · {modelLabel}
+      {optionLabels.length === 0 ? "" : ` · ${optionLabels.join(" · ")}`}
     </span>
   );
 }

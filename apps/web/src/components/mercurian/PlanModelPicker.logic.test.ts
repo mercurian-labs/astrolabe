@@ -10,6 +10,7 @@ import {
   derivePlanModelPickerState,
   planningModelDisabledReason,
   planningSelectionForInstanceModel,
+  retainOfferedOptions,
 } from "./PlanModelPicker.logic";
 
 const claude = ProviderDriverKind.make("claudeAgent");
@@ -111,5 +112,79 @@ describe("PlanModelPicker logic", () => {
     expect(planningModelDisabledReason(state.entries, providers, claudeDefault, "opus")).toContain(
       "No Claude instance",
     );
+  });
+
+  it("retains only options whose id and value the new model offers", () => {
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "effort",
+          label: "Reasoning effort",
+          type: "select" as const,
+          options: [
+            { id: "low", label: "Low" },
+            { id: "high", label: "High" },
+          ],
+        },
+        { id: "thinking", label: "Thinking", type: "boolean" as const },
+      ],
+    };
+    expect(
+      retainOfferedOptions(
+        [
+          { id: "effort", value: "high" },
+          { id: "thinking", value: true },
+          { id: "missing", value: "high" },
+        ],
+        capabilities,
+      ),
+    ).toEqual([
+      { id: "effort", value: "high" },
+      { id: "thinking", value: true },
+    ]);
+    expect(retainOfferedOptions([{ id: "effort", value: "max" }], capabilities)).toBeUndefined();
+  });
+
+  it("applies option carryover across provider and model changes", () => {
+    const codex = ProviderDriverKind.make("codex");
+    const codexWork = ProviderInstanceId.make("codex_work");
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "effort",
+          label: "Reasoning effort",
+          type: "select" as const,
+          options: [{ id: "high", label: "High" }],
+        },
+      ],
+    };
+    const providers = [
+      provider({
+        models: [
+          { slug: "opus", name: "Opus", isCustom: false, capabilities },
+          { slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null },
+        ],
+      }),
+      provider({
+        instanceId: codexWork,
+        driver: codex,
+        models: [{ slug: "gpt-5", name: "GPT-5", isCustom: false, capabilities }],
+      }),
+    ];
+    const state = derivePlanModelPickerState(null, providers, DEFAULT_UNIFIED_SETTINGS);
+    const current = {
+      provider: claude,
+      model: "opus",
+      options: [{ id: "effort", value: "high" }],
+    } as const;
+
+    expect(planningSelectionForInstanceModel(state.entries, codexWork, "gpt-5", current)).toEqual({
+      provider: codex,
+      model: "gpt-5",
+      options: current.options,
+    });
+    expect(
+      planningSelectionForInstanceModel(state.entries, claudeDefault, "sonnet", current),
+    ).toEqual({ provider: claude, model: "sonnet" });
   });
 });

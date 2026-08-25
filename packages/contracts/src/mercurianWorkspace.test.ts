@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  planningModelSelectionsEqual,
   PlanningModelSelection,
   resolvePlanningModel,
   WorkspaceSettingsSnapshot,
@@ -30,12 +31,30 @@ const provider = (
   ...overrides,
 });
 
-const model = (slug: string): ServerProvider["models"][number] => ({
+const model = (
+  slug: string,
+  capabilities: ServerProvider["models"][number]["capabilities"] = null,
+): ServerProvider["models"][number] => ({
   slug,
   name: slug,
   isCustom: false,
-  capabilities: null,
+  capabilities,
 });
+
+const optionCapabilities = {
+  optionDescriptors: [
+    {
+      id: "effort",
+      label: "Reasoning effort",
+      type: "select" as const,
+      options: [
+        { id: "low", label: "Low" },
+        { id: "high", label: "High" },
+      ],
+    },
+    { id: "thinking", label: "Thinking", type: "boolean" as const },
+  ],
+};
 
 describe("resolvePlanningModel", () => {
   it("reports unset when the workspace has chosen no planning model", () => {
@@ -267,14 +286,119 @@ describe("resolvePlanningModel", () => {
       reason: "no-instance",
     });
   });
+
+  it("reports option-unavailable for an unknown option id", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        models: [model("opus", optionCapabilities)],
+      }),
+    ];
+
+    expect(
+      resolvePlanningModel(
+        { ...selection("claudeAgent", "opus"), options: [{ id: "mystery", value: "high" }] },
+        providers,
+      ),
+    ).toEqual({ _tag: "unresolved", reason: "option-unavailable" });
+  });
+
+  it("reports option-unavailable for an unoffered select value", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        models: [model("opus", optionCapabilities)],
+      }),
+    ];
+
+    expect(
+      resolvePlanningModel(
+        { ...selection("claudeAgent", "opus"), options: [{ id: "effort", value: "max" }] },
+        providers,
+      ),
+    ).toEqual({ _tag: "unresolved", reason: "option-unavailable" });
+  });
+
+  it("reports option-unavailable for a boolean option without a boolean descriptor", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        models: [model("opus", optionCapabilities)],
+      }),
+    ];
+
+    expect(
+      resolvePlanningModel(
+        { ...selection("claudeAgent", "opus"), options: [{ id: "effort", value: true }] },
+        providers,
+      ),
+    ).toEqual({ _tag: "unresolved", reason: "option-unavailable" });
+  });
+
+  it("resolves when every recorded option is offered", () => {
+    const providers = [
+      provider({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: claude,
+        models: [model("opus", optionCapabilities)],
+      }),
+    ];
+
+    expect(
+      resolvePlanningModel(
+        {
+          ...selection("claudeAgent", "opus"),
+          options: [
+            { id: "thinking", value: true },
+            { id: "effort", value: "high" },
+          ],
+        },
+        providers,
+      ),
+    ).toEqual({
+      _tag: "resolved",
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      provider: claude,
+      model: "opus",
+    });
+  });
 });
 
 describe("PlanningModelSelection", () => {
   it("has no field an instance id could occupy", () => {
-    expect(Object.keys(PlanningModelSelection.fields).sort()).toEqual(["model", "provider"]);
+    expect(Object.keys(PlanningModelSelection.fields).sort()).toEqual([
+      "model",
+      "options",
+      "provider",
+    ]);
   });
 
   it("treats an absent planning model as a real workspace state", () => {
     expect(WorkspaceSettingsSnapshot.fields.planningModel).toBeDefined();
+  });
+
+  it("compares provider options without treating their order as meaningful", () => {
+    const left = {
+      ...selection("claudeAgent", "opus"),
+      options: [
+        { id: "effort", value: "high" },
+        { id: "thinking", value: true },
+      ],
+    } satisfies PlanningModelSelection;
+    const reordered = {
+      ...selection("claudeAgent", "opus"),
+      options: left.options.toReversed(),
+    } satisfies PlanningModelSelection;
+
+    expect(planningModelSelectionsEqual(left, reordered)).toBe(true);
+    expect(
+      planningModelSelectionsEqual(left, {
+        ...reordered,
+        options: [{ id: "effort", value: "low" }],
+      }),
+    ).toBe(false);
   });
 });

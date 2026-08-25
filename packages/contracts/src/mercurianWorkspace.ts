@@ -5,8 +5,9 @@
  * connected account on one machine, because signing in belongs to the
  * provider's agent on that machine. The workspace is shared. So nothing
  * workspace-level ever names an instance. The last-used planning model is named
- * abstractly — a provider and a model — and each machine resolves that pair to
- * one of its own instances at runtime, freshly, never storing the answer.
+ * abstractly — a provider, model, and optional provider options — and each
+ * machine resolves that choice to one of its own instances at runtime,
+ * freshly, never storing the answer.
  *
  * That is why {@link PlanningModelSelection} has no field an instance id could
  * occupy, and why {@link resolvePlanningModel} takes the machine's live
@@ -22,6 +23,7 @@ import {
   ProviderDriverKind,
   type ProviderInstanceId,
 } from "./providerInstance.ts";
+import { ProviderOptionSelections } from "./model.ts";
 import { isProviderAvailable, type ServerProviders } from "./server.ts";
 
 export const MERCURIAN_WORKSPACE_WS_METHODS = {
@@ -29,10 +31,11 @@ export const MERCURIAN_WORKSPACE_WS_METHODS = {
 } as const;
 
 /**
- * The workspace's whole vocabulary for the planning model: which provider, and
- * which model of it. **There is no instance field, and adding one would be a
- * design decision rather than a refactor** — an instance is machine-local, and
- * a workspace that named one would resolve to nothing on every other machine.
+ * The workspace's whole vocabulary for the planning model: which provider,
+ * which model of it, and any explicitly selected provider options. **There is
+ * no instance field, and adding one would be a design decision rather than a
+ * refactor** — an instance is machine-local, and a workspace that named one
+ * would resolve to nothing on every other machine.
  *
  * `provider` is the open branded driver-kind slug (see `providerInstance`), so
  * a workspace can name a provider this build does not ship — a fork's driver, a
@@ -42,12 +45,36 @@ export const MERCURIAN_WORKSPACE_WS_METHODS = {
 export const PlanningModelSelection = Schema.Struct({
   provider: ProviderDriverKind,
   model: TrimmedNonEmptyString,
+  options: Schema.optional(ProviderOptionSelections),
 });
 export type PlanningModelSelection = typeof PlanningModelSelection.Type;
 
+/** Planning choices compare semantically; provider option order is not meaningful. */
+export function planningModelSelectionsEqual(
+  left: PlanningModelSelection,
+  right: PlanningModelSelection,
+): boolean {
+  if (left.provider !== right.provider || left.model !== right.model) return false;
+  const leftOptions = left.options ?? [];
+  const rightOptions = right.options ?? [];
+  return (
+    leftOptions.length === rightOptions.length &&
+    leftOptions.every((option) =>
+      rightOptions.some(
+        (candidate) => candidate.id === option.id && candidate.value === option.value,
+      ),
+    ) &&
+    rightOptions.every((option) =>
+      leftOptions.some(
+        (candidate) => candidate.id === option.id && candidate.value === option.value,
+      ),
+    )
+  );
+}
+
 /**
  * Every workspace-scoped setting in one value. `planningModel` records the
- * pair the workspace last planned under; `null` means nothing has run yet.
+ * choice the workspace last planned under; `null` means nothing has run yet.
  */
 export const WorkspaceSettingsSnapshot = Schema.Struct({
   planningModel: Schema.NullOr(PlanningModelSelection),
@@ -87,7 +114,7 @@ export class MercurianWorkspaceError extends Schema.TaggedErrorClass<MercurianWo
 }
 
 /**
- * What a machine makes of an abstract planning-model pair right now.
+ * What a machine makes of an abstract planning-model choice right now.
  *
  * `unresolved` is deliberately not a failure and never rewrites the pair:
  * the record stays saved, and the machine that lacks an instance says so. The
@@ -103,11 +130,11 @@ export type PlanningModelResolution =
     }
   | {
       readonly _tag: "unresolved";
-      readonly reason: "no-instance" | "model-unavailable" | "not-signed-in";
+      readonly reason: "no-instance" | "model-unavailable" | "not-signed-in" | "option-unavailable";
     };
 
 /**
- * Resolve an abstract provider/model pair to one instance on this machine.
+ * Resolve an abstract provider/model/options choice to one instance on this machine.
  * Pure: the picker renders it in a client, and a planning turn computes it server-side
  * against the registry's own snapshots.
  *
@@ -161,6 +188,20 @@ export const resolvePlanningModel = (
   }
   const defaultInstanceId = defaultInstanceIdForDriver(setting.provider);
   const chosen = usable.find((snapshot) => snapshot.instanceId === defaultInstanceId) ?? usable[0]!;
+  const chosenModel = chosen.models.find((model) => model.slug === setting.model)!;
+  const descriptors = chosenModel.capabilities?.optionDescriptors ?? [];
+  const optionsOffered = (setting.options ?? []).every((selection) => {
+    const descriptor = descriptors.find((candidate) => candidate.id === selection.id);
+    if (descriptor === undefined) return false;
+    if (descriptor.type === "boolean") return typeof selection.value === "boolean";
+    return (
+      typeof selection.value === "string" &&
+      descriptor.options.some((option) => option.id === selection.value)
+    );
+  });
+  if (!optionsOffered) {
+    return { _tag: "unresolved", reason: "option-unavailable" };
+  }
   return {
     _tag: "resolved",
     instanceId: chosen.instanceId,

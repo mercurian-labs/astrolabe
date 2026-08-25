@@ -187,7 +187,11 @@ describe("planComposerStore", () => {
   });
 
   it("keeps a model flip with its branch, through reload, until the draft clears", () => {
-    const directive = { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" } as const;
+    const directive = {
+      provider: ProviderDriverKind.make("codex"),
+      model: "gpt-5.4",
+      options: [{ id: "effort", value: "high" }],
+    } as const;
     const store = usePlanComposerStore.getState();
     store.setModelChoice(PLAN, HEAD, directive, true);
 

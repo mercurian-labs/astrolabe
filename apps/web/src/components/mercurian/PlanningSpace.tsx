@@ -93,6 +93,7 @@ import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
 import { PlanModelPicker } from "./PlanModelPicker";
+import { PlanTraitsPicker } from "./PlanTraitsPicker";
 import { resolveImplementFrom } from "./PlanNodePopover.logic";
 import {
   advance,
@@ -677,16 +678,35 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
             modelPicker={
-              <PlanModelPicker
-                disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
-                providers={planningModel.providers}
-                selection={modelChoice}
-                onChange={(selection) => {
-                  if (actingHead !== null) {
-                    setDraftModelChoice(planId, actingHead, selection, draftLive);
-                  }
-                }}
-              />
+              <>
+                <PlanModelPicker
+                  disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
+                  providers={planningModel.providers}
+                  selection={modelChoice}
+                  onChange={(selection) => {
+                    if (actingHead !== null) {
+                      setDraftModelChoice(planId, actingHead, selection, draftLive);
+                    }
+                  }}
+                />
+                <PlanTraitsPicker
+                  disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
+                  prompt={draft.text}
+                  providers={planningModel.providers}
+                  resolution={effectiveModelResolution}
+                  selection={modelChoice}
+                  onChange={(selection) => {
+                    if (actingHead !== null) {
+                      setDraftModelChoice(planId, actingHead, selection, draftLive);
+                    }
+                  }}
+                  onPromptChange={(text) => {
+                    if (actingHead !== null) {
+                      setDraftText(planId, actingHead, text, draftLive);
+                    }
+                  }}
+                />
+              </>
             }
             implementDisabledReason={implementReason}
             notice={
@@ -1272,11 +1292,21 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         })}
         mentionCandidates={mentions.candidates}
         modelPicker={
-          <PlanModelPicker
-            providers={planningModel.providers}
-            selection={modelChoice}
-            onChange={(selection) => setDraftModelChoice(draftId, selection)}
-          />
+          <>
+            <PlanModelPicker
+              providers={planningModel.providers}
+              selection={modelChoice}
+              onChange={(selection) => setDraftModelChoice(draftId, selection)}
+            />
+            <PlanTraitsPicker
+              prompt={draft.text}
+              providers={planningModel.providers}
+              resolution={effectiveModelResolution}
+              selection={modelChoice}
+              onChange={(selection) => setDraftModelChoice(draftId, selection)}
+              onPromptChange={(text) => setDraftText(draftId, text)}
+            />
+          </>
         }
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says

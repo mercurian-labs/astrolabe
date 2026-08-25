@@ -19,6 +19,7 @@ import {
 
 import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
+import { planningModelOptionLabels } from "./PlanningModel.logic";
 import {
   codingSessionStatus,
   derivePlanNodePopover,
@@ -107,6 +108,24 @@ describe("modelSwitchFor", () => {
     ]);
     expect(modelSwitchFor(provider, id("p-new"))).toEqual(model("claude", "same"));
     expect(modelSwitchFor(modelChange, id("m-new"))).toEqual(model("codex", "old"));
+  });
+
+  it("treats differing options as a switch and keeps raw attribution legible", () => {
+    const old = {
+      ...model("codex", "gpt-5"),
+      options: [{ id: "effort", value: "low" }],
+    } satisfies PlanningModelSelection;
+    const next = {
+      ...model("codex", "gpt-5"),
+      options: [{ id: "effort", value: "high" }],
+    } satisfies PlanningModelSelection;
+    const graph = buildPlanGraph([
+      commit("old-depth", 1, [], "human", { ranUnder: old }),
+      commit("new-depth", 2, ["old-depth"], "human", { ranUnder: next }),
+    ]);
+
+    expect(modelSwitchFor(graph, id("new-depth"))).toEqual(old);
+    expect(planningModelOptionLabels(old, [])).toEqual(["low"]);
   });
 });
 

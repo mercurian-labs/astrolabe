@@ -19,6 +19,33 @@ export function providerLabel(provider: ProviderDriverKind): string {
   return PROVIDER_DISPLAY_NAMES[provider] ?? formatProviderDriverKindLabel(provider);
 }
 
+/** Recorded option labels when live descriptors know them, raw values otherwise. */
+export function planningModelOptionLabels(
+  selection: PlanningModelSelection,
+  providers: ReadonlyArray<ServerProvider>,
+): ReadonlyArray<string> {
+  const models = providers.flatMap((snapshot) =>
+    snapshot.driver === selection.provider
+      ? snapshot.models.filter((model) => model.slug === selection.model)
+      : [],
+  );
+  return (selection.options ?? []).map((recorded) => {
+    for (const model of models) {
+      const descriptor = model.capabilities?.optionDescriptors?.find(
+        (candidate) => candidate.id === recorded.id,
+      );
+      if (descriptor?.type === "select" && typeof recorded.value === "string") {
+        const label = descriptor.options.find((option) => option.id === recorded.value)?.label;
+        if (label !== undefined) return label;
+      }
+      if (descriptor?.type === "boolean" && typeof recorded.value === "boolean") {
+        return `${descriptor.label} ${recorded.value ? "On" : "Off"}`;
+      }
+    }
+    return String(recorded.value);
+  });
+}
+
 /**
  * Whether an instance could run a turn on this machine right now — the same
  * test `resolvePlanningModel` applies, kept in step with it deliberately.
@@ -134,17 +161,22 @@ export function describePlanningModel(
   }
 
   const upgrade =
-    resolution.reason === "model-unavailable"
+    resolution.reason === "model-unavailable" || resolution.reason === "option-unavailable"
       ? upgradeNudgeFor(providers, selection.provider, entriesByInstanceId)
       : null;
+  const recordedOptions = planningModelOptionLabels(selection, providers).join(" · ");
   const message =
     resolution.reason === "no-instance"
       ? `No ${provider} instance on this machine. The model stays selected and resolves wherever one exists.`
       : resolution.reason === "not-signed-in"
         ? `Not signed in to ${signedOutInstanceLabelFor(selection, providers, entriesByInstanceId)}. The model stays selected and resolves once you sign in.`
-        : upgrade === null
-          ? `${modelLabel} is not available on this machine's ${provider} instance.`
-          : `${modelLabel} is not available on this machine's ${provider} instance. Update ${upgrade.instanceLabel} to ${upgrade.latestVersion} to unlock it.`;
+        : resolution.reason === "option-unavailable"
+          ? upgrade === null
+            ? `${modelLabel}'s recorded reasoning depth (${recordedOptions}) is not available on this machine's ${provider} instance.`
+            : `${modelLabel}'s recorded reasoning depth (${recordedOptions}) is not available on this machine's ${provider} instance. Update ${upgrade.instanceLabel} to ${upgrade.latestVersion} to unlock it.`
+          : upgrade === null
+            ? `${modelLabel} is not available on this machine's ${provider} instance.`
+            : `${modelLabel} is not available on this machine's ${provider} instance. Update ${upgrade.instanceLabel} to ${upgrade.latestVersion} to unlock it.`;
 
   return { kind: "unresolved", providerLabel: provider, modelLabel, message, upgrade };
 }

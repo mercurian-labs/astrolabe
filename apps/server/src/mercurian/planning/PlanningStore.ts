@@ -1399,10 +1399,7 @@ export const make = Effect.gen(function* () {
       if (current.kind === "message") {
         const record = (yield* decodeMessagePayload(current.payload)).ranUnder;
         if (record !== undefined) {
-          return {
-            provider: record.provider,
-            model: record.model,
-          } satisfies PlanningModelSelection;
+          return record;
         }
       }
       const parentId = current.parents[0];

@@ -181,7 +181,11 @@ layer("PlanningStore", (it) => {
       const overridden = yield* store.createPlan({
         projectId: project.projectId,
         message: "Use Codex here",
-        modelChoice: { provider: codex, model: "gpt-5.4" },
+        modelChoice: {
+          provider: codex,
+          model: "gpt-5.4",
+          options: [{ id: "effort", value: "high" }],
+        },
         lastUsed: { provider: claude, model: "opus" },
         createdAt: at("2026-08-03T00:01:00.000Z"),
       });
@@ -190,12 +194,17 @@ layer("PlanningStore", (it) => {
       assert.deepStrictEqual(overrideRoot.ranUnder, {
         provider: codex,
         model: "gpt-5.4",
+        options: [{ id: "effort", value: "high" }],
       });
 
       const seeded = yield* store.createPlan({
         projectId: project.projectId,
         message: "Seed from the last-used pair",
-        lastUsed: { provider: claude, model: "sonnet" },
+        lastUsed: {
+          provider: claude,
+          model: "sonnet",
+          options: [{ id: "effort", value: "max" }],
+        },
         createdAt: at("2026-08-03T00:02:00.000Z"),
       });
       const seededRoot = seeded.timeline[0]!;
@@ -203,7 +212,13 @@ layer("PlanningStore", (it) => {
       assert.deepStrictEqual(seededRoot.ranUnder, {
         provider: claude,
         model: "sonnet",
+        options: [{ id: "effort", value: "max" }],
       });
+
+      const roundTripped = yield* store.getPlanSnapshot({ planId: overridden.plan.planId });
+      const roundTrippedRoot = roundTripped.timeline[0]!;
+      assert.ok(roundTrippedRoot._tag === "message");
+      assert.deepStrictEqual(roundTrippedRoot.ranUnder, overrideRoot.ranUnder);
 
       const unset = yield* store.createPlan({
         projectId: project.projectId,
@@ -227,7 +242,11 @@ layer("PlanningStore", (it) => {
       const created = yield* store.createPlan({
         projectId: project.projectId,
         message: "Override this branch",
-        modelChoice: { provider: codex, model: "gpt-5.4" },
+        modelChoice: {
+          provider: codex,
+          model: "gpt-5.4",
+          options: [{ id: "effort", value: "high" }],
+        },
         lastUsed: { provider: claude, model: "opus" },
         createdAt: at("2026-08-03T00:11:00.000Z"),
       });
@@ -243,6 +262,7 @@ layer("PlanningStore", (it) => {
       assert.deepStrictEqual(onward.ranUnder, {
         provider: codex,
         model: "gpt-5.4",
+        options: [{ id: "effort", value: "high" }],
       });
 
       const fork = yield* store.appendMessage({
@@ -258,7 +278,11 @@ layer("PlanningStore", (it) => {
           planId: created.plan.planId,
           commitId: fork.commitId,
         }),
-        { provider: codex, model: "gpt-5.4" },
+        {
+          provider: codex,
+          model: "gpt-5.4",
+          options: [{ id: "effort", value: "high" }],
+        },
       );
 
       const switched = yield* store.appendMessage({
@@ -406,10 +430,18 @@ layer("PlanningStore", (it) => {
         planId: created.plan.planId,
         parentCommitId: root,
         text: "A reply",
-        generatedBy: { provider: claude, model: "opus" },
+        generatedBy: {
+          provider: claude,
+          model: "opus",
+          options: [{ id: "effort", value: "high" }],
+        },
         createdAt: at("2026-08-03T00:22:00.000Z"),
       });
-      assert.deepStrictEqual(reply.generatedBy, { provider: claude, model: "opus" });
+      assert.deepStrictEqual(reply.generatedBy, {
+        provider: claude,
+        model: "opus",
+        options: [{ id: "effort", value: "high" }],
+      });
 
       const decoded = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       const decodedRoot = decoded.timeline[0]!;
@@ -418,7 +450,11 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(decodedRoot.generatedBy, undefined);
       const decodedReply = decoded.timeline[1]!;
       assert.ok(decodedReply._tag === "message");
-      assert.deepStrictEqual(decodedReply.generatedBy, { provider: claude, model: "opus" });
+      assert.deepStrictEqual(decodedReply.generatedBy, {
+        provider: claude,
+        model: "opus",
+        options: [{ id: "effort", value: "high" }],
+      });
     }),
   );
 

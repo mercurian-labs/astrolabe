@@ -1,17 +1,18 @@
 /**
  * The node popover is a derived reading over recorded checkpoint facts.
  *
- * Nothing here invents history: model switches compare recorded turn pairs,
+ * Nothing here invents history: model switches compare recorded turn choices,
  * effects come only from checkpoint members, and mutable coding-session facts
  * are joined by their leaf commit id. Keeping that work pure gives Thread,
  * Columns, and Graph one answer even though they summon the reading differently.
  */
-import type {
-  MercurianCommitId,
-  PlanCodingSessionRecord,
-  PlanImplementReady,
-  PlanningModelSelection,
-  PlanTimelineItem,
+import {
+  planningModelSelectionsEqual,
+  type MercurianCommitId,
+  type PlanCodingSessionRecord,
+  type PlanImplementReady,
+  type PlanningModelSelection,
+  type PlanTimelineItem,
 } from "@t3tools/contracts";
 
 import { planCheckpointEffectLabel } from "./PlanCheckpoints.logic";
@@ -54,7 +55,7 @@ export interface PlanNodePopoverReading {
   readonly acts: ReadonlyArray<PlanNodePopoverAct>;
 }
 
-/** The previous recorded turn pair when the query actually changed it. */
+/** The previous recorded turn choice when the query actually changed it. */
 export function modelSwitchFor(
   graph: PlanGraph,
   queryCommitId: MercurianCommitId,
@@ -67,7 +68,7 @@ export function modelSwitchFor(
     const node = graph.byId.get(current);
     const item = node?.item;
     if (item?._tag === "message" && item.authorKind === "human" && item.ranUnder !== undefined) {
-      return sameModelPair(query.ranUnder, item.ranUnder) ? null : item.ranUnder;
+      return planningModelSelectionsEqual(query.ranUnder, item.ranUnder) ? null : item.ranUnder;
     }
     current = node?.parents[0];
   }
@@ -220,8 +221,4 @@ function excerpt(value: string): string {
   return trimmed.length <= RESPONSE_EXCERPT_LENGTH
     ? trimmed
     : `${trimmed.slice(0, RESPONSE_EXCERPT_LENGTH - 1).trimEnd()}…`;
-}
-
-function sameModelPair(left: PlanningModelSelection, right: PlanningModelSelection): boolean {
-  return left.provider === right.provider && left.model === right.model;
 }
