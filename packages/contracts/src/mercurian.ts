@@ -50,6 +50,7 @@ export const MERCURIAN_WS_METHODS = {
   cancelImplementProposal: "mercurian.cancelImplementProposal",
   startCodingSession: "mercurian.startCodingSession",
   getPlanTextAt: "mercurian.getPlanTextAt",
+  measurePlanReconstruction: "mercurian.measurePlanReconstruction",
   getSpecAt: "mercurian.getSpecAt",
   visitPlan: "mercurian.visitPlan",
   markPlanUnread: "mercurian.markPlanUnread",
@@ -754,6 +755,21 @@ export type MercurianGetPlanTextAtInput = typeof MercurianGetPlanTextAtInput.Typ
 export const PlanTextAt = Schema.Struct({ planText: Schema.String });
 export type PlanTextAt = typeof PlanTextAt.Type;
 
+/** The immutable position whose next rebuilt reply is being measured. */
+export const MercurianMeasureReconstructionInput = Schema.Struct({
+  planId: PlanId,
+  commitId: MercurianCommitId,
+});
+export type MercurianMeasureReconstructionInput = typeof MercurianMeasureReconstructionInput.Type;
+
+/** Exact character counts from the same renderer used by a rebuilt session. */
+export const PlanReconstructionMeasure = Schema.Struct({
+  transcriptChars: Schema.Number,
+  entryCount: Schema.Number,
+  fixedReservedChars: Schema.Number,
+});
+export type PlanReconstructionMeasure = typeof PlanReconstructionMeasure.Type;
+
 export const MercurianGetSpecAtInput = Schema.Struct({
   planId: PlanId,
   commitId: MercurianCommitId,
@@ -1022,6 +1038,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "startCodingSession",
       "cancelImplementProposal",
       "getPlanTextAt",
+      "measurePlanReconstruction",
       "getSpecAt",
       "visitPlan",
       "markPlanUnread",

@@ -2217,6 +2217,26 @@ const makeWsRpcLayer = (
               ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.measurePlanReconstruction]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.measurePlanReconstruction,
+            planningAssistant
+              .measureReconstruction({
+                planId: input.planId,
+                parentCommitId: CommitId.make(input.commitId),
+              })
+              .pipe(
+                Effect.mapError((cause) =>
+                  isPlanNotFoundError(cause)
+                    ? cause
+                    : new MercurianPlanningError({
+                        operation: "measurePlanReconstruction",
+                        cause,
+                      }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.getSpecAt]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.getSpecAt,

@@ -40,6 +40,14 @@ import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as WorkspaceSettingsStore from "../workspace/WorkspaceSettingsStore.ts";
 import * as PlanningAssistant from "./PlanningAssistant.ts";
+import {
+  composeFirstTurnInput,
+  measureTranscript,
+  planningSystemAppendix,
+  TRANSCRIPT_FRAMING_MARGIN,
+  transcriptPreamble,
+  type TranscriptEntry,
+} from "./PlanningPrompt.ts";
 
 const claude = ProviderDriverKind.make("claudeAgent");
 const claudeInstance = ProviderInstanceId.make("claudeAgent");
@@ -926,6 +934,147 @@ describe("PlanningAssistant", () => {
       assert.ok(resumeInput.includes("Reply to this message:\nTry another direction"));
       // The other branch's reply is not on this path.
       assert.ok(!resumeInput.includes("Answer one"));
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("measures reconstruction from the same material as a rebuilt turn", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan("Reconstruct this plan");
+      const repositories = yield* seedTwoRepositories(created);
+      const planRevision = yield* store.savePlanRevision({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "# Approach\n\nKeep the renderer shared.",
+        createdAt: at("2026-08-08T00:20:00.000Z"),
+      });
+      const specDocument = {
+        goal: "Expose the real reconstruction budget.",
+        acceptanceCriteria: "The measurement matches the rebuilt prompt.",
+      };
+      const specRevision = yield* store.saveSpecRevision({
+        planId: created.plan.planId,
+        parentCommitId: planRevision.commitId,
+        expectedSpecRevisionCommitId: null,
+        document: specDocument,
+        createdAt: at("2026-08-08T00:21:00.000Z"),
+      });
+      const message = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: specRevision.commitId,
+        text: "How full is the next reply?",
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:22:00.000Z"),
+      });
+
+      const measured = yield* assistant.measureReconstruction({
+        planId: created.plan.planId,
+        parentCommitId: message.commitId,
+      });
+      const entries: ReadonlyArray<TranscriptEntry> = [
+        { kind: "message", author: "human", text: "Reconstruct this plan" },
+        { kind: "plan-revision", author: "human" },
+        { kind: "spec-revision", author: "human" },
+      ];
+      const transcript = measureTranscript({
+        entries,
+        planText: "# Approach\n\nKeep the renderer shared.",
+        spec: specDocument,
+      });
+      const appendix = planningSystemAppendix({
+        planTitle: "Reconstruct this plan",
+        repositories: [repositories.first, repositories.second].map(({ name, path }) => ({
+          name,
+          path,
+        })),
+        unreachableRepositories: [],
+      });
+      assert.deepStrictEqual(measured, {
+        transcriptChars: transcript.renderedEntryLengths.reduce((sum, length) => sum + length, 0),
+        entryCount: entries.length,
+        fixedReservedChars:
+          appendix.length +
+          transcript.planSectionChars +
+          transcript.specSectionChars +
+          TRANSCRIPT_FRAMING_MARGIN,
+      });
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: message.commitId,
+        text: message.text,
+      });
+      yield* Queue.take(harness.startSessions);
+      const sent = yield* Queue.take(harness.sendTurns);
+      const preamble = transcriptPreamble({
+        entries,
+        planText: "# Approach\n\nKeep the renderer shared.",
+        spec: specDocument,
+        reservedChars: appendix.length + message.text.length,
+      });
+      assert.strictEqual(
+        sent.input,
+        composeFirstTurnInput({ appendix, preamble, message: message.text }),
+      );
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("measures an empty ancestor history as zero transcript entries", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const { created, root } = yield* seedPlan("First message");
+      const measured = yield* assistant.measureReconstruction({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+      });
+
+      assert.strictEqual(measured.entryCount, 0);
+      assert.strictEqual(measured.transcriptChars, 0);
+      assert.ok(measured.fixedReservedChars > TRANSCRIPT_FRAMING_MARGIN);
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("measures only the selected fork's ancestor path", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const { created, root } = yield* seedPlan("Shared root");
+      const left = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Left branch only",
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:23:00.000Z"),
+      });
+      const leftTip = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: left.commitId,
+        text: "Continue left",
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:24:00.000Z"),
+      });
+      const right = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Right branch only",
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:25:00.000Z"),
+      });
+
+      const leftMeasure = yield* assistant.measureReconstruction({
+        planId: created.plan.planId,
+        parentCommitId: leftTip.commitId,
+      });
+      const rightMeasure = yield* assistant.measureReconstruction({
+        planId: created.plan.planId,
+        parentCommitId: right.commitId,
+      });
+
+      assert.strictEqual(leftMeasure.entryCount, 2);
+      assert.strictEqual(rightMeasure.entryCount, 1);
+      assert.ok(leftMeasure.transcriptChars > rightMeasure.transcriptChars);
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 

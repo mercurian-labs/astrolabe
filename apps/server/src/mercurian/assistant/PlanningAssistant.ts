@@ -56,6 +56,7 @@ import {
   type PlanInFlightImplement,
   type PlanInFlightTurn,
   type PlanQuestion,
+  type PlanReconstructionMeasure,
   type PlanStreamItem,
   planningModelSelectionsEqual,
   type PlanningModelSelection,
@@ -101,7 +102,9 @@ import { foldGroundingEvent } from "./GroundingFold.ts";
 import {
   composeFirstTurnInput,
   implementTurnInput,
+  measureTranscript,
   planningSystemAppendix,
+  TRANSCRIPT_FRAMING_MARGIN,
   transcriptPreamble,
   type TranscriptEntry,
 } from "./PlanningPrompt.ts";
@@ -148,6 +151,11 @@ export interface AnswerQuestionInput {
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
   readonly answers: Readonly<Record<string, unknown>>;
+}
+
+export interface MeasureReconstructionInput {
+  readonly planId: PlanId;
+  readonly parentCommitId: CommitId;
 }
 
 /** A provider session bound to a plan branch, and the commit its context stands at. */
@@ -239,6 +247,16 @@ export class PlanningAssistant extends Context.Service<
      * on the assistant being able to answer it.
      */
     readonly startTurn: (input: StartTurnInput) => Effect.Effect<void>;
+    /** Exact prompt-reconstruction sizes at one immutable plan position. */
+    readonly measureReconstruction: (
+      input: MeasureReconstructionInput,
+    ) => Effect.Effect<
+      PlanReconstructionMeasure,
+      | PlanningStoreError
+      | CommitStore.CommitStoreError
+      | RepositoryStore.RepositoryStoreError
+      | Schema.SchemaError
+    >;
     /** Analyze implementation coverage and publish a transient proposal. */
     readonly tryImplement: (input: TryImplementInput) => Effect.Effect<void, TryImplementError>;
     /**
@@ -936,6 +954,48 @@ export const make = Effect.gen(function* () {
   const refuse = (planId: PlanId, reason: PlanTurnRefusalReason) =>
     publishFrame(planId, { kind: "turn-refused", reason });
 
+  const repositoriesForProject = Effect.fn("PlanningAssistant.repositoriesForProject")(function* (
+    projectId: MercurianProjectId,
+  ) {
+    const snapshot = yield* repositoryStore.getSnapshot;
+    const repositoryIds = snapshot.projectRepositories
+      .filter((link) => link.projectId === projectId)
+      .map((link) => link.repositoryId);
+    return repositoryIds.flatMap((repositoryId) => {
+      const found = snapshot.repositories.find(
+        (repository) => repository.repositoryId === repositoryId,
+      );
+      return found === undefined ? [] : [{ name: found.name, path: found.path }];
+    });
+  });
+
+  const measureReconstruction: PlanningAssistant["Service"]["measureReconstruction"] = Effect.fn(
+    "PlanningAssistant.measureReconstruction",
+  )(function* (input) {
+    const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
+    const repositories = yield* repositoriesForProject(snapshot.plan.projectId);
+    const ancestors = yield* commits.ancestors({
+      commitId: input.parentCommitId,
+      visibility: "all",
+    });
+    const transcript = yield* projectTranscript(ancestors);
+    const measured = measureTranscript(transcript);
+    const appendix = planningSystemAppendix({
+      planTitle: snapshot.plan.title,
+      repositories,
+      unreachableRepositories: [],
+    });
+    return {
+      transcriptChars: measured.renderedEntryLengths.reduce((sum, length) => sum + length, 0),
+      entryCount: measured.renderedEntryLengths.length,
+      fixedReservedChars:
+        appendix.length +
+        measured.planSectionChars +
+        measured.specSectionChars +
+        TRANSCRIPT_FRAMING_MARGIN,
+    };
+  });
+
   /**
    * Everything a fresh session needs, assembled before any provider call:
    * grounding roots narrowed to the capability, the ancestor transcript, and
@@ -951,16 +1011,7 @@ export const make = Effect.gen(function* () {
       readonly instanceId: ProviderInstanceId;
       readonly model: string;
     }) {
-      const repositoriesSnapshot = yield* repositoryStore.getSnapshot;
-      const projectRepositoryIds = repositoriesSnapshot.projectRepositories
-        .filter((link) => link.projectId === input.projectId)
-        .map((link) => link.repositoryId);
-      const repositories = projectRepositoryIds.flatMap((repositoryId) => {
-        const found = repositoriesSnapshot.repositories.find(
-          (repository) => repository.repositoryId === repositoryId,
-        );
-        return found === undefined ? [] : [{ name: found.name, path: found.path }];
-      });
+      const repositories = yield* repositoriesForProject(input.projectId);
 
       const capabilities = yield* providerService.getCapabilities(input.instanceId);
       // Narrowed, and visibly so: a cwd-only provider grounds the first
@@ -1735,6 +1786,7 @@ export const make = Effect.gen(function* () {
 
   return {
     startTurn,
+    measureReconstruction,
     tryImplement,
     stopTurn,
     answerQuestion,

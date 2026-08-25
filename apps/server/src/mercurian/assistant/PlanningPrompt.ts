@@ -89,22 +89,14 @@ export type TranscriptEntry =
  * are budgeted, against the provider send cap. The margin covers the framing
  * lines this module adds around each part.
  */
-const TRANSCRIPT_FRAMING_MARGIN = 2_000;
+export const TRANSCRIPT_FRAMING_MARGIN = 2_000;
 
-/**
- * The conversation so far, rendered as dialogue for a session that was not
- * there. Oldest entries are elided first when the whole thing cannot fit the
- * provider's input cap — the recent turns are what the next reply hangs on.
- */
-export function transcriptPreamble(input: {
+function renderTranscript(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
-  /** The plan artifact's current text along this path. `""` renders as empty. */
   readonly planText: string;
   readonly spec: SpecDocument | null;
-  /** Characters already spoken for: appendix + the current message. */
-  readonly reservedChars: number;
-}): string {
-  const rendered = input.entries.map((entry) => {
+}) {
+  const renderedEntries = input.entries.map((entry) => {
     if (entry.kind !== "message") {
       const artifact = entry.kind === "plan-revision" ? "plan" : "spec";
       return entry.author === "human"
@@ -125,6 +117,42 @@ export function transcriptPreamble(input: {
       ? "The spec artifact does not exist yet."
       : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
 
+  return { renderedEntries, planSection, specSection };
+}
+
+/** Exact character sizes used by transcript reconstruction and its budget. */
+export function measureTranscript(input: {
+  readonly entries: ReadonlyArray<TranscriptEntry>;
+  readonly planText: string;
+  readonly spec: SpecDocument | null;
+}): {
+  readonly renderedEntryLengths: ReadonlyArray<number>;
+  readonly planSectionChars: number;
+  readonly specSectionChars: number;
+} {
+  const rendered = renderTranscript(input);
+  return {
+    renderedEntryLengths: rendered.renderedEntries.map((entry) => entry.length),
+    planSectionChars: rendered.planSection.length,
+    specSectionChars: rendered.specSection.length,
+  };
+}
+
+/**
+ * The conversation so far, rendered as dialogue for a session that was not
+ * there. Oldest entries are elided first when the whole thing cannot fit the
+ * provider's input cap — the recent turns are what the next reply hangs on.
+ */
+export function transcriptPreamble(input: {
+  readonly entries: ReadonlyArray<TranscriptEntry>;
+  /** The plan artifact's current text along this path. `""` renders as empty. */
+  readonly planText: string;
+  readonly spec: SpecDocument | null;
+  /** Characters already spoken for: appendix + the current message. */
+  readonly reservedChars: number;
+}): string {
+  const { renderedEntries, planSection, specSection } = renderTranscript(input);
+
   const budget = Math.max(
     0,
     PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
@@ -137,8 +165,8 @@ export function transcriptPreamble(input: {
   const kept: Array<string> = [];
   let used = 0;
   let elided = 0;
-  for (let index = rendered.length - 1; index >= 0; index -= 1) {
-    const entry = rendered[index]!;
+  for (let index = renderedEntries.length - 1; index >= 0; index -= 1) {
+    const entry = renderedEntries[index]!;
     if (used + entry.length > budget) {
       elided = index + 1;
       break;
