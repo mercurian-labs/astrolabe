@@ -6,6 +6,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  PaletteIcon,
   ScrollTextIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -14,6 +15,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "rea
 import type { KeyboardEvent } from "react";
 
 import { onOpenCommandPalette } from "../../commandPaletteBus";
+import { useDesignLabOverridesStore } from "../../designLabOverrides";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../../keybindings";
 import { isTerminalFocused } from "../../lib/terminalFocus";
 import { randomUUID } from "../../lib/utils";
@@ -305,12 +307,30 @@ function SearchPaletteDialog(props: {
         icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
         run: async () => runResult({ kind: "action", action: "open-settings" }),
       },
+      ...(import.meta.env.DEV
+        ? [
+            {
+              kind: "action" as const,
+              value: "action:design-lab",
+              searchTerms: ["design lab", "axes", "catalog"],
+              title: "Open Design Lab",
+              icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
+              run: async () => {
+                await navigate({
+                  to: "/design-lab",
+                  search: useDesignLabOverridesStore.getState().lastLabLocation ?? {},
+                });
+              },
+            },
+          ]
+        : []),
     ];
   }, [
     projectNameById,
     projectPickerGroups,
     props.currentProjectId,
     props.projects.length,
+    navigate,
     runResult,
   ]);
 
