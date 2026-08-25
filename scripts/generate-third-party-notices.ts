@@ -38,8 +38,8 @@ export const vendoredComponents = [
   {
     title: "T3 Code",
     description:
-      "This software is derived from T3 Code. The inherited code remains under this license.",
-    licensePath: "NOTICE.md",
+      "Astrolabe is derived from T3 Code. The combined work is distributed under the MIT license below, whose copyright notice names both Mercurian, Inc. and T3 Tools Inc.",
+    licensePath: "LICENSE",
   },
   {
     title: "libghostty-vt",

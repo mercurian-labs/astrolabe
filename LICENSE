@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Mercurian
+Copyright (c) 2026 Mercurian, Inc.
 Copyright (c) 2026 T3 Tools Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

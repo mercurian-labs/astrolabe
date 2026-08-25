@@ -34,9 +34,8 @@ This document covers the unified release workflow for stable and nightly desktop
 
 ## Licensing and third-party notices
 
-Astrolabe is MIT licensed. The root `LICENSE` carries both copyright lines — Mercurian's and
+Astrolabe is MIT licensed. The root `LICENSE` carries both copyright lines — Mercurian, Inc.'s and
 T3 Tools', the fork's upstream — because MIT requires the original notice to travel with the code.
-`NOTICE.md` additionally preserves upstream's license file verbatim as the provenance record.
 
 MIT's notice-retention clause applies to our dependencies too, so each release channel carries a
 licensing payload:
