@@ -12,7 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsageRouteImport } from './routes/usage'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
-import { Route as DsRouteImport } from './routes/ds'
+import { Route as DesignLabRouteImport } from './routes/design-lab'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
@@ -48,11 +48,11 @@ const PairRoute = PairRouteImport.update({
   path: '/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DsRoute = DsRouteImport.update({
-  id: '/ds',
-  path: '/ds',
+const DesignLabRoute = DesignLabRouteImport.update({
+  id: '/design-lab',
+  path: '/design-lab',
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/ds.lazy').then((d) => d.Route))
+} as any).lazy(() => import('./routes/design-lab.lazy').then((d) => d.Route))
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
@@ -151,7 +151,7 @@ const ChatPlansDraftDraftIdRoute = ChatPlansDraftDraftIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/connect': typeof ConnectRoute
-  '/ds': typeof DsRoute
+  '/design-lab': typeof DesignLabRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
@@ -174,7 +174,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
-  '/ds': typeof DsRoute
+  '/design-lab': typeof DesignLabRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
@@ -200,7 +200,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
   '/connect': typeof ConnectRoute
-  '/ds': typeof DsRoute
+  '/design-lab': typeof DesignLabRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
@@ -227,7 +227,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connect'
-    | '/ds'
+    | '/design-lab'
     | '/pair'
     | '/settings'
     | '/usage'
@@ -250,7 +250,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
-    | '/ds'
+    | '/design-lab'
     | '/pair'
     | '/settings'
     | '/usage'
@@ -275,7 +275,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_chat'
     | '/connect'
-    | '/ds'
+    | '/design-lab'
     | '/pair'
     | '/settings'
     | '/usage'
@@ -301,7 +301,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   ConnectRoute: typeof ConnectRoute
-  DsRoute: typeof DsRoute
+  DesignLabRoute: typeof DesignLabRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
@@ -332,11 +332,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ds': {
-      id: '/ds'
-      path: '/ds'
-      fullPath: '/ds'
-      preLoaderRoute: typeof DsRouteImport
+    '/design-lab': {
+      id: '/design-lab'
+      path: '/design-lab'
+      fullPath: '/design-lab'
+      preLoaderRoute: typeof DesignLabRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connect': {
@@ -526,7 +526,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   ConnectRoute: ConnectRoute,
-  DsRoute: DsRoute,
+  DesignLabRoute: DesignLabRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,

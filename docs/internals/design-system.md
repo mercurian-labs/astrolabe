@@ -2,7 +2,7 @@
 
 **Status:** Direction revised 2026-08-23: Storybook was replaced by the in-app catalog after demonstrated parity, tracked in Linear issue M-159. The design-system scope and contributor rules are unchanged.
 
-Astrolabe's design-system strategy is to keep its visual language coherent across product states with the smallest shared system that earns its place. The in-app `/ds` catalog is the workbench for inspecting and exercising that system in isolation. It is not the source of product intent and it is not a second implementation of the application.
+Astrolabe's design-system strategy is to keep its visual language coherent across product states with the smallest shared system that earns its place. The in-app `/design-lab` Design Lab is the workbench for inspecting and exercising that system in isolation. It is not the source of product intent and it is not a second implementation of the application.
 
 Product intent lives in Almagest, principally the `Visual Language` note and the notes for each product surface. This document owns the contributor strategy: what enters the workbench, how catalog entries obtain state, which checks they support, and how the system grows. [ADR 004](../architecture/fork-baseline.md) governs when the inherited t3code design may be reworked.
 
@@ -26,11 +26,11 @@ Product intent lives in Almagest, principally the `Visual Language` note and the
 
 The first workbench was established by the M-140 spike: Storybook 9.1.20 built and served through the workspace's aliased Vite, using the production stylesheet and light/dark document-class theme application. M-144 then placed its portable interaction and accessibility checks in a vite-plus browser project with the Playwright provider, headless Chromium, and `axe-core`. That proved the component model and the browser runner, but it also required separate configuration, dependencies, a static build, and an esbuild override.
 
-M-159 replaced that workbench with an application route at `/ds`. The route reads a typed registry, loads the catalog as one lazy chunk, uses search parameters for entry navigation, and runs interaction and accessibility checks over every registry entry in the `design-system` vite-plus browser project. The catalog mounts the same components, fixtures, production stylesheet, and theme machinery that the application ships.
+M-159 replaced that workbench with an application route, and M-160 made it the Design Lab at `/design-lab`. The development-only route renders inside the normal application shell and uses the same authenticated route gate as other application surfaces. It reads a typed registry, loads the catalog as one lazy chunk, uses search parameters for entry navigation, and runs interaction and accessibility checks over every registry entry in the `design-system` vite-plus browser project. The catalog mounts the same components, fixtures, production stylesheet, and theme machinery that the application ships. It has no hosted-static exception or static deployment story; production builds redirect the route and do not include the catalog chunk.
 
 Parity was measured before removing the old tooling. The 24-story baseline became 23 catalog states migrated one-to-one, while the single foundations story was superseded by eight focused foundations pages. During coexistence, the browser project passed 56 of 56 checks: 24 Storybook checks plus 32 catalog-entry checks. Storybook was removed only after that proof.
 
-The M-144 per-PR artifact trade-off changed with the replacement. The static catalog artifact and its automated pull-request comment workflow are gone; reviewers use `/ds` from a checkout or a development deployment. That is acceptable for a solo maintainer and should be reconsidered if more people routinely review visual changes.
+The M-144 per-PR artifact trade-off changed with the replacement. The static catalog artifact and its automated pull-request comment workflow are gone; reviewers use `/design-lab` from an authenticated development build. That is acceptable for a solo maintainer and should be reconsidered if more people routinely review visual changes.
 
 ## The system's layers
 
@@ -111,7 +111,7 @@ Each layer proves a different thing:
 4. **Visual snapshots** protect a curated set of signature states and theme boundaries after the visual direction stabilizes.
 5. **Real-client passes** prove routing, WebSocket transitions, Electron chrome, resizing, keyboard traversal across surfaces, and Checkpoint Graph performance with realistic data.
 
-Rungs 2–3 use the `design-system` vite-plus browser project: it walks the same typed registry as `/ds`, mounts each entry in a real headless Chromium DOM through the Playwright provider, executes its interaction check, and runs `axe-core`. The project stays in the existing CI `Test` job because a new required job would also be a branch-protection change.
+Rungs 2–3 use the `design-system` vite-plus browser project: it walks the same typed registry as `/design-lab`, mounts each entry in a real headless Chromium DOM through the Playwright provider, executes its interaction check, and runs `axe-core`. The project stays in the existing CI `Test` job because a new required job would also be a branch-protection change.
 
 A visual snapshot is not required merely because a catalog entry exists. Baselines have maintenance cost; add one when the state is important enough that a pixel-level regression would justify review. Baselines also require render determinism, not only data determinism: capture waits for fonts, suppresses transitions (the stylesheet already carries a suppress-transitions rule for theme changes to reuse), and lets layout settle before reading pixels — the Checkpoint Graph's measured d3-dag arrangement especially.
 
