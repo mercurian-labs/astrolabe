@@ -2,11 +2,39 @@
 import Base from "../layouts/Base.astro";
 ---
 
-<Base title="Astrolabe">
-  <main class="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-4 px-6">
-    <h1 class="text-2xl font-semibold">Astrolabe</h1>
-    <a class="w-fit underline underline-offset-4" href="/demo/checkpoint-graph/">
-      Checkpoint Graph demo
-    </a>
+<Base title="Mercurian">
+  <main class="relative isolate min-h-screen overflow-hidden">
+    <div
+      class="mx-auto grid min-h-screen w-full max-w-[90rem] grid-cols-1 items-center gap-8 px-6 py-12 sm:px-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-0 lg:px-12 xl:px-16"
+    >
+      <div class="relative z-10 order-2 max-w-2xl pb-4 lg:order-1 lg:py-20">
+        <h1 class="text-sm font-medium tracking-[0.22em] uppercase">Mercurian</h1>
+        <p class="mt-8 max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl">
+          Mercurian turns engineering issues into plans.
+        </p>
+        <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+          Every plan is a version-controlled artifact you and an assistant evolve together — grounded in your connected repositories, implemented through coding sessions.
+        </p>
+        <a
+          class="text-muted-foreground hover:text-foreground mt-8 block w-fit text-sm underline underline-offset-4"
+          href="/demo/checkpoint-graph/"
+        >
+          Checkpoint Graph demo
+        </a>
+      </div>
+
+      <div
+        class="order-1 -mx-6 flex min-h-0 items-center justify-center sm:-mx-10 lg:order-2 lg:-mr-48 lg:-ml-12"
+      >
+        <img
+          class="h-auto w-[115%] max-w-none sm:w-full lg:w-[min(72rem,72vw)]"
+          src="/mercury-globe-poster.png"
+          alt="Mercury, rendered from MESSENGER elevation data"
+          loading="eager"
+          width="1920"
+          height="1080"
+        />
+      </div>
+    </div>
   </main>
 </Base>
