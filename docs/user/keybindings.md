@@ -43,8 +43,10 @@ Repeating either shortcut closes that search, and switching shortcuts replaces t
 `themeEditor.toggle` opens or closes the floating theme editor and defaults to
 `mod+alt+shift+t`. Select a color label to spotlight the elements that use it; select the label
 again to clear the spotlight. The swatch and hex field keep that color selected while you edit it.
+Advanced mode groups related app tokens into a smaller set of color families. Changing a family
+updates its paired text and interaction states while leaving every unrelated imported color intact.
 Use **Inspect** to pick an element in the app and reveal its color token. Inspect disarms after one
-successful pick; its hover glow and badge preview the element and token that click will select.
+successful pick; its hover glow and badge preview the element and color family that click will select.
 **Cancel** or `Escape` exits Inspect and clears its selection and spotlight.
 
 `commandPalette.toggle` opens the search palette over your plans, projects, workspace sections, and
@@ -55,6 +57,17 @@ and how picking a result behaves.
 The `thread.jump.1` through `thread.jump.9` commands jump to the numbered rows of the project tree,
 and `thread.previous` / `thread.next` step between them. Holding a jump shortcut's modifier shows
 the numbered keycaps on the rows they would take you to.
+
+`rightPanel.toggleMaximized` maximizes or restores the open right panel. It has no default shortcut,
+so add one in **Settings** → **Keybindings** if you want to use it.
+
+`thread.settle` settles the active thread or restores it when it is already settled. Its default
+shortcut is `mod+shift+s`, and it does not run while the terminal has focus.
+
+The command palette searches active thread titles, projects, branches, user messages, and final
+agent responses across connected environments. Message matches show one labeled excerpt while
+keeping the thread's project, branch, and machine context visible. Message search begins after two
+characters and uses SQLite's ASCII case-insensitive matching.
 
 The full command list and the current defaults are shown in **Settings** → **Keybindings**, which
 always matches the build you are running. Use that rather than a copied list.

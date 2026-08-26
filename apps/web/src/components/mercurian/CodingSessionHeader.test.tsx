@@ -11,14 +11,22 @@ vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));
 vi.mock("@effect/atom-react", () => ({
-  useAtomValue: (atom: string) => (atom === "available-editors" ? ["vscode"] : {}),
+  useAtomValue: (atom: string) => {
+    if (atom === "available-editors") return ["vscode"];
+    if (atom === "keybindings") return {};
+    return null;
+  },
 }));
 vi.mock("../../state/server", () => ({
   primaryServerAvailableEditorsAtom: "available-editors",
   primaryServerKeybindingsAtom: "keybindings",
+  serverEnvironment: { configValueAtom: vi.fn() },
 }));
 vi.mock("../../state/environments", () => ({
   usePrimaryEnvironmentId: () => "environment-test",
+}));
+vi.mock("../../state/presentation", () => ({
+  useEnvironmentPresentation: () => ({ isReady: true, presentation: null }),
 }));
 vi.mock("../../state/query", async () => {
   const Option = await import("effect/Option");

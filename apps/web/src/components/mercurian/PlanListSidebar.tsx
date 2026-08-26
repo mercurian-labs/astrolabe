@@ -429,21 +429,27 @@ function PlanListHeader(props: {
                   >
                     <FolderIcon className="size-4 shrink-0" />
                     <span className="min-w-0 truncate text-sm">{project.name}</span>
-                    <button
-                      type="button"
-                      aria-label={`Manage repositories for ${project.name}`}
-                      title={`Manage repositories for ${project.name}`}
-                      className="ml-auto inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-icon-muted outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setProjectScopeMenuOpen(false);
-                        props.onManageProject(project.projectId);
-                      }}
-                    >
-                      <SettingsIcon className="size-3.5" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label={`Manage repositories for ${project.name}`}
+                            className="ml-auto inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-icon-muted outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setProjectScopeMenuOpen(false);
+                              props.onManageProject(project.projectId);
+                            }}
+                          />
+                        }
+                      >
+                        <SettingsIcon className="size-3.5" />
+                      </TooltipTrigger>
+                      <TooltipPopup side="top">Manage repositories for {project.name}</TooltipPopup>
+                    </Tooltip>
                   </MenuRadioItem>
                 ))}
               </MenuRadioGroup>
@@ -550,19 +556,25 @@ const PlanDraftRow = memo(function PlanDraftRow(props: {
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground/90">
             {preview}
           </span>
-          <button
-            type="button"
-            aria-label={`Discard draft in ${props.projectName}`}
-            title="Discard draft"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              props.onDiscard(props.draft.draftId);
-            }}
-            className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 max-sm:pointer-events-auto max-sm:opacity-100"
-          >
-            <XIcon className="size-3" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Discard draft in ${props.projectName}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    props.onDiscard(props.draft.draftId);
+                  }}
+                  className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 max-sm:pointer-events-auto max-sm:opacity-100"
+                />
+              }
+            >
+              <XIcon className="size-3" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">Discard draft</TooltipPopup>
+          </Tooltip>
         </TooltipTrigger>
         <SidebarPlanTooltip title={preview}>
           <SidebarPlanTooltipRow

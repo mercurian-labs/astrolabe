@@ -92,8 +92,11 @@ const designSystemTestProject = {
       "@base-ui/react/autocomplete",
       "@base-ui/react/combobox",
       "@base-ui/react/radio-group",
+      "@dnd-kit/sortable",
       "effect/PartitionedSemaphore",
       "effect/SchemaGetter",
+      "jsonc-parser",
+      "jszip",
     ],
   },
   test: {

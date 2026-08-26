@@ -21,6 +21,7 @@ import {
 } from "react";
 
 import { cn } from "../../lib/utils";
+import { useRemoteOpenState } from "../../remoteOpen";
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useRepositories } from "../../state/mercurianRepositories";
@@ -66,6 +67,7 @@ export function resolveCodingSessionRename(input: {
 
 export function CodingSessionHeader(props: CodingSessionHeaderProps) {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const remoteOpenState = useRemoteOpenState(props.environmentId);
   const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { snapshot: repositoriesSnapshot } = useRepositories();
@@ -93,6 +95,7 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
       activeProjectName: repository?.name ?? props.worktreePath,
       activeThreadEnvironmentId: props.environmentId,
       primaryEnvironmentId,
+      remoteOpenMode: remoteOpenState.mode,
     });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,

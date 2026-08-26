@@ -65,6 +65,8 @@ const stubProcessRunner = Layer.succeed(
           timedOut: false,
           stdoutTruncated: false,
           stderrTruncated: false,
+          stdoutInvalidUtf8: false,
+          stderrInvalidUtf8: false,
         });
       }
       if (verb === "remote") {
@@ -76,6 +78,8 @@ const stubProcessRunner = Layer.succeed(
           timedOut: false,
           stdoutTruncated: false,
           stderrTruncated: false,
+          stdoutInvalidUtf8: false,
+          stderrInvalidUtf8: false,
         });
       }
       const worktrees = gitScript.worktreesByPath.get(cwd) ?? [];
@@ -86,6 +90,8 @@ const stubProcessRunner = Layer.succeed(
         timedOut: false,
         stdoutTruncated: false,
         stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
       });
     },
   }),
