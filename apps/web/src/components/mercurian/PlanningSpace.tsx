@@ -698,15 +698,17 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             }
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
+            meter={
+              <PlanReconstructionMeter
+                draftChars={draft.text.length}
+                measure={reconstructionMeasure}
+                providers={planningModel.providers}
+                resolution={effectiveModelResolution}
+                selection={modelChoice}
+              />
+            }
             modelPicker={
               <>
-                <PlanReconstructionMeter
-                  draftChars={draft.text.length}
-                  measure={reconstructionMeasure}
-                  providers={planningModel.providers}
-                  resolution={effectiveModelResolution}
-                  selection={modelChoice}
-                />
                 <PlanModelPicker
                   disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
                   providers={planningModel.providers}

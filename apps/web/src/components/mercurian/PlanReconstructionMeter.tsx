@@ -84,6 +84,12 @@ export function PlanReconstructionMeter(props: {
                 strokeWidth="3"
               />
             </svg>
+            {state.willElide ? (
+              <span
+                aria-hidden="true"
+                className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-amber-500 ring-2 ring-background"
+              />
+            ) : null}
           </span>
         </TooltipTrigger>
         <TooltipPopup className="w-64 max-w-none whitespace-normal p-2" side="top">
@@ -99,7 +105,6 @@ export function PlanReconstructionMeter(props: {
           </span>
         </TooltipPopup>
       </Tooltip>
-      {state.willElide ? <span className="truncate">Oldest history will be elided</span> : null}
     </span>
   );
 }
