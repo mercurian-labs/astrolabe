@@ -24,6 +24,7 @@ function props(
     activeSurfaceId: null,
     pendingSurfaceIds: new Set(),
     previewSessions: {},
+    desktopByTabId: {},
     terminalLabelsById: new Map(),
     onActivate: noop,
     onCloseSurface: noop,
@@ -35,12 +36,16 @@ function props(
     onAddTerminal: noop,
     onAddDiff: noop,
     onAddFiles: noop,
+    onAddPullRequest: noop,
     onAddAgents: noop,
     onAddPlan: noop,
     browserAvailable: false,
+    terminalAvailable: false,
     diffAvailable: true,
     filesAvailable: true,
     planAvailable: true,
+    pullRequestAvailable: false,
+    agentsAvailable: false,
     liveAgentCount: 0,
     children: <div>Panel content</div>,
     ...overrides,
@@ -53,6 +58,8 @@ describe("RightPanelTabs", () => {
 
     expect(markup).toContain("Plan");
     expect(markup).toContain("Read the plan this session implements.");
+    expect(markup).not.toContain('aria-keyshortcuts="L"');
+    expect(markup).not.toMatch(/<kbd[^>]*>L<\/kbd>/);
   });
 
   it("omits the Plan surface when no owning plan is available", () => {

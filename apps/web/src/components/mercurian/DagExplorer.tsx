@@ -2273,12 +2273,16 @@ function CheckpointRow({
               </span>
             ) : null}
             {stalePlan ? (
-              <span
-                className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
-                title={PLAN_MAY_BE_STALE_DESCRIPTION}
-              >
-                {PLAN_MAY_BE_STALE_LABEL}
-              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                      {PLAN_MAY_BE_STALE_LABEL}
+                    </span>
+                  }
+                />
+                <TooltipPopup side="top">{PLAN_MAY_BE_STALE_DESCRIPTION}</TooltipPopup>
+              </Tooltip>
             ) : null}
           </span>
         )}
@@ -2397,12 +2401,16 @@ function CommitRow({
           </span>
         ) : null}
         {stalePlan ? (
-          <span
-            className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
-            title={PLAN_MAY_BE_STALE_DESCRIPTION}
-          >
-            {PLAN_MAY_BE_STALE_LABEL}
-          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                  {PLAN_MAY_BE_STALE_LABEL}
+                </span>
+              }
+            />
+            <TooltipPopup side="top">{PLAN_MAY_BE_STALE_DESCRIPTION}</TooltipPopup>
+          </Tooltip>
         ) : null}
         <span className="shrink-0 text-[11px] text-muted-foreground/70">
           {formatRelativeTimeLabel(item.createdAt)}

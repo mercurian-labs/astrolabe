@@ -28,12 +28,7 @@ import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 // it creates one from is the tracker surface's own shape, passed back verbatim.
 import { TrackerConnectionId, TrackerIssue } from "./mercurianTrackers.ts";
 import { PlanningModelSelection } from "./mercurianWorkspace.ts";
-import {
-  ChatAttachment,
-  ModelSelection,
-  RuntimeMode,
-  UploadChatAttachment,
-} from "./orchestration.ts";
+import { ChatAttachment, ModelSelection, UploadChatAttachment } from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
   subscribeTree: "mercurian.subscribeTree",
