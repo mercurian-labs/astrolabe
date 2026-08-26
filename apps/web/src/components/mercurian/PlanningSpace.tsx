@@ -62,13 +62,14 @@ import {
 import { usePlanningModel } from "../../state/mercurianWorkspace";
 import { useRepositories } from "../../state/mercurianRepositories";
 import { usePaginatedBranches } from "../../state/queries";
+import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { SidebarInset } from "../ui/sidebar";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import {
   DagExplorer,
   DEFAULT_EXPLORER_VIEW,
@@ -788,7 +789,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 // and an unread one look alike, and saying nothing is better
                 // than saying the plan was blank.
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+                  <div
+                    className={cn(
+                      WORKSPACE_PANE_TITLE_BAR_CLASS,
+                      "gap-2 border-b border-border px-3 sm:px-4",
+                    )}
+                  >
                     <ArtifactPicker
                       value={pane.artifact}
                       onChange={(artifact) => setPane({ ...pane, artifact })}
@@ -802,7 +808,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 </div>
               ) : pane.artifact === "spec" && artifactSpec === undefined ? (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+                  <div
+                    className={cn(
+                      WORKSPACE_PANE_TITLE_BAR_CLASS,
+                      "gap-2 border-b border-border px-3 sm:px-4",
+                    )}
+                  >
                     <ArtifactPicker
                       value={pane.artifact}
                       onChange={(artifact) => setPane({ ...pane, artifact })}
@@ -1335,15 +1346,10 @@ function PlanningHeader({
   readonly actions?: ReactNode;
 }) {
   return (
-    <header
-      className={cn(
-        "workspace-topbar gap-2 border-b border-border px-3 sm:px-5",
-        COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-      )}
-    >
+    <WorkspacePageHeader className="gap-2 border-b border-border">
       <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{title}</h1>
       {actions}
-    </header>
+    </WorkspacePageHeader>
   );
 }
 

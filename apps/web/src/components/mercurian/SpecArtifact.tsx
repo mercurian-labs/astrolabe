@@ -14,6 +14,7 @@ import remarkGfm from "remark-gfm";
 
 import { cn } from "../../lib/utils";
 import { useRefreshSpec, useSaveSpecRevision } from "../../state/mercurian";
+import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -141,7 +142,9 @@ export function SpecArtifact({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+      <div
+        className={cn(WORKSPACE_PANE_TITLE_BAR_CLASS, "gap-2 border-b border-border px-3 sm:px-4")}
+      >
         {titleControl ?? <h2 className="text-sm font-medium text-foreground">Spec</h2>}
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
           {specRevisionLabel(revision)}
