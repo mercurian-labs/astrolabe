@@ -163,6 +163,7 @@ const makeHarness = Effect.gen(function* () {
       Effect.sync(() => ({ sessionModelSwitch: "in-session" as const, groundingRoots })),
     getInstanceInfo: () => Effect.die("unused in planning tests"),
     rollbackConversation: () => Effect.die("unused in planning tests"),
+    uploadFeedback: () => Effect.die("unused in planning tests"),
     get streamEvents() {
       return Stream.fromPubSub(events);
     },
@@ -198,6 +199,8 @@ const stubProcessRunner = Layer.succeed(
         timedOut: false,
         stdoutTruncated: false,
         stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
       }),
   }),
 );

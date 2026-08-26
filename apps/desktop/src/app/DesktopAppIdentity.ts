@@ -123,7 +123,7 @@ export const make = Effect.gen(function* () {
     yield* electronApp.setAboutPanelOptions({
       applicationName: environment.displayName,
       applicationVersion: environment.appVersion,
-      copyright: "© 2026 Mercurian — built on t3code, MIT © 2026 T3 Tools Inc.",
+      copyright: "© 2026 Mercurian, Inc. — built on t3code, MIT © 2026 T3 Tools Inc.",
       version: Option.getOrElse(commitHash, () => "unknown"),
     });
 
@@ -135,7 +135,10 @@ export const make = Effect.gen(function* () {
       yield* electronApp.setDesktopName(environment.linuxDesktopEntryName);
     }
 
-    if (environment.platform === "darwin") {
+    // Unpackaged runs only. A packaged bundle already carries its icon in
+    // Info.plist, so setting the dock tile again changes nothing except to
+    // overwrite a custom icon the user attached to the app themselves.
+    if (environment.platform === "darwin" && !environment.isPackaged) {
       const iconPaths = yield* assets.iconPaths;
       yield* Option.match(iconPaths.png, {
         onNone: () => Effect.void,

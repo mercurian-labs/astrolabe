@@ -18,6 +18,7 @@ const SESSION_RUNTIME_MODES = [
 export function runtimeModeOptionsFor(current: RuntimeMode): ReadonlyArray<RuntimeMode> {
   return current === "auto" ? [...SESSION_RUNTIME_MODES, current] : SESSION_RUNTIME_MODES;
 }
+export type ComposerSubmissionIntent = "foreground" | "background";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;

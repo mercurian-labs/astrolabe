@@ -40,6 +40,18 @@ npm install --global @mercurian/astrolabe@nightly
 The hosted web app is outside the current release scope. When the Vercel secrets are absent, the
 release workflow records `skipped_not_configured` and continues without failing the release.
 
+## License files during a sync
+
+Astrolabe is MIT licensed, the same license as upstream, so a sync rarely produces license
+conflicts. The root `LICENSE` is MIT text carrying both copyright lines, Mercurian, Inc.'s and
+T3 Tools'. Upstream's carries only theirs, so a conflict here resolves to ours — keep both lines
+rather than accepting upstream's file wholesale, which would drop Mercurian's copyright. If
+upstream ever changes their license terms rather than just the copyright line, stop and review
+deliberately; that is a legal change, not a merge conflict.
+
+`apps/server/package.json` declares `"license": "MIT"`, matching upstream, so that line does not
+conflict.
+
 ## Upstream sync cadence
 
 `.github/workflows/upstream-sync.yml` runs every Monday at 13:00 UTC and supports manual

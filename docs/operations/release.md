@@ -11,7 +11,7 @@ This document covers the unified release workflow for stable and nightly desktop
   - push tag matching `v*.*.*` for stable releases
   - scheduled nightly check every three hours
   - manual `workflow_dispatch` for either channel
-- Runs quality gates first: lint, typecheck, test.
+- Runs lint, typecheck, and tests alongside artifact builds. Publishing waits for every check.
 - Reads the shared production T3 Connect relay URL and Clerk client configuration before packaging clients.
 - Builds four artifacts in parallel for both channels:
   - macOS `arm64` DMG
@@ -31,6 +31,33 @@ This document covers the unified release workflow for stable and nightly desktop
   - stable releases are aliased to the `latest` hosted app channel
   - nightly releases are aliased to the `nightly` hosted app channel
 - Signing is optional and auto-detected per platform from secrets.
+
+## Licensing and third-party notices
+
+Astrolabe is MIT licensed. The root `LICENSE` carries both copyright lines — Mercurian, Inc.'s and
+T3 Tools', the fork's upstream — because MIT requires the original notice to travel with the code.
+
+MIT's notice-retention clause applies to our dependencies too, so each release channel carries a
+licensing payload:
+
+- **CLI package (`@mercurian/astrolabe`)** — publishes `"license": "MIT"`, carried from
+  `apps/server/package.json` through the publish manifest. npm includes `apps/server/LICENSE.md` in
+  the tarball automatically; `THIRD-PARTY-NOTICES.md` is added to the manifest's `files` explicitly
+  because npm does not auto-include it.
+- **Desktop installers** — `THIRD-PARTY-NOTICES.md` ships as an extra resource beside Electron's
+  own `LICENSE.electron.txt` and `LICENSES.chromium.html`.
+
+`THIRD-PARTY-NOTICES.md` is generated at build time by `scripts/generate-third-party-notices.ts` and
+is git-ignored on purpose: a committed copy drifts from the dependency set it describes and nothing
+in CI would catch it. The release workflow generates it before the CLI publish step, and
+`scripts/build-desktop-artifact.ts` generates it during staging. The generator fails the build if a
+vendored license file is missing rather than shipping an artifact with an incomplete notice.
+
+To inspect what a release would carry:
+
+```sh
+node scripts/generate-third-party-notices.ts --out /tmp/THIRD-PARTY-NOTICES.md
+```
 
 ## Required release credentials
 
@@ -188,10 +215,12 @@ the **Update server** action targeting a package version that does not exist yet
 
 For a release smoke test, confirm `npm view t3@<version> version` returns the expected version, then
 connect the new client to a server on the previous version and verify that the update action
-reconnects to the matching server. Use releases with identical migration manifests for the
-automatic path. When the manifest changed, verify that the remote action stops before restart and
-shows the exact local `npx t3@<version> service update` command. Also test the manual or
-desktop-managed guidance when those environments are available.
+reconnects to the matching server. When the release adds database migrations, verify that the
+remote update applies them and reconnects. A failed trial must restore the database snapshot and
+restart the previous server. If the installed launcher does not support the target protocol,
+verify that the update stops before restart and run `npx t3@<version> service update` once on the
+server machine. Also test the manual or desktop-managed guidance when those environments are
+available.
 
 ## Desktop auto-update notes
 
@@ -213,6 +242,37 @@ desktop-managed guidance when those environments are available.
 - macOS metadata note:
   - `electron-updater` reads `latest-mac.yml` on stable and `nightly-mac.yml` on nightly, for both Intel and Apple Silicon.
   - The workflow merges the per-arch mac manifests into one channel-specific mac manifest before publishing the GitHub Release.
+
+### Windows payload topology and update validation
+
+Windows packages the bundled server and only its runtime-external/native
+dependency closure in `resources/server.asar`. Native modules and helper
+executables declared as unpacked by that archive must be present at the matching
+paths below `resources/server.asar.unpacked`. The Windows-native backend reads
+the archive in place through Electron. WSL cannot read ASAR files, so enabling
+the WSL backend extracts the server tree once into the desktop state directory
+under `wsl-server-tree/<version>` and reuses the completed version until the app
+is updated.
+
+The artifact builder rejects a Windows package when any of these invariants
+break:
+
+- `resources/server.asar` is absent or does not contain the server entry.
+- Any file marked unpacked in the ASAR header is absent from
+  `resources/server.asar.unpacked`.
+- On same-architecture Windows builds, the packaged primary cannot load the fff
+  native library from inside `server.asar` through its `.unpacked` sibling.
+- The isolated, extracted sidecar cannot load the server entry with plain Node.
+- The external Windows resource monitor is absent.
+- The unpacked Windows application contains more than 80 files.
+
+Cross-architecture Windows builds retain every structural and extracted-sidecar
+check, but skip executing the target Electron binary. A same-architecture build
+for each release target must exercise the primary native-load probe.
+
+NSIS differential packaging remains enabled. A sidecar layout transition can
+produce a larger one-time download; subsequent small releases retain their
+blockmaps, with a 60 MB maximum for a representative sidecar-to-sidecar update.
 
 ## 0) npm OIDC trusted publishing setup (CLI)
 
@@ -334,6 +394,7 @@ Checklist:
 4. Push tag.
 5. Verify workflow steps:
    - preflight passes
+   - release quality checks pass
    - all matrix builds pass
    - `publish_cli` publishes the exact release version before the release job
    - release job uploads expected files

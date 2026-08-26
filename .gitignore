@@ -25,14 +25,20 @@ __screenshots__/
 squashfs-root/
 .vercel
 .gstack/
+.plans/
 dist-electron/
 .electron-runtime/
 .showcase/
 apps/mobile/.showcase/
 artifacts/app-store/screenshots/
+.github/pr-assets/
 native/**/target/
 node_modules/
 .alchemy/
 *.log
 .env*
 !.env.example
+
+# Generated per release build by scripts/generate-third-party-notices.ts; never committed,
+# because a checked-in copy silently drifts from the dependencies it describes.
+THIRD-PARTY-NOTICES.md

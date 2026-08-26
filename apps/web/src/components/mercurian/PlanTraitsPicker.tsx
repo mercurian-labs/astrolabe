@@ -35,7 +35,7 @@ export function PlanTraitsPicker({
     prompt,
     modelOptions: selection.options,
   } as const;
-  if (!shouldRenderTraitsControls(traits)) return null;
+  if (!shouldRenderTraitsControls({ ...traits, planModeEnabled: false })) return null;
 
   return (
     <span
@@ -47,6 +47,7 @@ export function PlanTraitsPicker({
     >
       <TraitsPicker
         {...traits}
+        planModeEnabled={false}
         key={disabled ? "disabled" : "enabled"}
         triggerClassName="max-w-40"
         onPromptChange={onPromptChange}
