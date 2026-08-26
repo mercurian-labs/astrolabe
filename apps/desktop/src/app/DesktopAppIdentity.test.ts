@@ -199,7 +199,7 @@ describe("DesktopAppIdentity", () => {
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
         assert.equal(
           calls.setAboutPanelOptions[0]?.copyright,
-          "© 2026 Mercurian — built on t3code, MIT © 2026 T3 Tools Inc.",
+          "© 2026 Mercurian, Inc. — built on t3code, MIT © 2026 T3 Tools Inc.",
         );
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
         assert.deepEqual(calls.setDockIcon, ["/icon.png"]);

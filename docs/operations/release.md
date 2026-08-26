@@ -32,6 +32,33 @@ This document covers the unified release workflow for stable and nightly desktop
   - nightly releases are aliased to the `nightly` hosted app channel
 - Signing is optional and auto-detected per platform from secrets.
 
+## Licensing and third-party notices
+
+Astrolabe is MIT licensed. The root `LICENSE` carries both copyright lines — Mercurian, Inc.'s and
+T3 Tools', the fork's upstream — because MIT requires the original notice to travel with the code.
+
+MIT's notice-retention clause applies to our dependencies too, so each release channel carries a
+licensing payload:
+
+- **CLI package (`@mercurian/astrolabe`)** — publishes `"license": "MIT"`, carried from
+  `apps/server/package.json` through the publish manifest. npm includes `apps/server/LICENSE.md` in
+  the tarball automatically; `THIRD-PARTY-NOTICES.md` is added to the manifest's `files` explicitly
+  because npm does not auto-include it.
+- **Desktop installers** — `THIRD-PARTY-NOTICES.md` ships as an extra resource beside Electron's
+  own `LICENSE.electron.txt` and `LICENSES.chromium.html`.
+
+`THIRD-PARTY-NOTICES.md` is generated at build time by `scripts/generate-third-party-notices.ts` and
+is git-ignored on purpose: a committed copy drifts from the dependency set it describes and nothing
+in CI would catch it. The release workflow generates it before the CLI publish step, and
+`scripts/build-desktop-artifact.ts` generates it during staging. The generator fails the build if a
+vendored license file is missing rather than shipping an artifact with an incomplete notice.
+
+To inspect what a release would carry:
+
+```sh
+node scripts/generate-third-party-notices.ts --out /tmp/THIRD-PARTY-NOTICES.md
+```
+
 ## Required release credentials
 
 Stable releases require these GitHub Actions secrets in addition to the platform and deployment

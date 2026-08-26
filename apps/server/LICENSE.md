@@ -20,3 +20,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+This software is derived from T3 Code (https://github.com/pingdotgg/t3code).
+It incorporates third-party components that remain subject to their own license
+terms; see `THIRD-PARTY-NOTICES.md` in this package for the full enumeration and
+their notices.

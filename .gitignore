@@ -36,3 +36,7 @@ node_modules/
 *.log
 .env*
 !.env.example
+
+# Generated per release build by scripts/generate-third-party-notices.ts; never committed,
+# because a checked-in copy silently drifts from the dependencies it describes.
+THIRD-PARTY-NOTICES.md

@@ -11,6 +11,7 @@ import desktopPackageJson from "../apps/desktop/package.json" with { type: "json
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
 import { applyWebBrandAssets } from "./apply-web-brand-assets.ts";
+import { generateThirdPartyNotices } from "./generate-third-party-notices.ts";
 import {
   BRAND_ASSET_PATHS,
   resolveWebAssetBrandForChannel,
@@ -640,10 +641,16 @@ export const DESKTOP_FILE_EXCLUSIONS = [
 // The Windows primary backend reads the same files through the asar redirect,
 // so nothing is duplicated.
 export const WINDOWS_ASAR_UNPACK = ["apps/server/dist/**", "**/node_modules/**"] as const;
+export const THIRD_PARTY_NOTICES_FILE_NAME = "THIRD-PARTY-NOTICES.md";
+
 export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
+  },
+  {
+    from: `apps/desktop/prod-resources/${THIRD_PARTY_NOTICES_FILE_NAME}`,
+    to: THIRD_PARTY_NOTICES_FILE_NAME,
   },
 ] as const;
 
@@ -1844,6 +1851,16 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     arch: options.arch,
     verbose: options.verbose,
   });
+
+  // Generated per build rather than committed, so the notices can never fall behind the
+  // dependency set they describe.
+  const thirdPartyNotices = yield* generateThirdPartyNotices(
+    path.join(stageResourcesDir, THIRD_PARTY_NOTICES_FILE_NAME),
+    { rootDir: repoRoot },
+  );
+  yield* Effect.log(
+    `[desktop-artifact] Generated third-party notices for ${thirdPartyNotices.packageCount} packages.`,
+  );
 
   yield* assertPlatformBuildResources(
     options.platform,
