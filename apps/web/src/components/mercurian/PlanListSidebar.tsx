@@ -52,6 +52,7 @@ import {
 import { readLocalApi } from "../../localApi";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore, type PlanDraft } from "../../planDraftStore";
+import { useProjectScopeStore } from "../../projectScopeStore";
 import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { useMarkPlanUnread, useMercurianTree } from "../../state/mercurian";
@@ -163,7 +164,8 @@ export default function PlanListSidebar() {
     pruneSessionDrafts(new Set(snapshot.plans.map((plan) => plan.planId)));
   }, [pruneSessionDrafts, snapshot.plans]);
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
-  const [projectScopeId, setProjectScopeId] = useState<string | null>(null);
+  const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
+  const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
   const [archivedPage, setArchivedPage] = useState(0);
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
@@ -198,10 +200,13 @@ export default function PlanListSidebar() {
     [managedProjectId, projects],
   );
 
-  const handleScopeChange = useCallback((projectId: string | null) => {
-    setProjectScopeId(projectId);
-    setArchivedPage(0);
-  }, []);
+  const handleScopeChange = useCallback(
+    (projectId: string | null) => {
+      setProjectScope(projectId);
+      setArchivedPage(0);
+    },
+    [setProjectScope],
+  );
 
   const attachListAutoAnimateRef = useCallback((node: HTMLUListElement | null) => {
     if (!node) return;
