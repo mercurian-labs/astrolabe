@@ -167,3 +167,34 @@ The three dots become three horizontal line segments that make the autoplay time
   both interval and fill from zero (re-key on a resume counter).
 - Non-current segments show the empty track. Under reduced motion (autoplay off) no animation
   exists: the current segment renders fully filled, others empty.
+
+## Amendment 4 (2026-08-27): full-strength globe, conversation beside the graph, unboxed marks
+
+Vault 4766e83; Linear AC updated. Four changes, all confined to `apps/landing/`:
+
+- **Full-color poster.** The background layer drops `opacity-70` and the two full-viewport
+  dimming gradients. The poster renders at full strength. Contrast moves to the text: the copy
+  column (h1 eyebrow + each slide's heading/paragraph block) gets its own translucent backdrop —
+  something like a rounded panel of `bg-background/60 backdrop-blur-md` fading toward the
+  transparent side (`bg-gradient-to-r from-background/85 via-background/55 to-transparent` is
+  the starting idea; better is welcome) — applied so text stays legible at every width where it
+  overlaps the globe, and unobtrusive where it doesn't.
+- **Slide 1 becomes the planning surface in miniature: conversation + graph.** The real
+  `PlanTimeline` (`~/components/mercurian/PlanTimeline`, proven standalone in
+  `apps/web/src/components/mercurian/PlanTimeline.catalog.tsx` — props `timeline`,
+  `codingSessions`, optional `inFlight` with streamed text/grounding, `onAnswerQuestion`) renders
+  to the LEFT of the DagExplorer pane, fed from the same fixture history (or its checked-out
+  path), reading as messages-beside-sidebar the way the app composes them. An `inFlight` replying
+  state (short static text + one grounding chip) is welcome for life. On narrow viewports the
+  conversation pane may hide, leaving the graph.
+- **The graph pane's own "Checkpoint Graph" title chrome is hidden on the landing page only** —
+  the page's copy already names it. Do this from the landing side (a wrapper attribute on the
+  island's pane plus a scoped CSS rule in the island or `src/styles/global.css` that hides the
+  pane-header element inside that wrapper). NOTHING under `apps/web/` changes; accept that the
+  selector is coupling to app internals (if it drifts, the header quietly returns — acceptable).
+- **Slide 3 marks unboxed.** The bordered visual panel and per-icon dark tiles go away; the five
+  marks + labels sit directly over the poster. Fills audited: claude `#D97757` (orange),
+  cursor `#EDECEC`, grok `#F5F5F5`, openai `#fff` (all three near-white — invisible on the light
+  poster), opencode `#131010` (near-black). Render every mark as a uniform ink silhouette
+  (CSS `filter: brightness(0)` plus slight opacity, or per-file equivalent) so all five read
+  quietly and legibly on the poster; labels `text-foreground`/muted. Keep alt/aria names.
