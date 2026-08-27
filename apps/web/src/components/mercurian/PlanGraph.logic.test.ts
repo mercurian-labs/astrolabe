@@ -124,12 +124,20 @@ describe("fork-dependent explorer views", () => {
     expect(hasFork(buildPlanGraph(fork))).toBe(true);
   });
 
-  it("falls back from hidden columns without changing the other views", () => {
+  it("forces Graph for every stored view when walking views are parked", () => {
+    for (const graph of [buildPlanGraph(chain), buildPlanGraph(fork)]) {
+      for (const storedView of ["thread", "columns", "graph"] as const) {
+        expect(effectivePlanExplorerView(graph, storedView, false)).toBe("graph");
+      }
+    }
+  });
+
+  it("falls back from hidden columns without changing the other enabled views", () => {
     const linearGraph = buildPlanGraph(chain);
-    expect(effectivePlanExplorerView(linearGraph, "columns")).toBe("thread");
-    expect(effectivePlanExplorerView(linearGraph, "thread")).toBe("thread");
-    expect(effectivePlanExplorerView(linearGraph, "graph")).toBe("graph");
-    expect(effectivePlanExplorerView(buildPlanGraph(fork), "columns")).toBe("columns");
+    expect(effectivePlanExplorerView(linearGraph, "columns", true)).toBe("thread");
+    expect(effectivePlanExplorerView(linearGraph, "thread", true)).toBe("thread");
+    expect(effectivePlanExplorerView(linearGraph, "graph", true)).toBe("graph");
+    expect(effectivePlanExplorerView(buildPlanGraph(fork), "columns", true)).toBe("columns");
   });
 });
 

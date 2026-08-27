@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   BotIcon,
   CircleDotIcon,
+  FlaskConicalIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -25,7 +26,7 @@ import {
 } from "../ui/sidebar";
 import {
   isSettingsSectionActive,
-  SETTINGS_NAV_GROUPS,
+  visibleSettingsNavGroups,
   type SettingsSectionPath,
 } from "./SettingsNav.logic";
 
@@ -35,6 +36,7 @@ const SECTION_ICONS: Readonly<Record<SettingsSectionPath, ComponentType<{ classN
     "/settings/providers": BotIcon,
     "/settings/preferences": SlidersHorizontalIcon,
     "/settings/archived": ArchiveIcon,
+    "/settings/experiments": FlaskConicalIcon,
     "/settings/general": Settings2Icon,
     "/settings/appearance": PaletteIcon,
     "/settings/keybindings": KeyboardIcon,
@@ -80,7 +82,7 @@ export function SettingsNav({ pathname }: { readonly pathname: string }) {
   return (
     <>
       <SidebarContent className="overflow-x-hidden">
-        {SETTINGS_NAV_GROUPS.map((group) => (
+        {visibleSettingsNavGroups(import.meta.env.DEV).map((group) => (
           <SidebarGroup key={group.label} className="gap-1 p-[var(--sidebar-content-inset)]">
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarMenu>

@@ -11,6 +11,7 @@ export type SettingsSectionPath =
   | "/settings/providers"
   | "/settings/preferences"
   | "/settings/archived"
+  | "/settings/experiments"
   | "/settings/general"
   | "/settings/appearance"
   | "/settings/keybindings"
@@ -20,6 +21,7 @@ export type SettingsSectionPath =
 export interface SettingsNavSection {
   readonly to: SettingsSectionPath;
   readonly label: string;
+  readonly devOnly?: true;
 }
 
 export interface SettingsNavGroup {
@@ -38,6 +40,7 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
       { to: "/settings/providers", label: "Providers" },
       { to: "/settings/preferences", label: "Preferences" },
       { to: "/settings/archived", label: "Archived" },
+      { to: "/settings/experiments", label: "Experiments", devOnly: true },
     ],
   },
   {
@@ -51,6 +54,13 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     ],
   },
 ];
+
+export function visibleSettingsNavGroups(isDev: boolean): readonly SettingsNavGroup[] {
+  return SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    sections: group.sections.filter((section) => isDev || !section.devOnly),
+  })).filter((group) => group.sections.length > 0);
+}
 
 /** Equality, not the prefix match the tree uses: every section is a leaf route. */
 export function isSettingsSectionActive(pathname: string, to: SettingsSectionPath): boolean {

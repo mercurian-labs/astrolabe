@@ -4,6 +4,7 @@ import {
   isSettingsSectionActive,
   SETTINGS_LANDING_PATH,
   SETTINGS_NAV_GROUPS,
+  visibleSettingsNavGroups,
 } from "./SettingsNav.logic";
 
 const groupNamed = (label: string) => SETTINGS_NAV_GROUPS.find((group) => group.label === label);
@@ -16,6 +17,7 @@ describe("SETTINGS_NAV_GROUPS", () => {
       "/settings/providers",
       "/settings/preferences",
       "/settings/archived",
+      "/settings/experiments",
     ]);
   });
 
@@ -41,6 +43,22 @@ describe("SETTINGS_NAV_GROUPS", () => {
       group.sections.map((section) => section.to),
     );
     expect(paths).toContain(SETTINGS_LANDING_PATH);
+  });
+});
+
+describe("visibleSettingsNavGroups", () => {
+  it("includes Experiments in development builds", () => {
+    const workspace = visibleSettingsNavGroups(true).find((group) => group.label === "Workspace");
+
+    expect(workspace?.sections.map((section) => section.to)).toContain("/settings/experiments");
+  });
+
+  it("excludes Experiments outside development builds", () => {
+    const paths = visibleSettingsNavGroups(false).flatMap((group) =>
+      group.sections.map((section) => section.to),
+    );
+
+    expect(paths).not.toContain("/settings/experiments");
   });
 });
 

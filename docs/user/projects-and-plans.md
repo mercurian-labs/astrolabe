@@ -204,21 +204,15 @@ repository's plan and keep planning there; the plan on the original line stays u
 The Checkpoint Graph shows every continuable checkpoint in the plan: complete turns, unanswered
 queries, direct artifact revisions, repository plans, and coding-session leaves. Revisions made
 inside one assistant turn stay inside that turn's checkpoint rather than appearing as separate
-places to continue. It offers **Thread**, **Columns**, and **Graph** readings and remembers which
-one you chose.
-
-Thread follows the line you are on. Columns keeps branch choices open as standing panes. Graph is a
-map of the same checkpoints laid out in space, with every connection visible but no text on the map
-itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's top-right
-mark readiness and stale spec or plan status. Drag the map to move around it and scroll to zoom;
-where you are standing is ringed and comes to the middle.
+places to continue. The history is a spatial graph with every connection visible and no text on the
+map itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's
+top-right mark readiness and stale spec or plan status. Drag the map to move around it and scroll to
+zoom; where you are standing is ringed and comes to the middle.
 
 Work you have published reads solid; work still private to you reads muted.
 
-Rows move the space directly. In Graph, choose a dot to open its details, then choose **Continue
-from here** to move there. The same details are available from the information button on Thread and
-Columns rows. The popover records model facts, changes, warnings, readiness, and the acts available
-from that checkpoint without moving you merely because it opened.
+Choose a continuable checkpoint to move the planning surface there. Checkpoint details record model
+facts, changes, warnings, readiness, and the acts available from that point in history.
 
 After moving, the conversation shows the path through that checkpoint, the plan shows what it said
 at the time, and the Checkpoint Graph highlights where you are standing. The conversation is always
