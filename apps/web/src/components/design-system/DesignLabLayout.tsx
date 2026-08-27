@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { foundationsThemes } from "../../foundations/foundations.logic";
+import { useDesignLabOverridesStore, type DesignLabSearch } from "../../designLabOverrides";
 import {
   applyThemePalette,
   getThemeColorVariable,
@@ -39,11 +40,6 @@ import {
   groupDesignLabEntries,
   isDesignLabSectionExpanded,
 } from "./designLabNav.logic";
-
-export type DesignLabSearch = Readonly<{
-  page?: string;
-  entry?: string;
-}>;
 
 const CANVAS_WIDTHS: ReadonlyArray<{
   id: CatalogCanvasWidth;
@@ -147,6 +143,8 @@ export function DesignLabLayout({
   const [increasedText, setIncreasedText] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const originalRootFontSize = useRef<InlineStyleSnapshot | null>(null);
+  const bumpRepaintNonce = useDesignLabOverridesStore((store) => store.bumpRepaintNonce);
+  const setLastLabLocation = useDesignLabOverridesStore((store) => store.setLastLabLocation);
 
   const filteredEntries = useMemo(() => filterDesignLabEntries(CATALOG_ENTRIES, filter), [filter]);
   const navSections = useMemo(
@@ -177,8 +175,13 @@ export function DesignLabLayout({
         if (value) root.style.setProperty(variable, value);
         else root.style.removeProperty(variable);
       }
+      bumpRepaintNonce();
     };
-  }, []);
+  }, [bumpRepaintNonce]);
+
+  useEffect(() => {
+    setLastLabLocation(search);
+  }, [search, setLastLabLocation]);
 
   useEffect(() => {
     applyCatalogPalette(themeId, appearance);

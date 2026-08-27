@@ -72,6 +72,14 @@ The catalog centers on the surfaces that express Astrolabe's identity:
 
 Large compositions should remain bounded. The catalog may show a representative planning-space arrangement, but it should not recreate routing, persistence, or orchestration merely to mount the entire application.
 
+### Axes
+
+The first Design Lab section is **Axes**: live color, shape, typography, and elevation & glass controls for judging a visual stance against the entire running application. Unlike the documentation-oriented catalog entries, an axis page intentionally edits root appearance variables while the contributor moves through real routes. Each control and each axis can return to the shipped state independently.
+
+Non-color adjustments live in the in-memory zustand store at `apps/web/src/designLabOverrides.ts`. A nullable field means “defer to the shipped stylesheet or the current Appearance setting”; it never means a second saved preference. The root host merges current client settings field by field, reuses the production font writer, and removes optional custom properties when an override clears. The store also owns the last Lab search location, the theme-editor docking slot, and a repaint nonce used after another preview restores root theme variables. Overrides are development-only session experiments: do not persist them, write them through `updateSettings`, or make catalog components another source of production tokens.
+
+The color axis is the existing theme-editor surface docked into the page, not a separate editor. Its single component instance remains above the router so draft state and live color paint survive moving between the dock and the unchanged floating shell.
+
 ## State and fixtures
 
 Catalog entries use typed fixture builders based on the same public contracts the client consumes. Builders supply stable defaults and accept small semantic overrides, so an entry declares the fact it is demonstrating instead of assembling a protocol-shaped object by hand.
