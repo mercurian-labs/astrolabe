@@ -88,3 +88,29 @@ The M-171 placeholder title said Astrolabe; this issue corrects it.
       verbatim, the poster `<img>`; and does NOT contain `<script`, `waitlist`, `T3`, or `Astrolabe`.
 - [ ] Browser walk: hero renders calm on load (no animation, no motion), globe is the neutral
       stone/taupe poster (not gold), text legible at desktop and mobile widths.
+
+## Amendment (2026-08-27): the hero carousel
+
+The single positioning statement is superseded (Marketing Site note, "Does the hero make one claim
+or several?" — resolved: a three-slide manual carousel; vault commit 8ee8f09). The M-172 Linear AC
+was updated to match. Design:
+
+- **The text block becomes the carousel.** The globe, eyebrow `MERCURIAN` h1, layout, and
+  responsive behavior all stand. The big positioning line + supporting paragraph are replaced by
+  the sliding pair (slide header + slide copy). The positioning line moves to the page close
+  (M-174's scope) and the "supporting line" of the original design is retired.
+- **Zero JS: CSS scroll-snap.** The carousel is a horizontal `overflow-x-auto` `snap-x snap-mandatory`
+  container with three full-width `snap-center` panels, `scroll-behavior: smooth` (falling back to
+  auto under `prefers-reduced-motion`). Controls are plain anchor links: three dot links (one per
+  slide, `href="#hero-slide-N"`) and prev/next chevron links; `:target`-free — dots indicate the
+  current slide via `scroll-snap` position observed with CSS only where possible; if a
+  pure-CSS current-slide indicator proves impractical, static dots (no highlight) are acceptable
+  for this issue rather than adding JS. The `assert-static.mjs` guard stays untouched and must
+  keep passing — that is the point of this construction.
+- **No autoplay, no transition-on-load.** Nothing moves until the visitor scrolls the strip,
+  clicks a dot, or tabs into the panel and uses arrow keys (native scroll container behavior).
+- **Copy pinned verbatim** from the Marketing Site note's "The hero slides (pinned copy)" section —
+  three headers, three paragraphs, no edits, including the em dashes.
+- **Accessibility:** the strip is a `region` labeled "Product highlights"; each panel labeled
+  "Slide N of 3"; dot links carry aria-labels naming their slide.
+- Scope unchanged otherwise: no new dependencies, no config edits, nothing outside `apps/landing/`.
