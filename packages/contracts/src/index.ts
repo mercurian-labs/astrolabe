@@ -22,6 +22,7 @@ export * from "./pullRequest.ts";
 export * from "./orchestration.ts";
 export * from "./mercurian.ts";
 export * from "./mercurianRepositories.ts";
+export * from "./mercurianMemory.ts";
 export * from "./mercurianTrackers.ts";
 export * from "./mercurianWorkspace.ts";
 export * from "./t3ProjectFile.ts";
