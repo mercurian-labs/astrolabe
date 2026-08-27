@@ -198,3 +198,31 @@ Vault 4766e83; Linear AC updated. Four changes, all confined to `apps/landing/`:
   poster), opencode `#131010` (near-black). Render every mark as a uniform ink silhouette
   (CSS `filter: brightness(0)` plus slight opacity, or per-file equivalent) so all five read
   quietly and legibly on the poster; labels `text-foreground`/muted. Keep alt/aria names.
+
+## Amendment 5 (2026-08-27): feathered scrims, solid panels, fitted graph, the wordmark
+
+Vault: wordmark clause added. Four changes, all in `apps/landing/`:
+
+- **Feathered text scrims.** The hard-edged `rounded-2xl bg-background/70 backdrop-blur-md`
+  panels (SlideCopy and the eyebrow pill) are replaced by scrims with no visible boundary: an
+  absolutely-positioned backdrop layer extending well past the text, carrying the translucent
+  background tint AND `backdrop-filter` blur, faded out with a soft `mask-image` alpha gradient
+  (radial or composited per-side linear) so both tint and blur dissolve smoothly into the poster.
+  No border, no visible corner at any width.
+- **Solid demo panels.** The slide-1 planning panel and slide-2 placeholder panel go from
+  `bg-background/80` to solid `bg-background` (slide 2 included for coherence).
+- **The hero graph fits its pane; no minimap.** Investigate `DagExplorer`'s Graph view for the
+  presentational mechanism that controls zoom/fit (display settings persisted in localStorage
+  beside the view key are the expected shape — seed like the view is seeded, only if unset or via
+  a landing-held wrapper approach) so the whole fixture diamond is visible in the hero pane
+  without panning. Whatever the fit outcome, hide the minimap and the zoom/fit corner controls
+  inside `[data-landing-dag-explorer]` via the existing landing-scoped style block. NOTHING under
+  `apps/web/` changes.
+- **The wordmark.** `public/fonts/fraunces-variable.woff2` is hand-placed (36KB, weight range
+  300–700). Register it landing-side in `src/styles/global.css` (after the shared import):
+  `@font-face { font-family: "Fraunces"; src: url("/fonts/fraunces-variable.woff2")
+  format("woff2-variations"); font-weight: 300 700; font-style: normal; font-display: swap; }`.
+  The eyebrow h1 becomes the wordmark from the prototype's Logo component: `Mercurian` in
+  Fraunces semi-bold (weight 600), normal case (drop the uppercase tracking treatment), sized up
+  (~text-2xl/3xl), followed by a period in the prototype's rust `#A0492A` inside an
+  `aria-hidden` span so the accessible name stays "Mercurian". The h1 keeps a feathered scrim.
