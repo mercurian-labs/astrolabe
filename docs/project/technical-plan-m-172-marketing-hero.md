@@ -114,3 +114,39 @@ was updated to match. Design:
 - **Accessibility:** the strip is a `region` labeled "Product highlights"; each panel labeled
   "Slide N of 3"; dot links carry aria-labels naming their slide.
 - Scope unchanged otherwise: no new dependencies, no config edits, nothing outside `apps/landing/`.
+
+## Amendment 2 (2026-08-27): the interactive hero — visuals on every slide, autoplay, globe to background
+
+Supersedes Amendment 1's zero-JS construction (vault commit 0a6f522; Linear AC updated). The
+carousel now embeds a live product component, so the hero becomes a React island and this branch
+takes the guard re-scope that M-173/M-174 pinned (island hydration scripts only — same spec as
+`technical-plan-m-173-graph-story.md` §"The guard, re-scoped"; M-172 now lands it first).
+
+- **`src/islands/HeroCarousel.tsx` (new), `client:only="react"`.** A transform-track carousel —
+  an overflow-hidden viewport over a `translateX` track, NOT a scroll container: no native
+  scrollbar (the Amendment-1 wart), no snap/fragment quirks, controls naturally external.
+  Transition on transform ~500ms ease; under `prefers-reduced-motion` the transition is removed
+  (instant cuts) and autoplay never starts.
+- **Autoplay:** advance every ~8s, wrapping. Paused while the pointer is over the carousel or
+  focus is within it; a manual navigation resets the timer. No autoplay under reduced motion.
+- **Controls outside the sliding content:** one fixed nav below the viewport (prev/next chevrons +
+  three dots, current dot filled from React state), aria-labels as before.
+- **Slide visuals** (each slide = copy block + visual panel, bordered like the M-174 section
+  cards, on a `bg-background/80`-style surface so it reads over the globe):
+  1. Branching — the real `DagExplorer` from `~/components/mercurian/DagExplorer`, fixture history
+     with a fork and a merge (reuse/adapt `CheckpointGraphDemo`'s). Seed
+     `EXPLORER_VIEW_STORAGE_KEY` to the graph view **only if the key is unset**, before first
+     render, so the diamond shows spatially without clobbering a returning visitor's choice.
+  2. Memory — a quiet placeholder panel, semantic tokens only, no fake screenshots and no motion:
+     a subtle node-and-line sketch (inline SVG, `currentColor`/token colors) with one muted line
+     of text: `Memory's graph view arrives with the memory system.`
+  3. Ownership — the five provider marks from `public/harnesses/` (hand-placed:
+     claude-ai-icon, openai_dark, cursor_light, grok-dark, opencode-dark) in a labeled row
+     (alt/aria: Claude Code, Codex, Cursor, Grok, OpenCode), sized consistently.
+- **Globe to background:** the poster `<img>` becomes an absolutely-positioned, `aria-hidden`
+  background layer (right-weighted, clipped by the hero, behind everything), with a soft
+  background-token gradient over it where text sits so copy stays legible in both light/dark.
+- **Copy change (slide 3, per the amended vault pin):** "…with no sign up required." replaces
+  "…with no signup and no cloud in the loop."
+- Everything else stands: pinned copy verbatim, Mercurian naming, no waitlist/T3 strings, no new
+  dependencies, nothing outside `apps/landing/`.
