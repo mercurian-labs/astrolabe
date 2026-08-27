@@ -76,6 +76,7 @@ const inheritedPaletteA11y: ReadonlyArray<CatalogAxeException> = [
 const baseProps = {
   graph,
   anchoredCommitId: mobileResponse,
+  historyWalkViewsEnabled: true,
   providers: [],
   codingSessions: [],
   readyCommits: new Map(),
