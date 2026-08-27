@@ -5,7 +5,7 @@ import Base from "../layouts/Base.astro";
 
 <Base title="Mercurian">
   <main class="relative isolate min-h-screen overflow-hidden">
-    <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+    <div class="pointer-events-none absolute inset-0 -z-20 overflow-hidden" aria-hidden="true">
       <img
         class="absolute top-1/2 right-[-32rem] h-auto w-[78rem] max-w-none -translate-y-1/2 sm:right-[-26rem] lg:right-[-18rem] xl:right-[-10rem]"
         src="/mercury-globe-poster.png"
@@ -16,19 +16,27 @@ import Base from "../layouts/Base.astro";
         height="1080"
       />
     </div>
+    <div
+      class="pointer-events-none absolute inset-0 -z-10 lg:hidden"
+      style="background: linear-gradient(to right, var(--background) 0%, var(--background) 35%, color-mix(in oklab, var(--background) 70%, transparent) 70%, color-mix(in oklab, var(--background) 35%, transparent) 100%);"
+      aria-hidden="true"
+    >
+    </div>
+    <div
+      class="pointer-events-none absolute inset-0 -z-10 hidden lg:block"
+      style="background: linear-gradient(to right, var(--background) 0%, var(--background) 18%, color-mix(in oklab, var(--background) 55%, transparent) 45%, transparent 75%);"
+      aria-hidden="true"
+    >
+    </div>
 
     <div
       class="mx-auto flex min-h-screen w-full max-w-[90rem] flex-col justify-center px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16"
     >
       <h1
         aria-label="Mercurian"
-        class="relative z-10 isolate w-fit px-3 py-2 text-2xl font-semibold sm:text-3xl [font-family:Fraunces,serif]"
+        class="relative z-10 w-fit px-3 py-2 text-2xl font-semibold sm:text-3xl [font-family:Fraunces,serif]"
       >
-        <span
-          aria-hidden="true"
-          class="hero-feathered-scrim pointer-events-none absolute -inset-x-14 -inset-y-10 z-0 bg-background/70 backdrop-blur-md"
-        ></span>
-        <span class="relative z-10">Mercurian<span aria-hidden="true" class="text-[#A0492A]">.</span></span>
+        Mercurian<span aria-hidden="true" class="text-[#A0492A]">.</span>
       </h1>
 
       <div class="relative z-10 mt-8">

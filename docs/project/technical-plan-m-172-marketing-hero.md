@@ -226,3 +226,13 @@ format("woff2-variations"); font-weight: 300 700; font-style: normal; font-displ
   Fraunces semi-bold (weight 600), normal case (drop the uppercase tracking treatment), sized up
   (~text-2xl/3xl), followed by a period in the prototype's rust `#A0492A` inside an
   `aria-hidden` span so the accessible name stays "Mercurian". The h1 keeps a feathered scrim.
+
+### Amendment 5 addendum: the scrim is atmosphere, not a box
+
+Boxed scrims — even mask-feathered — always end somewhere, and a backdrop-blur boundary is
+glaring against the poster's texture. Replaced with **one continuous hero-level scrim**: a single
+full-height layer between the poster and the content, anchored to the hero's left, fading
+rightward over a very long run (roughly `linear-gradient(to right, background, background 20%,
+55% alpha around 45%, transparent by ~78%)`), with **no backdrop-filter anywhere**. The right
+majority of the globe stays untouched full color; the text sits on the dissolve with no
+detectable region boundary. The per-block `.hero-feathered-scrim` layers are removed.

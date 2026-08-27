@@ -8,23 +8,4 @@
   font-display: swap;
 }
 
-.hero-feathered-scrim {
-  -webkit-mask-image: radial-gradient(
-    ellipse at center,
-    black 0%,
-    black 35%,
-    rgb(0 0 0 / 55%) 60%,
-    rgb(0 0 0 / 20%) 80%,
-    transparent 95%
-  );
-  mask-image: radial-gradient(
-    ellipse at center,
-    black 0%,
-    black 35%,
-    rgb(0 0 0 / 55%) 60%,
-    rgb(0 0 0 / 20%) 80%,
-    transparent 95%
-  );
-}
-
 @source "../../../web/src";

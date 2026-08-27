@@ -408,19 +408,13 @@ function HeroDagExplorer() {
 
 function SlideCopy({ title, copy }: { readonly title: string; readonly copy: string }) {
   return (
-    <div className="relative isolate w-full max-w-full min-w-0 p-5 sm:p-6">
-      <div
-        aria-hidden="true"
-        className="hero-feathered-scrim pointer-events-none absolute -inset-x-24 -inset-y-16 z-0 bg-background/70 backdrop-blur-md"
-      />
-      <div className="relative z-10">
-        <h2 className="w-full max-w-xl min-w-0 text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl xl:text-6xl">
-          {title}
-        </h2>
-        <p className="mt-6 w-full max-w-xl min-w-0 text-base leading-relaxed text-muted-foreground sm:text-lg">
-          {copy}
-        </p>
-      </div>
+    <div className="w-full max-w-full min-w-0 p-5 sm:p-6">
+      <h2 className="w-full max-w-xl min-w-0 text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl xl:text-6xl">
+        {title}
+      </h2>
+      <p className="mt-6 w-full max-w-xl min-w-0 text-base leading-relaxed text-muted-foreground sm:text-lg">
+        {copy}
+      </p>
     </div>
   );
 }
