@@ -6,7 +6,14 @@ import {
 import { buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { message, planRevision, specRevision, timeline } from "~/test/fixtures/timeline";
-import { useCallback, useEffect, useState, type FocusEvent as ReactFocusEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent as ReactFocusEvent,
+} from "react";
 
 const AUTOPLAY_DELAY_MS = 8_000;
 const SLIDE_COUNT = 3;
@@ -143,19 +150,29 @@ function usePrefersReducedMotion() {
 export default function HeroCarousel() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [timerReset, setTimerReset] = useState(0);
+  const [resumeCounter, setResumeCounter] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [hasFocusWithin, setHasFocusWithin] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
+  const isAutoplayPaused = isHovered || hasFocusWithin;
+  const wasAutoplayPaused = useRef(isAutoplayPaused);
+
+  useLayoutEffect(() => {
+    if (wasAutoplayPaused.current && !isAutoplayPaused) {
+      setResumeCounter((counter) => counter + 1);
+    }
+    wasAutoplayPaused.current = isAutoplayPaused;
+  }, [isAutoplayPaused]);
 
   useEffect(() => {
-    if (prefersReducedMotion || isHovered || hasFocusWithin) return;
+    if (prefersReducedMotion || isAutoplayPaused) return;
 
     const interval = window.setInterval(() => {
       setCurrentSlide((slide) => (slide + 1) % SLIDE_COUNT);
     }, AUTOPLAY_DELAY_MS);
 
     return () => window.clearInterval(interval);
-  }, [hasFocusWithin, isHovered, prefersReducedMotion, timerReset]);
+  }, [currentSlide, isAutoplayPaused, prefersReducedMotion, timerReset]);
 
   const navigate = useCallback((slide: number) => {
     setCurrentSlide((slide + SLIDE_COUNT) % SLIDE_COUNT);
@@ -278,7 +295,7 @@ export default function HeroCarousel() {
           <Chevron direction="previous" />
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
           {[
             "Plan in branches. Merge what works.",
             "Memory you can actually read.",
@@ -287,13 +304,28 @@ export default function HeroCarousel() {
             <button
               aria-current={index === currentSlide ? "true" : undefined}
               aria-label={`Go to slide ${index + 1}: ${title}`}
-              className={`size-2 rounded-full transition-colors ${
-                index === currentSlide ? "bg-foreground" : "bg-muted-foreground/40"
-              }`}
+              className="flex h-10 w-12 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
               key={title}
               onClick={() => navigate(index)}
               type="button"
-            />
+            >
+              <span className="h-1 w-8 overflow-hidden rounded-full bg-muted-foreground/25">
+                {index === currentSlide ? (
+                  <span
+                    className="block h-full w-full origin-left rounded-full bg-foreground"
+                    key={`${currentSlide}-${timerReset}-${resumeCounter}-${prefersReducedMotion}`}
+                    style={
+                      prefersReducedMotion
+                        ? { transform: "scaleX(1)" }
+                        : {
+                            animation: `hero-carousel-progress ${AUTOPLAY_DELAY_MS}ms linear forwards`,
+                            animationPlayState: isAutoplayPaused ? "paused" : "running",
+                          }
+                    }
+                  />
+                ) : null}
+              </span>
+            </button>
           ))}
         </div>
 
@@ -306,6 +338,13 @@ export default function HeroCarousel() {
           <Chevron direction="next" />
         </button>
       </nav>
+
+      <style>{`
+        @keyframes hero-carousel-progress {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+      `}</style>
     </section>
   );
 }
