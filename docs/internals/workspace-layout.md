@@ -16,6 +16,8 @@ the task commands.
   loads the web bundle over the `t3code://` protocol, and owns SSH-managed remote environments.
 - `apps/mobile` (`@t3tools/mobile`): Expo/React Native client. Same client runtime composition as
   web, different platform layer and UI.
+- `apps/landing` (`@t3tools/landing`): Mercurian's Astro marketing site. Renders selected product
+  components as React islands while static pages ship without client scripts.
 - `apps/marketing` (`@t3tools/marketing`): Astro marketing site.
 
 ## packages
