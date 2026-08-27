@@ -21,6 +21,8 @@ const MIGRATED_STORY_TITLES = [
   "Plan hover card",
   "Ready to send",
   "Assistant working",
+  "Command menu open",
+  "Command menu gated",
   "No model chosen yet",
   "Not signed in",
   "Reading",
@@ -110,7 +112,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(23);
+    expect(migratedEntries).toHaveLength(25);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

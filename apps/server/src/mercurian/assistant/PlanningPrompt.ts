@@ -165,6 +165,15 @@ export function composeFirstTurnInput(input: {
   readonly preamble: string | null;
   readonly message: string;
 }): string {
+  if (/^\s*[/$]\S+/.test(input.message)) {
+    const context = [
+      "Context for this conversation (it predates this session):",
+      input.appendix,
+      ...(input.preamble === null ? [] : [input.preamble]),
+    ].join("\n\n");
+    return [input.message, context].join("\n\n---\n\n");
+  }
+
   return [
     input.appendix,
     ...(input.preamble === null ? [] : [input.preamble]),

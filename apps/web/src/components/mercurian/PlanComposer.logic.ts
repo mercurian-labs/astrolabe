@@ -4,8 +4,17 @@ import type {
   PlanningModelResolution,
   PlanningModelSelection,
   PlanTurnRefusalReason,
+  ProviderDriverKind,
+  ServerProviderSkill,
+  ServerProviderSlashCommand,
 } from "@t3tools/contracts";
+import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 
+import type { ComposerTrigger } from "../../composer-logic";
+import type { ComposerCommandItem } from "../chat/ComposerCommandMenu";
+import { resolveComposerMenuActiveItemId } from "../chat/composerMenuHighlight";
+import { searchSlashCommandItems } from "../chat/composerSlashCommandSearch";
+import { searchProviderSkills } from "../../providerSkillSearch";
 import { providerLabel } from "./PlanningModel.logic";
 
 /**
@@ -24,6 +33,157 @@ export type PlanComposerFace = "send" | "stop";
 export interface PlanComposerControlState {
   readonly face: PlanComposerFace;
   readonly enabled: boolean;
+}
+
+export type PlanComposerSelectableMenuItem = Extract<
+  ComposerCommandItem,
+  { readonly type: "provider-slash-command" | "skill" }
+>;
+
+export interface PlanComposerMenuStatusItem {
+  readonly id: "planning-model-gate" | "provider-empty";
+  readonly type: "status";
+  readonly status: "gate" | "empty";
+  readonly label: string;
+  readonly selectable: false;
+}
+
+export type PlanComposerMenuItem = PlanComposerSelectableMenuItem | PlanComposerMenuStatusItem;
+
+/**
+ * The planning composer's provider-owned command surface. Planning has no
+ * built-ins: its model picker is already a standing control.
+ */
+export function planComposerMenuItems(input: {
+  readonly trigger: ComposerTrigger | null;
+  readonly provider: ProviderDriverKind | null;
+  readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
+  readonly skills: ReadonlyArray<ServerProviderSkill>;
+  readonly gateNotice: string | null;
+}): PlanComposerMenuItem[] {
+  if (
+    input.trigger === null ||
+    (input.trigger.kind !== "slash-command" && input.trigger.kind !== "skill")
+  ) {
+    return [];
+  }
+
+  if (input.gateNotice !== null) {
+    return [
+      {
+        id: "planning-model-gate",
+        type: "status",
+        status: "gate",
+        label: input.gateNotice,
+        selectable: false,
+      },
+    ];
+  }
+
+  if (input.trigger.kind === "slash-command") {
+    if (input.slashCommands.length === 0 || input.provider === null) {
+      return [
+        {
+          id: "provider-empty",
+          type: "status",
+          status: "empty",
+          label: "This provider supplies no commands on this machine.",
+          selectable: false,
+        },
+      ];
+    }
+    const provider = input.provider;
+    const items = input.slashCommands.map(
+      (command): PlanComposerSelectableMenuItem => ({
+        id: `provider-slash-command:${provider}:${command.name}`,
+        type: "provider-slash-command",
+        provider,
+        command,
+        label: `/${command.name}`,
+        description: command.description ?? command.input?.hint ?? "Run provider command",
+      }),
+    );
+    return searchSlashCommandItems(items, input.trigger.query).filter(
+      (item): item is PlanComposerSelectableMenuItem => item.type !== "slash-command",
+    );
+  }
+
+  const enabledSkills = input.skills.filter((skill) => skill.enabled);
+  if (enabledSkills.length === 0 || input.provider === null) {
+    return [
+      {
+        id: "provider-empty",
+        type: "status",
+        status: "empty",
+        label: "This provider supplies no skills on this machine.",
+        selectable: false,
+      },
+    ];
+  }
+  const provider = input.provider;
+  return searchProviderSkills(enabledSkills, input.trigger.query).map(
+    (skill): PlanComposerSelectableMenuItem => ({
+      id: `skill:${provider}:${skill.name}`,
+      type: "skill",
+      provider,
+      skill,
+      label: formatProviderSkillDisplayName(skill),
+      description:
+        skill.shortDescription ??
+        skill.description ??
+        (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
+    }),
+  );
+}
+
+export function routePlanComposerTrigger(trigger: ComposerTrigger | null): {
+  readonly mentionTrigger: ComposerTrigger | null;
+  readonly commandTrigger: ComposerTrigger | null;
+} {
+  return {
+    mentionTrigger: trigger?.kind === "path" ? trigger : null,
+    commandTrigger: trigger?.kind === "slash-command" || trigger?.kind === "skill" ? trigger : null,
+  };
+}
+
+export function isPlanComposerSelectableMenuItem(
+  item: PlanComposerMenuItem,
+): item is PlanComposerSelectableMenuItem {
+  return item.type !== "status";
+}
+
+export type PlanComposerMenuKeyResolution =
+  | { readonly action: "none" }
+  | { readonly action: "handled" }
+  | { readonly action: "highlight"; readonly itemId: string }
+  | { readonly action: "select"; readonly item: PlanComposerSelectableMenuItem };
+
+/** The open menu owns arrows and commit keys, including an empty/gated row. */
+export function resolvePlanComposerMenuKey(input: {
+  readonly menuOpen: boolean;
+  readonly key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab";
+  readonly items: ReadonlyArray<PlanComposerSelectableMenuItem>;
+  readonly activeItemId: string | null;
+}): PlanComposerMenuKeyResolution {
+  if (!input.menuOpen) return { action: "none" };
+  if (input.items.length === 0) return { action: "handled" };
+
+  const resolvedId = resolveComposerMenuActiveItemId({
+    items: input.items,
+    highlightedItemId: input.activeItemId,
+    currentSearchKey: null,
+    highlightedSearchKey: null,
+  });
+  const resolvedIndex = input.items.findIndex((item) => item.id === resolvedId);
+
+  if (input.key === "Enter" || input.key === "Tab") {
+    const item = input.items[resolvedIndex];
+    return item === undefined ? { action: "handled" } : { action: "select", item };
+  }
+
+  const offset = input.key === "ArrowDown" ? 1 : -1;
+  const item = input.items[(resolvedIndex + offset + input.items.length) % input.items.length];
+  return item === undefined ? { action: "handled" } : { action: "highlight", itemId: item.id };
 }
 
 export function resolveComposerControl(input: {

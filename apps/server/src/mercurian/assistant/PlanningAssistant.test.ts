@@ -1098,7 +1098,7 @@ describe("PlanningAssistant", () => {
       const same = yield* store.appendMessage({
         planId: created.plan.planId,
         parentCommitId: firstReply.commitId,
-        text: "Stay deep",
+        text: "/cmd args",
         modelChoice: { ...high, options: high.options.toReversed() },
         lastUsed: null,
         createdAt: at("2026-08-08T00:28:00.000Z"),
@@ -1112,6 +1112,7 @@ describe("PlanningAssistant", () => {
       });
       const continued = yield* Queue.take(harness.sendTurns);
       assert.strictEqual(continued.threadId, firstSession.threadId);
+      assert.strictEqual(continued.input, "/cmd args");
       assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
       yield* Queue.take(frames);
       yield* harness.emit(

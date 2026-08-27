@@ -97,15 +97,47 @@ describe("transcriptPreamble", () => {
 });
 
 describe("composeFirstTurnInput", () => {
-  it("stacks appendix, preamble, and the message being replied to", () => {
+  it("keeps the existing appendix-first composition byte-identical", () => {
     const input = composeFirstTurnInput({
       appendix: "APPENDIX",
       preamble: "PREAMBLE",
       message: "MESSAGE",
     });
-    expect(input.indexOf("APPENDIX")).toBeLessThan(input.indexOf("PREAMBLE"));
-    expect(input.indexOf("PREAMBLE")).toBeLessThan(input.indexOf("MESSAGE"));
-    expect(input).toContain("Reply to this message:\nMESSAGE");
+    expect(input).toBe("APPENDIX\n\n---\n\nPREAMBLE\n\n---\n\nReply to this message:\nMESSAGE");
+  });
+
+  it("keeps a leading slash command at the head and puts prior context after it", () => {
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: "PREAMBLE",
+        message: "/cmd args",
+      }),
+    ).toBe(
+      "/cmd args\n\n---\n\nContext for this conversation (it predates this session):\n\nAPPENDIX\n\nPREAMBLE",
+    );
+  });
+
+  it("keeps a leading skill invocation and its whitespace byte-for-byte at the head", () => {
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: null,
+        message: "  $skill\nUse the current plan",
+      }),
+    ).toBe(
+      "  $skill\nUse the current plan\n\n---\n\nContext for this conversation (it predates this session):\n\nAPPENDIX",
+    );
+  });
+
+  it("does not invert for a slash in the middle of ordinary text", () => {
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: "PREAMBLE",
+        message: "Please run /cmd args",
+      }),
+    ).toBe("APPENDIX\n\n---\n\nPREAMBLE\n\n---\n\nReply to this message:\nPlease run /cmd args");
   });
 
   it("carries no preamble on a plan's very first turn", () => {
