@@ -221,7 +221,7 @@ Vault: wordmark clause added. Four changes, all in `apps/landing/`:
 - **The wordmark.** `public/fonts/fraunces-variable.woff2` is hand-placed (36KB, weight range
   300–700). Register it landing-side in `src/styles/global.css` (after the shared import):
   `@font-face { font-family: "Fraunces"; src: url("/fonts/fraunces-variable.woff2")
-  format("woff2-variations"); font-weight: 300 700; font-style: normal; font-display: swap; }`.
+format("woff2-variations"); font-weight: 300 700; font-style: normal; font-display: swap; }`.
   The eyebrow h1 becomes the wordmark from the prototype's Logo component: `Mercurian` in
   Fraunces semi-bold (weight 600), normal case (drop the uppercase tracking treatment), sized up
   (~text-2xl/3xl), followed by a period in the prototype's rust `#A0492A` inside an

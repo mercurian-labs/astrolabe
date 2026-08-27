@@ -21,9 +21,14 @@ import Base from "../layouts/Base.astro";
       class="mx-auto flex min-h-screen w-full max-w-[90rem] flex-col justify-center px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16"
     >
       <h1
-        class="relative z-10 w-fit rounded-lg bg-background/70 px-3 py-2 text-sm font-medium tracking-[0.22em] uppercase backdrop-blur-md"
+        aria-label="Mercurian"
+        class="relative z-10 isolate w-fit px-3 py-2 text-2xl font-semibold sm:text-3xl [font-family:Fraunces,serif]"
       >
-        Mercurian
+        <span
+          aria-hidden="true"
+          class="hero-feathered-scrim pointer-events-none absolute -inset-x-14 -inset-y-10 z-0 bg-background/70 backdrop-blur-md"
+        ></span>
+        <span class="relative z-10">Mercurian<span aria-hidden="true" class="text-[#A0492A]">.</span></span>
       </h1>
 
       <div class="relative z-10 mt-8">

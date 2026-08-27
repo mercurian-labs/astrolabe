@@ -221,7 +221,7 @@ export default function HeroCarousel() {
               copy="Every message and every plan edit is a commit in one branching, git-style history. Return to any point and take a different direction, explore open decisions side by side, then merge the branches back into a single plan — with fresh, compacted context instead of a rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make."
               title="Plan in branches. Merge what works."
             />
-            <div className="flex h-[25rem] w-full max-w-full min-w-0 overflow-hidden rounded-xl border border-border bg-background/80 shadow-sm">
+            <div className="flex h-[25rem] w-full max-w-full min-w-0 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
               <div className="hidden min-w-0 basis-2/5 flex-col border-r border-border lg:flex">
                 <PlanTimeline
                   codingSessions={[]}
@@ -230,9 +230,7 @@ export default function HeroCarousel() {
                   onAnswerQuestion={() => undefined}
                 />
               </div>
-              <div className="flex min-w-0 flex-1" data-landing-dag-explorer>
-                <DagExplorer {...graphProps} />
-              </div>
+              <HeroDagExplorer />
             </div>
           </section>
 
@@ -247,7 +245,7 @@ export default function HeroCarousel() {
               copy="Your project's design truth lives as atomic, linked markdown notes in a git repository you own. Nothing is captured behind your back — the assistant proposes an amendment, you confirm it, and it lands as a commit attributed to the plan it came from. Mercurian is a lens over your memory, never a silo for it: every note stays editable with any tool and portable out of the product entirely."
               title="Memory you can actually read."
             />
-            <div className="flex h-[25rem] w-full max-w-full min-w-0 flex-col items-center justify-center rounded-xl border border-border bg-background/80 p-8 shadow-sm">
+            <div className="flex h-[25rem] w-full max-w-full min-w-0 flex-col items-center justify-center rounded-xl border border-border bg-background p-8 shadow-sm">
               <svg
                 aria-hidden="true"
                 className="h-44 w-full max-w-md text-muted-foreground/45"
@@ -364,6 +362,10 @@ export default function HeroCarousel() {
           display: none;
         }
 
+        [data-landing-dag-explorer] > section > .relative > .absolute.right-2.bottom-2 {
+          display: none;
+        }
+
         @keyframes hero-carousel-progress {
           from { transform: scaleX(0); }
           to { transform: scaleX(1); }
@@ -373,15 +375,52 @@ export default function HeroCarousel() {
   );
 }
 
+function HeroDagExplorer() {
+  const paneRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (pane === null) return;
+
+    const fittedControls = new WeakSet<HTMLButtonElement>();
+    const fitGraph = () => {
+      const fitControl = pane.querySelector<HTMLButtonElement>(
+        'button[aria-label="Fit graph to view"]',
+      );
+      if (fitControl === null || fittedControls.has(fitControl)) return;
+      fittedControls.add(fitControl);
+      fitControl.click();
+    };
+
+    const observer = new MutationObserver(fitGraph);
+    observer.observe(pane, { childList: true, subtree: true });
+    fitGraph();
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="flex min-w-0 flex-1" data-landing-dag-explorer ref={paneRef}>
+      <DagExplorer {...graphProps} />
+    </div>
+  );
+}
+
 function SlideCopy({ title, copy }: { readonly title: string; readonly copy: string }) {
   return (
-    <div className="w-full max-w-full min-w-0 rounded-2xl bg-background/70 p-5 backdrop-blur-md sm:p-6">
-      <h2 className="w-full max-w-xl min-w-0 text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl xl:text-6xl">
-        {title}
-      </h2>
-      <p className="mt-6 w-full max-w-xl min-w-0 text-base leading-relaxed text-muted-foreground sm:text-lg">
-        {copy}
-      </p>
+    <div className="relative isolate w-full max-w-full min-w-0 p-5 sm:p-6">
+      <div
+        aria-hidden="true"
+        className="hero-feathered-scrim pointer-events-none absolute -inset-x-24 -inset-y-16 z-0 bg-background/70 backdrop-blur-md"
+      />
+      <div className="relative z-10">
+        <h2 className="w-full max-w-xl min-w-0 text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl xl:text-6xl">
+          {title}
+        </h2>
+        <p className="mt-6 w-full max-w-xl min-w-0 text-base leading-relaxed text-muted-foreground sm:text-lg">
+          {copy}
+        </p>
+      </div>
     </div>
   );
 }
