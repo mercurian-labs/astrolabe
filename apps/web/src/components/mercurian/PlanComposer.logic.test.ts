@@ -4,14 +4,172 @@ import {
   type PlanningModelResolution,
   type PlanningModelSelection,
   ProviderDriverKind,
+  type ServerProviderSkill,
 } from "@t3tools/contracts";
 
+import { detectComposerTrigger, type ComposerTrigger } from "../../composer-logic.ts";
 import {
   implementFailureNotice,
+  planComposerMenuItems,
   planningModelGateNotice,
   resolveComposerControl,
+  resolvePlanComposerMenuKey,
+  routePlanComposerTrigger,
   turnRefusalNotice,
-} from "./PlanComposer.logic";
+} from "./PlanComposer.logic.ts";
+
+const provider = ProviderDriverKind.make("claudeAgent");
+const slashTrigger = (query = ""): ComposerTrigger => ({
+  kind: "slash-command",
+  query,
+  rangeStart: 0,
+  rangeEnd: query.length + 1,
+});
+const skillTrigger = (query = ""): ComposerTrigger => ({
+  kind: "skill",
+  query,
+  rangeStart: 0,
+  rangeEnd: query.length + 1,
+});
+
+function makeSkill(
+  name: string,
+  enabled: boolean,
+  extra: Partial<ServerProviderSkill> = {},
+): ServerProviderSkill {
+  return {
+    name,
+    enabled,
+    path: `/skills/${name}/SKILL.md`,
+    ...extra,
+  };
+}
+
+describe("planComposerMenuItems", () => {
+  const slashCommands = [
+    { name: "review", description: "Review the current plan" },
+    { name: "compact", input: { hint: "Summarize context" } },
+  ];
+  const skills = [
+    makeSkill("product-docs", true, { displayName: "Product Docs" }),
+    makeSkill("disabled-skill", false),
+  ];
+
+  it("offers ranked provider commands on / without a /model built-in", () => {
+    const items = planComposerMenuItems({
+      trigger: slashTrigger("rev"),
+      provider,
+      slashCommands,
+      skills,
+      gateNotice: null,
+    });
+
+    expect(items.map((item) => item.label)).toEqual(["/review"]);
+    expect(items.some((item) => item.label === "/model")).toBe(false);
+  });
+
+  it("offers enabled skills on $ and delegates skill ranking", () => {
+    const items = planComposerMenuItems({
+      trigger: skillTrigger("prod"),
+      provider,
+      slashCommands,
+      skills,
+      gateNotice: null,
+    });
+
+    expect(items.map((item) => item.label)).toEqual(["Product Docs"]);
+    expect(items.some((item) => item.label === "disabled-skill")).toBe(false);
+  });
+
+  it("shows the exact planning-model gate row for every required unresolved reason", () => {
+    const selection: PlanningModelSelection = { provider, model: "opus" };
+    const cases: ReadonlyArray<{
+      selection: PlanningModelSelection | null;
+      resolution: PlanningModelResolution;
+    }> = [
+      { selection: null, resolution: { _tag: "unset" } },
+      { selection, resolution: { _tag: "unresolved", reason: "no-instance" } },
+      { selection, resolution: { _tag: "unresolved", reason: "not-signed-in" } },
+      { selection, resolution: { _tag: "unresolved", reason: "model-unavailable" } },
+    ];
+
+    for (const one of cases) {
+      const notice = planningModelGateNotice(one.selection, one.resolution);
+      const items = planComposerMenuItems({
+        trigger: slashTrigger(),
+        provider: null,
+        slashCommands,
+        skills,
+        gateNotice: notice,
+      });
+      expect(items).toEqual([
+        {
+          id: "planning-model-gate",
+          type: "status",
+          status: "gate",
+          label: notice,
+          selectable: false,
+        },
+      ]);
+    }
+  });
+
+  it("shows a plain empty row when a resolved provider supplies no commands", () => {
+    expect(
+      planComposerMenuItems({
+        trigger: slashTrigger(),
+        provider,
+        slashCommands: [],
+        skills,
+        gateNotice: null,
+      }),
+    ).toEqual([
+      {
+        id: "provider-empty",
+        type: "status",
+        status: "empty",
+        label: "This provider supplies no commands on this machine.",
+        selectable: false,
+      },
+    ]);
+  });
+
+  it("routes path triggers to the existing mention menu and rejects mid-text slashes", () => {
+    const path = detectComposerTrigger("@src", 4);
+    expect(routePlanComposerTrigger(path)).toEqual({ mentionTrigger: path, commandTrigger: null });
+
+    const slash = slashTrigger();
+    expect(routePlanComposerTrigger(slash)).toEqual({
+      mentionTrigger: null,
+      commandTrigger: slash,
+    });
+    expect(detectComposerTrigger("explain /review", 15)).toBeNull();
+  });
+
+  it("lets an open menu own Enter and Tab, including non-selectable rows", () => {
+    for (const key of ["Enter", "Tab"] as const) {
+      expect(
+        resolvePlanComposerMenuKey({ menuOpen: true, key, items: [], activeItemId: null }),
+      ).toEqual({ action: "handled" });
+    }
+
+    const items = planComposerMenuItems({
+      trigger: slashTrigger(),
+      provider,
+      slashCommands,
+      skills,
+      gateNotice: null,
+    }).filter((item) => item.type !== "status");
+    expect(
+      resolvePlanComposerMenuKey({
+        menuOpen: true,
+        key: "Enter",
+        items,
+        activeItemId: items[1]?.id ?? null,
+      }),
+    ).toEqual({ action: "select", item: items[1] });
+  });
+});
 
 describe("resolveComposerControl", () => {
   it("shows Send, enabled, when there is content and nothing running", () => {

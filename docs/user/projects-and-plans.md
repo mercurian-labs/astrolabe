@@ -83,6 +83,14 @@ turns it into a chip that travels with the message. A project with no repositori
 offer, so the menu stays closed — see [Repositories](./repositories.md) for setting the project's
 set.
 
+### Commands and skills
+
+Type **/** at the start of a line to browse commands supplied by the branch's planning provider, or
+type **$** to browse its enabled skills. Choosing one places the invocation in your message, where
+you can add arguments before sending it. These offers come from the provider instance connected to
+this machine; when that instance cannot run the selected planning model, the menu says why, and
+when it supplies no commands or skills, the menu says that too.
+
 **Enter** sends and **Shift+Enter** starts a new line. There is no queueing — while a message is
 going out the send button is held, and the next one waits.
 

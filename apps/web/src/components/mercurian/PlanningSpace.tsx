@@ -390,6 +390,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const modelChoice = draft.modelChoice ?? standingChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
+  const providerStatus =
+    effectiveModelResolution._tag === "resolved"
+      ? planningModel.providers.find(
+          (provider) => provider.instanceId === effectiveModelResolution.instanceId,
+        )
+      : undefined;
   const viewingPast = isViewingPast(graph, position);
   const effectiveRightPaneWidth = width;
   const rightPaneOverlays =
@@ -655,6 +661,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             inFlight={visibleInFlight}
             inFlightImplement={visibleInFlightImplement}
             providers={planningModel.providers}
+            {...(providerStatus === undefined ? {} : { skills: providerStatus.skills })}
             readyCommits={readyCommits}
             timeline={visibleTimeline}
             onAnswerQuestion={(answers) => {
@@ -673,6 +680,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           {mentions.sources}
           <PlanComposer
             attachments={draft.attachments}
+            {...(providerStatus === undefined
+              ? {}
+              : {
+                  provider: providerStatus.driver,
+                  slashCommands: providerStatus.slashCommands,
+                  skills: providerStatus.skills,
+                })}
             // Standing at an earlier point does not take the composer away —
             // it changes what sending means, and the banner says so.
             banner={
@@ -1218,6 +1232,13 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   const planningModel = usePlanningModel();
   const modelChoice = draft?.modelChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
+  const providerStatus =
+    effectiveModelResolution._tag === "resolved"
+      ? planningModel.providers.find(
+          (provider) => provider.instanceId === effectiveModelResolution.instanceId,
+        )
+      : undefined;
+  const draftPlanningModelNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
   const [isImportOpen, setIsImportOpen] = useState(false);
   /**
    * The unborn plan's images. Held here rather than in `planDraftStore`
@@ -1302,12 +1323,20 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
       {mentions.sources}
       <PlanComposer
         attachments={attachments}
+        {...(providerStatus === undefined
+          ? {}
+          : {
+              provider: providerStatus.driver,
+              slashCommands: providerStatus.slashCommands,
+              skills: providerStatus.skills,
+            })}
         implementDisabledReason={implementDisabledReason({
           turnActive: false,
           planTextEmpty: true,
           isDraft: true,
         })}
         mentionCandidates={mentions.candidates}
+        menuGateNotice={draftPlanningModelNotice}
         modelPicker={
           <>
             <PlanModelPicker
@@ -1328,7 +1357,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says
         // what will happen rather than refusing to create the plan.
-        notice={planningModelGateNotice(modelChoice, effectiveModelResolution)}
+        notice={draftPlanningModelNotice}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}

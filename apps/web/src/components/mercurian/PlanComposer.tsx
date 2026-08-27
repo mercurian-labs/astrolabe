@@ -1,11 +1,22 @@
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  type ProviderDriverKind,
+  type ServerProviderSkill,
+  type ServerProviderSlashCommand,
   type UploadChatAttachment,
 } from "@t3tools/contracts";
-import type { ServerProviderSkill } from "@t3tools/contracts";
 import { CircleAlertIcon, FileIcon, HammerIcon, ImageIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 
 import {
   collapseExpandedComposerCursor,
@@ -16,12 +27,23 @@ import { compressImageForStash } from "../../lib/imageCompression";
 import type { TerminalContextDraft } from "../../lib/terminalContext";
 import { cn } from "../../lib/utils";
 import type { PlanComposerAttachment } from "../../planComposerStore";
+import { useTheme } from "../../hooks/useTheme";
+import { ComposerCommandMenu } from "../chat/ComposerCommandMenu";
 import { ComposerControl, ComposerControlIcon } from "../chat/ComposerControl";
+import { resolveComposerMenuActiveItemId } from "../chat/composerMenuHighlight";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { resolveComposerControl, type PlanComposerFace } from "./PlanComposer.logic";
+import {
+  isPlanComposerSelectableMenuItem,
+  planComposerMenuItems,
+  resolveComposerControl,
+  resolvePlanComposerMenuKey,
+  routePlanComposerTrigger,
+  type PlanComposerFace,
+  type PlanComposerSelectableMenuItem,
+} from "./PlanComposer.logic";
 import {
   formatMentionToken,
   moveMentionHighlight,
@@ -37,16 +59,15 @@ import {
  * it is acting from; the surface tells it, and the banner says so out loud
  * whenever that place is not the end of the line.
  *
- * The editor is the fork's shared prompt editor, which is what makes mention
- * chips real here for free: a mention is an inline token in the message text,
- * so it travels with the message without a single field on the wire. The
- * planning space has no candidate source for the mention menu yet — the plan's
- * repositories arrive with the registry — so the menu never opens, while the
- * chips, the token round-trip and the caret behavior are all already here.
+ * The editor is the fork's shared prompt editor, so mention and skill chips
+ * stay inline tokens in ordinary message text. Repository mentions retain
+ * their existing menu; provider commands and machine-local skills use the
+ * shell's command drawer without adding anything to the wire.
  */
 
-/** No skills in a planning space, and no terminal to take context from. */
-const NO_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
+/** No terminal exists in a planning space. Provider offers arrive as props. */
+const EMPTY_PROVIDER_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
+const EMPTY_PROVIDER_SLASH_COMMANDS: ReadonlyArray<ServerProviderSlashCommand> = [];
 const NO_TERMINAL_CONTEXTS: ReadonlyArray<TerminalContextDraft> = [];
 const NO_MENTION_CANDIDATES: ReadonlyArray<MentionCandidate> = [];
 
@@ -68,6 +89,87 @@ const MAX_SENDABLE_IMAGE_DATA_URL_CHARS = Math.floor(PROVIDER_SEND_TURN_MAX_IMAG
  */
 type PlanComposerState = "idle" | "sending";
 
+type PlanComposerCommandMenuPosition = {
+  readonly bottom: number;
+  readonly left: number;
+  readonly maxHeight: number;
+  readonly width: number;
+};
+
+function PlanComposerCommandMenuLayer(props: {
+  readonly anchor: HTMLElement | null;
+  readonly children: ReactNode;
+}) {
+  const [position, setPosition] = useState<PlanComposerCommandMenuPosition | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = props.anchor;
+    if (anchor === null) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const form = anchor.closest<HTMLElement>('[data-chat-composer-form="true"]');
+      const mainSurface = form?.querySelector<HTMLElement>(
+        '[data-chat-composer-main-surface="true"]',
+      );
+      const rect = (mainSurface ?? form ?? anchor).getBoundingClientRect();
+      const rootFontSizePx =
+        Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+      const drawerInsetRem =
+        Number.parseFloat(
+          window.getComputedStyle(form ?? anchor).getPropertyValue("--chat-composer-drawer-inset"),
+        ) || 1.375;
+      const drawerInset = drawerInsetRem * rootFontSizePx;
+      const composerOverlap = rootFontSizePx + 1;
+      const next = {
+        bottom: window.innerHeight - rect.top - composerOverlap,
+        left: rect.left + drawerInset,
+        maxHeight: Math.max(96, rect.top - 24 + composerOverlap),
+        width: Math.max(0, rect.width - drawerInset * 2),
+      };
+      setPosition((current) =>
+        current !== null &&
+        current.bottom === next.bottom &&
+        current.left === next.left &&
+        current.maxHeight === next.maxHeight &&
+        current.width === next.width
+          ? current
+          : next,
+      );
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updatePosition);
+    observer?.observe(anchor);
+    for (let element = anchor.parentElement; element; element = element.parentElement) {
+      observer?.observe(element);
+    }
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [props.anchor]);
+
+  if (position === null) return null;
+  return createPortal(
+    <div
+      className="pointer-events-auto fixed z-[70]"
+      data-composer-drawer-layer="true"
+      style={position}
+    >
+      {props.children}
+    </div>,
+    document.body,
+  );
+}
+
 export interface PlanComposerSubmission {
   readonly text: string;
   readonly attachments: ReadonlyArray<UploadChatAttachment>;
@@ -79,8 +181,12 @@ export function PlanComposer({
   attachments,
   banner,
   mentionCandidates = NO_MENTION_CANDIDATES,
+  provider = null,
+  slashCommands = EMPTY_PROVIDER_SLASH_COMMANDS,
+  skills = EMPTY_PROVIDER_SKILLS,
   turnActive = false,
   gateNotice = null,
+  menuGateNotice = gateNotice,
   notice = null,
   implementDisabledReason = null,
   modelPicker,
@@ -103,6 +209,10 @@ export function PlanComposer({
    * offer, and the menu simply never opens.
    */
   readonly mentionCandidates?: ReadonlyArray<MentionCandidate>;
+  /** The resolved provider snapshot whose machine-local offer this branch uses. */
+  readonly provider?: ProviderDriverKind | null;
+  readonly slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
+  readonly skills?: ReadonlyArray<ServerProviderSkill>;
   /**
    * A reply is live in this plan. The send control becomes Stop, and send
    * stays unavailable — no queueing, from any window.
@@ -113,6 +223,8 @@ export function PlanComposer({
    * or `null` when it is not. Typing stays legal — drafts are drafts.
    */
   readonly gateNotice?: string | null;
+  /** A menu-only gate for draft creation, where sending remains informationally ungated. */
+  readonly menuGateNotice?: string | null;
   /** A transient line under the gate's slot: the last turn refusal. */
   readonly notice?: string | null;
   readonly implementDisabledReason?: string | null;
@@ -130,13 +242,19 @@ export function PlanComposer({
   readonly onImplement?: (() => void) | undefined;
 }) {
   const [state, setState] = useState<PlanComposerState>("idle");
-  const [cursor, setCursor] = useState(0);
-  const [expandedCursor, setExpandedCursor] = useState(0);
+  const [cursor, setCursor] = useState(() => collapseExpandedComposerCursor(text, text.length));
+  const [expandedCursor, setExpandedCursor] = useState(() => text.length);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [commandHighlightedItemId, setCommandHighlightedItemId] = useState<string | null>(null);
+  const [commandHighlightedSearchKey, setCommandHighlightedSearchKey] = useState<string | null>(
+    null,
+  );
+  const [commandMenuAnchor, setCommandMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const editorRef = useRef<ComposerPromptEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
+  const { resolvedTheme } = useTheme();
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
   const isSending = state === "sending";
@@ -149,28 +267,105 @@ export function PlanComposer({
 
   // The trigger is read from the prompt as written, not from the collapsed
   // view the editor renders: a mention's own grammar lives in the raw text.
-  const trigger = useMemo(() => {
-    const detected = detectComposerTrigger(text, expandedCursor);
-    return detected?.kind === "path" ? detected : null;
-  }, [expandedCursor, text]);
+  const detectedTrigger = useMemo(
+    () => detectComposerTrigger(text, expandedCursor),
+    [expandedCursor, text],
+  );
+  const { mentionTrigger, commandTrigger } = useMemo(() => {
+    return routePlanComposerTrigger(detectedTrigger);
+  }, [detectedTrigger]);
+
+  const menuRows = useMemo(() => {
+    return planComposerMenuItems({
+      trigger: commandTrigger,
+      provider,
+      slashCommands,
+      skills,
+      gateNotice: menuGateNotice,
+    });
+  }, [commandTrigger, menuGateNotice, provider, skills, slashCommands]);
+  const commandMenuItems = useMemo(
+    () => menuRows.filter(isPlanComposerSelectableMenuItem),
+    [menuRows],
+  );
+  const commandMenuStatus = menuRows.find((item) => item.type === "status") ?? null;
+  const commandMenuOpen = commandTrigger !== null && !isSending;
+  const commandMenuSearchKey = commandTrigger
+    ? `${commandTrigger.kind}:${commandTrigger.query.trim().toLowerCase()}`
+    : null;
+  const activeCommandMenuItemId = useMemo(() => {
+    return resolveComposerMenuActiveItemId({
+      items: commandMenuItems,
+      highlightedItemId: commandHighlightedItemId,
+      currentSearchKey: commandMenuSearchKey,
+      highlightedSearchKey: commandHighlightedSearchKey,
+    });
+  }, [
+    commandHighlightedItemId,
+    commandHighlightedSearchKey,
+    commandMenuItems,
+    commandMenuSearchKey,
+  ]);
 
   useEffect(() => {
-    onMentionQueryChange?.(trigger?.query ?? null);
-  }, [onMentionQueryChange, trigger?.query]);
+    if (!commandMenuOpen) {
+      setCommandHighlightedItemId(null);
+      setCommandHighlightedSearchKey(null);
+      return;
+    }
+    setCommandHighlightedItemId((current) =>
+      current === activeCommandMenuItemId ? current : activeCommandMenuItemId,
+    );
+    setCommandHighlightedSearchKey((current) =>
+      current === commandMenuSearchKey ? current : commandMenuSearchKey,
+    );
+  }, [activeCommandMenuItemId, commandMenuOpen, commandMenuSearchKey]);
+
+  useEffect(() => {
+    onMentionQueryChange?.(mentionTrigger?.query ?? null);
+  }, [mentionTrigger?.query, onMentionQueryChange]);
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [trigger?.query]);
+  }, [mentionTrigger?.query]);
 
-  const isMentionMenuOpen = trigger !== null && mentionCandidates.length > 0 && !isSending;
+  const isMentionMenuOpen = mentionTrigger !== null && mentionCandidates.length > 0 && !isSending;
+
+  const replaceTrigger = useCallback(
+    (trigger: NonNullable<typeof detectedTrigger>, replacement: string) => {
+      const rangeEnd =
+        replacement.endsWith(" ") && text[trigger.rangeEnd] === " "
+          ? trigger.rangeEnd + 1
+          : trigger.rangeEnd;
+      const next = replaceTextRange(text, trigger.rangeStart, rangeEnd, replacement);
+      onChangeText(next.text);
+      setExpandedCursor(next.cursor);
+      const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+      setCursor(nextCursor);
+      window.requestAnimationFrame(() => editorRef.current?.focusAt(nextCursor));
+    },
+    [onChangeText, text],
+  );
+
+  const insertCommandItem = useCallback(
+    (item: PlanComposerSelectableMenuItem) => {
+      if (commandTrigger === null) return;
+      replaceTrigger(
+        commandTrigger,
+        item.type === "provider-slash-command" ? `/${item.command.name} ` : `$${item.skill.name} `,
+      );
+      setCommandHighlightedItemId(null);
+    },
+    [commandTrigger, replaceTrigger],
+  );
 
   const insertMention = useCallback(
     (candidate: MentionCandidate) => {
-      if (trigger === null) return;
+      if (mentionTrigger === null) return;
       const next = replaceTextRange(
         text,
-        trigger.rangeStart,
-        trigger.rangeEnd,
+        mentionTrigger.rangeStart,
+        mentionTrigger.rangeEnd,
         formatMentionToken(candidate.path),
       );
       onChangeText(next.text);
@@ -180,7 +375,7 @@ export function PlanComposer({
       setExpandedCursor(next.cursor);
       setCursor(collapseExpandedComposerCursor(next.text, next.cursor));
     },
-    [onChangeText, text, trigger],
+    [mentionTrigger, onChangeText, text],
   );
 
   const collect = useCallback(
@@ -212,6 +407,7 @@ export function PlanComposer({
     <div className="px-3 pb-3 pt-2 sm:px-5">
       <div
         className="mx-auto w-full min-w-0 max-w-3xl"
+        data-chat-composer-form="true"
         onDragEnter={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -246,6 +442,7 @@ export function PlanComposer({
             beside it, which is also what keeps it usable when the right pane
             has taken most of the window. */}
         <div
+          data-chat-composer-main-surface="true"
           className={cn(
             "group rounded-[22px] border border-border bg-background p-px transition-[border-color,box-shadow] duration-200",
             "focus-within:border-border/80 focus-within:shadow-sm",
@@ -265,7 +462,30 @@ export function PlanComposer({
                 onSelect={insertMention}
               />
             ) : null}
-            <div className="px-3 pt-3">
+            <div ref={setCommandMenuAnchor} className="px-3 pt-3">
+              {commandMenuOpen ? (
+                <PlanComposerCommandMenuLayer anchor={commandMenuAnchor}>
+                  <ComposerCommandMenu
+                    activeItemId={activeCommandMenuItemId}
+                    {...(commandMenuStatus === null
+                      ? {}
+                      : { emptyStateText: commandMenuStatus.label })}
+                    isLoading={false}
+                    items={commandMenuItems}
+                    resolvedTheme={resolvedTheme}
+                    triggerKind={commandTrigger?.kind ?? null}
+                    onHighlightedItemChange={(itemId) => {
+                      setCommandHighlightedItemId(itemId);
+                      setCommandHighlightedSearchKey(commandMenuSearchKey);
+                    }}
+                    onSelect={(item) => {
+                      if (item.type === "provider-slash-command" || item.type === "skill") {
+                        insertCommandItem(item);
+                      }
+                    }}
+                  />
+                </PlanComposerCommandMenuLayer>
+              ) : null}
               {attachments.length === 0 ? null : (
                 <AttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
               )}
@@ -275,7 +495,7 @@ export function PlanComposer({
                 disabled={isSending}
                 editorRef={editorRef}
                 placeholder={placeholder}
-                skills={NO_SKILLS}
+                skills={skills}
                 terminalContexts={NO_TERMINAL_CONTEXTS}
                 value={text}
                 onChange={(nextText, nextCursor, nextExpandedCursor) => {
@@ -286,6 +506,22 @@ export function PlanComposer({
                 onCommandKeyDown={(key, event) => {
                   // While the menu is open it owns the arrows and the commit
                   // keys; everything else stays exactly as it was.
+                  const commandResolution = resolvePlanComposerMenuKey({
+                    menuOpen: commandMenuOpen,
+                    key,
+                    items: commandMenuItems,
+                    activeItemId: activeCommandMenuItemId,
+                  });
+                  if (commandResolution.action === "select") {
+                    insertCommandItem(commandResolution.item);
+                    return true;
+                  }
+                  if (commandResolution.action === "highlight") {
+                    setCommandHighlightedItemId(commandResolution.itemId);
+                    setCommandHighlightedSearchKey(commandMenuSearchKey);
+                    return true;
+                  }
+                  if (commandResolution.action === "handled") return true;
                   if (isMentionMenuOpen) {
                     if (key === "ArrowDown" || key === "ArrowUp") {
                       setHighlightedIndex((index) =>

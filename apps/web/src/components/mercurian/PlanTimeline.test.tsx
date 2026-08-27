@@ -8,6 +8,7 @@ import {
   type PlanQuestion,
   type PlanTimelineItem,
   type ServerProvider,
+  type ServerProviderSkill,
 } from "@t3tools/contracts";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -53,6 +54,14 @@ type PlanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
 const CREATED_AT = "2026-08-03T12:34:56.000Z";
 const claude = ProviderDriverKind.make("claudeAgent");
+const skills: ReadonlyArray<ServerProviderSkill> = [
+  {
+    name: "product-docs",
+    displayName: "Product Docs",
+    path: "/skills/product-docs/SKILL.md",
+    enabled: true,
+  },
+];
 
 const providers: ReadonlyArray<ServerProvider> = [
   {
@@ -135,6 +144,22 @@ describe("PlanTimeline", () => {
     );
     expect(markup).not.toContain("rounded-lg border");
     expect(markup).not.toContain(">You<");
+  });
+
+  it("renders known human-message skills as chips and leaves unknown skills as text", () => {
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        skills={skills}
+        timeline={[
+          timelineMessage("human-skill", "human", "Use $product-docs and $not-installed next"),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-markdown-copy="$product-docs"');
+    expect(markup).toContain(">Product Docs</span>");
+    expect(markup).toContain("$not-installed");
+    expect(markup).not.toContain('data-markdown-copy="$not-installed"');
   });
 
   it("renders assistant messages as full-width markdown with grounding before the body", () => {

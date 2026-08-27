@@ -13,6 +13,7 @@ import type {
   PlanCodingSessionRecord,
   PlanningModelSelection,
   ServerProvider,
+  ServerProviderSkill,
 } from "@t3tools/contracts";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import { Link } from "@tanstack/react-router";
@@ -40,6 +41,7 @@ import {
 } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
 import { MessageCopyButton } from "../chat/MessageCopyButton";
+import { SkillInlineText } from "../chat/SkillInlineText";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -63,6 +65,7 @@ export function PlanTimeline({
   inFlight,
   inFlightImplement,
   providers = EMPTY_PROVIDERS,
+  skills = EMPTY_SKILLS,
   readyCommits = EMPTY_READY_COMMITS,
   onAnswerQuestion,
   onStopImplement,
@@ -73,6 +76,7 @@ export function PlanTimeline({
   readonly inFlight?: PlanInFlightTurn | undefined;
   readonly inFlightImplement?: PlanInFlightImplement | undefined;
   readonly providers?: ReadonlyArray<ServerProvider> | undefined;
+  readonly skills?: ReadonlyArray<ServerProviderSkill> | undefined;
   readonly readyCommits?: ReadonlyMap<MercurianCommitId, PlanImplementReady> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onStopImplement?: (() => void) | undefined;
@@ -109,7 +113,7 @@ export function PlanTimeline({
                         environmentId={environmentId}
                       />
                     )}
-                    <MessageText text={item.text} />
+                    <MessageText text={item.text} skills={skills} />
                   </div>
                   {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                   <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
@@ -136,7 +140,12 @@ export function PlanTimeline({
                 {item.grounding === undefined || item.grounding.length === 0 ? null : (
                   <GroundingFold items={item.grounding} />
                 )}
-                <ChatMarkdown text={item.text} cwd={undefined} isStreaming={false} />
+                <ChatMarkdown
+                  text={item.text}
+                  cwd={undefined}
+                  isStreaming={false}
+                  skills={skills}
+                />
                 {item.question === undefined ? null : <QuestionRecord record={item.question} />}
                 <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums">
                   <div className="flex items-center gap-2 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
@@ -259,7 +268,7 @@ export function PlanTimeline({
               <GroundingFold items={inFlight.grounding} live />
             )}
             {inFlight.text.length === 0 ? null : (
-              <ChatMarkdown text={inFlight.text} cwd={undefined} isStreaming />
+              <ChatMarkdown text={inFlight.text} cwd={undefined} isStreaming skills={skills} />
             )}
             {inFlight.questions === undefined || inFlight.questions.length === 0 ? null : (
               <QuestionCard questions={inFlight.questions} onSubmit={onAnswerQuestion} />
@@ -296,6 +305,7 @@ export function PlanTimeline({
 
 const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+const EMPTY_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const EMPTY_CODING_SESSIONS: ReadonlyArray<PlanCodingSessionRecord> = [];
 
 /** The provider/model that produced a settled reply, quiet but always visible. */
@@ -528,22 +538,35 @@ function QuestionRecord({ record }: { readonly record: PlanQuestionRecord }) {
 }
 
 /**
- * A message's text, with its mentions read back as the chips they were.
+ * A message's text, with its mentions and known skills read back as chips.
  *
- * A mention is an inline token in the text itself — nothing on the wire says
- * "this message has a mention" — so rendering one is a pure pass over what
- * arrived. That is what makes "the chip travels with the message" true rather
- * than reconstructed: the chip and the characters are the same thing.
+ * Both are inline tokens in the text itself. Mentions retain their planning
+ * presentation; plain spans reuse the shell's skill renderer, which leaves a
+ * `$name` untouched unless the resolved provider actually supplies it.
  */
-function MessageText({ text }: { readonly text: string }) {
+function MessageText({
+  text,
+  skills,
+}: {
+  readonly text: string;
+  readonly skills: ReadonlyArray<ServerProviderSkill>;
+}) {
   const parts = useMemo((): ReadonlyArray<ReactNode> => {
     const tokens = collectComposerInlineTokens(text).filter((token) => token.type === "mention");
-    if (tokens.length === 0) return [text];
+    if (tokens.length === 0) return [<SkillInlineText key="text" text={text} skills={skills} />];
 
     const rendered: Array<ReactNode> = [];
     let cursor = 0;
     for (const [index, token] of tokens.entries()) {
-      if (token.start > cursor) rendered.push(text.slice(cursor, token.start));
+      if (token.start > cursor) {
+        rendered.push(
+          <SkillInlineText
+            key={`text-${cursor}`}
+            text={text.slice(cursor, token.start)}
+            skills={skills}
+          />,
+        );
+      }
       rendered.push(
         <span
           key={`mention-${index}`}
@@ -554,9 +577,13 @@ function MessageText({ text }: { readonly text: string }) {
       );
       cursor = token.end;
     }
-    if (cursor < text.length) rendered.push(text.slice(cursor));
+    if (cursor < text.length) {
+      rendered.push(
+        <SkillInlineText key={`text-${cursor}`} text={text.slice(cursor)} skills={skills} />,
+      );
+    }
     return rendered;
-  }, [text]);
+  }, [skills, text]);
 
   return <p className="whitespace-pre-wrap text-sm text-foreground">{parts}</p>;
 }
