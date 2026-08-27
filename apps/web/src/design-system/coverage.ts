@@ -48,6 +48,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Submitting the dialog creates a real tracker connection through the active environment state.",
   },
+  "src/components/mercurian/ExperimentsSettings.tsx": {
+    category: "deferred",
+    reason:
+      "A future entry should show the development-only experiment rows with their switches off and on.",
+  },
   "src/components/mercurian/HostingProvidersSection.tsx": {
     category: "requires-live-workspace",
     reason:
