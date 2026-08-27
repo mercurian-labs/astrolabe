@@ -150,3 +150,20 @@ takes the guard re-scope that M-173/M-174 pinned (island hydration scripts only 
   "…with no signup and no cloud in the loop."
 - Everything else stands: pinned copy verbatim, Mercurian naming, no waitlist/T3 strings, no new
   dependencies, nothing outside `apps/landing/`.
+
+## Amendment 3 (2026-08-27): progress-segment indicators
+
+The three dots become three horizontal line segments that make the autoplay timer visible (vault
+7ad4084; Linear AC updated). Design and sync contract:
+
+- Each indicator is still a button (same aria-labels, `aria-current`, larger padded hit area) whose
+  visible face is a thin horizontal segment (e.g. `h-1 w-8 rounded-full`) — a muted track
+  (`bg-muted-foreground/25`-class) holding an inner `origin-left` fill bar (`bg-foreground`).
+- **The current slide's fill IS the timer**: it scales 0→1 linearly over exactly the autoplay
+  interval, as a CSS animation (no rAF, no per-frame JS). The animation is keyed to restart
+  whenever the interval restarts — slide change, manual-navigation reset, or resume after a pause —
+  and carries `animation-play-state: paused` while the interval is off (hover / focus-within).
+  Pause semantics follow the existing interval code: pausing freezes the fill; resuming restarts
+  both interval and fill from zero (re-key on a resume counter).
+- Non-current segments show the empty track. Under reduced motion (autoplay off) no animation
+  exists: the current segment renders fully filled, others empty.
