@@ -49,25 +49,16 @@ function errorText(error: unknown): string {
 
 export function AddRepositoryFlow({
   onAdded,
-  onModeChange,
   renderHeader,
 }: {
   readonly onAdded: (repository: MercurianRepository) => void;
-  readonly onModeChange?: (mode: "picker" | "path") => void;
   readonly renderHeader?: (title: string) => ReactNode;
 }) {
   const [mode, setMode] = useState<AddMode | null>(null);
-  const pickMode = useCallback(
-    (nextMode: AddMode) => {
-      setMode(nextMode);
-      onModeChange?.("path");
-    },
-    [onModeChange],
-  );
+  const pickMode = useCallback((nextMode: AddMode) => setMode(nextMode), []);
   const returnToPicker = useCallback(() => {
     setMode(null);
-    onModeChange?.("picker");
-  }, [onModeChange]);
+  }, []);
   const handleAdded = useCallback(
     (repository: MercurianRepository) => {
       returnToPicker();

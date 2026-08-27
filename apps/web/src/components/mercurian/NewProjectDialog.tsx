@@ -1,8 +1,5 @@
-import type {
-  MercurianProject,
-  MercurianRepository,
-  MercurianRepositoryId,
-} from "@t3tools/contracts";
+import type { MercurianProject, MercurianRepositoryId } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import { useProjectScopeStore } from "../../projectScopeStore";
@@ -19,7 +16,6 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
-import { AddRepositoryFlow } from "./AddRepositoryFlow";
 import { sortRepositoriesForPage } from "./RepositoriesPage.logic";
 
 /**
@@ -33,6 +29,7 @@ export function NewProjectDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const navigate = useNavigate();
   const createProject = useCreateMercurianProject();
   const setProjectRepositories = useSetProjectRepositories();
   const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
@@ -42,9 +39,7 @@ export function NewProjectDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdProject, setCreatedProject] = useState<MercurianProject | null>(null);
-  const [isRepositoryFlowAtPicker, setIsRepositoryFlowAtPicker] = useState(true);
   const repositories = sortRepositoriesForPage(snapshot.repositories);
-  const showAddRepositoryFlow = !isPending && repositories.length === 0;
 
   const reset = useCallback(() => {
     setName("");
@@ -52,7 +47,6 @@ export function NewProjectDialog({
     setIsSubmitting(false);
     setError(null);
     setCreatedProject(null);
-    setIsRepositoryFlowAtPicker(true);
   }, []);
 
   const handleOpenChange = useCallback(
@@ -104,10 +98,6 @@ export function NewProjectDialog({
     setProjectRepositories,
     setProjectScope,
   ]);
-
-  const handleRepositoryAdded = useCallback((repository: MercurianRepository) => {
-    setSelected((current) => new Set(current).add(repository.repositoryId));
-  }, []);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -170,31 +160,44 @@ export function NewProjectDialog({
                     </li>
                   ))}
                 </ul>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    handleOpenChange(false);
+                    void navigate({ to: "/repositories" });
+                  }}
+                >
+                  Manage Repos
+                </Button>
               </>
-            ) : null}
+            ) : (
+              <div className="space-y-3 rounded-lg border border-dashed border-border px-3 py-6 text-center">
+                <p className="text-xs text-muted-foreground">No repositories are registered yet.</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    handleOpenChange(false);
+                    void navigate({ to: "/repositories" });
+                  }}
+                >
+                  Manage Repos
+                </Button>
+              </div>
+            )}
             {error === null ? null : <p className="text-xs text-destructive">{error}</p>}
           </div>
         </DialogPanel>
-        {showAddRepositoryFlow ? (
-          <AddRepositoryFlow
-            key={open ? "open" : "closed"}
-            onAdded={handleRepositoryAdded}
-            onModeChange={(mode) => setIsRepositoryFlowAtPicker(mode === "picker")}
-          />
-        ) : null}
-        {!showAddRepositoryFlow || isRepositoryFlowAtPicker ? (
-          <DialogFooter>
-            <Button variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={(createdProject === null && name.trim().length === 0) || isSubmitting}
-              onClick={() => void submit()}
-            >
-              {createdProject === null ? "Create" : "Retry connection"}
-            </Button>
-          </DialogFooter>
-        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={(createdProject === null && name.trim().length === 0) || isSubmitting}
+            onClick={() => void submit()}
+          >
+            {createdProject === null ? "Create" : "Retry connection"}
+          </Button>
+        </DialogFooter>
       </DialogPopup>
     </Dialog>
   );

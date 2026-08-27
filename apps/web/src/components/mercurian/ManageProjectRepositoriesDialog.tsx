@@ -74,7 +74,7 @@ export function ManageProjectRepositoriesDialog({
                   void navigate({ to: "/repositories" });
                 }}
               >
-                Open Repositories
+                Manage Repos
               </Button>
             </div>
           ) : (
@@ -111,6 +111,15 @@ export function ManageProjectRepositoriesDialog({
                   </li>
                 ))}
               </ul>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  onOpenChange(false);
+                  void navigate({ to: "/repositories" });
+                }}
+              >
+                Manage Repos
+              </Button>
             </>
           )}
         </DialogPanel>

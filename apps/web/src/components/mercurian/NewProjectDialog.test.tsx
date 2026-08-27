@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { MercurianRepositoriesState } from "../../state/mercurianRepositories";
 
+const navigate = vi.hoisted(() => vi.fn());
+
 const repositoryState = vi.hoisted(() => ({
   current: {
     snapshot: { repositories: [], projectRepositories: [] },
@@ -12,6 +14,14 @@ const repositoryState = vi.hoisted(() => ({
     error: null,
   } as MercurianRepositoriesState,
 }));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+  };
+});
 
 vi.mock("../../projectScopeStore", () => ({
   useProjectScopeStore: (
@@ -76,7 +86,7 @@ describe("NewProjectDialog repository states", () => {
     };
   });
 
-  it("renders sorted, unchecked repository rows when the registry has repositories", () => {
+  it("renders sorted, unchecked repository rows and Manage Repos when repositories exist", () => {
     repositoryState.current = {
       snapshot: {
         repositories: [
@@ -96,16 +106,15 @@ describe("NewProjectDialog repository states", () => {
     expect(markup).toContain("/code/zulu");
     expect(markup.match(/aria-checked="false"/g)).toHaveLength(2);
     expect(markup).not.toContain('aria-checked="true"');
-    expect(markup).not.toContain("Pick a local folder");
+    expect(markup).toContain("Manage Repos");
   });
 
-  it("renders the add-repository mode picker when the registry is empty", () => {
+  it("renders the empty note and Manage Repos without checkbox rows when the registry is empty", () => {
     const markup = renderDialog();
 
-    expect(markup).toContain("Pick a local folder");
-    expect(markup).toContain("Clone a git URL");
-    expect(markup.match(/<footer>/g)).toHaveLength(1);
-    expect(markup).toMatch(/<footer>[\s\S]*Create[\s\S]*<\/footer>/);
+    expect(markup).toContain("No repositories are registered yet.");
+    expect(markup).toContain("Manage Repos");
+    expect(markup).not.toContain("aria-checked");
   });
 
   it("renders neither repository branch while the snapshot is pending", () => {
@@ -122,6 +131,8 @@ describe("NewProjectDialog repository states", () => {
 
     expect(markup).toContain("Loading repositories…");
     expect(markup).not.toContain("Astrolabe");
-    expect(markup).not.toContain("Pick a local folder");
+    expect(markup).not.toContain("No repositories are registered yet.");
+    expect(markup).not.toContain("Manage Repos");
+    expect(markup).not.toContain("aria-checked");
   });
 });
