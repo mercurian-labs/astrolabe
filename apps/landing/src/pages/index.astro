@@ -7,7 +7,7 @@ import Base from "../layouts/Base.astro";
   <main class="relative isolate min-h-screen overflow-hidden">
     <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <img
-        class="absolute top-1/2 right-[-32rem] h-auto w-[78rem] max-w-none -translate-y-1/2 opacity-70 sm:right-[-26rem] lg:right-[-18rem] xl:right-[-10rem]"
+        class="absolute top-1/2 right-[-32rem] h-auto w-[78rem] max-w-none -translate-y-1/2 sm:right-[-26rem] lg:right-[-18rem] xl:right-[-10rem]"
         src="/mercury-globe-poster.png"
         alt=""
         aria-hidden="true"
@@ -15,18 +15,16 @@ import Base from "../layouts/Base.astro";
         width="1920"
         height="1080"
       />
-      <div
-        class="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-background/25"
-      >
-      </div>
-      <div class="absolute inset-0 bg-gradient-to-b from-background/30 via-transparent to-background/60">
-      </div>
     </div>
 
     <div
       class="mx-auto flex min-h-screen w-full max-w-[90rem] flex-col justify-center px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16"
     >
-      <h1 class="relative z-10 text-sm font-medium tracking-[0.22em] uppercase">Mercurian</h1>
+      <h1
+        class="relative z-10 w-fit rounded-lg bg-background/70 px-3 py-2 text-sm font-medium tracking-[0.22em] uppercase backdrop-blur-md"
+      >
+        Mercurian
+      </h1>
 
       <div class="relative z-10 mt-8">
         <HeroCarousel client:only="react">

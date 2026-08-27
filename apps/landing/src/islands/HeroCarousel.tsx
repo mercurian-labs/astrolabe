@@ -4,6 +4,7 @@ import {
   ExplorerView,
 } from "~/components/mercurian/DagExplorer";
 import { buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
+import { PlanTimeline } from "~/components/mercurian/PlanTimeline";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { message, planRevision, specRevision, timeline } from "~/test/fixtures/timeline";
 import {
@@ -12,6 +13,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ComponentProps,
   type FocusEvent as ReactFocusEvent,
 } from "react";
 
@@ -95,6 +97,14 @@ const history = timeline(
 
 const graph = buildPlanGraph(history);
 const anchoredCommitId = history[13]!.commitId;
+type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
+
+const heroInFlight = {
+  turnId: "hero-carousel-turn" as HeroInFlight["turnId"],
+  parentCommitId: anchoredCommitId,
+  text: "I’m comparing both branches and preparing the merged plan.",
+  grounding: [{ kind: "search", label: "branch decisions" }],
+} satisfies HeroInFlight;
 
 const graphProps = {
   graph,
@@ -212,7 +222,17 @@ export default function HeroCarousel() {
               title="Plan in branches. Merge what works."
             />
             <div className="flex h-[25rem] w-full max-w-full min-w-0 overflow-hidden rounded-xl border border-border bg-background/80 shadow-sm">
-              <DagExplorer {...graphProps} />
+              <div className="hidden min-w-0 basis-2/5 flex-col border-r border-border lg:flex">
+                <PlanTimeline
+                  codingSessions={[]}
+                  inFlight={heroInFlight}
+                  timeline={history}
+                  onAnswerQuestion={() => undefined}
+                />
+              </div>
+              <div className="flex min-w-0 flex-1" data-landing-dag-explorer>
+                <DagExplorer {...graphProps} />
+              </div>
             </div>
           </section>
 
@@ -261,7 +281,7 @@ export default function HeroCarousel() {
               copy="Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor, and more — switchable between turns, even mid-plan, with every branch recording exactly what it ran under. It runs on your machine, against your repositories, with no sign up required. Plans, history, and memory are plain text and git: yours to keep, wherever you go next."
               title="Your agents. Your machine. No account."
             />
-            <div className="flex h-[25rem] w-full max-w-full min-w-0 items-center rounded-xl border border-border bg-background/80 p-6 shadow-sm sm:p-10">
+            <div className="flex h-[25rem] w-full max-w-full min-w-0 items-center">
               <ul className="grid w-full max-w-full min-w-0 grid-cols-2 gap-5 sm:grid-cols-5 sm:gap-3">
                 {providers.map((provider) => (
                   <li className="flex min-w-0 flex-col items-center gap-3" key={provider.name}>
@@ -274,7 +294,7 @@ export default function HeroCarousel() {
                         width="40"
                       />
                     </span>
-                    <span className="text-center text-xs font-medium text-foreground">
+                    <span className="text-center text-xs font-medium text-foreground/75">
                       {provider.name}
                     </span>
                   </li>
@@ -340,6 +360,10 @@ export default function HeroCarousel() {
       </nav>
 
       <style>{`
+        [data-landing-dag-explorer] > section > div:first-child {
+          display: none;
+        }
+
         @keyframes hero-carousel-progress {
           from { transform: scaleX(0); }
           to { transform: scaleX(1); }
@@ -351,7 +375,7 @@ export default function HeroCarousel() {
 
 function SlideCopy({ title, copy }: { readonly title: string; readonly copy: string }) {
   return (
-    <div className="w-full max-w-full min-w-0">
+    <div className="w-full max-w-full min-w-0 rounded-2xl bg-background/70 p-5 backdrop-blur-md sm:p-6">
       <h2 className="w-full max-w-xl min-w-0 text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl xl:text-6xl">
         {title}
       </h2>
