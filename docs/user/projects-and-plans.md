@@ -6,11 +6,15 @@ Below it, a **Workspace** group links to Repositories and Settings.
 ## Projects
 
 A project is a container for plans and the context those plans ground in. Create one with the
-**+** button in the Projects header, give it a name, and it appears in the tree.
+**new project** button beside the project filter, or from the search palette. The dialog takes the
+whole act: name the project, tick the registered repositories it should work in, and create — the
+sidebar switches to your new project, ready for its first plan. Cancelling creates nothing.
 
-A project's context is its repositories. Hover a project row and press the **repositories** icon to
-choose which registered repositories its plans work in — a default, not a boundary, and never a
-label on anything. See [Repositories](./repositories.md).
+Connecting repositories at creation is optional — the set is a default, not a boundary, and never
+a label on anything. The dialog lists the repositories this workspace already knows; **Manage
+Repos** takes you to the [Repositories](./repositories.md) page to add or remove them, and a
+workspace with no repositories yet offers just that button. For an existing project, the same
+choices live behind the project filter's **repositories** icon.
 
 A project row expands and collapses with a click, and the tree remembers which projects you left
 expanded. A project with many plans shows its most recent ones and a **Show more** row for the
