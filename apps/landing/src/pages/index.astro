@@ -1,215 +1,52 @@
 ---
+import HeroCarousel from "../islands/HeroCarousel";
 import Base from "../layouts/Base.astro";
 ---
 
 <Base title="Mercurian">
   <main class="relative isolate min-h-screen overflow-hidden">
-    <div
-      class="mx-auto grid min-h-screen w-full max-w-[90rem] grid-cols-1 items-center gap-8 px-6 py-12 sm:px-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-0 lg:px-12 xl:px-16"
-    >
-      <div class="relative z-10 order-2 max-w-2xl pb-4 lg:order-1 lg:py-20">
-        <h1 class="text-sm font-medium tracking-[0.22em] uppercase">Mercurian</h1>
-
-        <div class="mt-8">
-          <div
-            class="flex min-h-[34rem] snap-x snap-mandatory overflow-x-auto sm:min-h-[30rem] lg:min-h-[34rem] xl:min-h-[30rem]"
-            role="region"
-            aria-label="Product highlights"
-            tabindex="0"
-          >
-            <section
-              id="hero-slide-1"
-              class="flex min-w-full snap-center flex-col pr-1"
-              role="group"
-              aria-label="Slide 1 of 3"
-            >
-              <h2
-                class="max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl"
-              >
-                Plan in branches. Merge what works.
-              </h2>
-              <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
-                Every message and every plan edit is a commit in one branching, git-style history. Return to any point and take a different direction, explore open decisions side by side, then merge the branches back into a single plan — with fresh, compacted context instead of a rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make.
-              </p>
-
-              <nav class="mt-auto flex items-center gap-4 pt-6" aria-label="Slide 1 navigation">
-                <a
-                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
-                  href="#hero-slide-3"
-                  aria-label="Previous slide"
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
-                    <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </a>
-
-                <div class="flex items-center gap-3">
-                  <a
-                    class="bg-foreground block size-1.5 rounded-full"
-                    href="#hero-slide-1"
-                    aria-label="Go to slide 1: Plan in branches. Merge what works."
-                    aria-current="true"
-                  ></a>
-                  <a
-                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
-                    href="#hero-slide-2"
-                    aria-label="Go to slide 2: Memory you can actually read."
-                  ></a>
-                  <a
-                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
-                    href="#hero-slide-3"
-                    aria-label="Go to slide 3: Your agents. Your machine. No account."
-                  ></a>
-                </div>
-
-                <a
-                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
-                  href="#hero-slide-2"
-                  aria-label="Next slide"
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
-                    <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </a>
-              </nav>
-            </section>
-
-            <section
-              id="hero-slide-2"
-              class="flex min-w-full snap-center flex-col pr-1"
-              role="group"
-              aria-label="Slide 2 of 3"
-            >
-              <h2
-                class="max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl"
-              >
-                Memory you can actually read.
-              </h2>
-              <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
-                Your project's design truth lives as atomic, linked markdown notes in a git repository you own. Nothing is captured behind your back — the assistant proposes an amendment, you confirm it, and it lands as a commit attributed to the plan it came from. Mercurian is a lens over your memory, never a silo for it: every note stays editable with any tool and portable out of the product entirely.
-              </p>
-
-              <nav class="mt-auto flex items-center gap-4 pt-6" aria-label="Slide 2 navigation">
-                <a
-                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
-                  href="#hero-slide-1"
-                  aria-label="Previous slide"
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
-                    <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </a>
-
-                <div class="flex items-center gap-3">
-                  <a
-                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
-                    href="#hero-slide-1"
-                    aria-label="Go to slide 1: Plan in branches. Merge what works."
-                  ></a>
-                  <a
-                    class="bg-foreground block size-1.5 rounded-full"
-                    href="#hero-slide-2"
-                    aria-label="Go to slide 2: Memory you can actually read."
-                    aria-current="true"
-                  ></a>
-                  <a
-                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
-                    href="#hero-slide-3"
-                    aria-label="Go to slide 3: Your agents. Your machine. No account."
-                  ></a>
-                </div>
-
-                <a
-                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
-                  href="#hero-slide-3"
-                  aria-label="Next slide"
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
-                    <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </a>
-              </nav>
-            </section>
-
-            <section
-              id="hero-slide-3"
-              class="flex min-w-full snap-center flex-col pr-1"
-              role="group"
-              aria-label="Slide 3 of 3"
-            >
-              <h2
-                class="max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl"
-              >
-                Your agents. Your machine. No account.
-              </h2>
-              <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
-                Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor, and more — switchable between turns, even mid-plan, with every branch recording exactly what it ran under. It runs on your machine, against your repositories, with no signup and no cloud in the loop. Plans, history, and memory are plain text and git: yours to keep, wherever you go next.
-              </p>
-
-              <nav class="mt-auto flex items-center gap-4 pt-6" aria-label="Slide 3 navigation">
-                <a
-                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
-                  href="#hero-slide-2"
-                  aria-label="Previous slide"
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
-                    <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </a>
-
-                <div class="flex items-center gap-3">
-                  <a
-                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
-                    href="#hero-slide-1"
-                    aria-label="Go to slide 1: Plan in branches. Merge what works."
-                  ></a>
-                  <a
-                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
-                    href="#hero-slide-2"
-                    aria-label="Go to slide 2: Memory you can actually read."
-                  ></a>
-                  <a
-                    class="bg-foreground block size-1.5 rounded-full"
-                    href="#hero-slide-3"
-                    aria-label="Go to slide 3: Your agents. Your machine. No account."
-                    aria-current="true"
-                  ></a>
-                </div>
-
-                <a
-                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
-                  href="#hero-slide-1"
-                  aria-label="Next slide"
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
-                    <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </a>
-              </nav>
-            </section>
-          </div>
-        </div>
-
-        <a
-          class="text-muted-foreground hover:text-foreground mt-8 block w-fit text-sm underline underline-offset-4"
-          href="/demo/checkpoint-graph/"
-        >
-          Checkpoint Graph demo
-        </a>
-      </div>
-
+    <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+      <img
+        class="absolute top-1/2 right-[-32rem] h-auto w-[78rem] max-w-none -translate-y-1/2 opacity-70 sm:right-[-26rem] lg:right-[-18rem] xl:right-[-10rem]"
+        src="/mercury-globe-poster.png"
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        width="1920"
+        height="1080"
+      />
       <div
-        class="order-1 -mx-6 flex min-h-0 items-center justify-center sm:-mx-10 lg:order-2 lg:-mr-48 lg:-ml-12"
+        class="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-background/25"
       >
-        <img
-          class="h-auto w-[115%] max-w-none sm:w-full lg:w-[min(72rem,72vw)]"
-          src="/mercury-globe-poster.png"
-          alt="Mercury, rendered from MESSENGER elevation data"
-          loading="eager"
-          width="1920"
-          height="1080"
-        />
       </div>
+      <div class="absolute inset-0 bg-gradient-to-b from-background/30 via-transparent to-background/60">
+      </div>
+    </div>
+
+    <div
+      class="mx-auto flex min-h-screen w-full max-w-[90rem] flex-col justify-center px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16"
+    >
+      <h1 class="relative z-10 text-sm font-medium tracking-[0.22em] uppercase">Mercurian</h1>
+
+      <div class="relative z-10 mt-8">
+        <HeroCarousel client:only="react">
+          <div slot="fallback" class="sr-only">
+            <h2>Plan in branches. Merge what works.</h2>
+            <p>Every message and every plan edit is a commit in one branching, git-style history. Return to any point and take a different direction, explore open decisions side by side, then merge the branches back into a single plan — with fresh, compacted context instead of a rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make.</p>
+            <h2>Memory you can actually read.</h2>
+            <p>Your project's design truth lives as atomic, linked markdown notes in a git repository you own. Nothing is captured behind your back — the assistant proposes an amendment, you confirm it, and it lands as a commit attributed to the plan it came from. Mercurian is a lens over your memory, never a silo for it: every note stays editable with any tool and portable out of the product entirely.</p>
+            <h2>Your agents. Your machine. No account.</h2>
+            <p>Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor, and more — switchable between turns, even mid-plan, with every branch recording exactly what it ran under. It runs on your machine, against your repositories, with no sign up required. Plans, history, and memory are plain text and git: yours to keep, wherever you go next.</p>
+          </div>
+        </HeroCarousel>
+      </div>
+
+      <a
+        class="relative z-10 mt-8 block w-fit text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        href="/demo/checkpoint-graph/"
+      >
+        Checkpoint Graph demo
+      </a>
     </div>
   </main>
 </Base>
