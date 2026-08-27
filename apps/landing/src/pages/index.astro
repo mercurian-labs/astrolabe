@@ -9,12 +9,187 @@ import Base from "../layouts/Base.astro";
     >
       <div class="relative z-10 order-2 max-w-2xl pb-4 lg:order-1 lg:py-20">
         <h1 class="text-sm font-medium tracking-[0.22em] uppercase">Mercurian</h1>
-        <p class="mt-8 max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl">
-          Mercurian turns engineering issues into plans.
-        </p>
-        <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
-          Every plan is a version-controlled artifact you and an assistant evolve together — grounded in your connected repositories, implemented through coding sessions.
-        </p>
+
+        <div class="mt-8">
+          <div
+            class="flex min-h-[34rem] snap-x snap-mandatory overflow-x-auto sm:min-h-[30rem] lg:min-h-[34rem] xl:min-h-[30rem]"
+            role="region"
+            aria-label="Product highlights"
+            tabindex="0"
+          >
+            <section
+              id="hero-slide-1"
+              class="flex min-w-full snap-center flex-col pr-1"
+              role="group"
+              aria-label="Slide 1 of 3"
+            >
+              <h2
+                class="max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl"
+              >
+                Plan in branches. Merge what works.
+              </h2>
+              <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+                Every message and every plan edit is a commit in one branching, git-style history. Return to any point and take a different direction, explore open decisions side by side, then merge the branches back into a single plan — with fresh, compacted context instead of a rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make.
+              </p>
+
+              <nav class="mt-auto flex items-center gap-4 pt-6" aria-label="Slide 1 navigation">
+                <a
+                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
+                  href="#hero-slide-3"
+                  aria-label="Previous slide"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
+                    <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+
+                <div class="flex items-center gap-3">
+                  <a
+                    class="bg-foreground block size-1.5 rounded-full"
+                    href="#hero-slide-1"
+                    aria-label="Go to slide 1: Plan in branches. Merge what works."
+                    aria-current="true"
+                  ></a>
+                  <a
+                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
+                    href="#hero-slide-2"
+                    aria-label="Go to slide 2: Memory you can actually read."
+                  ></a>
+                  <a
+                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
+                    href="#hero-slide-3"
+                    aria-label="Go to slide 3: Your agents. Your machine. No account."
+                  ></a>
+                </div>
+
+                <a
+                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
+                  href="#hero-slide-2"
+                  aria-label="Next slide"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
+                    <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+              </nav>
+            </section>
+
+            <section
+              id="hero-slide-2"
+              class="flex min-w-full snap-center flex-col pr-1"
+              role="group"
+              aria-label="Slide 2 of 3"
+            >
+              <h2
+                class="max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl"
+              >
+                Memory you can actually read.
+              </h2>
+              <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+                Your project's design truth lives as atomic, linked markdown notes in a git repository you own. Nothing is captured behind your back — the assistant proposes an amendment, you confirm it, and it lands as a commit attributed to the plan it came from. Mercurian is a lens over your memory, never a silo for it: every note stays editable with any tool and portable out of the product entirely.
+              </p>
+
+              <nav class="mt-auto flex items-center gap-4 pt-6" aria-label="Slide 2 navigation">
+                <a
+                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
+                  href="#hero-slide-1"
+                  aria-label="Previous slide"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
+                    <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+
+                <div class="flex items-center gap-3">
+                  <a
+                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
+                    href="#hero-slide-1"
+                    aria-label="Go to slide 1: Plan in branches. Merge what works."
+                  ></a>
+                  <a
+                    class="bg-foreground block size-1.5 rounded-full"
+                    href="#hero-slide-2"
+                    aria-label="Go to slide 2: Memory you can actually read."
+                    aria-current="true"
+                  ></a>
+                  <a
+                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
+                    href="#hero-slide-3"
+                    aria-label="Go to slide 3: Your agents. Your machine. No account."
+                  ></a>
+                </div>
+
+                <a
+                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
+                  href="#hero-slide-3"
+                  aria-label="Next slide"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
+                    <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+              </nav>
+            </section>
+
+            <section
+              id="hero-slide-3"
+              class="flex min-w-full snap-center flex-col pr-1"
+              role="group"
+              aria-label="Slide 3 of 3"
+            >
+              <h2
+                class="max-w-2xl text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-6xl"
+              >
+                Your agents. Your machine. No account.
+              </h2>
+              <p class="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+                Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor, and more — switchable between turns, even mid-plan, with every branch recording exactly what it ran under. It runs on your machine, against your repositories, with no signup and no cloud in the loop. Plans, history, and memory are plain text and git: yours to keep, wherever you go next.
+              </p>
+
+              <nav class="mt-auto flex items-center gap-4 pt-6" aria-label="Slide 3 navigation">
+                <a
+                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
+                  href="#hero-slide-2"
+                  aria-label="Previous slide"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
+                    <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+
+                <div class="flex items-center gap-3">
+                  <a
+                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
+                    href="#hero-slide-1"
+                    aria-label="Go to slide 1: Plan in branches. Merge what works."
+                  ></a>
+                  <a
+                    class="bg-muted-foreground/40 block size-1.5 rounded-full"
+                    href="#hero-slide-2"
+                    aria-label="Go to slide 2: Memory you can actually read."
+                  ></a>
+                  <a
+                    class="bg-foreground block size-1.5 rounded-full"
+                    href="#hero-slide-3"
+                    aria-label="Go to slide 3: Your agents. Your machine. No account."
+                    aria-current="true"
+                  ></a>
+                </div>
+
+                <a
+                  class="text-muted-foreground hover:text-foreground flex size-7 items-center justify-center"
+                  href="#hero-slide-1"
+                  aria-label="Next slide"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none">
+                    <path d="m9 18 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </a>
+              </nav>
+            </section>
+          </div>
+        </div>
+
         <a
           class="text-muted-foreground hover:text-foreground mt-8 block w-fit text-sm underline underline-offset-4"
           href="/demo/checkpoint-graph/"
