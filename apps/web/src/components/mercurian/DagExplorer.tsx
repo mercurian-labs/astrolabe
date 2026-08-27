@@ -40,6 +40,7 @@ import {
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -237,7 +238,9 @@ export function DagExplorer({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+      <div
+        className={cn(WORKSPACE_PANE_TITLE_BAR_CLASS, "gap-2 border-b border-border px-3 sm:px-4")}
+      >
         <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
         {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
           <GraphWarningsPopover
