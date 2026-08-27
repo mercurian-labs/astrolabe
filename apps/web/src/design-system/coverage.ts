@@ -23,6 +23,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Repository discovery, folder validation, cloning, and persistence all depend on the active environment.",
   },
+  "src/components/mercurian/AddRepositoryFlow.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Repository discovery, folder validation, cloning, and persistence all depend on the active environment.",
+  },
   "src/components/mercurian/ArchivedPlansPanel.tsx": {
     category: "requires-live-workspace",
     reason:
@@ -60,7 +65,8 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
   },
   "src/components/mercurian/NewProjectDialog.tsx": {
     category: "requires-live-workspace",
-    reason: "Submitting the dialog creates a project through the live Mercurian command state.",
+    reason:
+      "Its repository choices and project creation sequence use the live Mercurian repositories and command state.",
   },
   "src/components/mercurian/PlanMentionSources.tsx": {
     category: "requires-live-workspace",
