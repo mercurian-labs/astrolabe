@@ -50,6 +50,9 @@ jobs:
       - name: Typecheck
         run: vpr typecheck
 
+      - name: Build landing site
+        run: vp run build:landing
+
       - name: Build desktop pipeline
         run: vp run build:desktop
 
