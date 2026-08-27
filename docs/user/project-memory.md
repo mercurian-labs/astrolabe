@@ -1,0 +1,38 @@
+# Project memory
+
+Project memory is a collection of Markdown notes and maps that records durable product and design
+knowledge. A project can designate one registered repository, or a folder inside one, as its
+memory. The memory repository does not need to be one of the project&rsquo;s code repositories.
+
+## Designate memory
+
+Open the project menu in the sidebar and choose its repository settings. In the **Memory** section,
+pick any registered repository and optionally enter a folder within it. The folder must already
+exist. Removing the designation disconnects the project from the memory without deleting files.
+
+When notes contain containment declarations and no product map exists yet, the same dialog offers
+to generate the product map. The offer states how many declarations it found. Generation is a
+one-time action; if the declarations form a cycle, the dialog explains the refusal instead of
+writing a partial map.
+
+## Browse memory
+
+Choose **Memory** in the sidebar footer after selecting a project. The left rail lists maps, notes,
+and unresolved references. A map shows its purpose and nested arrangement; select any entry to
+open the corresponding note. A refused map remains visible with the reason it could not be read,
+and index problems are called out above the list.
+
+Notes show their Markdown body and backlinks. Wikilinks open other notes. A dashed red link means
+the target is referenced but has not been written yet; opening it shows which existing notes point
+to it. Memory is read fresh from its files, so edits made outside the app appear the next time the
+index or note is read.
+
+## Mention notes in a plan
+
+In a planning composer, type **@** to search memory notes alongside repository files, or type
+**[[** to search notes only. Picking a note inserts a note chip into the message. Sent note chips
+open a transient reader over the planning space, where wikilinks and backlinks stay navigable.
+Closing the reader returns to the plan exactly as it was.
+
+Mentioning a note also tells the planning assistant which memory note to consult. Memory is durable
+design truth; repository files still describe what is actually built.

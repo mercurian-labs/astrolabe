@@ -211,6 +211,8 @@ describe("resolveSidebarSelection", () => {
 
   it("carries over repositories and settings selection", () => {
     expect(resolveSidebarSelection("/repositories").isRepositoriesActive).toBe(true);
+    expect(resolveSidebarSelection("/memory").isMemoryActive).toBe(true);
+    expect(resolveSidebarSelection("/repositories").isMemoryActive).toBe(false);
     expect(resolveSidebarSelection("/settings/archived").isSettingsActive).toBe(true);
   });
 });

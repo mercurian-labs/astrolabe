@@ -12,6 +12,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  BookOpenIcon,
   CalendarIcon,
   ChevronDownIcon,
   CircleDashedIcon,
@@ -300,7 +301,12 @@ export default function PlanListSidebar() {
       )}
       <SidebarChromeFooter
         showUsageRow={false}
-        extraRows={<RepositoriesFooterRow isActive={selection.isRepositoriesActive} />}
+        extraRows={
+          <>
+            <MemoryFooterRow isActive={selection.isMemoryActive} />
+            <RepositoriesFooterRow isActive={selection.isRepositoriesActive} />
+          </>
+        }
       />
       <NewProjectDialog open={isNewProjectOpen} onOpenChange={setIsNewProjectOpen} />
       <ManageProjectRepositoriesDialog
@@ -1018,6 +1024,25 @@ function RepositoriesFooterRow({ isActive }: { readonly isActive: boolean }) {
       >
         <GitBranchIcon />
         <span>Repositories</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function MemoryFooterRow({ isActive }: { readonly isActive: boolean }) {
+  const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={isActive}
+        onClick={() => {
+          if (isMobile) setOpenMobile(false);
+          void navigate({ to: "/memory" });
+        }}
+      >
+        <BookOpenIcon />
+        <span>Memory</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

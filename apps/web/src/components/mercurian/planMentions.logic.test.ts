@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildMentionSearchTargets,
+  formatMentionCandidate,
   formatMentionToken,
   mergeMentionCandidates,
   moveMentionHighlight,
@@ -30,7 +31,13 @@ describe("mergeMentionCandidates", () => {
       { repositoryId: "r1", repositoryName: "astrolabe", entries: [{ path: "src/a.ts" }] },
     ]);
     expect(merged).toEqual([
-      { path: "src/a.ts", label: "src/a.ts", repositoryName: null, key: "r1:src/a.ts" },
+      {
+        kind: "file",
+        path: "src/a.ts",
+        label: "src/a.ts",
+        repositoryName: null,
+        key: "r1:src/a.ts",
+      },
     ]);
   });
 
@@ -43,8 +50,29 @@ describe("mergeMentionCandidates", () => {
       },
       { repositoryId: "r2", repositoryName: "almagest", entries: [{ path: "b1.md" }] },
     ]);
-    expect(merged.map((one) => one.path)).toEqual(["a1.ts", "b1.md", "a2.ts"]);
+    expect(merged.filter((one) => one.kind === "file").map((one) => one.path)).toEqual([
+      "a1.ts",
+      "b1.md",
+      "a2.ts",
+    ]);
     expect(merged.map((one) => one.repositoryName)).toEqual(["astrolabe", "almagest", "astrolabe"]);
+  });
+
+  it("merges and ranks note names with files using substring and subsequence matches", () => {
+    const merged = mergeMentionCandidates(
+      [{ repositoryId: "r1", repositoryName: "app", entries: [{ path: "src/composer.ts" }] }],
+      { noteNames: ["Planning Space", "Composer", "Product"], query: "comp" },
+    );
+    expect(merged.map((candidate) => [candidate.kind, candidate.label])).toEqual([
+      ["note", "Composer"],
+      ["file", "src/composer.ts"],
+    ]);
+
+    const subsequence = mergeMentionCandidates([], {
+      noteNames: ["Planning Space"],
+      query: "plsp",
+    });
+    expect(subsequence.map((candidate) => candidate.label)).toEqual(["Planning Space"]);
   });
 
   it("stops where a menu stops being a menu", () => {
@@ -67,6 +95,18 @@ describe("formatMentionToken", () => {
     expect(formatMentionToken("src/app.ts")).toBe("@src/app.ts ");
     expect(formatMentionToken("src/my file.ts")).toBe('@"src/my file.ts" ');
     expect(formatMentionToken('odd"name.ts')).toBe('@"odd\\"name.ts" ');
+  });
+
+  it("writes note candidates as wikilinks", () => {
+    expect(
+      formatMentionCandidate({
+        kind: "note",
+        name: "Planning Space",
+        label: "Planning Space",
+        repositoryName: null,
+        key: "note:planning space",
+      }),
+    ).toBe("[[Planning Space]] ");
   });
 });
 

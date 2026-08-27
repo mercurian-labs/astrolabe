@@ -19,6 +19,7 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
 import { Link } from "@tanstack/react-router";
 import {
   ChevronRightIcon,
+  BookOpenIcon,
   CircleAlertIcon,
   CircleDotIcon,
   FileSearchIcon,
@@ -69,6 +70,7 @@ export function PlanTimeline({
   readyCommits = EMPTY_READY_COMMITS,
   onAnswerQuestion,
   onStopImplement,
+  onOpenNote,
   codingSessions = EMPTY_CODING_SESSIONS,
 }: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
@@ -80,6 +82,7 @@ export function PlanTimeline({
   readonly readyCommits?: ReadonlyMap<MercurianCommitId, PlanImplementReady> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onStopImplement?: (() => void) | undefined;
+  readonly onOpenNote?: ((name: string) => void) | undefined;
   readonly codingSessions?: ReadonlyArray<PlanCodingSessionRecord> | undefined;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -113,7 +116,7 @@ export function PlanTimeline({
                         environmentId={environmentId}
                       />
                     )}
-                    <MessageText text={item.text} skills={skills} />
+                    <MessageText text={item.text} skills={skills} onOpenNote={onOpenNote} />
                   </div>
                   {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                   <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
@@ -547,12 +550,16 @@ function QuestionRecord({ record }: { readonly record: PlanQuestionRecord }) {
 function MessageText({
   text,
   skills,
+  onOpenNote,
 }: {
   readonly text: string;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
+  readonly onOpenNote?: ((name: string) => void) | undefined;
 }) {
   const parts = useMemo((): ReadonlyArray<ReactNode> => {
-    const tokens = collectComposerInlineTokens(text).filter((token) => token.type === "mention");
+    const tokens = collectComposerInlineTokens(text, { includeNotes: true }).filter(
+      (token) => token.type === "mention" || token.type === "note",
+    );
     if (tokens.length === 0) return [<SkillInlineText key="text" text={text} skills={skills} />];
 
     const rendered: Array<ReactNode> = [];
@@ -567,13 +574,25 @@ function MessageText({
           />,
         );
       }
+      const className =
+        "inline-flex items-center gap-1 rounded bg-muted/70 px-1 py-0.5 font-medium text-foreground";
       rendered.push(
-        <span
-          key={`mention-${index}`}
-          className="rounded bg-muted/70 px-1 py-0.5 font-medium text-foreground"
-        >
-          {token.value}
-        </span>,
+        token.type === "note" && onOpenNote !== undefined ? (
+          <button
+            type="button"
+            key={`note-${index}`}
+            className={className}
+            onClick={() => onOpenNote(token.value)}
+          >
+            <BookOpenIcon aria-hidden className="size-3" />
+            {token.value}
+          </button>
+        ) : (
+          <span key={`${token.type}-${index}`} className={className}>
+            {token.type === "note" ? <BookOpenIcon aria-hidden className="size-3" /> : null}
+            {token.value}
+          </span>
+        ),
       );
       cursor = token.end;
     }
@@ -583,7 +602,7 @@ function MessageText({
       );
     }
     return rendered;
-  }, [skills, text]);
+  }, [onOpenNote, skills, text]);
 
   return <p className="whitespace-pre-wrap text-sm text-foreground">{parts}</p>;
 }

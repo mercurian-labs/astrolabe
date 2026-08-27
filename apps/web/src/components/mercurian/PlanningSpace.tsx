@@ -3,6 +3,7 @@ import {
   type EnvironmentId,
   type MercurianCommitId,
   type MercurianProjectId,
+  type MemoryNote,
   type PlanId,
   type PlanInFlightTurn,
   type PlanSpecAt,
@@ -62,6 +63,7 @@ import {
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
 import { useRepositories } from "../../state/mercurianRepositories";
+import { useReadMemoryNote } from "../../state/mercurianMemory";
 import { usePaginatedBranches } from "../../state/queries";
 import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
@@ -107,6 +109,7 @@ import {
   type PlanPosition,
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
+import { MemoryNoteReader } from "./MemoryNoteReader";
 import { SpecArtifact } from "./SpecArtifact";
 import {
   planMayBeStaleAt,
@@ -312,6 +315,44 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   // The plan's project is what says which code this space can mention. With no
   // repository set, there is nothing to offer and the menu stays closed.
   const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
+  const readMemoryNote = useReadMemoryNote();
+  const [memoryReader, setMemoryReader] = useState<{ readonly stack: string[] }>({ stack: [] });
+  const [memoryNote, setMemoryNote] = useState<MemoryNote | null>(null);
+  const [memoryNoteLoading, setMemoryNoteLoading] = useState(false);
+  const [memoryNoteError, setMemoryNoteError] = useState<string | null>(null);
+  const currentMemoryNoteName = memoryReader.stack.at(-1) ?? null;
+  const openMemoryNote = useCallback((name: string) => {
+    setMemoryReader((current) => ({ stack: [...current.stack, name] }));
+  }, []);
+
+  useEffect(() => {
+    const projectId = detail?.plan.projectId;
+    if (currentMemoryNoteName === null || projectId === undefined) return;
+    let active = true;
+    setMemoryNoteLoading(true);
+    setMemoryNoteError(null);
+    setMemoryNote(null);
+    void readMemoryNote({ projectId, name: currentMemoryNoteName }).then((result) => {
+      if (!active) return;
+      if (result.ok) setMemoryNote(result.value);
+      else setMemoryNoteError(memoryReadError(result.error));
+      setMemoryNoteLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [currentMemoryNoteName, detail?.plan.projectId, memoryReader.stack.length, readMemoryNote]);
+
+  useEffect(() => {
+    if (currentMemoryNoteName === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMemoryReader({ stack: [] });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [currentMemoryNoteName]);
 
   // Another plan is another history: whatever you were looking at there does
   // not name anything here.
@@ -321,6 +362,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setStalePlanWarningOpen(false);
     setImplementFromCommitId(null);
     setPendingEditAndBranch(null);
+    setMemoryReader({ stack: [] });
   }, [planId]);
 
   /**
@@ -664,6 +706,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             {...(providerStatus === undefined ? {} : { skills: providerStatus.skills })}
             readyCommits={readyCommits}
             timeline={visibleTimeline}
+            onOpenNote={openMemoryNote}
             onAnswerQuestion={(answers) => {
               if (visibleInFlight !== undefined) {
                 void answerQuestion(planId, visibleInFlight.turnId, answers);
@@ -903,6 +946,23 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             </div>
           </>
         )}
+        {currentMemoryNoteName === null ? null : (
+          <div className="absolute inset-y-0 right-0 z-30 max-w-full shadow-lg">
+            <MemoryNoteReader
+              error={memoryNoteError}
+              loading={memoryNoteLoading}
+              note={memoryNote}
+              onOpenNote={openMemoryNote}
+              onClose={() => setMemoryReader({ stack: [] })}
+              {...(memoryReader.stack.length > 1
+                ? {
+                    onBack: () =>
+                      setMemoryReader((current) => ({ stack: current.stack.slice(0, -1) })),
+                  }
+                : {})}
+            />
+          </div>
+        )}
       </div>
       {proposal === undefined && landedPlans.length === 0 ? null : (
         <SplitSheet
@@ -1019,6 +1079,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       />
     </PlanningSurface>
   );
+}
+
+function memoryReadError(error: unknown): string {
+  return error instanceof Error ? error.message : "Could not read this memory note.";
 }
 
 /**

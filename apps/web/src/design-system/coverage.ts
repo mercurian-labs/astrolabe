@@ -68,6 +68,16 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "The choices and save action are backed by the environment's repositories and project membership state.",
   },
+  "src/components/mercurian/MemoryPage.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Project scope, memory designation, index refresh, note reads, and deep-link navigation depend on live workspace and router state.",
+  },
+  "src/components/mercurian/memoryMarkdown.tsx": {
+    category: "composition-shell",
+    reason:
+      "The renderer is exercised through the catalogued MemoryNoteReader, which supplies link resolution and navigation behavior.",
+  },
   "src/components/mercurian/NewProjectDialog.tsx": {
     category: "requires-live-workspace",
     reason:

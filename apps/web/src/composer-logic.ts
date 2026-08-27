@@ -47,6 +47,7 @@ const isInlineTokenSegment = (
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
+    | { type: "note" }
     | { type: "terminal-context" },
 ): boolean => segment.type !== "text";
 
@@ -73,9 +74,17 @@ function tokenStartForCursor(text: string, cursor: number): number {
   return index + 1;
 }
 
-export function expandCollapsedComposerCursor(text: string, cursorInput: number): number {
+export interface ComposerInlineTokenOptions {
+  readonly includeNotes?: boolean;
+}
+
+export function expandCollapsedComposerCursor(
+  text: string,
+  cursorInput: number,
+  options: ComposerInlineTokenOptions = {},
+): number {
   const collapsedCursor = clampCursor(text, cursorInput);
-  const segments = splitPromptIntoComposerSegments(text);
+  const segments = splitPromptIntoComposerSegments(text, [], options);
   if (segments.length === 0) {
     return collapsedCursor;
   }
@@ -98,6 +107,13 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
       if (remaining <= 1) {
         return expandedCursor + (remaining === 0 ? 0 : expandedLength);
       }
+      remaining -= 1;
+      expandedCursor += expandedLength;
+      continue;
+    }
+    if (segment.type === "note") {
+      const expandedLength = segment.name.length + 4;
+      if (remaining <= 1) return expandedCursor + (remaining === 0 ? 0 : expandedLength);
       remaining -= 1;
       expandedCursor += expandedLength;
       continue;
@@ -127,6 +143,7 @@ function collapsedSegmentLength(
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
+    | { type: "note" }
     | { type: "terminal-context" },
 ): number {
   if (segment.type === "text") {
@@ -140,6 +157,7 @@ function clampCollapsedComposerCursorForSegments(
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
+    | { type: "note" }
     | { type: "terminal-context" }
   >,
   cursorInput: number,
@@ -154,16 +172,24 @@ function clampCollapsedComposerCursorForSegments(
   return Math.max(0, Math.min(collapsedLength, Math.floor(cursorInput)));
 }
 
-export function clampCollapsedComposerCursor(text: string, cursorInput: number): number {
+export function clampCollapsedComposerCursor(
+  text: string,
+  cursorInput: number,
+  options: ComposerInlineTokenOptions = {},
+): number {
   return clampCollapsedComposerCursorForSegments(
-    splitPromptIntoComposerSegments(text),
+    splitPromptIntoComposerSegments(text, [], options),
     cursorInput,
   );
 }
 
-export function collapseExpandedComposerCursor(text: string, cursorInput: number): number {
+export function collapseExpandedComposerCursor(
+  text: string,
+  cursorInput: number,
+  options: ComposerInlineTokenOptions = {},
+): number {
   const expandedCursor = clampCursor(text, cursorInput);
-  const segments = splitPromptIntoComposerSegments(text);
+  const segments = splitPromptIntoComposerSegments(text, [], options);
   if (segments.length === 0) {
     return expandedCursor;
   }
@@ -196,6 +222,14 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
       collapsedCursor += 1;
       continue;
     }
+    if (segment.type === "note") {
+      const expandedLength = segment.name.length + 4;
+      if (remaining === 0) return collapsedCursor;
+      if (remaining <= expandedLength) return collapsedCursor + 1;
+      remaining -= expandedLength;
+      collapsedCursor += 1;
+      continue;
+    }
     if (segment.type === "terminal-context") {
       if (remaining <= 1) {
         return collapsedCursor + remaining;
@@ -220,8 +254,9 @@ export function isCollapsedCursorAdjacentToInlineToken(
   text: string,
   cursorInput: number,
   direction: "left" | "right",
+  options: ComposerInlineTokenOptions = {},
 ): boolean {
-  const segments = splitPromptIntoComposerSegments(text);
+  const segments = splitPromptIntoComposerSegments(text, [], options);
   if (!segments.some(isInlineTokenSegment)) {
     return false;
   }

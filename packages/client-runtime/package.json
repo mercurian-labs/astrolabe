@@ -79,6 +79,10 @@
       "types": "./src/state/mercurianPlanning.ts",
       "default": "./src/state/mercurianPlanning.ts"
     },
+    "./state/mercurian-memory": {
+      "types": "./src/state/mercurianMemory.ts",
+      "default": "./src/state/mercurianMemory.ts"
+    },
     "./state/mercurian-repositories": {
       "types": "./src/state/mercurianRepositories.ts",
       "default": "./src/state/mercurianRepositories.ts"

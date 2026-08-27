@@ -140,7 +140,7 @@ describe("PlanTimeline", () => {
     expect(markup).toContain('src="/assets/attachment-1"');
     expect(markup).toContain('alt="plan.png"');
     expect(markup).toContain(
-      'class="rounded bg-muted/70 px-1 py-0.5 font-medium text-foreground">README.md</span>',
+      'class="inline-flex items-center gap-1 rounded bg-muted/70 px-1 py-0.5 font-medium text-foreground">README.md</span>',
     );
     expect(markup).not.toContain("rounded-lg border");
     expect(markup).not.toContain(">You<");
@@ -160,6 +160,29 @@ describe("PlanTimeline", () => {
     expect(markup).toContain(">Product Docs</span>");
     expect(markup).toContain("$not-installed");
     expect(markup).not.toContain('data-markdown-copy="$not-installed"');
+  });
+
+  it("renders planning note tokens as distinct clickable chips without changing other text", () => {
+    const onOpenNote = vi.fn();
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        onOpenNote={onOpenNote}
+        timeline={[
+          timelineMessage("human-note", "human", "Read [[Planning Space]] and @README.md next"),
+        ]}
+      />,
+    );
+    expect(markup).toContain("Planning Space</button>");
+    expect(markup).toContain("README.md</span>");
+    expect(markup).not.toContain("[[Planning Space]]");
+
+    const plain = renderToStaticMarkup(
+      <PlanTimeline
+        timeline={[timelineMessage("human-note-plain", "human", "Read [[Planning Space]]")]}
+      />,
+    );
+    expect(plain).toContain("Planning Space</span>");
+    expect(plain).not.toContain("Planning Space</button>");
   });
 
   it("renders assistant messages as full-width markdown with grounding before the body", () => {

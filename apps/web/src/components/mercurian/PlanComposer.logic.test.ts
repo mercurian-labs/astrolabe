@@ -9,6 +9,7 @@ import {
 
 import { detectComposerTrigger, type ComposerTrigger } from "../../composer-logic.ts";
 import {
+  detectPlanComposerTrigger,
   implementFailureNotice,
   planComposerMenuItems,
   planningModelGateNotice,
@@ -144,6 +145,17 @@ describe("planComposerMenuItems", () => {
       commandTrigger: slash,
     });
     expect(detectComposerTrigger("explain /review", 15)).toBeNull();
+  });
+
+  it("detects an unfinished planning-local wikilink and routes it to notes", () => {
+    const trigger = detectPlanComposerTrigger("Compare [[Plan ar", 17);
+    expect(trigger).toEqual({ kind: "note", query: "Plan ar", rangeStart: 8, rangeEnd: 17 });
+    expect(routePlanComposerTrigger(trigger)).toEqual({
+      mentionTrigger: trigger,
+      commandTrigger: null,
+    });
+    expect(detectPlanComposerTrigger("Compare [[Plan]]", 16)?.kind).not.toBe("note");
+    expect(detectPlanComposerTrigger("[[Plan\nnext", 11)?.kind).not.toBe("note");
   });
 
   it("lets an open menu own Enter and Tab, including non-selectable rows", () => {

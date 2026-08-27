@@ -196,6 +196,40 @@ Three things it does _not_ store, each on purpose. Its **git-ness** is probed li
 
 Removal disconnects: the row, its scripts, and its project memberships go, while the files and every grounding reference already written into a plan's history stay — those are content, not foreign keys. It is refused with `RepositoryHasLiveWorktreesError` when `git worktree list` names a linked worktree under `ServerConfig.worktreesDir`, and there is no force flag. When coding sessions land store-side worktree state, that check gains a second source behind the same refusal.
 
+#### Memory
+
+A project's durable design knowledge, read directly from Markdown notes and YAML maps beneath its
+[memory source](#memory-source). Memory is a disk-derived read model rather than a synchronized or
+persisted copy: each read reflects the designated files, and the planning assistant is instructed
+to consult it before repository code for design intent. Contracts live in
+[mercurianMemory.ts][36].
+
+#### Memory source
+
+The single registered repository, optionally narrowed to a repository-relative subpath, that a
+[Mercurian project](#mercurian-project) designates as its [memory](#memory). It need not belong to
+the project's code-repository set. Removing a repository also removes designations that point to
+it; it never deletes memory files.
+
+#### Note
+
+An atomic Markdown file in [memory](#memory), identified by its filename stem. Notes connect with
+`[[wikilinks]]`; links are associative for graph derivation, and their reverse edges are exposed as
+backlinks. Note mentions remain inline text in planning messages and resolve to files only when a
+planning turn is grounded.
+
+#### Map
+
+A YAML arrangement under a memory's `maps` folder. A map names its purpose and places notes in a
+nested structure whose parent-child placements must already be supported by links in note prose.
+Malformed or ungrounded maps remain visible as refusals rather than degrading into partial maps.
+
+#### Unresolved reference
+
+A wikilink target named by one or more notes but not yet present as a note file. It is a first-class
+memory frontier: browse and reader surfaces show it as not yet written and retain the names of the
+notes that reference it.
+
 #### Hosting provider
 
 The service that hosts a repository's git remote, such as GitHub, GitLab, Bitbucket, or Azure DevOps. Mercurian detects provider presence and authentication standing from the machine, and derives a repository's provider from its fetch remotes; it never configures, assigns, or stores either fact. Unknown remote hosts remain plain hosting facts and acquire no provider affordances.
@@ -380,6 +414,7 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [33]: ../../packages/contracts/src/mercurianTrackers.ts
 [34]: ../../apps/server/src/mercurian/planning/wire.ts
 [35]: ../../apps/server/src/mercurian/assistant/PlanningAssistant.ts
+[36]: ../../packages/contracts/src/mercurianMemory.ts
 
 ### Coding session
 

@@ -29,6 +29,7 @@ interface DraftRowFields extends ProjectScopedFields {
 
 export interface SidebarSelection extends TreeSelection {
   readonly activeDraftId: string | null;
+  readonly isMemoryActive: boolean;
 }
 
 /** The selected plan, draft, or workspace destination represented by the route. */
@@ -42,6 +43,7 @@ export function resolveSidebarSelection(pathname: string): SidebarSelection {
       first === "plans" && second === "draft" && third !== undefined
         ? decodeURIComponent(third)
         : null,
+    isMemoryActive: first === "memory",
   };
 }
 
