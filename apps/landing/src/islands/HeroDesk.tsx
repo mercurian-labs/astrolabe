@@ -8,7 +8,7 @@ import { buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
 import { PlanTimeline } from "~/components/mercurian/PlanTimeline";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { message, planRevision, specRevision, timeline } from "~/test/fixtures/timeline";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 
 const history = timeline(
   message("plan-query", {
@@ -156,6 +156,63 @@ function seedGraphView() {
 seedGraphView();
 
 export default function HeroDesk() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [engaged, setEngaged] = useState(false);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const pinLightAppearance = () => {
+      if (root.classList.contains("dark")) root.classList.remove("dark");
+      if (root.dataset.themeId !== undefined) delete root.dataset.themeId;
+    };
+    const observer = new MutationObserver(pinLightAppearance);
+    observer.observe(root, {
+      attributeFilter: ["class", "data-theme-id"],
+      attributes: true,
+    });
+    pinLightAppearance();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!engaged) return;
+
+    const windowFrame = rootRef.current?.closest("[data-hero-window]");
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEngaged(false);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || windowFrame?.contains(event.target)) return;
+      setEngaged(false);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [engaged]);
+
+  return (
+    <div ref={rootRef} className="relative h-full min-h-0">
+      <HeroWindowInterior />
+      {engaged ? null : (
+        <div
+          aria-hidden="true"
+          className="group absolute inset-0 z-50 cursor-pointer touch-pan-y"
+          onClick={() => setEngaged(true)}
+        >
+          <span className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border/70 bg-background/90 px-3 py-1.5 text-xs font-medium text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+            Click to explore
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HeroWindowInterior() {
   const [composerText, setComposerText] = useState("Ask the assistant to refine this plan.");
 
   return (

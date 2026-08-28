@@ -9,3 +9,15 @@
 }
 
 @source "../../../web/src";
+
+/* The landing site is always shown in the standard light appearance, even
+   when shared product components observe a dark app or system preference. */
+html[data-landing-appearance="light"] {
+  color-scheme: light !important;
+  background-color: #f7f7f3 !important;
+}
+
+html[data-landing-appearance="light"] body {
+  background-color: #f7f7f3 !important;
+  background-image: none;
+}
