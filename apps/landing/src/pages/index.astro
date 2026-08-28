@@ -1,37 +1,19 @@
 ---
-import HeroCarousel from "../islands/HeroCarousel";
+import HeroDesk from "../islands/HeroDesk";
 import Base from "../layouts/Base.astro";
+
+const providers = [
+  { name: "Claude Code", src: "/harnesses/claude-ai-icon.svg" },
+  { name: "Codex", src: "/harnesses/openai_dark.svg" },
+  { name: "Cursor", src: "/harnesses/cursor_light.svg" },
+  { name: "Grok", src: "/harnesses/grok-dark.svg" },
+  { name: "OpenCode", src: "/harnesses/opencode-dark.svg" },
+] as const;
 ---
 
 <Base title="Mercurian">
-  <main class="relative isolate min-h-screen overflow-hidden">
-    <div class="pointer-events-none absolute inset-0 -z-20 overflow-hidden" aria-hidden="true">
-      <img
-        class="absolute top-1/2 right-[-32rem] h-auto w-[78rem] max-w-none -translate-y-1/2 sm:right-[-26rem] lg:right-[-18rem] xl:right-[-10rem]"
-        src="/mercury-globe-poster.png"
-        alt=""
-        aria-hidden="true"
-        loading="eager"
-        width="1920"
-        height="1080"
-      />
-    </div>
-    <div
-      class="pointer-events-none absolute inset-0 -z-10 lg:hidden"
-      style="background: linear-gradient(to right, var(--background) 0%, var(--background) 35%, color-mix(in oklab, var(--background) 70%, transparent) 70%, color-mix(in oklab, var(--background) 35%, transparent) 100%);"
-      aria-hidden="true"
-    >
-    </div>
-    <div
-      class="pointer-events-none absolute inset-0 -z-10 hidden lg:block"
-      style="background: linear-gradient(to right, var(--background) 0%, var(--background) 18%, color-mix(in oklab, var(--background) 55%, transparent) 45%, transparent 75%);"
-      aria-hidden="true"
-    >
-    </div>
-
-    <div
-      class="mx-auto flex min-h-screen w-full max-w-[90rem] flex-col justify-center px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16"
-    >
+  <main class="min-h-screen overflow-x-clip bg-background">
+    <div class="mx-auto w-full max-w-[90rem] px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16">
       <h1
         aria-label="Mercurian"
         class="relative z-10 w-fit px-3 py-2 text-2xl font-semibold sm:text-3xl [font-family:Fraunces,serif]"
@@ -39,25 +21,92 @@ import Base from "../layouts/Base.astro";
         Mercurian<span aria-hidden="true" class="text-[#A0492A]">.</span>
       </h1>
 
-      <div class="relative z-10 mt-8">
-        <HeroCarousel client:only="react">
-          <div slot="fallback" class="sr-only">
-            <h2>Plan in branches. Merge what works.</h2>
-            <p>Every message and every plan edit is a commit in one branching, git-style history. Return to any point and take a different direction, explore open decisions side by side, then merge the branches back into a single plan — with fresh, compacted context instead of a rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make.</p>
-            <h2>Memory you can actually read.</h2>
-            <p>Your project's design truth lives as atomic, linked markdown notes in a git repository you own. Nothing is captured behind your back — the assistant proposes an amendment, you confirm it, and it lands as a commit attributed to the plan it came from. Mercurian is a lens over your memory, never a silo for it: every note stays editable with any tool and portable out of the product entirely.</p>
-            <h2>Your agents. Your machine. No account.</h2>
-            <p>Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor, and more — switchable between turns, even mid-plan, with every branch recording exactly what it ran under. It runs on your machine, against your repositories, with no sign up required. Plans, history, and memory are plain text and git: yours to keep, wherever you go next.</p>
-          </div>
-        </HeroCarousel>
-      </div>
+      <section class="mt-10 max-w-3xl" aria-labelledby="hero-heading">
+        <h2 id="hero-heading" class="text-2xl font-medium tracking-tight">
+          Plan in branches. Merge what works.
+        </h2>
+        <p class="mt-4 text-base leading-relaxed text-muted-foreground">
+          Every message and every plan edit is a commit in one branching, git-style history. Return
+          to any point and take a different direction, explore open decisions side by side, then
+          merge the branches back into a single plan — with fresh, compacted context instead of a
+          rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make.
+        </p>
+      </section>
 
-      <a
-        class="relative z-10 mt-8 block w-fit text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-        href="/demo/checkpoint-graph/"
+      <section
+        aria-label="Mercurian planning space"
+        class="relative mt-8 min-h-[30rem] w-full overflow-hidden rounded-xl lg:aspect-video lg:min-h-0"
       >
-        Checkpoint Graph demo
-      </a>
+        <img
+          class="absolute inset-0 size-full object-cover object-center"
+          src="/mercury-globe-poster.png"
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          width="1920"
+          height="1080"
+        />
+
+        <div
+          class="absolute top-[9%] left-1/2 flex h-[85%] w-[94%] -translate-x-1/2 flex-col overflow-hidden rounded-[10px] bg-background lg:w-[83%]"
+          style="box-shadow: 0 28px 70px rgba(0,0,0,.14), 0 14px 32px rgba(0,0,0,.10);"
+        >
+          <div
+            class="flex h-7 shrink-0 items-center border-b border-border bg-muted/80 px-3 text-foreground"
+          >
+            <div class="flex items-center gap-1.5" aria-hidden="true">
+              <span class="size-2 rounded-full bg-[#A0492A]/80"></span>
+              <span class="size-2 rounded-full bg-amber-500/70"></span>
+              <span class="size-2 rounded-full bg-emerald-600/65"></span>
+            </div>
+            <span class="absolute left-1/2 -translate-x-1/2 text-[11px] font-medium">
+              Astrolabe
+            </span>
+          </div>
+          <div class="min-h-0 flex-1">
+            <HeroDesk client:only="react" />
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="mt-10 grid gap-8 pb-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:pb-16"
+        aria-labelledby="providers-heading"
+      >
+        <div class="max-w-xl">
+          <h2 id="providers-heading" class="text-2xl font-medium tracking-tight">
+            Your agents. Your machine. No account.
+          </h2>
+          <p class="mt-4 text-base leading-relaxed text-muted-foreground">
+            Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor,
+            and more — switchable between turns, even mid-plan, with every branch recording exactly
+            what it ran under. It runs on your machine, against your repositories, with no sign up
+            required. Plans, history, and memory are plain text and git: yours to keep, wherever you
+            go next.
+          </p>
+        </div>
+
+        <ul class="grid min-w-0 grid-cols-3 gap-5 sm:grid-cols-5 sm:gap-3">
+          {
+            providers.map((provider) => (
+              <li class="flex min-w-0 flex-col items-center gap-3">
+                <span class="flex size-16 items-center justify-center rounded-xl bg-foreground p-3 dark:bg-background">
+                  <img
+                    alt={provider.name}
+                    class="size-10 object-contain"
+                    height="40"
+                    src={provider.src}
+                    width="40"
+                  />
+                </span>
+                <span class="text-center text-xs font-medium text-foreground/75">
+                  {provider.name}
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
     </div>
   </main>
 </Base>
