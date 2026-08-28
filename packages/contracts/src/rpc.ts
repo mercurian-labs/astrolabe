@@ -141,6 +141,23 @@ import {
   RepositoryPathInvalidError,
 } from "./mercurianRepositories.ts";
 import {
+  MERCURIAN_MEMORY_WS_METHODS,
+  MemoryNotDesignatedError,
+  MemorySourceInvalidError,
+  MemorySourcesStreamItem,
+  MemoryIndex,
+  MemoryNote,
+  MercurianDesignateMemorySourceInput,
+  MercurianGenerateProductMapInput,
+  MercurianMemoryError,
+  MercurianReadMemoryIndexInput,
+  MercurianReadMemoryNoteInput,
+  MercurianRemoveMemorySourceInput,
+  MercurianSubscribeMemorySourcesInput,
+  ProductMapAlreadyExistsError,
+  ProductMapCycleError,
+} from "./mercurianMemory.ts";
+import {
   MERCURIAN_TRACKER_WS_METHODS,
   MercurianConnectTrackerInput,
   MercurianDisconnectTrackerInput,
@@ -1404,6 +1421,76 @@ export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
   },
 );
 
+export const WsMercurianSubscribeMemorySourcesRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources,
+  {
+    payload: MercurianSubscribeMemorySourcesInput,
+    success: MemorySourcesStreamItem,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianDesignateMemorySourceRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.designateMemorySource,
+  {
+    payload: MercurianDesignateMemorySourceInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemorySourceInvalidError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianRemoveMemorySourceRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.removeMemorySource,
+  {
+    payload: MercurianRemoveMemorySourceInput,
+    success: Schema.Void,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryIndexRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex, {
+  payload: MercurianReadMemoryIndexInput,
+  success: MemoryIndex,
+  error: Schema.Union([
+    MemoryNotDesignatedError,
+    MemorySourceInvalidError,
+    MercurianMemoryError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianReadMemoryNoteRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS.readMemoryNote, {
+  payload: MercurianReadMemoryNoteInput,
+  success: MemoryNote,
+  error: Schema.Union([
+    MemoryNotDesignatedError,
+    MemorySourceInvalidError,
+    MercurianMemoryError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianGenerateProductMapRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.generateProductMap,
+  {
+    payload: MercurianGenerateProductMapInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      ProductMapAlreadyExistsError,
+      ProductMapCycleError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 // Workspace-scoped seeds are few and small, so the read is a whole-value
 // re-send rather than a sequenced log.
 export const WsMercurianSubscribeWorkspaceSettingsRpc = Rpc.make(
@@ -1605,6 +1692,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRemoveRepositoryRpc,
   WsMercurianSaveRepositoryScriptsRpc,
   WsMercurianSetProjectRepositoriesRpc,
+  WsMercurianSubscribeMemorySourcesRpc,
+  WsMercurianDesignateMemorySourceRpc,
+  WsMercurianRemoveMemorySourceRpc,
+  WsMercurianReadMemoryIndexRpc,
+  WsMercurianReadMemoryNoteRpc,
+  WsMercurianGenerateProductMapRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
   WsMercurianSubscribeTrackersRpc,
   WsMercurianConnectTrackerRpc,

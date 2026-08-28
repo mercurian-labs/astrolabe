@@ -28,6 +28,8 @@ const MIGRATED_STORY_TITLES = [
   "Reading",
   "Editing",
   "Reply streaming on this branch",
+  "Memory note with links",
+  "Memory note not yet written",
   "Imported from an issue",
   "No spec yet",
   "Plan may be stale",
@@ -112,7 +114,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(25);
+    expect(migratedEntries).toHaveLength(27);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

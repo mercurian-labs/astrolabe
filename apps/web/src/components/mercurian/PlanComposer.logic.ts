@@ -10,7 +10,7 @@ import type {
 } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 
-import type { ComposerTrigger } from "../../composer-logic";
+import { detectComposerTrigger, type ComposerTrigger } from "../../composer-logic";
 import type { ComposerCommandItem } from "../chat/ComposerCommandMenu";
 import { resolveComposerMenuActiveItemId } from "../chat/composerMenuHighlight";
 import { searchSlashCommandItems } from "../chat/composerSlashCommandSearch";
@@ -136,12 +136,39 @@ export function planComposerMenuItems(input: {
   );
 }
 
-export function routePlanComposerTrigger(trigger: ComposerTrigger | null): {
-  readonly mentionTrigger: ComposerTrigger | null;
+export type PlanComposerTrigger =
+  | ComposerTrigger
+  | {
+      readonly kind: "note";
+      readonly query: string;
+      readonly rangeStart: number;
+      readonly rangeEnd: number;
+    };
+
+/** Planning's local wikilink trigger; ordinary thread composers never call this detector. */
+export function detectPlanComposerTrigger(
+  text: string,
+  cursor: number,
+): PlanComposerTrigger | null {
+  const boundedCursor = Math.max(0, Math.min(text.length, cursor));
+  const beforeCursor = text.slice(0, boundedCursor);
+  const lineStart = beforeCursor.lastIndexOf("\n") + 1;
+  const triggerStart = beforeCursor.lastIndexOf("[[");
+  if (triggerStart >= lineStart) {
+    const query = beforeCursor.slice(triggerStart + 2);
+    if (!query.includes("[") && !query.includes("]")) {
+      return { kind: "note", query, rangeStart: triggerStart, rangeEnd: boundedCursor };
+    }
+  }
+  return detectComposerTrigger(text, boundedCursor);
+}
+
+export function routePlanComposerTrigger(trigger: PlanComposerTrigger | null): {
+  readonly mentionTrigger: PlanComposerTrigger | null;
   readonly commandTrigger: ComposerTrigger | null;
 } {
   return {
-    mentionTrigger: trigger?.kind === "path" ? trigger : null,
+    mentionTrigger: trigger?.kind === "path" || trigger?.kind === "note" ? trigger : null,
     commandTrigger: trigger?.kind === "slash-command" || trigger?.kind === "skill" ? trigger : null,
   };
 }

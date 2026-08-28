@@ -32,6 +32,7 @@ import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$proje
 import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatRepositoriesRouteImport } from './routes/_chat.repositories'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
+import { Route as ChatMemoryRouteImport } from './routes/_chat.memory'
 import { Route as ChatSessionsThreadIdRouteImport } from './routes/_chat.sessions.$threadId'
 import { Route as ChatPlansPlanIdRouteImport } from './routes/_chat.plans.$planId'
 import { Route as ChatPlansDraftDraftIdRouteImport } from './routes/_chat.plans.draft.$draftId'
@@ -150,6 +151,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   path: '/pull-requests',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatMemoryRoute = ChatMemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatSessionsThreadIdRoute = ChatSessionsThreadIdRouteImport.update({
   id: '/sessions/$threadId',
   path: '/sessions/$threadId',
@@ -173,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/memory': typeof ChatMemoryRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/repositories': typeof ChatRepositoriesRoute
   '/connect/callback': typeof ConnectCallbackRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/memory': typeof ChatMemoryRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/repositories': typeof ChatRepositoriesRoute
   '/connect/callback': typeof ConnectCallbackRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/_chat/memory': typeof ChatMemoryRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/repositories': typeof ChatRepositoriesRoute
   '/connect_/callback': typeof ConnectCallbackRoute
@@ -258,6 +267,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/memory'
     | '/pull-requests'
     | '/repositories'
     | '/connect/callback'
@@ -284,6 +294,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/memory'
     | '/pull-requests'
     | '/repositories'
     | '/connect/callback'
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/_chat/memory'
     | '/_chat/pull-requests'
     | '/_chat/repositories'
     | '/connect_/callback'
@@ -508,6 +520,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/memory': {
+      id: '/_chat/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof ChatMemoryRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/sessions/$threadId': {
       id: '/_chat/sessions/$threadId'
       path: '/sessions/$threadId'
@@ -533,6 +552,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ChatRouteChildren {
+  ChatMemoryRoute: typeof ChatMemoryRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatRepositoriesRoute: typeof ChatRepositoriesRoute
   ChatIndexRoute: typeof ChatIndexRoute
@@ -542,6 +562,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatMemoryRoute: ChatMemoryRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatRepositoriesRoute: ChatRepositoriesRoute,
   ChatIndexRoute: ChatIndexRoute,

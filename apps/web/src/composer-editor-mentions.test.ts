@@ -7,6 +7,16 @@ import {
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 describe("splitPromptIntoComposerSegments", () => {
+  it("parses note chips only when the planning surface opts in", () => {
+    const prompt = "Read [[Planning Space]] next";
+    expect(splitPromptIntoComposerSegments(prompt)).toEqual([{ type: "text", text: prompt }]);
+    expect(splitPromptIntoComposerSegments(prompt, [], { includeNotes: true })).toEqual([
+      { type: "text", text: "Read " },
+      { type: "note", name: "Planning Space" },
+      { type: "text", text: " next" },
+    ]);
+  });
+
   it("splits mention tokens followed by whitespace into mention segments", () => {
     expect(splitPromptIntoComposerSegments("Inspect @AGENTS.md please")).toEqual([
       { type: "text", text: "Inspect " },

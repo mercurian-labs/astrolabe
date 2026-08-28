@@ -18,7 +18,7 @@ import {
 export const EMPTY_QUERY_PLAN_LIMIT = 12;
 
 /** The two workspace rows the tree navigates to. Dashboard and Concepts are gone by design. */
-export type SearchPaletteSection = "repositories" | "settings";
+export type SearchPaletteSection = "memory" | "repositories" | "settings";
 
 /** What the palette can start. Everything else it does is navigation. */
 export type SearchPaletteAction = "new-plan" | "new-project" | "open-settings";
@@ -31,9 +31,10 @@ export type SearchPaletteAction = "new-plan" | "new-project" | "open-settings";
  * section is a page, an action runs. Coding-session results join as their own
  * arm when they arrive, touching none of these.
  */
-export type SearchPaletteResult<TPlan, TProject> =
+export type SearchPaletteResult<TPlan, TProject, TNote> =
   | { readonly kind: "plan"; readonly plan: TPlan; readonly projectName: string }
   | { readonly kind: "project"; readonly project: TProject }
+  | { readonly kind: "note"; readonly note: TNote }
   | { readonly kind: "section"; readonly section: SearchPaletteSection }
   | { readonly kind: "action"; readonly action: SearchPaletteAction };
 
@@ -153,9 +154,15 @@ export function filterSearchPaletteGroups(input: {
 export const SEARCH_PALETTE_SECTIONS: ReadonlyArray<{
   readonly section: SearchPaletteSection;
   readonly label: string;
-  readonly path: "/repositories" | "/settings";
+  readonly path: "/memory" | "/repositories" | "/settings";
   readonly searchTerms: ReadonlyArray<string>;
 }> = [
+  {
+    section: "memory",
+    label: "Memory",
+    path: "/memory",
+    searchTerms: ["Memory", "notes", "maps", "design knowledge"],
+  },
   {
     section: "repositories",
     label: "Repositories",
@@ -178,12 +185,14 @@ export function buildSearchPaletteGroups(input: {
   readonly actionItems: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
   readonly planItems: ReadonlyArray<CommandPaletteActionItem>;
   readonly projectItems: ReadonlyArray<CommandPaletteActionItem>;
+  readonly noteItems: ReadonlyArray<CommandPaletteActionItem>;
   readonly sectionItems: ReadonlyArray<CommandPaletteActionItem>;
 }): CommandPaletteGroup[] {
   return [
     { value: "actions", label: "Actions", items: input.actionItems },
     { value: "plans", label: "Plans", items: input.planItems },
     { value: "projects", label: "Projects", items: input.projectItems },
+    { value: "memory", label: "Memory", items: input.noteItems },
     { value: "workspace", label: "Workspace", items: input.sectionItems },
   ].filter((group) => group.items.length > 0);
 }
@@ -194,4 +203,8 @@ export function planItemValue(planId: string): string {
 
 export function projectItemValue(projectId: string): string {
   return `project:${projectId}`;
+}
+
+export function noteItemValue(name: string): string {
+  return `note:${name}`;
 }

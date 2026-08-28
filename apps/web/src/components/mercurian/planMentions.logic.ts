@@ -37,15 +37,22 @@ export function buildMentionSearchTargets(
   }));
 }
 
-export interface MentionCandidate {
-  /** What the token carries: the path as the search returned it. */
-  readonly path: string;
-  /** What the row shows. */
-  readonly label: string;
-  /** Named only when the set is plural — one repository needs no disambiguation. */
-  readonly repositoryName: string | null;
-  readonly key: string;
-}
+export type MentionCandidate =
+  | {
+      readonly kind: "file";
+      /** What the token carries: the path as the search returned it. */
+      readonly path: string;
+      readonly label: string;
+      readonly repositoryName: string | null;
+      readonly key: string;
+    }
+  | {
+      readonly kind: "note";
+      readonly name: string;
+      readonly label: string;
+      readonly repositoryName: null;
+      readonly key: string;
+    };
 
 export interface MentionSearchResult {
   readonly repositoryId: string;
@@ -62,32 +69,80 @@ const MENTION_CANDIDATE_LIMIT = 20;
  */
 export function mergeMentionCandidates(
   results: ReadonlyArray<MentionSearchResult>,
-  options: { readonly limit?: number } = {},
+  options: {
+    readonly limit?: number;
+    readonly noteNames?: ReadonlyArray<string>;
+    readonly query?: string;
+  } = {},
 ): ReadonlyArray<MentionCandidate> {
   const limit = options.limit ?? MENTION_CANDIDATE_LIMIT;
   const labelRepository = results.length > 1;
-  const candidates: Array<MentionCandidate> = [];
+  const candidates: Array<{ candidate: MentionCandidate; sourceIndex: number }> = [];
   const seen = new Set<string>();
+  let sourceIndex = 0;
 
   const depth = Math.max(0, ...results.map((result) => result.entries.length));
-  for (let index = 0; index < depth && candidates.length < limit; index += 1) {
+  for (let index = 0; index < depth; index += 1) {
     for (const result of results) {
-      if (candidates.length >= limit) break;
       const entry = result.entries[index];
       if (entry === undefined) continue;
       const key = `${result.repositoryId}:${entry.path}`;
       if (seen.has(key)) continue;
       seen.add(key);
       candidates.push({
-        path: entry.path,
-        label: entry.path,
-        repositoryName: labelRepository ? result.repositoryName : null,
-        key,
+        candidate: {
+          kind: "file",
+          path: entry.path,
+          label: entry.path,
+          repositoryName: labelRepository ? result.repositoryName : null,
+          key,
+        },
+        sourceIndex: sourceIndex++,
       });
     }
   }
 
-  return candidates;
+  for (const name of options.noteNames ?? []) {
+    const key = `note:${name.toLocaleLowerCase()}`;
+    if (seen.has(key) || !mentionMatch(name, options.query ?? "")) continue;
+    seen.add(key);
+    candidates.push({
+      candidate: { kind: "note", name, label: name, repositoryName: null, key },
+      sourceIndex: sourceIndex++,
+    });
+  }
+
+  const query = options.query?.trim().toLocaleLowerCase() ?? "";
+  return candidates
+    .toSorted(
+      (left, right) =>
+        mentionRank(right.candidate.label, query) - mentionRank(left.candidate.label, query) ||
+        left.sourceIndex - right.sourceIndex,
+    )
+    .slice(0, limit)
+    .map(({ candidate }) => candidate);
+}
+
+function mentionMatch(value: string, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  const haystack = value.toLocaleLowerCase();
+  if (haystack.includes(needle)) return true;
+  let queryIndex = 0;
+  for (const character of haystack) {
+    if (character === needle[queryIndex]) queryIndex += 1;
+    if (queryIndex === needle.length) return true;
+  }
+  return false;
+}
+
+function mentionRank(value: string, query: string): number {
+  if (!query) return 0;
+  const normalized = value.toLocaleLowerCase();
+  if (normalized === query) return 4;
+  if (normalized.startsWith(query)) return 3;
+  if (normalized.includes(query)) return 2;
+  return mentionMatch(normalized, query) ? 1 : 0;
 }
 
 /**
@@ -99,6 +154,10 @@ export function formatMentionToken(path: string): string {
   const needsQuotes = /[\s"]/.test(path);
   if (!needsQuotes) return `@${path} `;
   return `@"${path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" `;
+}
+
+export function formatMentionCandidate(candidate: MentionCandidate): string {
+  return candidate.kind === "note" ? `[[${candidate.name}]] ` : formatMentionToken(candidate.path);
 }
 
 /** Wrap-around movement, so a menu of one still answers both arrow keys. */

@@ -22,6 +22,10 @@ export type ComposerPromptSegment =
       name: string;
     }
   | {
+      type: "note";
+      name: string;
+    }
+  | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
     };
@@ -124,13 +128,16 @@ function forEachMentionMatch(
   });
 }
 
-function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegment[] {
+function splitPromptTextIntoComposerSegments(
+  text: string,
+  options: { readonly includeNotes?: boolean },
+): ComposerPromptSegment[] {
   const segments: ComposerPromptSegment[] = [];
   if (!text) {
     return segments;
   }
 
-  const tokenMatches = collectComposerInlineTokens(text);
+  const tokenMatches = collectComposerInlineTokens(text, options);
   let cursor = 0;
   for (const match of tokenMatches) {
     if (match.start < cursor) {
@@ -147,8 +154,10 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
         path: match.value,
         source: match.source,
       });
-    } else {
+    } else if (match.type === "skill") {
       segments.push({ type: "skill", name: match.value });
+    } else {
+      segments.push({ type: "note", name: match.value });
     }
 
     cursor = match.end;
@@ -198,6 +207,7 @@ export function selectionTouchesMentionBoundary(
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
+  options: { readonly includeNotes?: boolean } = {},
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
@@ -207,7 +217,7 @@ export function splitPromptIntoComposerSegments(
   let terminalContextIndex = 0;
   forEachPromptSegmentSlice(prompt, (slice) => {
     if (slice.type === "text") {
-      segments.push(...splitPromptTextIntoComposerSegments(slice.text));
+      segments.push(...splitPromptTextIntoComposerSegments(slice.text, options));
       return false;
     }
 

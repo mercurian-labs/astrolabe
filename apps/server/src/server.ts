@@ -36,6 +36,8 @@ import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionS
 import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/CodingSessionRecordReactor.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
+import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
@@ -298,9 +300,15 @@ const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   // refusal on human writes) and the assistant runtime (which opens and
   // closes turns) — merged so both resolve the same instance.
   Layer.provideMerge(PlanTurnRegistry.layer),
-  // The registry probes git for facts it refuses to store, so it is the one
-  // Mercurian service that needs a process runner.
+  // Repository facts and memory discovery both probe git rather than storing
+  // derived state, so they share the process-runner boundary.
   Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(ProcessRunner.layer))),
+  Layer.provideMerge(
+    MemoryIndex.layer.pipe(
+      Layer.provideMerge(MemorySourceStore.layer),
+      Layer.provide(ProcessRunner.layer),
+    ),
+  ),
   Layer.provideMerge(
     MockPlanningModelSeed.layer.pipe(Layer.provideMerge(WorkspaceSettingsStore.layer)),
   ),

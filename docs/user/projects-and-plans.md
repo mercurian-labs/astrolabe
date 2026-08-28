@@ -14,7 +14,8 @@ Connecting repositories at creation is optional — the set is a default, not a 
 a label on anything. The dialog lists the repositories this workspace already knows; **Manage
 Repos** takes you to the [Repositories](./repositories.md) page to add or remove them, and a
 workspace with no repositories yet offers just that button. For an existing project, the same
-choices live behind the project filter's **repositories** icon.
+choices live behind the project filter's **repositories** icon. That dialog also designates the
+project's [memory](./project-memory.md), which may live in any registered repository or folder.
 
 A project row expands and collapses with a click, and the tree remembers which projects you left
 expanded. A project with many plans shows its most recent ones and a **Show more** row for the
@@ -82,6 +83,9 @@ in the project's set, saying which one each came from when there is more than on
 turns it into a chip that travels with the message. A project with no repositories has nothing to
 offer, so the menu stays closed — see [Repositories](./repositories.md) for setting the project's
 set.
+
+Planning can also mention [memory notes](./project-memory.md#mention-notes-in-a-plan). Type **[[**
+for a notes-only menu, or keep using **@** to search notes alongside files.
 
 ### Commands and skills
 

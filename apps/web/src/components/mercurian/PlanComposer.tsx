@@ -6,7 +6,14 @@ import {
   type ServerProviderSlashCommand,
   type UploadChatAttachment,
 } from "@t3tools/contracts";
-import { CircleAlertIcon, FileIcon, HammerIcon, ImageIcon, XIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  CircleAlertIcon,
+  FileIcon,
+  HammerIcon,
+  ImageIcon,
+  XIcon,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -18,11 +25,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import {
-  collapseExpandedComposerCursor,
-  detectComposerTrigger,
-  replaceTextRange,
-} from "../../composer-logic";
+import { collapseExpandedComposerCursor, replaceTextRange } from "../../composer-logic";
 import { compressImageForStash } from "../../lib/imageCompression";
 import type { TerminalContextDraft } from "../../lib/terminalContext";
 import { cn } from "../../lib/utils";
@@ -37,6 +40,7 @@ import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   isPlanComposerSelectableMenuItem,
+  detectPlanComposerTrigger,
   planComposerMenuItems,
   resolveComposerControl,
   resolvePlanComposerMenuKey,
@@ -45,7 +49,7 @@ import {
   type PlanComposerSelectableMenuItem,
 } from "./PlanComposer.logic";
 import {
-  formatMentionToken,
+  formatMentionCandidate,
   moveMentionHighlight,
   type MentionCandidate,
 } from "./planMentions.logic";
@@ -234,7 +238,10 @@ export function PlanComposer({
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
   /** The `@…` under the caret, or `null` when there is none. */
-  readonly onMentionQueryChange?: (query: string | null) => void;
+  readonly onMentionQueryChange?: (
+    query: string | null,
+    options?: { readonly notesOnly?: boolean },
+  ) => void;
   /** `true` when the message landed — the surface clears the draft, not this. */
   readonly onSend: (submission: PlanComposerSubmission) => Promise<boolean>;
   /** Stop the streaming reply. Only rendered while `turnActive`. */
@@ -242,7 +249,9 @@ export function PlanComposer({
   readonly onImplement?: (() => void) | undefined;
 }) {
   const [state, setState] = useState<PlanComposerState>("idle");
-  const [cursor, setCursor] = useState(() => collapseExpandedComposerCursor(text, text.length));
+  const [cursor, setCursor] = useState(() =>
+    collapseExpandedComposerCursor(text, text.length, { includeNotes: true }),
+  );
   const [expandedCursor, setExpandedCursor] = useState(() => text.length);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [commandHighlightedItemId, setCommandHighlightedItemId] = useState<string | null>(null);
@@ -268,7 +277,7 @@ export function PlanComposer({
   // The trigger is read from the prompt as written, not from the collapsed
   // view the editor renders: a mention's own grammar lives in the raw text.
   const detectedTrigger = useMemo(
-    () => detectComposerTrigger(text, expandedCursor),
+    () => detectPlanComposerTrigger(text, expandedCursor),
     [expandedCursor, text],
   );
   const { mentionTrigger, commandTrigger } = useMemo(() => {
@@ -322,14 +331,24 @@ export function PlanComposer({
   }, [activeCommandMenuItemId, commandMenuOpen, commandMenuSearchKey]);
 
   useEffect(() => {
-    onMentionQueryChange?.(mentionTrigger?.query ?? null);
-  }, [mentionTrigger?.query, onMentionQueryChange]);
+    onMentionQueryChange?.(mentionTrigger?.query ?? null, {
+      notesOnly: mentionTrigger?.kind === "note",
+    });
+  }, [mentionTrigger?.kind, mentionTrigger?.query, onMentionQueryChange]);
 
   useEffect(() => {
     setHighlightedIndex(0);
   }, [mentionTrigger?.query]);
 
-  const isMentionMenuOpen = mentionTrigger !== null && mentionCandidates.length > 0 && !isSending;
+  const visibleMentionCandidates = useMemo(
+    () =>
+      mentionTrigger?.kind === "note"
+        ? mentionCandidates.filter((candidate) => candidate.kind === "note")
+        : mentionCandidates,
+    [mentionCandidates, mentionTrigger?.kind],
+  );
+  const isMentionMenuOpen =
+    mentionTrigger !== null && visibleMentionCandidates.length > 0 && !isSending;
 
   const replaceTrigger = useCallback(
     (trigger: NonNullable<typeof detectedTrigger>, replacement: string) => {
@@ -340,7 +359,9 @@ export function PlanComposer({
       const next = replaceTextRange(text, trigger.rangeStart, rangeEnd, replacement);
       onChangeText(next.text);
       setExpandedCursor(next.cursor);
-      const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+      const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor, {
+        includeNotes: true,
+      });
       setCursor(nextCursor);
       window.requestAnimationFrame(() => editorRef.current?.focusAt(nextCursor));
     },
@@ -366,14 +387,14 @@ export function PlanComposer({
         text,
         mentionTrigger.rangeStart,
         mentionTrigger.rangeEnd,
-        formatMentionToken(candidate.path),
+        formatMentionCandidate(candidate),
       );
       onChangeText(next.text);
       // The caret belongs after the token it just wrote, and moving it is the
       // controlled `cursor` prop's job. Focusing the editor here instead would
       // read back its pre-update content and undo the insertion.
       setExpandedCursor(next.cursor);
-      setCursor(collapseExpandedComposerCursor(next.text, next.cursor));
+      setCursor(collapseExpandedComposerCursor(next.text, next.cursor, { includeNotes: true }));
     },
     [mentionTrigger, onChangeText, text],
   );
@@ -457,7 +478,7 @@ export function PlanComposer({
             {notice === null ? null : <ComposerNotice tone="refusal" text={notice} />}
             {isMentionMenuOpen ? (
               <MentionMenu
-                candidates={mentionCandidates}
+                candidates={visibleMentionCandidates}
                 highlightedIndex={highlightedIndex}
                 onSelect={insertMention}
               />
@@ -495,6 +516,7 @@ export function PlanComposer({
                 disabled={isSending}
                 editorRef={editorRef}
                 placeholder={placeholder}
+                includeNotes
                 skills={skills}
                 terminalContexts={NO_TERMINAL_CONTEXTS}
                 value={text}
@@ -527,14 +549,14 @@ export function PlanComposer({
                       setHighlightedIndex((index) =>
                         moveMentionHighlight(
                           index,
-                          mentionCandidates.length,
+                          visibleMentionCandidates.length,
                           key === "ArrowDown" ? "down" : "up",
                         ),
                       );
                       return true;
                     }
                     if (key === "Enter" || key === "Tab") {
-                      const candidate = mentionCandidates[highlightedIndex];
+                      const candidate = visibleMentionCandidates[highlightedIndex];
                       if (candidate !== undefined) {
                         insertMention(candidate);
                         return true;
@@ -673,7 +695,11 @@ function MentionMenu({
               onSelect(candidate);
             }}
           >
-            <FileIcon className="size-3.5 shrink-0 opacity-70" />
+            {candidate.kind === "note" ? (
+              <BookOpenIcon className="size-3.5 shrink-0 opacity-70" />
+            ) : (
+              <FileIcon className="size-3.5 shrink-0 opacity-70" />
+            )}
             <span className="min-w-0 flex-1 truncate">{candidate.label}</span>
             {candidate.repositoryName === null ? null : (
               <span className="shrink-0 text-[11px] text-muted-foreground/70">

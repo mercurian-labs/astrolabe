@@ -38,11 +38,13 @@ import {
   ORCHESTRATION_WS_METHODS,
   MERCURIAN_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianCommitId,
   MercurianPlanningError,
   MercurianRepositoryError,
+  MercurianMemoryError,
   MercurianTrackerError,
   MercurianWorkspaceError,
   isConfirmSplitsBlockedError,
@@ -50,6 +52,10 @@ import {
   isImplementBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
+  isMemoryNotDesignatedError,
+  isMemorySourceInvalidError,
+  isProductMapAlreadyExistsError,
+  isProductMapCycleError,
   isPlanDeleteBlockedError,
   isRepositoryAlreadyRegisteredError,
   isRepositoryHasLiveWorktreesError,
@@ -136,6 +142,9 @@ import {
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
+import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import { toWireMemorySourcesSnapshot } from "./mercurian/memory/wire.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
@@ -553,6 +562,8 @@ const makeWsRpcLayer = (
       const codingSessionService = yield* CodingSessionService.CodingSessionService;
       const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
+      const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
+      const memoryIndex = yield* MemoryIndex.MemoryIndex;
       const trackerStore = yield* TrackerStore.TrackerStore;
       const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const analytics = yield* AnalyticsService.AnalyticsService;
@@ -1379,6 +1390,16 @@ const makeWsRpcLayer = (
         ),
         Effect.mapError(
           (cause) => new MercurianRepositoryError({ operation: "subscribeRepositories", cause }),
+        ),
+      );
+
+      const loadMemorySourcesSnapshot = memorySourceStore.getSnapshot.pipe(
+        Effect.map(toWireMemorySourcesSnapshot),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian memory sources snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianMemoryError({ operation: "subscribeMemorySources", cause }),
         ),
       );
 
@@ -2625,6 +2646,106 @@ const makeWsRpcLayer = (
                   : new MercurianRepositoryError({ operation: "setProjectRepositories", cause }),
               ),
             ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources,
+            Effect.gen(function* () {
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                Stream.merge(memorySourceStore.changes, repositoryStore.changes).pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadMemorySourcesSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadMemorySourcesSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.designateMemorySource]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.designateMemorySource,
+            DateTime.now.pipe(
+              Effect.flatMap((now) =>
+                memorySourceStore.designate({
+                  projectId: input.projectId,
+                  repositoryId: input.repositoryId,
+                  ...(input.subpath === undefined ? {} : { subpath: input.subpath }),
+                  now,
+                }),
+              ),
+              Effect.mapError((cause) =>
+                isMemorySourceInvalidError(cause)
+                  ? cause
+                  : new MercurianMemoryError({ operation: "designateMemorySource", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.removeMemorySource]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.removeMemorySource,
+            memorySourceStore
+              .remove(input.projectId)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new MercurianMemoryError({ operation: "removeMemorySource", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex,
+            memoryIndex
+              .readIndex(input.projectId)
+              .pipe(
+                Effect.mapError((cause) =>
+                  isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                    ? cause
+                    : new MercurianMemoryError({ operation: "readMemoryIndex", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryNote]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryNote,
+            memoryIndex
+              .readNote(input.projectId, input.name)
+              .pipe(
+                Effect.mapError((cause) =>
+                  isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                    ? cause
+                    : new MercurianMemoryError({ operation: "readMemoryNote", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.generateProductMap,
+            memoryIndex
+              .generateProductMap(input.projectId)
+              .pipe(
+                Effect.mapError((cause) =>
+                  isMemoryNotDesignatedError(cause) ||
+                  isMemorySourceInvalidError(cause) ||
+                  isProductMapAlreadyExistsError(cause) ||
+                  isProductMapCycleError(cause)
+                    ? cause
+                    : new MercurianMemoryError({ operation: "generateProductMap", cause }),
+                ),
+              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings]: (_input) =>

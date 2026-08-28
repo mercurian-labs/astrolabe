@@ -12,14 +12,24 @@ export type ComposerInlineToken =
       readonly source: string;
       readonly start: number;
       readonly end: number;
+    }
+  | {
+      readonly type: "note";
+      readonly value: string;
+      readonly source: string;
+      readonly start: number;
+      readonly end: number;
     };
 
 export interface CollectComposerInlineTokensOptions {
   readonly preserveTrailingFrom?: ReadonlyArray<ComposerInlineToken>;
+  /** Planning opts in; ordinary thread composers keep `[[...]]` as plain text. */
+  readonly includeNotes?: boolean;
 }
 
 const SKILL_TOKEN_REGEX = /(^|\s)\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s)/g;
 const MENTION_TOKEN_REGEX = /(^|\s)@(?:"((?:\\.|[^"\\])*)"|([^\s@"]+))(?=\s)/g;
+export const NOTE_TOKEN_REGEX = /\[\[([^\[\]\n|]+?)(?:\|([^\[\]\n|]+?))?\]\]/g;
 /**
  * The label body is bounded rather than `*`. Unbounded, every whitespace in
  * the composer is a candidate start: the engine scans the rest of the text for
@@ -99,6 +109,17 @@ export function collectComposerInlineTokens(
   options: CollectComposerInlineTokensOptions = {},
 ): ReadonlyArray<ComposerInlineToken> {
   const matches = collectMentionTokens(text);
+
+  if (options.includeNotes === true) {
+    for (const match of text.matchAll(NOTE_TOKEN_REGEX)) {
+      const value = (match[1] ?? "").trim();
+      const alias = match[2]?.trim();
+      if (!value || (match[2] !== undefined && !alias)) continue;
+      const start = match.index ?? 0;
+      const source = match[0];
+      matches.push({ type: "note", value, source, start, end: start + source.length });
+    }
+  }
 
   for (const match of text.matchAll(SKILL_TOKEN_REGEX)) {
     const fullMatch = match[0];

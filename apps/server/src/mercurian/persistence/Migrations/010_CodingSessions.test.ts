@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
-import { migrationEntries, runMigrations } from "../Migrations.ts";
+import { runMigrations } from "../Migrations.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
@@ -12,7 +12,6 @@ layer("010_CodingSessions", (it) => {
   it.effect("adds the keyed session table without changing commit kinds", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 10);
       yield* runMigrations();
 
       const columns = yield* sql<{

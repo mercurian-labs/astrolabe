@@ -36,6 +36,35 @@ describe("collectComposerInlineTokens", () => {
     expect(collectComposerInlineTokens("Inspect @AGENTS.md")).toEqual([]);
   });
 
+  it("collects note links only when opted in", () => {
+    const text = "Ground in [[Composer]] and [[Plans|the plan model]] first";
+    expect(collectComposerInlineTokens(text)).toEqual([]);
+    expect(collectComposerInlineTokens(text, { includeNotes: true })).toEqual([
+      {
+        type: "note",
+        value: "Composer",
+        source: "[[Composer]]",
+        start: 10,
+        end: 22,
+      },
+      {
+        type: "note",
+        value: "Plans",
+        source: "[[Plans|the plan model]]",
+        start: 27,
+        end: 51,
+      },
+    ]);
+  });
+
+  it("rejects nested, empty, and bracketed note names", () => {
+    expect(
+      collectComposerInlineTokens("[[Good]] [[Bad[Name]]] [[]] [[Name|]] [[Name|a|b]]", {
+        includeNotes: true,
+      }),
+    ).toEqual([{ type: "note", value: "Good", source: "[[Good]]", start: 0, end: 8 }]);
+  });
+
   it("keeps the delimiter after a token outside its source range", () => {
     const text = "Inspect [package.json](package.json) next";
 

@@ -7,6 +7,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { type ServerProviderSkill } from "@t3tools/contracts";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
+import { BookOpenIcon } from "lucide-react";
 import {
   $applyNodeReplacement,
   $createRangeSelectionFromDom,
@@ -117,6 +118,11 @@ type SerializedComposerSkillNode = Spread<
     type: "composer-skill";
     version: 1;
   },
+  SerializedLexicalNode
+>;
+
+type SerializedComposerNoteNode = Spread<
+  { name: string; type: "composer-note"; version: 1 },
   SerializedLexicalNode
 >;
 
@@ -361,6 +367,71 @@ function $createComposerSkillNode(
   return $applyNodeReplacement(new ComposerSkillNode(skillName, skillLabel, skillDescription));
 }
 
+function ComposerNoteDecorator({ name }: { readonly name: string }) {
+  return (
+    <span
+      className={COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME}
+      contentEditable={false}
+      spellCheck={false}
+      data-composer-note-chip="true"
+    >
+      <BookOpenIcon aria-hidden className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME} />
+      <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{name}</span>
+    </span>
+  );
+}
+
+class ComposerNoteNode extends DecoratorNode<React.ReactElement> {
+  __name: string;
+
+  static override getType(): string {
+    return "composer-note";
+  }
+
+  static override clone(node: ComposerNoteNode): ComposerNoteNode {
+    return new ComposerNoteNode(node.__name, node.__key);
+  }
+
+  static override importJSON(node: SerializedComposerNoteNode): ComposerNoteNode {
+    return $createComposerNoteNode(node.name).updateFromJSON(node);
+  }
+
+  constructor(name: string, key?: NodeKey) {
+    super(key);
+    this.__name = name;
+  }
+
+  override exportJSON(): SerializedComposerNoteNode {
+    return { ...super.exportJSON(), name: this.__name, type: "composer-note", version: 1 };
+  }
+
+  override createDOM(): HTMLElement {
+    const dom = document.createElement("span");
+    dom.className = COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME;
+    return dom;
+  }
+
+  override updateDOM(): false {
+    return false;
+  }
+
+  override getTextContent(): string {
+    return `[[${this.__name}]]`;
+  }
+
+  override isInline(): true {
+    return true;
+  }
+
+  override decorate(): React.ReactElement {
+    return <ComposerNoteDecorator name={this.__name} />;
+  }
+}
+
+function $createComposerNoteNode(name: string): ComposerNoteNode {
+  return $applyNodeReplacement(new ComposerNoteNode(name));
+}
+
 function ComposerTerminalContextDecorator(props: { context: TerminalContextDraft }) {
   return <ComposerPendingTerminalContextChip context={props.context} />;
 }
@@ -428,12 +499,14 @@ function $createComposerTerminalContextNode(
 type ComposerInlineTokenNode =
   | ComposerMentionNode
   | ComposerSkillNode
+  | ComposerNoteNode
   | ComposerTerminalContextNode;
 
 function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInlineTokenNode {
   return (
     candidate instanceof ComposerMentionNode ||
     candidate instanceof ComposerSkillNode ||
+    candidate instanceof ComposerNoteNode ||
     candidate instanceof ComposerTerminalContextNode
   );
 }
@@ -822,13 +895,14 @@ function $setComposerEditorPrompt(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
+  includeNotes = false,
 ): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
 
-  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts);
+  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts, { includeNotes });
   for (const segment of segments) {
     if (segment.type === "mention") {
       paragraph.append($createComposerMentionNode(segment.path));
@@ -843,6 +917,10 @@ function $setComposerEditorPrompt(
           metadata?.description ?? null,
         ),
       );
+      continue;
+    }
+    if (segment.type === "note") {
+      paragraph.append($createComposerNoteNode(segment.name));
       continue;
     }
     if (segment.type === "terminal-context") {
@@ -882,6 +960,7 @@ interface ComposerPromptEditorProps {
   cursor: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
+  includeNotes?: boolean;
   disabled: boolean;
   placeholder: string;
   ariaLabel?: string;
@@ -1264,6 +1343,7 @@ function ComposerInlineTokenPastePlugin() {
 function ComposerSurroundSelectionPlugin(props: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
+  includeNotes: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
   const terminalContextsRef = useRef(props.terminalContexts);
@@ -1331,10 +1411,16 @@ function ComposerSurroundSelectionPlugin(props: {
         selectionSnapshot.expandedEnd,
       );
       const nextValue = `${selectionSnapshot.value.slice(0, selectionSnapshot.expandedStart)}${inputData}${selectedText}${surroundCloseSymbol}${selectionSnapshot.value.slice(selectionSnapshot.expandedEnd)}`;
-      $setComposerEditorPrompt(nextValue, terminalContextsRef.current, skillMetadataRef.current);
+      $setComposerEditorPrompt(
+        nextValue,
+        terminalContextsRef.current,
+        skillMetadataRef.current,
+        props.includeNotes,
+      );
       const selectionStart = collapseExpandedComposerCursor(
         nextValue,
         selectionSnapshot.expandedStart,
+        { includeNotes: props.includeNotes },
       );
       $setSelectionRangeAtComposerOffsets(
         selectionStart + inputData.length,
@@ -1465,6 +1551,7 @@ function ComposerSurroundSelectionPlugin(props: {
             const replacementStart = collapseExpandedComposerCursor(
               currentValue,
               pendingDeadKeySelection.expandedStart,
+              { includeNotes: props.includeNotes },
             );
             $setSelectionRangeAtComposerOffsets(replacementStart, replacementStart + 1);
             const replacementSelection = $getSelection();
@@ -1532,6 +1619,7 @@ function ComposerPromptEditorInner({
   cursor,
   terminalContexts,
   skills,
+  includeNotes = false,
   disabled,
   placeholder,
   ariaLabel,
@@ -1544,7 +1632,7 @@ function ComposerPromptEditorInner({
 }: ComposerPromptEditorProps) {
   const [editor] = useLexicalComposerContext();
   const onChangeRef = useRef(onChange);
-  const initialCursor = clampCollapsedComposerCursor(value, cursor);
+  const initialCursor = clampCollapsedComposerCursor(value, cursor, { includeNotes });
   const terminalContextsSignature = terminalContextSignature(terminalContexts);
   const terminalContextsSignatureRef = useRef(terminalContextsSignature);
   const skillsSignature = skillSignature(skills);
@@ -1553,7 +1641,7 @@ function ComposerPromptEditorInner({
   const snapshotRef = useRef({
     value,
     cursor: initialCursor,
-    expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
+    expandedCursor: expandCollapsedComposerCursor(value, initialCursor, { includeNotes }),
     terminalContextIds: terminalContexts.map((context) => context.id),
   });
   const isApplyingControlledUpdateRef = useRef(false);
@@ -1575,7 +1663,7 @@ function ComposerPromptEditorInner({
   }, [disabled, editor]);
 
   useLayoutEffect(() => {
-    const normalizedCursor = clampCollapsedComposerCursor(value, cursor);
+    const normalizedCursor = clampCollapsedComposerCursor(value, cursor, { includeNotes });
     const previousSnapshot = snapshotRef.current;
     const contextsChanged = terminalContextsSignatureRef.current !== terminalContextsSignature;
     const skillsChanged = skillsSignatureRef.current !== skillsSignature;
@@ -1591,7 +1679,7 @@ function ComposerPromptEditorInner({
     snapshotRef.current = {
       value,
       cursor: normalizedCursor,
-      expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor),
+      expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor, { includeNotes }),
       terminalContextIds: terminalContexts.map((context) => context.id),
     };
     terminalContextsSignatureRef.current = terminalContextsSignature;
@@ -1608,7 +1696,7 @@ function ComposerPromptEditorInner({
       const shouldRewriteEditorState =
         previousSnapshot.value !== value || contextsChanged || skillsChanged;
       if (shouldRewriteEditorState) {
-        $setComposerEditorPrompt(value, terminalContexts, skillMetadataRef.current);
+        $setComposerEditorPrompt(value, terminalContexts, skillMetadataRef.current, includeNotes);
       }
       if (shouldRewriteEditorState || isFocused) {
         $setSelectionAtComposerOffset(normalizedCursor);
@@ -1623,7 +1711,9 @@ function ComposerPromptEditorInner({
     (nextCursor: number) => {
       const rootElement = editor.getRootElement();
       if (!rootElement) return;
-      const boundedCursor = clampCollapsedComposerCursor(snapshotRef.current.value, nextCursor);
+      const boundedCursor = clampCollapsedComposerCursor(snapshotRef.current.value, nextCursor, {
+        includeNotes,
+      });
       rootElement.focus({ preventScroll: true });
       editor.update(() => {
         $setSelectionAtComposerOffset(boundedCursor);
@@ -1631,7 +1721,9 @@ function ComposerPromptEditorInner({
       snapshotRef.current = {
         value: snapshotRef.current.value,
         cursor: boundedCursor,
-        expandedCursor: expandCollapsedComposerCursor(snapshotRef.current.value, boundedCursor),
+        expandedCursor: expandCollapsedComposerCursor(snapshotRef.current.value, boundedCursor, {
+          includeNotes,
+        }),
         terminalContextIds: snapshotRef.current.terminalContextIds,
       };
       onChangeRef.current(
@@ -1654,10 +1746,13 @@ function ComposerPromptEditorInner({
     let snapshot = snapshotRef.current;
     editor.getEditorState().read(() => {
       const nextValue = $getRoot().getTextContent();
-      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
+      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor, {
+        includeNotes,
+      });
       const nextCursor = clampCollapsedComposerCursor(
         nextValue,
         $readSelectionOffsetFromEditorState(fallbackCursor),
+        { includeNotes },
       );
       const fallbackExpandedCursor = clampExpandedCursor(
         nextValue,
@@ -1691,6 +1786,7 @@ function ComposerPromptEditorInner({
           collapseExpandedComposerCursor(
             snapshotRef.current.value,
             snapshotRef.current.value.length,
+            { includeNotes },
           ),
         );
       },
@@ -1702,10 +1798,13 @@ function ComposerPromptEditorInner({
   const handleEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
       const nextValue = $getRoot().getTextContent();
-      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
+      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor, {
+        includeNotes,
+      });
       const nextCursor = clampCollapsedComposerCursor(
         nextValue,
         $readSelectionOffsetFromEditorState(fallbackCursor),
+        { includeNotes },
       );
       const fallbackExpandedCursor = clampExpandedCursor(
         nextValue,
@@ -1736,8 +1835,8 @@ function ComposerPromptEditorInner({
         terminalContextIds,
       };
       const cursorAdjacentToMention =
-        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left") ||
-        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "right");
+        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left", { includeNotes }) ||
+        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "right", { includeNotes });
       onChangeRef.current(
         nextValue,
         nextCursor,
@@ -1777,7 +1876,11 @@ function ComposerPromptEditorInner({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-        <ComposerSurroundSelectionPlugin terminalContexts={terminalContexts} skills={skills} />
+        <ComposerSurroundSelectionPlugin
+          terminalContexts={terminalContexts}
+          skills={skills}
+          includeNotes={includeNotes}
+        />
         <ComposerHomeEndKeyPlugin />
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
@@ -1795,6 +1898,7 @@ export function ComposerPromptEditor({
   cursor,
   terminalContexts,
   skills,
+  includeNotes = false,
   disabled,
   placeholder,
   ariaLabel,
@@ -1808,16 +1912,23 @@ export function ComposerPromptEditor({
   const initialValueRef = useRef(value);
   const initialTerminalContextsRef = useRef(terminalContexts);
   const initialSkillMetadataRef = useRef(skillMetadataByName(skills));
+  const initialIncludeNotesRef = useRef(includeNotes);
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
       namespace: "t3tools-composer-editor",
       editable: true,
-      nodes: [ComposerMentionNode, ComposerSkillNode, ComposerTerminalContextNode],
+      nodes: [
+        ComposerMentionNode,
+        ComposerSkillNode,
+        ComposerNoteNode,
+        ComposerTerminalContextNode,
+      ],
       editorState: () => {
         $setComposerEditorPrompt(
           initialValueRef.current,
           initialTerminalContextsRef.current,
           initialSkillMetadataRef.current,
+          initialIncludeNotesRef.current,
         );
       },
       onError: (error) => {
@@ -1834,6 +1945,7 @@ export function ComposerPromptEditor({
         cursor={cursor}
         terminalContexts={terminalContexts}
         skills={skills}
+        includeNotes={includeNotes}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}
