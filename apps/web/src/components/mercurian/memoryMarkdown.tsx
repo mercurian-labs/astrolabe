@@ -85,7 +85,7 @@ const MemoryMarkdownAnchor: NonNullable<Components["a"]> = ({
       type="button"
       className={cn(
         "inline cursor-pointer underline",
-        !exists && "text-destructive/75 decoration-dashed underline-offset-2",
+        !exists && "text-destructive-foreground decoration-dashed underline-offset-2",
       )}
       aria-label={exists ? undefined : `${name}, not yet written`}
       onClick={() => context.onOpenNote(name)}

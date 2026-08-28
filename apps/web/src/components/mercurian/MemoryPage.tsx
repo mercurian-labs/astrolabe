@@ -355,7 +355,7 @@ function NoteDetail({
           onOpenNote={onOpenNote}
         />
       ) : (
-        <p className="mt-3 font-medium text-destructive/80">Not yet written</p>
+        <p className="mt-3 font-medium text-destructive-foreground">Not yet written</p>
       )}
       {note.backlinks.length === 0 ? null : (
         <footer className="mt-8 border-t border-border pt-3 text-xs text-muted-foreground">

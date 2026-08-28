@@ -60,7 +60,7 @@ export function MemoryNoteReader({
         ) : (
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">{note.name}</h3>
-            <p className="text-sm font-medium text-destructive/80">Not yet written</p>
+            <p className="text-sm font-medium text-destructive-foreground">Not yet written</p>
             <p className="text-sm text-muted-foreground">
               This note is referenced by the memory, but no note file exists yet.
             </p>
