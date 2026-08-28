@@ -303,3 +303,46 @@ palette, radius language, and type stay ours:
 - Walk: window interior live (graph pans/hovers, composer types, Send inert); no autoplay
   anywhere; poster absent from page background, present as wallpaper; 375-width via the
   fixed-width-iframe instrument (headless narrow windows lie — see memory).
+
+## Amendment 7 — topbar, warm-light ground, real shell, click-to-engage (2026-08-28)
+
+Vault ruling (Marketing Site, commit bfae9e2) + Venkat's four calls on v7: (1) a Cursor-rhythm
+topbar; (2) the window shows as much of the REAL app shell as mounts honestly; (3) the site wears
+a fixed warm off-white ground `#F7F7F3`, light appearance always; (4) the live window takes
+scroll only after a click.
+
+- **Topbar (static):** a slim bar at the container's top — wordmark left (Fraunces h1, sized down
+  from the current block to bar scale), and right: the page's ONLY outward link, a quiet
+  `GitHub` link to `https://github.com/mercurian-labs/astrolabe` (repo verified public;
+  `rel="noopener"`, muted text style, optional small mark). Then Cursor-scale air (~8–10rem)
+  before the headline block. This replaces the current stacked-wordmark opening.
+- **Warm-light ground:** the landing pins the LIGHT token set permanently and paints the page
+  `#F7F7F3`. Find the mechanism the shared `index.css` uses to pick dark (media query or class)
+  and pin light landing-side (e.g. `color-scheme: light` + whatever class/data attribute the
+  tokens key on, set on the landing `<html>`/`<body>` via `Base.astro`) — NOTHING under
+  `apps/web/` changes. Page-level backgrounds use `#F7F7F3`; the window interior keeps product
+  tokens (now resolving light). Verify text/panel contrast on `#F7F7F3` — tokens paint panels
+  near-white, which reads correctly against the warm ground (Cursor does exactly this).
+- **Real shell — the sidebar mount attempt:** `PlanListSidebar` (default export, zero props,
+  `apps/web/src/components/mercurian/PlanListSidebar.tsx`) self-wires: TanStack Router
+  (`Link`/`useNavigate`/`useLocation`), `useAtomValue(primaryServerKeybindingsAtom)`, and a
+  plan-tree data source found lower in its imports (investigate). The approach is a
+  **real-context harness** in the island: a memory-history TanStack router with a stub route tree
+  mounted around the window interior, an `@effect/atom-react` registry (keybindings atom must
+  resolve to its default without a server), and the plan-tree source seeded with fixture rows
+  (this page's plan among a few others, statuses from the real vocabulary). HARD RULE — no
+  lookalikes: if any dependency bottoms out in the live server connection and cannot be satisfied
+  by registry/props seeding, the sidebar STAYS OUT of v1 and the report says exactly which
+  dependency blocked it. Never stub-render fragments of it by hand. If the sidebar mounts, window
+  layout becomes [sidebar | conversation+composer | graph], sidebar hidden below lg.
+- **Click-to-engage scroll gate:** the window interior starts disengaged — a transparent overlay
+  above it lets wheel/touch bubble to the page (the graph and panes receive nothing), with a
+  quiet affordance on hover (e.g. a faint "Click to explore" chip). A click engages: overlay
+  lifts, interior interactivity (graph zoom/pan, pane scrolling, composer) is direct. `Escape` or
+  a click/scroll-start outside the window disengages. No focus trap; keyboard users can Tab into
+  the window content regardless of the gate.
+
+Checks: existing four gates; built HTML still carries claims 1 and 3; page background is
+`#F7F7F3` and does not change under `prefers-color-scheme: dark`; wheel over the window scrolls
+the page before click and zooms the graph after; the sidebar (if mounted) renders the real
+component with fixture rows.
