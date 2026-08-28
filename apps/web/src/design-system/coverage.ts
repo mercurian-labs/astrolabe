@@ -93,6 +93,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Available planning models and provider resolution come from the primary environment's settings.",
   },
+  "src/components/mercurian/PlanReconstructionMeter.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Its value is measured from the active environment's plan history at the composer's current position.",
+  },
   "src/components/mercurian/PlanTraitsPicker.tsx": {
     category: "requires-live-workspace",
     reason:

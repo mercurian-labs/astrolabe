@@ -264,6 +264,15 @@ export function useGetPlanTextAt() {
   );
 }
 
+/** Exact prompt reconstruction sizes at an immutable plan position. */
+export function useMeasurePlanReconstruction() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.measurePlanReconstruction);
+  return useCallback(
+    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
+    [run],
+  );
+}
+
 export function useGetSpecAt() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.getSpecAt);
   return useCallback(

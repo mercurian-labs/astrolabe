@@ -9,6 +9,7 @@ import {
   type PlanSpecAt,
   type PlanTimelineItem,
   type PlanImplementReady,
+  type PlanReconstructionMeasure,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -55,6 +56,7 @@ import {
   useCreatePlan,
   useGetPlanTextAt,
   useGetSpecAt,
+  useMeasurePlanReconstruction,
   usePlanDetail,
   useStopPlanningTurn,
   useStartCodingSession,
@@ -97,6 +99,7 @@ import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
 import { PlanModelPicker } from "./PlanModelPicker";
+import { PlanReconstructionMeter } from "./PlanReconstructionMeter";
 import { PlanTraitsPicker } from "./PlanTraitsPicker";
 import { resolveImplementFrom } from "./PlanNodePopover.logic";
 import {
@@ -181,6 +184,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const getSpecAt = useGetSpecAt();
+  const measurePlanReconstruction = useMeasurePlanReconstruction();
   const visitPlan = useVisitPlan();
   const stopTurn = useStopPlanningTurn();
   const answerQuestion = useAnswerPlanningQuestion();
@@ -305,6 +309,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [position, setPosition] = useState<PlanPosition>(LATEST);
   const [pathText, setPathText] = useState<string | null>(null);
   const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
+  const [reconstructionMeasure, setReconstructionMeasure] =
+    useState<PlanReconstructionMeasure | null>(null);
   const setDraftText = usePlanComposerStore((state) => state.setDraftText);
   const addDraftAttachments = usePlanComposerStore((state) => state.addAttachments);
   const removeDraftAttachment = usePlanComposerStore((state) => state.removeAttachment);
@@ -432,6 +438,21 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const modelChoice = draft.modelChoice ?? standingChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
+
+  useEffect(() => {
+    if (actingHead === null) {
+      setReconstructionMeasure(null);
+      return;
+    }
+    let cancelled = false;
+    setReconstructionMeasure(null);
+    void measurePlanReconstruction(planId, actingHead).then((result) => {
+      if (!cancelled) setReconstructionMeasure(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [actingHead, measurePlanReconstruction, planId]);
   const providerStatus =
     effectiveModelResolution._tag === "resolved"
       ? planningModel.providers.find(
@@ -741,6 +762,15 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             }
             gateNotice={gateNotice}
             mentionCandidates={mentions.candidates}
+            meter={
+              <PlanReconstructionMeter
+                draftChars={draft.text.length}
+                measure={reconstructionMeasure}
+                providers={planningModel.providers}
+                resolution={effectiveModelResolution}
+                selection={modelChoice}
+              />
+            }
             modelPicker={
               <>
                 <PlanModelPicker

@@ -91,6 +91,7 @@ import {
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
   MercurianGetPlanTextAtInput,
+  MercurianMeasureReconstructionInput,
   MercurianGetSpecAtInput,
   MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
@@ -122,6 +123,7 @@ import {
   SpecRevisionOutdatedError,
   SpecRefreshUnavailableError,
   PlanTextAt,
+  PlanReconstructionMeasure,
   PlanTurnActiveError,
 } from "./mercurian.ts";
 import {
@@ -1340,6 +1342,15 @@ export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
+export const WsMercurianMeasurePlanReconstructionRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.measurePlanReconstruction,
+  {
+    payload: MercurianMeasureReconstructionInput,
+    success: PlanReconstructionMeasure,
+    error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsMercurianGetSpecAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getSpecAt, {
   payload: MercurianGetSpecAtInput,
   success: SpecAt,
@@ -1683,6 +1694,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
+  WsMercurianMeasurePlanReconstructionRpc,
   WsMercurianGetSpecAtRpc,
   WsMercurianStopPlanningTurnRpc,
   WsMercurianAnswerPlanningQuestionRpc,

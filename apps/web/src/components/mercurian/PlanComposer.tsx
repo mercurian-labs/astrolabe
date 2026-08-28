@@ -194,6 +194,7 @@ export function PlanComposer({
   notice = null,
   implementDisabledReason = null,
   modelPicker,
+  meter,
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
@@ -234,6 +235,8 @@ export function PlanComposer({
   readonly implementDisabledReason?: string | null;
   /** The branch-local model control, derived and owned by the surface. */
   readonly modelPicker?: ReactNode;
+  /** Informational status beside the send control, derived and owned by the surface. */
+  readonly meter?: ReactNode;
   readonly onChangeText: (text: string) => void;
   readonly onAddAttachments: (attachments: ReadonlyArray<PlanComposerAttachment>) => void;
   readonly onRemoveAttachment: (localId: string) => void;
@@ -619,20 +622,23 @@ export function PlanComposer({
                   )}
                 </Tooltip>
               </div>
-              <SendControl
-                // One control, two faces. Held while a send is in flight or a
-                // reply streams, which is what "no queueing" means here.
-                disabled={!control.enabled}
-                face={control.face}
-                isSending={isSending}
-                onPress={() => {
-                  if (control.face === "stop") {
-                    onStop?.();
-                    return;
-                  }
-                  void submit();
-                }}
-              />
+              <div className="flex shrink-0 items-center gap-1">
+                {meter}
+                <SendControl
+                  // One control, two faces. Held while a send is in flight or a
+                  // reply streams, which is what "no queueing" means here.
+                  disabled={!control.enabled}
+                  face={control.face}
+                  isSending={isSending}
+                  onPress={() => {
+                    if (control.face === "stop") {
+                      onStop?.();
+                      return;
+                    }
+                    void submit();
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>

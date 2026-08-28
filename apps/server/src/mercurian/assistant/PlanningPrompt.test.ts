@@ -5,8 +5,10 @@ import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 import {
   composeFirstTurnInput,
   appendMemoryMentionStanza,
+  measureTranscript,
   memoryMentionResolutionStanza,
   planningSystemAppendix,
+  TRANSCRIPT_FRAMING_MARGIN,
   transcriptPreamble,
   type TranscriptEntry,
 } from "./PlanningPrompt.ts";
@@ -120,6 +122,35 @@ describe("transcriptPreamble", () => {
     expect(preamble).toContain("elided for length");
     expect(preamble).toContain("last words");
     expect(preamble).not.toContain("x".repeat(400));
+  });
+
+  it("measures the exact keep-or-elide boundary", () => {
+    const boundaryEntries: ReadonlyArray<TranscriptEntry> = [
+      { kind: "message", author: "human", text: "first" },
+      { kind: "message", author: "assistant", text: "second" },
+    ];
+    const measured = measureTranscript({ entries: boundaryEntries, planText: "", spec: null });
+    const transcriptChars = measured.renderedEntryLengths.reduce((sum, length) => sum + length, 0);
+    const fixedChars =
+      measured.planSectionChars + measured.specSectionChars + TRANSCRIPT_FRAMING_MARGIN;
+    const reservedAtBoundary = PROVIDER_SEND_TURN_MAX_INPUT_CHARS - fixedChars - transcriptChars;
+
+    const fitsExactly = transcriptPreamble({
+      entries: boundaryEntries,
+      planText: "",
+      spec: null,
+      reservedChars: reservedAtBoundary,
+    });
+    const oneCharShort = transcriptPreamble({
+      entries: boundaryEntries,
+      planText: "",
+      spec: null,
+      reservedChars: reservedAtBoundary + 1,
+    });
+
+    expect(fitsExactly).not.toContain("elided for length");
+    expect(oneCharShort).toContain("Its first 1 entries are elided for length");
+    expect(TRANSCRIPT_FRAMING_MARGIN).toBe(2_000);
   });
 });
 

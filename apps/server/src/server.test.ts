@@ -1068,6 +1068,8 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mock(PlanningAssistant.PlanningAssistant)({
           startTurn: () => Effect.void,
+          measureReconstruction: () =>
+            Effect.succeed({ transcriptChars: 0, entryCount: 0, fixedReservedChars: 0 }),
           tryImplement: () => Effect.void,
           stopTurn: () => Effect.void,
           answerQuestion: () => Effect.void,
@@ -4667,6 +4669,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         layers: {
           planningAssistant: {
             startTurn: (input) => Queue.offer(turnStarts, input).pipe(Effect.asVoid),
+            measureReconstruction: () =>
+              Effect.succeed({ transcriptChars: 321, entryCount: 2, fixedReservedChars: 123 }),
           },
         },
       });
@@ -4720,6 +4724,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               planId: created.plan.planId,
               commitId: created.timeline[0]!.commitId,
             });
+            const reconstruction = yield* client[MERCURIAN_WS_METHODS.measurePlanReconstruction]({
+              planId: created.plan.planId,
+              commitId: created.timeline[0]!.commitId,
+            });
             const revisionEvent = items[3];
             const atRevision =
               revisionEvent?.kind === "commit"
@@ -4736,6 +4744,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               workspaceSettings,
               items,
               atRoot,
+              reconstruction,
               atRevision,
             };
           }),
@@ -4798,6 +4807,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       // Born blank at the root, and the revision's own text where it landed.
       assert.equal(result.atRoot.planText, "");
+      assert.deepEqual(result.reconstruction, {
+        transcriptChars: 321,
+        entryCount: 2,
+        fixedReservedChars: 123,
+      });
       assert.equal(result.atRevision?.planText, "# Approach\n\nStart from the tree.");
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );

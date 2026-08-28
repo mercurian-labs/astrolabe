@@ -180,6 +180,11 @@ export function createMercurianPlanningAtoms<R, E>(
       tag: MERCURIAN_WS_METHODS.getPlanTextAt,
       scheduler: writeScheduler,
     }),
+    measurePlanReconstruction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:measure-plan-reconstruction",
+      tag: MERCURIAN_WS_METHODS.measurePlanReconstruction,
+      scheduler: writeScheduler,
+    }),
     getSpecAt: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:get-spec-at",
       tag: MERCURIAN_WS_METHODS.getSpecAt,
