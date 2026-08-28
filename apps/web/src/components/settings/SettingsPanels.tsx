@@ -145,6 +145,8 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { useDesignLabProfileActions } from "../design-system/useDesignLabProfileActions";
+import { useDesignLabProfilesStore } from "../../designLabProfiles";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -974,6 +976,59 @@ function BackgroundActivityAdvancedDialog({
   );
 }
 
+function DesignLabSettingsSection() {
+  const profiles = useDesignLabProfilesStore((store) => store.profiles);
+  const activeProfileId = useDesignLabProfilesStore((store) => store.activeProfileId);
+  const actions = useDesignLabProfileActions();
+  const activeProfile = profiles.find(({ id }) => id === activeProfileId);
+  const shippedAppearanceValue = "__shipped__";
+
+  return (
+    <SettingsSection id="design-lab" title="Design Lab">
+      <SettingsRow
+        title="Design profile"
+        description="Apply a saved whole-app visual direction or return to the shipped appearance."
+        control={
+          <Select
+            value={activeProfileId ?? shippedAppearanceValue}
+            onValueChange={(value) => {
+              if (value === shippedAppearanceValue) {
+                actions.returnToShippedAppearance();
+                return;
+              }
+              const profile = profiles.find(({ id }) => id === value);
+              if (profile) actions.applyProfile(profile);
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-48" aria-label="Design profile">
+              <SelectValue>{activeProfile?.name ?? "Shipped appearance"}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <SelectItem hideIndicator value={shippedAppearanceValue}>
+                Shipped appearance
+              </SelectItem>
+              {profiles.map((profile) => (
+                <SelectItem hideIndicator key={profile.id} value={profile.id}>
+                  {profile.name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
+      <SettingsRow
+        title="Visual language workbench"
+        description="The dev-only workbench where Astrolabe's visual language is explored."
+        control={
+          <Button render={<Link to="/design-lab" />} size="xs" variant="outline">
+            Open Design Lab
+          </Button>
+        }
+      />
+    </SettingsSection>
+  );
+}
+
 export function AppearanceSettingsPanel() {
   const {
     appearanceMode,
@@ -1164,19 +1219,7 @@ export function AppearanceSettingsPanel() {
 
       <TypographySection />
 
-      {import.meta.env.DEV ? (
-        <SettingsSection id="design-lab" title="Design Lab">
-          <SettingsRow
-            title="Visual language workbench"
-            description="The dev-only workbench where Astrolabe's visual language is explored."
-            control={
-              <Button render={<Link to="/design-lab" />} size="xs" variant="outline">
-                Open Design Lab
-              </Button>
-            }
-          />
-        </SettingsSection>
-      ) : null}
+      {import.meta.env.DEV ? <DesignLabSettingsSection /> : null}
     </SettingsPageContainer>
   );
 }

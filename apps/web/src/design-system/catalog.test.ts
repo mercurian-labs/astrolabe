@@ -56,6 +56,15 @@ describe("design-system catalog registry", () => {
     expect(() => assertValidCatalogRegistry(CATALOG_SECTIONS, CATALOG_ENTRIES)).not.toThrow();
   });
 
+  it("registers profiles immediately after the axis controls", () => {
+    expect(CATALOG_SECTIONS.slice(0, 2).map(({ id }) => id)).toEqual(["axes", "profiles"]);
+    expect(resolveCatalogPage("profiles")).toMatchObject({
+      section: "profiles",
+      sourcePath: "src/design-system/profiles/ProfilesPage.tsx",
+      layout: "document",
+    });
+  });
+
   it("only uses known viewport tags", () => {
     const knownTags = new Set<string>(CATALOG_VIEWPORT_TAGS);
 

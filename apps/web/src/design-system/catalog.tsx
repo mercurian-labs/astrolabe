@@ -4,6 +4,7 @@ import { AxisColorPage } from "./axes/AxisColorPage";
 import { AxisElevationPage } from "./axes/AxisElevationPage";
 import { AxisShapePage } from "./axes/AxisShapePage";
 import { AxisTypographyPage } from "./axes/AxisTypographyPage";
+import { ProfilesPage } from "./profiles/ProfilesPage";
 import {
   LiveTokenSwatch,
   LiveTokenValue,
@@ -46,6 +47,11 @@ export const CATALOG_SECTIONS = [
     id: "axes",
     title: "Axes",
     description: "Live controls for the visual stances that shape the running application.",
+  },
+  {
+    id: "profiles",
+    title: "Profiles",
+    description: "Save, switch, share, and propose complete visual directions.",
   },
   {
     id: "overview",
@@ -702,6 +708,16 @@ export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
     description: "Tune shadow, border, blur, opacity, and saturation stances live.",
     sourcePath: "src/design-system/axes/AxisElevationPage.tsx",
     render: () => <AxisElevationPage />,
+    layout: "document",
+    preferredCanvas: "desktop",
+  },
+  {
+    id: "profiles",
+    section: "profiles",
+    title: "Profiles",
+    description: "Save, switch, import, export, and propose complete visual directions.",
+    sourcePath: "src/design-system/profiles/ProfilesPage.tsx",
+    render: () => <ProfilesPage />,
     layout: "document",
     preferredCanvas: "desktop",
   },
