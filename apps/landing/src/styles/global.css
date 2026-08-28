@@ -1,2 +1,11 @@
 @import "../../../web/src/index.css";
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/fraunces-variable.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @source "../../../web/src";

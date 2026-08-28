@@ -1,12 +1,63 @@
 ---
+import HeroCarousel from "../islands/HeroCarousel";
 import Base from "../layouts/Base.astro";
 ---
 
-<Base title="Astrolabe">
-  <main class="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-4 px-6">
-    <h1 class="text-2xl font-semibold">Astrolabe</h1>
-    <a class="w-fit underline underline-offset-4" href="/demo/checkpoint-graph/">
-      Checkpoint Graph demo
-    </a>
+<Base title="Mercurian">
+  <main class="relative isolate min-h-screen overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 -z-20 overflow-hidden" aria-hidden="true">
+      <img
+        class="absolute top-1/2 right-[-32rem] h-auto w-[78rem] max-w-none -translate-y-1/2 sm:right-[-26rem] lg:right-[-18rem] xl:right-[-10rem]"
+        src="/mercury-globe-poster.png"
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        width="1920"
+        height="1080"
+      />
+    </div>
+    <div
+      class="pointer-events-none absolute inset-0 -z-10 lg:hidden"
+      style="background: linear-gradient(to right, var(--background) 0%, var(--background) 35%, color-mix(in oklab, var(--background) 70%, transparent) 70%, color-mix(in oklab, var(--background) 35%, transparent) 100%);"
+      aria-hidden="true"
+    >
+    </div>
+    <div
+      class="pointer-events-none absolute inset-0 -z-10 hidden lg:block"
+      style="background: linear-gradient(to right, var(--background) 0%, var(--background) 18%, color-mix(in oklab, var(--background) 55%, transparent) 45%, transparent 75%);"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div
+      class="mx-auto flex min-h-screen w-full max-w-[90rem] flex-col justify-center px-6 py-12 sm:px-10 lg:px-12 lg:py-16 xl:px-16"
+    >
+      <h1
+        aria-label="Mercurian"
+        class="relative z-10 w-fit px-3 py-2 text-2xl font-semibold sm:text-3xl [font-family:Fraunces,serif]"
+      >
+        Mercurian<span aria-hidden="true" class="text-[#A0492A]">.</span>
+      </h1>
+
+      <div class="relative z-10 mt-8">
+        <HeroCarousel client:only="react">
+          <div slot="fallback" class="sr-only">
+            <h2>Plan in branches. Merge what works.</h2>
+            <p>Every message and every plan edit is a commit in one branching, git-style history. Return to any point and take a different direction, explore open decisions side by side, then merge the branches back into a single plan — with fresh, compacted context instead of a rotting thread. Nothing is ever destroyed, and forks and merges are yours alone to make.</p>
+            <h2>Memory you can actually read.</h2>
+            <p>Your project's design truth lives as atomic, linked markdown notes in a git repository you own. Nothing is captured behind your back — the assistant proposes an amendment, you confirm it, and it lands as a commit attributed to the plan it came from. Mercurian is a lens over your memory, never a silo for it: every note stays editable with any tool and portable out of the product entirely.</p>
+            <h2>Your agents. Your machine. No account.</h2>
+            <p>Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor, and more — switchable between turns, even mid-plan, with every branch recording exactly what it ran under. It runs on your machine, against your repositories, with no sign up required. Plans, history, and memory are plain text and git: yours to keep, wherever you go next.</p>
+          </div>
+        </HeroCarousel>
+      </div>
+
+      <a
+        class="relative z-10 mt-8 block w-fit text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        href="/demo/checkpoint-graph/"
+      >
+        Checkpoint Graph demo
+      </a>
+    </div>
   </main>
 </Base>
