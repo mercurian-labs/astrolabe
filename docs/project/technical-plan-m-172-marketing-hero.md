@@ -236,3 +236,70 @@ rightward over a very long run (roughly `linear-gradient(to right, background, b
 55% alpha around 45%, transparent by ~78%)`), with **no backdrop-filter anywhere**. The right
 majority of the globe stays untouched full color; the text sits on the dissolve with no
 detectable region boundary. The per-block `.hero-feathered-scrim` layers are removed.
+
+## Amendment 6 — the carousel retires: the product open on its desk (2026-08-28)
+
+Vault ruling (Marketing Site, commit 283cf68): the hero becomes a chrome-less **desktop** whose
+wallpaper is the Mercury poster, with an **Astrolabe window** open on it — the real planning
+space in self-referential mock state. The three claims stop rotating: claim 1 is the hero's
+headline block, claim 3 the provider band under the desk, claim 2 moves below the fold (M-174's
+branch). No autoplay exists anymore; the motion-rule exception retires. No CTA; positioning stays
+in the close.
+
+Reference pattern measured from cursor.com/home at 1440×900 (2026-08-28), for proportions only —
+palette, radius language, and type stay ours:
+
+- Page frame: container side margins ~70px at 1440 (~5%); calm single-color page background;
+  headline understated (their h1: 26px / 32.5px line-height / weight 400 / −0.325px tracking) —
+  the showpiece below carries the page, not display type.
+- Desk: full-container-width panel, 1300×725 at 1440 (≈1.79:1 ratio), `overflow: hidden`,
+  `position: relative`; wallpaper as an `<img>` filling the panel (`object-cover`). No OS chrome
+  of any kind. Desk top sits low enough that the fold crops the desk's lower reach (scroll cue).
+- Window: centered in the desk, width ≈83% of desk (1080/1300), height ≈85% (620/725) with
+  ~50px top inset; `border-radius: 10px`; layered soft shadow
+  (`0 28px 70px rgba(0,0,0,.14), 0 14px 32px rgba(0,0,0,.10)`); 28px title bar carrying
+  window dots and the window's name; interior UI type at 11–13px. (Their windows are drag/resize
+  DOM — vault records window-play as an Open Decision, NOT v1 scope.)
+
+### What changes on this branch
+
+- **`HeroCarousel.tsx` retires.** Replaced by a `HeroDesk` island (`client:only="react"`) whose
+  only job is the window interior; the desk panel, wallpaper img, headline block, and provider
+  band are static Astro markup in `index.astro` (claims visible in built HTML — no sr-only
+  fallback needed anymore; the guard's job gets easier, not harder).
+- **The desk** (static): full-container-width, aspect ~16/9 (≈1.79:1), rounded per OUR shape
+  language (match the app's panel radius rather than Cursor's square), overflow-hidden,
+  `mercury-globe-poster.png` as the wallpaper via `object-cover` positioned so the globe reads
+  (northern-terrain crop acceptable; verify visually). The page body drops the poster and every
+  scrim layer — clean `bg-background` everywhere. The v6 atmospheric scrim dies with no
+  replacement (nothing overlaps the globe anymore).
+- **The window** (island): frame styled to the metrics above (83% desk width, 10px radius,
+  layered shadow, 28px title bar with three dots and the name "Astrolabe" — dots are inert
+  decoration, `aria-hidden`). Interior = the real planning space, reusing this branch's fixture
+  history and `heroInFlight`: `PlanTimeline` left, `PlanComposer` beneath it (M-174's demo
+  pattern: prefilled, typable, inert handlers), `DagExplorer` right in Graph view (seed-if-unset
+  key, fit-guard MutationObserver both carry over). **The app's own chrome now renders as the
+  product renders it** — the `[data-landing-dag-explorer]` title-hiding and corner-control-hiding
+  CSS retires (inside a real app window, the real pane chrome is the honesty; the old quieting
+  was ruled for a naked surface). Nothing under `apps/web/` changes, as always.
+- **Headline block** (static, above the desk): wordmark unchanged; claim 1 header + paragraph in
+  quiet type — header around `text-2xl`/`font-medium` (not display size), paragraph
+  `text-muted-foreground`, both left-aligned on the container edge.
+- **Provider band** (static, directly below the desk): the five existing tiles + labels in one
+  row (wrap on small), with claim 3's header + copy beside or above them in the same quiet type.
+  The band sits on the page background — no globe behind it anymore.
+- **Memory placeholder extraction:** the ghost-diamond SVG moves out of the dying island into a
+  static Astro partial (`src/components/MemoryPlaceholder.astro`) so M-174's branch can mount it
+  in the new memory section (claim 2). This branch only creates the partial; the section itself
+  is M-174's edit.
+- **Mobile (<lg):** headline block full-width; the desk keeps its ratio but the window fills
+  ~94% of it showing the conversation pane only (graph hidden below lg, existing pattern);
+  provider band wraps to two rows. Reduced motion: nothing to do — the hero no longer moves.
+
+### Checks
+
+- Existing gates (build + guard, typecheck, lint, fmt). Guard note: claims 1 and 3 must appear in
+  the static HTML (they are Astro markup now — grep the built page for both headers).
+- Walk: window interior live (graph pans/hovers, composer types, Send inert); no autoplay
+  anywhere; poster absent from page background, present as wallpaper; 375-width via the
+  fixed-width-iframe instrument (headless narrow windows lie — see memory).
