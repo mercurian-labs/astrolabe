@@ -7,6 +7,7 @@ import type {
   PlanInFlightTurn,
   PlanImplementProposal,
   PlanImplementReady,
+  MemoryAmendmentProposal,
   PlanCodingSessionRecord,
   PlanStreamItem,
   PlanTurnRefusalReason,
@@ -32,6 +33,10 @@ export interface PlanSubscriptionState {
   readonly implementFailure:
     | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
     | null;
+  readonly memoryAmendmentFailure: Extract<
+    PlanStreamItem,
+    { readonly kind: "memory-amendment-failed" }
+  > | null;
 }
 
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
@@ -41,6 +46,7 @@ export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   synchronized: false,
   turnRefusal: null,
   implementFailure: null,
+  memoryAmendmentFailure: null,
 };
 
 const sameGroundingItem = (left: PlanGroundingItem, right: PlanGroundingItem): boolean =>
@@ -120,6 +126,18 @@ function withImplementProposal(
   };
 }
 
+function withMemoryAmendmentProposal(
+  state: PlanSubscriptionState,
+  proposal: MemoryAmendmentProposal | undefined,
+): PlanSubscriptionState {
+  if (state.detail === null) return state;
+  const { memoryAmendmentProposal: _previous, ...rest } = state.detail;
+  return {
+    ...state,
+    detail: { ...rest, ...(proposal === undefined ? {} : { memoryAmendmentProposal: proposal }) },
+  };
+}
+
 /**
  * Fold one plan stream item into the local planning space. Pure, so web and
  * mobile share it and it can be tested without a socket.
@@ -150,6 +168,7 @@ export function applyPlanStreamItem(
         synchronized: state.synchronized,
         turnRefusal: null,
         implementFailure: null,
+        memoryAmendmentFailure: null,
       };
     case "synchronized":
       return { ...state, synchronized: true };
@@ -182,7 +201,9 @@ export function applyPlanStreamItem(
           : detail.inFlightTurns.filter((turn) => turn.turnId !== settled.turnId);
       const closesImplementProposal =
         item.item._tag === "plan-revision" && item.item.split !== undefined;
-      const { implementProposal, ...rest } = detail;
+      const closesMemoryAmendment =
+        item.item._tag === "message" && item.item.memoryAmendment !== undefined;
+      const { implementProposal, memoryAmendmentProposal, ...rest } = detail;
       return {
         ...state,
         detail: {
@@ -191,6 +212,9 @@ export function applyPlanStreamItem(
           ...(closesImplementProposal || implementProposal === undefined
             ? {}
             : { implementProposal }),
+          ...(closesMemoryAmendment || memoryAmendmentProposal === undefined
+            ? {}
+            : { memoryAmendmentProposal }),
           // Text arrives only on commits that changed the artifact; a message
           // leaves the plan exactly as it was.
           planText: item.planText ?? detail.planText,
@@ -201,7 +225,10 @@ export function applyPlanStreamItem(
       };
     }
     case "turn-started": {
-      const cleared = withImplementProposal(state, undefined);
+      const cleared = withMemoryAmendmentProposal(
+        withImplementProposal(state, undefined),
+        undefined,
+      );
       const existing = cleared.detail?.inFlightTurns ?? [];
       return {
         ...withInFlightTurns(cleared, [
@@ -215,6 +242,7 @@ export function applyPlanStreamItem(
           },
         ]),
         turnRefusal: null,
+        memoryAmendmentFailure: null,
       };
     }
     case "implement-started":
@@ -293,6 +321,32 @@ export function applyPlanStreamItem(
       return {
         ...withInFlightImplement(state, undefined),
         implementFailure: item.reason,
+      };
+    }
+    case "memory-amendment-proposed": {
+      const relevant = state.detail?.inFlightTurns.some(
+        (turn) => turn.turnId === item.proposal.turnId,
+      );
+      if (relevant !== true) return state;
+      return {
+        ...withMemoryAmendmentProposal(state, item.proposal),
+        memoryAmendmentFailure: null,
+      };
+    }
+    case "memory-amendment-failed": {
+      const relevant = state.detail?.inFlightTurns.some((turn) => turn.turnId === item.turnId);
+      if (relevant !== true) return state;
+      return {
+        ...withMemoryAmendmentProposal(state, undefined),
+        memoryAmendmentFailure: item,
+      };
+    }
+    case "memory-amendment-cancelled": {
+      const proposal = state.detail?.memoryAmendmentProposal;
+      if (proposal === undefined || proposal.turnId !== item.turnId) return state;
+      return {
+        ...withMemoryAmendmentProposal(state, undefined),
+        memoryAmendmentFailure: null,
       };
     }
     default:

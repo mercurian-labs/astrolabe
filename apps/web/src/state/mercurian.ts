@@ -58,6 +58,10 @@ const EMPTY_PLAN_ATOM = Atom.make(
       readonly implementFailure:
         | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
         | null;
+      readonly memoryAmendmentFailure: Extract<
+        PlanStreamItem,
+        { readonly kind: "memory-amendment-failed" }
+      > | null;
     },
     never
   >(false),

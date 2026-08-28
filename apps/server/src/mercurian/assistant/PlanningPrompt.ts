@@ -28,6 +28,7 @@ export interface PlanningIdentityInput {
   readonly unreachableRepositories: ReadonlyArray<string>;
   /** Present only when this provider session can reach the designated memory. */
   readonly memoryRoot?: PlanningRepositoryRoot | null | undefined;
+  readonly memoryAmendmentsAvailable?: boolean | undefined;
 }
 
 /**
@@ -67,6 +68,13 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
       "Project memory (durable design truth — consult it before repository files):",
       `- ${input.memoryRoot.path}`,
       "Notes are markdown with [[wikilinks]]; maps/*.yaml hold arrangement. Ground design intent in the memory's notes first; consult repository code for what is actually built.",
+    );
+  }
+
+  if (input.memoryAmendmentsAvailable === true || input.memoryRoot != null) {
+    lines.push(
+      "",
+      "A memory amendment is a reviewable proposal to update durable project memory. Propose one with `propose_memory_amendment` when the person asks, or when this conversation has just resolved something memory records. The proposal accompanies your reply and never replaces it. Proposing is not writing: only the person's later confirmation changes memory, and the last proposal call in a reply wins.",
     );
   }
 

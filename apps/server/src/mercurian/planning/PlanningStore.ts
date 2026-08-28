@@ -98,6 +98,13 @@ export const MessageCommitPayload = Schema.Struct({
   grounding: Schema.optional(Schema.Array(PlanGroundingItem)),
   groundingScope: Schema.optional(PlanGroundingScope),
   question: Schema.optional(PlanQuestionRecord),
+  memoryAmendment: Schema.optional(
+    Schema.Struct({
+      title: TrimmedNonEmptyString,
+      memoryCommitSha: Schema.NullOr(Schema.String),
+      notes: Schema.Array(TrimmedNonEmptyString),
+    }),
+  ),
 });
 export type MessageCommitPayload = typeof MessageCommitPayload.Type;
 
@@ -243,6 +250,7 @@ export const PlanMessage = Schema.Struct({
   question: Schema.optional(PlanQuestionRecord),
   ranUnder: Schema.optional(PlanningModelSelection),
   generatedBy: Schema.optional(PlanningModelSelection),
+  memoryAmendment: MessageCommitPayload.fields.memoryAmendment,
 });
 export type PlanMessage = typeof PlanMessage.Type;
 
@@ -457,6 +465,16 @@ export const AppendMessageInput = Schema.Struct({
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendMessageInput = typeof AppendMessageInput.Type;
+
+export const AppendMemoryAmendmentInput = Schema.Struct({
+  planId: PlanId,
+  parentCommitId: CommitId,
+  title: TrimmedNonEmptyString,
+  memoryCommitSha: Schema.NullOr(Schema.String),
+  notes: Schema.Array(TrimmedNonEmptyString),
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type AppendMemoryAmendmentInput = typeof AppendMemoryAmendmentInput.Type;
 
 export const SavePlanRevisionInput = Schema.Struct({
   planId: PlanId,
@@ -707,6 +725,13 @@ export class PlanningStore extends Context.Service<
     readonly appendMessage: (
       input: AppendMessageInput,
     ) => Effect.Effect<PlanMessage, PlanningStoreError>;
+    readonly appendMemoryAmendment: (
+      input: AppendMemoryAmendmentInput,
+    ) => Effect.Effect<PlanMessage, PlanningStoreError>;
+    readonly assertNoActiveTurn: (input: {
+      readonly planId: PlanId;
+      readonly parentCommitId: CommitId;
+    }) => Effect.Effect<void, PlanningStoreError>;
     /**
      * A human's direct edit of the plan, landed as a commit of the same
      * standing as a message on the branch they were standing on.
@@ -1384,6 +1409,9 @@ export const make = Effect.gen(function* () {
       ...(payload.question === undefined ? {} : { question: payload.question }),
       ...(payload.ranUnder === undefined ? {} : { ranUnder: payload.ranUnder }),
       ...(payload.generatedBy === undefined ? {} : { generatedBy: payload.generatedBy }),
+      ...(payload.memoryAmendment === undefined
+        ? {}
+        : { memoryAmendment: payload.memoryAmendment }),
     } satisfies PlanMessage;
   });
 
@@ -1903,6 +1931,53 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.appendMessage:query",
           "PlanningStore.appendMessage:encodeRequest",
+        ),
+      ),
+    );
+
+  const appendMemoryAmendment: PlanningStore["Service"]["appendMemoryAmendment"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const memoryAmendment = {
+        title: input.title,
+        memoryCommitSha: input.memoryCommitSha,
+        notes: input.notes,
+      };
+      const appended = yield* appendAt({
+        plan,
+        parentCommitId: input.parentCommitId,
+        commitId,
+        kind: "message",
+        payload: { text: input.title, memoryAmendment } satisfies MessageCommitPayload,
+        createdAt: input.createdAt,
+      });
+      yield* announceChange;
+      return yield* toPlanMessage(appended);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.appendMemoryAmendment:query",
+          "PlanningStore.appendMemoryAmendment:encodeRequest",
+        ),
+      ),
+    );
+
+  const assertNoActiveTurn: PlanningStore["Service"]["assertNoActiveTurn"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const parent = yield* resolveParent(plan, input.parentCommitId);
+      if (parent === undefined) {
+        return yield* new CommitStore.CommitNotFoundError({ commitId: input.parentCommitId });
+      }
+      if (yield* turnRegistry.activeChainMember(input.planId, parent.commitId)) {
+        return yield* new PlanTurnActiveError({ planId: input.planId });
+      }
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.assertNoActiveTurn:query",
+          "PlanningStore.assertNoActiveTurn:decode",
         ),
       ),
     );
@@ -2666,6 +2741,8 @@ export const make = Effect.gen(function* () {
     createPlan,
     importPlan,
     appendMessage,
+    appendMemoryAmendment,
+    assertNoActiveTurn,
     savePlanRevision,
     saveSpecRevision,
     saveTrackerSpecRevision,

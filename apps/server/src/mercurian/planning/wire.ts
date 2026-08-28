@@ -69,6 +69,7 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
   ...(message.question === undefined ? {} : { question: message.question }),
   ...(message.ranUnder === undefined ? {} : { ranUnder: message.ranUnder }),
   ...(message.generatedBy === undefined ? {} : { generatedBy: message.generatedBy }),
+  ...(message.memoryAmendment === undefined ? {} : { memoryAmendment: message.memoryAmendment }),
 });
 
 export const toWirePlanRevision = (revision: PlanRevision): Contracts.PlanRevision => ({

@@ -616,3 +616,71 @@ describe("applyPlanStreamItem implement frames", () => {
     expect(cancelled.detail?.implementProposal).toBeUndefined();
   });
 });
+
+describe("applyPlanStreamItem memory amendments", () => {
+  const amendment = {
+    turnId,
+    title: "Record the composer boundary",
+    changes: [{ path: "Composer.md", before: null, after: "# Composer\n" }],
+    patch: "diff --git a/Composer.md b/Composer.md",
+    placements: [],
+  };
+
+  it("folds only the live reply's proposal and clears it on a newer turn", () => {
+    const proposed = fold([
+      { kind: "snapshot", snapshot },
+      started,
+      { kind: "memory-amendment-proposed", proposal: amendment },
+    ]);
+    expect(proposed.detail?.memoryAmendmentProposal).toEqual(amendment);
+    expect(
+      applyPlanStreamItem(proposed, {
+        kind: "turn-started",
+        turnId: PlanTurnId.make("newer-turn"),
+        parentCommitId: MercurianCommitId.make("commit-1"),
+      }).detail?.memoryAmendmentProposal,
+    ).toBeUndefined();
+
+    const stale = fold([
+      { kind: "snapshot", snapshot },
+      { kind: "memory-amendment-proposed", proposal: amendment },
+    ]);
+    expect(stale.detail?.memoryAmendmentProposal).toBeUndefined();
+  });
+
+  it("clears only a turn-matched cancellation", () => {
+    const joined = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, memoryAmendmentProposal: amendment } },
+    ]);
+    const stale = applyPlanStreamItem(joined, {
+      kind: "memory-amendment-cancelled",
+      turnId: PlanTurnId.make("other-turn"),
+    });
+    expect(stale.detail?.memoryAmendmentProposal).toEqual(amendment);
+    expect(
+      applyPlanStreamItem(stale, { kind: "memory-amendment-cancelled", turnId }).detail
+        ?.memoryAmendmentProposal,
+    ).toBeUndefined();
+  });
+
+  it("closes a standing proposal when its stamped human commit lands", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, memoryAmendmentProposal: amendment } },
+      {
+        kind: "commit",
+        sequence: 2,
+        item: {
+          _tag: "message",
+          ...commitFields("commit-2", 2, ["commit-1"]),
+          text: amendment.title,
+          memoryAmendment: {
+            title: amendment.title,
+            memoryCommitSha: "abc123",
+            notes: ["Composer"],
+          },
+        },
+      },
+    ]);
+    expect(state.detail?.memoryAmendmentProposal).toBeUndefined();
+  });
+});

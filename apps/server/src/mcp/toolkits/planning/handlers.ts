@@ -44,6 +44,18 @@ const handlers = {
       });
       return { saved: true as const };
     }),
+  propose_memory_amendment: (input) =>
+    Effect.gen(function* () {
+      const invocation = yield* McpInvocationContext.McpInvocationContext;
+      const assistant = yield* PlanningAssistant;
+      yield* assistant.proposeMemoryAmendmentFromThread({
+        threadId: invocation.threadId,
+        title: input.title,
+        notes: input.notes,
+        placements: input.placements ?? [],
+      });
+      return { saved: true as const };
+    }),
   read_plan: () =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;

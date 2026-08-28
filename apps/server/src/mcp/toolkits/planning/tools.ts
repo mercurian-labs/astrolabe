@@ -49,6 +49,15 @@ export const SaveImplementProposalInput = Schema.Struct({
 
 export const SaveImplementProposalResult = Schema.Struct({ saved: Schema.Literal(true) });
 
+export const ProposeMemoryAmendmentInput = Schema.Struct({
+  title: Schema.String,
+  notes: Schema.Array(Schema.Struct({ name: Schema.String, markdown: Schema.String })),
+  placements: Schema.optional(
+    Schema.Array(Schema.Struct({ map: Schema.String, parent: Schema.String, note: Schema.String })),
+  ),
+});
+export const ProposeMemoryAmendmentResult = Schema.Struct({ saved: Schema.Literal(true) });
+
 export const ReadPlanResult = Schema.Struct({
   /** The plan document's current text. Empty is a real state. */
   text: Schema.String,
@@ -109,6 +118,18 @@ export const ReadPlanTool = Tool.make("read_plan", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+export const ProposeMemoryAmendmentTool = Tool.make("propose_memory_amendment", {
+  description:
+    "Propose a reviewed amendment to project memory. Supply every changed note as its complete markdown and optional placements in named maps. This does not write files; the person must confirm the proposal. Calling again replaces the pending proposal.",
+  parameters: ProposeMemoryAmendmentInput,
+  success: ProposeMemoryAmendmentResult,
+  failure: PlanningTurnNotFoundError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Propose memory amendment")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const ReadSpecTool = Tool.make("read_spec", {
   description:
     "Read the spec artifact at this conversation's current tip. Null means the plan was born without a contract. Use before save_spec_revision.",
@@ -127,6 +148,7 @@ export const PlanningToolkit = Toolkit.make(
   SavePlanRevisionTool,
   SaveSpecRevisionTool,
   SaveImplementProposalTool,
+  ProposeMemoryAmendmentTool,
   ReadPlanTool,
   ReadSpecTool,
 );

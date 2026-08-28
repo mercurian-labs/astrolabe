@@ -61,6 +61,52 @@ export function parseContainsLines(
   return declarations;
 }
 
+export interface MemoryOpenDecision {
+  readonly title: string;
+  readonly resolved: boolean;
+}
+
+export function parseOpenDecisions(markdown: string): ReadonlyArray<MemoryOpenDecision> {
+  const lines = stripMarkdownCode(markdown).split(/\r?\n/u);
+  const sectionStart = lines.findIndex((line) => line.trimEnd() === "## Open Decisions");
+  if (sectionStart < 0) return [];
+  const sectionEnd = lines.findIndex((line, index) => index > sectionStart && /^##\s+/u.test(line));
+  const section = lines.slice(sectionStart + 1, sectionEnd < 0 ? undefined : sectionEnd);
+  const decisions: Array<MemoryOpenDecision> = [];
+  for (let index = 0; index < section.length; index += 1) {
+    const heading = /^###\s+(.+?)\s*$/u.exec(section[index] ?? "");
+    if (heading === null) continue;
+    const title = heading[1]!.trim();
+    if (title.length === 0) continue;
+    const nextHeading = section.findIndex(
+      (line, candidate) => candidate > index && /^###\s+/u.test(line),
+    );
+    const subsection = section.slice(index + 1, nextHeading < 0 ? undefined : nextHeading);
+    decisions.push({
+      title,
+      resolved: subsection.some((line) => /^\*\*Resolved/u.test(line)),
+    });
+  }
+  return decisions;
+}
+
+export function missingOpenDecisionHeadings(before: string, after: string): ReadonlyArray<string> {
+  const afterTitles = new Set(parseOpenDecisions(after).map(({ title }) => title));
+  return parseOpenDecisions(before)
+    .map(({ title }) => title)
+    .filter((title) => !afterTitles.has(title));
+}
+
+export function isValidMemoryNoteName(name: string): boolean {
+  return (
+    name.trim().length > 0 &&
+    name === name.trim() &&
+    !name.startsWith(".") &&
+    !name.toLowerCase().endsWith(".md") &&
+    !/[\\/]/u.test(name)
+  );
+}
+
 export function buildMemoryGraph(files: ReadonlyArray<MemoryNoteFile>): MemoryGraph {
   const selected = new Map<string, MemoryNoteFile>();
   const problems: Array<string> = [];
@@ -308,6 +354,32 @@ export function compileProductMap(
 export function serializeMemoryMap(map: MemoryMap): string {
   const { file: _file, ...document } = map;
   return stringify(document, { lineWidth: 0 });
+}
+
+export function insertMapPlacement(
+  map: MemoryMap,
+  parent: string,
+  note: string,
+  graph: MemoryGraph,
+): MemoryMap | { readonly file: string; readonly refusal: string } {
+  const contains = (nodes: ReadonlyArray<MemoryArrangementNode>, name: string): boolean =>
+    nodes.some((node) => node.note === name || contains(node.children ?? [], name));
+  if (!contains(map.arrangement, parent)) {
+    return refuse(map.file, `parent "${parent}" is not present in the arrangement`);
+  }
+  if (contains(map.arrangement, note)) {
+    return refuse(map.file, `note "${note}" is already present in the arrangement`);
+  }
+  const insert = (
+    nodes: ReadonlyArray<MemoryArrangementNode>,
+  ): ReadonlyArray<MemoryArrangementNode> =>
+    nodes.map((node) =>
+      node.note === parent
+        ? { ...node, children: [...(node.children ?? []), { note }] }
+        : { ...node, ...(node.children === undefined ? {} : { children: insert(node.children) }) },
+    );
+  const candidate = { ...map, arrangement: insert(map.arrangement) };
+  return parseAndValidateMemoryMap(map.file, serializeMemoryMap(candidate), graph);
 }
 
 export function fingerprintMemoryFiles(entries: ReadonlyArray<MemoryFileFingerprintEntry>): string {

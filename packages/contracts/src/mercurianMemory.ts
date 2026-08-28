@@ -11,6 +11,7 @@ export const MERCURIAN_MEMORY_WS_METHODS = {
   removeMemorySource: "mercurian.removeMemorySource",
   readMemoryIndex: "mercurian.readMemoryIndex",
   readMemoryNote: "mercurian.readMemoryNote",
+  writeMemoryNote: "mercurian.writeMemoryNote",
   generateProductMap: "mercurian.generateProductMap",
 } as const;
 
@@ -81,6 +82,9 @@ export const MemoryNote = Schema.Struct({
   markdown: Schema.optional(Schema.String),
   links: Schema.Array(Schema.Struct({ name: TrimmedNonEmptyString, exists: Schema.Boolean })),
   backlinks: Schema.Array(TrimmedNonEmptyString),
+  openDecisions: Schema.Array(
+    Schema.Struct({ title: TrimmedNonEmptyString, resolved: Schema.Boolean }),
+  ),
 });
 export type MemoryNote = typeof MemoryNote.Type;
 
@@ -101,6 +105,13 @@ export const MercurianReadMemoryNoteInput = Schema.Struct({
   name: TrimmedNonEmptyString,
 });
 export type MercurianReadMemoryNoteInput = typeof MercurianReadMemoryNoteInput.Type;
+export const MercurianWriteMemoryNoteInput = Schema.Struct({
+  projectId: MercurianProjectId,
+  name: Schema.String,
+  markdown: Schema.String,
+  baseMarkdown: Schema.NullOr(Schema.String),
+});
+export type MercurianWriteMemoryNoteInput = typeof MercurianWriteMemoryNoteInput.Type;
 export const MercurianGenerateProductMapInput = Schema.Struct({ projectId: MercurianProjectId });
 export type MercurianGenerateProductMapInput = typeof MercurianGenerateProductMapInput.Type;
 
@@ -149,6 +160,28 @@ export const isMemorySourceInvalidError = Schema.is(MemorySourceInvalidError);
 export const isProductMapAlreadyExistsError = Schema.is(ProductMapAlreadyExistsError);
 export const isProductMapCycleError = Schema.is(ProductMapCycleError);
 
+export const WriteMemoryNoteBlockedReason = Schema.Literals([
+  "note-changed",
+  "invalid-name",
+  "not-designated",
+]);
+export class WriteMemoryNoteBlockedError extends Schema.TaggedErrorClass<WriteMemoryNoteBlockedError>()(
+  "WriteMemoryNoteBlockedError",
+  { reason: WriteMemoryNoteBlockedReason },
+) {
+  override get message(): string {
+    switch (this.reason) {
+      case "note-changed":
+        return "This note changed on disk.";
+      case "invalid-name":
+        return "This note name cannot be used.";
+      case "not-designated":
+        return "This project has no designated memory.";
+    }
+  }
+}
+export const isWriteMemoryNoteBlockedError = Schema.is(WriteMemoryNoteBlockedError);
+
 export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemoryError>()(
   "MercurianMemoryError",
   {
@@ -158,7 +191,10 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
       "removeMemorySource",
       "readMemoryIndex",
       "readMemoryNote",
+      "writeMemoryNote",
       "generateProductMap",
+      "prepareMemoryAmendment",
+      "applyMemoryAmendment",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },
