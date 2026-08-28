@@ -211,12 +211,28 @@ The single registered repository, optionally narrowed to a repository-relative s
 the project's code-repository set. Removing a repository also removes designations that point to
 it; it never deletes memory files.
 
+#### Amendment
+
+A human-reviewed change proposed from a planning turn and applied to [memory](#memory) only after
+explicit confirmation. The proposal is transient and carries the exact unified patch and map
+placements; confirming applies the guarded note snapshots, records a commit in the memory's own
+Git history when available, and appends a stamped human `message` commit to the plan without
+starting another turn. Preparation and application live in [MemoryIndex.ts][37], while the review
+surface is [MemoryAmendmentSheet.tsx][38].
+
 #### Note
 
 An atomic Markdown file in [memory](#memory), identified by its filename stem. Notes connect with
 `[[wikilinks]]`; links are associative for graph derivation, and their reverse edges are exposed as
 backlinks. Note mentions remain inline text in planning messages and resolve to files only when a
 planning turn is grounded.
+
+#### Suggested next message
+
+An optional composer chip derived from unresolved Open Decisions in memory notes mentioned on the
+current plan timeline. It is client-derived, session-only, and sends through the ordinary plan
+message path; dismissing hides the current identities until a new one appears. Collection,
+filtering, and dismissal rules live in [planSuggestions.logic.ts][39].
 
 #### Map
 
@@ -415,6 +431,9 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [34]: ../../apps/server/src/mercurian/planning/wire.ts
 [35]: ../../apps/server/src/mercurian/assistant/PlanningAssistant.ts
 [36]: ../../packages/contracts/src/mercurianMemory.ts
+[37]: ../../apps/server/src/mercurian/memory/MemoryIndex.ts
+[38]: ../../apps/web/src/components/mercurian/MemoryAmendmentSheet.tsx
+[39]: ../../apps/web/src/components/mercurian/planSuggestions.logic.ts
 
 ### Coding session
 

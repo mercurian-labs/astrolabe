@@ -20,6 +20,7 @@ import { Link } from "@tanstack/react-router";
 import {
   ChevronRightIcon,
   BookOpenIcon,
+  BookOpenCheckIcon,
   CircleAlertIcon,
   CircleDotIcon,
   FileSearchIcon,
@@ -103,6 +104,18 @@ export function PlanTimeline({
       <ol className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         {timeline.map((item) => {
           if (item._tag === "message") {
+            if (item.memoryAmendment !== undefined) {
+              return (
+                <li
+                  key={item.commitId}
+                  className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/70"
+                >
+                  <BookOpenCheckIcon className="size-3.5 shrink-0" />
+                  <span>You amended the memory: &quot;{item.memoryAmendment.title}&quot;</span>
+                  <span>{formatRelativeTimeLabel(item.createdAt)}</span>
+                </li>
+              );
+            }
             if (item.authorKind === "human") {
               return (
                 // Mirrors UserTimelineRow in MessagesTimeline.tsx; keep this shell in sync.

@@ -124,7 +124,9 @@ export function derivePlanNodePopover({
   const checkpoint = node.checkpoint;
   const queryCandidate = checkpoint?.query ?? node.item;
   const query =
-    queryCandidate._tag === "message" && queryCandidate.authorKind === "human"
+    queryCandidate._tag === "message" &&
+    queryCandidate.authorKind === "human" &&
+    queryCandidate.memoryAmendment === undefined
       ? queryCandidate
       : undefined;
   const response =

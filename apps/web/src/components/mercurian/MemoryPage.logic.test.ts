@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
+import { MercurianProjectId, type MemoryNote } from "@t3tools/contracts";
 
-import { initialMemorySelection, memoryPageStanding, memoryRailItems } from "./MemoryPage.logic";
+import {
+  beginMemoryNoteEdit,
+  initialMemorySelection,
+  INITIAL_MEMORY_EDITOR_STATE,
+  memoryEditorReducer,
+  memoryNoteWritePayload,
+  memoryPageStanding,
+  memoryRailItems,
+} from "./MemoryPage.logic";
 
 const index = {
   maps: [
@@ -45,5 +54,86 @@ describe("memoryPageStanding", () => {
     );
     expect(memoryPageStanding({ projectId: "p", designated: true, index: null })).toBe("loading");
     expect(memoryPageStanding({ projectId: "p", designated: true, index })).toBe("ready");
+  });
+});
+
+const memoryNote = (overrides: Partial<MemoryNote> = {}): MemoryNote => ({
+  name: "Composer",
+  exists: true,
+  path: "Composer.md",
+  markdown: "# Composer\n",
+  links: [],
+  backlinks: [],
+  openDecisions: [],
+  ...overrides,
+});
+
+describe("memory note editor", () => {
+  it("seeds editing from the loaded markdown and guards a no-op save", () => {
+    const editing = beginMemoryNoteEdit(memoryNote());
+    expect(editing).toEqual({
+      _tag: "editing",
+      markdown: "# Composer\n",
+      baseMarkdown: "# Composer\n",
+      refusal: null,
+    });
+    expect(
+      memoryNoteWritePayload(MercurianProjectId.make("project"), "Composer", editing),
+    ).toBeNull();
+
+    const changed = memoryEditorReducer(editing, {
+      type: "change",
+      markdown: "# Composer\n\nChanged.\n",
+    });
+    expect(memoryNoteWritePayload(MercurianProjectId.make("project"), "Composer", changed)).toEqual(
+      {
+        projectId: MercurianProjectId.make("project"),
+        name: "Composer",
+        markdown: "# Composer\n\nChanged.\n",
+        baseMarkdown: "# Composer\n",
+      },
+    );
+    expect(memoryEditorReducer(changed, { type: "cancel" })).toBe(INITIAL_MEMORY_EDITOR_STATE);
+  });
+
+  it("opens an unwritten note with empty content and a null baseline", () => {
+    const editing = beginMemoryNoteEdit(
+      memoryNote({ name: "Future", exists: false, path: undefined, markdown: undefined }),
+    );
+    expect(editing).toMatchObject({ _tag: "editing", markdown: "", baseMarkdown: null });
+    expect(
+      memoryNoteWritePayload(MercurianProjectId.make("project"), "Future", editing),
+    ).toBeNull();
+    const changed = memoryEditorReducer(editing, { type: "change", markdown: "# Future\n" });
+    expect(
+      memoryNoteWritePayload(MercurianProjectId.make("project"), "Future", changed)?.baseMarkdown,
+    ).toBeNull();
+  });
+
+  it("keeps the draft on note-changed refusal and reload re-seeds the editor", () => {
+    const changed = memoryEditorReducer(beginMemoryNoteEdit(memoryNote()), {
+      type: "change",
+      markdown: "my local edit",
+    });
+    const refused = memoryEditorReducer(changed, {
+      type: "write-refused",
+      error: { _tag: "WriteMemoryNoteBlockedError", reason: "note-changed" },
+    });
+    expect(refused).toMatchObject({
+      _tag: "editing",
+      markdown: "my local edit",
+      refusal: { message: "This note changed on disk.", reload: true },
+    });
+
+    const reloaded = memoryEditorReducer(refused, {
+      type: "reload",
+      note: memoryNote({ markdown: "changed elsewhere" }),
+    });
+    expect(reloaded).toEqual({
+      _tag: "editing",
+      markdown: "changed elsewhere",
+      baseMarkdown: "changed elsewhere",
+      refusal: null,
+    });
   });
 });

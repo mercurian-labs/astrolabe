@@ -222,6 +222,32 @@ describe("derivePlanNodePopover", () => {
     expect(inFlight.effects).toEqual([]);
   });
 
+  it("reads a stamped memory amendment as a standalone history event", () => {
+    const commitGraph = buildPlanGraph([
+      message("amendment", {
+        text: "Surface open decisions",
+        memoryAmendment: {
+          title: "Surface open decisions",
+          memoryCommitSha: "abc123",
+          notes: ["Composer"],
+        },
+      }),
+    ]);
+    const reading = derivePlanNodePopover({
+      node: condensePlanGraph(commitGraph).byId.get("amendment")!,
+      commitGraph,
+      codingSessions: [],
+      stalePlan: false,
+      staleSpec: false,
+      suppressUnanswered: false,
+    });
+    expect(reading).toMatchObject({
+      kind: "standalone",
+      label: 'You amended the memory: "Surface open decisions"',
+    });
+    expect(reading.query).toBeUndefined();
+  });
+
   it("names repository projections and their moved-past warning", () => {
     const commitGraph = buildPlanGraph([
       commit("parent", 1, [], "human"),

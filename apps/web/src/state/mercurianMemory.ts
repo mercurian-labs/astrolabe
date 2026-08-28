@@ -5,6 +5,7 @@ import type {
   MercurianDesignateMemorySourceInput,
   MercurianProjectId,
   MercurianReadMemoryNoteInput,
+  MercurianWriteMemoryNoteInput,
   ProjectMemorySource,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -76,6 +77,11 @@ export function useReadMemoryIndex() {
 export function useReadMemoryNote() {
   const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryNote);
   return useCallback((input: MercurianReadMemoryNoteInput) => run(input), [run]);
+}
+
+export function useWriteMemoryNote() {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.writeMemoryNote);
+  return useCallback((input: MercurianWriteMemoryNoteInput) => run(input), [run]);
 }
 
 export function useGenerateProductMap() {

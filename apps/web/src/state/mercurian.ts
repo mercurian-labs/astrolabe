@@ -5,6 +5,8 @@ import type {
   MercurianCommitId,
   MercurianCreatePlanInput,
   MercurianImportPlanInput,
+  MercurianCancelMemoryAmendmentInput,
+  MercurianConfirmMemoryAmendmentInput,
   MercurianConfirmSplitsInput,
   MercurianSavePlanRevisionInput,
   MercurianSaveSpecRevisionInput,
@@ -107,6 +109,10 @@ export interface PlanDetailState {
   readonly implementFailure:
     | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
     | null;
+  readonly memoryAmendmentFailure: Extract<
+    PlanStreamItem,
+    { readonly kind: "memory-amendment-failed" }
+  > | null;
 }
 
 /**
@@ -131,6 +137,7 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,
     implementFailure: state?.implementFailure ?? null,
+    memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,
   };
 }
 
@@ -203,6 +210,16 @@ export function useTryImplement() {
 export function useConfirmSplits() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.confirmSplits);
   return useCallback((input: MercurianConfirmSplitsInput) => run(input), [run]);
+}
+
+export function useConfirmMemoryAmendment() {
+  const run = useEnvironmentBoundCommandResult(mercurianPlanning.confirmMemoryAmendment);
+  return useCallback((input: MercurianConfirmMemoryAmendmentInput) => run(input), [run]);
+}
+
+export function useCancelMemoryAmendment() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.cancelMemoryAmendment);
+  return useCallback((input: MercurianCancelMemoryAmendmentInput) => run(input), [run]);
 }
 
 export function useStartCodingSession() {

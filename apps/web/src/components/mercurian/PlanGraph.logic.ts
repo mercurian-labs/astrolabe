@@ -315,6 +315,9 @@ const SUMMARY_MAX_LENGTH = 60;
  * issue reads as its title, which is what a person would call it.
  */
 export function planCommitSummary(item: PlanTimelineItem): string {
+  if (item._tag === "message" && item.memoryAmendment !== undefined) {
+    return `You amended the memory: "${item.memoryAmendment.title}"`;
+  }
   if (item._tag === "coding-session") {
     return `Coding session in ${item.repositoryName}`;
   }
@@ -342,6 +345,6 @@ export function planCommitSummary(item: PlanTimelineItem): string {
 
 /** The complete commit content shown when a map node is emphasized. */
 export function planCommitDetail(item: PlanTimelineItem): string {
-  if (item._tag === "message") return item.text;
+  if (item._tag === "message" && item.memoryAmendment === undefined) return item.text;
   return planCommitSummary(item);
 }

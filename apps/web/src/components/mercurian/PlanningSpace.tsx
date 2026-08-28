@@ -20,6 +20,7 @@ import {
   FileTextIcon,
   SquareTerminalIcon,
   WaypointsIcon,
+  XIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -91,6 +92,7 @@ import {
 } from "./PlanComposer";
 import {
   implementFailureNotice,
+  memoryAmendmentFailureNotice,
   planningModelGateNotice,
   turnRefusalNotice,
 } from "./PlanComposer.logic";
@@ -113,6 +115,8 @@ import {
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
 import { MemoryNoteReader } from "./MemoryNoteReader";
+import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
+import { PlanSuggestions } from "./PlanSuggestions";
 import { SpecArtifact } from "./SpecArtifact";
 import {
   planMayBeStaleAt,
@@ -179,8 +183,15 @@ interface PendingEditAndBranch {
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, readyCommits, isPending, error, turnRefusal, implementFailure } =
-    usePlanDetail(planId);
+  const {
+    detail,
+    readyCommits,
+    isPending,
+    error,
+    turnRefusal,
+    implementFailure,
+    memoryAmendmentFailure,
+  } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const getSpecAt = useGetSpecAt();
@@ -192,6 +203,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const confirmSplits = useConfirmSplits();
   const cancelImplementProposal = useCancelImplementProposal();
   const [splitSheetOpen, setSplitSheetOpen] = useState(false);
+  const [memoryAmendmentSheetOpen, setMemoryAmendmentSheetOpen] = useState(false);
+  const [dismissedMemoryAmendmentFailure, setDismissedMemoryAmendmentFailure] = useState<
+    string | null
+  >(null);
   const [stalePlanWarningOpen, setStalePlanWarningOpen] = useState(false);
   const [implementFromCommitId, setImplementFromCommitId] = useState<MercurianCommitId | null>(
     null,
@@ -199,6 +214,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [pendingEditAndBranch, setPendingEditAndBranch] = useState<PendingEditAndBranch | null>(
     null,
   );
+  const [planMessageSending, setPlanMessageSending] = useState(false);
   const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
   // The same resolution the server runs, read here so sending gates with the
@@ -254,6 +270,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
   const proposal = detail?.implementProposal;
+  const memoryAmendmentProposal = detail?.memoryAmendmentProposal;
   const existingSplits = useMemo(
     () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
     [graph, proposal],
@@ -368,7 +385,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setStalePlanWarningOpen(false);
     setImplementFromCommitId(null);
     setPendingEditAndBranch(null);
+    setPlanMessageSending(false);
     setMemoryReader({ stack: [] });
+    setMemoryAmendmentSheetOpen(false);
+    setDismissedMemoryAmendmentFailure(null);
   }, [planId]);
 
   /**
@@ -511,6 +531,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     }
   }, [detail?.implementProposal]);
 
+  useEffect(() => {
+    if (memoryAmendmentProposal !== undefined) setMemoryAmendmentSheetOpen(true);
+  }, [memoryAmendmentProposal]);
+
   const gateNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
 
   /**
@@ -564,19 +588,24 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
    */
   const send = useCallback(
     async ({ text, attachments }: PlanComposerSubmission) => {
-      const sent = await appendMessage({
-        planId,
-        text,
-        ...(actingHead === null ? {} : { parentCommitId: actingHead }),
-        ...(attachments.length === 0 ? {} : { attachments }),
-        ...(modelChoice === null ? {} : { modelChoice }),
-      });
-      if (sent === null) return false;
-      // The stream delivers the message back; there is nothing to refresh.
-      setPosition({ _tag: "at", commitId: sent.commitId, live: true });
-      // Only the sending branch's draft leaves; every other branch keeps its own.
-      if (actingHead !== null) clearDraft(planId, actingHead);
-      return true;
+      setPlanMessageSending(true);
+      try {
+        const sent = await appendMessage({
+          planId,
+          text,
+          ...(actingHead === null ? {} : { parentCommitId: actingHead }),
+          ...(attachments.length === 0 ? {} : { attachments }),
+          ...(modelChoice === null ? {} : { modelChoice }),
+        });
+        if (sent === null) return false;
+        // The stream delivers the message back; there is nothing to refresh.
+        setPosition({ _tag: "at", commitId: sent.commitId, live: true });
+        // Only the sending branch's draft leaves; every other branch keeps its own.
+        if (actingHead !== null) clearDraft(planId, actingHead);
+        return true;
+      } finally {
+        setPlanMessageSending(false);
+      }
     },
     [actingHead, appendMessage, clearDraft, modelChoice, planId],
   );
@@ -680,6 +709,20 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   });
   const implementNotice =
     implementFailure === null ? null : implementFailureNotice(implementFailure);
+  const memoryFailureKey =
+    memoryAmendmentFailure === null
+      ? null
+      : `${memoryAmendmentFailure.turnId}\0${memoryAmendmentFailure.reason}`;
+  const memoryFailureNotice =
+    memoryAmendmentFailure === null || memoryFailureKey === dismissedMemoryAmendmentFailure
+      ? null
+      : memoryAmendmentFailureNotice(memoryAmendmentFailure);
+  const composerDisabled =
+    actingHead === null ||
+    visibleInFlight !== undefined ||
+    visibleInFlightImplement !== undefined ||
+    planMessageSending ||
+    gateNotice !== null;
   const paneCornerControl = usesSideBySideLayout ? (
     <PlanPaneToggle state={pane} onChange={setPane} />
   ) : null;
@@ -742,6 +785,36 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
           {mentions.sources}
+          {memoryFailureNotice === null ? null : (
+            <div className="px-3 pt-2 sm:px-5">
+              <div
+                role="alert"
+                className="mx-auto flex w-full max-w-3xl items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground"
+              >
+                <span className="min-w-0 flex-1">{memoryFailureNotice}</span>
+                <Button
+                  aria-label="Dismiss memory amendment failure"
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setDismissedMemoryAmendmentFailure(memoryFailureKey)}
+                >
+                  <XIcon aria-hidden className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+          {detail === null ? null : (
+            <div className="px-3 pt-2 sm:px-5">
+              <PlanSuggestions
+                disabled={composerDisabled}
+                planId={planId}
+                projectId={detail.plan.projectId}
+                timeline={visibleTimeline}
+                onSend={(text) => send({ text, attachments: [] })}
+              />
+            </div>
+          )}
           <PlanComposer
             attachments={draft.attachments}
             {...(providerStatus === undefined
@@ -1072,6 +1145,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             setSplitSheetOpen(false);
           }}
           startAllDisabled={landedPlans.some((landed) => !sessionBaseRefs.has(landed.repositoryId))}
+        />
+      )}
+      {memoryAmendmentProposal === undefined ? null : (
+        <MemoryAmendmentSheet
+          onOpenChange={setMemoryAmendmentSheetOpen}
+          open={memoryAmendmentSheetOpen}
+          parentCommitId={actingHead}
+          planId={planId}
+          proposal={memoryAmendmentProposal}
+          turnActive={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
         />
       )}
       {landedPlans.map((landed) => {
