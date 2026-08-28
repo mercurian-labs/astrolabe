@@ -346,3 +346,42 @@ Checks: existing four gates; built HTML still carries claims 1 and 3; page backg
 `#F7F7F3` and does not change under `prefers-color-scheme: dark`; wheel over the window scrolls
 the page before click and zooms the graph after; the sidebar (if mounted) renders the real
 component with fixture rows.
+
+## Amendment 8 — the planning header and checkpoint rollback (2026-08-28)
+
+Vault ruling (Marketing Site, commit 67f32c1) + Venkat's two calls: (1) the window interior shows
+the planning space's own top bar — the plan's title with the pane toggles in its corner; (2)
+picking a checkpoint in the graph rolls the conversation back to that point, the product's own
+time travel demonstrated live.
+
+- **Header (real components):** `WorkspacePageHeader` (`~/components/WorkspacePageHeader.tsx`)
+  with the plan title in the product's own `h1` treatment, and the exported `PlanPaneToggle`
+  (`~/components/mercurian/PlanningSpace.tsx`) in the corner. Pane state is island-local React
+  state shaped like the product's `RightPaneState` (`{open, view, artifact}`), defaulting to
+  `{open: true, view: "explorer", artifact: "plan"}` — the graph stays the hero's opening view
+  per the vault, contra the product's artifact-first default. No localStorage persistence.
+- **Right pane, all three states:** `view: "explorer"` renders the existing `DagExplorer`;
+  `view: "artifact"` renders the real `PlanArtifact` or `SpecArtifact` on fixture text/spec;
+  deselecting closes the pane and the conversation goes full-width (the toggle reappearing in
+  the header corner, exactly the product's `paneCornerControl` dance). The artifact title
+  control fills the components' `titleControl` prop slot with a small Plan/Spec picker built
+  from the real `ui/menu` primitives — a prop slot filled landing-side, not a rebuilt surface.
+- **Rollback (the product's own mechanism):** island-local `position: PlanPosition` state;
+  `DagExplorer.onSelect` → `positionAfterPick(graph, commitId)`; `head = resolveHead`;
+  `visibleTimeline = timeline` filtered by `ancestorClosure(graph, head)` — all imported from
+  `PlanPosition.logic` / `PlanGraph.logic`, zero landing-side reimplementation. The graph's
+  `anchoredCommitId` becomes `head`. The in-flight reply shows only while its `parentCommitId`
+  is in the visible closure (the product's `visibleInFlight` rule). Artifacts read as of the
+  visible path: fixture plan texts keyed by the path's last plan revision
+  (`lastPlanRevision(visibleTimeline)`), spec fixtures likewise, `readOnly` while
+  `isViewingPast`, `turnActive` at the live tip (the streaming fixture reply suppresses Edit —
+  the product's own reason). Back to now: pick a tip in the graph (`positionAfterPick` returns
+  a live position on leaves).
+- **Mount-safety note:** `PlanArtifact`/`SpecArtifact` call `useSavePlanRevision`-family hooks →
+  `useEnvironmentBoundCommand` → primary-environment chain that reads empty-but-harmless in the
+  landing (the M-187 finding's benign half). Compile-green is not proof: the browser walk must
+  show the artifact pane rendering and the toggles cycling.
+
+Checks: existing four gates; clicking a mid-history checkpoint slices the conversation and the
+artifact to that path and the composer stays; clicking a leaf returns to live; toggles swap
+graph ↔ plan/spec ↔ closed; header title renders in the window at 12px scale without wrapping.
