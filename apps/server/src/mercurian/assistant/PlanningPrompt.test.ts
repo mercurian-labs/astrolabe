@@ -4,7 +4,9 @@ import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 
 import {
   composeFirstTurnInput,
+  appendMemoryMentionStanza,
   measureTranscript,
+  memoryMentionResolutionStanza,
   planningSystemAppendix,
   TRANSCRIPT_FRAMING_MARGIN,
   transcriptPreamble,
@@ -45,6 +47,31 @@ describe("planningSystemAppendix", () => {
     });
     expect(appendix).toContain("Out of reach in this session");
     expect(appendix).toContain("almagest, aurora");
+  });
+
+  it("adds the reachable project-memory stanza after repositories", () => {
+    const appendix = planningSystemAppendix({
+      planTitle: "A plan",
+      repositories: [{ name: "code", path: "/repos/code" }],
+      unreachableRepositories: [],
+      memoryRoot: { name: "memory", path: "/notes/memory" },
+    });
+    expect(appendix).toContain(
+      "Project memory (durable design truth — consult it before repository files):\n- /notes/memory",
+    );
+    expect(appendix.indexOf("Repositories to ground in:")).toBeLessThan(
+      appendix.indexOf("Project memory"),
+    );
+  });
+
+  it("omits the project-memory stanza without a designation", () => {
+    expect(
+      planningSystemAppendix({
+        planTitle: "A plan",
+        repositories: [],
+        unreachableRepositories: [],
+      }),
+    ).not.toContain("Project memory");
   });
 });
 
@@ -128,19 +155,72 @@ describe("transcriptPreamble", () => {
 });
 
 describe("composeFirstTurnInput", () => {
-  it("stacks appendix, preamble, and the message being replied to", () => {
+  it("keeps the existing appendix-first composition byte-identical", () => {
     const input = composeFirstTurnInput({
       appendix: "APPENDIX",
       preamble: "PREAMBLE",
       message: "MESSAGE",
     });
-    expect(input.indexOf("APPENDIX")).toBeLessThan(input.indexOf("PREAMBLE"));
-    expect(input.indexOf("PREAMBLE")).toBeLessThan(input.indexOf("MESSAGE"));
-    expect(input).toContain("Reply to this message:\nMESSAGE");
+    expect(input).toBe("APPENDIX\n\n---\n\nPREAMBLE\n\n---\n\nReply to this message:\nMESSAGE");
+  });
+
+  it("keeps a leading slash command at the head and puts prior context after it", () => {
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: "PREAMBLE",
+        message: "/cmd args",
+      }),
+    ).toBe(
+      "/cmd args\n\n---\n\nContext for this conversation (it predates this session):\n\nAPPENDIX\n\nPREAMBLE",
+    );
+  });
+
+  it("keeps a leading skill invocation and its whitespace byte-for-byte at the head", () => {
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: null,
+        message: "  $skill\nUse the current plan",
+      }),
+    ).toBe(
+      "  $skill\nUse the current plan\n\n---\n\nContext for this conversation (it predates this session):\n\nAPPENDIX",
+    );
+  });
+
+  it("does not invert for a slash in the middle of ordinary text", () => {
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: "PREAMBLE",
+        message: "Please run /cmd args",
+      }),
+    ).toBe("APPENDIX\n\n---\n\nPREAMBLE\n\n---\n\nReply to this message:\nPlease run /cmd args");
   });
 
   it("carries no preamble on a plan's very first turn", () => {
     const input = composeFirstTurnInput({ appendix: "APPENDIX", preamble: null, message: "M" });
     expect(input).not.toContain("resuming");
+  });
+
+  it("appends resolved and unwritten mentioned-note context", () => {
+    const stanza = memoryMentionResolutionStanza([
+      { name: "Composer", path: "/memory/Composer.md" },
+      { name: "Future", referencedBy: ["Plans", "Specs"] },
+    ]);
+    expect(
+      composeFirstTurnInput({
+        appendix: "APPENDIX",
+        preamble: null,
+        message: "Read [[Composer]] and [[Future]]",
+        memoryMentionStanza: stanza,
+      }),
+    ).toContain(
+      "Memory notes mentioned in this message:\n- Composer: /memory/Composer.md\n- Future: not yet written — linked from Plans, Specs",
+    );
+  });
+
+  it("leaves continuation text unchanged without mentioned-note context", () => {
+    expect(appendMemoryMentionStanza("plain text", null)).toBe("plain text");
   });
 });

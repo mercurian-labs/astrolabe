@@ -23,6 +23,7 @@ import { Route as SettingsPreferencesRouteImport } from './routes/settings.prefe
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsIntegrationsRouteImport } from './routes/settings.integrations'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
+import { Route as SettingsExperimentsRouteImport } from './routes/settings.experiments'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
@@ -31,6 +32,7 @@ import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$proje
 import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatRepositoriesRouteImport } from './routes/_chat.repositories'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
+import { Route as ChatMemoryRouteImport } from './routes/_chat.memory'
 import { Route as ChatSessionsThreadIdRouteImport } from './routes/_chat.sessions.$threadId'
 import { Route as ChatPlansPlanIdRouteImport } from './routes/_chat.plans.$planId'
 import { Route as ChatPlansDraftDraftIdRouteImport } from './routes/_chat.plans.draft.$draftId'
@@ -104,6 +106,11 @@ const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   path: '/general',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsExperimentsRoute = SettingsExperimentsRouteImport.update({
+  id: '/experiments',
+  path: '/experiments',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
   id: '/diagnostics',
   path: '/diagnostics',
@@ -144,6 +151,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   path: '/pull-requests',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatMemoryRoute = ChatMemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatSessionsThreadIdRoute = ChatSessionsThreadIdRouteImport.update({
   id: '/sessions/$threadId',
   path: '/sessions/$threadId',
@@ -167,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/memory': typeof ChatMemoryRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/repositories': typeof ChatRepositoriesRoute
   '/connect/callback': typeof ConnectCallbackRoute
@@ -175,6 +188,7 @@ export interface FileRoutesByFullPath {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/settings/experiments': typeof SettingsExperimentsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
@@ -192,6 +206,7 @@ export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/memory': typeof ChatMemoryRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/repositories': typeof ChatRepositoriesRoute
   '/connect/callback': typeof ConnectCallbackRoute
@@ -200,6 +215,7 @@ export interface FileRoutesByTo {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/settings/experiments': typeof SettingsExperimentsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
@@ -220,6 +236,7 @@ export interface FileRoutesById {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/_chat/memory': typeof ChatMemoryRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/repositories': typeof ChatRepositoriesRoute
   '/connect_/callback': typeof ConnectCallbackRoute
@@ -228,6 +245,7 @@ export interface FileRoutesById {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/settings/experiments': typeof SettingsExperimentsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
@@ -249,6 +267,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/memory'
     | '/pull-requests'
     | '/repositories'
     | '/connect/callback'
@@ -257,6 +276,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
+    | '/settings/experiments'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -274,6 +294,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/memory'
     | '/pull-requests'
     | '/repositories'
     | '/connect/callback'
@@ -282,6 +303,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
+    | '/settings/experiments'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -301,6 +323,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/_chat/memory'
     | '/_chat/pull-requests'
     | '/_chat/repositories'
     | '/connect_/callback'
@@ -309,6 +332,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
+    | '/settings/experiments'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -433,6 +457,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsGeneralRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/experiments': {
+      id: '/settings/experiments'
+      path: '/experiments'
+      fullPath: '/settings/experiments'
+      preLoaderRoute: typeof SettingsExperimentsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/diagnostics': {
       id: '/settings/diagnostics'
       path: '/diagnostics'
@@ -489,6 +520,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/memory': {
+      id: '/_chat/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof ChatMemoryRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/sessions/$threadId': {
       id: '/_chat/sessions/$threadId'
       path: '/sessions/$threadId'
@@ -514,6 +552,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ChatRouteChildren {
+  ChatMemoryRoute: typeof ChatMemoryRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatRepositoriesRoute: typeof ChatRepositoriesRoute
   ChatIndexRoute: typeof ChatIndexRoute
@@ -523,6 +562,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatMemoryRoute: ChatMemoryRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatRepositoriesRoute: ChatRepositoriesRoute,
   ChatIndexRoute: ChatIndexRoute,
@@ -538,6 +578,7 @@ interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
+  SettingsExperimentsRoute: typeof SettingsExperimentsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsIntegrationsRoute: typeof SettingsIntegrationsRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
@@ -552,6 +593,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
+  SettingsExperimentsRoute: SettingsExperimentsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsIntegrationsRoute: SettingsIntegrationsRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,

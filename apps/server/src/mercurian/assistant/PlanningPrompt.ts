@@ -26,6 +26,8 @@ export interface PlanningIdentityInput {
   readonly repositories: ReadonlyArray<PlanningRepositoryRoot>;
   /** Repositories of the project this session cannot reach (cwd-only provider). */
   readonly unreachableRepositories: ReadonlyArray<string>;
+  /** Present only when this provider session can reach the designated memory. */
+  readonly memoryRoot?: PlanningRepositoryRoot | null | undefined;
 }
 
 /**
@@ -57,6 +59,15 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     for (const repository of input.repositories) {
       lines.push(`- ${repository.name}: ${repository.path}`);
     }
+  }
+
+  if (input.memoryRoot != null) {
+    lines.push(
+      "",
+      "Project memory (durable design truth — consult it before repository files):",
+      `- ${input.memoryRoot.path}`,
+      "Notes are markdown with [[wikilinks]]; maps/*.yaml hold arrangement. Ground design intent in the memory's notes first; consult repository code for what is actually built.",
+    );
   }
 
   if (input.unreachableRepositories.length > 0) {
@@ -192,12 +203,48 @@ export function composeFirstTurnInput(input: {
   readonly appendix: string;
   readonly preamble: string | null;
   readonly message: string;
+  readonly memoryMentionStanza?: string | null | undefined;
 }): string {
+  let composed: string;
+  if (/^\s*[/$]\S+/.test(input.message)) {
+    const context = [
+      "Context for this conversation (it predates this session):",
+      input.appendix,
+      ...(input.preamble === null ? [] : [input.preamble]),
+    ].join("\n\n");
+    composed = [input.message, context].join("\n\n---\n\n");
+  } else {
+    composed = [
+      input.appendix,
+      ...(input.preamble === null ? [] : [input.preamble]),
+      `Reply to this message:\n${input.message}`,
+    ].join("\n\n---\n\n");
+  }
+  return appendMemoryMentionStanza(composed, input.memoryMentionStanza ?? null);
+}
+
+export interface MemoryMentionResolution {
+  readonly name: string;
+  readonly path?: string | undefined;
+  readonly referencedBy?: ReadonlyArray<string> | undefined;
+}
+
+export function memoryMentionResolutionStanza(
+  resolutions: ReadonlyArray<MemoryMentionResolution>,
+): string | null {
+  if (resolutions.length === 0) return null;
   return [
-    input.appendix,
-    ...(input.preamble === null ? [] : [input.preamble]),
-    `Reply to this message:\n${input.message}`,
-  ].join("\n\n---\n\n");
+    "Memory notes mentioned in this message:",
+    ...resolutions.map((resolution) =>
+      resolution.path !== undefined
+        ? `- ${resolution.name}: ${resolution.path}`
+        : `- ${resolution.name}: not yet written — linked from ${(resolution.referencedBy ?? []).join(", ")}`,
+    ),
+  ].join("\n");
+}
+
+export function appendMemoryMentionStanza(input: string, stanza: string | null): string {
+  return stanza === null ? input : `${input}\n\n---\n\n${stanza}`;
 }
 
 /** A one-shot implement analysis whose only output is the proposal tool. */

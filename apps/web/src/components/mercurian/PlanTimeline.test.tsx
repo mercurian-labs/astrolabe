@@ -8,6 +8,7 @@ import {
   type PlanQuestion,
   type PlanTimelineItem,
   type ServerProvider,
+  type ServerProviderSkill,
 } from "@t3tools/contracts";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -53,6 +54,14 @@ type PlanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
 const CREATED_AT = "2026-08-03T12:34:56.000Z";
 const claude = ProviderDriverKind.make("claudeAgent");
+const skills: ReadonlyArray<ServerProviderSkill> = [
+  {
+    name: "product-docs",
+    displayName: "Product Docs",
+    path: "/skills/product-docs/SKILL.md",
+    enabled: true,
+  },
+];
 
 const providers: ReadonlyArray<ServerProvider> = [
   {
@@ -131,10 +140,49 @@ describe("PlanTimeline", () => {
     expect(markup).toContain('src="/assets/attachment-1"');
     expect(markup).toContain('alt="plan.png"');
     expect(markup).toContain(
-      'class="rounded bg-muted/70 px-1 py-0.5 font-medium text-foreground">README.md</span>',
+      'class="inline-flex items-center gap-1 rounded bg-muted/70 px-1 py-0.5 font-medium text-foreground">README.md</span>',
     );
     expect(markup).not.toContain("rounded-lg border");
     expect(markup).not.toContain(">You<");
+  });
+
+  it("renders known human-message skills as chips and leaves unknown skills as text", () => {
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        skills={skills}
+        timeline={[
+          timelineMessage("human-skill", "human", "Use $product-docs and $not-installed next"),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-markdown-copy="$product-docs"');
+    expect(markup).toContain(">Product Docs</span>");
+    expect(markup).toContain("$not-installed");
+    expect(markup).not.toContain('data-markdown-copy="$not-installed"');
+  });
+
+  it("renders planning note tokens as distinct clickable chips without changing other text", () => {
+    const onOpenNote = vi.fn();
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        onOpenNote={onOpenNote}
+        timeline={[
+          timelineMessage("human-note", "human", "Read [[Planning Space]] and @README.md next"),
+        ]}
+      />,
+    );
+    expect(markup).toContain("Planning Space</button>");
+    expect(markup).toContain("README.md</span>");
+    expect(markup).not.toContain("[[Planning Space]]");
+
+    const plain = renderToStaticMarkup(
+      <PlanTimeline
+        timeline={[timelineMessage("human-note-plain", "human", "Read [[Planning Space]]")]}
+      />,
+    );
+    expect(plain).toContain("Planning Space</span>");
+    expect(plain).not.toContain("Planning Space</button>");
   });
 
   it("renders assistant messages as full-width markdown with grounding before the body", () => {

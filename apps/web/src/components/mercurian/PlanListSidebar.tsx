@@ -12,6 +12,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  BookOpenIcon,
   CalendarIcon,
   ChevronDownIcon,
   CircleDashedIcon,
@@ -52,6 +53,7 @@ import {
 import { readLocalApi } from "../../localApi";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore, type PlanDraft } from "../../planDraftStore";
+import { useProjectScopeStore } from "../../projectScopeStore";
 import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { useMarkPlanUnread, useMercurianTree } from "../../state/mercurian";
@@ -163,7 +165,8 @@ export default function PlanListSidebar() {
     pruneSessionDrafts(new Set(snapshot.plans.map((plan) => plan.planId)));
   }, [pruneSessionDrafts, snapshot.plans]);
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
-  const [projectScopeId, setProjectScopeId] = useState<string | null>(null);
+  const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
+  const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
   const [archivedPage, setArchivedPage] = useState(0);
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
@@ -198,10 +201,13 @@ export default function PlanListSidebar() {
     [managedProjectId, projects],
   );
 
-  const handleScopeChange = useCallback((projectId: string | null) => {
-    setProjectScopeId(projectId);
-    setArchivedPage(0);
-  }, []);
+  const handleScopeChange = useCallback(
+    (projectId: string | null) => {
+      setProjectScope(projectId);
+      setArchivedPage(0);
+    },
+    [setProjectScope],
+  );
 
   const attachListAutoAnimateRef = useCallback((node: HTMLUListElement | null) => {
     if (!node) return;
@@ -295,7 +301,12 @@ export default function PlanListSidebar() {
       )}
       <SidebarChromeFooter
         showUsageRow={false}
-        extraRows={<RepositoriesFooterRow isActive={selection.isRepositoriesActive} />}
+        extraRows={
+          <>
+            <MemoryFooterRow isActive={selection.isMemoryActive} />
+            <RepositoriesFooterRow isActive={selection.isRepositoriesActive} />
+          </>
+        }
       />
       <NewProjectDialog open={isNewProjectOpen} onOpenChange={setIsNewProjectOpen} />
       <ManageProjectRepositoriesDialog
@@ -1013,6 +1024,25 @@ function RepositoriesFooterRow({ isActive }: { readonly isActive: boolean }) {
       >
         <GitBranchIcon />
         <span>Repositories</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function MemoryFooterRow({ isActive }: { readonly isActive: boolean }) {
+  const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={isActive}
+        onClick={() => {
+          if (isMobile) setOpenMobile(false);
+          void navigate({ to: "/memory" });
+        }}
+      >
+        <BookOpenIcon />
+        <span>Memory</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

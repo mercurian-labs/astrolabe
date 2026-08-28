@@ -4,8 +4,10 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
@@ -38,6 +40,8 @@ import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
+import * as MemoryIndex from "../memory/MemoryIndex.ts";
 import * as WorkspaceSettingsStore from "../workspace/WorkspaceSettingsStore.ts";
 import * as PlanningAssistant from "./PlanningAssistant.ts";
 import {
@@ -227,6 +231,10 @@ const testLayer = (providers: ReadonlyArray<ServerProvider> = [providerSnapshot]
           Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(stubProcessRunner))),
         ),
         WorkspaceSettingsStore.layer,
+        MemoryIndex.layer.pipe(
+          Layer.provideMerge(MemorySourceStore.layer),
+          Layer.provide(stubProcessRunner),
+        ),
       ),
     ),
     Layer.provideMerge(PlanTurnRegistry.layer),
@@ -239,7 +247,7 @@ const testLayer = (providers: ReadonlyArray<ServerProvider> = [providerSnapshot]
     ),
     Layer.provideMerge(MercurianSqlite.layerMemory),
     Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "mercurian-assistant-" })),
-    Layer.provide(NodeServicesLayer),
+    Layer.provideMerge(NodeServicesLayer),
   );
 };
 
@@ -319,6 +327,31 @@ const seedTwoRepositories = Effect.fn("seedTwoRepositories")(function* (created:
         snapshot.repositories.find((repository) => repository.repositoryId === link.repositoryId)!,
     );
   return { first: ordered[0]!, second: ordered[1]! };
+});
+
+const seedMemory = Effect.fn("seedMemory")(function* (
+  projectId: import("@t3tools/contracts").MercurianProjectId,
+  notes: Readonly<Record<string, string>>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const root = yield* fs.makeTempDirectoryScoped({ prefix: "planning-memory-" });
+  for (const [name, markdown] of Object.entries(notes)) {
+    yield* fs.writeFileString(path.join(root, `${name}.md`), markdown);
+  }
+  const repositories = yield* RepositoryStore.RepositoryStore;
+  const source = yield* repositories.addRepository({
+    path: root,
+    name: "project-memory",
+    createdAt: at("2026-08-08T00:00:00.000Z"),
+  });
+  const memorySources = yield* MemorySourceStore.MemorySourceStore;
+  yield* memorySources.designate({
+    projectId,
+    repositoryId: source.repositoryId,
+    now: at("2026-08-08T00:00:00.000Z"),
+  });
+  return yield* fs.realPath(root);
 });
 
 describe("PlanningAssistant", () => {
@@ -769,6 +802,93 @@ describe("PlanningAssistant", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
+  it.effect("grounds reachable memory and resolves note mentions on the first turn", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const { first, second } = yield* seedTwoRepositories(created);
+      const memoryRoot = yield* seedMemory(created.plan.projectId, {
+        Composer: "The composer design.",
+        Plans: "The frontier includes [[Future]].",
+      });
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Use [[Composer]] and [[Future]].",
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      assert.strictEqual(session.cwd, first.path);
+      assert.deepStrictEqual(session.additionalDirectories, [second.path, memoryRoot]);
+      const sent = yield* Queue.take(harness.sendTurns);
+      const sentInput = sent.input ?? "";
+      assert.ok(sentInput.includes(`Project memory (durable design truth`));
+      assert.ok(sentInput.includes(`- ${memoryRoot}`));
+      assert.ok(sentInput.includes(`- Composer: ${memoryRoot}/Composer.md`));
+      assert.ok(sentInput.includes("- Future: not yet written — linked from Plans"));
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("resolves note mentions when continuing a live session", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const store = yield* PlanningStore.PlanningStore;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan("First");
+      const memoryRoot = yield* seedMemory(created.plan.projectId, {
+        Composer: "The composer design.",
+      });
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "First",
+      });
+      const session = yield* Queue.take(harness.startSessions);
+      yield* Queue.take(harness.sendTurns);
+      yield* Queue.take(frames); // turn-started
+      yield* harness.emit(
+        runtimeEvent(session.threadId, {
+          type: "content.delta",
+          payload: { streamKind: "assistant_text", delta: "First reply" },
+        }),
+      );
+      yield* Queue.take(frames);
+      yield* harness.emit(
+        runtimeEvent(session.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
+        }),
+      );
+      yield* Queue.take(frames); // turn-settled
+      const reply = (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.at(
+        -1,
+      )!;
+      const message = yield* store.appendMessage({
+        planId: created.plan.planId,
+        parentCommitId: reply.commitId,
+        text: "Consult [[Composer]].",
+        modelChoice: { provider: claude, model: "opus" },
+        lastUsed: null,
+        createdAt: at("2026-08-08T00:30:00.000Z"),
+      });
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: message.commitId,
+        text: message.text,
+        ...(message.ranUnder === undefined ? {} : { ranUnder: message.ranUnder }),
+      });
+      const continued = yield* Queue.take(harness.sendTurns);
+      assert.strictEqual(continued.threadId, session.threadId);
+      assert.strictEqual(
+        continued.input,
+        `Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: ${memoryRoot}/Composer.md`,
+      );
+    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
   it.effect("narrows visibly for a cwd-only provider", () =>
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
@@ -776,6 +896,7 @@ describe("PlanningAssistant", () => {
       const { created, root } = yield* seedPlan();
       yield* harness.setGroundingRoots("cwd-only");
       const { first, second } = yield* seedTwoRepositories(created);
+      yield* seedMemory(created.plan.projectId, {});
 
       const frames = yield* subscribeFrames(created.plan.planId);
       yield* assistant.startTurn({
@@ -791,7 +912,10 @@ describe("PlanningAssistant", () => {
       assert.strictEqual(session.additionalDirectories, undefined);
       const startedFrame = yield* Queue.take(frames);
       assert.ok(startedFrame.kind === "turn-started");
-      assert.deepStrictEqual(startedFrame.groundingScope?.unreachableRepositories, [second.name]);
+      assert.deepStrictEqual(startedFrame.groundingScope?.unreachableRepositories, [
+        second.name,
+        "project-memory",
+      ]);
       const firstTurn = yield* Queue.take(harness.sendTurns);
       assert.ok(firstTurn.input?.includes("Out of reach in this session"));
 
@@ -804,7 +928,10 @@ describe("PlanningAssistant", () => {
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       const reply = snapshot.timeline.at(-1);
       assert.ok(reply !== undefined && reply._tag === "message");
-      assert.deepStrictEqual(reply.groundingScope?.unreachableRepositories, [second.name]);
+      assert.deepStrictEqual(reply.groundingScope?.unreachableRepositories, [
+        second.name,
+        "project-memory",
+      ]);
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
   );
 
@@ -1247,7 +1374,7 @@ describe("PlanningAssistant", () => {
       const same = yield* store.appendMessage({
         planId: created.plan.planId,
         parentCommitId: firstReply.commitId,
-        text: "Stay deep",
+        text: "/cmd args",
         modelChoice: { ...high, options: high.options.toReversed() },
         lastUsed: null,
         createdAt: at("2026-08-08T00:28:00.000Z"),
@@ -1261,6 +1388,7 @@ describe("PlanningAssistant", () => {
       });
       const continued = yield* Queue.take(harness.sendTurns);
       assert.strictEqual(continued.threadId, firstSession.threadId);
+      assert.strictEqual(continued.input, "/cmd args");
       assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
       yield* Queue.take(frames);
       yield* harness.emit(

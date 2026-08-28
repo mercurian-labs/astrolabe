@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { CommandPaletteActionItem, CommandPaletteGroup } from "../CommandPalette.logic";
 import {
+  buildSearchPaletteGroups,
   composeEmptyQueryPlanRows,
   filterSearchPaletteGroups,
+  noteItemValue,
   resolveCurrentProjectId,
   resolveProjectPick,
 } from "./SearchPalette.logic";
@@ -40,6 +42,26 @@ const group = (value: string, items: readonly CommandPaletteActionItem[]): Comma
   value,
   label: value,
   items,
+});
+
+describe("memory search results", () => {
+  it("places memory after projects and gives notes stable values", () => {
+    const groups = buildSearchPaletteGroups({
+      actionItems: [item("action:new-plan", ["new"])],
+      planItems: [item("plan:one", ["one"])],
+      projectItems: [item("project:one", ["one"])],
+      noteItems: [item(noteItemValue("Composer"), ["Composer"])],
+      sectionItems: [item("section:memory", ["memory"])],
+    });
+    expect(groups.map((entry) => entry.value)).toEqual([
+      "actions",
+      "plans",
+      "projects",
+      "memory",
+      "workspace",
+    ]);
+    expect(noteItemValue("Composer")).toBe("note:Composer");
+  });
 });
 
 describe("composeEmptyQueryPlanRows", () => {

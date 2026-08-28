@@ -32,6 +32,21 @@ const baseProps = {
   text: "",
   attachments: [],
   gateNotice: planningModelGateNotice(selection, resolved),
+  provider: selection.provider,
+  slashCommands: [
+    { name: "review", description: "Review the plan for gaps and contradictions" },
+    { name: "compact", description: "Summarize the planning conversation" },
+  ],
+  skills: [
+    {
+      name: "product-docs",
+      displayName: "Product Docs",
+      description: "Work with a product documentation set",
+      path: "/skills/product-docs/SKILL.md",
+      scope: "personal",
+      enabled: true,
+    },
+  ],
   modelPicker: (
     <button className="rounded-md border border-border px-2 py-1 text-xs" type="button">
       Claude · Opus
@@ -70,6 +85,28 @@ export const PLAN_COMPOSER_CATALOG_ENTRIES = [
     description: "A composer whose send control is replaced while the assistant works.",
     sourcePath: "src/components/mercurian/PlanComposer.tsx",
     render: () => <PlanComposer {...baseProps} text="Catalog the identity surfaces." turnActive />,
+    layout: "preview",
+    preferredCanvas: "desktop",
+  },
+  {
+    id: "plan-composer-command-menu-open",
+    section: "mercurian-grammar",
+    group: "PlanComposer",
+    title: "Command menu open",
+    description: "Provider commands offered from a slash at the start of the line.",
+    sourcePath: "src/components/mercurian/PlanComposer.tsx",
+    render: () => <PlanComposer {...baseProps} text="/" />,
+    layout: "preview",
+    preferredCanvas: "desktop",
+  },
+  {
+    id: "plan-composer-command-menu-gated",
+    section: "mercurian-grammar",
+    group: "PlanComposer",
+    title: "Command menu gated",
+    description: "The command menu states why this machine cannot run the planning model.",
+    sourcePath: "src/components/mercurian/PlanComposer.tsx",
+    render: () => <PlanComposer {...baseProps} gateNotice={notSignedInNotice} text="/" />,
     layout: "preview",
     preferredCanvas: "desktop",
   },

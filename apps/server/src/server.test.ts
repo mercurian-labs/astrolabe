@@ -122,6 +122,8 @@ import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionSto
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
+import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
 import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
@@ -1097,6 +1099,7 @@ const buildAppUnderTest = (options?: {
             Layer.provideMerge(codingSessionStoreLayer),
             Layer.provideMerge(RepositoryStore.layer),
           ),
+          MemoryIndex.layer.pipe(Layer.provideMerge(MemorySourceStore.layer)),
           WorkspaceSettingsStore.layer,
           // Over a connector that reaches no network: the server suite is about
           // the wire, not about Linear.

@@ -40,6 +40,23 @@ describe("composerCommandKeyWithoutMenu", () => {
   });
 });
 
+describe("planning note cursor mapping", () => {
+  it("collapses a note only when note tokens are enabled", () => {
+    const text = "Read [[Planning Space]] next";
+    expect(collapseExpandedComposerCursor(text, "Read [[Planning Space]]".length)).toBe(
+      "Read [[Planning Space]]".length,
+    );
+    expect(
+      collapseExpandedComposerCursor(text, "Read [[Planning Space]]".length, {
+        includeNotes: true,
+      }),
+    ).toBe("Read ".length + 1);
+    expect(expandCollapsedComposerCursor(text, "Read ".length + 1, { includeNotes: true })).toBe(
+      "Read [[Planning Space]]".length,
+    );
+  });
+});
+
 describe("built-in composer slash commands", () => {
   it("does not parse plan/default interaction-mode commands", () => {
     expect(BUILT_IN_COMPOSER_SLASH_COMMANDS).toEqual(["model"]);

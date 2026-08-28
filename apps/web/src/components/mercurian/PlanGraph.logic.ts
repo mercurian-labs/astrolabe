@@ -60,7 +60,9 @@ export function hasFork(graph: PlanGraph): boolean {
 export function effectivePlanExplorerView(
   graph: PlanGraph,
   storedView: PlanExplorerView,
+  walkViewsEnabled: boolean,
 ): PlanExplorerView {
+  if (!walkViewsEnabled) return "graph";
   return storedView === "columns" && !hasFork(graph) ? "thread" : storedView;
 }
 

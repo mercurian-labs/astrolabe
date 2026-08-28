@@ -6,11 +6,16 @@ Below it, a **Workspace** group links to Repositories and Settings.
 ## Projects
 
 A project is a container for plans and the context those plans ground in. Create one with the
-**+** button in the Projects header, give it a name, and it appears in the tree.
+**new project** button beside the project filter, or from the search palette. The dialog takes the
+whole act: name the project, tick the registered repositories it should work in, and create — the
+sidebar switches to your new project, ready for its first plan. Cancelling creates nothing.
 
-A project's context is its repositories. Hover a project row and press the **repositories** icon to
-choose which registered repositories its plans work in — a default, not a boundary, and never a
-label on anything. See [Repositories](./repositories.md).
+Connecting repositories at creation is optional — the set is a default, not a boundary, and never
+a label on anything. The dialog lists the repositories this workspace already knows; **Manage
+Repos** takes you to the [Repositories](./repositories.md) page to add or remove them, and a
+workspace with no repositories yet offers just that button. For an existing project, the same
+choices live behind the project filter's **repositories** icon. That dialog also designates the
+project's [memory](./project-memory.md), which may live in any registered repository or folder.
 
 A project row expands and collapses with a click, and the tree remembers which projects you left
 expanded. A project with many plans shows its most recent ones and a **Show more** row for the
@@ -78,6 +83,17 @@ in the project's set, saying which one each came from when there is more than on
 turns it into a chip that travels with the message. A project with no repositories has nothing to
 offer, so the menu stays closed — see [Repositories](./repositories.md) for setting the project's
 set.
+
+Planning can also mention [memory notes](./project-memory.md#mention-notes-in-a-plan). Type **[[**
+for a notes-only menu, or keep using **@** to search notes alongside files.
+
+### Commands and skills
+
+Type **/** at the start of a line to browse commands supplied by the branch's planning provider, or
+type **$** to browse its enabled skills. Choosing one places the invocation in your message, where
+you can add arguments before sending it. These offers come from the provider instance connected to
+this machine; when that instance cannot run the selected planning model, the menu says why, and
+when it supplies no commands or skills, the menu says that too.
 
 **Enter** sends and **Shift+Enter** starts a new line. There is no queueing — while a message is
 going out the send button is held, and the next one waits.
@@ -200,21 +216,15 @@ repository's plan and keep planning there; the plan on the original line stays u
 The Checkpoint Graph shows every continuable checkpoint in the plan: complete turns, unanswered
 queries, direct artifact revisions, repository plans, and coding-session leaves. Revisions made
 inside one assistant turn stay inside that turn's checkpoint rather than appearing as separate
-places to continue. It offers **Thread**, **Columns**, and **Graph** readings and remembers which
-one you chose.
-
-Thread follows the line you are on. Columns keeps branch choices open as standing panes. Graph is a
-map of the same checkpoints laid out in space, with every connection visible but no text on the map
-itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's top-right
-mark readiness and stale spec or plan status. Drag the map to move around it and scroll to zoom;
-where you are standing is ringed and comes to the middle.
+places to continue. The history is a spatial graph with every connection visible and no text on the
+map itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's
+top-right mark readiness and stale spec or plan status. Drag the map to move around it and scroll to
+zoom; where you are standing is ringed and comes to the middle.
 
 Work you have published reads solid; work still private to you reads muted.
 
-Rows move the space directly. In Graph, choose a dot to open its details, then choose **Continue
-from here** to move there. The same details are available from the information button on Thread and
-Columns rows. The popover records model facts, changes, warnings, readiness, and the acts available
-from that checkpoint without moving you merely because it opened.
+Choose a continuable checkpoint to move the planning surface there. Checkpoint details record model
+facts, changes, warnings, readiness, and the acts available from that point in history.
 
 After moving, the conversation shows the path through that checkpoint, the plan shows what it said
 at the time, and the Checkpoint Graph highlights where you are standing. The conversation is always

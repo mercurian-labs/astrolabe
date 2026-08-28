@@ -77,8 +77,12 @@ is ever filed under a repository.
 
 Set them from either side:
 
+- pick them right in the new-project dialog when creating the project,
 - hover a project in the sidebar and press the **repositories** icon, or
 - open a repository's row menu and choose **Manage in projects…**.
+
+Both dialogs carry a **Manage Repos** button that brings you to this page — adding a repository
+always happens here.
 
 Once a project has repositories, typing `@` in that project's plan composer lists files from them.
 With more than one repository the list says which one each file came from. With none, `@` has

@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { foundationsThemes } from "../../foundations/foundations.logic";
+import { useDesignLabOverridesStore, type DesignLabSearch } from "../../designLabOverrides";
 import {
   applyThemePalette,
   getThemeColorVariable,
@@ -26,8 +27,8 @@ import {
 } from "../../design-system/catalog";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -39,11 +40,6 @@ import {
   groupDesignLabEntries,
   isDesignLabSectionExpanded,
 } from "./designLabNav.logic";
-
-export type DesignLabSearch = Readonly<{
-  page?: string;
-  entry?: string;
-}>;
 
 const CANVAS_WIDTHS: ReadonlyArray<{
   id: CatalogCanvasWidth;
@@ -119,25 +115,7 @@ function DesignLabHeader({ children }: { children: ReactNode }) {
     </>
   );
 
-  return !isElectron ? (
-    <header
-      className={cn(
-        "workspace-topbar gap-3 px-3 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none sm:px-5",
-        COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-      )}
-    >
-      {content}
-    </header>
-  ) : (
-    <div
-      className={cn(
-        "drag-region flex h-[52px] shrink-0 items-center gap-3 px-5 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]",
-        COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-      )}
-    >
-      {content}
-    </div>
-  );
+  return <WorkspacePageHeader electron={isElectron}>{content}</WorkspacePageHeader>;
 }
 
 export function DesignLabLayout({
@@ -165,6 +143,8 @@ export function DesignLabLayout({
   const [increasedText, setIncreasedText] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const originalRootFontSize = useRef<InlineStyleSnapshot | null>(null);
+  const bumpRepaintNonce = useDesignLabOverridesStore((store) => store.bumpRepaintNonce);
+  const setLastLabLocation = useDesignLabOverridesStore((store) => store.setLastLabLocation);
 
   const filteredEntries = useMemo(() => filterDesignLabEntries(CATALOG_ENTRIES, filter), [filter]);
   const navSections = useMemo(
@@ -195,8 +175,13 @@ export function DesignLabLayout({
         if (value) root.style.setProperty(variable, value);
         else root.style.removeProperty(variable);
       }
+      bumpRepaintNonce();
     };
-  }, []);
+  }, [bumpRepaintNonce]);
+
+  useEffect(() => {
+    setLastLabLocation(search);
+  }, [search, setLastLabLocation]);
 
   useEffect(() => {
     applyCatalogPalette(themeId, appearance);

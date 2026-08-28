@@ -3,6 +3,7 @@ import {
   type EnvironmentId,
   type MercurianCommitId,
   type MercurianProjectId,
+  type MemoryNote,
   type PlanId,
   type PlanInFlightTurn,
   type PlanSpecAt,
@@ -17,8 +18,8 @@ import {
   CircleDotIcon,
   ClockIcon,
   FileTextIcon,
-  GitBranchIcon,
   SquareTerminalIcon,
+  WaypointsIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -33,6 +34,7 @@ import {
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAssetUrls } from "../../assets/assetUrls";
+import { useExperiments } from "../../lib/experiments";
 import { randomUUID } from "../../lib/utils";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
@@ -63,14 +65,16 @@ import {
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
 import { useRepositories } from "../../state/mercurianRepositories";
+import { useReadMemoryNote } from "../../state/mercurianMemory";
 import { usePaginatedBranches } from "../../state/queries";
+import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { SidebarInset } from "../ui/sidebar";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import {
   DagExplorer,
   DEFAULT_EXPLORER_VIEW,
@@ -108,6 +112,7 @@ import {
   type PlanPosition,
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
+import { MemoryNoteReader } from "./MemoryNoteReader";
 import { SpecArtifact } from "./SpecArtifact";
 import {
   planMayBeStaleAt,
@@ -242,6 +247,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
+  const [experiments] = useExperiments();
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
   const explorerGraph = useMemo(() => condensePlanGraph(graph), [graph]);
@@ -252,7 +258,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
     [graph, proposal],
   );
-  const effectiveExplorerView = effectivePlanExplorerView(explorerGraph, explorerView);
+  const effectiveExplorerView = effectivePlanExplorerView(
+    explorerGraph,
+    explorerView,
+    experiments.historyWalkViews,
+  );
   const [columnsWidthCap, setColumnsWidthCap] = useState(0);
   const planningSpaceRef = useRef<HTMLDivElement>(null);
   const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
@@ -311,6 +321,44 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   // The plan's project is what says which code this space can mention. With no
   // repository set, there is nothing to offer and the menu stays closed.
   const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
+  const readMemoryNote = useReadMemoryNote();
+  const [memoryReader, setMemoryReader] = useState<{ readonly stack: string[] }>({ stack: [] });
+  const [memoryNote, setMemoryNote] = useState<MemoryNote | null>(null);
+  const [memoryNoteLoading, setMemoryNoteLoading] = useState(false);
+  const [memoryNoteError, setMemoryNoteError] = useState<string | null>(null);
+  const currentMemoryNoteName = memoryReader.stack.at(-1) ?? null;
+  const openMemoryNote = useCallback((name: string) => {
+    setMemoryReader((current) => ({ stack: [...current.stack, name] }));
+  }, []);
+
+  useEffect(() => {
+    const projectId = detail?.plan.projectId;
+    if (currentMemoryNoteName === null || projectId === undefined) return;
+    let active = true;
+    setMemoryNoteLoading(true);
+    setMemoryNoteError(null);
+    setMemoryNote(null);
+    void readMemoryNote({ projectId, name: currentMemoryNoteName }).then((result) => {
+      if (!active) return;
+      if (result.ok) setMemoryNote(result.value);
+      else setMemoryNoteError(memoryReadError(result.error));
+      setMemoryNoteLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [currentMemoryNoteName, detail?.plan.projectId, memoryReader.stack.length, readMemoryNote]);
+
+  useEffect(() => {
+    if (currentMemoryNoteName === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMemoryReader({ stack: [] });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [currentMemoryNoteName]);
 
   // Another plan is another history: whatever you were looking at there does
   // not name anything here.
@@ -320,6 +368,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setStalePlanWarningOpen(false);
     setImplementFromCommitId(null);
     setPendingEditAndBranch(null);
+    setMemoryReader({ stack: [] });
   }, [planId]);
 
   /**
@@ -404,6 +453,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       cancelled = true;
     };
   }, [actingHead, measurePlanReconstruction, planId]);
+  const providerStatus =
+    effectiveModelResolution._tag === "resolved"
+      ? planningModel.providers.find(
+          (provider) => provider.instanceId === effectiveModelResolution.instanceId,
+        )
+      : undefined;
   const viewingPast = isViewingPast(graph, position);
   const effectiveRightPaneWidth = width;
   const rightPaneOverlays =
@@ -669,8 +724,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             inFlight={visibleInFlight}
             inFlightImplement={visibleInFlightImplement}
             providers={planningModel.providers}
+            {...(providerStatus === undefined ? {} : { skills: providerStatus.skills })}
             readyCommits={readyCommits}
             timeline={visibleTimeline}
+            onOpenNote={openMemoryNote}
             onAnswerQuestion={(answers) => {
               if (visibleInFlight !== undefined) {
                 void answerQuestion(planId, visibleInFlight.turnId, answers);
@@ -687,6 +744,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           {mentions.sources}
           <PlanComposer
             attachments={draft.attachments}
+            {...(providerStatus === undefined
+              ? {}
+              : {
+                  provider: providerStatus.driver,
+                  slashCommands: providerStatus.slashCommands,
+                  skills: providerStatus.skills,
+                })}
             // Standing at an earlier point does not take the composer away —
             // it changes what sending means, and the banner says so.
             banner={
@@ -818,7 +882,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 // and an unread one look alike, and saying nothing is better
                 // than saying the plan was blank.
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+                  <div
+                    className={cn(
+                      WORKSPACE_PANE_TITLE_BAR_CLASS,
+                      "gap-2 border-b border-border px-3 sm:px-4",
+                    )}
+                  >
                     <ArtifactPicker
                       value={pane.artifact}
                       onChange={(artifact) => setPane({ ...pane, artifact })}
@@ -832,7 +901,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 </div>
               ) : pane.artifact === "spec" && artifactSpec === undefined ? (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+                  <div
+                    className={cn(
+                      WORKSPACE_PANE_TITLE_BAR_CLASS,
+                      "gap-2 border-b border-border px-3 sm:px-4",
+                    )}
+                  >
                     <ArtifactPicker
                       value={pane.artifact}
                       onChange={(artifact) => setPane({ ...pane, artifact })}
@@ -901,6 +975,23 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               )}
             </div>
           </>
+        )}
+        {currentMemoryNoteName === null ? null : (
+          <div className="absolute inset-y-0 right-0 z-30 max-w-full shadow-lg">
+            <MemoryNoteReader
+              error={memoryNoteError}
+              loading={memoryNoteLoading}
+              note={memoryNote}
+              onOpenNote={openMemoryNote}
+              onClose={() => setMemoryReader({ stack: [] })}
+              {...(memoryReader.stack.length > 1
+                ? {
+                    onBack: () =>
+                      setMemoryReader((current) => ({ stack: current.stack.slice(0, -1) })),
+                  }
+                : {})}
+            />
+          </div>
         )}
       </div>
       {proposal === undefined && landedPlans.length === 0 ? null : (
@@ -1020,6 +1111,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
 }
 
+function memoryReadError(error: unknown): string {
+  return error instanceof Error ? error.message : "Could not read this memory note.";
+}
+
 /**
  * Re-materialize recorded image metadata through the environment's asset door.
  * The position moves only after every available image has become a composer
@@ -1128,7 +1223,7 @@ export function PlanPaneToggle({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger render={<Toggle aria-label="Checkpoint Graph" value="explorer" />}>
-          <GitBranchIcon className="size-3.5" />
+          <WaypointsIcon className="size-3.5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">Checkpoint Graph</TooltipPopup>
       </Tooltip>
@@ -1231,6 +1326,13 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   const planningModel = usePlanningModel();
   const modelChoice = draft?.modelChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
+  const providerStatus =
+    effectiveModelResolution._tag === "resolved"
+      ? planningModel.providers.find(
+          (provider) => provider.instanceId === effectiveModelResolution.instanceId,
+        )
+      : undefined;
+  const draftPlanningModelNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
   const [isImportOpen, setIsImportOpen] = useState(false);
   /**
    * The unborn plan's images. Held here rather than in `planDraftStore`
@@ -1315,12 +1417,20 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
       {mentions.sources}
       <PlanComposer
         attachments={attachments}
+        {...(providerStatus === undefined
+          ? {}
+          : {
+              provider: providerStatus.driver,
+              slashCommands: providerStatus.slashCommands,
+              skills: providerStatus.skills,
+            })}
         implementDisabledReason={implementDisabledReason({
           turnActive: false,
           planTextEmpty: true,
           isDraft: true,
         })}
         mentionCandidates={mentions.candidates}
+        menuGateNotice={draftPlanningModelNotice}
         modelPicker={
           <>
             <PlanModelPicker
@@ -1341,7 +1451,7 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         // Informational, not blocking: a plan is born with its first message
         // whether or not an assistant can reply, so the draft composer says
         // what will happen rather than refusing to create the plan.
-        notice={planningModelGateNotice(modelChoice, effectiveModelResolution)}
+        notice={draftPlanningModelNotice}
         placeholder="Describe the work"
         text={draft.text}
         onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}
@@ -1365,15 +1475,10 @@ function PlanningHeader({
   readonly actions?: ReactNode;
 }) {
   return (
-    <header
-      className={cn(
-        "workspace-topbar gap-2 border-b border-border px-3 sm:px-5",
-        COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-      )}
-    >
+    <WorkspacePageHeader className="gap-2 border-b border-border">
       <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{title}</h1>
       {actions}
-    </header>
+    </WorkspacePageHeader>
   );
 }
 

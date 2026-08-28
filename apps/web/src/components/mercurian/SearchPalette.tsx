@@ -3,9 +3,11 @@ import type { MercurianProject, PlanTreeRow } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
+  BookOpenIcon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  PaletteIcon,
   ScrollTextIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -14,11 +16,14 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "rea
 import type { KeyboardEvent } from "react";
 
 import { onOpenCommandPalette } from "../../commandPaletteBus";
+import { useDesignLabOverridesStore } from "../../designLabOverrides";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../../keybindings";
 import { isTerminalFocused } from "../../lib/terminalFocus";
 import { randomUUID } from "../../lib/utils";
 import { usePlanDraftStore } from "../../planDraftStore";
+import { useProjectScopeStore } from "../../projectScopeStore";
 import { useMercurianTree } from "../../state/mercurian";
+import { useMemorySourceForProject, useReadMemoryIndex } from "../../state/mercurianMemory";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import {
@@ -44,6 +49,7 @@ import {
   buildSearchPaletteGroups,
   composeEmptyQueryPlanRows,
   filterSearchPaletteGroups,
+  noteItemValue,
   planItemValue,
   projectItemValue,
   resolveCurrentProjectId,
@@ -52,7 +58,7 @@ import {
   type SearchPaletteResult,
 } from "./SearchPalette.logic";
 
-type PaletteResult = SearchPaletteResult<PlanTreeRow, MercurianProject>;
+type PaletteResult = SearchPaletteResult<PlanTreeRow, MercurianProject, { readonly name: string }>;
 
 /**
  * The Search Palette: one chord, from anywhere, over everything you can go to
@@ -181,6 +187,26 @@ function SearchPaletteDialog(props: {
   // One level deep is all this palette needs: the project picker behind "New
   // plan". The stack shape is the fork's so a second view costs nothing.
   const [pickerGroups, setPickerGroups] = useState<ReadonlyArray<CommandPaletteGroup> | null>(null);
+  const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
+  const scopedProject =
+    props.projects.find((project) => project.projectId === projectScopeId) ?? null;
+  const memorySource = useMemorySourceForProject(scopedProject?.projectId ?? null);
+  const readMemoryIndex = useReadMemoryIndex();
+  const [memoryNoteNames, setMemoryNoteNames] = useState<ReadonlyArray<string>>([]);
+
+  useEffect(() => {
+    if (scopedProject === null || memorySource === null) {
+      setMemoryNoteNames([]);
+      return;
+    }
+    let active = true;
+    void readMemoryIndex(scopedProject.projectId).then((result) => {
+      if (active) setMemoryNoteNames(result.ok ? result.value.notes.map((note) => note.name) : []);
+    });
+    return () => {
+      active = false;
+    };
+  }, [memorySource, readMemoryIndex, scopedProject]);
 
   const projectNameById = useMemo(
     () =>
@@ -217,8 +243,18 @@ function SearchPaletteDialog(props: {
           startPlanInProject(result.project.projectId);
           return;
         }
+        case "note":
+          void navigate({ to: "/memory", search: { note: result.note.name } });
+          return;
         case "section":
-          void navigate({ to: result.section === "repositories" ? "/repositories" : "/settings" });
+          void navigate({
+            to:
+              result.section === "memory"
+                ? "/memory"
+                : result.section === "repositories"
+                  ? "/repositories"
+                  : "/settings",
+          });
           return;
         case "action":
           if (result.action === "new-project") {
@@ -305,12 +341,30 @@ function SearchPaletteDialog(props: {
         icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
         run: async () => runResult({ kind: "action", action: "open-settings" }),
       },
+      ...(import.meta.env.DEV
+        ? [
+            {
+              kind: "action" as const,
+              value: "action:design-lab",
+              searchTerms: ["design lab", "axes", "catalog"],
+              title: "Open Design Lab",
+              icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
+              run: async () => {
+                await navigate({
+                  to: "/design-lab",
+                  search: useDesignLabOverridesStore.getState().lastLabLocation ?? {},
+                });
+              },
+            },
+          ]
+        : []),
     ];
   }, [
     projectNameById,
     projectPickerGroups,
     props.currentProjectId,
     props.projects.length,
+    navigate,
     runResult,
   ]);
 
@@ -352,6 +406,22 @@ function SearchPaletteDialog(props: {
     [props.projects, runResult],
   );
 
+  const noteItems = useMemo<CommandPaletteActionItem[]>(
+    () =>
+      query.trim().length === 0
+        ? []
+        : memoryNoteNames.map((name) => ({
+            kind: "action",
+            value: noteItemValue(name),
+            searchTerms: [name, "memory note"],
+            title: name,
+            description: scopedProject?.name,
+            icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
+            run: async () => runResult({ kind: "note", note: { name } }),
+          })),
+    [memoryNoteNames, query, runResult, scopedProject?.name],
+  );
+
   const sectionItems = useMemo<CommandPaletteActionItem[]>(
     () =>
       SEARCH_PALETTE_SECTIONS.map((section) => ({
@@ -360,7 +430,9 @@ function SearchPaletteDialog(props: {
         searchTerms: [...section.searchTerms],
         title: section.label,
         icon:
-          section.section === "repositories" ? (
+          section.section === "memory" ? (
+            <BookOpenIcon className={ITEM_ICON_CLASS} />
+          ) : section.section === "repositories" ? (
             <GitBranchIcon className={ITEM_ICON_CLASS} />
           ) : (
             <SettingsIcon className={ITEM_ICON_CLASS} />
@@ -371,8 +443,9 @@ function SearchPaletteDialog(props: {
   );
 
   const rootGroups = useMemo(
-    () => buildSearchPaletteGroups({ actionItems, planItems, projectItems, sectionItems }),
-    [actionItems, planItems, projectItems, sectionItems],
+    () =>
+      buildSearchPaletteGroups({ actionItems, planItems, projectItems, noteItems, sectionItems }),
+    [actionItems, noteItems, planItems, projectItems, sectionItems],
   );
 
   const activeGroups = pickerGroups ?? rootGroups;

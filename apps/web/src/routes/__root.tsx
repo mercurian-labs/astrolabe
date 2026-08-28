@@ -19,6 +19,7 @@ import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
+import { DesignLabOverridesHost } from "../components/design-system/DesignLabOverridesHost";
 import { SearchPalette } from "../components/mercurian/SearchPalette";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
@@ -145,6 +146,9 @@ function RootRouteView() {
         <ContrastAppearanceSync />
         <GlassAppearanceSync />
         <FontAppearanceSync />
+        {/* Mount order is load-bearing: Lab overrides must paint after the
+            persisted glass and font synchronizers. */}
+        {import.meta.env.DEV ? <DesignLabOverridesHost /> : null}
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <RelayClientInstallDialog />
         <ConnectOnboardingDialog />

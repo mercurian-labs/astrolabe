@@ -38,8 +38,10 @@ import {
 } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useExperiments } from "../../lib/experiments";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -136,10 +138,10 @@ type DisplaySettingsUpdater = (
 ) => void;
 
 /**
- * The Checkpoint Graph: the plan's whole checkpoint history, in the three readings the design
- * settled on.
+ * The Checkpoint Graph: the plan's whole checkpoint history as a spatial map.
  *
- * The **Thread** is the checked-out root-to-tip path through where the planning
+ * Two parked development readings remain available behind an experiment. The
+ * **Thread** is the checked-out root-to-tip path through where the planning
  * surface stands. Rows make that line easy to read and move through, while
  * always-visible switches reveal its sibling branches and merge parents. The
  * **Columns** hold those same branch decisions open as standing segments, so
@@ -148,7 +150,7 @@ type DisplaySettingsUpdater = (
  * a node, every parent edge drawn, the whole shape visible at once — for seeing
  * structure, not for walking it.
  *
- * Neither view renders a commit twice. A merge is one row in the thread and
+ * No reading renders a commit twice. A merge is one row in the thread and
  * one node in the map, with its alternate incoming lines available from the
  * row's switch.
  *
@@ -167,6 +169,7 @@ export function DagExplorer({
   stalePlanCommitIds,
   staleSpecCommitIds,
   cornerControl,
+  historyWalkViewsEnabled,
   onColumnsWidthCapChange,
   onEditAndBranch,
   onImplementFrom,
@@ -184,6 +187,8 @@ export function DagExplorer({
   readonly staleSpecCommitIds: ReadonlySet<string>;
   /** The planning-space pane toggle; omitted in standalone renderings. */
   readonly cornerControl?: ReactNode;
+  /** Explicit override for development catalogs and focused rendering tests. */
+  readonly historyWalkViewsEnabled?: boolean;
   readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onEditAndBranch: (
     query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
@@ -196,9 +201,11 @@ export function DagExplorer({
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
   );
+  const [experiments] = useExperiments();
+  const walkViewsEnabled = historyWalkViewsEnabled ?? experiments.historyWalkViews;
   const checkpointGraph = useMemo(() => condensePlanGraph(graph), [graph]);
-  const columnsAvailable = hasFork(checkpointGraph);
-  const view = effectivePlanExplorerView(checkpointGraph, storedView);
+  const columnsAvailable = walkViewsEnabled && hasFork(checkpointGraph);
+  const view = effectivePlanExplorerView(checkpointGraph, storedView, walkViewsEnabled);
   // Standing at the tip is standing at the latest commit; an anchor is what
   // moves the highlight anywhere else.
   const currentCommitId = planNodeIdForCommit(
@@ -237,7 +244,9 @@ export function DagExplorer({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="workspace-topbar gap-2 border-b border-border px-3 sm:px-4">
+      <div
+        className={cn(WORKSPACE_PANE_TITLE_BAR_CLASS, "gap-2 border-b border-border px-3 sm:px-4")}
+      >
         <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
         {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
           <GraphWarningsPopover
@@ -246,42 +255,44 @@ export function DagExplorer({
           />
         )}
         <span className="min-w-0 flex-1" />
-        <ToggleGroup
-          className="shrink-0"
-          role="toolbar"
-          size="xs"
-          value={[view]}
-          variant="outline"
-          onValueChange={(next) => {
-            const chosen = next[0];
-            // The switch is a choice between three views, never a way to have
-            // neither: re-pressing the active one leaves it pressed.
-            if (chosen === "thread" || chosen === "columns" || chosen === "graph") {
-              setView(chosen);
-            }
-          }}
-        >
-          <Tooltip>
-            <TooltipTrigger render={<Toggle aria-label="Thread" value="thread" />}>
-              <GitCommitVerticalIcon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">Thread</TooltipPopup>
-          </Tooltip>
-          {columnsAvailable ? (
+        {walkViewsEnabled ? (
+          <ToggleGroup
+            className="shrink-0"
+            role="toolbar"
+            size="xs"
+            value={[view]}
+            variant="outline"
+            onValueChange={(next) => {
+              const chosen = next[0];
+              // The switch is a choice between three views, never a way to have
+              // neither: re-pressing the active one leaves it pressed.
+              if (chosen === "thread" || chosen === "columns" || chosen === "graph") {
+                setView(chosen);
+              }
+            }}
+          >
             <Tooltip>
-              <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
-                <Columns3Icon className="size-3.5" />
+              <TooltipTrigger render={<Toggle aria-label="Thread" value="thread" />}>
+                <GitCommitVerticalIcon className="size-3.5" />
               </TooltipTrigger>
-              <TooltipPopup side="bottom">Columns</TooltipPopup>
+              <TooltipPopup side="bottom">Thread</TooltipPopup>
             </Tooltip>
-          ) : null}
-          <Tooltip>
-            <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
-              <WaypointsIcon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">Graph</TooltipPopup>
-          </Tooltip>
-        </ToggleGroup>
+            {columnsAvailable ? (
+              <Tooltip>
+                <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
+                  <Columns3Icon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Columns</TooltipPopup>
+              </Tooltip>
+            ) : null}
+            <Tooltip>
+              <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
+                <WaypointsIcon className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">Graph</TooltipPopup>
+            </Tooltip>
+          </ToggleGroup>
+        ) : null}
         {cornerControl}
       </div>
       {checkpointGraph.nodes.length === 0 ? (

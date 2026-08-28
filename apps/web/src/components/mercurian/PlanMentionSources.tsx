@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
 import { usePrimaryEnvironmentId } from "../../state/environments";
+import { useMemorySourceForProject, useReadMemoryIndex } from "../../state/mercurianMemory";
 import { useProjectRepositories } from "../../state/mercurianRepositories";
 import {
   buildMentionSearchTargets,
@@ -25,7 +26,11 @@ import {
 export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
   const environmentId = usePrimaryEnvironmentId();
   const repositories = useProjectRepositories(projectId);
+  const memorySource = useMemorySourceForProject(projectId);
+  const readMemoryIndex = useReadMemoryIndex();
   const [query, setQuery] = useState<string | null>(null);
+  const [notesOnly, setNotesOnly] = useState(false);
+  const [noteNames, setNoteNames] = useState<ReadonlyArray<string>>([]);
   const [entriesByRepository, setEntriesByRepository] = useState<
     Readonly<Record<string, ReadonlyArray<{ readonly path: string }>>>
   >({});
@@ -46,13 +51,41 @@ export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
       query === null
         ? []
         : mergeMentionCandidates(
-            targets.map((target) => ({
-              repositoryId: target.repositoryId,
-              repositoryName: target.repositoryName,
-              entries: entriesByRepository[target.repositoryId] ?? [],
-            })),
+            notesOnly
+              ? []
+              : targets.map((target) => ({
+                  repositoryId: target.repositoryId,
+                  repositoryName: target.repositoryName,
+                  entries: entriesByRepository[target.repositoryId] ?? [],
+                })),
+            { noteNames, query },
           ),
-    [entriesByRepository, query, targets],
+    [entriesByRepository, noteNames, notesOnly, query, targets],
+  );
+
+  useEffect(() => {
+    if (query === null || projectId === null || memorySource === null) {
+      setNoteNames([]);
+      return;
+    }
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      void readMemoryIndex(projectId).then((result) => {
+        if (active) setNoteNames(result.ok ? result.value.notes.map((note) => note.name) : []);
+      });
+    }, 120);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [memorySource, projectId, query, readMemoryIndex]);
+
+  const onMentionQueryChange = useCallback(
+    (nextQuery: string | null, options?: { readonly notesOnly?: boolean }) => {
+      setQuery(nextQuery);
+      setNotesOnly(options?.notesOnly === true);
+    },
+    [],
   );
 
   /**
@@ -66,7 +99,7 @@ export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
         <MentionSource
           key={target.repositoryId}
           environmentId={environmentId}
-          query={query}
+          query={notesOnly ? null : query}
           target={target}
           onEntries={report}
         />
@@ -74,7 +107,7 @@ export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
     </>
   );
 
-  return { candidates, sources, onMentionQueryChange: setQuery } as const;
+  return { candidates, sources, onMentionQueryChange } as const;
 }
 
 function MentionSource({

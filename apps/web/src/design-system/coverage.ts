@@ -23,6 +23,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Repository discovery, folder validation, cloning, and persistence all depend on the active environment.",
   },
+  "src/components/mercurian/AddRepositoryFlow.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Repository discovery, folder validation, cloning, and persistence all depend on the active environment.",
+  },
   "src/components/mercurian/ArchivedPlansPanel.tsx": {
     category: "requires-live-workspace",
     reason:
@@ -43,6 +48,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Submitting the dialog creates a real tracker connection through the active environment state.",
   },
+  "src/components/mercurian/ExperimentsSettings.tsx": {
+    category: "deferred",
+    reason:
+      "A future entry should show the development-only experiment rows with their switches off and on.",
+  },
   "src/components/mercurian/HostingProvidersSection.tsx": {
     category: "requires-live-workspace",
     reason:
@@ -58,9 +68,20 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "The choices and save action are backed by the environment's repositories and project membership state.",
   },
+  "src/components/mercurian/MemoryPage.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Project scope, memory designation, index refresh, note reads, and deep-link navigation depend on live workspace and router state.",
+  },
+  "src/components/mercurian/memoryMarkdown.tsx": {
+    category: "composition-shell",
+    reason:
+      "The renderer is exercised through the catalogued MemoryNoteReader, which supplies link resolution and navigation behavior.",
+  },
   "src/components/mercurian/NewProjectDialog.tsx": {
     category: "requires-live-workspace",
-    reason: "Submitting the dialog creates a project through the live Mercurian command state.",
+    reason:
+      "Its repository choices and project creation sequence use the live Mercurian repositories and command state.",
   },
   "src/components/mercurian/PlanMentionSources.tsx": {
     category: "requires-live-workspace",

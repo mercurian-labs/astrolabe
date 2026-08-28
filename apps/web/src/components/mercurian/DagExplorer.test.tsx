@@ -82,6 +82,7 @@ const checkpointTimeline: ReadonlyArray<PlanTimelineItem> = [
 
 const sharedExplorerProps = {
   codingSessions: [],
+  historyWalkViewsEnabled: true,
   providers: [],
   onEditAndBranch: vi.fn(),
   onImplementFrom: vi.fn(),
@@ -197,10 +198,61 @@ describe("DagExplorer", () => {
       'aria-label="Details for You: Group this turn; Assistant: Grouped and ready"',
     );
     expect(toggle).toContain('aria-label="Checkpoint Graph"');
+    expect(toggle).toContain("lucide-waypoints");
+    expect(toggle).not.toContain("lucide-git-branch");
     expect(settings).toContain("Display layout");
     expect(settings).toContain("Node size");
     expect(settings).toContain("Line thickness");
     expect(settings).not.toMatch(/Detail|Commits/);
+  });
+
+  it("renders only Graph without changing a parked stored preference", () => {
+    const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
+    setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "thread", ExplorerView);
+    try {
+      const markup = renderToStaticMarkup(
+        <DagExplorer
+          {...sharedExplorerProps}
+          anchoredCommitId={null}
+          graph={buildPlanGraph(timeline)}
+          historyWalkViewsEnabled={false}
+          readyCommits={new Map()}
+          stalePlanCommitIds={new Set()}
+          staleSpecCommitIds={new Set()}
+          onColumnsWidthCapChange={vi.fn()}
+          onSelect={vi.fn()}
+        />,
+      );
+
+      expect(markup).not.toContain('aria-label="Thread"');
+      expect(markup).not.toContain('aria-label="Columns"');
+      expect(markup).not.toContain('aria-label="Graph"');
+      expect(markup).toContain('<svg class="size-full cursor-grab');
+      expect(getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView)).toBe("thread");
+    } finally {
+      if (previous === null) removeLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY);
+      else setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, previous, ExplorerView);
+    }
+  });
+
+  it("restores all three view toggles on a fork when walking views are enabled", () => {
+    const markup = renderToStaticMarkup(
+      <DagExplorer
+        {...sharedExplorerProps}
+        anchoredCommitId={null}
+        graph={buildPlanGraph(timeline)}
+        historyWalkViewsEnabled
+        readyCommits={new Map()}
+        stalePlanCommitIds={new Set()}
+        staleSpecCommitIds={new Set()}
+        onColumnsWidthCapChange={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Thread"');
+    expect(markup).toContain('aria-label="Columns"');
+    expect(markup).toContain('aria-label="Graph"');
   });
 
   it("surfaces plan freshness separately from a stale spec branch", () => {

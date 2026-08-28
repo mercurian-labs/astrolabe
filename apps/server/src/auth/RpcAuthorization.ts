@@ -7,6 +7,7 @@ import {
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
   MERCURIAN_REPOSITORY_WS_METHODS,
+  MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MERCURIAN_WS_METHODS,
@@ -71,6 +72,12 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  [MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources]: AuthOrchestrationReadScope,
+  [MERCURIAN_MEMORY_WS_METHODS.designateMemorySource]: AuthOrchestrationOperateScope,
+  [MERCURIAN_MEMORY_WS_METHODS.removeMemorySource]: AuthOrchestrationOperateScope,
+  [MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex]: AuthOrchestrationReadScope,
+  [MERCURIAN_MEMORY_WS_METHODS.readMemoryNote]: AuthOrchestrationReadScope,
+  [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: AuthOrchestrationOperateScope,
   // Tracker connections likewise: connecting and disconnecting are operations;
   // seeing where a connection stands, and reading the issues it reaches, are
   // reads.

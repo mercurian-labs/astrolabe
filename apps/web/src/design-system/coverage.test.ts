@@ -29,8 +29,8 @@ describe("design-system coverage inventories", () => {
     expect(overlappingClassifications).toEqual([]);
     expect(unclassified).toEqual([]);
     expect(new Set(declaredMercurianModulePaths(CATALOG_ENTRIES))).toEqual(modulePaths);
-    expect(catalogued.size).toBe(9);
-    expect(MERCURIAN_MODULE_PATHS).toHaveLength(36);
+    expect(catalogued.size).toBe(10);
+    expect(MERCURIAN_MODULE_PATHS).toHaveLength(41);
     for (const { reason } of Object.values(MERCURIAN_CLASSIFICATIONS)) {
       expect(reason.trim()).not.toBe("");
     }

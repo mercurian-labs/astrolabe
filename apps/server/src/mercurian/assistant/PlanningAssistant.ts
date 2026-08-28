@@ -71,6 +71,7 @@ import {
   ThreadId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
@@ -94,6 +95,8 @@ import {
 } from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
+import * as MemoryIndex from "../memory/MemoryIndex.ts";
 import {
   WorkspaceSettingsStore,
   type WorkspaceSettingsStoreError,
@@ -101,8 +104,10 @@ import {
 import { foldGroundingEvent } from "./GroundingFold.ts";
 import {
   composeFirstTurnInput,
+  appendMemoryMentionStanza,
   implementTurnInput,
   measureTranscript,
+  memoryMentionResolutionStanza,
   planningSystemAppendix,
   TRANSCRIPT_FRAMING_MARGIN,
   transcriptPreamble,
@@ -458,6 +463,8 @@ export const make = Effect.gen(function* () {
   const registry = yield* PlanTurnRegistry;
   const workspaceSettings = yield* WorkspaceSettingsStore;
   const repositoryStore = yield* RepositoryStore.RepositoryStore;
+  const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
+  const memoryIndex = yield* MemoryIndex.MemoryIndex;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerService = yield* ProviderService.ProviderService;
   const crypto = yield* Crypto.Crypto;
@@ -996,6 +1003,35 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  const resolvedMemorySource = (projectId: MercurianProjectId) =>
+    memorySourceStore.getResolvedSource(projectId).pipe(Effect.orElseSucceed(() => Option.none()));
+
+  const resolveMemoryMentionStanza = Effect.fn("PlanningAssistant.resolveMemoryMentionStanza")(
+    function* (projectId: MercurianProjectId, text: string) {
+      const names = [
+        ...new Set(
+          collectComposerInlineTokens(text, { includeNotes: true })
+            .filter((token) => token.type === "note")
+            .map((token) => token.value),
+        ),
+      ];
+      if (names.length === 0 || Option.isNone(yield* resolvedMemorySource(projectId))) return null;
+
+      const resolutions = [];
+      for (const name of names) {
+        const result = yield* memoryIndex.readNote(projectId, name).pipe(Effect.option);
+        if (Option.isNone(result)) continue;
+        const note = result.value;
+        if (note.exists && note.path !== undefined) {
+          resolutions.push({ name, path: note.path });
+        } else if (note.backlinks.length > 0) {
+          resolutions.push({ name, referencedBy: note.backlinks });
+        }
+      }
+      return memoryMentionResolutionStanza(resolutions);
+    },
+  );
+
   /**
    * Everything a fresh session needs, assembled before any provider call:
    * grounding roots narrowed to the capability, the ancestor transcript, and
@@ -1013,16 +1049,29 @@ export const make = Effect.gen(function* () {
     }) {
       const repositories = yield* repositoriesForProject(input.projectId);
 
+      const memorySource = yield* resolvedMemorySource(input.projectId);
       const capabilities = yield* providerService.getCapabilities(input.instanceId);
       // Narrowed, and visibly so: a cwd-only provider grounds the first
       // repository alone, and the turn carries which ones were out of reach —
       // silent narrowing is exactly what "grounding is visible" forbids.
+      const groundingRoots = [
+        ...repositories.map((repository) => ({ ...repository, kind: "repository" as const })),
+        ...(Option.isNone(memorySource)
+          ? []
+          : [
+              {
+                name: memorySource.value.repositoryName,
+                path: memorySource.value.rootPath,
+                kind: "memory" as const,
+              },
+            ]),
+      ];
       const reachable =
-        capabilities.groundingRoots === "multi" ? repositories : repositories.slice(0, 1);
+        capabilities.groundingRoots === "multi" ? groundingRoots : groundingRoots.slice(0, 1);
       const unreachable =
         capabilities.groundingRoots === "multi"
           ? []
-          : repositories.slice(1).map((repository) => repository.name);
+          : groundingRoots.slice(1).map((root) => root.name);
       const groundingScope: PlanGroundingScope | undefined =
         unreachable.length === 0 ? undefined : { unreachableRepositories: unreachable };
 
@@ -1034,9 +1083,11 @@ export const make = Effect.gen(function* () {
 
       const appendix = planningSystemAppendix({
         planTitle: input.planTitle,
-        repositories: reachable,
+        repositories: reachable.filter((root) => root.kind === "repository"),
         unreachableRepositories: unreachable,
+        memoryRoot: reachable.find((root) => root.kind === "memory") ?? null,
       });
+      const memoryMentionStanza = yield* resolveMemoryMentionStanza(input.projectId, input.text);
       const preamble =
         transcript.entries.length === 0
           ? null
@@ -1044,7 +1095,8 @@ export const make = Effect.gen(function* () {
               entries: transcript.entries,
               planText: transcript.planText,
               spec: transcript.spec,
-              reservedChars: appendix.length + input.text.length,
+              reservedChars:
+                appendix.length + input.text.length + (memoryMentionStanza?.length ?? 0),
             });
 
       const threadId = yield* mintThreadId;
@@ -1053,8 +1105,13 @@ export const make = Effect.gen(function* () {
         groundingScope,
         repositories,
         cwd: reachable[0]?.path,
-        additionalDirectories: reachable.slice(1).map((repository) => repository.path),
-        firstTurnInput: composeFirstTurnInput({ appendix, preamble, message: input.text }),
+        additionalDirectories: reachable.slice(1).map((root) => root.path),
+        firstTurnInput: composeFirstTurnInput({
+          appendix,
+          preamble,
+          message: input.text,
+          memoryMentionStanza,
+        }),
       } satisfies RebuildMaterials;
     },
   );
@@ -1236,8 +1293,15 @@ export const make = Effect.gen(function* () {
           });
         }
 
+        const memoryMentionStanza = yield* resolveMemoryMentionStanza(
+          snapshot.plan.projectId,
+          input.text,
+        );
         const continued = yield* providerService
-          .sendTurn({ threadId, input: input.text })
+          .sendTurn({
+            threadId,
+            input: appendMemoryMentionStanza(input.text, memoryMentionStanza),
+          })
           .pipe(Effect.result);
         if (Result.isSuccess(continued)) {
           sessions.set(threadId, { ...existing!, tipCommitId: input.parentCommitId });
