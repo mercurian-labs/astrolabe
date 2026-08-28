@@ -139,6 +139,7 @@ export function DesignLabLayout({
       ? "dark"
       : "light",
   );
+  const [palettePreviewTouched, setPalettePreviewTouched] = useState(false);
   const [canvasWidth, setCanvasWidth] = useState<CatalogCanvasWidth>(activeEntry.preferredCanvas);
   const [increasedText, setIncreasedText] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -184,8 +185,9 @@ export function DesignLabLayout({
   }, [search, setLastLabLocation]);
 
   useEffect(() => {
+    if (!palettePreviewTouched) return;
     applyCatalogPalette(themeId, appearance);
-  }, [appearance, themeId]);
+  }, [appearance, palettePreviewTouched, themeId]);
 
   useEffect(() => {
     const originalFontSize = originalRootFontSize.current;
@@ -216,7 +218,10 @@ export function DesignLabLayout({
             <Select
               value={themeId}
               onValueChange={(value) => {
-                if (typeof value === "string") setThemeId(value);
+                if (typeof value === "string") {
+                  setPalettePreviewTouched(true);
+                  setThemeId(value);
+                }
               }}
             >
               <SelectTrigger aria-label="Palette" className="w-32 shrink-0" size="xs">
@@ -236,7 +241,10 @@ export function DesignLabLayout({
                 <Button
                   aria-pressed={appearance === mode}
                   key={mode}
-                  onClick={() => setAppearance(mode)}
+                  onClick={() => {
+                    setPalettePreviewTouched(true);
+                    setAppearance(mode);
+                  }}
                   size="xs"
                   variant={appearance === mode ? "secondary" : "ghost"}
                 >
