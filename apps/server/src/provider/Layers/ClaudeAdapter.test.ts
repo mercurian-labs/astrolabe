@@ -3139,6 +3139,29 @@ describe("ClaudeAdapterLive", () => {
         { type: "system", subtype: "plugin_install", session_id: "session", uuid: "pi" },
         { type: "system", subtype: "memory_recall", session_id: "session", uuid: "mr" },
         { type: "system", subtype: "elicitation_complete", session_id: "session", uuid: "ec" },
+        {
+          type: "system",
+          subtype: "task_summary",
+          summary: { task_id: "t1", usage: { output_tokens: 12 } },
+          session_id: "session",
+          uuid: "ts",
+        },
+        {
+          type: "system",
+          subtype: "post_turn_summary",
+          turn: { checkpoints: [] },
+          session_id: "session",
+          uuid: "pts",
+        },
+        // Undeclared subtype with no displayable scalar content: consumed
+        // silently instead of warning with a content-less placeholder.
+        {
+          type: "system",
+          subtype: "totally_unmodeled",
+          detail: { nested: { only: true } },
+          session_id: "session",
+          uuid: "tun",
+        },
         { type: "prompt_suggestion", suggestion: "try this", session_id: "session", uuid: "ps" },
         {
           type: "system",
@@ -3161,6 +3184,15 @@ describe("ClaudeAdapterLive", () => {
         priority: "high",
         session_id: "session",
         uuid: "notif-high",
+      } as unknown as SDKMessage);
+      // Undeclared subtypes that DO carry displayable scalar content still
+      // surface, with the content in the row label.
+      harness.query.emit({
+        type: "system",
+        subtype: "mystery_subtype",
+        note: "something interesting",
+        session_id: "session",
+        uuid: "mystery",
       } as unknown as SDKMessage);
       // session_state_changed maps to the matching session states.
       for (const [state, uuid] of [
@@ -3192,10 +3224,15 @@ describe("ClaudeAdapterLive", () => {
       yield* Effect.yieldNow;
 
       const warnings = runtimeEvents.filter((event) => event.type === "runtime.warning");
-      // Exactly one warning: the high-priority notification. Nothing else.
+      // Exactly two warnings: the high-priority notification and the unknown
+      // subtype that carried displayable content. Content-less bookkeeping
+      // (task_summary, post_turn_summary, totally_unmodeled) emits nothing.
       assert.deepEqual(
         warnings.map((event) => event.payload.message),
-        ["context window nearly full"],
+        [
+          "context window nearly full",
+          "Claude system message 'mystery_subtype' — note: something interesting",
+        ],
       );
       const sessionStates = runtimeEvents
         .filter((event) => event.type === "session.state.changed")
