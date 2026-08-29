@@ -573,3 +573,11 @@ single plan.`
 (This also resolves a drift: the rendered paragraph still carried the compacted-context
 clause the vault's merge redesign had already retired.) Checks: the four gates; dist carries
 the new header and paragraph verbatim and no eyebrow text.
+
+### Amendment 13 addendum 2 — footer breathing room (2026-08-28)
+
+Venkat's call: more space above the footer (the provider band's removal took the page's
+bottom padding with it — the desk now abuts the footer), and the footer itself carries too
+much padding. The desk section gets generous bottom air (≈ pb-16 lg:pb-24 on the content
+container, restoring and slightly exceeding what the band's padding provided), and the
+footer's inner padding drops py-10 → py-6.
