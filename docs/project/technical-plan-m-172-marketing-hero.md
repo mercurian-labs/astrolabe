@@ -496,3 +496,30 @@ transform-origin: bottom right; }`. Click/drag mapping survives scaling because
   everything outside `apps/landing/` and `docs/` must be empty, and
   `vp run --filter @t3tools/web typecheck` must pass untouched — recorded as an AC bullet so
   every future round walks it.
+
+## Amendment 12 — the page speaks the name, and the pane is the narrow stage (2026-08-28)
+
+Vault rulings (Marketing Site, commit 6733558) from Venkat's naming/CTA/responsive calls:
+
+- **Combined button (index.astro, static):** the topbar's quiet GitHub link becomes the page's
+  one outward control — an anchor styled as a quiet button: the GitHub mark + "Try Astrolabe",
+  href to the public repository (rel/target as before). When a download page exists it points
+  there instead (recorded in the vault; not this branch's concern). One control, not two.
+- **Eyebrow (index.astro, static):** above the claim-1 header, a small muted line naming the
+  product, copy pinned by the vault: _Astrolabe — Mercurian's planning studio for coding
+  agents_. Quiet type (small, muted-foreground); the headline block otherwise unchanged.
+- **The narrow stage (HeroDesk.tsx):** below lg, the window shows the RIGHT PANE alone —
+  graph by default, artifacts a toggle away, the conversation reachable by closing the pane —
+  because the pane's portrait proportions fit a phone and the future demonstration loop
+  inherits the stage unchanged. Mirroring the product's own two-render-site pattern
+  (PlanningSpace renders its header outside the columns below sm, inside the conversation
+  column at sm+): the hero renders the header at the window top below lg (title + toggles),
+  and keeps the current inside-the-conversation-column arrangement at lg+. Below lg with the
+  pane open (the default), the pane fills the window and the conversation column hides; with
+  the pane closed, the conversation (timeline + composer) fills it. The pane toggles become
+  visible and working at ALL widths (the hidden-below-lg wrappers go away).
+
+Checks: the four gates; at 375 width the window shows the graph with working toggles
+(artifact swap, close → conversation, reopen); at desktop nothing changes from the previous
+round; the built HTML carries the eyebrow copy and the Try Astrolabe control with the repo
+href; the isolation walk step passes.
