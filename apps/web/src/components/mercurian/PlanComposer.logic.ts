@@ -308,6 +308,12 @@ export function implementFailureNotice(
   }
 }
 
+export function memoryAmendmentFailureNotice(
+  failure: Extract<PlanStreamItem, { readonly kind: "memory-amendment-failed" }>,
+): string {
+  return `The assistant couldn't produce a usable memory amendment; nothing landed. ${failure.reason}`;
+}
+
 /** A turn is waiting on the person exactly while it has a question up. */
 export function turnAwaitsInput(turn: PlanInFlightTurn | undefined): boolean {
   return turn?.questions !== undefined && turn.questions.length > 0;

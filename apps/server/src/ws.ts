@@ -45,9 +45,11 @@ import {
   MercurianPlanningError,
   MercurianRepositoryError,
   MercurianMemoryError,
+  ConfirmMemoryAmendmentBlockedError,
   MercurianTrackerError,
   MercurianWorkspaceError,
   isConfirmSplitsBlockedError,
+  isConfirmMemoryAmendmentBlockedError,
   isCodingSessionBlockedError,
   isImplementBlockedError,
   isMercurianProjectNotFoundError,
@@ -2229,6 +2231,60 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.confirmMemoryAmendment]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.confirmMemoryAmendment,
+            Effect.gen(function* () {
+              const parentCommitId = CommitId.make(input.parentCommitId);
+              yield* planningStore.assertNoActiveTurn({
+                planId: input.planId,
+                parentCommitId,
+              });
+              const proposal = yield* planningAssistant.memoryAmendmentProposal(input.planId);
+              if (proposal === undefined) {
+                return yield* new ConfirmMemoryAmendmentBlockedError({ reason: "no-proposal" });
+              }
+              const detail = yield* planningStore.getPlanSnapshot({ planId: input.planId });
+              const memoryCommitSha = yield* memoryIndex.applyAmendment({
+                projectId: detail.plan.projectId,
+                proposal,
+                planId: input.planId,
+                planName: detail.plan.title,
+              });
+              const createdAt = yield* DateTime.now;
+              const message = yield* planningStore.appendMemoryAmendment({
+                planId: input.planId,
+                parentCommitId,
+                title: proposal.title,
+                memoryCommitSha,
+                notes: proposal.changes
+                  .filter(({ path }) => path.endsWith(".md") && !path.startsWith("maps/"))
+                  .map(({ path }) => path.slice(0, -3).split("/").at(-1)!),
+                createdAt,
+              });
+              yield* planningAssistant.clearMemoryAmendment(input.planId);
+              return MercurianCommitId.make(message.commitId);
+            }).pipe(
+              Effect.mapError((cause) =>
+                isPlanNotFoundError(cause) ||
+                isPlanTurnActiveError(cause) ||
+                isConfirmMemoryAmendmentBlockedError(cause) ||
+                cause._tag === "MercurianMemoryError"
+                  ? cause
+                  : new MercurianPlanningError({
+                      operation: "confirmMemoryAmendment",
+                      cause,
+                    }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.cancelMemoryAmendment]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.cancelMemoryAmendment,
+            planningAssistant.cancelMemoryAmendment(input.planId).pipe(Effect.as({})),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.startCodingSession]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.startCodingSession,
@@ -2488,21 +2544,38 @@ const makeWsRpcLayer = (
                           inFlightTurns: planningAssistant.inFlightTurns(input.planId),
                           inFlightImplement: planningAssistant.inFlightImplement(input.planId),
                           implementProposal: planningAssistant.implementProposal(input.planId),
+                          memoryAmendmentProposal: planningAssistant.memoryAmendmentProposal(
+                            input.planId,
+                          ),
                         }).pipe(
-                          Effect.map(({ inFlightTurns, inFlightImplement, implementProposal }) => ({
-                            cursor: detail.snapshotSequence,
-                            items: [
-                              {
-                                kind: "snapshot" as const,
-                                snapshot: {
-                                  ...toWirePlanDetail(detail),
-                                  inFlightTurns,
-                                  ...(inFlightImplement === undefined ? {} : { inFlightImplement }),
-                                  ...(implementProposal === undefined ? {} : { implementProposal }),
+                          Effect.map(
+                            ({
+                              inFlightTurns,
+                              inFlightImplement,
+                              implementProposal,
+                              memoryAmendmentProposal,
+                            }) => ({
+                              cursor: detail.snapshotSequence,
+                              items: [
+                                {
+                                  kind: "snapshot" as const,
+                                  snapshot: {
+                                    ...toWirePlanDetail(detail),
+                                    inFlightTurns,
+                                    ...(inFlightImplement === undefined
+                                      ? {}
+                                      : { inFlightImplement }),
+                                    ...(implementProposal === undefined
+                                      ? {}
+                                      : { implementProposal }),
+                                    ...(memoryAmendmentProposal === undefined
+                                      ? {}
+                                      : { memoryAmendmentProposal }),
+                                  },
                                 },
-                              },
-                            ] satisfies ReadonlyArray<PlanStreamItem>,
-                          })),
+                              ] satisfies ReadonlyArray<PlanStreamItem>,
+                            }),
+                          ),
                         ),
                       ),
                       Effect.mapError(toPlanStreamError),

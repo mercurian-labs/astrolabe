@@ -14,6 +14,7 @@ import type {
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import {
+  BookOpenCheckIcon,
   CircleDotIcon,
   FileTextIcon,
   InfoIcon,
@@ -426,13 +427,15 @@ function StandaloneIdentity({
   readonly label: string;
 }) {
   const Glyph =
-    item._tag === "coding-session"
-      ? SquareTerminalIcon
-      : item._tag === "plan-revision"
-        ? FileTextIcon
-        : item._tag === "spec-revision"
-          ? CircleDotIcon
-          : MessageSquareIcon;
+    item._tag === "message" && item.memoryAmendment !== undefined
+      ? BookOpenCheckIcon
+      : item._tag === "coding-session"
+        ? SquareTerminalIcon
+        : item._tag === "plan-revision"
+          ? FileTextIcon
+          : item._tag === "spec-revision"
+            ? CircleDotIcon
+            : MessageSquareIcon;
   return (
     <div className="flex min-w-0 items-center gap-1.5">
       <Glyph

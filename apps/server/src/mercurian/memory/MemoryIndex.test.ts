@@ -8,9 +8,11 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
+  isConfirmMemoryAmendmentBlockedError,
   isProductMapAlreadyExistsError,
   MercurianProjectId,
   MercurianRepositoryId,
+  PlanTurnId,
 } from "@t3tools/contracts";
 
 import * as ProcessRunner from "../../processRunner.ts";
@@ -144,6 +146,84 @@ layer("MemoryIndex", (it) => {
 
       const error = yield* Effect.flip(index.generateProductMap(fixture.projectId));
       assert.isTrue(isProductMapAlreadyExistsError(error));
+    }),
+  );
+
+  it.effect("applies note and placement as one attributed commit and resolves a red link", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const index = yield* MemoryIndex.MemoryIndex;
+      const fixture = yield* makeFixture("apply-amendment", { git: true });
+      yield* fs.writeFileString(path.join(fixture.root, "Product.md"), "See [[Composer]].\n");
+      yield* fs.makeDirectory(path.join(fixture.root, "maps"));
+      yield* fs.writeFileString(
+        path.join(fixture.root, "maps", "product.yaml"),
+        "name: Product\npurpose: Product structure\narrangement:\n  - note: Product\n",
+      );
+      yield* runGit(fixture.root, ["add", "Product.md", "maps/product.yaml"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed memory"]);
+
+      const proposal = yield* index.prepareAmendment({
+        projectId: fixture.projectId,
+        turnId: PlanTurnId.make("turn-amendment"),
+        amendment: {
+          title: "Record the composer boundary",
+          notes: [{ name: "Composer", markdown: "The composer belongs to [[Product]].\n" }],
+          placements: [{ map: "Product", parent: "Product", note: "Composer" }],
+        },
+      });
+      assert.include(proposal.patch, "Composer.md");
+      assert.notInclude(proposal.patch, "before/");
+      assert.notInclude(proposal.patch, "after/");
+      const sha = yield* index.applyAmendment({
+        projectId: fixture.projectId,
+        proposal,
+        planId: "plan-181",
+        planName: "Project memory amendments",
+      });
+      assert.isString(sha);
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["log", "-1", "--pretty=%B"]),
+        "Record the composer boundary\n\nAmended-from-plan: Project memory amendments (plan-181)",
+      );
+      const note = yield* index.readNote(fixture.projectId, "Composer");
+      assert.strictEqual(note.exists, true);
+      const memory = yield* index.readIndex(fixture.projectId);
+      assert.deepStrictEqual(memory.unresolved, []);
+    }),
+  );
+
+  it.effect("refuses amendment drift before touching any proposed file", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const index = yield* MemoryIndex.MemoryIndex;
+      const fixture = yield* makeFixture("amendment-drift", { git: true });
+      const notePath = path.join(fixture.root, "Plans.md");
+      yield* fs.writeFileString(notePath, "Before\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      const proposal = yield* index.prepareAmendment({
+        projectId: fixture.projectId,
+        turnId: PlanTurnId.make("turn-drift"),
+        amendment: {
+          title: "Change plans",
+          notes: [{ name: "Plans", markdown: "After\n" }],
+          placements: [],
+        },
+      });
+      yield* fs.writeFileString(notePath, "External\n");
+      const error = yield* Effect.flip(
+        index.applyAmendment({
+          projectId: fixture.projectId,
+          proposal,
+          planId: "plan-drift",
+          planName: "Drift",
+        }),
+      );
+      assert.isTrue(isConfirmMemoryAmendmentBlockedError(error));
+      assert.strictEqual(yield* fs.readFileString(notePath), "External\n");
     }),
   );
 });

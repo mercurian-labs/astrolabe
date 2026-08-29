@@ -46,6 +46,7 @@ import {
   ImplementBlockedError,
   MercurianCommitId,
   type MercurianProjectId,
+  type MemoryAmendmentProposal,
   NoPendingQuestionError,
   type PlanGroundingItem,
   type PlanGroundingScope,
@@ -80,6 +81,7 @@ import type {
   ReadPlanTool,
   ReadSpecTool,
   SaveImplementProposalTool,
+  ProposeMemoryAmendmentTool,
   SavePlanRevisionTool,
   SaveSpecRevisionTool,
 } from "../../mcp/toolkits/planning/tools.ts";
@@ -201,6 +203,7 @@ interface TurnRuntime {
   stopRequested: boolean;
   /** The implement MCP door's last complete proposal. */
   pendingProposal?: PendingImplementProposal;
+  pendingMemoryAmendment?: MemoryIndex.PendingMemoryAmendment;
   /** Project identity used to resolve proposal repository names at settle. */
   readonly projectId?: MercurianProjectId;
 }
@@ -216,12 +219,14 @@ type PlanningMcpToolName =
   | typeof SavePlanRevisionTool.name
   | typeof SaveSpecRevisionTool.name
   | typeof SaveImplementProposalTool.name
+  | typeof ProposeMemoryAmendmentTool.name
   | typeof ReadPlanTool.name
   | typeof ReadSpecTool.name;
 const APPROVED_PLANNING_MCP_TOOLS = [
   "save_plan_revision",
   "save_spec_revision",
   "save_implement_proposal",
+  "propose_memory_amendment",
   "read_plan",
   "read_spec",
 ] as const satisfies ReadonlyArray<PlanningMcpToolName>;
@@ -291,6 +296,11 @@ export class PlanningAssistant extends Context.Service<
       planId: PlanId,
     ) => Effect.Effect<PlanImplementProposal | undefined>;
     readonly cancelImplementProposal: (planId: PlanId) => Effect.Effect<void>;
+    readonly memoryAmendmentProposal: (
+      planId: PlanId,
+    ) => Effect.Effect<MemoryAmendmentProposal | undefined>;
+    readonly cancelMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
+    readonly clearMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
     /** Clear a landed proposal after its split commits have become the stream signal. */
     readonly clearImplementProposal: (planId: PlanId) => Effect.Effect<void>;
     /** Publish a ready verdict that the store has already made durable. */
@@ -330,6 +340,16 @@ export class PlanningAssistant extends Context.Service<
       readonly repositories: ReadonlyArray<string>;
       readonly rationale?: string;
       readonly splits?: ReadonlyArray<{ readonly repository: string; readonly text: string }>;
+    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
+    readonly proposeMemoryAmendmentFromThread: (input: {
+      readonly threadId: ThreadId;
+      readonly title: string;
+      readonly notes: ReadonlyArray<{ readonly name: string; readonly markdown: string }>;
+      readonly placements: ReadonlyArray<{
+        readonly map: string;
+        readonly parent: string;
+        readonly note: string;
+      }>;
     }) => Effect.Effect<void, PlanningTurnNotFoundError>;
     /** The MCP read door: the artifact's text at the calling turn's tip. */
     readonly readPlanFromThread: (input: {
@@ -482,6 +502,7 @@ export const make = Effect.gen(function* () {
   const turns = new Map<PlanTurnId, TurnRuntime>();
   const sessions = new Map<ThreadId, PlanSession>();
   const proposals = new Map<PlanId, PlanImplementProposal>();
+  const memoryAmendmentProposals = new Map<PlanId, MemoryAmendmentProposal>();
 
   const turnsOfPlan = (planId: PlanId): Array<TurnRuntime> => {
     const result: Array<TurnRuntime> = [];
@@ -590,6 +611,39 @@ export const make = Effect.gen(function* () {
     }
 
     yield* publishFrame(planId, { kind: "turn-settled", turnId: turn.turnId });
+    yield* announceChange;
+  });
+
+  const settleMemoryAmendment = Effect.fn("PlanningAssistant.settleMemoryAmendment")(function* (
+    turn: TurnRuntime,
+  ) {
+    if (turn.flavor !== "reply" || turn.pendingMemoryAmendment === undefined) return;
+    const amendment = turn.pendingMemoryAmendment;
+    delete turn.pendingMemoryAmendment;
+    if (turn.projectId === undefined) return;
+    const prepared = yield* memoryIndex
+      .prepareAmendment({ projectId: turn.projectId, turnId: turn.turnId, amendment })
+      .pipe(Effect.result);
+    if (Result.isFailure(prepared)) {
+      const reason =
+        prepared.failure._tag === "MemoryAmendmentValidationError"
+          ? prepared.failure.reason
+          : prepared.failure._tag === "MemoryNotDesignatedError"
+            ? "This project has no designated memory."
+            : "Project memory could not be prepared for review.";
+      memoryAmendmentProposals.delete(turn.planId);
+      yield* publishFrame(turn.planId, {
+        kind: "memory-amendment-failed",
+        turnId: turn.turnId,
+        reason,
+      });
+    } else {
+      memoryAmendmentProposals.set(turn.planId, prepared.success);
+      yield* publishFrame(turn.planId, {
+        kind: "memory-amendment-proposed",
+        proposal: prepared.success,
+      });
+    }
     yield* announceChange;
   });
 
@@ -918,6 +972,7 @@ export const make = Effect.gen(function* () {
             event.payload.state === "completed" ? "completed" : "provider-error",
           );
         } else {
+          if (event.payload.state === "completed") yield* settleMemoryAmendment(turn);
           yield* settleTurn(turn, { interrupted: event.payload.state !== "completed" });
         }
         return;
@@ -1086,6 +1141,7 @@ export const make = Effect.gen(function* () {
         repositories: reachable.filter((root) => root.kind === "repository"),
         unreachableRepositories: unreachable,
         memoryRoot: reachable.find((root) => root.kind === "memory") ?? null,
+        memoryAmendmentsAvailable: Option.isSome(memorySource),
       });
       const memoryMentionStanza = yield* resolveMemoryMentionStanza(input.projectId, input.text);
       const preamble =
@@ -1259,6 +1315,7 @@ export const make = Effect.gen(function* () {
         answers: undefined,
         settling: false,
         stopRequested: false,
+        projectId: snapshot.plan.projectId,
       };
       turns.set(turnId, turn);
 
@@ -1692,6 +1749,25 @@ export const make = Effect.gen(function* () {
   const clearImplementProposal: PlanningAssistant["Service"]["clearImplementProposal"] = (planId) =>
     Effect.sync(() => void proposals.delete(planId));
 
+  const memoryAmendmentProposal: PlanningAssistant["Service"]["memoryAmendmentProposal"] = (
+    planId,
+  ) => Effect.sync(() => memoryAmendmentProposals.get(planId));
+
+  const cancelMemoryAmendment: PlanningAssistant["Service"]["cancelMemoryAmendment"] = (planId) =>
+    Effect.gen(function* () {
+      const proposal = memoryAmendmentProposals.get(planId);
+      if (proposal === undefined) return;
+      memoryAmendmentProposals.delete(planId);
+      yield* publishFrame(planId, {
+        kind: "memory-amendment-cancelled",
+        turnId: PlanTurnId.make(proposal.turnId),
+      });
+      yield* announceChange;
+    });
+
+  const clearMemoryAmendment: PlanningAssistant["Service"]["clearMemoryAmendment"] = (planId) =>
+    Effect.sync(() => void memoryAmendmentProposals.delete(planId));
+
   const publishImplementReady: PlanningAssistant["Service"]["publishImplementReady"] = (input) =>
     publishFrame(input.planId, { kind: "implement-ready", ready: input.ready });
 
@@ -1714,6 +1790,7 @@ export const make = Effect.gen(function* () {
   const teardownPlan: PlanningAssistant["Service"]["teardownPlan"] = (input) =>
     Effect.gen(function* () {
       proposals.delete(input.planId);
+      memoryAmendmentProposals.delete(input.planId);
       for (const turn of turnsOfPlan(input.planId)) {
         if (turn.settling) continue;
         if (turn.flavor === "implement") {
@@ -1811,6 +1888,28 @@ export const make = Effect.gen(function* () {
         };
       });
 
+  const proposeMemoryAmendmentFromThread: PlanningAssistant["Service"]["proposeMemoryAmendmentFromThread"] =
+    (input) =>
+      Effect.gen(function* () {
+        const claimed = yield* registry.getByThread(input.threadId);
+        const runtime = findTurnByThread(input.threadId);
+        if (
+          Option.isNone(claimed) ||
+          claimed.value.flavor !== "reply" ||
+          runtime === undefined ||
+          runtime.flavor !== "reply" ||
+          runtime.settling
+        ) {
+          return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
+        }
+        memoryAmendmentProposals.delete(runtime.planId);
+        runtime.pendingMemoryAmendment = {
+          title: input.title,
+          notes: input.notes.map((note) => ({ ...note })),
+          placements: input.placements.map((placement) => ({ ...placement })),
+        };
+      });
+
   const readPlanFromThread: PlanningAssistant["Service"]["readPlanFromThread"] = (input) =>
     Effect.gen(function* () {
       const claimed = yield* registry.getByThread(input.threadId);
@@ -1860,12 +1959,16 @@ export const make = Effect.gen(function* () {
     implementProposal,
     cancelImplementProposal,
     clearImplementProposal,
+    memoryAmendmentProposal,
+    cancelMemoryAmendment,
+    clearMemoryAmendment,
     publishImplementReady,
     status,
     teardownPlan,
     saveRevisionFromThread,
     saveSpecRevisionFromThread,
     saveImplementProposalFromThread,
+    proposeMemoryAmendmentFromThread,
     readPlanFromThread,
     readSpecFromThread,
     get changes() {

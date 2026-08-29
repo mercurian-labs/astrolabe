@@ -102,6 +102,18 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
+    confirmMemoryAmendment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:confirm-memory-amendment",
+      tag: MERCURIAN_WS_METHODS.confirmMemoryAmendment,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
+    cancelMemoryAmendment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:cancel-memory-amendment",
+      tag: MERCURIAN_WS_METHODS.cancelMemoryAmendment,
+      scheduler: writeScheduler,
+      concurrency: serialPerPlan,
+    }),
     startCodingSession: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:start-coding-session",
       tag: MERCURIAN_WS_METHODS.startCodingSession,

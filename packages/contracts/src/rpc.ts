@@ -77,12 +77,15 @@ import {
 import {
   CodingSessionBlockedError,
   ConfirmSplitsBlockedError,
+  ConfirmMemoryAmendmentBlockedError,
   ImplementBlockedError,
   MERCURIAN_WS_METHODS,
   MercurianAnswerPlanningQuestionInput,
   MercurianAppendPlanMessageInput,
   MercurianArchivePlanInput,
   MercurianCancelImplementProposalInput,
+  MercurianCancelMemoryAmendmentInput,
+  MercurianConfirmMemoryAmendmentInput,
   MercurianConfirmSplitsInput,
   MercurianConfirmSplitsResult,
   MercurianStartCodingSessionInput,
@@ -125,6 +128,7 @@ import {
   PlanTextAt,
   PlanReconstructionMeasure,
   PlanTurnActiveError,
+  MercurianCommitId,
 } from "./mercurian.ts";
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
@@ -1236,6 +1240,31 @@ export const WsMercurianConfirmSplitsRpc = Rpc.make(MERCURIAN_WS_METHODS.confirm
   ]),
 });
 
+export const WsMercurianConfirmMemoryAmendmentRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.confirmMemoryAmendment,
+  {
+    payload: MercurianConfirmMemoryAmendmentInput,
+    success: MercurianCommitId,
+    error: Schema.Union([
+      PlanNotFoundError,
+      PlanTurnActiveError,
+      ConfirmMemoryAmendmentBlockedError,
+      MercurianPlanningError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianCancelMemoryAmendmentRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.cancelMemoryAmendment,
+  {
+    payload: MercurianCancelMemoryAmendmentInput,
+    success: MercurianPlanAcknowledged,
+    error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsMercurianStartCodingSessionRpc = Rpc.make(MERCURIAN_WS_METHODS.startCodingSession, {
   payload: MercurianStartCodingSessionInput,
   success: MercurianStartCodingSessionResult,
@@ -1685,6 +1714,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRefreshSpecRpc,
   WsMercurianTryImplementRpc,
   WsMercurianConfirmSplitsRpc,
+  WsMercurianConfirmMemoryAmendmentRpc,
+  WsMercurianCancelMemoryAmendmentRpc,
   WsMercurianStartCodingSessionRpc,
   WsMercurianCancelImplementProposalRpc,
   WsMercurianVisitPlanRpc,

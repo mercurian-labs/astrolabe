@@ -48,7 +48,7 @@ export function MemoryNoteReader({
             <Spinner className="size-4" /> Reading note…
           </div>
         ) : error !== null ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-foreground">
             {error}
           </p>
         ) : note === null ? null : note.exists ? (
@@ -62,7 +62,8 @@ export function MemoryNoteReader({
             <h3 className="text-lg font-semibold">{note.name}</h3>
             <p className="text-sm font-medium text-destructive-foreground">Not yet written</p>
             <p className="text-sm text-muted-foreground">
-              This note is referenced by the memory, but no note file exists yet.
+              This note is referenced by the memory, but no note file exists yet. Ask for it here to
+              propose it as an amendment.
             </p>
           </div>
         )}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { initialMemorySelection, memoryPageStanding, memoryRailItems } from "./MemoryPage.logic";
+import {
+  initialMemorySelection,
+  memoryPageStanding,
+  memoryRailItems,
+  writeNoteSeedMessage,
+} from "./MemoryPage.logic";
 
 const index = {
   maps: [
@@ -45,5 +50,19 @@ describe("memoryPageStanding", () => {
     );
     expect(memoryPageStanding({ projectId: "p", designated: true, index: null })).toBe("loading");
     expect(memoryPageStanding({ projectId: "p", designated: true, index })).toBe("ready");
+  });
+});
+
+describe("writeNoteSeedMessage", () => {
+  it("seeds the amendment message with the note's references", () => {
+    expect(writeNoteSeedMessage("Workspaces", ["Repositories", "Settings"])).toBe(
+      "Write [[Workspaces]] — it's referenced by Repositories and Settings. Propose it as a memory amendment.",
+    );
+  });
+
+  it("stays terse for a note nothing references yet", () => {
+    expect(writeNoteSeedMessage("Future Design", [])).toBe(
+      "Write [[Future Design]]. Propose it as a memory amendment.",
+    );
   });
 });

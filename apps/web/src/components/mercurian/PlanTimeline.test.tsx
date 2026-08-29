@@ -289,6 +289,26 @@ describe("PlanTimeline", () => {
     expect(markup).toContain("You edited the plan");
   });
 
+  it("renders a memory amendment stamp as a compact event instead of a message bubble", () => {
+    const markup = renderToStaticMarkup(
+      <PlanTimeline
+        timeline={[
+          timelineMessage("memory-amendment", "human", "Surface open decisions", {
+            memoryAmendment: {
+              title: "Surface open decisions",
+              memoryCommitSha: "abc123",
+              notes: ["Composer"],
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("You amended the memory: &quot;Surface open decisions&quot;");
+    expect(markup).toContain("text-[11px] text-muted-foreground/70");
+    expect(markup).not.toContain("rounded-2xl bg-message");
+  });
+
   it("distinguishes settled question records from in-flight question cards", () => {
     const settledMarkup = renderToStaticMarkup(
       <PlanTimeline

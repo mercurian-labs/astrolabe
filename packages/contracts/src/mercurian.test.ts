@@ -35,6 +35,9 @@ const PLAN_STREAM_KINDS = [
   "implement-ready",
   "implement-cancelled",
   "implement-failed",
+  "memory-amendment-proposed",
+  "memory-amendment-failed",
+  "memory-amendment-cancelled",
 ] as const;
 
 type _PlanTimelineTagsAreExact = Assert<
@@ -69,6 +72,9 @@ describe("coding-session contracts", () => {
       "implement-ready",
       "implement-cancelled",
       "implement-failed",
+      "memory-amendment-proposed",
+      "memory-amendment-failed",
+      "memory-amendment-cancelled",
     ]);
   });
 

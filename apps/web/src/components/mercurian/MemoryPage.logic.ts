@@ -66,3 +66,13 @@ export function memoryPageStanding(input: {
   if (!input.designated) return "not-designated";
   return input.index === null ? "loading" : "ready";
 }
+
+/** The frontier's write door: a message that starts the amendment flow, never an editor. */
+export function writeNoteSeedMessage(name: string, referencedBy: ReadonlyArray<string>): string {
+  const spoken =
+    referencedBy.length <= 1
+      ? referencedBy.join("")
+      : `${referencedBy.slice(0, -1).join(", ")} and ${referencedBy.at(-1)}`;
+  const references = spoken.length === 0 ? "" : ` — it's referenced by ${spoken}`;
+  return `Write [[${name}]]${references}. Propose it as a memory amendment.`;
+}

@@ -281,6 +281,19 @@ describe("planCommitSummary", () => {
     expect(planCommitSummary(commit("a", 1, [], { text: "   \n " }))).toBe("Empty message");
   });
 
+  it("names a stamped memory amendment consistently in summary and detail", () => {
+    const amendment = message("amendment", {
+      text: "Surface open decisions",
+      memoryAmendment: {
+        title: "Surface open decisions",
+        memoryCommitSha: "abc123",
+        notes: ["Composer"],
+      },
+    });
+    expect(planCommitSummary(amendment)).toBe('You amended the memory: "Surface open decisions"');
+    expect(planCommitDetail(amendment)).toBe('You amended the memory: "Surface open decisions"');
+  });
+
   it("says what a revision did, since it has no body to show", () => {
     const revision = planRevision("rev", {
       sequence: 2,

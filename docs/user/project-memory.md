@@ -27,6 +27,14 @@ the target is referenced but has not been written yet; opening it shows which ex
 to it. Memory is read fresh from its files, so edits made outside the app appear the next time the
 index or note is read.
 
+## How notes change
+
+The app carries exactly one write path into memory: the assistant proposes an amendment, and
+nothing lands until you confirm it. There is no in-app note editor — to change a note directly,
+use any editor on the memory's own files; the change appears on the next read. For an unresolved
+reference, **Write this note** starts that path for you: it opens a new draft seeded with a message
+asking for the note, and the note is written only when you confirm the proposed amendment.
+
 ## Mention notes in a plan
 
 In a planning composer, type **@** to search memory notes alongside repository files, or type
@@ -36,3 +44,17 @@ Closing the reader returns to the plan exactly as it was.
 
 Mentioning a note also tells the planning assistant which memory note to consult. Memory is durable
 design truth; repository files still describe what is actually built.
+
+## Review memory amendments
+
+The planning assistant can propose an amendment when a conversation earns a durable memory
+change. The proposal writes nothing by itself: you review the exact note and map diff, then choose
+**Amend memory** or **Not now**. Confirming lands the change in the memory&rsquo;s history and adds a
+muted amendment marker to the plan&rsquo;s history.
+
+## Use suggested next messages
+
+When the current plan mentions a memory note with unresolved **Open Decisions**, suggested next
+messages appear above the composer. Choosing one sends an ordinary message that names the note and
+asks to resolve that decision. You can dismiss the row; it returns during the session only when a
+new suggestion appears.

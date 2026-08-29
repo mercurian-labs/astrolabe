@@ -6,8 +6,12 @@ import {
   buildMemoryGraph,
   compileProductMap,
   fingerprintMemoryFiles,
+  insertMapPlacement,
+  isValidMemoryNoteName,
+  missingOpenDecisionHeadings,
   parseAndValidateMemoryMap,
   parseContainsLines,
+  parseOpenDecisions,
   parseWikilinks,
   serializeMemoryMap,
 } from "./memoryModel.ts";
@@ -44,6 +48,61 @@ describe("memoryModel", () => {
       { parent: "Product", child: "Plans" },
       { parent: "Product", child: "Composer" },
     ]);
+  });
+
+  it("parses open decisions, resolutions, and ignores code", () => {
+    expect(
+      parseOpenDecisions(
+        "## Open Decisions\n### Keep it?\nTBD\n### Done?\n**Resolved:** Yes\n```md\n### Fake\n**Resolved**\n```\n## Later\n### Outside",
+      ),
+    ).toEqual([
+      { title: "Keep it?", resolved: false },
+      { title: "Done?", resolved: true },
+    ]);
+    expect(parseOpenDecisions("## Other\n### None")).toEqual([]);
+  });
+
+  it("detects deleted open-decision headings but permits appended resolutions", () => {
+    const before = "## Open Decisions\n### Which shape?\nStill open.\n";
+    expect(missingOpenDecisionHeadings(before, "## Open Decisions\n")).toEqual(["Which shape?"]);
+    expect(
+      missingOpenDecisionHeadings(before, `${before}\n**Resolved:** The small one.\n`),
+    ).toEqual([]);
+  });
+
+  it.each(["", " spaced", "../Note", ".Hidden", "Note.md", "dir/Note", "dir\\Note"])(
+    "refuses invalid note name %j",
+    (name) => expect(isValidMemoryNoteName(name)).toBe(false),
+  );
+  it("accepts a plain note stem", () => expect(isValidMemoryNoteName("Future Design")).toBe(true));
+
+  it("inserts a placement only when parent, uniqueness, and post-change prose edge hold", () => {
+    const map = parseAndValidateMemoryMap(
+      "maps/product.yaml",
+      `${validHeader}arrangement:\n  - note: Product\n`,
+      buildMemoryGraph([note("Product", "")]),
+    );
+    if ("refusal" in map) throw new Error(map.refusal);
+    expect("refusal" in insertMapPlacement(map, "Missing", "Composer", buildMemoryGraph([]))).toBe(
+      true,
+    );
+    expect("refusal" in insertMapPlacement(map, "Product", "Product", buildMemoryGraph([]))).toBe(
+      true,
+    );
+    const noEdge = insertMapPlacement(
+      map,
+      "Product",
+      "Composer",
+      buildMemoryGraph([note("Product", ""), note("Composer", "")]),
+    );
+    expect("refusal" in noEdge ? noEdge.refusal : "").toContain("does not link");
+    const graph = buildMemoryGraph([note("Product", ""), note("Composer", "See [[Product]].")]);
+    const inserted = insertMapPlacement(map, "Product", "Composer", graph);
+    expect("refusal" in inserted).toBe(false);
+    if ("refusal" in inserted) return;
+    expect(
+      "refusal" in parseAndValidateMemoryMap(inserted.file, serializeMemoryMap(inserted), graph),
+    ).toBe(false);
   });
 
   it("indexes the lexicographically first duplicate stem and reports it", () => {

@@ -81,6 +81,9 @@ export const MemoryNote = Schema.Struct({
   markdown: Schema.optional(Schema.String),
   links: Schema.Array(Schema.Struct({ name: TrimmedNonEmptyString, exists: Schema.Boolean })),
   backlinks: Schema.Array(TrimmedNonEmptyString),
+  openDecisions: Schema.Array(
+    Schema.Struct({ title: TrimmedNonEmptyString, resolved: Schema.Boolean }),
+  ),
 });
 export type MemoryNote = typeof MemoryNote.Type;
 
@@ -159,6 +162,8 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
       "readMemoryIndex",
       "readMemoryNote",
       "generateProductMap",
+      "prepareMemoryAmendment",
+      "applyMemoryAmendment",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },
