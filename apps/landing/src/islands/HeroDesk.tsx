@@ -3,12 +3,27 @@ import {
   EXPLORER_VIEW_STORAGE_KEY,
   ExplorerView,
 } from "~/components/mercurian/DagExplorer";
+import { PlanArtifact } from "~/components/mercurian/PlanArtifact";
+import { lastPlanRevision } from "~/components/mercurian/PlanArtifact.logic";
 import { PlanComposer } from "~/components/mercurian/PlanComposer";
-import { buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
+import { ancestorClosure, buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
+import {
+  isViewingPast,
+  LATEST,
+  positionAfterPick,
+  resolveHead,
+  type PlanPosition,
+} from "~/components/mercurian/PlanPosition.logic";
+import { PlanPaneToggle } from "~/components/mercurian/PlanningSpace";
 import { PlanTimeline } from "~/components/mercurian/PlanTimeline";
+import { SpecArtifact } from "~/components/mercurian/SpecArtifact";
+import { lastSpecRevision } from "~/components/mercurian/SpecArtifact.logic";
+import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
+import { Button } from "~/components/ui/button";
+import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "~/components/ui/menu";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { message, planRevision, specRevision, timeline } from "~/test/fixtures/timeline";
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 
 const history = timeline(
   message("plan-query", {
@@ -86,21 +101,113 @@ const history = timeline(
 );
 
 const graph = buildPlanGraph(history);
-const anchoredCommitId = history[13]!.commitId;
+const tip = history[13]!.commitId;
+const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
 type HeroProvider = NonNullable<HeroComposerProps["provider"]>;
+type HeroSpec = NonNullable<ComponentProps<typeof SpecArtifact>["spec"]>;
+type RightPaneState = {
+  readonly open: boolean;
+  readonly view: "artifact" | "explorer";
+  readonly artifact: "plan" | "spec";
+};
+
+const DEFAULT_RIGHT_PANE: RightPaneState = {
+  open: true,
+  view: "explorer",
+  artifact: "plan",
+};
+
+const planTextByRevisionCreatedAt = new Map([
+  [
+    history[1]!.createdAt,
+    `# First draft
+
+## Page shape
+- Lead with a direct statement of what Mercurian is.
+- Keep the product window close to the first claim.
+
+## Product proof
+- Use the real planning conversation and checkpoint graph.
+- Preserve the existing provider band and closing claim.`,
+  ],
+  [
+    history[6]!.createdAt,
+    `# Quieter interface path
+
+## Reduce the page
+- Keep one opening claim, one product window, and one closing claim.
+- Let spacing and typography carry the hierarchy.
+
+## Keep the window calm
+- Show the planning header and artifact without extra callouts.
+- Avoid ornamental sections around the working product surface.`,
+  ],
+  [
+    history[7]!.createdAt,
+    `# Faster workflow path
+
+## Shorten the route to proof
+- Put the interactive planning window immediately after the opening claim.
+- Start on the checkpoint graph so branching is understandable at a glance.
+
+## Ship in place
+- Reuse product components and fixture data.
+- Keep the landing-only implementation small and verify the static build.`,
+  ],
+  [
+    history[11]!.createdAt,
+    `# Merged hero plan
+
+## Structure
+- Open with one quiet claim and move directly into the working planning window.
+- Keep the remaining page short, with the provider band and closing claim intact.
+
+## Product surface
+- Use the real planning header, pane controls, graph, plan, and spec artifacts.
+- Let checkpoint selection roll the conversation and artifacts back together.
+
+## Delivery
+- Contain the work in the landing island.
+- Confirm the static claims, types, lint, and formatting before shipping.`,
+  ],
+]);
+
+const specByRevisionCommitId = new Map<string, HeroSpec>([
+  [
+    history[2]!.commitId,
+    {
+      revisionCommitId: history[2]!.commitId,
+      document: {
+        goal: "Give visitors a restrained, concrete view of planning work inside Mercurian, using the real product surface rather than a visual imitation.",
+        acceptanceCriteria:
+          "- The hero keeps its opening and closing claims.\n- The window shows a real planning conversation beside its checkpoint graph.\n- The page remains usable below desktop width.",
+      },
+    },
+  ],
+  [
+    history[12]!.commitId,
+    {
+      revisionCommitId: history[12]!.commitId,
+      document: {
+        goal: "Make the landing hero demonstrate how a plan can branch, merge, and be read at an earlier checkpoint without leaving the product window.",
+        acceptanceCriteria:
+          "- The planning title and pane controls use exported product components.\n- Selecting a checkpoint updates the conversation, graph anchor, plan, and spec together.\n- Earlier artifacts are read-only and provide a Back to now action.\n- The implementation changes only the landing app.",
+      },
+    },
+  ],
+]);
 
 const heroInFlight = {
   turnId: "hero-desk-turn" as HeroInFlight["turnId"],
-  parentCommitId: anchoredCommitId,
+  parentCommitId: tip,
   text: "I’m comparing both branches and preparing the merged plan.",
   grounding: [{ kind: "search", label: "branch decisions" }],
 } satisfies HeroInFlight;
 
 const graphProps = {
   graph,
-  anchoredCommitId,
   providers: [],
   codingSessions: [],
   readyCommits: new Map(),
@@ -109,7 +216,6 @@ const graphProps = {
   onColumnsWidthCapChange: () => undefined,
   onEditAndBranch: () => undefined,
   onImplementFrom: () => undefined,
-  onSelect: () => undefined,
 } as const;
 
 const composerProps = {
@@ -214,26 +320,106 @@ export default function HeroDesk() {
 
 function HeroWindowInterior() {
   const [composerText, setComposerText] = useState("Ask the assistant to refine this plan.");
+  const [pane, setPane] = useState<RightPaneState>(DEFAULT_RIGHT_PANE);
+  const [position, setPosition] = useState<PlanPosition>(LATEST);
+  const head = resolveHead(graph, position);
+  const visibleCommitIds = useMemo(
+    () => (head === null ? null : ancestorClosure(graph, head)),
+    [head],
+  );
+  const visibleTimeline = useMemo(
+    () =>
+      visibleCommitIds === null
+        ? history
+        : history.filter((item) => visibleCommitIds.has(item.commitId)),
+    [visibleCommitIds],
+  );
+  const visibleInFlight =
+    head === null || visibleCommitIds?.has(heroInFlight.parentCommitId) ? heroInFlight : undefined;
+  const viewingPast = isViewingPast(graph, position);
+  const planRevision = lastPlanRevision(visibleTimeline);
+  const planText =
+    planRevision === null ? "" : (planTextByRevisionCreatedAt.get(planRevision.createdAt) ?? "");
+  const specRevision = lastSpecRevision(visibleTimeline);
+  const spec =
+    specRevision === null ? null : (specByRevisionCommitId.get(specRevision.commitId) ?? null);
+  const paneToggle = <PlanPaneToggle state={pane} onChange={setPane} />;
+  const paneCornerControl = <div className="hidden lg:block">{paneToggle}</div>;
+  const backToNow = () => setPosition(LATEST);
+  const readOnlyAction = (
+    <Button size="sm" variant="ghost" onClick={backToNow}>
+      Back to now
+    </Button>
+  );
+  const artifactPicker = (
+    <ArtifactPicker value={pane.artifact} onChange={(artifact) => setPane({ ...pane, artifact })} />
+  );
 
   return (
-    <div className="flex h-full min-h-0 bg-background text-[12px] text-foreground">
-      <div className="flex min-w-0 flex-1 flex-col lg:basis-2/5 lg:border-r lg:border-border">
-        <PlanTimeline
-          codingSessions={[]}
-          inFlight={heroInFlight}
-          timeline={history}
-          onAnswerQuestion={() => undefined}
-        />
-        <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
-      </div>
-      <div className="hidden min-w-0 flex-1 lg:flex">
-        <HeroDagExplorer />
+    <div className="flex h-full min-h-0 flex-col bg-background text-[12px] text-foreground">
+      <WorkspacePageHeader className="gap-2 border-b border-border">
+        <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          Marketing site hero
+        </h1>
+        {pane.open ? null : <div className="hidden lg:block">{paneToggle}</div>}
+      </WorkspacePageHeader>
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div
+          className={`flex min-w-0 flex-1 flex-col lg:basis-2/5 ${pane.open ? "lg:border-r lg:border-border" : ""}`}
+        >
+          <PlanTimeline
+            codingSessions={[]}
+            inFlight={visibleInFlight}
+            timeline={visibleTimeline}
+            onAnswerQuestion={() => undefined}
+          />
+          <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
+        </div>
+        {pane.open ? (
+          <div className="hidden min-w-0 flex-1 lg:flex">
+            {pane.view === "explorer" ? (
+              <HeroDagExplorer
+                anchoredCommitId={head}
+                cornerControl={paneCornerControl}
+                onSelect={(commitId) => setPosition(positionAfterPick(graph, commitId))}
+              />
+            ) : pane.artifact === "plan" ? (
+              <PlanArtifact
+                cornerControl={paneCornerControl}
+                parentCommitId={head ?? tip}
+                planId={heroPlanId}
+                planText={planText}
+                readOnly={viewingPast}
+                readOnlyAction={readOnlyAction}
+                timeline={visibleTimeline}
+                titleControl={artifactPicker}
+                turnActive={visibleInFlight !== undefined}
+              />
+            ) : (
+              <SpecArtifact
+                cornerControl={paneCornerControl}
+                parentCommitId={head ?? tip}
+                planId={heroPlanId}
+                readOnly={viewingPast}
+                readOnlyAction={readOnlyAction}
+                spec={spec}
+                timeline={visibleTimeline}
+                titleControl={artifactPicker}
+                turnActive={visibleInFlight !== undefined}
+              />
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function HeroDagExplorer() {
+function HeroDagExplorer({
+  anchoredCommitId,
+  cornerControl,
+  onSelect,
+}: Pick<ComponentProps<typeof DagExplorer>, "anchoredCommitId" | "cornerControl" | "onSelect">) {
   const paneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -259,7 +445,59 @@ function HeroDagExplorer() {
 
   return (
     <div className="flex min-w-0 flex-1" ref={paneRef}>
-      <DagExplorer {...graphProps} />
+      <DagExplorer
+        {...graphProps}
+        anchoredCommitId={anchoredCommitId}
+        cornerControl={cornerControl}
+        inFlightAnchorCommitIds={[heroInFlight.parentCommitId]}
+        onSelect={onSelect}
+      />
     </div>
+  );
+}
+
+function ArtifactPicker({
+  value,
+  onChange,
+}: {
+  readonly value: "plan" | "spec";
+  readonly onChange: (value: "plan" | "spec") => void;
+}) {
+  return (
+    <Menu>
+      <MenuTrigger
+        aria-label="Select planning artifact"
+        className="-ml-1 inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-1 text-sm font-medium text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent"
+      >
+        {value === "spec" ? "Spec" : "Plan"}
+        <svg
+          aria-hidden="true"
+          className="size-3.5 text-muted-foreground"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </MenuTrigger>
+      <MenuPopup align="start" className="w-(--anchor-width)">
+        <MenuRadioGroup
+          value={value}
+          onValueChange={(selected) => {
+            if (selected === "plan" || selected === "spec") onChange(selected);
+          }}
+        >
+          <MenuRadioItem closeOnClick value="spec">
+            Spec
+          </MenuRadioItem>
+          <MenuRadioItem closeOnClick value="plan">
+            Plan
+          </MenuRadioItem>
+        </MenuRadioGroup>
+      </MenuPopup>
+    </Menu>
   );
 }
