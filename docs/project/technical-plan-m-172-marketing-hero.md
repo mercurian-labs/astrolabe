@@ -424,3 +424,27 @@ taller than a short viewport, and a window that captures the wheel strands the v
 Checks: the four gates; wheel over the graph scrolls the page while drag still pans the map;
 wheel over the conversation scrolls it and chains to the page at its ends; no overlay or
 "Click to explore" affordance anywhere; the headline sits at the tightened offset.
+
+## Amendment 10 — the fixture history loses its merge (2026-08-28)
+
+Vault ruling (Marketing Site, commit e47cd7f) + Venkat's call: merging is being redesigned, so
+the site demonstrates NO merge until the redesign lands — every live history is a tree of open
+branches. The hero fixture reshapes:
+
+- **History:** the trunk (query → plan draft → spec → reply) and the fork into the two
+  branches (interface / workflow, each query → plan revision → reply) stay; the merge tail —
+  merge-query, merge-plan, merge-spec, merge-response — is REMOVED. Ten commits, two open
+  tips, no commit with two parents.
+- **In-flight reply:** re-anchors on the newest branch tip (workflow-response) with copy that
+  compares without merging — the assistant weighing the two open paths, not preparing a
+  merged plan.
+- **Artifacts:** the "Merged hero plan" plan text and the merge-spec document die with their
+  revisions. Three plan texts remain (draft / interface / workflow), keyed as before; the one
+  spec document (plan-spec, on the trunk) reads on every path. The workflow branch's text
+  becomes the tip reading.
+- **Composer placeholder text and slash commands unchanged;** claim 1's pinned copy still
+  promises merging — the vault records that the copy may promise what the graphs do not yet
+  picture.
+
+Checks: the four gates; the graph renders two tips and no diamond; no timeline row or graph
+node mentions merging; rollback across both branches still reads path-specific plan texts.
