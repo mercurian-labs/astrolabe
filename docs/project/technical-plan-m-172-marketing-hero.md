@@ -479,3 +479,20 @@ fit-to-view — the graph should focus the selected node.
 Checks: the four gates; the graph shows one fork, two continuing branches, two tangents, no
 merge; the camera arrives centered on the anchored tip without any fit click; picking any
 node re-centers on it; rollback reads the right plan text on every path.
+
+### Amendment 11 addendum — the minimap shrinks to window scale, and the walk proves isolation (2026-08-28)
+
+Venkat's two calls on the v11 walk: (1) the minimap is too big for the hero pane — its JS
+sizing clamps to a 140px minimum (`minimapSize`, DagExplorer.logic.ts:198-213), over half the
+hero's narrow graph pane; (2) every walk must prove the landing work cannot touch the main
+application.
+
+- **Minimap:** landing-scoped visual scale in global.css —
+  `[data-hero-window] svg[aria-label="Map overview"] { transform: scale(0.6);
+transform-origin: bottom right; }`. Click/drag mapping survives scaling because
+  `clientToMinimap` normalizes through `getBoundingClientRect()`. Same posture as the topbar
+  token: landing-side theming of real chrome, nothing under apps/web changes.
+- **Isolation proof (standing walk step):** `git diff main...HEAD --name-only` filtered to
+  everything outside `apps/landing/` and `docs/` must be empty, and
+  `vp run --filter @t3tools/web typecheck` must pass untouched — recorded as an AC bullet so
+  every future round walks it.
