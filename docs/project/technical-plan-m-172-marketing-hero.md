@@ -648,3 +648,10 @@ Venkat's four calls, all in index.astro:
 Checks: the four gates; computed probes on the served build confirm 48px Fraunces (face
 loaded), 18px paragraph, stage height exactly 720 with rgb(19,18,10), document scroll intact;
 desktop + 375px screenshots reviewed; only index.astro changed.
+
+### Amendment 15 addendum — the prototype's favicon comes over (2026-08-29)
+
+Venkat's call: the site takes the prototype landing's favicon. `favicon.svg` (the Mercury
+terracotta disc with its dark-scheme variant) and `apple-touch-icon.png` copy from the
+prototype's public/ into apps/landing/public/, and Base.astro's head gains the two icon
+links. Checks: the four gates; both files served 200 by the preview; both links in dist HTML.
