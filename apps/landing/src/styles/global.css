@@ -10,6 +10,10 @@
 
 @source "../../../web/src";
 
+[data-hero-window] {
+  --workspace-topbar-height: 36px;
+}
+
 /* The landing site is always shown in the standard light appearance, even
    when shared product components observe a dark app or system preference. */
 html[data-landing-appearance="light"] {

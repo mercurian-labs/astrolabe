@@ -356,61 +356,59 @@ function HeroWindowInterior() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background text-[12px] text-foreground">
-      <WorkspacePageHeader className="gap-2 border-b border-border">
-        <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          Marketing site hero
-        </h1>
-        {pane.open ? null : <div className="hidden lg:block">{paneToggle}</div>}
-      </WorkspacePageHeader>
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <div
-          className={`flex min-w-0 flex-1 flex-col lg:basis-2/5 ${pane.open ? "lg:border-r lg:border-border" : ""}`}
-        >
-          <PlanTimeline
-            codingSessions={[]}
-            inFlight={visibleInFlight}
-            timeline={visibleTimeline}
-            onAnswerQuestion={() => undefined}
-          />
-          <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
-        </div>
-        {pane.open ? (
-          <div className="hidden min-w-0 flex-1 lg:flex">
-            {pane.view === "explorer" ? (
-              <HeroDagExplorer
-                anchoredCommitId={head}
-                cornerControl={paneCornerControl}
-                onSelect={(commitId) => setPosition(positionAfterPick(graph, commitId))}
-              />
-            ) : pane.artifact === "plan" ? (
-              <PlanArtifact
-                cornerControl={paneCornerControl}
-                parentCommitId={head ?? tip}
-                planId={heroPlanId}
-                planText={planText}
-                readOnly={viewingPast}
-                readOnlyAction={readOnlyAction}
-                timeline={visibleTimeline}
-                titleControl={artifactPicker}
-                turnActive={visibleInFlight !== undefined}
-              />
-            ) : (
-              <SpecArtifact
-                cornerControl={paneCornerControl}
-                parentCommitId={head ?? tip}
-                planId={heroPlanId}
-                readOnly={viewingPast}
-                readOnlyAction={readOnlyAction}
-                spec={spec}
-                timeline={visibleTimeline}
-                titleControl={artifactPicker}
-                turnActive={visibleInFlight !== undefined}
-              />
-            )}
-          </div>
-        ) : null}
+    <div className="flex h-full min-h-0 bg-background text-[12px] text-foreground">
+      <div
+        className={`flex min-w-0 flex-1 flex-col lg:basis-2/5 ${pane.open ? "lg:border-r lg:border-border" : ""}`}
+      >
+        <WorkspacePageHeader className="gap-2 border-b border-border">
+          <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            Marketing site hero
+          </h1>
+          {pane.open ? null : <div className="hidden lg:block">{paneToggle}</div>}
+        </WorkspacePageHeader>
+        <PlanTimeline
+          codingSessions={[]}
+          inFlight={visibleInFlight}
+          timeline={visibleTimeline}
+          onAnswerQuestion={() => undefined}
+        />
+        <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
       </div>
+      {pane.open ? (
+        <div className="hidden min-w-0 flex-1 lg:flex">
+          {pane.view === "explorer" ? (
+            <HeroDagExplorer
+              anchoredCommitId={head}
+              cornerControl={paneCornerControl}
+              onSelect={(commitId) => setPosition(positionAfterPick(graph, commitId))}
+            />
+          ) : pane.artifact === "plan" ? (
+            <PlanArtifact
+              cornerControl={paneCornerControl}
+              parentCommitId={head ?? tip}
+              planId={heroPlanId}
+              planText={planText}
+              readOnly={viewingPast}
+              readOnlyAction={readOnlyAction}
+              timeline={visibleTimeline}
+              titleControl={artifactPicker}
+              turnActive={visibleInFlight !== undefined}
+            />
+          ) : (
+            <SpecArtifact
+              cornerControl={paneCornerControl}
+              parentCommitId={head ?? tip}
+              planId={heroPlanId}
+              readOnly={viewingPast}
+              readOnlyAction={readOnlyAction}
+              spec={spec}
+              timeline={visibleTimeline}
+              titleControl={artifactPicker}
+              turnActive={visibleInFlight !== undefined}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
