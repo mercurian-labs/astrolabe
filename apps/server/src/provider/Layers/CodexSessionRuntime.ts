@@ -37,7 +37,7 @@ import * as CodexRpc from "effect-codex-app-server/rpc";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
-import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
+import { codexSessionAppServerArgs, codexTrustedProjectArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
@@ -155,6 +155,7 @@ export interface CodexSessionRuntimeOptions {
   readonly launchArgs?: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly cwd: string;
+  readonly additionalRoots?: ReadonlyArray<string>;
   readonly runtimeMode: RuntimeMode;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
@@ -586,6 +587,7 @@ function buildCodexCollaborationMode(input: {
 export function buildTurnStartParams(input: {
   readonly threadId: string;
   readonly runtimeMode: RuntimeMode;
+  readonly additionalRoots?: ReadonlyArray<string>;
   readonly prompt?: string;
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
@@ -620,12 +622,17 @@ export function buildTurnStartParams(input: {
     browserToolsAvailable: input.browserToolsAvailable ?? true,
   });
 
+  const sandboxPolicy = runtimeModeToTurnSandboxPolicy(input.runtimeMode);
+
   return decodeCodexTurnStartParamsWithCollaborationMode({
     threadId: input.threadId,
     input: turnInput,
     approvalPolicy: config.approvalPolicy,
     approvalsReviewer: config.approvalsReviewer,
-    sandboxPolicy: runtimeModeToTurnSandboxPolicy(input.runtimeMode),
+    sandboxPolicy:
+      sandboxPolicy.type === "workspaceWrite" && input.additionalRoots !== undefined
+        ? { ...sandboxPolicy, writableRoots: input.additionalRoots }
+        : sandboxPolicy,
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
@@ -699,26 +706,35 @@ export const openCodexThread = (input: {
     serviceTier: input.serviceTier,
   });
 
-  if (resumeThreadId === undefined) {
-    return input.client.request("thread/start", startParams);
-  }
+  const request =
+    resumeThreadId === undefined
+      ? input.client.request("thread/start", startParams)
+      : input.client
+          .request("thread/resume", {
+            threadId: resumeThreadId,
+            ...startParams,
+          })
+          .pipe(
+            Effect.catchIf(isRecoverableThreadResumeError, (error) =>
+              Effect.logWarning("codex app-server thread resume fell back to fresh start", {
+                threadId: input.threadId,
+                requestedRuntimeMode: input.runtimeMode,
+                resumeThreadId,
+                recoverable: true,
+                cause: error,
+              }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
+            ),
+          );
 
-  return input.client
-    .request("thread/resume", {
-      threadId: resumeThreadId,
-      ...startParams,
-    })
-    .pipe(
-      Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-        Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-          threadId: input.threadId,
-          requestedRuntimeMode: input.runtimeMode,
-          resumeThreadId,
-          recoverable: true,
-          cause: error,
-        }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
-      ),
-    );
+  return request.pipe(
+    Effect.tap((opened) =>
+      Effect.annotateCurrentSpan({
+        "codex.thread.sandbox.type": opened.sandbox.type,
+        "codex.thread.sandbox.writable_roots":
+          opened.sandbox.type === "workspaceWrite" ? (opened.sandbox.writableRoots ?? []) : [],
+      }),
+    ),
+  );
 };
 
 function readNotificationThreadId(notification: CodexServerNotification): string | undefined {
@@ -1140,7 +1156,13 @@ export const makeCodexSessionRuntime = (
       ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
     };
     const extendEnv = options.environment === undefined;
-    const appServerArgs = codexSessionAppServerArgs(options.appServerArgs, options.launchArgs);
+    const appServerArgs = codexSessionAppServerArgs(
+      [
+        ...codexTrustedProjectArgs([options.cwd, ...(options.additionalRoots ?? [])]),
+        ...(options.appServerArgs ?? []),
+      ],
+      options.launchArgs,
+    );
     const spawnCommand = yield* resolveSpawnCommand(options.binaryPath, appServerArgs, {
       env,
       extendEnv,
@@ -2108,6 +2130,9 @@ export const makeCodexSessionRuntime = (
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: options.runtimeMode,
+            ...(options.additionalRoots !== undefined
+              ? { additionalRoots: options.additionalRoots }
+              : {}),
             ...(input.input ? { prompt: input.input } : {}),
             ...(input.attachments ? { attachments: input.attachments } : {}),
             ...(normalizedModel ? { model: normalizedModel } : {}),

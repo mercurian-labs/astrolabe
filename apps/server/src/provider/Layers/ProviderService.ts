@@ -20,6 +20,7 @@ import {
   ProviderSessionStartInput,
   ProviderStopSessionInput,
   ProviderUploadFeedbackInput,
+  TrimmedNonEmptyString,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ProviderRuntimeEvent,
@@ -60,6 +61,7 @@ import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 const isModelSelection = Schema.is(ModelSelection);
+const isPersistedAdditionalDirectories = Schema.is(Schema.Array(TrimmedNonEmptyString));
 
 /**
  * Hook for tests that want to override the canonical event logger pulled
@@ -135,6 +137,7 @@ function toRuntimeStatus(session: ProviderSession): "starting" | "running" | "st
 function toRuntimePayloadFromSession(
   session: ProviderSession,
   extra?: {
+    readonly additionalDirectories?: ReadonlyArray<string>;
     readonly modelSelection?: unknown;
     readonly lastRuntimeEvent?: string;
     readonly lastRuntimeEventAt?: string;
@@ -145,6 +148,9 @@ function toRuntimePayloadFromSession(
     model: session.model ?? null,
     activeTurnId: session.activeTurnId ?? null,
     lastError: session.lastError ?? null,
+    ...(extra?.additionalDirectories !== undefined
+      ? { additionalDirectories: extra.additionalDirectories }
+      : {}),
     ...(extra?.modelSelection !== undefined ? { modelSelection: extra.modelSelection } : {}),
     ...(extra?.lastRuntimeEvent !== undefined ? { lastRuntimeEvent: extra.lastRuntimeEvent } : {}),
     ...(extra?.lastRuntimeEventAt !== undefined
@@ -173,6 +179,17 @@ function readPersistedCwd(
   if (typeof rawCwd !== "string") return undefined;
   const trimmed = rawCwd.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readPersistedAdditionalDirectories(
+  runtimePayload: ProviderSessionDirectory.ProviderRuntimeBinding["runtimePayload"],
+): ReadonlyArray<string> | undefined {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  const raw =
+    "additionalDirectories" in runtimePayload ? runtimePayload.additionalDirectories : undefined;
+  return isPersistedAdditionalDirectories(raw) ? raw : undefined;
 }
 
 const dieOnMissingBindingInstanceId = (
@@ -316,6 +333,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     session: ProviderSession,
     threadId: ThreadId,
     extra?: {
+      readonly additionalDirectories?: ReadonlyArray<string>;
       readonly modelSelection?: unknown;
       readonly lastRuntimeEvent?: string;
       readonly lastRuntimeEventAt?: string;
@@ -451,6 +469,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       }
 
       const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
+      const persistedAdditionalDirectories = readPersistedAdditionalDirectories(
+        input.binding.runtimePayload,
+      );
       const persistedModelSelection = readPersistedModelSelection(input.binding.runtimePayload);
 
       yield* prepareMcpSession(input.binding.threadId, bindingInstanceId);
@@ -460,6 +481,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           provider: input.binding.provider,
           providerInstanceId: bindingInstanceId,
           ...(persistedCwd ? { cwd: persistedCwd } : {}),
+          ...(persistedAdditionalDirectories !== undefined
+            ? { additionalDirectories: persistedAdditionalDirectories }
+            : {}),
           ...(persistedModelSelection ? { modelSelection: persistedModelSelection } : {}),
           ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
           runtimeMode: input.binding.runtimeMode ?? "full-access",
@@ -629,6 +653,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           (persistedBinding?.providerInstanceId === resolvedInstanceId
             ? readPersistedCwd(persistedBinding.runtimePayload)
             : undefined);
+        const effectiveAdditionalDirectories =
+          input.additionalDirectories ??
+          (persistedBinding?.providerInstanceId === resolvedInstanceId
+            ? readPersistedAdditionalDirectories(persistedBinding.runtimePayload)
+            : undefined);
         yield* Effect.annotateCurrentSpan({
           "provider.kind": resolvedProvider,
           "provider.resume_cursor.source":
@@ -647,6 +676,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
                 ? "persisted"
                 : "none",
           "provider.cwd.effective": effectiveCwd ?? "",
+          "provider.additional_directories": effectiveAdditionalDirectories ?? [],
         });
         const adapter = yield* registry.getByInstance(resolvedInstanceId);
         yield* prepareMcpSession(threadId, resolvedInstanceId);
@@ -655,6 +685,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             ...input,
             providerInstanceId: resolvedInstanceId,
             ...(effectiveCwd !== undefined ? { cwd: effectiveCwd } : {}),
+            ...(effectiveAdditionalDirectories !== undefined
+              ? { additionalDirectories: effectiveAdditionalDirectories }
+              : {}),
             ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
           })
           .pipe(Effect.onError(() => clearMcpSession(threadId)));
@@ -676,6 +709,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           currentInstanceId: resolvedInstanceId,
         });
         yield* upsertSessionBinding(sessionWithInstance, threadId, {
+          ...(effectiveAdditionalDirectories !== undefined
+            ? { additionalDirectories: effectiveAdditionalDirectories }
+            : {}),
           modelSelection: input.modelSelection,
         });
         yield* analytics.record("provider.session.started", {

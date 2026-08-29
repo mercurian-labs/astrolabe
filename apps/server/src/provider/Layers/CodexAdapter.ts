@@ -1682,6 +1682,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           threadId: input.threadId,
           providerInstanceId: boundInstanceId,
           cwd: input.cwd ?? process.cwd(),
+          ...(input.additionalDirectories !== undefined
+            ? { additionalRoots: input.additionalDirectories }
+            : {}),
           binaryPath: codexConfig.binaryPath,
           launchArgs: resolveCodexLaunchArgs(codexConfig.launchArgs, options?.environment),
           ...(options?.environment ? { environment: options.environment } : {}),
@@ -2001,8 +2004,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
-      // The read-only sandbox does not confine reads to the cwd, so extra
-      // roots are reachable without a session-shape change.
+      // Every claimed root is forwarded into the session and trusted through
+      // per-process launch config, preventing safe exploration from becoming
+      // an approval request. V2ThreadStartParams.config is the fallback seam
+      // if Codex ever stops honoring trust from launch-time config.
       groundingRoots: "multi",
     },
     startSession,
