@@ -67,7 +67,7 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
       "",
       "Project memory (durable design truth — consult it before repository files):",
       `- ${input.memoryRoot.path}`,
-      "Notes are markdown with [[wikilinks]]; maps/*.yaml hold arrangement. Ground design intent in the memory's notes first; consult repository code for what is actually built.",
+      "Notes are markdown with [[wikilinks]]; .skillmap.md files hold arrangement and teaching. Ground design intent in the memory's notes first; consult repository code for what is actually built.",
     );
   }
 

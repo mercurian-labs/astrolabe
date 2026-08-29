@@ -53,7 +53,14 @@ export const ProposeMemoryAmendmentInput = Schema.Struct({
   title: Schema.String,
   notes: Schema.Array(Schema.Struct({ name: Schema.String, markdown: Schema.String })),
   placements: Schema.optional(
-    Schema.Array(Schema.Struct({ map: Schema.String, parent: Schema.String, note: Schema.String })),
+    Schema.Array(
+      Schema.Struct({
+        map: Schema.String,
+        parent: Schema.String,
+        note: Schema.String,
+        type: Schema.optional(Schema.String),
+      }),
+    ),
   ),
 });
 export const ProposeMemoryAmendmentResult = Schema.Struct({ saved: Schema.Literal(true) });
@@ -120,7 +127,7 @@ export const ReadPlanTool = Tool.make("read_plan", {
 
 export const ProposeMemoryAmendmentTool = Tool.make("propose_memory_amendment", {
   description:
-    "Propose a reviewed amendment to project memory. Supply every changed note as its complete markdown and optional placements in named maps. This does not write files; the person must confirm the proposal. Calling again replaces the pending proposal.",
+    "Propose a reviewed amendment to project memory. Supply every changed note as its complete markdown and optional typed-edge placements in named maps. This does not write files; the person must confirm the proposal. Calling again replaces the pending proposal.",
   parameters: ProposeMemoryAmendmentInput,
   success: ProposeMemoryAmendmentResult,
   failure: PlanningTurnNotFoundError,

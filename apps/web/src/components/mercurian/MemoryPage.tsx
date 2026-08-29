@@ -1,4 +1,4 @@
-import type { MemoryArrangementNode, MemoryIndex, MemoryNote } from "@t3tools/contracts";
+import type { MemoryIndex, MemoryNote } from "@t3tools/contracts";
 import { AlertTriangleIcon, BookOpenIcon, MapIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,13 +17,18 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
 import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
 import {
+  buildSkillMapTree,
   initialMemorySelection,
+  memoryMapTeachingLinks,
   memoryPageStanding,
   memoryRailItems,
+  skillMapView,
+  type SkillMapTreeNode,
   writeNoteSeedMessage,
   type MemoryRailItem,
 } from "./MemoryPage.logic";
 import { MemoryMarkdown } from "./memoryMarkdown";
+import { SkillMapGraph } from "./SkillMapGraph";
 
 export function MemoryPage({
   noteSearch,
@@ -220,7 +225,11 @@ export function MemoryPage({
         {selected === null ? (
           <p className="text-sm text-muted-foreground">This memory is empty.</p>
         ) : selected.kind === "map" ? (
-          <MapDetail map={selected.map} onOpenNote={selectNote} />
+          <MapDetail
+            links={memoryMapTeachingLinks(selected.map, index!)}
+            map={selected.map}
+            onOpenNote={selectNote}
+          />
         ) : selected.kind === "refused-map" ? (
           <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
             <h2 className="font-medium">{selected.map.file}</h2>
@@ -315,32 +324,49 @@ function MemoryRail({
 
 function MapDetail({
   map,
+  links,
   onOpenNote,
 }: {
   readonly map: Extract<MemoryRailItem, { kind: "map" }>["map"];
+  readonly links: ReadonlyArray<{ readonly name: string; readonly exists: boolean }>;
   readonly onOpenNote: (name: string) => void;
 }) {
+  const tree = skillMapView(map) === "tree";
   return (
     <article className="mx-auto max-w-3xl">
       <h2 className="text-xl font-semibold">{map.name}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{map.purpose}</p>
-      <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-        {map.rule ? (
-          <>
-            <dt className="font-medium text-foreground">Rule</dt>
-            <dd>{map.rule}</dd>
-          </>
-        ) : null}
-        {map.edge ? (
-          <>
-            <dt className="font-medium text-foreground">Edge</dt>
-            <dd>{map.edge}</dd>
-          </>
-        ) : null}
+      <dl className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {map.types.map((type) => (
+          <div className="contents" key={type.name}>
+            <dt className="font-medium text-foreground">{type.name}</dt>
+            <dd>{type.meaning}</dd>
+          </div>
+        ))}
       </dl>
-      <ul className="mt-5 space-y-1">
-        <Arrangement nodes={map.arrangement} onOpenNote={onOpenNote} />
-      </ul>
+      <section className="mt-6">
+        <h3 className="text-sm font-semibold">Teaching</h3>
+        <MemoryMarkdown
+          className="mt-2"
+          links={links}
+          markdown={map.body}
+          onOpenNote={onOpenNote}
+        />
+      </section>
+      <section className="mt-6">
+        <h3 className="mb-3 text-sm font-semibold">Arrangement</h3>
+        {tree ? (
+          <ul className="space-y-1">
+            <Arrangement
+              nodes={buildSkillMapTree(map)}
+              onOpenNote={onOpenNote}
+              showEdgeTypes={map.types.length > 1}
+            />
+          </ul>
+        ) : (
+          <SkillMapGraph map={map} onOpenNote={onOpenNote} />
+        )}
+      </section>
     </article>
   );
 }
@@ -348,21 +374,32 @@ function MapDetail({
 function Arrangement({
   nodes,
   onOpenNote,
+  showEdgeTypes,
 }: {
-  readonly nodes: ReadonlyArray<MemoryArrangementNode>;
+  readonly nodes: ReadonlyArray<SkillMapTreeNode>;
   readonly onOpenNote: (name: string) => void;
+  readonly showEdgeTypes: boolean;
 }) {
   return nodes.map((node) => (
-    <li key={node.note}>
+    <li key={node.key}>
       <button
         className="text-sm font-medium text-primary hover:underline"
-        onClick={() => onOpenNote(node.note)}
+        onClick={() => onOpenNote(node.name)}
       >
-        {node.note}
+        {node.name}
       </button>
+      {showEdgeTypes && node.edgeType !== undefined ? (
+        <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          {node.edgeType}
+        </span>
+      ) : null}
       {node.children?.length ? (
         <ul className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
-          <Arrangement nodes={node.children} onOpenNote={onOpenNote} />
+          <Arrangement
+            nodes={node.children}
+            onOpenNote={onOpenNote}
+            showEdgeTypes={showEdgeTypes}
+          />
         </ul>
       ) : null}
     </li>

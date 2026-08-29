@@ -349,6 +349,7 @@ export class PlanningAssistant extends Context.Service<
         readonly map: string;
         readonly parent: string;
         readonly note: string;
+        readonly type?: string | undefined;
       }>;
     }) => Effect.Effect<void, PlanningTurnNotFoundError>;
     /** The MCP read door: the artifact's text at the calling turn's tip. */

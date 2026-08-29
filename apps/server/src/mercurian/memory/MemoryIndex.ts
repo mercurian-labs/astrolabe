@@ -30,10 +30,11 @@ import {
   fingerprintMemoryFiles,
   insertMapPlacement,
   isValidMemoryNoteName,
+  legacyMemoryMapRefusal,
   missingOpenDecisionHeadings,
-  parseAndValidateMemoryMap,
+  parseSkillMap,
   parseOpenDecisions,
-  serializeMemoryMap,
+  serializeSkillMap,
   type MemoryGraph,
 } from "./memoryModel.ts";
 import type { ResolvedMemorySource } from "./schema.ts";
@@ -202,6 +203,10 @@ export const make = Effect.gen(function* () {
       if (!relative || relative === ".." || relative.startsWith("../")) continue;
       const segments = relative.split("/");
       if (segments.some((segment) => segment.startsWith("."))) continue;
+      if (relative.endsWith(".skillmap.md")) {
+        maps.push(absolute);
+        continue;
+      }
       if (segments[0] === "maps") {
         if (segments.length === 2 && relative.endsWith(".yaml")) maps.push(absolute);
         continue;
@@ -225,7 +230,7 @@ export const make = Effect.gen(function* () {
   const loadRoot = Effect.fn("MemoryIndex.loadRoot")(function* (source: ResolvedMemorySource) {
     const listed = yield* listFiles(source.rootPath);
     const classified = classifyFiles(source.rootPath, listed.files);
-    const productPath = path.join(source.rootPath, "maps", "product.yaml");
+    const productPath = path.join(source.rootPath, "Product.skillmap.md");
     const productExists = yield* fs.exists(productPath);
     const fingerprintPaths = [
       ...classified.notes,
@@ -259,13 +264,14 @@ export const make = Effect.gen(function* () {
     );
     const graph = buildMemoryGraph(noteFiles);
     const maps = yield* Effect.forEach(classified.maps, (file) =>
-      fs
-        .readFileString(file)
-        .pipe(
-          Effect.map((contents) =>
-            parseAndValidateMemoryMap(posix(path.relative(source.rootPath, file)), contents, graph),
-          ),
-        ),
+      fs.readFileString(file).pipe(
+        Effect.map((contents) => {
+          const relative = posix(path.relative(source.rootPath, file));
+          return relative.endsWith(".skillmap.md")
+            ? parseSkillMap(relative, contents, graph)
+            : legacyMemoryMapRefusal(relative);
+        }),
+      ),
     );
     const index: MemoryIndexValue = {
       notes: graph.notes.map(({ name, path: notePath }) => ({ name, path: notePath })),
@@ -319,15 +325,14 @@ export const make = Effect.gen(function* () {
   const generateProductMap: MemoryIndex["Service"]["generateProductMap"] = (projectId) =>
     Effect.gen(function* () {
       const source = yield* requireSource(projectId);
-      const productPath = path.join(source.rootPath, "maps", "product.yaml");
+      const productPath = path.join(source.rootPath, "Product.skillmap.md");
       if (yield* fs.exists(productPath)) {
         return yield* new ProductMapAlreadyExistsError({ projectId });
       }
       const { graph } = yield* loadRoot(source);
       const compiled = compileProductMap(graph.declarations);
       if (isProductMapCycleError(compiled)) return yield* compiled;
-      yield* fs.makeDirectory(path.dirname(productPath), { recursive: true });
-      yield* fs.writeFileString(productPath, serializeMemoryMap(compiled));
+      yield* fs.writeFileString(productPath, serializeSkillMap(compiled));
       cache.delete(source.rootPath);
 
       yield* commitPaths({
@@ -446,11 +451,17 @@ export const make = Effect.gen(function* () {
         const before =
           mapSources.get(current.file) ??
           (yield* fs.readFileString(path.join(source.rootPath, current.file)));
-        const placed = insertMapPlacement(current, placement.parent, placement.note, nextGraph);
+        const placed = insertMapPlacement(
+          current,
+          placement.parent,
+          placement.note,
+          nextGraph,
+          placement.type,
+        );
         if ("refusal" in placed) {
           return yield* new MemoryAmendmentValidationError({ reason: placed.refusal });
         }
-        const after = serializeMemoryMap(placed);
+        const after = serializeSkillMap(placed);
         mapsByName.set(placed.name, placed);
         mapSources.set(current.file, after);
         changedMaps.set(current.file, {
