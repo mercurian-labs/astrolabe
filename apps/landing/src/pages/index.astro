@@ -1,14 +1,6 @@
 ---
 import HeroDesk from "../islands/HeroDesk";
 import Base from "../layouts/Base.astro";
-
-const providers = [
-  { name: "Claude Code", src: "/harnesses/claude-ai-icon.svg" },
-  { name: "Codex", src: "/harnesses/openai_dark.svg" },
-  { name: "Cursor", src: "/harnesses/cursor_light.svg" },
-  { name: "Grok", src: "/harnesses/grok-dark.svg" },
-  { name: "OpenCode", src: "/harnesses/opencode-dark.svg" },
-] as const;
 ---
 
 <Base title="Mercurian">
@@ -87,45 +79,19 @@ const providers = [
           </div>
         </div>
       </section>
-
-      <section
-        class="mt-10 grid gap-8 pb-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:pb-16"
-        aria-labelledby="providers-heading"
-      >
-        <div class="max-w-xl">
-          <h2 id="providers-heading" class="text-2xl font-medium tracking-tight">
-            Your agents. Your machine. No account.
-          </h2>
-          <p class="mt-4 text-base leading-relaxed text-muted-foreground">
-            Mercurian plans with the coding agents you already have — Claude Code, Codex, Cursor,
-            and more — switchable between turns, even mid-plan, with every branch recording exactly
-            what it ran under. It runs on your machine, against your repositories, with no sign up
-            required. Plans, history, and memory are plain text and git: yours to keep, wherever you
-            go next.
-          </p>
-        </div>
-
-        <ul class="grid min-w-0 grid-cols-3 gap-5 sm:grid-cols-5 sm:gap-3">
-          {
-            providers.map((provider) => (
-              <li class="flex min-w-0 flex-col items-center gap-3">
-                <span class="flex size-16 items-center justify-center rounded-xl bg-foreground p-3 dark:bg-background">
-                  <img
-                    alt={provider.name}
-                    class="size-10 object-contain"
-                    height="40"
-                    src={provider.src}
-                    width="40"
-                  />
-                </span>
-                <span class="text-center text-xs font-medium text-foreground/75">
-                  {provider.name}
-                </span>
-              </li>
-            ))
-          }
-        </ul>
-      </section>
     </div>
+    <footer class="border-t border-border">
+      <div
+        class="mx-auto flex w-full max-w-[90rem] items-center justify-between px-6 py-10 sm:px-10 lg:px-12 xl:px-16"
+      >
+        <div
+          aria-label="Mercurian"
+          class="w-fit text-base font-semibold [font-family:Fraunces,serif]"
+        >
+          Mercurian<span aria-hidden="true" class="text-[#A0492A]">.</span>
+        </div>
+        <p class="text-xs text-muted-foreground">© 2026 Mercurian, Inc.</p>
+      </div>
+    </footer>
   </main>
 </Base>

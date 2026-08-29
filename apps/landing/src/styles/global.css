@@ -24,9 +24,12 @@
 html[data-landing-appearance="light"] {
   color-scheme: light !important;
   background-color: #f7f7f3 !important;
+  overscroll-behavior: auto !important;
 }
 
 html[data-landing-appearance="light"] body {
   background-color: #f7f7f3 !important;
   background-image: none;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
 }

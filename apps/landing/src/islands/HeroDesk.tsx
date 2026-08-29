@@ -337,7 +337,7 @@ function HeroWindowInterior() {
   const spec =
     specRevision === null ? null : (specByRevisionCommitId.get(specRevision.commitId) ?? null);
   const paneToggle = <PlanPaneToggle state={pane} onChange={setPane} />;
-  const paneCornerControl = <div className="hidden lg:block">{paneToggle}</div>;
+  const paneCornerControl = paneToggle;
   const backToNow = () => setPosition(LATEST);
   const readOnlyAction = (
     <Button size="sm" variant="ghost" onClick={backToNow}>
@@ -350,17 +350,19 @@ function HeroWindowInterior() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-[12px] text-foreground">
-      <WorkspacePageHeader className="gap-2 border-b border-border lg:hidden">
-        <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          Marketing site hero
-        </h1>
-        {paneToggle}
-      </WorkspacePageHeader>
+      {pane.open ? null : (
+        <WorkspacePageHeader className="gap-2 border-b border-border md:hidden">
+          <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            Marketing site hero
+          </h1>
+          {paneToggle}
+        </WorkspacePageHeader>
+      )}
       <div className="flex min-h-0 min-w-0 flex-1">
         <div
-          className={`min-w-0 flex-1 flex-col lg:basis-2/5 ${pane.open ? "hidden lg:flex lg:border-r lg:border-border" : "flex"}`}
+          className={`min-w-0 flex-1 flex-col md:basis-2/5 ${pane.open ? "hidden md:flex md:border-r md:border-border" : "flex"}`}
         >
-          <WorkspacePageHeader className="hidden gap-2 border-b border-border lg:flex">
+          <WorkspacePageHeader className="hidden gap-2 border-b border-border md:flex">
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
               Marketing site hero
             </h1>
