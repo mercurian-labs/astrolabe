@@ -616,3 +616,15 @@ Checks: the four gates; dist carries the new header/paragraph verbatim; the map 
 gap-1 above the minimap; the initial blue anchor is the second leaf from the left with the
 camera centered on it and the in-flight reply visible on its path; composer controls
 measurably smaller below md; isolation step passes.
+
+### Amendment 14 addendum — the paragraph speaks in checkpoints (2026-08-29)
+
+Vault ruling (Marketing Site, commit ed872e5): the paragraph is revised a third time — the
+positioning phrase returns to "agent development environment", the history sentence tightens
+and adopts the product's own word ("is a checkpoint in a branching history"), and the closing
+sentence becomes one breath. index.astro's paragraph becomes exactly: `Astrolabe is your
+agent development environment for building ambitious software. Every message, every plan
+edit, every code change is a checkpoint in a branching history. Return to any point, take a
+different direction, explore new ideas side by side, and merge the branches back into a
+single plan.` Header unchanged. Checks: the four gates; dist carries the new paragraph
+verbatim; "branching environment"/"git-style" absent.
