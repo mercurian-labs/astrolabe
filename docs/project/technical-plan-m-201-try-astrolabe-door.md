@@ -100,3 +100,34 @@ vault's own repository).
 - Repo dev commands are `vp i` / `vp run dev` (`AGENTS.md`, Dev servers).
 - Plans live in `docs/project/technical-plan-*.md`; stacked branches note their base and
   the post-merge posture (M-175 v2 plan does the same).
+
+## Amendment 1 — the link card (2026-08-29)
+
+Venkat's third refinement, same door: sharing the site over SMS/iMessage/RCS shows no
+preview card. The prototype landing designed one — `og-card.svg`, the Mercury constellation
+on cream, 1200×630 — with two defects for exactly this use: the image is SVG (iMessage and
+most Open Graph scrapers render only raster formats) and its reference was relative
+(scrapers need absolute URLs). Its tagline is also the retired positioning ("You already
+branch your AI chats…"). Venkat's ruling: keep the artwork, update the text to the current
+positioning.
+
+- **The asset** (produced by Claude, like the favicon): the prototype SVG's text layer
+  edited — wordmark gains the terracotta full stop, the two retired tagline lines become
+  one line, `Chart twice, build once.`, same face/size/color/position system — then
+  rasterized at exactly 1200×630 with the real Fraunces and Spline Sans Mono variable
+  fonts (headless Chrome over a data-URI-font harness). Ships as
+  `apps/landing/public/og-card.png` (110KB). The edited SVG source stays in the session
+  scratchpad; the prototype repo remains the design source of record.
+- **The metadata** (Sol): `Base.astro` gains a `description` prop and the meta block —
+  `meta name=description`, `og:title` (the page title), `og:description`, `og:type`
+  website, `og:url` (the canonical page URL), `og:image` as an **absolute** URL built from
+  `Astro.site` (set on this branch by M-175), `og:image:width/height` 1200/630,
+  `og:image:alt`, and `twitter:card summary_large_image`. `astrolabe.astro` passes the
+  description: the pinned positioning sentence ("Astrolabe is your agent development
+  environment for building ambitious software.").
+- **Scraper path for the bare domain:** no extra work — the root's 308 leads scrapers to
+  `/astrolabe`, whose tags they read.
+
+Checks added to Verification: dist HTML carries the og/twitter block with the absolute
+image URL; `dist/og-card.png` exists at 1200×630; served `GET /og-card.png` returns 200
+`image/png`.
