@@ -1,6 +1,6 @@
 import * as NodeFSP from "node:fs/promises";
 
-const indexPath = new URL("../dist/index.html", import.meta.url);
+const indexPath = new URL("../dist/astrolabe.html", import.meta.url);
 const indexHtml = await NodeFSP.readFile(indexPath, "utf8");
 
 const scriptTags = indexHtml.match(/<script\b[^>]*>[\s\S]*?<\/script>/giu) ?? [];

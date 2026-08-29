@@ -29,6 +29,8 @@ const quietConnectionPlatform = {
 };
 
 export default defineConfig({
+  site: "https://mercurian.ai",
+  build: { format: "file" },
   integrations: [react()],
   server: {
     port: Number(process.env.PORT ?? 4321),
