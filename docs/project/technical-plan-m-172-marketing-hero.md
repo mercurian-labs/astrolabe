@@ -628,3 +628,23 @@ edit, every code change is a checkpoint in a branching history. Return to any po
 different direction, explore new ideas side by side, and merge the branches back into a
 single plan.` Header unchanged. Checks: the four gates; dist carries the new paragraph
 verbatim; "branching environment"/"git-style" absent.
+
+## Amendment 15 — the Cursor-height stage and the Fraunces headline (2026-08-29)
+
+Venkat's four calls, all in index.astro:
+
+- **Stage ground:** the desk section (the div containing the wallpaper img) takes
+  `bg-[#13120A]` — a near-black warm ground behind the poster.
+- **Stage height:** the section becomes a fixed 720px tall at every width to match the Cursor
+  homepage proportion — `h-180` (45rem = 720px exactly on Tailwind v4's dynamic spacing
+  scale) replaces `min-h-[30rem] lg:aspect-video lg:min-h-0`. The window inside is
+  percentage-sized and follows; at 375px the window lands ~307×612, an even truer phone
+  ratio for the narrow stage (and for M-188's inherited stage).
+- **Headline:** the h2 goes text-2xl → `text-5xl` (3rem) and takes the wordmark's face:
+  `[font-family:Fraunces,serif]`, weight and tracking unchanged.
+- **Paragraph:** text-base → `text-lg` (18px). Noted in passing: the paragraph face is not
+  Inter — it inherits the shared stylesheet's `--font-sans` system stack (SF Pro on macOS).
+
+Checks: the four gates; computed probes on the served build confirm 48px Fraunces (face
+loaded), 18px paragraph, stage height exactly 720 with rgb(19,18,10), document scroll intact;
+desktop + 375px screenshots reviewed; only index.astro changed.
