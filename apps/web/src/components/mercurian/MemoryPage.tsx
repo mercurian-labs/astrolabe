@@ -1,29 +1,26 @@
 import type { MemoryArrangementNode, MemoryIndex, MemoryNote } from "@t3tools/contracts";
 import { AlertTriangleIcon, BookOpenIcon, MapIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { usePlanDraftStore } from "../../planDraftStore";
 import { useProjectScopeStore } from "../../projectScopeStore";
 import { useMercurianTree } from "../../state/mercurian";
 import {
   useMemorySourceForProject,
   useReadMemoryIndex,
   useReadMemoryNote,
-  useWriteMemoryNote,
 } from "../../state/mercurianMemory";
-import { cn } from "../../lib/utils";
+import { cn, randomUUID } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
-import { Textarea } from "../ui/textarea";
 import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
 import {
   initialMemorySelection,
-  INITIAL_MEMORY_EDITOR_STATE,
-  memoryEditorReducer,
-  memoryNoteWritePayload,
   memoryPageStanding,
   memoryRailItems,
-  type MemoryEditorState,
+  writeNoteSeedMessage,
   type MemoryRailItem,
 } from "./MemoryPage.logic";
 import { MemoryMarkdown } from "./memoryMarkdown";
@@ -43,15 +40,12 @@ export function MemoryPage({
   const source = useMemorySourceForProject(projectId);
   const readIndex = useReadMemoryIndex();
   const readNote = useReadMemoryNote();
-  const writeNote = useWriteMemoryNote();
   const [index, setIndex] = useState<MemoryIndex | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [note, setNote] = useState<MemoryNote | null>(null);
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
-  const [editor, dispatchEditor] = useReducer(memoryEditorReducer, INITIAL_MEMORY_EDITOR_STATE);
-  const [savingNote, setSavingNote] = useState(false);
   const noteRequestId = useRef(0);
   const [manageOpen, setManageOpen] = useState(false);
 
@@ -97,29 +91,23 @@ export function MemoryPage({
 
   const selectedNoteName =
     selected?.kind === "note" || selected?.kind === "unresolved" ? selected.name : null;
-  const loadSelectedNote = useCallback(
-    async (reseedEditor = false) => {
-      if (projectId === null || selectedNoteName === null) return;
-      const requestId = ++noteRequestId.current;
-      setNote(null);
-      setNoteError(null);
-      setNoteLoading(true);
-      const result = await readNote({ projectId, name: selectedNoteName });
-      if (requestId !== noteRequestId.current) return;
-      if (result.ok) {
-        setNote(result.value);
-        if (reseedEditor) dispatchEditor({ type: "reload", note: result.value });
-      } else {
-        setNoteError(errorMessage(result.error, "Could not read this note."));
-      }
-      setNoteLoading(false);
-    },
-    [projectId, readNote, selectedNoteName],
-  );
+  const loadSelectedNote = useCallback(async () => {
+    if (projectId === null || selectedNoteName === null) return;
+    const requestId = ++noteRequestId.current;
+    setNote(null);
+    setNoteError(null);
+    setNoteLoading(true);
+    const result = await readNote({ projectId, name: selectedNoteName });
+    if (requestId !== noteRequestId.current) return;
+    if (result.ok) {
+      setNote(result.value);
+    } else {
+      setNoteError(errorMessage(result.error, "Could not read this note."));
+    }
+    setNoteLoading(false);
+  }, [projectId, readNote, selectedNoteName]);
 
   useEffect(() => {
-    dispatchEditor({ type: "cancel" });
-    setSavingNote(false);
     if (projectId === null || selectedNoteName === null) {
       noteRequestId.current += 1;
       setNote(null);
@@ -149,23 +137,21 @@ export function MemoryPage({
     designated: source !== null,
     index,
   });
-  const writePayload =
-    projectId === null || selectedNoteName === null
-      ? null
-      : memoryNoteWritePayload(projectId, selectedNoteName, editor);
 
-  const saveNote = useCallback(async () => {
-    if (writePayload === null || savingNote) return;
-    setSavingNote(true);
-    const result = await writeNote(writePayload);
-    if (result.ok) {
-      dispatchEditor({ type: "cancel" });
-      await Promise.all([loadSelectedNote(), refresh()]);
-    } else {
-      dispatchEditor({ type: "write-refused", error: result.error });
-    }
-    setSavingNote(false);
-  }, [loadSelectedNote, refresh, savingNote, writeNote, writePayload]);
+  const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
+  const setDraftText = usePlanDraftStore((state) => state.setDraftText);
+  const navigate = useNavigate();
+  /** The frontier's write door: seed a message that starts the amendment flow. */
+  const writeThisNote = useCallback(
+    (name: string, referencedBy: ReadonlyArray<string>) => {
+      if (projectId === null) return;
+      const seed = writeNoteSeedMessage(name, referencedBy);
+      const draft = openDraftForProject(projectId, randomUUID(), new Date().toISOString());
+      setDraftText(draft.draftId, draft.text.length === 0 ? seed : `${draft.text}\n\n${seed}`);
+      void navigate({ to: "/plans/draft/$draftId", params: { draftId: draft.draftId } });
+    },
+    [navigate, openDraftForProject, projectId, setDraftText],
+  );
 
   if (standing === "no-project") {
     return (
@@ -248,16 +234,9 @@ export function MemoryPage({
           <p className="text-sm text-destructive-foreground">{noteError}</p>
         ) : note === null ? null : (
           <NoteDetail
-            canSave={writePayload !== null && !savingNote}
-            editor={editor}
             note={note}
-            saving={savingNote}
-            onCancel={() => dispatchEditor({ type: "cancel" })}
-            onChange={(markdown) => dispatchEditor({ type: "change", markdown })}
-            onEdit={() => dispatchEditor({ type: "edit", note })}
             onOpenNote={selectNote}
-            onReload={() => void loadSelectedNote(true)}
-            onSave={() => void saveNote()}
+            onWriteNote={() => writeThisNote(note.name, note.backlinks)}
           />
         )}
       </main>
@@ -392,68 +371,17 @@ function Arrangement({
 
 function NoteDetail({
   note,
-  editor,
-  canSave,
-  saving,
   onOpenNote,
-  onEdit,
-  onChange,
-  onSave,
-  onCancel,
-  onReload,
+  onWriteNote,
 }: {
   readonly note: MemoryNote;
-  readonly editor: MemoryEditorState;
-  readonly canSave: boolean;
-  readonly saving: boolean;
   readonly onOpenNote: (name: string) => void;
-  readonly onEdit: () => void;
-  readonly onChange: (markdown: string) => void;
-  readonly onSave: () => void;
-  readonly onCancel: () => void;
-  readonly onReload: () => void;
+  readonly onWriteNote: () => void;
 }) {
   return (
     <article className="mx-auto max-w-3xl">
-      <header className="flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">{note.name}</h2>
-        {editor._tag === "reading" && note.exists ? (
-          <Button size="sm" type="button" variant="outline" onClick={onEdit}>
-            Edit
-          </Button>
-        ) : null}
-      </header>
-      {editor._tag === "editing" ? (
-        <div className="mt-4 space-y-3">
-          <Textarea
-            aria-label={`Edit ${note.name}`}
-            className="min-h-[24rem] resize-y font-mono text-sm"
-            value={editor.markdown}
-            onChange={(event) => onChange(event.target.value)}
-          />
-          {editor.refusal === null ? null : (
-            <div
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive-foreground"
-            >
-              <span>{editor.refusal.message}</span>
-              {editor.refusal.reload ? (
-                <Button size="sm" type="button" variant="outline" onClick={onReload}>
-                  Reload
-                </Button>
-              ) : null}
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={!canSave} onClick={onSave}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </div>
-      ) : note.exists ? (
+      <h2 className="text-xl font-semibold">{note.name}</h2>
+      {note.exists ? (
         <MemoryMarkdown
           className="mt-4"
           markdown={note.markdown ?? ""}
@@ -463,7 +391,10 @@ function NoteDetail({
       ) : (
         <div className="mt-3 space-y-3">
           <p className="font-medium text-destructive-foreground">Not yet written</p>
-          <Button size="sm" type="button" onClick={onEdit}>
+          <p className="text-sm text-muted-foreground">
+            Nothing is written until an amendment is confirmed — writing it starts in a thread.
+          </p>
+          <Button size="sm" type="button" onClick={onWriteNote}>
             Write this note
           </Button>
         </div>

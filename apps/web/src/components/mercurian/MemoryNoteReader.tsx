@@ -62,8 +62,8 @@ export function MemoryNoteReader({
             <h3 className="text-lg font-semibold">{note.name}</h3>
             <p className="text-sm font-medium text-destructive-foreground">Not yet written</p>
             <p className="text-sm text-muted-foreground">
-              This note is referenced by the memory, but no note file exists yet. You can write it
-              from the Memory page.
+              This note is referenced by the memory, but no note file exists yet. Ask for it here to
+              propose it as an amendment.
             </p>
           </div>
         )}

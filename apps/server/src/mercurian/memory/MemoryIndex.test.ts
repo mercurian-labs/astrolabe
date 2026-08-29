@@ -10,7 +10,6 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   isConfirmMemoryAmendmentBlockedError,
   isProductMapAlreadyExistsError,
-  isWriteMemoryNoteBlockedError,
   MercurianProjectId,
   MercurianRepositoryId,
   PlanTurnId,
@@ -147,68 +146,6 @@ layer("MemoryIndex", (it) => {
 
       const error = yield* Effect.flip(index.generateProductMap(fixture.projectId));
       assert.isTrue(isProductMapAlreadyExistsError(error));
-    }),
-  );
-
-  it.effect("writes and edits notes with guarded baselines and git subjects", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const index = yield* MemoryIndex.MemoryIndex;
-      const fixture = yield* makeFixture("write-note", { git: true });
-      yield* index.writeNote({
-        projectId: fixture.projectId,
-        name: "Composer",
-        markdown: "First\n",
-        baseMarkdown: null,
-      });
-      assert.strictEqual(
-        yield* runGit(fixture.root, ["log", "-1", "--pretty=%s"]),
-        "Write Composer",
-      );
-      yield* index.writeNote({
-        projectId: fixture.projectId,
-        name: "Composer",
-        markdown: "Second\n",
-        baseMarkdown: "First\n",
-      });
-      assert.strictEqual(
-        yield* runGit(fixture.root, ["log", "-1", "--pretty=%s"]),
-        "Edit Composer",
-      );
-      yield* fs.writeFileString(path.join(fixture.root, "Composer.md"), "External\n");
-      const drift = yield* Effect.flip(
-        index.writeNote({
-          projectId: fixture.projectId,
-          name: "Composer",
-          markdown: "Third\n",
-          baseMarkdown: "Second\n",
-        }),
-      );
-      assert.isTrue(isWriteMemoryNoteBlockedError(drift));
-      assert.strictEqual(
-        yield* fs.readFileString(path.join(fixture.root, "Composer.md")),
-        "External\n",
-      );
-    }),
-  );
-
-  it.effect("writes a note without committing in a non-git memory", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const index = yield* MemoryIndex.MemoryIndex;
-      const fixture = yield* makeFixture("write-note-no-git");
-      yield* index.writeNote({
-        projectId: fixture.projectId,
-        name: "Manual",
-        markdown: "Human truth\n",
-        baseMarkdown: null,
-      });
-      assert.strictEqual(
-        yield* fs.readFileString(path.join(fixture.root, "Manual.md")),
-        "Human truth\n",
-      );
     }),
   );
 

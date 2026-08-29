@@ -158,12 +158,10 @@ import {
   MercurianMemoryError,
   MercurianReadMemoryIndexInput,
   MercurianReadMemoryNoteInput,
-  MercurianWriteMemoryNoteInput,
   MercurianRemoveMemorySourceInput,
   MercurianSubscribeMemorySourcesInput,
   ProductMapAlreadyExistsError,
   ProductMapCycleError,
-  WriteMemoryNoteBlockedError,
 } from "./mercurianMemory.ts";
 import {
   MERCURIAN_TRACKER_WS_METHODS,
@@ -1517,17 +1515,6 @@ export const WsMercurianReadMemoryNoteRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS
   ]),
 });
 
-export const WsMercurianWriteMemoryNoteRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS.writeMemoryNote, {
-  payload: MercurianWriteMemoryNoteInput,
-  success: Schema.Void,
-  error: Schema.Union([
-    WriteMemoryNoteBlockedError,
-    MemorySourceInvalidError,
-    MercurianMemoryError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
 export const WsMercurianGenerateProductMapRpc = Rpc.make(
   MERCURIAN_MEMORY_WS_METHODS.generateProductMap,
   {
@@ -1753,7 +1740,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRemoveMemorySourceRpc,
   WsMercurianReadMemoryIndexRpc,
   WsMercurianReadMemoryNoteRpc,
-  WsMercurianWriteMemoryNoteRpc,
   WsMercurianGenerateProductMapRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
   WsMercurianSubscribeTrackersRpc,

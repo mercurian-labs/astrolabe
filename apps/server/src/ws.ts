@@ -58,7 +58,6 @@ import {
   isMemorySourceInvalidError,
   isProductMapAlreadyExistsError,
   isProductMapCycleError,
-  isWriteMemoryNoteBlockedError,
   isPlanDeleteBlockedError,
   isRepositoryAlreadyRegisteredError,
   isRepositoryHasLiveWorktreesError,
@@ -2821,20 +2820,6 @@ const makeWsRpcLayer = (
                   isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
                     ? cause
                     : new MercurianMemoryError({ operation: "readMemoryNote", cause }),
-                ),
-              ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_MEMORY_WS_METHODS.writeMemoryNote]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_MEMORY_WS_METHODS.writeMemoryNote,
-            memoryIndex
-              .writeNote(input)
-              .pipe(
-                Effect.mapError((cause) =>
-                  isWriteMemoryNoteBlockedError(cause) || isMemorySourceInvalidError(cause)
-                    ? cause
-                    : new MercurianMemoryError({ operation: "writeMemoryNote", cause }),
                 ),
               ),
             { "rpc.aggregate": "mercurian" },

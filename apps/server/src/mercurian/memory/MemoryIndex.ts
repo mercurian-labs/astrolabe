@@ -19,7 +19,6 @@ import {
   ProductMapAlreadyExistsError,
   ProductMapCycleError,
   ConfirmMemoryAmendmentBlockedError,
-  WriteMemoryNoteBlockedError,
   isProductMapCycleError,
 } from "@t3tools/contracts";
 
@@ -90,12 +89,6 @@ export class MemoryIndex extends Context.Service<
       readonly planId: string;
       readonly planName: string;
     }) => Effect.Effect<string | null, MemoryIndexError | ConfirmMemoryAmendmentBlockedError>;
-    readonly writeNote: (input: {
-      readonly projectId: MercurianProjectId;
-      readonly name: string;
-      readonly markdown: string;
-      readonly baseMarkdown: string | null;
-    }) => Effect.Effect<void, MemoryIndexError | WriteMemoryNoteBlockedError>;
   }
 >()("t3/mercurian/memory/MemoryIndex") {}
 
@@ -126,7 +119,7 @@ export const make = Effect.gen(function* () {
     readonly rootPath: string;
     readonly absolutePaths: ReadonlyArray<string>;
     readonly message: string;
-    readonly operation: "generateProductMap" | "writeMemoryNote" | "applyMemoryAmendment";
+    readonly operation: "generateProductMap" | "applyMemoryAmendment";
   }) {
     const repositoryRoot = yield* gitRoot(input.rootPath);
     if (repositoryRoot === null) return null;
@@ -512,41 +505,12 @@ export const make = Effect.gen(function* () {
       });
     });
 
-  const writeNote: MemoryIndex["Service"]["writeNote"] = (input) =>
-    Effect.gen(function* () {
-      if (!isValidMemoryNoteName(input.name)) {
-        return yield* new WriteMemoryNoteBlockedError({ reason: "invalid-name" });
-      }
-      const resolved = yield* sourceStore.getResolvedSource(input.projectId);
-      if (Option.isNone(resolved)) {
-        return yield* new WriteMemoryNoteBlockedError({ reason: "not-designated" });
-      }
-      const source = resolved.value;
-      const loaded = yield* loadRoot(source);
-      const existing = loaded.graph.noteByName.get(input.name);
-      const absolute = existing?.path ?? path.join(source.rootPath, `${input.name}.md`);
-      const current = yield* readIfExists(absolute);
-      if (current !== input.baseMarkdown) {
-        return yield* new WriteMemoryNoteBlockedError({ reason: "note-changed" });
-      }
-      yield* fs.makeDirectory(path.dirname(absolute), { recursive: true });
-      yield* fs.writeFileString(absolute, input.markdown);
-      cache.delete(source.rootPath);
-      yield* commitPaths({
-        rootPath: source.rootPath,
-        absolutePaths: [absolute],
-        message: `${existing === undefined ? "Write" : "Edit"} ${input.name}`,
-        operation: "writeMemoryNote",
-      });
-    });
-
   return {
     readIndex,
     readNote,
     generateProductMap,
     prepareAmendment,
     applyAmendment,
-    writeNote,
   } satisfies MemoryIndex["Service"];
 });
 

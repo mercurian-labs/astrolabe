@@ -27,12 +27,13 @@ the target is referenced but has not been written yet; opening it shows which ex
 to it. Memory is read fresh from its files, so edits made outside the app appear the next time the
 index or note is read.
 
-## Edit notes
+## How notes change
 
-Open a note on the Memory page and choose **Edit**, or choose **Write this note** for an unresolved
-reference. Saving updates the note in place and records the change in the memory repository when
-it uses Git. If the note changed on disk after editing began, the app refuses the save and offers
-to reload the newer version before editing again.
+The app carries exactly one write path into memory: the assistant proposes an amendment, and
+nothing lands until you confirm it. There is no in-app note editor — to change a note directly,
+use any editor on the memory's own files; the change appears on the next read. For an unresolved
+reference, **Write this note** starts that path for you: it opens a new draft seeded with a message
+asking for the note, and the note is written only when you confirm the proposed amendment.
 
 ## Mention notes in a plan
 
