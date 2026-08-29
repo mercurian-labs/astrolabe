@@ -556,3 +556,20 @@ Checks: the four gates; trusted-input wheel scrolls the page over the headline, 
 window's graph, and the footer; no provider band or claim 3 anywhere on the page; the footer
 renders; at ~900px width the panes stand side by side; below md the pane-only stage shows one
 title bar with corner toggles and no plan-title header; isolation step passes.
+
+### Amendment 13 addendum — the headline does the naming (2026-08-28)
+
+Vault ruling (Marketing Site, commit c1a1b6c): claim 1's hero copy is revised — the eyebrow
+retires and the headline itself names and positions the product. In index.astro:
+
+- Remove the eyebrow `<p>` entirely.
+- h2 becomes exactly: `Astrolabe is your agent development environment for building ambitious
+software.`
+- The paragraph becomes exactly: `Every message, every edit to the plan, every change to the
+code is a commit in one branching, git-style history. Return to any point and take a
+different direction, explore new ideas side by side, then merge the branches back into a
+single plan.`
+
+(This also resolves a drift: the rendered paragraph still carried the compacted-context
+clause the vault's merge redesign had already retired.) Checks: the four gates; dist carries
+the new header and paragraph verbatim and no eyebrow text.
