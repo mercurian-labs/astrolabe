@@ -385,3 +385,16 @@ time travel demonstrated live.
 Checks: existing four gates; clicking a mid-history checkpoint slices the conversation and the
 artifact to that path and the composer stays; clicking a leaf returns to live; toggles swap
 graph ↔ plan/spec ↔ closed; header title renders in the window at 12px scale without wrapping.
+
+### Amendment 8 addendum — the header stands beside the pane bar, and shorter (2026-08-28)
+
+Venkat's correction on the first cut: the hero stacked the workspace header above the split,
+but the product's shipped arrangement (M-139) is ONE header row — the `WorkspacePageHeader`
+lives inside the conversation column and the right pane's title bar stands beside it at the
+same height, the column border providing the vertical separation. The hero mirrors that
+exactly: header moves into the left column above the timeline; the pane column runs full
+height. Both bars share the `--workspace-topbar-height` token (52px), which is proportionally
+oversized inside the 12px-scale window — the landing overrides that one token scoped to
+`[data-hero-window]` (≈36px) in its own global.css, shrinking both bars together while the
+shared token keeps them aligned. A scoped variable override is landing-side theming of real
+chrome, not a fork of it.
