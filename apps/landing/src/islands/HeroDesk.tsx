@@ -27,7 +27,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentPr
 
 const history = timeline(
   message("plan-query", {
-    text: "Turn this issue into an implementation plan",
+    sequence: 1,
+    text: "Plan a restrained landing page for Mercurian",
   }),
   planRevision("plan-draft", {
     sequence: 2,
@@ -43,7 +44,7 @@ const history = timeline(
     sequence: 4,
     parents: ["plan-spec"],
     authorKind: "assistant",
-    text: "The first implementation path is ready.",
+    text: "A first pass for the landing page is ready.",
   }),
   message("interface-query", {
     sequence: 5,
@@ -77,10 +78,64 @@ const history = timeline(
     authorKind: "assistant",
     text: "The workflow path is ready to compare.",
   }),
+  message("interface-tangent-query", {
+    sequence: 11,
+    parents: ["interface-response"],
+    text: "Could we drop the headline entirely?",
+  }),
+  message("interface-tangent-response", {
+    sequence: 12,
+    parents: ["interface-tangent-query"],
+    authorKind: "assistant",
+    text: "We considered it, then parked the idea so the page keeps a clear introduction.",
+  }),
+  message("workflow-tangent-query", {
+    sequence: 13,
+    parents: ["workflow-response"],
+    text: "Can the product demo run on fixture data alone?",
+  }),
+  message("workflow-tangent-response", {
+    sequence: 14,
+    parents: ["workflow-tangent-query"],
+    authorKind: "assistant",
+    text: "Yes. Fixture data keeps the demo immediate and self-contained.",
+  }),
+  message("interface-continue-query", {
+    sequence: 15,
+    parents: ["interface-response"],
+    text: "Trim the below-fold page to fewer sections",
+  }),
+  planRevision("interface-plan-2", {
+    sequence: 16,
+    parents: ["interface-continue-query"],
+    authorKind: "assistant",
+  }),
+  message("interface-continue-response", {
+    sequence: 17,
+    parents: ["interface-plan-2"],
+    authorKind: "assistant",
+    text: "The quieter path now keeps only the essential sections below the fold.",
+  }),
+  message("workflow-continue-query", {
+    sequence: 18,
+    parents: ["workflow-response"],
+    text: "Fold deployment into the first milestone",
+  }),
+  planRevision("workflow-plan-2", {
+    sequence: 19,
+    parents: ["workflow-continue-query"],
+    authorKind: "assistant",
+  }),
+  message("workflow-continue-response", {
+    sequence: 20,
+    parents: ["workflow-plan-2"],
+    authorKind: "assistant",
+    text: "The workflow path now includes deployment in the first milestone.",
+  }),
 );
 
 const graph = buildPlanGraph(history);
-const tip = history[9]!.commitId;
+const tip = history[19]!.commitId;
 const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
@@ -124,6 +179,18 @@ const planTextByRevisionCreatedAt = new Map([
 - Avoid ornamental sections around the working product surface.`,
   ],
   [
+    history[15]!.createdAt,
+    `# Trimmed page
+
+## Above the fold
+- Keep the short opening claim and the live planning window.
+- Let the product surface provide the detail.
+
+## Below the fold
+- Retain the provider band and closing statement.
+- Remove supporting sections that repeat the same proof.`,
+  ],
+  [
     history[7]!.createdAt,
     `# Faster workflow path
 
@@ -134,6 +201,18 @@ const planTextByRevisionCreatedAt = new Map([
 ## Ship in place
 - Reuse product components and fixture data.
 - Keep the landing-only implementation small and verify the static build.`,
+  ],
+  [
+    history[18]!.createdAt,
+    `# Folded delivery path
+
+## First milestone
+- Build the interactive hero from real product components and fixture history.
+- Include the static build and deployment in the same delivery step.
+
+## Follow-through
+- Polish the page copy after the deployed surface is stable.
+- Keep all site-specific behavior inside the landing app.`,
   ],
 ]);
 
@@ -341,27 +420,6 @@ function HeroDagExplorer({
     const stopGraphWheel = (event: WheelEvent) => event.stopPropagation();
     pane.addEventListener("wheel", stopGraphWheel, { capture: true });
     return () => pane.removeEventListener("wheel", stopGraphWheel, { capture: true });
-  }, []);
-
-  useEffect(() => {
-    const pane = paneRef.current;
-    if (pane === null) return;
-
-    const fittedControls = new WeakSet<HTMLButtonElement>();
-    const fitGraph = () => {
-      const fitControl = pane.querySelector<HTMLButtonElement>(
-        'button[aria-label="Fit graph to view"]',
-      );
-      if (fitControl === null || fittedControls.has(fitControl)) return;
-      fittedControls.add(fitControl);
-      fitControl.click();
-    };
-
-    const observer = new MutationObserver(fitGraph);
-    observer.observe(pane, { childList: true, subtree: true });
-    fitGraph();
-
-    return () => observer.disconnect();
   }, []);
 
   return (

@@ -14,6 +14,11 @@
   --workspace-topbar-height: 36px;
 }
 
+[data-hero-window] svg[aria-label="Map overview"] {
+  transform: scale(0.6);
+  transform-origin: bottom right;
+}
+
 /* The landing site is always shown in the standard light appearance, even
    when shared product components observe a dark app or system preference. */
 html[data-landing-appearance="light"] {
