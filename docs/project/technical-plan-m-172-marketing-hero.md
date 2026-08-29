@@ -398,3 +398,29 @@ oversized inside the 12px-scale window — the landing overrides that one token 
 `[data-hero-window]` (≈36px) in its own global.css, shrinking both bars together while the
 shared token keeps them aligned. A scoped variable override is landing-side theming of real
 chrome, not a fork of it.
+
+## Amendment 9 — scroll is never captured, and the air tightens (2026-08-28)
+
+Vault ruling (Marketing Site, commit 7dbf045) + Venkat's two calls: (1) the topbar → headline
+gap is too generous; (2) the click-to-engage gate was the wrong idea — the desk can stand
+taller than a short viewport, and a window that captures the wheel strands the visitor.
+
+- **Air:** the headline section's `mt-32 lg:mt-40` halves to `mt-16 lg:mt-20`
+  (index.astro). Nothing else in the page rhythm moves.
+- **Gate removal (HeroDesk.tsx):** the click-to-engage machinery goes entirely — overlay,
+  `engaged` state, Escape/outside-pointerdown listeners, hover chip. The interior is directly
+  live at all times.
+- **Wheel suppression on the graph only:** DagExplorer attaches a native non-passive wheel
+  listener on its SVG that always `preventDefault()`s (plain wheel pans, ctrl/meta zooms) —
+  the one scroll thief. The hero's graph-pane wrapper adds a capture-phase wheel listener
+  that calls `stopPropagation()` (never `preventDefault()`): capture halts the event before
+  it reaches the SVG's own listener, no one cancels the default, the page scrolls. Drag-pan,
+  hover, node picks, and the fit control are untouched. Trade recorded in the vault: the demo
+  forgoes wheel pan/zoom of the graph.
+- **Panes stay native:** the timeline and artifact panes have no overscroll containment —
+  they scroll natively and chain the wheel to the page at their ends, standard embedded-list
+  behavior. No landing-side changes there.
+
+Checks: the four gates; wheel over the graph scrolls the page while drag still pans the map;
+wheel over the conversation scrolls it and chains to the page at its ends; no overlay or
+"Click to explore" affordance anywhere; the headline sits at the tightened offset.
