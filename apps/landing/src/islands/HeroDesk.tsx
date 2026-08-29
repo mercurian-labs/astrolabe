@@ -136,6 +136,7 @@ const history = timeline(
 
 const graph = buildPlanGraph(history);
 const tip = history[19]!.commitId;
+const balancedAnchor = history[13]!.commitId;
 const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
@@ -232,9 +233,9 @@ const specByRevisionCommitId = new Map<string, HeroSpec>([
 
 const heroInFlight = {
   turnId: "hero-desk-turn" as HeroInFlight["turnId"],
-  parentCommitId: tip,
-  text: "I’m weighing the two paths so we can pick a direction.",
-  grounding: [{ kind: "search", label: "open branches" }],
+  parentCommitId: balancedAnchor,
+  text: "I’m folding the fixture approach into the plan now.",
+  grounding: [{ kind: "search", label: "fixture-only demo" }],
 } satisfies HeroInFlight;
 
 const graphProps = {
@@ -314,7 +315,11 @@ export default function HeroDesk() {
 function HeroWindowInterior() {
   const [composerText, setComposerText] = useState("Ask the assistant to refine this plan.");
   const [pane, setPane] = useState<RightPaneState>(DEFAULT_RIGHT_PANE);
-  const [position, setPosition] = useState<PlanPosition>(LATEST);
+  const [position, setPosition] = useState<PlanPosition>({
+    _tag: "at",
+    commitId: balancedAnchor,
+    live: true,
+  });
   const head = resolveHead(graph, position);
   const visibleCommitIds = useMemo(
     () => (head === null ? null : ancestorClosure(graph, head)),
@@ -374,7 +379,9 @@ function HeroWindowInterior() {
             timeline={visibleTimeline}
             onAnswerQuestion={() => undefined}
           />
-          <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
+          <div data-hero-composer>
+            <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
+          </div>
         </div>
         {pane.open ? (
           <div className="flex min-w-0 flex-1">

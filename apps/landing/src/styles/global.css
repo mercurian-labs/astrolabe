@@ -15,8 +15,26 @@
 }
 
 [data-hero-window] svg[aria-label="Map overview"] {
-  transform: scale(0.6);
-  transform-origin: bottom right;
+  width: 84px !important;
+  height: auto !important;
+}
+
+@media (width < 48rem) {
+  [data-hero-window] [data-hero-composer] button {
+    min-height: 24px;
+    height: 24px;
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+
+  [data-hero-window]
+    [data-hero-composer]
+    button:is([aria-label="Send"], [aria-label="Sending"], [aria-label="Stop"]) {
+    width: 28px;
+    min-height: 28px;
+    height: 28px;
+    padding: 0;
+  }
 }
 
 /* The landing site is always shown in the standard light appearance, even
