@@ -5,12 +5,16 @@ import { PlanningToolkit } from "./tools.ts";
 describe("PlanningToolkit", () => {
   it("offers the reply and implement write doors beside the shared read", () => {
     expect(Object.keys(PlanningToolkit.tools).sort()).toEqual([
+      "propose_memory_amendment",
       "read_plan",
       "read_spec",
       "save_implement_proposal",
       "save_plan_revision",
       "save_spec_revision",
     ]);
+    expect(PlanningToolkit.tools.propose_memory_amendment.description).toContain(
+      "the person must confirm",
+    );
     expect(PlanningToolkit.tools.save_plan_revision.description).toContain("whole text");
     expect(PlanningToolkit.tools.save_implement_proposal.description).toContain(
       "complete implement analysis",
