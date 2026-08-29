@@ -523,3 +523,36 @@ Checks: the four gates; at 375 width the window shows the graph with working tog
 (artifact swap, close → conversation, reopen); at desktop nothing changes from the previous
 round; the built HTML carries the eyebrow copy and the Try Astrolabe control with the repo
 href; the isolation walk step passes.
+
+## Amendment 13 — the page scrolls, the hero ends at the desk, the stage collapses later and cleanly (2026-08-28)
+
+Vault rulings (Marketing Site, commit dcaecf1) + Venkat's five calls, plus one diagnosed defect:
+
+- **THE SCROLL DEFECT (real, present since M-171):** the shared apps/web index.css pins the
+  viewport app-style — `body { overflow: hidden }` + `overscroll-behavior: none` on html/body —
+  so REAL wheel/touch input never scrolled the page anywhere; every walk used programmatic
+  scrolling, which works under the pin and masked it. Fix in apps/landing global.css, scoped
+  to the landing root: `html[data-landing-appearance="light"] { overscroll-behavior: auto; }
+html[data-landing-appearance="light"] body { overflow: visible; overscroll-behavior: auto; }`
+  (with !important as needed to beat the shared sheet). Standing walk rule: page scroll is
+  verified with TRUSTED input (the browser pane's scroll action), never by scrollIntoView.
+- **The hero ends at the desk:** the provider band section (claim 3 + five tiles) is REMOVED
+  from index.astro — it moves to M-174's below-fold sections. Nothing sits between the desk
+  and the footer.
+- **The footer (ported from the prototype landing):** `<footer>` with a hairline top border —
+  the Mercurian wordmark (same Fraunces + terracotta-dot treatment as the topbar, smaller) at
+  the left, `© 2026 Mercurian, Inc.` in small muted type at the right; the prototype's Vision
+  link is omitted (no vision page exists here). Static Astro markup, our tokens.
+- **Collapse later:** the side-by-side ↔ narrow-stage switch moves from lg (1024) to md (768) —
+  the interior split, the graph-pane visibility, and the header render sites all key on md:.
+  The desk/window outer sizing (min-h / aspect / width percentages) stays keyed on lg as is.
+- **No double header on the narrow stage:** below md with the pane open, the window-top
+  plan-title header is GONE — the pane's own title bar alone crowns the window, and the pane
+  toggles hold its top-right corner (paneCornerControl unwrapped, visible at all widths).
+  Below md with the pane closed, the window-top header (title + toggles) returns above the
+  conversation. At md+ the in-column header dance is unchanged.
+
+Checks: the four gates; trusted-input wheel scrolls the page over the headline, the desk, the
+window's graph, and the footer; no provider band or claim 3 anywhere on the page; the footer
+renders; at ~900px width the panes stand side by side; below md the pane-only stage shows one
+title bar with corner toggles and no plan-title header; isolation step passes.
