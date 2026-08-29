@@ -448,3 +448,34 @@ branches. The hero fixture reshapes:
 
 Checks: the four gates; the graph renders two tips and no diamond; no timeline row or graph
 node mentions merging; rollback across both branches still reads path-specific plan texts.
+
+## Amendment 11 — a realistic tree, and the camera stands where you stand (2026-08-28)
+
+Venkat's two calls: (1) the fixture becomes a realistic planning session — a large tree where
+the fork's two branches each continue linearly and each sprouts a tangent; (2) stop forcing
+fit-to-view — the graph should focus the selected node.
+
+- **Camera:** DagExplorer already centers the current/anchored commit whenever the position
+  moves ("Where you stand comes to the middle when the position moves", DagExplorer.tsx
+  ~1450-1460) — the hero's fit-clicking MutationObserver has been fighting that native
+  behavior. It is REMOVED, nothing replaces it: the camera centers the tip on mount and
+  re-centers on every pick; with the larger tree overflowing the pane, the product's minimap
+  appears on its own, which is fine.
+- **The tree (20 commits; sequence = at(sequence), one commit per id):**
+  trunk: m1 user query (1) → plan-draft revision (2) → plan-spec revision (3) → m2 assistant
+  reply (4). Fork at m2 into two working branches: A "quieter interface" — query (5) →
+  revision (7) → reply (9), then a linear continuation query (15) → revision (16) → reply
+  (17); B "faster workflow" — query (6) → revision (8) → reply (10), then continuation query
+  (18) → revision (19) → reply (20). Each branch sprouts a short two-commit TANGENT off its
+  first reply: A's (11 query, 12 reply — an idea considered and parked), B's (13 query, 14
+  reply — a question answered in place). Four open tips (both tangent replies, both
+  continuation replies), b-continuation reply (20) is the newest — the anchored tip, carrying
+  the in-flight turn. No commit has two parents.
+- **Artifacts:** five plan texts now (draft, interface, interface-continued, workflow,
+  workflow-continued) keyed by revision createdAt as before; the single trunk spec document
+  stays the spec on every path. Fixture copy stays self-referential (the plan for this page),
+  quiet in tone, merge-free.
+
+Checks: the four gates; the graph shows one fork, two continuing branches, two tangents, no
+merge; the camera arrives centered on the anchored tip without any fit click; picking any
+node re-centers on it; rollback reads the right plan text on every path.
