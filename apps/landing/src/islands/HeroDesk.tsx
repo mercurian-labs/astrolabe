@@ -77,31 +77,10 @@ const history = timeline(
     authorKind: "assistant",
     text: "The workflow path is ready to compare.",
   }),
-  message("merge-query", {
-    sequence: 11,
-    parents: ["interface-response", "workflow-response"],
-    text: "Merge the strongest parts of both paths",
-  }),
-  planRevision("merge-plan", {
-    sequence: 12,
-    parents: ["merge-query"],
-    authorKind: "assistant",
-  }),
-  specRevision("merge-spec", {
-    sequence: 13,
-    parents: ["merge-plan"],
-    authorKind: "assistant",
-  }),
-  message("merge-response", {
-    sequence: 14,
-    parents: ["merge-spec"],
-    authorKind: "assistant",
-    text: "The two paths are merged into one plan.",
-  }),
 );
 
 const graph = buildPlanGraph(history);
-const tip = history[13]!.commitId;
+const tip = history[9]!.commitId;
 const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
@@ -156,22 +135,6 @@ const planTextByRevisionCreatedAt = new Map([
 - Reuse product components and fixture data.
 - Keep the landing-only implementation small and verify the static build.`,
   ],
-  [
-    history[11]!.createdAt,
-    `# Merged hero plan
-
-## Structure
-- Open with one quiet claim and move directly into the working planning window.
-- Keep the remaining page short, with the provider band and closing claim intact.
-
-## Product surface
-- Use the real planning header, pane controls, graph, plan, and spec artifacts.
-- Let checkpoint selection roll the conversation and artifacts back together.
-
-## Delivery
-- Contain the work in the landing island.
-- Confirm the static claims, types, lint, and formatting before shipping.`,
-  ],
 ]);
 
 const specByRevisionCommitId = new Map<string, HeroSpec>([
@@ -186,24 +149,13 @@ const specByRevisionCommitId = new Map<string, HeroSpec>([
       },
     },
   ],
-  [
-    history[12]!.commitId,
-    {
-      revisionCommitId: history[12]!.commitId,
-      document: {
-        goal: "Make the landing hero demonstrate how a plan can branch, merge, and be read at an earlier checkpoint without leaving the product window.",
-        acceptanceCriteria:
-          "- The planning title and pane controls use exported product components.\n- Selecting a checkpoint updates the conversation, graph anchor, plan, and spec together.\n- Earlier artifacts are read-only and provide a Back to now action.\n- The implementation changes only the landing app.",
-      },
-    },
-  ],
 ]);
 
 const heroInFlight = {
   turnId: "hero-desk-turn" as HeroInFlight["turnId"],
   parentCommitId: tip,
-  text: "I’m comparing both branches and preparing the merged plan.",
-  grounding: [{ kind: "search", label: "branch decisions" }],
+  text: "I’m weighing the two paths so we can pick a direction.",
+  grounding: [{ kind: "search", label: "open branches" }],
 } satisfies HeroInFlight;
 
 const graphProps = {
