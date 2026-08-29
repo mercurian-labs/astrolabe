@@ -581,3 +581,38 @@ bottom padding with it — the desk now abuts the footer), and the footer itself
 much padding. The desk section gets generous bottom air (≈ pb-16 lg:pb-24 on the content
 container, restoring and slightly exceeding what the band's padding provided), and the
 footer's inner padding drops py-10 → py-6.
+
+## Amendment 14 — the aphorism, the balanced anchor, and small-screen polish (2026-08-29)
+
+Vault ruling (Marketing Site, commit 12a5be2) + Venkat's four calls:
+
+- **Copy (index.astro):** h2 becomes exactly `Chart twice, build once.`; the paragraph becomes
+  exactly `Astrolabe is your branching environment for building ambitious software with coding
+agents. Every message, every edit to the plan, every change to the code is a commit in one
+branching, git-style history. Return to any point and take a different direction, explore
+new ideas side by side, then merge the branches back into a single plan.`
+- **Minimap gap (global.css):** the transform-scale left the minimap's LAYOUT box full-size, so
+  the map controls (in DagExplorer's `absolute right-2 bottom-2 flex flex-col gap-1` stack)
+  float 40% of a minimap-height above the visual. Replace the transform rule with a real
+  layout shrink: `[data-hero-window] svg[aria-label="Map overview"] { width: 84px !important;
+height: auto !important; }` — the viewBox keeps the ratio, the stack's own gap-1 returns,
+  and clientToMinimap's rect-normalized click mapping is unaffected.
+- **Balanced initial anchor (HeroDesk.tsx):** the graph lays the four tips left-to-right as
+  workflow-continue (x≈40), workflow-tangent (x≈136), interface-continue, interface-tangent —
+  anchoring the leftmost reads lopsided. The initial position becomes the SECOND-from-left
+  leaf, the workflow tangent tip (workflow-tangent-response): initial `position` state =
+  `{ _tag: "at", commitId: <workflow-tangent-response>, live: true }` instead of LATEST, and
+  `heroInFlight.parentCommitId` moves there with copy re-fit to that thread (the tangent asks
+  whether the demo can run on fixture data; the streaming line should continue that thought,
+  merge-free). "Back to now"/tip picks behave as before — LATEST still resolves to the newest
+  commit when the visitor navigates.
+- **Composer control size at the narrow stage:** the composer's action-row controls (model
+  picker chip, Implement, send) read oversized at mobile ratios. HeroDesk wraps its
+  PlanComposer in a `div[data-hero-composer]` (a landing-side hook, no product changes), and
+  global.css scopes a sub-md rule reducing those controls a step (~11px font, tighter
+  height/padding) — a scoped size trim of real chrome, same posture as the topbar token.
+
+Checks: the four gates; dist carries the new header/paragraph verbatim; the map controls sit
+gap-1 above the minimap; the initial blue anchor is the second leaf from the left with the
+camera centered on it and the in-flight reply visible on its path; composer controls
+measurably smaller below md; isolation step passes.
