@@ -655,3 +655,18 @@ Venkat's call: the site takes the prototype landing's favicon. `favicon.svg` (th
 terracotta disc with its dark-scheme variant) and `apple-touch-icon.png` copy from the
 prototype's public/ into apps/landing/public/, and Base.astro's head gains the two icon
 links. Checks: the four gates; both files served 200 by the preview; both links in dist HTML.
+
+### Amendment 15 addendum 2 — the page copy speaks Inter (2026-08-29)
+
+Venkat's call, after asking what non-Mac visitors see (Segoe UI on Windows, Roboto on
+Android — the system stack changes voice by platform): the page copy adopts Inter for
+cross-platform consistency, with the hero window carved out — the window renders the real
+product, and the product speaks the visitor's platform font. Mechanism (global.css):
+`inter-variable.woff2` (Inter v4.66, official rsms.me distribution) self-hosted beside
+Fraunces with a matching @font-face; `html[data-landing-appearance="light"]` re-tokens
+`--font-sans` to lead with Inter (body consumes the token, so topbar, paragraph, and footer
+follow); `[data-hero-window]` re-tokens the system stack AND re-applies
+`font-family: var(--font-sans)` — the re-application matters, since the window would
+otherwise inherit body's computed Inter regardless of the token. Fraunces surfaces
+unaffected. Checks: the four gates; computed probes show Inter on page copy/topbar/footer
+(face loaded), the system stack at the window root and interior, Fraunces on the h2.
