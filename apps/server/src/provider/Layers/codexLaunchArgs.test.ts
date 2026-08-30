@@ -5,7 +5,6 @@ import { describe, it } from "vite-plus/test";
 import {
   codexAppServerArgs,
   codexExecLaunchArgs,
-  codexTrustedProjectArgs,
   resolveCodexLaunchArgs,
 } from "./codexLaunchArgs.ts";
 
@@ -56,30 +55,5 @@ describe("codexExecLaunchArgs", () => {
     NodeAssert.deepStrictEqual(codexExecLaunchArgs("--config --strict-config --enable --disable"), [
       "--strict-config",
     ]);
-  });
-});
-
-describe("codexTrustedProjectArgs", () => {
-  it("emits no overrides when there are no roots", () => {
-    NodeAssert.deepStrictEqual(codexTrustedProjectArgs([]), []);
-  });
-
-  it("quotes one absolute project root exactly", () => {
-    NodeAssert.deepStrictEqual(codexTrustedProjectArgs(["/tmp/project.one"]), [
-      "-c",
-      'projects."/tmp/project.one".trust_level="trusted"',
-    ]);
-  });
-
-  it("emits one exactly quoted override per root, including spaces", () => {
-    NodeAssert.deepStrictEqual(
-      codexTrustedProjectArgs(["/tmp/primary repo", "/tmp/memory.notes"]),
-      [
-        "-c",
-        'projects."/tmp/primary repo".trust_level="trusted"',
-        "-c",
-        'projects."/tmp/memory.notes".trust_level="trusted"',
-      ],
-    );
   });
 });

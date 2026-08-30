@@ -308,6 +308,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
         threadId: asThreadId("thread-additional-roots"),
         cwd: "/tmp/primary repo",
         additionalDirectories: ["/tmp/secondary.repo", "/tmp/memory root"],
+        approvalPolicy: "never",
         runtimeMode: "approval-required",
       });
 
@@ -315,6 +316,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
         binaryPath: "codex",
         cwd: "/tmp/primary repo",
         additionalRoots: ["/tmp/secondary.repo", "/tmp/memory root"],
+        approvalPolicy: "never",
         launchArgs: "",
         providerInstanceId: ProviderInstanceId.make("codex"),
         threadId: asThreadId("thread-additional-roots"),

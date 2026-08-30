@@ -1205,8 +1205,10 @@ export const make = Effect.gen(function* () {
           : { options: input.modelSelection.options }),
       },
       isolateProviderSettings: true,
-      // The most restrictive tier the contract has; combined with the
-      // approval auto-policy this is the read-only guarantee (Design §3).
+      // The read-only sandbox constrains writes and network. "untrusted"
+      // only produced command approvals that the planning approver declines,
+      // so skip those round-trips while retaining the sandbox boundary.
+      approvalPolicy: "never",
       runtimeMode: "approval-required",
     });
     yield* providerService.sendTurn({
@@ -1584,6 +1586,10 @@ export const make = Effect.gen(function* () {
               : { options: resolvedSelection.options }),
           },
           isolateProviderSettings: true,
+          // The read-only sandbox constrains writes and network. "untrusted"
+          // only produced command approvals that the planning approver declines,
+          // so skip those round-trips while retaining the sandbox boundary.
+          approvalPolicy: "never",
           runtimeMode: "approval-required",
         });
         yield* providerService.sendTurn({

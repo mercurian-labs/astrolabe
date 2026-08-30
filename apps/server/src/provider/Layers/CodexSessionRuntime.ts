@@ -7,6 +7,7 @@ import {
   type ProviderInstanceId,
   type ProviderApprovalDecision,
   type ProviderApprovalOption,
+  type ProviderApprovalPolicy,
   type ProviderEvent,
   type ProviderInteractionMode,
   type ProviderRequestKind,
@@ -37,7 +38,7 @@ import * as CodexRpc from "effect-codex-app-server/rpc";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
-import { codexSessionAppServerArgs, codexTrustedProjectArgs } from "./codexLaunchArgs.ts";
+import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
@@ -157,6 +158,7 @@ export interface CodexSessionRuntimeOptions {
   readonly cwd: string;
   readonly additionalRoots?: ReadonlyArray<string>;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly resumeCursor?: CodexResumeCursor;
@@ -521,16 +523,28 @@ function runtimeModeToThreadConfig(input: RuntimeMode): {
   }
 }
 
+function toCodexApprovalPolicy(
+  input: ProviderApprovalPolicy,
+): EffectCodexSchema.V2ThreadStartParams__AskForApproval {
+  // Codex v2 no longer accepts the legacy on-failure value. on-request is
+  // its conservative equivalent; the planning override uses never directly.
+  return input === "on-failure" ? "on-request" : input;
+}
+
 function buildThreadStartParams(input: {
   readonly cwd: string;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly model: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
 }): EffectCodexSchema.V2ThreadStartParams {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   return {
     cwd: input.cwd,
-    approvalPolicy: config.approvalPolicy,
+    approvalPolicy:
+      input.approvalPolicy === undefined
+        ? config.approvalPolicy
+        : toCodexApprovalPolicy(input.approvalPolicy),
     sandbox: config.sandbox,
     approvalsReviewer: config.approvalsReviewer,
     ...(input.model ? { model: input.model } : {}),
@@ -587,6 +601,7 @@ function buildCodexCollaborationMode(input: {
 export function buildTurnStartParams(input: {
   readonly threadId: string;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly additionalRoots?: ReadonlyArray<string>;
   readonly prompt?: string;
   readonly attachments?: ReadonlyArray<{
@@ -627,7 +642,10 @@ export function buildTurnStartParams(input: {
   return decodeCodexTurnStartParamsWithCollaborationMode({
     threadId: input.threadId,
     input: turnInput,
-    approvalPolicy: config.approvalPolicy,
+    approvalPolicy:
+      input.approvalPolicy === undefined
+        ? config.approvalPolicy
+        : toCodexApprovalPolicy(input.approvalPolicy),
     approvalsReviewer: config.approvalsReviewer,
     sandboxPolicy:
       sandboxPolicy.type === "workspaceWrite" && input.additionalRoots !== undefined
@@ -693,6 +711,7 @@ export const openCodexThread = (input: {
   readonly client: CodexThreadOpenClient;
   readonly threadId: ThreadId;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly cwd: string;
   readonly requestedModel: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
@@ -702,6 +721,7 @@ export const openCodexThread = (input: {
   const startParams = buildThreadStartParams({
     cwd: input.cwd,
     runtimeMode: input.runtimeMode,
+    ...(input.approvalPolicy !== undefined ? { approvalPolicy: input.approvalPolicy } : {}),
     model: input.requestedModel,
     serviceTier: input.serviceTier,
   });
@@ -1156,13 +1176,7 @@ export const makeCodexSessionRuntime = (
       ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
     };
     const extendEnv = options.environment === undefined;
-    const appServerArgs = codexSessionAppServerArgs(
-      [
-        ...codexTrustedProjectArgs([options.cwd, ...(options.additionalRoots ?? [])]),
-        ...(options.appServerArgs ?? []),
-      ],
-      options.launchArgs,
-    );
+    const appServerArgs = codexSessionAppServerArgs(options.appServerArgs, options.launchArgs);
     const spawnCommand = yield* resolveSpawnCommand(options.binaryPath, appServerArgs, {
       env,
       extendEnv,
@@ -2058,6 +2072,7 @@ export const makeCodexSessionRuntime = (
         client,
         threadId: options.threadId,
         runtimeMode: options.runtimeMode,
+        ...(options.approvalPolicy !== undefined ? { approvalPolicy: options.approvalPolicy } : {}),
         cwd: options.cwd,
         requestedModel,
         serviceTier: options.serviceTier,
@@ -2130,6 +2145,9 @@ export const makeCodexSessionRuntime = (
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: options.runtimeMode,
+            ...(options.approvalPolicy !== undefined
+              ? { approvalPolicy: options.approvalPolicy }
+              : {}),
             ...(options.additionalRoots !== undefined
               ? { additionalRoots: options.additionalRoots }
               : {}),

@@ -1,14 +1,8 @@
-// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeAssert from "node:assert/strict";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { ChildProcessSpawner } from "effect/unstable/process";
 import { describe } from "vite-plus/test";
 import { DEFAULT_MODEL, ThreadId } from "@t3tools/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
@@ -20,14 +14,13 @@ import {
   codexDefaultModeDeveloperInstructions,
   codexPlanModeDeveloperInstructions,
 } from "../CodexDeveloperInstructions.ts";
-import { codexSessionAppServerArgs, codexTrustedProjectArgs } from "./codexLaunchArgs.ts";
+import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import {
   buildTurnStartParams,
   describeMcpElicitation,
   hasConfiguredMcpServer,
   isRecoverableThreadResumeError,
   makeMemoryConsolidationNotificationFilter,
-  makeCodexSessionRuntime,
   openCodexThread,
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
@@ -238,6 +231,7 @@ describe("buildTurnStartParams", () => {
       buildTurnStartParams({
         threadId: "provider-thread-1",
         runtimeMode: "approval-required",
+        approvalPolicy: "never",
         additionalRoots: ["/tmp/secondary repo", "/tmp/memory"],
         prompt: "Review",
       }),
@@ -245,7 +239,7 @@ describe("buildTurnStartParams", () => {
 
     NodeAssert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
-      approvalPolicy: "untrusted",
+      approvalPolicy: "never",
       approvalsReviewer: "user",
       sandboxPolicy: {
         type: "readOnly",
@@ -723,47 +717,6 @@ describe("codexSessionAppServerArgs", () => {
       ],
     );
   });
-
-  it.effect("spawns app-server with trusted config for cwd and every additional root", () => {
-    const spawnedArgv: Array<ReadonlyArray<string>> = [];
-    const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-codex-roots-"));
-    const scriptPath = NodePath.join(tempDir, "script.json");
-    const primaryRoot = NodePath.join(tempDir, "primary repo");
-    const secondaryRoot = NodePath.join(tempDir, "secondary.repo");
-    const memoryRoot = NodePath.join(tempDir, "memory root");
-    NodeFS.mkdirSync(primaryRoot);
-    NodeFS.writeFileSync(
-      scriptPath,
-      JSON.stringify({ rootThreadId: "provider-thread-1", notifications: [] }),
-      "utf8",
-    );
-    const peerPath = NodePath.join(import.meta.dirname, "../testFixtures/codexCollabMockPeer.sh");
-    return Effect.gen(function* () {
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true })),
-      );
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const recordingSpawner = ChildProcessSpawner.make((command) => {
-        const child = command as unknown as { readonly args: ReadonlyArray<string> };
-        spawnedArgv.push(child.args);
-        return spawner.spawn(command);
-      });
-      const runtime = yield* makeCodexSessionRuntime({
-        threadId: ThreadId.make("thread-trusted-roots"),
-        binaryPath: peerPath,
-        cwd: primaryRoot,
-        additionalRoots: [secondaryRoot, memoryRoot],
-        runtimeMode: "full-access",
-        environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
-      }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, recordingSpawner));
-
-      yield* runtime.start();
-      NodeAssert.deepStrictEqual(spawnedArgv, [
-        ["app-server", ...codexTrustedProjectArgs([primaryRoot, secondaryRoot, memoryRoot])],
-      ]);
-      yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
-  });
 });
 
 describe("isRecoverableThreadResumeError", () => {
@@ -845,6 +798,7 @@ describe("openCodexThread", () => {
         client,
         threadId: ThreadId.make("thread-1"),
         runtimeMode: "approval-required",
+        approvalPolicy: "never",
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
         serviceTier: "priority",
@@ -856,7 +810,7 @@ describe("openCodexThread", () => {
           method: "thread/start",
           payload: {
             cwd: "/tmp/project",
-            approvalPolicy: "untrusted",
+            approvalPolicy: "never",
             sandbox: "read-only",
             approvalsReviewer: "user",
             model: "gpt-5.3-codex",

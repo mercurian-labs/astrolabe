@@ -46,6 +46,3 @@ export const codexSessionAppServerArgs = (
   const launchAppServerArgs = codexAppServerArgs(launchArgs);
   return appServerArgs ? [...launchAppServerArgs, ...appServerArgs] : launchAppServerArgs;
 };
-
-export const codexTrustedProjectArgs = (roots: ReadonlyArray<string>): ReadonlyArray<string> =>
-  roots.flatMap((root) => ["-c", `projects.${JSON.stringify(root)}.trust_level="trusted"`]);
