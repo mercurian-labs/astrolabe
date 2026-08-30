@@ -216,7 +216,8 @@ const INITIAL_IN_FLIGHT = {
 
 const OPENING_REPLY_NAME = "hero-opening-assistant";
 const OPENING_REPLY_COMMIT_ID = commitId(OPENING_REPLY_NAME);
-const HERO_REPLY_TEXT = "To try Astrolabe, checkout the project here.";
+const HERO_REPLY_TEXT =
+  "To try Astrolabe, checkout the project [here](https://github.com/mercurian-labs/astrolabe).";
 
 const planTextByRevisionCreatedAt = new Map([
   [
@@ -307,7 +308,7 @@ const graphProps = {
 } as const;
 
 const composerProps = {
-  placeholder: "Ask the assistant to refine this plan",
+  placeholder: "Research, plan, or build...",
   attachments: [],
   gateNotice: null,
   provider: "claudeAgent" as HeroProvider,
@@ -365,7 +366,7 @@ export default function HeroDesk() {
 }
 
 function HeroWindowInterior() {
-  const [composerText, setComposerText] = useState("Ask the assistant to refine this plan.");
+  const [composerText, setComposerText] = useState("");
   const [pane, setPane] = useState<RightPaneState>(DEFAULT_RIGHT_PANE);
   const [timelineExtensions, setTimelineExtensions] = useState<
     ReadonlyArray<(typeof history)[number]>
