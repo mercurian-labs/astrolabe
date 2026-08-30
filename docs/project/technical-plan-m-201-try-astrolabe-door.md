@@ -131,3 +131,52 @@ positioning.
 Checks added to Verification: dist HTML carries the og/twitter block with the absolute
 image URL; `dist/og-card.png` exists at 1200×630; served `GET /og-card.png` returns 200
 `image/png`.
+
+## Amendment 2 — the demo answers (2026-08-30)
+
+Venkat's fourth refinement: the hero window stops being read-only theater. A visitor who
+sends a message gets a real exchange, the graph grows the way the product grows it, and
+the composer sheds what cannot act. Everything below is HeroDesk island state plus scoped
+landing CSS — nothing under `apps/web/` changes.
+
+- **Send appends checkpoints.** The 20-commit fixture `history` becomes the _base_ of an
+  island-state timeline (`useState` extension list; reload = fixture reset). `onSend`
+  (today `() => Promise.resolve(false)`, `HeroDesk.tsx:279`) becomes real: it appends a
+  user message entry built with the same `message()` fixture builder, parented at the
+  current `head` (`resolveHead`) — so a send from the tip continues the branch and a send
+  from an earlier point opens a new branch, with no new logic; `buildPlanGraph` recomputes
+  from the extended list. Position moves to `LATEST` (the new message is globally newest,
+  so the camera and conversation follow the product's own centering). Returns `true` so
+  the composer clears the draft.
+- **The reply.** After the send, `heroInFlight`-style streaming shows on the new tip
+  (`turnActive`), and after a short beat the assistant entry lands as its own checkpoint
+  with the exact copy: `To try Astrolabe, checkout the project here.` A working `onStop`
+  cancels the pending reply (timer cleared, in-flight removed) — the Stop control the
+  composer renders while `turnActive` must not lie. Timers live in a ref and clean up on
+  unmount.
+- **The standing-earlier notice.** The composer's `banner` slot (the surface-owned slot,
+  `PlanComposer.tsx` props) gets the product's own treatment when `viewingPast`: the
+  `ViewingEarlierBanner` arrangement from `PlanningSpace.tsx:1378` — ClockIcon, verbatim
+  text "Viewing an earlier point — sending starts a new branch from here", and a real
+  `Button size="xs" variant="outline"` "Back to now" wired to `LATEST`. PlanningSpace does
+  not export the banner, so the hero fills the slot with the same structure from real ui
+  primitives — the ratified prop-slot pattern (the ArtifactPicker precedent), structure
+  and copy kept verbatim so drift is grep-detectable.
+- **The real model picker.** The `modelPicker` slot gets the product's actual
+  `PlanModelPicker` (`apps/web/src/components/mercurian/PlanModelPicker.tsx`, exported),
+  fed fixture `ServerProvider` data (reuse the shared fixture builders if
+  `test/fixtures` provides them — M-141 — else a minimal literal list) and an
+  island-state `selection`; `onChange` updates it, so the popover opens and a click
+  visibly changes the chip. Disabled while a reply streams, as the product does.
+- **The controls that cannot act.** The image-attach control
+  (`aria-label="Attach images"`) and the Implement control are hidden by landing CSS
+  scoped under `[data-hero-composer]` — the same brittle-by-design posture as the old
+  pane-title quieting: if composer internals drift the controls quietly return, and the
+  walk catches it. Rationale recorded: a control that cannot act in the demo is less
+  honest present than absent (Venkat's ruling, amending the v7 "real chrome is the
+  honesty" posture for these two controls).
+
+Checks: the four gates; the walk sends at the tip (graph +2 nodes, reply text verbatim),
+sends from an earlier point (banner appears with working Back to now, branch opens, camera
+follows), stops a streaming reply, opens the picker and changes the model, verifies both
+controls absent, reloads to fixture state; isolation unchanged.
