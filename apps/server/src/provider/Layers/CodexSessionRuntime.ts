@@ -7,6 +7,7 @@ import {
   type ProviderInstanceId,
   type ProviderApprovalDecision,
   type ProviderApprovalOption,
+  type ProviderApprovalPolicy,
   type ProviderEvent,
   type ProviderInteractionMode,
   type ProviderRequestKind,
@@ -155,7 +156,9 @@ export interface CodexSessionRuntimeOptions {
   readonly launchArgs?: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly cwd: string;
+  readonly additionalRoots?: ReadonlyArray<string>;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly resumeCursor?: CodexResumeCursor;
@@ -520,16 +523,28 @@ function runtimeModeToThreadConfig(input: RuntimeMode): {
   }
 }
 
+function toCodexApprovalPolicy(
+  input: ProviderApprovalPolicy,
+): EffectCodexSchema.V2ThreadStartParams__AskForApproval {
+  // Codex v2 no longer accepts the legacy on-failure value. on-request is
+  // its conservative equivalent; the planning override uses never directly.
+  return input === "on-failure" ? "on-request" : input;
+}
+
 function buildThreadStartParams(input: {
   readonly cwd: string;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly model: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
 }): EffectCodexSchema.V2ThreadStartParams {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   return {
     cwd: input.cwd,
-    approvalPolicy: config.approvalPolicy,
+    approvalPolicy:
+      input.approvalPolicy === undefined
+        ? config.approvalPolicy
+        : toCodexApprovalPolicy(input.approvalPolicy),
     sandbox: config.sandbox,
     approvalsReviewer: config.approvalsReviewer,
     ...(input.model ? { model: input.model } : {}),
@@ -586,6 +601,8 @@ function buildCodexCollaborationMode(input: {
 export function buildTurnStartParams(input: {
   readonly threadId: string;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
+  readonly additionalRoots?: ReadonlyArray<string>;
   readonly prompt?: string;
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
@@ -620,12 +637,20 @@ export function buildTurnStartParams(input: {
     browserToolsAvailable: input.browserToolsAvailable ?? true,
   });
 
+  const sandboxPolicy = runtimeModeToTurnSandboxPolicy(input.runtimeMode);
+
   return decodeCodexTurnStartParamsWithCollaborationMode({
     threadId: input.threadId,
     input: turnInput,
-    approvalPolicy: config.approvalPolicy,
+    approvalPolicy:
+      input.approvalPolicy === undefined
+        ? config.approvalPolicy
+        : toCodexApprovalPolicy(input.approvalPolicy),
     approvalsReviewer: config.approvalsReviewer,
-    sandboxPolicy: runtimeModeToTurnSandboxPolicy(input.runtimeMode),
+    sandboxPolicy:
+      sandboxPolicy.type === "workspaceWrite" && input.additionalRoots !== undefined
+        ? { ...sandboxPolicy, writableRoots: input.additionalRoots }
+        : sandboxPolicy,
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
@@ -686,6 +711,7 @@ export const openCodexThread = (input: {
   readonly client: CodexThreadOpenClient;
   readonly threadId: ThreadId;
   readonly runtimeMode: RuntimeMode;
+  readonly approvalPolicy?: ProviderApprovalPolicy;
   readonly cwd: string;
   readonly requestedModel: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
@@ -695,30 +721,40 @@ export const openCodexThread = (input: {
   const startParams = buildThreadStartParams({
     cwd: input.cwd,
     runtimeMode: input.runtimeMode,
+    ...(input.approvalPolicy !== undefined ? { approvalPolicy: input.approvalPolicy } : {}),
     model: input.requestedModel,
     serviceTier: input.serviceTier,
   });
 
-  if (resumeThreadId === undefined) {
-    return input.client.request("thread/start", startParams);
-  }
+  const request =
+    resumeThreadId === undefined
+      ? input.client.request("thread/start", startParams)
+      : input.client
+          .request("thread/resume", {
+            threadId: resumeThreadId,
+            ...startParams,
+          })
+          .pipe(
+            Effect.catchIf(isRecoverableThreadResumeError, (error) =>
+              Effect.logWarning("codex app-server thread resume fell back to fresh start", {
+                threadId: input.threadId,
+                requestedRuntimeMode: input.runtimeMode,
+                resumeThreadId,
+                recoverable: true,
+                cause: error,
+              }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
+            ),
+          );
 
-  return input.client
-    .request("thread/resume", {
-      threadId: resumeThreadId,
-      ...startParams,
-    })
-    .pipe(
-      Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-        Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-          threadId: input.threadId,
-          requestedRuntimeMode: input.runtimeMode,
-          resumeThreadId,
-          recoverable: true,
-          cause: error,
-        }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
-      ),
-    );
+  return request.pipe(
+    Effect.tap((opened) =>
+      Effect.annotateCurrentSpan({
+        "codex.thread.sandbox.type": opened.sandbox.type,
+        "codex.thread.sandbox.writable_roots":
+          opened.sandbox.type === "workspaceWrite" ? (opened.sandbox.writableRoots ?? []) : [],
+      }),
+    ),
+  );
 };
 
 function readNotificationThreadId(notification: CodexServerNotification): string | undefined {
@@ -2036,6 +2072,7 @@ export const makeCodexSessionRuntime = (
         client,
         threadId: options.threadId,
         runtimeMode: options.runtimeMode,
+        ...(options.approvalPolicy !== undefined ? { approvalPolicy: options.approvalPolicy } : {}),
         cwd: options.cwd,
         requestedModel,
         serviceTier: options.serviceTier,
@@ -2108,6 +2145,12 @@ export const makeCodexSessionRuntime = (
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: options.runtimeMode,
+            ...(options.approvalPolicy !== undefined
+              ? { approvalPolicy: options.approvalPolicy }
+              : {}),
+            ...(options.additionalRoots !== undefined
+              ? { additionalRoots: options.additionalRoots }
+              : {}),
             ...(input.input ? { prompt: input.input } : {}),
             ...(input.attachments ? { attachments: input.attachments } : {}),
             ...(normalizedModel ? { model: normalizedModel } : {}),

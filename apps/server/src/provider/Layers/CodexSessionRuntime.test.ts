@@ -139,6 +139,7 @@ describe("buildTurnStartParams", () => {
       buildTurnStartParams({
         threadId: "provider-thread-1",
         runtimeMode: "auto-accept-edits",
+        additionalRoots: ["/tmp/secondary repo", "/tmp/memory"],
         prompt: "Implement it",
         model: "gpt-5.3-codex",
         interactionMode: "default",
@@ -157,6 +158,7 @@ describe("buildTurnStartParams", () => {
       approvalsReviewer: "user",
       sandboxPolicy: {
         type: "workspaceWrite",
+        writableRoots: ["/tmp/secondary repo", "/tmp/memory"],
       },
       input: [
         {
@@ -229,13 +231,15 @@ describe("buildTurnStartParams", () => {
       buildTurnStartParams({
         threadId: "provider-thread-1",
         runtimeMode: "approval-required",
+        approvalPolicy: "never",
+        additionalRoots: ["/tmp/secondary repo", "/tmp/memory"],
         prompt: "Review",
       }),
     );
 
     NodeAssert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
-      approvalPolicy: "untrusted",
+      approvalPolicy: "never",
       approvalsReviewer: "user",
       sandboxPolicy: {
         type: "readOnly",
@@ -775,6 +779,88 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
+  it.effect("sends the expected thread/start payload", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+      const client = {
+        request: <M extends "thread/start" | "thread/resume">(
+          method: M,
+          payload: CodexRpc.ClientRequestParamsByMethod[M],
+        ) => {
+          calls.push({ method, payload });
+          return Effect.succeed(
+            makeThreadOpenResponse("fresh-thread") as CodexRpc.ClientRequestResponsesByMethod[M],
+          );
+        },
+      };
+
+      yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "approval-required",
+        approvalPolicy: "never",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: "priority",
+        resumeThreadId: undefined,
+      });
+
+      NodeAssert.deepStrictEqual(calls, [
+        {
+          method: "thread/start",
+          payload: {
+            cwd: "/tmp/project",
+            approvalPolicy: "never",
+            sandbox: "read-only",
+            approvalsReviewer: "user",
+            model: "gpt-5.3-codex",
+            serviceTier: "priority",
+          },
+        },
+      ]);
+    }),
+  );
+
+  it.effect("sends the expected thread/resume payload", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+      const client = {
+        request: <M extends "thread/start" | "thread/resume">(
+          method: M,
+          payload: CodexRpc.ClientRequestParamsByMethod[M],
+        ) => {
+          calls.push({ method, payload });
+          return Effect.succeed(
+            makeThreadOpenResponse("resumed-thread") as CodexRpc.ClientRequestResponsesByMethod[M],
+          );
+        },
+      };
+
+      yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "auto-accept-edits",
+        cwd: "/tmp/project",
+        requestedModel: undefined,
+        serviceTier: undefined,
+        resumeThreadId: "provider-thread-1",
+      });
+
+      NodeAssert.deepStrictEqual(calls, [
+        {
+          method: "thread/resume",
+          payload: {
+            threadId: "provider-thread-1",
+            cwd: "/tmp/project",
+            approvalPolicy: "on-request",
+            sandbox: "workspace-write",
+            approvalsReviewer: "user",
+          },
+        },
+      ]);
+    }),
+  );
+
   it.effect("falls back to thread/start when resume fails recoverably", () =>
     Effect.gen(function* () {
       const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];

@@ -379,6 +379,7 @@ describe("PlanningAssistant", () => {
       // the first turn carried the appendix.
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.runtimeMode, "approval-required");
+      assert.strictEqual(session.approvalPolicy, "never");
       assert.deepStrictEqual(session.modelSelection, {
         instanceId: claudeInstance,
         model: "opus",
@@ -2062,6 +2063,7 @@ describe("PlanningAssistant", () => {
       yield* assistant.tryImplement({ planId: created.plan.planId });
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.runtimeMode, "approval-required");
+      assert.strictEqual(session.approvalPolicy, "never");
       assert.strictEqual(session.cwd, first.path);
       assert.deepStrictEqual(session.additionalDirectories, [second.path]);
       const prompt = (yield* Queue.take(harness.sendTurns)).input ?? "";

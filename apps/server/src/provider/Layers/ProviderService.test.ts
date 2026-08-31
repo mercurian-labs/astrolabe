@@ -1200,6 +1200,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         providerInstanceId: codexInstanceId,
         threadId: asThreadId("thread-reap-preserve"),
         cwd: "/tmp/project-reap-preserve",
+        additionalDirectories: ["/tmp/project-reap-secondary", "/tmp/memory-reap"],
         runtimeMode: "full-access",
       });
 
@@ -1212,6 +1213,14 @@ routing.layer("ProviderServiceLive routing", (it) => {
       if (Option.isSome(persistedAfterStop)) {
         assert.equal(persistedAfterStop.value.status, "stopped");
         assert.deepEqual(persistedAfterStop.value.resumeCursor, initial.resumeCursor);
+        assert.deepEqual(
+          (
+            persistedAfterStop.value.runtimePayload as {
+              additionalDirectories?: ReadonlyArray<string>;
+            }
+          ).additionalDirectories,
+          ["/tmp/project-reap-secondary", "/tmp/memory-reap"],
+        );
       }
 
       routing.codex.startSession.mockClear();
@@ -1228,6 +1237,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
       if (resumedStartInput && typeof resumedStartInput === "object") {
         const startPayload = resumedStartInput as {
+          additionalDirectories?: ReadonlyArray<string>;
           provider?: string;
           cwd?: string;
           resumeCursor?: unknown;
@@ -1235,6 +1245,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
         };
         assert.equal(startPayload.provider, "codex");
         assert.equal(startPayload.cwd, "/tmp/project-reap-preserve");
+        assert.deepEqual(startPayload.additionalDirectories, [
+          "/tmp/project-reap-secondary",
+          "/tmp/memory-reap",
+        ]);
         assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
         assert.equal(startPayload.threadId, initial.threadId);
       }
@@ -1391,6 +1405,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         providerInstanceId: claudeAgentInstanceId,
         threadId: asThreadId("thread-claude-send-turn"),
         cwd: "/tmp/project-claude-send-turn",
+        additionalDirectories: ["/tmp/project-claude-secondary", "/tmp/claude-memory"],
         modelSelection: createModelSelection(
           ProviderInstanceId.make("claudeAgent"),
           "claude-opus-4-6",
@@ -1414,6 +1429,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
       if (resumedStartInput && typeof resumedStartInput === "object") {
         const startPayload = resumedStartInput as {
+          additionalDirectories?: ReadonlyArray<string>;
           provider?: string;
           cwd?: string;
           modelSelection?: unknown;
@@ -1422,6 +1438,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
         };
         assert.equal(startPayload.provider, "claudeAgent");
         assert.equal(startPayload.cwd, "/tmp/project-claude-send-turn");
+        assert.deepEqual(startPayload.additionalDirectories, [
+          "/tmp/project-claude-secondary",
+          "/tmp/claude-memory",
+        ]);
         assert.deepEqual(
           startPayload.modelSelection,
           createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-opus-4-6", [
@@ -1470,6 +1490,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         provider: ProviderDriverKind.make("codex"),
         providerInstanceId: codexInstanceId,
         threadId,
+        additionalDirectories: ["/tmp/runtime-secondary", "/tmp/runtime-memory"],
         runtimeMode: "full-access",
       });
       yield* provider.sendTurn({
@@ -1489,6 +1510,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(payload !== null && typeof payload === "object", true);
         if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
           const runtimePayload = payload as {
+            additionalDirectories: ReadonlyArray<string>;
             cwd: string;
             model: string | null;
             activeTurnId: string | null;
@@ -1496,6 +1518,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
             lastRuntimeEvent: string | null;
           };
           assert.equal(runtimePayload.cwd, session.cwd);
+          assert.deepEqual(runtimePayload.additionalDirectories, [
+            "/tmp/runtime-secondary",
+            "/tmp/runtime-memory",
+          ]);
           assert.equal(runtimePayload.model, null);
           assert.equal(runtimePayload.activeTurnId, `turn-${String(session.threadId)}`);
           assert.equal(runtimePayload.lastError, null);
@@ -1654,6 +1680,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
             providerInstanceId: claudeAgentInstanceId,
             threadId: asThreadId("thread-claude-cwd"),
             cwd: "/tmp/project-claude-cwd",
+            additionalDirectories: ["/tmp/project-claude-cwd-secondary"],
             runtimeMode: "full-access",
           });
         }).pipe(Effect.provide(firstProviderLayer));
@@ -1698,6 +1725,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
         if (resumedStartInput && typeof resumedStartInput === "object") {
           const startPayload = resumedStartInput as {
+            additionalDirectories?: ReadonlyArray<string>;
             provider?: string;
             cwd?: string;
             resumeCursor?: unknown;
@@ -1705,6 +1733,9 @@ routing.layer("ProviderServiceLive routing", (it) => {
           };
           assert.equal(startPayload.provider, "claudeAgent");
           assert.equal(startPayload.cwd, "/tmp/project-claude-cwd");
+          assert.deepEqual(startPayload.additionalDirectories, [
+            "/tmp/project-claude-cwd-secondary",
+          ]);
           assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
           assert.equal(startPayload.threadId, initial.threadId);
         }

@@ -297,6 +297,33 @@ validationLayer("CodexAdapterLive validation", (it) => {
       });
     }),
   );
+
+  it.effect("forwards additional directories into the session runtime", () =>
+    Effect.gen(function* () {
+      validationRuntimeFactory.factory.mockClear();
+      const adapter = yield* CodexAdapter;
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-additional-roots"),
+        cwd: "/tmp/primary repo",
+        additionalDirectories: ["/tmp/secondary.repo", "/tmp/memory root"],
+        approvalPolicy: "never",
+        runtimeMode: "approval-required",
+      });
+
+      NodeAssert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
+        binaryPath: "codex",
+        cwd: "/tmp/primary repo",
+        additionalRoots: ["/tmp/secondary.repo", "/tmp/memory root"],
+        approvalPolicy: "never",
+        launchArgs: "",
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        threadId: asThreadId("thread-additional-roots"),
+        runtimeMode: "approval-required",
+      });
+    }),
+  );
 });
 
 const sessionRuntimeFactory = makeRuntimeFactory();

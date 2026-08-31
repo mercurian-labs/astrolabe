@@ -1682,6 +1682,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           threadId: input.threadId,
           providerInstanceId: boundInstanceId,
           cwd: input.cwd ?? process.cwd(),
+          ...(input.additionalDirectories !== undefined
+            ? { additionalRoots: input.additionalDirectories }
+            : {}),
+          ...(input.approvalPolicy !== undefined ? { approvalPolicy: input.approvalPolicy } : {}),
           binaryPath: codexConfig.binaryPath,
           launchArgs: resolveCodexLaunchArgs(codexConfig.launchArgs, options?.environment),
           ...(options?.environment ? { environment: options.environment } : {}),
@@ -2001,8 +2005,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
-      // The read-only sandbox does not confine reads to the cwd, so extra
-      // roots are reachable without a session-shape change.
+      // Planning forwards every claimed root and explicitly uses the never
+      // approval policy inside Codex's read-only sandbox, so reads can reach
+      // them without rejected approval round-trips. Workspace-write turns
+      // receive the same extra roots through writableRoots.
       groundingRoots: "multi",
     },
     startSession,
