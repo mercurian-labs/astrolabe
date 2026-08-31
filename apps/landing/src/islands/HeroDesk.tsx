@@ -1,3 +1,4 @@
+import { ClockIcon } from "~/../node_modules/lucide-react";
 import {
   DagExplorer,
   EXPLORER_VIEW_STORAGE_KEY,
@@ -7,6 +8,7 @@ import { PlanArtifact } from "~/components/mercurian/PlanArtifact";
 import { lastPlanRevision } from "~/components/mercurian/PlanArtifact.logic";
 import { PlanComposer } from "~/components/mercurian/PlanComposer";
 import { ancestorClosure, buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
+import { PlanModelPicker } from "~/components/mercurian/PlanModelPicker";
 import {
   isViewingPast,
   LATEST,
@@ -22,7 +24,7 @@ import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { Button } from "~/components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "~/components/ui/menu";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
-import { message, planRevision, specRevision, timeline } from "~/test/fixtures/timeline";
+import { commitId, message, planRevision, specRevision, timeline } from "~/test/fixtures/timeline";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 
 const history = timeline(
@@ -134,13 +136,14 @@ const history = timeline(
   }),
 );
 
-const graph = buildPlanGraph(history);
 const tip = history[19]!.commitId;
 const balancedAnchor = history[13]!.commitId;
 const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
 type HeroProvider = NonNullable<HeroComposerProps["provider"]>;
+type HeroProviderSnapshot = ComponentProps<typeof PlanModelPicker>["providers"][number];
+type HeroModelSelection = NonNullable<ComponentProps<typeof PlanModelPicker>["selection"]>;
 type HeroSpec = NonNullable<ComponentProps<typeof SpecArtifact>["spec"]>;
 type RightPaneState = {
   readonly open: boolean;
@@ -153,6 +156,68 @@ const DEFAULT_RIGHT_PANE: RightPaneState = {
   view: "explorer",
   artifact: "plan",
 };
+
+const claudeDriver = "claudeAgent" as HeroProvider;
+const codexDriver = "codex" as HeroProvider;
+const heroProviders = [
+  {
+    instanceId: "claudeAgent" as HeroProviderSnapshot["instanceId"],
+    driver: claudeDriver,
+    displayName: "Claude Code",
+    enabled: true,
+    installed: true,
+    version: "1.0.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-08-30T00:00:00.000Z",
+    models: [
+      { slug: "opus", name: "Opus", isCustom: false, isDefault: true, capabilities: null },
+      { slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null },
+    ],
+    slashCommands: [],
+    skills: [],
+  },
+  {
+    instanceId: "codex" as HeroProviderSnapshot["instanceId"],
+    driver: codexDriver,
+    displayName: "Codex",
+    enabled: true,
+    installed: true,
+    version: "1.0.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-08-30T00:00:00.000Z",
+    models: [
+      { slug: "gpt-5.6", name: "GPT-5.6", isCustom: false, isDefault: true, capabilities: null },
+      { slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: null },
+    ],
+    slashCommands: [],
+    skills: [],
+  },
+] satisfies ReadonlyArray<HeroProviderSnapshot>;
+
+const DEFAULT_MODEL_SELECTION = {
+  provider: claudeDriver,
+  model: "opus",
+} satisfies HeroModelSelection;
+
+const INITIAL_POSITION = {
+  _tag: "at",
+  commitId: balancedAnchor,
+  live: true,
+} satisfies PlanPosition;
+
+const INITIAL_IN_FLIGHT = {
+  turnId: "hero-opening-turn" as HeroInFlight["turnId"],
+  parentCommitId: balancedAnchor,
+  text: "I'm folding the fixture approach into the plan now.",
+  grounding: [{ kind: "search", label: "fixture-only demo" }],
+} satisfies HeroInFlight;
+
+const OPENING_REPLY_NAME = "hero-opening-assistant";
+const OPENING_REPLY_COMMIT_ID = commitId(OPENING_REPLY_NAME);
+const HERO_REPLY_TEXT =
+  "To try Astrolabe, checkout the project [here](https://github.com/mercurian-labs/astrolabe).";
 
 const planTextByRevisionCreatedAt = new Map([
   [
@@ -231,15 +296,7 @@ const specByRevisionCommitId = new Map<string, HeroSpec>([
   ],
 ]);
 
-const heroInFlight = {
-  turnId: "hero-desk-turn" as HeroInFlight["turnId"],
-  parentCommitId: balancedAnchor,
-  text: "I’m folding the fixture approach into the plan now.",
-  grounding: [{ kind: "search", label: "fixture-only demo" }],
-} satisfies HeroInFlight;
-
 const graphProps = {
-  graph,
   providers: [],
   codingSessions: [],
   readyCommits: new Map(),
@@ -251,7 +308,7 @@ const graphProps = {
 } as const;
 
 const composerProps = {
-  placeholder: "Ask the assistant to refine this plan",
+  placeholder: "Research, plan, or build...",
   attachments: [],
   gateNotice: null,
   provider: "claudeAgent" as HeroProvider,
@@ -269,17 +326,13 @@ const composerProps = {
       enabled: true,
     },
   ],
-  modelPicker: (
-    <button className="rounded-md border border-border px-2 py-1 text-xs" type="button">
-      Claude · Opus
-    </button>
-  ),
   onAddAttachments: () => undefined,
   onRemoveAttachment: () => undefined,
-  onSend: () => Promise.resolve(false),
-  onStop: () => undefined,
   onImplement: () => undefined,
-} satisfies Omit<HeroComposerProps, "onChangeText" | "text">;
+} satisfies Omit<
+  HeroComposerProps,
+  "banner" | "modelPicker" | "onChangeText" | "onSend" | "onStop" | "text" | "turnActive"
+>;
 
 function seedGraphView() {
   try {
@@ -313,27 +366,39 @@ export default function HeroDesk() {
 }
 
 function HeroWindowInterior() {
-  const [composerText, setComposerText] = useState("Ask the assistant to refine this plan.");
+  const [composerText, setComposerText] = useState("");
   const [pane, setPane] = useState<RightPaneState>(DEFAULT_RIGHT_PANE);
-  const [position, setPosition] = useState<PlanPosition>({
-    _tag: "at",
-    commitId: balancedAnchor,
-    live: true,
-  });
+  const [timelineExtensions, setTimelineExtensions] = useState<
+    ReadonlyArray<(typeof history)[number]>
+  >([]);
+  const [heroInFlight, setHeroInFlight] = useState<HeroInFlight | undefined>(INITIAL_IN_FLIGHT);
+  const [modelSelection, setModelSelection] = useState<HeroModelSelection>(DEFAULT_MODEL_SELECTION);
+  const [position, setPosition] = useState<PlanPosition>(INITIAL_POSITION);
+  const replyTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const visitorTurnCounter = useRef(0);
+  const heroTimeline = useMemo(() => [...history, ...timelineExtensions], [timelineExtensions]);
+  const graph = useMemo(() => buildPlanGraph(heroTimeline), [heroTimeline]);
   const head = resolveHead(graph, position);
+  const headRef = useRef(head);
+  useLayoutEffect(() => {
+    headRef.current = head;
+  }, [head]);
   const visibleCommitIds = useMemo(
     () => (head === null ? null : ancestorClosure(graph, head)),
-    [head],
+    [graph, head],
   );
   const visibleTimeline = useMemo(
     () =>
       visibleCommitIds === null
-        ? history
-        : history.filter((item) => visibleCommitIds.has(item.commitId)),
-    [visibleCommitIds],
+        ? heroTimeline
+        : heroTimeline.filter((item) => visibleCommitIds.has(item.commitId)),
+    [heroTimeline, visibleCommitIds],
   );
   const visibleInFlight =
-    head === null || visibleCommitIds?.has(heroInFlight.parentCommitId) ? heroInFlight : undefined;
+    heroInFlight !== undefined &&
+    (head === null || visibleCommitIds?.has(heroInFlight.parentCommitId))
+      ? heroInFlight
+      : undefined;
   const viewingPast = isViewingPast(graph, position);
   const planRevision = lastPlanRevision(visibleTimeline);
   const planText =
@@ -352,6 +417,111 @@ function HeroWindowInterior() {
   const artifactPicker = (
     <ArtifactPicker value={pane.artifact} onChange={(artifact) => setPane({ ...pane, artifact })} />
   );
+  const banner = viewingPast ? <ViewingEarlierBanner onBack={backToNow} /> : null;
+  const modelPicker = (
+    <PlanModelPicker
+      disabled={visibleInFlight !== undefined}
+      providers={heroProviders}
+      selection={modelSelection}
+      onChange={setModelSelection}
+    />
+  );
+  const sendMessage: HeroComposerProps["onSend"] = async ({ text }) => {
+    if (head === null) return false;
+
+    visitorTurnCounter.current += 1;
+    const turnNumber = visitorTurnCounter.current;
+    const userMessageName = `hero-visitor-user-${turnNumber}`;
+    const userCommitId = commitId(userMessageName);
+    const assistantMessageName = `hero-visitor-assistant-${turnNumber}`;
+    const assistantCommitId = commitId(assistantMessageName);
+    const pendingReply = {
+      turnId: `hero-visitor-turn-${turnNumber}` as HeroInFlight["turnId"],
+      parentCommitId: userCommitId,
+      text: HERO_REPLY_TEXT,
+      grounding: [],
+    } satisfies HeroInFlight;
+
+    setTimelineExtensions((current) => [
+      ...current,
+      message(userMessageName, {
+        sequence: history.length + current.length + 1,
+        parents: [head],
+        text,
+      }),
+    ]);
+    setPosition(LATEST);
+    setHeroInFlight(pendingReply);
+    const timer = setTimeout(() => {
+      setTimelineExtensions((current) => [
+        ...current,
+        message(assistantMessageName, {
+          sequence: history.length + current.length + 1,
+          parents: [userCommitId],
+          authorKind: "assistant",
+          text: HERO_REPLY_TEXT,
+        }),
+      ]);
+      setPosition((current) =>
+        current._tag === "latest" ||
+        (current._tag === "at" && current.commitId === userCommitId && current.live)
+          ? { _tag: "at", commitId: assistantCommitId, live: true }
+          : current,
+      );
+      setHeroInFlight((current) => (current?.turnId === pendingReply.turnId ? undefined : current));
+      replyTimers.current.delete(pendingReply.turnId);
+    }, 1_500);
+    replyTimers.current.set(pendingReply.turnId, timer);
+    setComposerText("");
+    return true;
+  };
+  const stopReply = () => {
+    if (heroInFlight === undefined) return;
+    const timer = replyTimers.current.get(heroInFlight.turnId);
+    if (timer !== undefined) clearTimeout(timer);
+    replyTimers.current.delete(heroInFlight.turnId);
+    setHeroInFlight(undefined);
+  };
+
+  useEffect(() => {
+    const timers = replyTimers.current;
+    const openingTimer = setTimeout(() => {
+      const standingHead = headRef.current;
+      setTimelineExtensions((current) => [
+        ...current,
+        message(OPENING_REPLY_NAME, {
+          sequence: history.length + current.length + 1,
+          parents: [balancedAnchor],
+          authorKind: "assistant",
+          text: INITIAL_IN_FLIGHT.text,
+        }),
+      ]);
+      setPosition((current) => {
+        if (
+          current._tag === INITIAL_POSITION._tag &&
+          current.commitId === INITIAL_POSITION.commitId &&
+          current.live === INITIAL_POSITION.live
+        ) {
+          return { _tag: "at", commitId: OPENING_REPLY_COMMIT_ID, live: true };
+        }
+        // LATEST follows the global sequence, so pin the visitor's current branch
+        // before this opening reply lands elsewhere in the graph.
+        return current._tag === "latest" && standingHead !== null
+          ? { _tag: "at", commitId: standingHead, live: true }
+          : current;
+      });
+      setHeroInFlight((current) =>
+        current?.turnId === INITIAL_IN_FLIGHT.turnId ? undefined : current,
+      );
+      timers.delete(INITIAL_IN_FLIGHT.turnId);
+    }, 2_500);
+    timers.set(INITIAL_IN_FLIGHT.turnId, openingTimer);
+
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-[12px] text-foreground">
@@ -380,7 +550,16 @@ function HeroWindowInterior() {
             onAnswerQuestion={() => undefined}
           />
           <div data-hero-composer>
-            <PlanComposer {...composerProps} text={composerText} onChangeText={setComposerText} />
+            <PlanComposer
+              {...composerProps}
+              banner={banner}
+              modelPicker={modelPicker}
+              text={composerText}
+              turnActive={visibleInFlight !== undefined}
+              onChangeText={setComposerText}
+              onSend={sendMessage}
+              onStop={stopReply}
+            />
           </div>
         </div>
         {pane.open ? (
@@ -389,6 +568,10 @@ function HeroWindowInterior() {
               <HeroDagExplorer
                 anchoredCommitId={head}
                 cornerControl={paneCornerControl}
+                graph={graph}
+                inFlightAnchorCommitIds={
+                  heroInFlight === undefined ? [] : [heroInFlight.parentCommitId]
+                }
                 onSelect={(commitId) => setPosition(positionAfterPick(graph, commitId))}
               />
             ) : pane.artifact === "plan" ? (
@@ -426,8 +609,13 @@ function HeroWindowInterior() {
 function HeroDagExplorer({
   anchoredCommitId,
   cornerControl,
+  graph,
+  inFlightAnchorCommitIds,
   onSelect,
-}: Pick<ComponentProps<typeof DagExplorer>, "anchoredCommitId" | "cornerControl" | "onSelect">) {
+}: Pick<
+  ComponentProps<typeof DagExplorer>,
+  "anchoredCommitId" | "cornerControl" | "graph" | "inFlightAnchorCommitIds" | "onSelect"
+>) {
   const paneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -443,11 +631,28 @@ function HeroDagExplorer({
     <div className="flex min-w-0 flex-1" ref={paneRef}>
       <DagExplorer
         {...graphProps}
+        graph={graph}
         anchoredCommitId={anchoredCommitId}
         cornerControl={cornerControl}
-        inFlightAnchorCommitIds={[heroInFlight.parentCommitId]}
+        inFlightAnchorCommitIds={inFlightAnchorCommitIds}
         onSelect={onSelect}
       />
+    </div>
+  );
+}
+
+function ViewingEarlierBanner({ onBack }: { readonly onBack: () => void }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-border/65 bg-muted/20 px-3 py-2">
+      <ClockIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+      {/* Wraps rather than truncates: what sending does from here is the one
+          thing that must not get cut off in a narrow window. */}
+      <span className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
+        Viewing an earlier point — sending starts a new branch from here
+      </span>
+      <Button className="shrink-0" size="xs" variant="outline" onClick={onBack}>
+        Back to now
+      </Button>
     </div>
   );
 }

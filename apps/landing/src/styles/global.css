@@ -35,6 +35,15 @@ html[data-landing-appearance="light"] {
   height: auto !important;
 }
 
+[data-hero-window] [data-hero-composer] button[aria-label="Attach images"] {
+  display: none;
+}
+
+/* Brittle by design: hide the inert Implement control by its product-owned hammer icon. */
+[data-hero-window] [data-hero-composer] button:has(svg.lucide-hammer) {
+  display: none;
+}
+
 @media (width < 48rem) {
   [data-hero-window] [data-hero-composer] button {
     min-height: 24px;
