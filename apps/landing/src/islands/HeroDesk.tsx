@@ -159,6 +159,7 @@ const DEFAULT_RIGHT_PANE: RightPaneState = {
 
 const claudeDriver = "claudeAgent" as HeroProvider;
 const codexDriver = "codex" as HeroProvider;
+const opencodeDriver = "opencode" as HeroProvider;
 const heroProviders = [
   {
     instanceId: "claudeAgent" as HeroProviderSnapshot["instanceId"],
@@ -190,6 +191,34 @@ const heroProviders = [
     models: [
       { slug: "gpt-5.6", name: "GPT-5.6", isCustom: false, isDefault: true, capabilities: null },
       { slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: null },
+    ],
+    slashCommands: [],
+    skills: [],
+  },
+  {
+    instanceId: "opencode" as HeroProviderSnapshot["instanceId"],
+    driver: opencodeDriver,
+    displayName: "OpenCode",
+    enabled: true,
+    installed: true,
+    version: "1.0.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-08-30T00:00:00.000Z",
+    models: [
+      {
+        slug: "openai/gpt-5",
+        name: "GPT-5",
+        isCustom: false,
+        isDefault: true,
+        capabilities: null,
+      },
+      {
+        slug: "anthropic/claude-opus-5",
+        name: "Claude Opus 5",
+        isCustom: false,
+        capabilities: null,
+      },
     ],
     slashCommands: [],
     skills: [],
