@@ -13,6 +13,15 @@ describe("fitSpatialMap", () => {
       fitSpatialMap({ minX: 0, minY: 0, maxX: 200, maxY: 100 }, { width: 400, height: 300 }),
     ).toEqual({ x: 64, y: 82, zoom: 1.36 });
   });
+
+  it("scales a small map up to fill the frame padding", () => {
+    const transform = fitSpatialMap(
+      { minX: 0, minY: 0, maxX: 144, maxY: 40 },
+      { width: 600, height: 400 },
+    );
+
+    expect(transform.zoom).toBeGreaterThan(1);
+  });
 });
 
 describe("spatial map minimap projection", () => {

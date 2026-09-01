@@ -16,7 +16,6 @@ export interface SkillMapGraphLayout {
 
 const NODE_WIDTH = 144;
 const NODE_HEIGHT = 40;
-const PADDING = 96;
 const WEB_TICKS = 300;
 
 const namesInFileOrder = (map: MemoryMap): ReadonlyArray<string> => {
@@ -44,12 +43,12 @@ const normalizeLayout = (
   const minY = Math.min(...nodes.map(({ y }) => y));
   const maxY = Math.max(...nodes.map(({ y }) => y));
   return {
-    width: maxX - minX + NODE_WIDTH + PADDING * 2,
-    height: maxY - minY + NODE_HEIGHT + PADDING * 2,
+    width: maxX - minX + NODE_WIDTH,
+    height: maxY - minY + NODE_HEIGHT,
     nodes: nodes.map((node) => ({
       name: node.name,
-      x: node.x - minX + NODE_WIDTH / 2 + PADDING,
-      y: node.y - minY + NODE_HEIGHT / 2 + PADDING,
+      x: node.x - minX + NODE_WIDTH / 2,
+      y: node.y - minY + NODE_HEIGHT / 2,
     })),
     edges: map.edges.map((edge, index) => ({ edge, index })),
   };

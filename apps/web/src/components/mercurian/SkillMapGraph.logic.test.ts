@@ -24,6 +24,8 @@ describe("layoutSkillMapFlow", () => {
     expect(layout.nodes.map(({ name }) => name).toSorted()).toEqual(["A", "B", "C", "D"]);
     expect(layout.edges.map(({ edge }) => edge)).toEqual(skillMap.edges);
     expect(layout.nodes.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
+    expect(Math.min(...layout.nodes.map(({ x }) => x))).toBe(72);
+    expect(Math.min(...layout.nodes.map(({ y }) => y))).toBe(20);
   });
 });
 
@@ -46,6 +48,7 @@ describe("layoutSkillMapWeb", () => {
     const layout = layoutSkillMapWeb(map([{ from: "A", type: "relates", to: "A" }]));
     expect(layout.nodes).toHaveLength(1);
     expect(layout.edges).toHaveLength(1);
-    expect(layout.nodes[0]).toMatchObject({ name: "A" });
+    expect(layout.nodes[0]).toEqual({ name: "A", x: 72, y: 20 });
+    expect(layout).toMatchObject({ width: 144, height: 40 });
   });
 });

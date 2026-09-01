@@ -8,8 +8,11 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { Maximize2Icon } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   cameraTween,
   centerOn,
@@ -206,6 +209,12 @@ export function SpatialMapCanvas({
     startTween((progress) => applyTransform(tween(progress)));
   };
 
+  const fitToView = () => {
+    const from = transformRef.current;
+    const tween = cameraTween(from, fitSpatialMap(bounds, frame), viewBox);
+    startTween((progress) => applyTransform(tween(progress)));
+  };
+
   const overviewSize = useMemo(() => minimapSize(frame.width, frame.height), [frame]);
   const renderContext = useMemo<SpatialMapRenderContext>(() => ({ markerId }), [markerId]);
 
@@ -255,7 +264,25 @@ export function SpatialMapCanvas({
           ))}
         </g>
       </svg>
-      <div className="pointer-events-none absolute bottom-3 right-3">
+      <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
+        <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label="Fit graph to view"
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                  onClick={fitToView}
+                />
+              }
+            >
+              <Maximize2Icon />
+            </TooltipTrigger>
+            <TooltipPopup>Fit graph to view</TooltipPopup>
+          </Tooltip>
+        </div>
         <SpatialMapMinimap
           ariaLabel={`${ariaLabel} minimap`}
           bounds={bounds}
