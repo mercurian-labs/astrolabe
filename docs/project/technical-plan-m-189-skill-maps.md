@@ -238,3 +238,70 @@ Web (`MemoryPage.logic.test.ts` + new logic tests):
 - Migrating the almagest vault or any real vault's files; `contains::` compile-on-designation
   behavior is unchanged apart from output shape.
 - Pan/zoom camera for the map graph view.
+
+---
+
+## Amendment (2026-09-01): the spatial views adopt the Checkpoint Graph's canvas
+
+The post-merge walk showed the flow view "really off" and the web view unvalidated beyond
+legibility: the shipped `SkillMapGraph` is a static SVG with fixed padding — no fit-to-view, no
+pan/zoom, no minimap — where the product already owns a tuned spatial grammar in the Checkpoint
+Graph. Both skill-map spatial readings (flow and web) move onto that grammar. This partially
+regains what the three-readings amendment gave up: one spatial _camera_ across the product, with
+only the layout differing per shape.
+
+### Grounding (verified on merged main)
+
+- The Checkpoint Graph's spatial view is **SVG under a camera**, not an HTML canvas: a transform
+  group driven by `MapTransform`, wheel-intent zoom, drag pan, tweened recenters, and a minimap.
+- Its logic layer is already extracted and domain-free:
+  `apps/web/src/components/mercurian/DagExplorer.logic.ts` exports `MapTransform`, `MapPoint`,
+  `MapViewBox`, `MapFrameSize`, `MapBounds`, the `MAP_MIN_ZOOM…MINIMAP_PADDING` constants,
+  `detailFor`, `zoomAtPoint`, `wheelIntent`, `fitTransform`, `centerOn`, `cameraTween`, and the
+  minimap trio (`minimapSize`, `minimapProjection`, `minimapPointToWorld`). The only plan-domain
+  touches are `radiusFor`/`edgeWidthFor` (dot-sized commit nodes — not needed for labeled boxes).
+- The component shell (`DagExplorer.tsx`, ~2450 lines) is plan-coupled throughout (commit ids,
+  coding sessions, readiness) and is **not** the reuse target; the logic module is.
+
+### Design
+
+1. **`SpatialMapCanvas`** — a new, small, generic shell beside `DagExplorer`
+   (`apps/web/src/components/mercurian/SpatialMapCanvas.tsx` + `.logic.ts` where anything pure
+   grows): an SVG in a measured frame, a camera transform group, wheel zoom via `wheelIntent` +
+   `zoomAtPoint`, pointer-drag pan, **fit-to-view on mount** via `fitTransform`, tweened recenter
+   via `cameraTween`/`centerOn` (finite animations only — no continuous repaint), and the minimap
+   in the corner using the minimap trio, with click/drag recenter (`minimapPointToWorld`,
+   mirroring `recenterFromMinimap` in DagExplorer.tsx:1604). Contract is payload-free: positioned
+   nodes (`id`, `x`, `y`, width/height, a render slot), edges (endpoints + optional label), and
+   bounds. Keyboard access preserved: node slots stay focusable; the minimap carries an aria
+   label.
+2. **`SkillMapGraph` becomes a thin adapter**: the existing deterministic layouts stay —
+   `layoutSkillMapFlow` (stratify + sugiyama) and `layoutSkillMapWeb` (seeded force, fixed
+   ticks) — and their positions feed `SpatialMapCanvas` instead of the static SVG. The flow
+   layout adopts the Checkpoint Graph's spacing temperament (its gap/nodeSize ratios) so ranks
+   read like the graph users already know. The rounded-rect node + arrowhead + type-label idioms
+   carry over as the node/edge render slots.
+3. **DagExplorer is untouched.** Migrating it onto `SpatialMapCanvas` is a real unification but a
+   separate, riskier change; this cut only _reads_ its logic module. Noted as a later candidate.
+4. **Vault**: the Skill Maps rendering bullet's given-up note is amended — the spatial camera and
+   minimap grammar is shared with the Checkpoint Graph again; only the per-shape layout differs.
+
+### Checklist
+
+- [ ] `SpatialMapCanvas` (+ logic/tests for anything pure: fit-on-mount transform, minimap
+      projection round-trip, wheel-intent handling).
+- [ ] `SkillMapGraph` adapter: flow + web through the canvas; static-SVG rendering retired;
+      spacing tuned to the Checkpoint Graph's temperament.
+- [ ] Design Lab: catalog entry for the canvas (an a11y-checkable story with a small fixture);
+      coverage classifications updated.
+- [ ] Docs: `docs/user/project-memory.md` gains one sentence (map graphs pan, zoom, and carry a
+      minimap, like the checkpoint graph).
+- [ ] Tests: existing layout suites unchanged and green; `vp test run` the touched web suites;
+      web typecheck.
+
+### Non-goals
+
+- No DagExplorer refactor or behavior change; no shared-component migration of the Checkpoint
+  Graph in this cut.
+- No layout-algorithm changes beyond spacing (flow stays sugiyama, web stays seeded force).
+- No continuous animation; camera tweens are finite.

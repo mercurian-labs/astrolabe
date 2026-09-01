@@ -93,6 +93,7 @@ const designSystemTestProject = {
       "@base-ui/react/combobox",
       "@base-ui/react/radio-group",
       "@dnd-kit/sortable",
+      "d3-force",
       "effect/PartitionedSemaphore",
       "effect/SchemaGetter",
       "jsonc-parser",
