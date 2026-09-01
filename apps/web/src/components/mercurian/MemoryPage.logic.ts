@@ -36,8 +36,36 @@ export function skillMapIsForest(map: MemoryMap): boolean {
   return [...nodes].every(visit);
 }
 
-export function skillMapView(map: MemoryMap): "tree" | "graph" {
-  return map.view ?? (skillMapIsForest(map) ? "tree" : "graph");
+export function skillMapIsAcyclic(map: MemoryMap): boolean {
+  const outgoing = new Map<string, Array<string>>();
+  const nodes = new Set<string>();
+  for (const edge of map.edges) {
+    nodes.add(edge.from);
+    nodes.add(edge.to);
+    const children = outgoing.get(edge.from) ?? [];
+    children.push(edge.to);
+    outgoing.set(edge.from, children);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (name: string): boolean => {
+    if (visiting.has(name)) return false;
+    if (visited.has(name)) return true;
+    visiting.add(name);
+    for (const child of outgoing.get(name) ?? []) {
+      if (!visit(child)) return false;
+    }
+    visiting.delete(name);
+    visited.add(name);
+    return true;
+  };
+  return [...nodes].every(visit);
+}
+
+export function skillMapView(map: MemoryMap): "tree" | "flow" | "web" {
+  if (map.view !== undefined) return map.view;
+  if (skillMapIsForest(map)) return "tree";
+  return skillMapIsAcyclic(map) ? "flow" : "web";
 }
 
 export function buildSkillMapTree(map: MemoryMap): ReadonlyArray<SkillMapTreeNode> {

@@ -45,7 +45,7 @@ export const MemoryMap = Schema.Struct({
   purpose: Schema.String,
   types: Schema.Array(Schema.Struct({ name: Schema.String, meaning: Schema.String })),
   edges: Schema.Array(MemoryMapEdge),
-  view: Schema.optional(Schema.Literals(["tree", "graph"])),
+  view: Schema.optional(Schema.Literals(["tree", "flow", "web"])),
   body: Schema.String,
 });
 export type MemoryMap = typeof MemoryMap.Type;

@@ -261,8 +261,8 @@ export function parseSkillMap(
       to: edge.to as string,
     });
   }
-  if (map.view !== undefined && map.view !== "tree" && map.view !== "graph") {
-    return refuse(file, 'view must be "tree" or "graph"');
+  if (map.view !== undefined && map.view !== "tree" && map.view !== "flow" && map.view !== "web") {
+    return refuse(file, 'view must be "tree", "flow" or "web"');
   }
   for (const edge of edges) {
     const forward = graph.outgoing.get(edge.from)?.includes(edge.to) ?? false;
@@ -281,7 +281,7 @@ export function parseSkillMap(
     purpose: map.purpose as string,
     types,
     edges,
-    ...(map.view === "tree" || map.view === "graph" ? { view: map.view } : {}),
+    ...(map.view === "tree" || map.view === "flow" || map.view === "web" ? { view: map.view } : {}),
     body: source.slice(frontmatter[0].length),
   };
 }

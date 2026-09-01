@@ -22,8 +22,9 @@ Choose **Memory** in the sidebar footer after selecting a project. The left rail
 and unresolved references. A skill map is a `.skillmap.md` file beside the notes: YAML frontmatter
 declares its edge vocabulary and ordered arrangement, while its Markdown body teaches when and how
 to use that view. The page shows the vocabulary, renders the teaching with navigable wikilinks, and
-shows a tree when the edges form a forest or a static graph when they do not. A map can explicitly
-choose either view. Select any arranged note to open it. A refused map remains visible with the
+shows an ordered tree for a forest, a layered flow for an acyclic non-forest, or a relational web
+when the edges contain cycles. A map can explicitly choose any of the three readings. Select any
+arranged note to open it. A refused map remains visible with the
 reason it could not be read, and index problems are called out above the list. Legacy tree-YAML
 files under `maps/` remain visible as refusals until rewritten as skill maps.
 

@@ -6,6 +6,7 @@ import {
   memoryMapTeachingLinks,
   memoryPageStanding,
   memoryRailItems,
+  skillMapIsAcyclic,
   skillMapIsForest,
   skillMapView,
   writeNoteSeedMessage,
@@ -90,8 +91,9 @@ describe("skill-map views", () => {
     { from: "Other", type: "depends-on", to: "Zed" },
   ]);
 
-  it("derives tree for forests and graph for shared children and cycles", () => {
+  it("derives tree for forests, flow for acyclic joins, and web for cycles", () => {
     expect(skillMapIsForest(forest)).toBe(true);
+    expect(skillMapIsAcyclic(forest)).toBe(true);
     expect(skillMapView(forest)).toBe("tree");
     expect(
       skillMapView(
@@ -100,7 +102,7 @@ describe("skill-map views", () => {
           { from: "B", type: "contains", to: "C" },
         ]),
       ),
-    ).toBe("graph");
+    ).toBe("flow");
     expect(
       skillMapView(
         map([
@@ -108,11 +110,21 @@ describe("skill-map views", () => {
           { from: "B", type: "contains", to: "A" },
         ]),
       ),
-    ).toBe("graph");
+    ).toBe("web");
   });
 
-  it("honors declared view overrides in both directions", () => {
-    expect(skillMapView(map(forest.edges, "graph"))).toBe("graph");
+  it("derives shape from the union of edge types", () => {
+    const crossTypeCycle = map([
+      { from: "A", type: "contains", to: "B" },
+      { from: "B", type: "depends-on", to: "A" },
+    ]);
+    expect(skillMapIsAcyclic(crossTypeCycle)).toBe(false);
+    expect(skillMapView(crossTypeCycle)).toBe("web");
+  });
+
+  it("honors every declared view override", () => {
+    expect(skillMapView(map(forest.edges, "flow"))).toBe("flow");
+    expect(skillMapView(map(forest.edges, "web"))).toBe("web");
     expect(
       skillMapView(
         map(

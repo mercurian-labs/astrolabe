@@ -232,6 +232,26 @@ describe("memoryModel", () => {
       buildMemoryGraph([]),
     );
     expect("refusal" in tree ? tree.refusal : tree.view).toBe("tree");
+    const flow = parseSkillMap(
+      "Product.skillmap.md",
+      mapSource("", { view: "flow" }),
+      buildMemoryGraph([]),
+    );
+    expect("refusal" in flow ? flow.refusal : flow.view).toBe("flow");
+    const web = parseSkillMap(
+      "Product.skillmap.md",
+      mapSource("", { view: "web" }),
+      buildMemoryGraph([]),
+    );
+    expect("refusal" in web ? web.refusal : web.view).toBe("web");
+    const formerGraph = parseSkillMap(
+      "Product.skillmap.md",
+      mapSource("", { view: "graph" }),
+      buildMemoryGraph([]),
+    );
+    expect("refusal" in formerGraph ? formerGraph.refusal : "").toContain(
+      'view must be "tree", "flow" or "web"',
+    );
     const invalid = parseSkillMap(
       "Product.skillmap.md",
       mapSource("", { view: "radial" }),

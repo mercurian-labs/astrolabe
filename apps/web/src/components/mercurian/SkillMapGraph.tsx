@@ -2,7 +2,8 @@ import type { MemoryMap } from "@t3tools/contracts";
 import { useId, useMemo } from "react";
 
 import {
-  layoutSkillMapGraph,
+  layoutSkillMapFlow,
+  layoutSkillMapWeb,
   SKILL_MAP_GRAPH_NODE_SIZE,
   type SkillMapGraphLayout,
 } from "./SkillMapGraph.logic";
@@ -10,11 +11,16 @@ import {
 export function SkillMapGraph({
   map,
   onOpenNote,
+  view,
 }: {
   readonly map: MemoryMap;
   readonly onOpenNote: (name: string) => void;
+  readonly view: "flow" | "web";
 }) {
-  const layout = useMemo(() => layoutSkillMapGraph(map), [map]);
+  const layout = useMemo(
+    () => (view === "flow" ? layoutSkillMapFlow(map) : layoutSkillMapWeb(map)),
+    [map, view],
+  );
   const markerId = `skill-map-arrow-${useId().replaceAll(":", "")}`;
   const positions = new Map(layout.nodes.map((node) => [node.name, node]));
   if (layout.nodes.length === 0) {
@@ -23,13 +29,15 @@ export function SkillMapGraph({
   return (
     <div className="overflow-x-auto rounded-md border border-border bg-muted/10 p-2">
       <svg
-        aria-label={`${map.name} arrangement graph`}
+        aria-label={`${map.name} arrangement ${view}`}
         className="block max-w-none"
         height={layout.height}
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         width={layout.width}
       >
-        <title>{map.name} arrangement graph</title>
+        <title>
+          {map.name} arrangement {view}
+        </title>
         <defs>
           <marker
             id={markerId}
@@ -47,7 +55,7 @@ export function SkillMapGraph({
           const from = positions.get(edge.from);
           const to = positions.get(edge.to);
           if (from === undefined || to === undefined) return null;
-          const geometry = edgeGeometry(from, to);
+          const geometry = edgeGeometry(from, to, view);
           return (
             <g key={`${edge.from}-${edge.type}-${edge.to}-${index}`}>
               <path
@@ -109,6 +117,7 @@ export function SkillMapGraph({
 function edgeGeometry(
   from: SkillMapGraphLayout["nodes"][number],
   to: SkillMapGraphLayout["nodes"][number],
+  view: "flow" | "web",
 ) {
   if (from.name === to.name) {
     const startX = from.x + SKILL_MAP_GRAPH_NODE_SIZE.width / 3;
@@ -117,6 +126,26 @@ function edgeGeometry(
       path: `M ${startX} ${startY} C ${from.x + 100} ${from.y - 80}, ${from.x - 100} ${from.y - 80}, ${from.x - SKILL_MAP_GRAPH_NODE_SIZE.width / 3} ${startY}`,
       labelX: from.x,
       labelY: from.y - 72,
+    };
+  }
+  if (view === "web") {
+    const deltaX = to.x - from.x;
+    const deltaY = to.y - from.y;
+    const boundaryScale = Math.min(
+      SKILL_MAP_GRAPH_NODE_SIZE.width / 2 / Math.abs(deltaX || 1),
+      SKILL_MAP_GRAPH_NODE_SIZE.height / 2 / Math.abs(deltaY || 1),
+    );
+    const startX = from.x + deltaX * boundaryScale;
+    const startY = from.y + deltaY * boundaryScale;
+    const endX = to.x - deltaX * boundaryScale;
+    const endY = to.y - deltaY * boundaryScale;
+    const distance = Math.hypot(deltaX, deltaY);
+    const curveX = (startX + endX) / 2 + (-deltaY / distance) * 18;
+    const curveY = (startY + endY) / 2 + (deltaX / distance) * 18;
+    return {
+      path: `M ${startX} ${startY} Q ${curveX} ${curveY}, ${endX} ${endY}`,
+      labelX: (startX + endX + curveX * 2) / 4,
+      labelY: (startY + endY + curveY * 2) / 4,
     };
   }
   const downward = to.y >= from.y;

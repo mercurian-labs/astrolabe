@@ -331,7 +331,7 @@ function MapDetail({
   readonly links: ReadonlyArray<{ readonly name: string; readonly exists: boolean }>;
   readonly onOpenNote: (name: string) => void;
 }) {
-  const tree = skillMapView(map) === "tree";
+  const view = skillMapView(map);
   return (
     <article className="mx-auto max-w-3xl">
       <h2 className="text-xl font-semibold">{map.name}</h2>
@@ -355,7 +355,7 @@ function MapDetail({
       </section>
       <section className="mt-6">
         <h3 className="mb-3 text-sm font-semibold">Arrangement</h3>
-        {tree ? (
+        {view === "tree" ? (
           <ul className="space-y-1">
             <Arrangement
               nodes={buildSkillMapTree(map)}
@@ -364,7 +364,7 @@ function MapDetail({
             />
           </ul>
         ) : (
-          <SkillMapGraph map={map} onOpenNote={onOpenNote} />
+          <SkillMapGraph map={map} onOpenNote={onOpenNote} view={view} />
         )}
       </section>
     </article>
