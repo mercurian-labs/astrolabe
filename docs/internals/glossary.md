@@ -234,11 +234,15 @@ current plan timeline. It is client-derived, session-only, and sends through the
 message path; dismissing hides the current identities until a new one appears. Collection,
 filtering, and dismissal rules live in [planSuggestions.logic.ts][39].
 
-#### Map
+#### Skill map
 
-A YAML arrangement under a memory's `maps` folder. A map names its purpose and places notes in a
-nested structure whose parent-child placements must already be supported by links in note prose.
-Malformed or ungrounded maps remain visible as refusals rather than degrading into partial maps.
+A `.skillmap.md` file stored beside the notes in [memory](#memory). Its YAML frontmatter names the
+map and purpose, declares an edge vocabulary, and records ordered `{ from, type, to }` edges; its
+Markdown body is the teaching for when and how to use the arrangement. Every arranged edge must
+already be supported by a wikilink in either note's prose. Forests render as ordered trees and other
+shapes render as static graphs unless the file declares a view. Repeats and cycles are valid map
+facts. Malformed or ungrounded skill maps, and superseded tree-YAML maps under `maps/`, remain
+visible as refusals rather than degrading into partial maps.
 
 #### Unresolved reference
 

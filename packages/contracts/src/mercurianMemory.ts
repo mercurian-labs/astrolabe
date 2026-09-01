@@ -32,25 +32,21 @@ export const MemorySourcesStreamItem = Schema.Struct({
 });
 export type MemorySourcesStreamItem = typeof MemorySourcesStreamItem.Type;
 
-export interface MemoryArrangementNode {
-  readonly note: string;
-  readonly children?: ReadonlyArray<MemoryArrangementNode> | undefined;
-}
-const MemoryArrangementNodeRef = Schema.suspend(
-  (): Schema.Codec<MemoryArrangementNode> => MemoryArrangementNode,
-);
-export const MemoryArrangementNode = Schema.Struct({
-  note: Schema.String,
-  children: Schema.optional(Schema.Array(MemoryArrangementNodeRef)),
+export const MemoryMapEdge = Schema.Struct({
+  from: Schema.String,
+  type: Schema.String,
+  to: Schema.String,
 });
+export type MemoryMapEdge = typeof MemoryMapEdge.Type;
 
 export const MemoryMap = Schema.Struct({
   file: TrimmedNonEmptyString,
   name: Schema.String,
   purpose: Schema.String,
-  rule: Schema.optional(Schema.String),
-  edge: Schema.optional(Schema.String),
-  arrangement: Schema.Array(MemoryArrangementNode),
+  types: Schema.Array(Schema.Struct({ name: Schema.String, meaning: Schema.String })),
+  edges: Schema.Array(MemoryMapEdge),
+  view: Schema.optional(Schema.Literals(["tree", "flow", "web"])),
+  body: Schema.String,
 });
 export type MemoryMap = typeof MemoryMap.Type;
 
@@ -134,7 +130,7 @@ export class ProductMapAlreadyExistsError extends Schema.TaggedErrorClass<Produc
   { projectId: MercurianProjectId },
 ) {
   override get message(): string {
-    return "maps/product.yaml already exists";
+    return "Product.skillmap.md already exists";
   }
 }
 

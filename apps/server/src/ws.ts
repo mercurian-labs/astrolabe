@@ -548,6 +548,17 @@ function readMobileDeviceAnalyticsProps(request: HttpServerRequest.HttpServerReq
   };
 }
 
+export function memoryAmendmentNoteNames(
+  changes: ReadonlyArray<{ readonly path: string }>,
+): ReadonlyArray<string> {
+  return changes
+    .filter(
+      ({ path }) =>
+        path.endsWith(".md") && !path.endsWith(".skillmap.md") && !path.startsWith("maps/"),
+    )
+    .map(({ path }) => path.slice(0, -3).split("/").at(-1)!);
+}
+
 const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
@@ -2257,9 +2268,7 @@ const makeWsRpcLayer = (
                 parentCommitId,
                 title: proposal.title,
                 memoryCommitSha,
-                notes: proposal.changes
-                  .filter(({ path }) => path.endsWith(".md") && !path.startsWith("maps/"))
-                  .map(({ path }) => path.slice(0, -3).split("/").at(-1)!),
+                notes: memoryAmendmentNoteNames(proposal.changes),
                 createdAt,
               });
               yield* planningAssistant.clearMemoryAmendment(input.planId);

@@ -11,16 +11,22 @@ pick any registered repository and optionally enter a folder within it. The fold
 exist. Removing the designation disconnects the project from the memory without deleting files.
 
 When notes contain containment declarations and no product map exists yet, the same dialog offers
-to generate the product map. The offer states how many declarations it found. Generation is a
-one-time action; if the declarations form a cycle, the dialog explains the refusal instead of
-writing a partial map.
+to generate `Product.skillmap.md` beside the notes. The generated skill map carries the containment
+arrangement in its frontmatter and a starter teaching body explaining how to use it. The offer
+states how many declarations it found. Generation is a one-time action; if the declarations form a
+cycle, the dialog explains the refusal instead of writing a partial map.
 
 ## Browse memory
 
 Choose **Memory** in the sidebar footer after selecting a project. The left rail lists maps, notes,
-and unresolved references. A map shows its purpose and nested arrangement; select any entry to
-open the corresponding note. A refused map remains visible with the reason it could not be read,
-and index problems are called out above the list.
+and unresolved references. A skill map is a `.skillmap.md` file beside the notes: YAML frontmatter
+declares its edge vocabulary and ordered arrangement, while its Markdown body teaches when and how
+to use that view. The page shows the vocabulary, renders the teaching with navigable wikilinks, and
+shows an ordered tree for a forest, a layered flow for an acyclic non-forest, or a relational web
+when the edges contain cycles. A map can explicitly choose any of the three readings. Select any
+arranged note to open it. A refused map remains visible with the
+reason it could not be read, and index problems are called out above the list. Legacy tree-YAML
+files under `maps/` remain visible as refusals until rewritten as skill maps.
 
 Notes show their Markdown body and backlinks. Wikilinks open other notes. A dashed red link means
 the target is referenced but has not been written yet; opening it shows which existing notes point

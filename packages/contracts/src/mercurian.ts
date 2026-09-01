@@ -432,6 +432,7 @@ export const MemoryMapPlacement = Schema.Struct({
   map: TrimmedNonEmptyString,
   parent: TrimmedNonEmptyString,
   note: TrimmedNonEmptyString,
+  type: Schema.optional(TrimmedNonEmptyString),
 });
 export type MemoryMapPlacement = typeof MemoryMapPlacement.Type;
 

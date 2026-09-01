@@ -26,25 +26,27 @@ index 7c132a1..c7ff45a 100644
 -Suggestions are deferred.
 +Open Decisions can become suggested next messages.
 +They remain a human send.
-diff --git a/maps/product.yaml b/maps/product.yaml
+diff --git a/Product.skillmap.md b/Product.skillmap.md
 index eee462d..9109c99 100644
---- a/maps/product.yaml
-+++ b/maps/product.yaml
-@@ -3,3 +3,4 @@ arrangement:
-   - note: Planning
-     children:
-+      - note: Composer
-       - note: Plans`;
+--- a/Product.skillmap.md
++++ b/Product.skillmap.md
+@@ -5,6 +5,7 @@ types:
+   contains: The child is part of the parent's territory.
+ edges:
+   - { from: Planning, type: contains, to: Plans }
++  - { from: Planning, type: contains, to: Composer }
+ ---
+ Start at Planning and follow contains edges toward the surface you need.`;
 
 const proposal: MemoryAmendmentProposal = {
   turnId: PlanTurnId.make("catalog-memory-amendment"),
   title: "Surface open decisions beside the composer",
   changes: [
     { path: "Composer.md", before: "# Composer\n\nSuggestions are deferred.\n", after: "" },
-    { path: "maps/product.yaml", before: "arrangement: []\n", after: "" },
+    { path: "Product.skillmap.md", before: "edges: []\n", after: "" },
   ],
   patch,
-  placements: [{ map: "product", parent: "Planning", note: "Composer" }],
+  placements: [{ map: "Product", parent: "Planning", note: "Composer" }],
 };
 
 const renderPanel = (blockedReason: "memory-changed" | null) => (

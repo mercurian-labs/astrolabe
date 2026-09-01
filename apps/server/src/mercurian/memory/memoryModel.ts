@@ -1,9 +1,5 @@
-import {
-  ProductMapCycleError,
-  type MemoryArrangementNode,
-  type MemoryMap,
-} from "@t3tools/contracts";
-import { isAlias, parseDocument, stringify, visit } from "yaml";
+import { ProductMapCycleError, type MemoryMap, type MemoryMapEdge } from "@t3tools/contracts";
+import { Document, isAlias, isMap, isScalar, isSeq, parseDocument, visit } from "yaml";
 
 export interface MemoryNoteFile {
   readonly name: string;
@@ -183,43 +179,16 @@ function findYamlFeature(document: ReturnType<typeof parseDocument>): string | n
   return problem;
 }
 
-function validateArrangement(
-  file: string,
-  value: unknown,
-  location: string,
-  seen: Set<string>,
-): MemoryArrangementNode | { readonly file: string; readonly refusal: string } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return refuse(file, `${location} must be an object`);
-  }
-  const row = value as Record<string, unknown>;
-  for (const key of Object.keys(row)) {
-    if (key !== "note" && key !== "children") {
-      return refuse(file, `unknown key "${key}" under ${location}`);
-    }
-  }
-  if (typeof row.note !== "string") return refuse(file, `${location}.note must be a string`);
-  const note = row.note;
-  if (seen.has(note)) return refuse(file, `repeated note "${note}" at ${location}`);
-  seen.add(note);
-  if (row.children !== undefined && !Array.isArray(row.children)) {
-    return refuse(file, `${location}.children must be a list`);
-  }
-  const children: Array<MemoryArrangementNode> = [];
-  for (const [index, child] of (row.children ?? []).entries()) {
-    const validated = validateArrangement(file, child, `${location}.children[${index}]`, seen);
-    if ("refusal" in validated) return validated;
-    children.push(validated);
-  }
-  return { note, ...(children.length === 0 ? {} : { children }) };
-}
+const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u;
 
-export function parseAndValidateMemoryMap(
+export function parseSkillMap(
   file: string,
   source: string,
   graph: MemoryGraph,
 ): MemoryMap | { readonly file: string; readonly refusal: string } {
-  const document = parseDocument(source, { uniqueKeys: true });
+  const frontmatter = FRONTMATTER_PATTERN.exec(source);
+  if (frontmatter === null) return refuse(file, "missing frontmatter");
+  const document = parseDocument(frontmatter[1] ?? "", { uniqueKeys: true });
   if (document.errors.length > 0) {
     return refuse(file, `malformed YAML: ${document.errors[0]?.message ?? "parse error"}`);
   }
@@ -231,57 +200,94 @@ export function parseAndValidateMemoryMap(
     return refuse(file, "top level must be an object");
   }
   const map = value as Record<string, unknown>;
-  const allowed = new Set(["name", "purpose", "rule", "edge", "arrangement"]);
+  const allowed = new Set(["name", "purpose", "types", "edges", "view"]);
   for (const key of Object.keys(map)) {
     if (!allowed.has(key)) return refuse(file, `unknown top-level key "${key}"`);
   }
   for (const required of ["name", "purpose"] as const) {
     if (typeof map[required] !== "string") return refuse(file, `${required} must be a string`);
   }
-  for (const optional of ["rule", "edge"] as const) {
-    if (map[optional] !== undefined && typeof map[optional] !== "string") {
-      return refuse(file, `${optional} must be a string`);
+  if (typeof map.types !== "object" || map.types === null || Array.isArray(map.types)) {
+    return refuse(file, "types must be a non-empty mapping of edge type names to meanings");
+  }
+  const typesNode = document.get("types", true);
+  if (!isMap(typesNode)) {
+    return refuse(file, "types must be a non-empty mapping of edge type names to meanings");
+  }
+  for (const pair of typesNode.items) {
+    if (!isScalar(pair.key) || typeof pair.key.value !== "string") {
+      return refuse(file, "type names under types must be strings");
     }
   }
-  if (!Array.isArray(map.arrangement)) return refuse(file, "arrangement must be a list");
-  const seen = new Set<string>();
-  const arrangement: Array<MemoryArrangementNode> = [];
-  for (const [index, entry] of map.arrangement.entries()) {
-    const validated = validateArrangement(file, entry, `arrangement[${index}]`, seen);
-    if ("refusal" in validated) return validated;
-    arrangement.push(validated);
+  const typeEntries = Object.entries(map.types);
+  if (typeEntries.length === 0) {
+    return refuse(file, "types must be a non-empty mapping of edge type names to meanings");
   }
-
-  const validateEdges = (
-    nodes: ReadonlyArray<MemoryArrangementNode>,
-  ): { readonly file: string; readonly refusal: string } | null => {
-    for (const node of nodes) {
-      for (const child of node.children ?? []) {
-        const forward = graph.outgoing.get(node.note)?.includes(child.note) ?? false;
-        const reverse = graph.outgoing.get(child.note)?.includes(node.note) ?? false;
-        if (!forward && !reverse) {
-          return refuse(
-            file,
-            `"${node.note}" does not link "${child.note}" — add the link to a note's prose or remove the placement`,
-          );
-        }
+  const types: Array<{ readonly name: string; readonly meaning: string }> = [];
+  for (const [name, meaning] of typeEntries) {
+    if (typeof meaning !== "string") {
+      return refuse(file, `types.${name} must be a string`);
+    }
+    types.push({ name, meaning });
+  }
+  if (!Array.isArray(map.edges)) return refuse(file, "edges must be a list");
+  const declaredTypes = new Set(types.map(({ name }) => name));
+  const edges: Array<MemoryMapEdge> = [];
+  for (const [index, value] of map.edges.entries()) {
+    const location = `edges[${index}]`;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return refuse(file, `${location} must be an object`);
+    }
+    const edge = value as Record<string, unknown>;
+    for (const key of Object.keys(edge)) {
+      if (key !== "from" && key !== "type" && key !== "to") {
+        return refuse(file, `unknown key "${key}" under ${location}`);
       }
-      const nested = validateEdges(node.children ?? []);
-      if (nested !== null) return nested;
     }
-    return null;
-  };
-  const edgeRefusal = validateEdges(arrangement);
-  if (edgeRefusal !== null) return edgeRefusal;
+    for (const key of ["from", "type", "to"] as const) {
+      if (typeof edge[key] !== "string") {
+        return refuse(file, `${location}.${key} must be a string`);
+      }
+    }
+    if (!declaredTypes.has(edge.type as string)) {
+      return refuse(
+        file,
+        `${location}: type "${edge.type as string}" is not declared under types — declare it with a meaning or fix the edge`,
+      );
+    }
+    edges.push({
+      from: edge.from as string,
+      type: edge.type as string,
+      to: edge.to as string,
+    });
+  }
+  if (map.view !== undefined && map.view !== "tree" && map.view !== "flow" && map.view !== "web") {
+    return refuse(file, 'view must be "tree", "flow" or "web"');
+  }
+  for (const edge of edges) {
+    const forward = graph.outgoing.get(edge.from)?.includes(edge.to) ?? false;
+    const reverse = graph.outgoing.get(edge.to)?.includes(edge.from) ?? false;
+    if (!forward && !reverse) {
+      return refuse(
+        file,
+        `"${edge.from}" does not link "${edge.to}" — add the link to a note's prose or remove the edge`,
+      );
+    }
+  }
 
   return {
     file,
     name: map.name as string,
     purpose: map.purpose as string,
-    ...(typeof map.rule === "string" ? { rule: map.rule } : {}),
-    ...(typeof map.edge === "string" ? { edge: map.edge } : {}),
-    arrangement,
+    types,
+    edges,
+    ...(map.view === "tree" || map.view === "flow" || map.view === "web" ? { view: map.view } : {}),
+    body: source.slice(frontmatter[0].length),
   };
+}
+
+export function legacyMemoryMapRefusal(file: string) {
+  return refuse(file, "superseded tree-YAML map — rewrite it as a .skillmap.md skill map");
 }
 
 export function compileProductMap(
@@ -302,8 +308,8 @@ export function compileProductMap(
     const everyPlacement = allChildren.get(parent) ?? new Set<string>();
     everyPlacement.add(child);
     allChildren.set(parent, everyPlacement);
-    // A map is an arrangement tree, so a multiply-contained note gets one
-    // deterministic placement instead of producing invalid repeated nodes.
+    // The generated product view stays a forest, so a multiply-contained note
+    // gets one deterministic placement even though hand-authored maps may repeat it.
     if (parentByChild.has(child)) continue;
     parentByChild.set(child, parent);
     const set = children.get(parent) ?? new Set<string>();
@@ -333,27 +339,42 @@ export function compileProductMap(
     if (cycle !== null) return cycle;
   }
 
-  const build = (note: string): MemoryArrangementNode => {
-    const descendants = [...(children.get(note) ?? [])]
-      .sort((a, b) => a.localeCompare(b))
-      .map(build);
-    return { note, ...(descendants.length === 0 ? {} : { children: descendants }) };
-  };
   const roots = [...involved]
     .filter((name) => !contained.has(name))
     .sort((a, b) => a.localeCompare(b));
+  const edges: Array<MemoryMapEdge> = [];
+  const append = (parent: string) => {
+    for (const child of [...(children.get(parent) ?? [])].sort((a, b) => a.localeCompare(b))) {
+      edges.push({ from: parent, type: "contains", to: child });
+      append(child);
+    }
+  };
+  for (const root of roots) append(root);
   return {
-    file: "maps/product.yaml",
+    file: "Product.skillmap.md",
     name: "Product",
     purpose: "Generated from contains:: declarations in memory notes.",
-    edge: "contains",
-    arrangement: roots.map(build),
+    types: [{ name: "contains", meaning: "The child is part of the parent's territory." }],
+    edges,
+    body: "Use this map to orient by containment: start with a broad area, then follow its contains edges toward the part you need.\n",
   };
 }
 
-export function serializeMemoryMap(map: MemoryMap): string {
-  const { file: _file, ...document } = map;
-  return stringify(document, { lineWidth: 0 });
+export function serializeSkillMap(map: MemoryMap): string {
+  const document = new Document({
+    name: map.name,
+    purpose: map.purpose,
+    types: Object.fromEntries(map.types.map(({ name, meaning }) => [name, meaning])),
+    edges: map.edges,
+    ...(map.view === undefined ? {} : { view: map.view }),
+  });
+  const edgeSequence = document.get("edges", true);
+  if (isSeq(edgeSequence)) {
+    for (const edge of edgeSequence.items) {
+      if (isMap(edge)) edge.flow = true;
+    }
+  }
+  return `---\n${document.toString({ lineWidth: 0 })}---\n${map.body}`;
 }
 
 export function insertMapPlacement(
@@ -361,25 +382,20 @@ export function insertMapPlacement(
   parent: string,
   note: string,
   graph: MemoryGraph,
+  requestedType?: string,
 ): MemoryMap | { readonly file: string; readonly refusal: string } {
-  const contains = (nodes: ReadonlyArray<MemoryArrangementNode>, name: string): boolean =>
-    nodes.some((node) => node.note === name || contains(node.children ?? [], name));
-  if (!contains(map.arrangement, parent)) {
-    return refuse(map.file, `parent "${parent}" is not present in the arrangement`);
-  }
-  if (contains(map.arrangement, note)) {
-    return refuse(map.file, `note "${note}" is already present in the arrangement`);
-  }
-  const insert = (
-    nodes: ReadonlyArray<MemoryArrangementNode>,
-  ): ReadonlyArray<MemoryArrangementNode> =>
-    nodes.map((node) =>
-      node.note === parent
-        ? { ...node, children: [...(node.children ?? []), { note }] }
-        : { ...node, ...(node.children === undefined ? {} : { children: insert(node.children) }) },
+  const type = requestedType ?? (map.types.length === 1 ? map.types[0]!.name : null);
+  if (type === null) {
+    return refuse(
+      map.file,
+      `name the edge type — this map declares ${map.types.map(({ name }) => name).join(", ")}`,
     );
-  const candidate = { ...map, arrangement: insert(map.arrangement) };
-  return parseAndValidateMemoryMap(map.file, serializeMemoryMap(candidate), graph);
+  }
+  if (map.edges.some((edge) => edge.from === parent && edge.type === type && edge.to === note)) {
+    return refuse(map.file, `edge "${parent}" --${type}--> "${note}" already exists`);
+  }
+  const candidate = { ...map, edges: [...map.edges, { from: parent, type, to: note }] };
+  return parseSkillMap(map.file, serializeSkillMap(candidate), graph);
 }
 
 export function fingerprintMemoryFiles(entries: ReadonlyArray<MemoryFileFingerprintEntry>): string {

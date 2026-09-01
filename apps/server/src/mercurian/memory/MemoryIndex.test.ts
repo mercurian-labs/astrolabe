@@ -80,7 +80,7 @@ layer("MemoryIndex", (it) => {
     }),
   );
 
-  it.effect("walks non-git roots while excluding dot-directories and maps from notes", () =>
+  it.effect("classifies skill maps before notes and surfaces legacy YAML maps as refusals", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -91,11 +91,36 @@ layer("MemoryIndex", (it) => {
       yield* fs.writeFileString(path.join(fixture.root, ".private", "Hidden.md"), "hidden");
       yield* fs.makeDirectory(path.join(fixture.root, "maps"));
       yield* fs.writeFileString(path.join(fixture.root, "maps", "NotANote.md"), "map");
+      yield* fs.writeFileString(
+        path.join(fixture.root, "Product.skillmap.md"),
+        "---\nname: Product\npurpose: Structure\ntypes:\n  contains: Child territory.\nedges: []\n---\nTeaching.\n",
+      );
+      yield* fs.writeFileString(
+        path.join(fixture.root, "maps", "old.yaml"),
+        "name: Old\npurpose: Old shape\narrangement: []\n",
+      );
 
       const result = yield* index.readIndex(fixture.projectId);
       assert.deepStrictEqual(
         result.notes.map(({ name }) => name),
         ["Visible"],
+      );
+      assert.strictEqual(result.maps.length, 2);
+      assert.deepStrictEqual(
+        result.maps.find((map) => !("refusal" in map)),
+        {
+          file: "Product.skillmap.md",
+          name: "Product",
+          purpose: "Structure",
+          types: [{ name: "contains", meaning: "Child territory." }],
+          edges: [],
+          body: "Teaching.\n",
+        },
+      );
+      const legacy = result.maps.find((map) => "refusal" in map);
+      assert.include(
+        legacy !== undefined && "refusal" in legacy ? legacy.refusal : "",
+        "maps/old.yaml: superseded tree-YAML map — rewrite it as a .skillmap.md skill map",
       );
     }),
   );
@@ -137,7 +162,12 @@ layer("MemoryIndex", (it) => {
       const offer = (yield* index.readIndex(fixture.projectId)).productMapOffer;
       assert.deepStrictEqual(offer, { declarationCount: 1 });
       yield* index.generateProductMap(fixture.projectId);
-      assert.isTrue(yield* fs.exists(path.join(fixture.root, "maps", "product.yaml")));
+      const productPath = path.join(fixture.root, "Product.skillmap.md");
+      assert.isTrue(yield* fs.exists(productPath));
+      assert.include(
+        yield* fs.readFileString(productPath),
+        "Use this map to orient by containment",
+      );
       assert.strictEqual(
         yield* runGit(fixture.root, ["log", "-1", "--pretty=%s"]),
         "Generate product map from containment declarations",
@@ -146,6 +176,7 @@ layer("MemoryIndex", (it) => {
 
       const error = yield* Effect.flip(index.generateProductMap(fixture.projectId));
       assert.isTrue(isProductMapAlreadyExistsError(error));
+      assert.strictEqual(error.message, "Product.skillmap.md already exists");
     }),
   );
 
@@ -156,12 +187,11 @@ layer("MemoryIndex", (it) => {
       const index = yield* MemoryIndex.MemoryIndex;
       const fixture = yield* makeFixture("apply-amendment", { git: true });
       yield* fs.writeFileString(path.join(fixture.root, "Product.md"), "See [[Composer]].\n");
-      yield* fs.makeDirectory(path.join(fixture.root, "maps"));
       yield* fs.writeFileString(
-        path.join(fixture.root, "maps", "product.yaml"),
-        "name: Product\npurpose: Product structure\narrangement:\n  - note: Product\n",
+        path.join(fixture.root, "Product.skillmap.md"),
+        "---\nname: Product\npurpose: Product structure\ntypes:\n  contains: Child territory.\n  depends-on: Source needs target.\nedges: []\n---\nTeach from the product root.\n",
       );
-      yield* runGit(fixture.root, ["add", "Product.md", "maps/product.yaml"]);
+      yield* runGit(fixture.root, ["add", "Product.md", "Product.skillmap.md"]);
       yield* runGit(fixture.root, ["commit", "-m", "Seed memory"]);
 
       const proposal = yield* index.prepareAmendment({
@@ -170,10 +200,11 @@ layer("MemoryIndex", (it) => {
         amendment: {
           title: "Record the composer boundary",
           notes: [{ name: "Composer", markdown: "The composer belongs to [[Product]].\n" }],
-          placements: [{ map: "Product", parent: "Product", note: "Composer" }],
+          placements: [{ map: "Product", parent: "Product", note: "Composer", type: "contains" }],
         },
       });
       assert.include(proposal.patch, "Composer.md");
+      assert.include(proposal.patch, "Product.skillmap.md");
       assert.notInclude(proposal.patch, "before/");
       assert.notInclude(proposal.patch, "after/");
       const sha = yield* index.applyAmendment({
@@ -191,6 +222,15 @@ layer("MemoryIndex", (it) => {
       assert.strictEqual(note.exists, true);
       const memory = yield* index.readIndex(fixture.projectId);
       assert.deepStrictEqual(memory.unresolved, []);
+      const productMap = memory.maps.find((map) => !("refusal" in map));
+      assert.deepStrictEqual(
+        productMap !== undefined && !("refusal" in productMap) ? productMap.edges : [],
+        [{ from: "Product", type: "contains", to: "Composer" }],
+      );
+      assert.strictEqual(
+        productMap !== undefined && !("refusal" in productMap) ? productMap.body : "",
+        "Teach from the product root.\n",
+      );
     }),
   );
 

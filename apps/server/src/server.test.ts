@@ -129,6 +129,7 @@ import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/regis
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import * as ProcessRunner from "./processRunner.ts";
+import { memoryAmendmentNoteNames } from "./ws.ts";
 
 const stubTrackerConnector: TrackerConnector<"linear"> = {
   kind: "linear",
@@ -1656,6 +1657,18 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
 );
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
+  it("does not stamp skill-map amendment paths as note names", () => {
+    assert.deepEqual(
+      memoryAmendmentNoteNames([
+        { path: "Composer.md" },
+        { path: "Product.skillmap.md" },
+        { path: "nested/Plans.md" },
+        { path: "maps/legacy.md" },
+      ]),
+      ["Composer", "Plans"],
+    );
+  });
+
   it.effect("parks HTTP ingress until command readiness", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
