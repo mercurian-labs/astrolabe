@@ -403,6 +403,7 @@ export default function HeroDesk() {
 }
 
 function HeroWindowInterior() {
+  const documentScrollPosition = useRef({ x: 0, y: 0 });
   const [composerText, setComposerText] = useState("");
   const [pane, setPane] = useState<RightPaneState>(DEFAULT_RIGHT_PANE);
   const [timelineExtensions, setTimelineExtensions] = useState<
@@ -417,6 +418,19 @@ function HeroWindowInterior() {
   const graph = useMemo(() => buildPlanGraph(heroTimeline), [heroTimeline]);
   const head = resolveHead(graph, position);
   const headRef = useRef(head);
+
+  // Product components assume a pinned viewport; the landing page scrolls, so
+  // neutralize document scrolling caused by effects inside this island.
+  useLayoutEffect(() => {
+    documentScrollPosition.current = { x: window.scrollX, y: window.scrollY };
+  });
+  useEffect(() => {
+    const saved = documentScrollPosition.current;
+    if (window.scrollX !== saved.x || window.scrollY !== saved.y) {
+      window.scrollTo(saved.x, saved.y);
+    }
+  });
+
   useLayoutEffect(() => {
     headRef.current = head;
   }, [head]);
