@@ -134,10 +134,15 @@ const history = timeline(
     authorKind: "assistant",
     text: "The workflow path now includes deployment in the first milestone.",
   }),
+  message("workflow-tangent-fold-ask", {
+    sequence: 21,
+    parents: ["workflow-tangent-response"],
+    text: "Fold the fixture approach into the plan.",
+  }),
 );
 
-const tip = history[19]!.commitId;
-const balancedAnchor = history[13]!.commitId;
+const openingAskCommitId = commitId("workflow-tangent-fold-ask");
+const tip = openingAskCommitId;
 const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
@@ -159,6 +164,7 @@ const DEFAULT_RIGHT_PANE: RightPaneState = {
 
 const claudeDriver = "claudeAgent" as HeroProvider;
 const codexDriver = "codex" as HeroProvider;
+const opencodeDriver = "opencode" as HeroProvider;
 const heroProviders = [
   {
     instanceId: "claudeAgent" as HeroProviderSnapshot["instanceId"],
@@ -194,6 +200,34 @@ const heroProviders = [
     slashCommands: [],
     skills: [],
   },
+  {
+    instanceId: "opencode" as HeroProviderSnapshot["instanceId"],
+    driver: opencodeDriver,
+    displayName: "OpenCode",
+    enabled: true,
+    installed: true,
+    version: "1.0.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-08-30T00:00:00.000Z",
+    models: [
+      {
+        slug: "openai/gpt-5",
+        name: "GPT-5",
+        isCustom: false,
+        isDefault: true,
+        capabilities: null,
+      },
+      {
+        slug: "anthropic/claude-opus-5",
+        name: "Claude Opus 5",
+        isCustom: false,
+        capabilities: null,
+      },
+    ],
+    slashCommands: [],
+    skills: [],
+  },
 ] satisfies ReadonlyArray<HeroProviderSnapshot>;
 
 const DEFAULT_MODEL_SELECTION = {
@@ -203,14 +237,17 @@ const DEFAULT_MODEL_SELECTION = {
 
 const INITIAL_POSITION = {
   _tag: "at",
-  commitId: balancedAnchor,
+  commitId: openingAskCommitId,
   live: true,
 } satisfies PlanPosition;
 
+const OPENING_STREAMING_TEXT = "I'm folding the fixture approach into the plan now.";
+const OPENING_LANDED_TEXT = "The fixture approach is folded into the plan.";
+
 const INITIAL_IN_FLIGHT = {
   turnId: "hero-opening-turn" as HeroInFlight["turnId"],
-  parentCommitId: balancedAnchor,
-  text: "I'm folding the fixture approach into the plan now.",
+  parentCommitId: openingAskCommitId,
+  text: OPENING_STREAMING_TEXT,
   grounding: [{ kind: "search", label: "fixture-only demo" }],
 } satisfies HeroInFlight;
 
@@ -366,6 +403,7 @@ export default function HeroDesk() {
 }
 
 function HeroWindowInterior() {
+  const documentScrollPosition = useRef({ x: 0, y: 0 });
   const [composerText, setComposerText] = useState("");
   const [pane, setPane] = useState<RightPaneState>(DEFAULT_RIGHT_PANE);
   const [timelineExtensions, setTimelineExtensions] = useState<
@@ -380,6 +418,19 @@ function HeroWindowInterior() {
   const graph = useMemo(() => buildPlanGraph(heroTimeline), [heroTimeline]);
   const head = resolveHead(graph, position);
   const headRef = useRef(head);
+
+  // Product components assume a pinned viewport; the landing page scrolls, so
+  // neutralize document scrolling caused by effects inside this island.
+  useLayoutEffect(() => {
+    documentScrollPosition.current = { x: window.scrollX, y: window.scrollY };
+  });
+  useEffect(() => {
+    const saved = documentScrollPosition.current;
+    if (window.scrollX !== saved.x || window.scrollY !== saved.y) {
+      window.scrollTo(saved.x, saved.y);
+    }
+  });
+
   useLayoutEffect(() => {
     headRef.current = head;
   }, [head]);
@@ -491,9 +542,9 @@ function HeroWindowInterior() {
         ...current,
         message(OPENING_REPLY_NAME, {
           sequence: history.length + current.length + 1,
-          parents: [balancedAnchor],
+          parents: [openingAskCommitId],
           authorKind: "assistant",
-          text: INITIAL_IN_FLIGHT.text,
+          text: OPENING_LANDED_TEXT,
         }),
       ]);
       setPosition((current) => {
