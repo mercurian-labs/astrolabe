@@ -134,10 +134,15 @@ const history = timeline(
     authorKind: "assistant",
     text: "The workflow path now includes deployment in the first milestone.",
   }),
+  message("workflow-tangent-fold-ask", {
+    sequence: 21,
+    parents: ["workflow-tangent-response"],
+    text: "Fold the fixture approach into the plan.",
+  }),
 );
 
-const tip = history[19]!.commitId;
-const balancedAnchor = history[13]!.commitId;
+const openingAskCommitId = commitId("workflow-tangent-fold-ask");
+const tip = openingAskCommitId;
 const heroPlanId = "marketing-site-hero" as ComponentProps<typeof PlanArtifact>["planId"];
 type HeroInFlight = NonNullable<ComponentProps<typeof PlanTimeline>["inFlight"]>;
 type HeroComposerProps = ComponentProps<typeof PlanComposer>;
@@ -232,14 +237,17 @@ const DEFAULT_MODEL_SELECTION = {
 
 const INITIAL_POSITION = {
   _tag: "at",
-  commitId: balancedAnchor,
+  commitId: openingAskCommitId,
   live: true,
 } satisfies PlanPosition;
 
+const OPENING_STREAMING_TEXT = "I'm folding the fixture approach into the plan now.";
+const OPENING_LANDED_TEXT = "The fixture approach is folded into the plan.";
+
 const INITIAL_IN_FLIGHT = {
   turnId: "hero-opening-turn" as HeroInFlight["turnId"],
-  parentCommitId: balancedAnchor,
-  text: "I'm folding the fixture approach into the plan now.",
+  parentCommitId: openingAskCommitId,
+  text: OPENING_STREAMING_TEXT,
   grounding: [{ kind: "search", label: "fixture-only demo" }],
 } satisfies HeroInFlight;
 
@@ -520,9 +528,9 @@ function HeroWindowInterior() {
         ...current,
         message(OPENING_REPLY_NAME, {
           sequence: history.length + current.length + 1,
-          parents: [balancedAnchor],
+          parents: [openingAskCommitId],
           authorKind: "assistant",
-          text: INITIAL_IN_FLIGHT.text,
+          text: OPENING_LANDED_TEXT,
         }),
       ]);
       setPosition((current) => {
