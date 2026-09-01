@@ -32,6 +32,7 @@ import {
   uiInventoryRows,
 } from "./coverage";
 import { DAG_EXPLORER_CATALOG_ENTRIES } from "../components/mercurian/DagExplorer.catalog";
+import { SPATIAL_MAP_CANVAS_CATALOG_ENTRIES } from "../components/mercurian/SpatialMapCanvas.catalog";
 import { PLAN_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/PlanArtifact.catalog";
 import { MEMORY_NOTE_READER_CATALOG_ENTRIES } from "../components/mercurian/MemoryNoteReader.catalog";
 import { MEMORY_AMENDMENT_SHEET_CATALOG_ENTRIES } from "../components/mercurian/MemoryAmendmentSheet.catalog";
@@ -818,6 +819,7 @@ export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
   ...STALE_PLAN_WARNING_CATALOG_ENTRIES,
   ...PLAN_TIMELINE_CATALOG_ENTRIES,
   ...PLAN_NODE_POPOVER_CATALOG_ENTRIES,
+  ...SPATIAL_MAP_CANVAS_CATALOG_ENTRIES,
   ...DAG_EXPLORER_CATALOG_ENTRIES,
   {
     id: "audit",

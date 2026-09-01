@@ -28,6 +28,8 @@ arranged note to open it. A refused map remains visible with the
 reason it could not be read, and index problems are called out above the list. Legacy tree-YAML
 files under `maps/` remain visible as refusals until rewritten as skill maps.
 
+Map graphs pan, zoom, and carry a minimap like the checkpoint graph.
+
 Notes show their Markdown body and backlinks. Wikilinks open other notes. A dashed red link means
 the target is referenced but has not been written yet; opening it shows which existing notes point
 to it. Memory is read fresh from its files, so edits made outside the app appear the next time the

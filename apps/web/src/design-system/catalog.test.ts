@@ -40,6 +40,7 @@ const MIGRATED_STORY_TITLES = [
   "Assistant replying",
   "Turn with a model switch",
   "Coding-session leaf",
+  "Spatial map canvas",
   "Thread view",
   "Columns at a fork",
   "Graph map",
@@ -126,7 +127,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(30);
+    expect(migratedEntries).toHaveLength(31);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

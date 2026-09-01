@@ -1,5 +1,5 @@
 import type { MemoryMap } from "@t3tools/contracts";
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 
 import {
   layoutSkillMapFlow,
@@ -7,6 +7,11 @@ import {
   SKILL_MAP_GRAPH_NODE_SIZE,
   type SkillMapGraphLayout,
 } from "./SkillMapGraph.logic";
+import {
+  SpatialMapCanvas,
+  type SpatialMapCanvasEdge,
+  type SpatialMapCanvasNode,
+} from "./SpatialMapCanvas";
 
 export function SkillMapGraph({
   map,
@@ -21,66 +26,16 @@ export function SkillMapGraph({
     () => (view === "flow" ? layoutSkillMapFlow(map) : layoutSkillMapWeb(map)),
     [map, view],
   );
-  const markerId = `skill-map-arrow-${useId().replaceAll(":", "")}`;
-  const positions = new Map(layout.nodes.map((node) => [node.name, node]));
-  if (layout.nodes.length === 0) {
-    return <p className="text-sm text-muted-foreground">This map has no arranged notes yet.</p>;
-  }
-  return (
-    <div className="overflow-x-auto rounded-md border border-border bg-muted/10 p-2">
-      <svg
-        aria-label={`${map.name} arrangement ${view}`}
-        className="block max-w-none"
-        height={layout.height}
-        viewBox={`0 0 ${layout.width} ${layout.height}`}
-        width={layout.width}
-      >
-        <title>
-          {map.name} arrangement {view}
-        </title>
-        <defs>
-          <marker
-            id={markerId}
-            markerHeight="7"
-            markerWidth="7"
-            orient="auto-start-reverse"
-            refX="6"
-            refY="3.5"
-            viewBox="0 0 7 7"
-          >
-            <path className="fill-muted-foreground" d="M 0 0 L 7 3.5 L 0 7 z" />
-          </marker>
-        </defs>
-        {layout.edges.map(({ edge, index }) => {
-          const from = positions.get(edge.from);
-          const to = positions.get(edge.to);
-          if (from === undefined || to === undefined) return null;
-          const geometry = edgeGeometry(from, to, view);
-          return (
-            <g key={`${edge.from}-${edge.type}-${edge.to}-${index}`}>
-              <path
-                className="fill-none stroke-muted-foreground"
-                d={geometry.path}
-                markerEnd={`url(#${markerId})`}
-                strokeWidth="1.25"
-              />
-              {map.types.length > 1 ? (
-                <text
-                  className="fill-muted-foreground text-[10px]"
-                  textAnchor="middle"
-                  x={geometry.labelX}
-                  y={geometry.labelY - 4}
-                >
-                  {edge.type}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-        {layout.nodes.map((node) => (
+  const nodes = useMemo<ReadonlyArray<SpatialMapCanvasNode>>(
+    () =>
+      layout.nodes.map((node) => ({
+        id: node.name,
+        x: node.x,
+        y: node.y,
+        ...SKILL_MAP_GRAPH_NODE_SIZE,
+        render: () => (
           <g
             className="cursor-pointer outline-none focus-visible:[&_rect]:stroke-primary"
-            key={node.name}
             onClick={() => onOpenNote(node.name)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -90,7 +45,6 @@ export function SkillMapGraph({
             }}
             role="button"
             tabIndex={0}
-            transform={`translate(${node.x - SKILL_MAP_GRAPH_NODE_SIZE.width / 2} ${node.y - SKILL_MAP_GRAPH_NODE_SIZE.height / 2})`}
           >
             <rect
               className="fill-background stroke-border"
@@ -108,9 +62,58 @@ export function SkillMapGraph({
               {truncateLabel(node.name)}
             </text>
           </g>
-        ))}
-      </svg>
-    </div>
+        ),
+      })),
+    [layout.nodes, onOpenNote],
+  );
+  const edges = useMemo<ReadonlyArray<SpatialMapCanvasEdge>>(() => {
+    const positions = new Map(layout.nodes.map((node) => [node.name, node]));
+    return layout.edges.flatMap(({ edge, index }) => {
+      const from = positions.get(edge.from);
+      const to = positions.get(edge.to);
+      if (from === undefined || to === undefined) return [];
+      const geometry = edgeGeometry(from, to, view);
+      return [
+        {
+          id: `${edge.from}-${edge.type}-${edge.to}-${index}`,
+          from,
+          to,
+          ...(map.types.length > 1 ? { label: edge.type } : {}),
+          render: ({ markerId }) => (
+            <>
+              <path
+                className="fill-none stroke-muted-foreground"
+                d={geometry.path}
+                markerEnd={`url(#${markerId})`}
+                strokeWidth="1.25"
+              />
+              {map.types.length > 1 ? (
+                <text
+                  className="fill-muted-foreground text-[10px]"
+                  textAnchor="middle"
+                  x={geometry.labelX}
+                  y={geometry.labelY - 4}
+                >
+                  {edge.type}
+                </text>
+              ) : null}
+            </>
+          ),
+        },
+      ];
+    });
+  }, [layout.edges, layout.nodes, map.types.length, view]);
+  if (layout.nodes.length === 0) {
+    return <p className="text-sm text-muted-foreground">This map has no arranged notes yet.</p>;
+  }
+  return (
+    <SpatialMapCanvas
+      ariaLabel={`${map.name} arrangement ${view}`}
+      bounds={{ minX: 0, minY: 0, maxX: layout.width, maxY: layout.height }}
+      className="h-[28rem] max-h-[60vh]"
+      edges={edges}
+      nodes={nodes}
+    />
   );
 }
 

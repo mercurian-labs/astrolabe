@@ -76,7 +76,7 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
   "src/components/mercurian/SkillMapGraph.tsx": {
     category: "composition-shell",
     reason:
-      "The static graph is selected and supplied with validated skill-map data by the live Memory page.",
+      "The spatial graph adapter is selected and supplied with validated skill-map data by the live Memory page.",
   },
   "src/components/mercurian/memoryMarkdown.tsx": {
     category: "composition-shell",

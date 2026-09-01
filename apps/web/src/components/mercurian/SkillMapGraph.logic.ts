@@ -67,7 +67,9 @@ export function layoutSkillMapFlow(map: MemoryMap): SkillMapGraphLayout {
   const dag = graphStratify()
     .id((node: SkillMapFlowInputNode) => node.name)
     .parentIds((node: SkillMapFlowInputNode) => node.parents)(input);
-  sugiyama().nodeSize([NODE_WIDTH, NODE_HEIGHT]).gap([36, 64])(dag);
+  sugiyama()
+    .nodeSize([NODE_WIDTH, NODE_HEIGHT])
+    .gap([NODE_WIDTH * 2, NODE_HEIGHT * 2])(dag);
   return normalizeLayout(
     map,
     [...dag.nodes()].map((node) => ({ name: node.data.name, x: node.x, y: node.y })),
