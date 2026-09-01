@@ -18,6 +18,8 @@ const sessionRecord = {
   endedAt: null,
   outcome: null,
   prUrl: null,
+  settledCommitOid: null,
+  partial: false,
 } as const;
 
 const createdResult = {
@@ -43,16 +45,16 @@ const createdResult = {
   },
 };
 
-it.effect("attaches a newly-created PR to the session resolved by worktree", () =>
+it.effect("attaches a newly-created PR to the session resolved by branch", () =>
   Effect.gen(function* () {
     const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
     yield* attachCreatedPullRequestToCodingSession(
       {
-        getByWorktreePath: () => Effect.succeed(Option.some(sessionRecord)),
+        getByBranch: () => Effect.succeed(Option.some(sessionRecord)),
         attachPullRequest: (input) => Effect.sync(() => attached.push(input)),
       },
-      sessionRecord.worktreePath,
       createdResult,
+      sessionRecord.branch,
     );
     assert.deepStrictEqual(attached, [
       { threadId: sessionRecord.threadId, prUrl: "https://example.com/pr/119" },
@@ -65,11 +67,11 @@ it.effect("leaves an upstream thread with no coding-session row untouched", () =
     let attachCalls = 0;
     yield* attachCreatedPullRequestToCodingSession(
       {
-        getByWorktreePath: () => Effect.succeed(Option.none()),
+        getByBranch: () => Effect.succeed(Option.none()),
         attachPullRequest: () => Effect.sync(() => attachCalls++),
       },
-      "/tmp/upstream-thread",
       createdResult,
+      "feature/upstream",
     );
     assert.strictEqual(attachCalls, 0);
   }),

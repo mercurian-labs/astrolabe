@@ -85,11 +85,13 @@ export const toWirePlanSpecRevision = (revision: PlanSpecRevision): Contracts.Pl
 
 export const toWirePlanCodingSession = (
   session: PlanCodingSession,
+  partial = false,
 ): Contracts.PlanCodingSession => ({
   ...toWirePlanCommitFields(session),
   repositoryId: session.repositoryId,
   repositoryName: session.repositoryName,
   planRevisionCommitId: MercurianCommitId.make(session.planRevisionCommitId),
+  ...(partial ? { partial: true } : {}),
 });
 
 export const toWirePlanSpecAt = (spec: PlanSpecAt): Contracts.PlanSpecAt => ({
@@ -110,22 +112,39 @@ export const toWirePlanTimelineItem = (item: PlanTimelineItem): Contracts.PlanTi
   return { _tag: "plan-revision", ...toWirePlanRevision(item) };
 };
 
-export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => ({
-  plan: toWirePlanShell(detail.plan),
-  planText: detail.planText,
-  spec: detail.spec === null ? null : toWirePlanSpecAt(detail.spec),
-  ...(detail.origin === undefined ? {} : { origin: detail.origin }),
-  timeline: detail.timeline.map(toWirePlanTimelineItem),
-  snapshotSequence: detail.snapshotSequence,
-  readyCommits: detail.readyCommits.map((ready) => ({
-    ...ready,
-    commitId: MercurianCommitId.make(ready.commitId),
-  })),
-  codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
-  // The store's detail knows nothing live; the subscribe path overlays the
-  // assistant's actual in-flight turns onto this.
-  inFlightTurns: [],
-});
+export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => {
+  const codingSessions = new Map(
+    detail.codingSessions.map((session) => [String(session.commitId), session]),
+  );
+  return {
+    plan: toWirePlanShell(detail.plan),
+    planText: detail.planText,
+    spec: detail.spec === null ? null : toWirePlanSpecAt(detail.spec),
+    ...(detail.origin === undefined ? {} : { origin: detail.origin }),
+    timeline: detail.timeline.map((item) =>
+      item._tag === "coding-session"
+        ? {
+            _tag: "coding-session" as const,
+            ...toWirePlanCodingSession(
+              item,
+              codingSessions.get(String(item.commitId))?.partial !== false &&
+                codingSessions.get(String(item.commitId))?.partial !== 0 &&
+                codingSessions.get(String(item.commitId)) !== undefined,
+            ),
+          }
+        : toWirePlanTimelineItem(item),
+    ),
+    snapshotSequence: detail.snapshotSequence,
+    readyCommits: detail.readyCommits.map((ready) => ({
+      ...ready,
+      commitId: MercurianCommitId.make(ready.commitId),
+    })),
+    codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
+    // The store's detail knows nothing live; the subscribe path overlays the
+    // assistant's actual in-flight turns onto this.
+    inFlightTurns: [],
+  };
+};
 
 export const toWirePlanCommitEvent = (event: PlanTimelineEvent): Contracts.PlanStreamItem => ({
   kind: "commit",

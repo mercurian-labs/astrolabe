@@ -57,6 +57,8 @@ export const planCodingSessionRecord = (
     endedAt: null,
     outcome: null,
     prUrl: null,
+    settledCommitOid: null,
+    partial: false,
     ...fields,
   });
 };

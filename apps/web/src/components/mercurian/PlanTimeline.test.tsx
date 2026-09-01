@@ -424,6 +424,7 @@ describe("PlanTimeline", () => {
       endedAt: "2026-08-03T13:00:00.000Z",
       outcome: "completed",
       prUrl: "https://example.test/pull/1",
+      partial: true,
     });
     const markup = renderToStaticMarkup(
       <PlanTimeline timeline={[sessionCommit]} codingSessions={[session]} />,
@@ -431,6 +432,7 @@ describe("PlanTimeline", () => {
     expect(markup).toContain("Coding session · server");
     expect(markup).toContain("Implemented revision");
     expect(markup).toContain("Completed");
+    expect(markup).toContain("Partial");
     expect(markup).toContain("mercurian/reshape-sidebar-12345678");
     expect(markup).toContain('href="https://example.test/pull/1"');
     expect(markup).toContain('href="/sessions/thread"');

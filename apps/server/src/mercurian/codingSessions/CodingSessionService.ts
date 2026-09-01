@@ -21,6 +21,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
@@ -34,8 +35,16 @@ import * as PlanningStore from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryScript } from "../repositories/schema.ts";
-import { buildCodingSessionBranchName } from "./branch.ts";
+import { buildLineBranchName } from "./branch.ts";
 import { CommitId } from "../commitTree/schema.ts";
+import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
+import {
+  slotMemberWorktreePath,
+  SlotPoolAtCapacityError,
+  SlotService,
+} from "../worktreeSlots/SlotService.ts";
+import type { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 
 export class CodingSessionService extends Context.Service<
   CodingSessionService,
@@ -108,6 +117,9 @@ export const make = Effect.gen(function* () {
   const terminals = yield* TerminalManager;
   const deletionReactor = yield* ThreadDeletionReactor;
   const planTurns = yield* PlanTurnRegistry;
+  const lineBranches = yield* LineBranchStore;
+  const slotService = yield* SlotService;
+  const path = yield* Path.Path;
 
   const uuid = crypto.randomUUIDv4;
   const commandId = (tag: string) =>
@@ -275,16 +287,47 @@ export const make = Effect.gen(function* () {
       });
       const createdAt = DateTime.formatIso(yield* DateTime.now);
       const startedAt = yield* DateTime.now;
-      const branch = buildCodingSessionBranchName(
-        detail.plan.title,
-        (yield* uuid).replaceAll("-", ""),
-      );
+      const lineRootCommitId = lineRootCommitIdFor(detail, input.parentCommitId);
+      let desiredBaseOid = localBaseOid;
+      if (
+        input.startFromOrigin &&
+        (yield* git.remoteExists({ cwd: repository.path, remoteName: "origin" }))
+      ) {
+        yield* git.fetchRemote({ cwd: repository.path, remoteName: "origin" });
+        desiredBaseOid = (yield* git.resolveRemoteTrackingCommit({
+          cwd: repository.path,
+          refName: input.baseRef,
+          fallbackRemoteName: "origin",
+        })).commitSha;
+      }
+      const lineBranchKey = { lineRootCommitId, repositoryId: input.repositoryId };
+      let lineBranch = yield* lineBranches.get(lineBranchKey);
+      if (Option.isNone(lineBranch)) {
+        const branch = buildLineBranchName(detail.plan.title, String(lineRootCommitId));
+        yield* gitDriver.execute({
+          operation: "coding-session-create-line-branch",
+          cwd: repository.path,
+          args: ["branch", branch, desiredBaseOid],
+        });
+        yield* lineBranches.create({
+          ...lineBranchKey,
+          branch,
+          baseOid: desiredBaseOid,
+          built: false,
+          createdAt: startedAt,
+        });
+        lineBranch = yield* lineBranches.get(lineBranchKey);
+      }
+      if (Option.isNone(lineBranch)) {
+        return yield* Effect.die(new Error("Failed to create line branch"));
+      }
+      const branch = lineBranch.value.branch;
       const threadId = ThreadId.make(yield* uuid);
       const messageId = MessageId.make(yield* uuid);
+      const holder = { kind: "turn" as const, threadId };
       let threadCreated = false;
       let worktreePath: string | undefined;
-      let capturedBaseOid = localBaseOid;
-      let branchMayExist = false;
+      let slotId: WorktreeSlotId | undefined;
 
       const cleanup = Effect.gen(function* () {
         if (threadCreated) {
@@ -297,27 +340,8 @@ export const make = Effect.gen(function* () {
             .pipe(Effect.ignoreCause({ log: true }));
           yield* deletionReactor.drain.pipe(Effect.ignoreCause({ log: true }));
         }
-        if (worktreePath !== undefined) {
-          yield* git
-            .removeWorktree({ cwd: repository.path, path: worktreePath, force: true })
-            .pipe(Effect.ignoreCause({ log: true }));
-        }
-        if (branchMayExist && capturedBaseOid.length > 0) {
-          const deleted = yield* gitDriver
-            .execute({
-              operation: "coding-session-cleanup-branch",
-              cwd: repository.path,
-              args: codingSessionBranchCasDeleteArgs(branch, capturedBaseOid),
-              allowNonZeroExit: true,
-            })
-            .pipe(Effect.option);
-          if (Option.isSome(deleted) && deleted.value.exitCode !== 0) {
-            yield* Effect.logWarning("coding-session cleanup preserved a moved branch", {
-              threadId,
-              branch,
-              repositoryPath: repository.path,
-            });
-          }
+        if (slotId !== undefined) {
+          yield* slotService.release(slotId, holder).pipe(Effect.ignoreCause({ log: true }));
         }
       });
 
@@ -353,35 +377,23 @@ export const make = Effect.gen(function* () {
         });
         threadCreated = true;
 
-        let worktreeBaseRef = input.baseRef;
-        if (
-          input.startFromOrigin &&
-          (yield* git.remoteExists({ cwd: repository.path, remoteName: "origin" }))
-        ) {
-          yield* git.fetchRemote({ cwd: repository.path, remoteName: "origin" });
-          const remote = yield* git.resolveRemoteTrackingCommit({
-            cwd: repository.path,
-            refName: input.baseRef,
-            fallbackRemoteName: "origin",
-          });
-          worktreeBaseRef = remote.commitSha;
-          capturedBaseOid = remote.commitSha;
-        }
-
-        branchMayExist = true;
-        const created = yield* git.createWorktree({
-          cwd: repository.path,
-          refName: worktreeBaseRef,
-          newRefName: branch,
-          baseRefName: input.baseRef,
-          path: null,
+        const slot = yield* slotService.claim({
+          projectId: detail.plan.projectId,
+          lineRootCommitId,
+          holder,
         });
-        worktreePath = created.worktree.path;
+        slotId = slot.slotId;
+        worktreePath = slotMemberWorktreePath(path, slot, input.repositoryId) ?? undefined;
+        if (worktreePath === undefined) {
+          return yield* Effect.die(
+            new Error(`Project slot ${slot.slotId} is missing repository ${input.repositoryId}`),
+          );
+        }
         yield* orchestration.dispatch({
           type: "thread.meta.update",
           commandId: yield* commandId("thread-meta"),
           threadId,
-          branch: created.worktree.refName,
+          branch,
           worktreePath,
         });
         yield* vcsStatus
@@ -419,7 +431,9 @@ export const make = Effect.gen(function* () {
         return { commitId: MercurianCommitId.make(leaf.commitId), threadId };
       });
 
-      return yield* withCodingSessionBirthCompensation(birth, cleanup);
+      return yield* withCodingSessionBirthCompensation(birth, cleanup).pipe(
+        Effect.catchTag("SlotPoolAtCapacityError", () => Effect.fail(blocked("pool-at-capacity"))),
+      );
     },
   );
 

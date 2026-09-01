@@ -28,6 +28,8 @@ const record = {
   endedAt: null,
   outcome: null,
   prUrl: null,
+  settledCommitOid: null,
+  partial: false,
 } as const;
 
 const seedPlanAndCommit = Effect.gen(function* () {

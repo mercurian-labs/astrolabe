@@ -116,10 +116,14 @@ import * as ServerConfig from "./config.ts";
 import { makeRoutesLayer } from "./server.ts";
 import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
+import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
+import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
+import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
+import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
@@ -695,7 +699,10 @@ const buildAppUnderTest = (options?: {
           listAll: Effect.succeed([]),
           getByThreadId: () => Effect.succeed(Option.none()),
           getByWorktreePath: () => Effect.succeed(Option.none()),
+          getByBranch: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
+          recordSettledCommit: () => Effect.void,
+          recordPartial: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,
@@ -1091,9 +1098,33 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        Layer.mock(CodingSessionService.CodingSessionService)({
-          start: () => Effect.die("CodingSessionService not stubbed in this test"),
-        }),
+        Layer.mergeAll(
+          Layer.mock(CodingSessionService.CodingSessionService)({
+            start: () => Effect.die("CodingSessionService not stubbed in this test"),
+          }),
+          Layer.mock(SlotStore.SlotStore)({
+            list: () => Effect.succeed([]),
+            listAll: Effect.succeed([]),
+            get: () => Effect.succeed(Option.none()),
+            create: () => Effect.void,
+            assign: () => Effect.void,
+            changes: Stream.empty,
+          }),
+          SlotRegistry.layer,
+          Layer.mock(SlotService.SlotService)({
+            claim: () => Effect.die("SlotService.claim not stubbed in this test"),
+            release: () => Effect.succeed(false),
+            retain: () => Effect.void,
+          }),
+          Layer.mock(LineBranchStore.LineBranchStore)({
+            listAll: Effect.succeed([]),
+            get: () => Effect.succeed(Option.none()),
+            create: () => Effect.void,
+            repointIfUnbuilt: () => Effect.succeed(false),
+            markBuilt: () => Effect.void,
+            changes: Stream.empty,
+          }),
+        ),
       ),
       // Mercurian's stores, real but in-memory: they own their own database
       // file, so nothing here reaches t3code's store.
@@ -1632,6 +1663,8 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
       endedAt: null,
       outcome: null,
       prUrl: null,
+      settledCommitOid: null,
+      partial: false,
     } as const;
     const lookedUpThreadIds: ThreadId[] = [];
 
@@ -4906,6 +4939,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           endedAt: null,
           outcome: null,
           prUrl: null,
+          settledCommitOid: null,
+          partial: false,
         } as const;
       };
       const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
@@ -6694,6 +6729,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           endedAt: null,
           outcome: null,
           prUrl: null,
+          settledCommitOid: null,
+          partial: false,
         } as const;
         const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
         const announcedPlans: PlanId[] = [];
@@ -6724,9 +6761,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           layers: {
             vcsDriver: { isInsideWorkTree: () => Effect.succeed(true) },
             codingSessionStore: {
-              getByWorktreePath: (worktreePath) =>
+              getByBranch: (branch) =>
                 Effect.succeed(
-                  worktreePath === sessionCwd ? Option.some(sessionRecord) : Option.none(),
+                  branch === sessionRecord.branch ? Option.some(sessionRecord) : Option.none(),
                 ),
               attachPullRequest: (input) =>
                 Effect.sync(() => {
@@ -6738,12 +6775,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               invalidateLocalStatus: () => Effect.void,
               invalidateRemoteStatus: () => Effect.void,
               invalidateStatus: () => Effect.void,
-              localStatus: () =>
+              localStatus: ({ cwd }) =>
                 Effect.succeed({
                   isRepo: true,
                   hasPrimaryRemote: true,
                   isDefaultRef: false,
-                  refName: "feature/session-pr",
+                  refName: cwd === sessionCwd ? sessionRecord.branch : "feature/upstream",
                   hasWorkingTreeChanges: false,
                   workingTree: { files: [], insertions: 0, deletions: 0 },
                 }),

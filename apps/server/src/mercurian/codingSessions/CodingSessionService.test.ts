@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
   MercurianCommitId,
+  CodingSessionBlockedError,
   MercurianProjectId,
   MercurianRepositoryId,
   MercurianRepositoryScriptId,
@@ -15,12 +16,13 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
 import * as Ref from "effect/Ref";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
@@ -34,6 +36,9 @@ import * as VcsStatusBroadcaster from "../../vcs/VcsStatusBroadcaster.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
+import * as SlotService from "../worktreeSlots/SlotService.ts";
+import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 import {
   make,
   codingSessionBranchCasDeleteArgs,
@@ -100,6 +105,7 @@ interface SagaState {
   unrelatedProjectHasSetupScript: boolean;
   movedBranch: boolean;
   originExists: boolean;
+  poolAtCapacity: boolean;
   repositoryPresent: boolean;
   failurePoint: SagaFailurePoint | null;
 }
@@ -119,7 +125,7 @@ function sagaState(overrides: Partial<SagaState> = {}): SagaState {
     commands: [],
     thread: false,
     worktree: false,
-    branch: false,
+    branch: true,
     leaf: false,
     session: false,
     terminal: false,
@@ -149,6 +155,7 @@ function sagaState(overrides: Partial<SagaState> = {}): SagaState {
     unrelatedProjectHasSetupScript: false,
     movedBranch: false,
     originExists: true,
+    poolAtCapacity: false,
     repositoryPresent: true,
     failurePoint: null,
     ...overrides,
@@ -170,6 +177,16 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
               repositoryName: "astrolabe",
             },
           ],
+          timeline: [
+            {
+              _tag: "plan-revision",
+              commitId: parentCommitId,
+              parents: [],
+              sequence: 1,
+              createdAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
+            },
+          ],
+          codingSessions: [],
         } as never),
       getPlanTextAt: () => Effect.succeed("# Exact implementation plan\n\nShip this."),
       appendCodingSession: (appendInput) =>
@@ -331,6 +348,55 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
     Layer.mock(PlanTurnRegistry.PlanTurnRegistry)({
       activeChainMember: () => Effect.succeed(false),
     }),
+    Layer.mock(LineBranchStore.LineBranchStore)({
+      get: () =>
+        Effect.succeed(
+          Option.some({
+            lineRootCommitId: parentCommitId,
+            repositoryId,
+            branch: "mercurian/coding-session-birth-ready-revi",
+            baseOid: "origin-base-oid",
+            built: false,
+            createdAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
+          }),
+        ),
+    }),
+    Layer.mock(SlotService.SlotService)({
+      claim: () =>
+        Effect.gen(function* () {
+          state.calls.push("slot:claim");
+          if (state.poolAtCapacity) {
+            return yield* new SlotService.SlotPoolAtCapacityError({
+              projectId,
+              poolSize: 1,
+            });
+          }
+          if (state.failurePoint === "worktree creation") return yield* fail("worktree creation");
+          state.worktree = true;
+          const now = DateTime.makeUnsafe("2026-08-14T00:00:00.000Z");
+          return {
+            slotId: WorktreeSlotId.make("mercurian-project:slot-1"),
+            projectId,
+            path: "/worktrees/coding-session",
+            currentLineRootCommitId: parentCommitId,
+            members: [
+              {
+                repositoryId,
+                relativePath: ".",
+                currentBranch: "mercurian/coding-session-birth-ready-revi",
+              },
+            ],
+            createdAt: now,
+            lastUsedAt: now,
+          };
+        }),
+      release: () =>
+        Effect.sync(() => {
+          state.calls.push("cleanup:slot");
+          state.worktree = false;
+          return true;
+        }),
+    }),
   );
 
   return make.pipe(
@@ -379,10 +445,10 @@ describe("CodingSessionService validation", () => {
       assert.strictEqual(state.leaf, true);
       assert.strictEqual(state.session, true);
       const orderedBirthSteps = [
+        "fetch",
         "dispatch:project.create",
         "dispatch:thread.create",
-        "fetch",
-        "worktree:origin-base-oid",
+        "slot:claim",
         "dispatch:thread.meta.update",
         "setup:write:vp install\r",
         "setup:write:vp generate\r",
@@ -452,7 +518,7 @@ describe("CodingSessionService validation", () => {
         assert.strictEqual(threadCreate.title, "Coding session birth");
         assert.strictEqual(threadCreate.runtimeMode, "full-access");
         assert.strictEqual(threadCreate.modelSelection.instanceId, "codex-work");
-        assert.match(threadCreate.branch ?? "", /^mercurian\/coding-session-birth-[0-9a-f]{8}$/u);
+        assert.strictEqual(threadCreate.branch, "mercurian/coding-session-birth-ready-revi");
       }
       const turn = state.commands.find((command) => command.type === "thread.turn.start");
       assert.ok(turn?.type === "thread.turn.start");
@@ -472,7 +538,7 @@ describe("CodingSessionService validation", () => {
         originExists: false,
       });
       yield* runSaga(state);
-      assert.ok(state.calls.includes("worktree:main"));
+      assert.ok(state.calls.includes("slot:claim"));
       assert.ok(!state.calls.includes("fetch"));
       assert.ok(!state.calls.includes("dispatch:thread.activity.append"));
       assert.deepStrictEqual(state.terminalOpens, []);
@@ -520,6 +586,16 @@ describe("CodingSessionService validation", () => {
       assert.strictEqual(refusal._tag, "MercurianRepositoryNotFoundError");
     }),
   );
+
+  it.effect("maps a full repository pool to the typed coding-session refusal", () =>
+    Effect.gen(function* () {
+      const refusal = yield* runSaga(sagaState({ poolAtCapacity: true })).pipe(Effect.flip);
+      assert.ok(Schema.is(CodingSessionBlockedError)(refusal));
+      if (Schema.is(CodingSessionBlockedError)(refusal)) {
+        assert.strictEqual(refusal.reason, "pool-at-capacity");
+      }
+    }),
+  );
 });
 
 describe("CodingSessionService compensation", () => {
@@ -538,7 +614,7 @@ describe("CodingSessionService compensation", () => {
         const result = yield* Effect.exit(runSaga(state));
         assert.strictEqual(state.thread, false);
         assert.strictEqual(state.worktree, false);
-        assert.strictEqual(state.branch, false);
+        assert.strictEqual(state.branch, true);
         assert.strictEqual(state.leaf, false);
         assert.strictEqual(state.session, false);
         assert.ok(result._tag === "Failure");
@@ -548,43 +624,25 @@ describe("CodingSessionService compensation", () => {
           failurePoint === "turn start" ||
           failurePoint === "leaf transaction"
         ) {
-          assert.ok(
-            state.calls.indexOf("cleanup:worktree") < state.calls.indexOf("cleanup:branch"),
-          );
+          assert.ok(state.calls.includes("cleanup:slot"));
         }
-        if (failurePoint !== "project creation" && failurePoint !== "thread creation") {
+        if (
+          failurePoint !== "project creation" &&
+          failurePoint !== "thread creation" &&
+          failurePoint !== "origin fetch/base resolution"
+        ) {
           assert.ok(state.calls.includes("cleanup:drain"));
         }
       }),
     );
   }
 
-  it.effect("preserves a moved branch when compare-and-swap cleanup refuses", () =>
-    Effect.gen(function* () {
-      const state = sagaState({ failurePoint: "leaf transaction", movedBranch: true });
-      const messages: string[] = [];
-      const logger = Logger.make(({ message }) => messages.push(String(message)));
-      yield* Effect.exit(
-        runSaga(state).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false }))),
-      );
-      assert.strictEqual(state.thread, false);
-      assert.strictEqual(state.worktree, false);
-      assert.strictEqual(state.branch, true);
-      assert.ok(state.calls.includes("cleanup:branch"));
-      assert.ok(
-        messages.some((message) =>
-          message.includes("coding-session cleanup preserved a moved branch"),
-        ),
-      );
-    }),
-  );
-
-  it.effect("waits for deletion cleanup so setup terminals close before worktree removal", () =>
+  it.effect("waits for deletion cleanup so setup terminals close before releasing the slot", () =>
     Effect.gen(function* () {
       const state = sagaState({ failurePoint: "turn start" });
       yield* Effect.exit(runSaga(state));
       assert.strictEqual(state.terminal, false);
-      assert.ok(state.calls.indexOf("cleanup:drain") < state.calls.indexOf("cleanup:worktree"));
+      assert.ok(state.calls.indexOf("cleanup:drain") < state.calls.indexOf("cleanup:slot"));
     }),
   );
 

@@ -79,10 +79,15 @@ import { deriveServerPaths, ServerConfig } from "../src/config.ts";
 import * as WorkspaceEntries from "../src/workspace/WorkspaceEntries.ts";
 import * as WorkspacePaths from "../src/workspace/WorkspacePaths.ts";
 import * as VcsDriverRegistry from "../src/vcs/VcsDriverRegistry.ts";
+import * as GitVcsDriver from "../src/vcs/GitVcsDriver.ts";
 import { VcsStatusBroadcaster } from "../src/vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../src/git/GitWorkflowService.ts";
 import * as VcsProcess from "../src/vcs/VcsProcess.ts";
 import * as AgentAwarenessRelay from "../src/relay/AgentAwarenessRelay.ts";
+import * as CodingSessionStore from "../src/mercurian/codingSessions/CodingSessionStore.ts";
+import * as LineBranchStore from "../src/mercurian/commitTree/LineBranchStore.ts";
+import * as SlotStore from "../src/mercurian/worktreeSlots/SlotStore.ts";
+import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 
 const decodeCodexSettings = Schema.decodeEffect(CodexSettings);
 
@@ -340,6 +345,48 @@ export const makeOrchestrationIntegrationHarness = (
     );
     const checkpointReactorLayer = CheckpointReactorLive.pipe(
       Layer.provideMerge(runtimeServicesLayer),
+      Layer.provideMerge(
+        Layer.mock(CodingSessionStore.CodingSessionStore)({
+          record: () => Effect.void,
+          recordInTransaction: () => Effect.void,
+          announce: () => Effect.void,
+          listForPlan: () => Effect.succeed([]),
+          listAll: Effect.succeed([]),
+          getByThreadId: () => Effect.succeed(Option.none()),
+          getByWorktreePath: () => Effect.succeed(Option.none()),
+          getByBranch: () => Effect.succeed(Option.none()),
+          updateBranch: () => Effect.void,
+          recordSettledCommit: () => Effect.void,
+          recordPartial: () => Effect.void,
+          end: () => Effect.void,
+          attachPullRequest: () => Effect.void,
+          changes: Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.mock(LineBranchStore.LineBranchStore)({
+          listAll: Effect.succeed([]),
+          get: () => Effect.succeed(Option.none()),
+          create: () => Effect.void,
+          repointIfUnbuilt: () => Effect.succeed(false),
+          markBuilt: () => Effect.void,
+          changes: Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.mock(SlotStore.SlotStore)({
+          list: () => Effect.succeed([]),
+          listAll: Effect.succeed([]),
+          get: () => Effect.succeed(Option.none()),
+          create: () => Effect.void,
+          assign: () => Effect.void,
+          changes: Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(SlotRegistry.layer),
+      Layer.provideMerge(
+        GitVcsDriver.layer.pipe(Layer.provide(VcsProcess.layer), Layer.provide(NodeServices.layer)),
+      ),
       Layer.provideMerge(
         Layer.succeed(VcsStatusBroadcaster, {
           getStatus: () => Effect.die("getStatus should not be called in this test"),

@@ -53,9 +53,20 @@ export class CodingSessionStore extends Context.Service<
     readonly getByWorktreePath: (
       worktreePath: string,
     ) => Effect.Effect<Option.Option<CodingSessionRecord>, CodingSessionStoreError>;
+    readonly getByBranch: (
+      branch: string,
+    ) => Effect.Effect<Option.Option<CodingSessionRecord>, CodingSessionStoreError>;
     readonly updateBranch: (
       threadId: ThreadId,
       branch: string,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly recordSettledCommit: (
+      threadId: ThreadId,
+      settledCommitOid: string,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly recordPartial: (
+      threadId: ThreadId,
+      partial: boolean,
     ) => Effect.Effect<void, CodingSessionStoreError>;
     readonly end: (input: EndCodingSessionInput) => Effect.Effect<void, CodingSessionStoreError>;
     readonly attachPullRequest: (
@@ -68,7 +79,10 @@ export class CodingSessionStore extends Context.Service<
 const PlanRequest = Schema.Struct({ planId: PlanId });
 const ThreadRequest = Schema.Struct({ threadId: ThreadId });
 const WorktreeRequest = Schema.Struct({ worktreePath: Schema.String });
+const BranchLookupRequest = Schema.Struct({ branch: Schema.String });
 const BranchRequest = Schema.Struct({ threadId: ThreadId, branch: Schema.String });
+const SettledCommitRequest = Schema.Struct({ threadId: ThreadId, settledCommitOid: Schema.String });
+const PartialRequest = Schema.Struct({ threadId: ThreadId, partial: Schema.Boolean });
 const NoRequest = Schema.Struct({});
 
 function toStoreError(sqlOperation: string, decodeOperation: string) {
@@ -87,7 +101,8 @@ export const make = Effect.gen(function* () {
     commit_id AS "commitId", plan_id AS "planId", repository_id AS "repositoryId",
     thread_id AS "threadId", branch AS "branch", worktree_path AS "worktreePath",
     base_ref AS "baseRef", started_at AS "startedAt", ended_at AS "endedAt",
-    outcome AS "outcome", pr_url AS "prUrl"
+    outcome AS "outcome", pr_url AS "prUrl", settled_commit_oid AS "settledCommitOid",
+    partial AS "partial"
   `;
 
   const insert = SqlSchema.void({
@@ -95,11 +110,11 @@ export const make = Effect.gen(function* () {
     execute: (row) => sql`
       INSERT INTO coding_sessions (
         commit_id, plan_id, repository_id, thread_id, branch, worktree_path,
-        base_ref, started_at, ended_at, outcome, pr_url
+        base_ref, started_at, ended_at, outcome, pr_url, settled_commit_oid, partial
       ) VALUES (
         ${row.commitId}, ${row.planId}, ${row.repositoryId}, ${row.threadId}, ${row.branch},
         ${row.worktreePath}, ${row.baseRef}, ${row.startedAt}, ${row.endedAt}, ${row.outcome},
-        ${row.prUrl}
+        ${row.prUrl}, ${row.settledCommitOid}, ${row.partial ? 1 : 0}
       )
     `,
   });
@@ -129,10 +144,27 @@ export const make = Effect.gen(function* () {
     execute: ({ worktreePath }) =>
       sql`SELECT ${columns} FROM coding_sessions WHERE worktree_path = ${worktreePath}`,
   });
+  const findByBranch = SqlSchema.findOneOption({
+    Request: BranchLookupRequest,
+    Result: CodingSessionRecord,
+    execute: ({ branch }) => sql`SELECT ${columns} FROM coding_sessions WHERE branch = ${branch}`,
+  });
   const updateBranchRow = SqlSchema.void({
     Request: BranchRequest,
     execute: ({ threadId, branch }) => sql`
       UPDATE coding_sessions SET branch = ${branch} WHERE thread_id = ${threadId}
+    `,
+  });
+  const settledCommitRow = SqlSchema.void({
+    Request: SettledCommitRequest,
+    execute: ({ threadId, settledCommitOid }) => sql`
+      UPDATE coding_sessions SET settled_commit_oid = ${settledCommitOid} WHERE thread_id = ${threadId}
+    `,
+  });
+  const partialRow = SqlSchema.void({
+    Request: PartialRequest,
+    execute: ({ threadId, partial }) => sql`
+      UPDATE coding_sessions SET partial = ${partial ? 1 : 0} WHERE thread_id = ${threadId}
     `,
   });
   const endRow = SqlSchema.void({
@@ -176,10 +208,23 @@ export const make = Effect.gen(function* () {
       mapError(findByThread({ threadId }), "CodingSessionStore.getByThreadId"),
     getByWorktreePath: (worktreePath) =>
       mapError(findByWorktree({ worktreePath }), "CodingSessionStore.getByWorktreePath"),
+    getByBranch: (branch) => mapError(findByBranch({ branch }), "CodingSessionStore.getByBranch"),
     updateBranch: (threadId, branch) =>
       mapError(
         updateBranchRow({ threadId, branch }).pipe(Effect.andThen(announceThread(threadId))),
         "CodingSessionStore.updateBranch",
+      ),
+    recordSettledCommit: (threadId, settledCommitOid) =>
+      mapError(
+        settledCommitRow({ threadId, settledCommitOid }).pipe(
+          Effect.andThen(announceThread(threadId)),
+        ),
+        "CodingSessionStore.recordSettledCommit",
+      ),
+    recordPartial: (threadId, partial) =>
+      mapError(
+        partialRow({ threadId, partial }).pipe(Effect.andThen(announceThread(threadId))),
+        "CodingSessionStore.recordPartial",
       ),
     end: (input) =>
       mapError(

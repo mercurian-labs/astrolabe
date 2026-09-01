@@ -1,4 +1,3 @@
-import { OrchestrationCheckpointFile } from "@t3tools/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Effect from "effect/Effect";
@@ -6,6 +5,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
+
+import {
+  CheckpointFilesStorage,
+  checkpointFilesFromStorage,
+  checkpointPartialFromStorage,
+  toCheckpointFilesStorage,
+} from "../CheckpointFilesStorage.ts";
 
 import { toPersistenceDecodeError, toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -23,13 +29,13 @@ import {
 
 const ProjectionTurnDbRowSchema = ProjectionTurn.mapFields(
   Struct.assign({
-    checkpointFiles: Schema.fromJsonString(Schema.Array(OrchestrationCheckpointFile)),
+    checkpointFiles: Schema.fromJsonString(CheckpointFilesStorage),
   }),
 );
 
 const ProjectionTurnByIdDbRowSchema = ProjectionTurnById.mapFields(
   Struct.assign({
-    checkpointFiles: Schema.fromJsonString(Schema.Array(OrchestrationCheckpointFile)),
+    checkpointFiles: Schema.fromJsonString(CheckpointFilesStorage),
   }),
 );
 
@@ -39,6 +45,15 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
       ? toPersistenceDecodeError(decodeOperation)(cause)
       : toPersistenceSqlError(sqlOperation)(cause);
 }
+
+const fromDbRow = <A extends { readonly checkpointFiles: CheckpointFilesStorage }>(row: A) => {
+  const partial = checkpointPartialFromStorage(row.checkpointFiles);
+  return {
+    ...row,
+    checkpointFiles: checkpointFilesFromStorage(row.checkpointFiles),
+    ...(partial === undefined ? {} : { checkpointPartial: partial }),
+  };
+};
 
 const makeProjectionTurnRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -255,7 +270,10 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
   });
 
   const upsertByTurnId: ProjectionTurnRepositoryShape["upsertByTurnId"] = (row) =>
-    upsertProjectionTurnById(row).pipe(
+    upsertProjectionTurnById({
+      ...row,
+      checkpointFiles: toCheckpointFilesStorage(row.checkpointFiles, row.checkpointPartial),
+    }).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
           "ProjectionTurnRepository.upsertByTurnId:query",
@@ -304,7 +322,7 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
           "ProjectionTurnRepository.listByThreadId:decodeRows",
         ),
       ),
-      Effect.map((rows) => rows as ReadonlyArray<Schema.Schema.Type<typeof ProjectionTurn>>),
+      Effect.map((rows) => rows.map(fromDbRow)),
     );
 
   const getByTurnId: ProjectionTurnRepositoryShape["getByTurnId"] = (input) =>
@@ -318,8 +336,7 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
       Effect.flatMap((rowOption) =>
         Option.match(rowOption, {
           onNone: () => Effect.succeed(Option.none()),
-          onSome: (row) =>
-            Effect.succeed(Option.some(row as Schema.Schema.Type<typeof ProjectionTurnById>)),
+          onSome: (row) => Effect.succeed(Option.some(fromDbRow(row))),
         }),
       ),
     );

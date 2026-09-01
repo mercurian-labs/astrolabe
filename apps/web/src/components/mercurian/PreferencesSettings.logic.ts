@@ -17,6 +17,11 @@ export function normalizeFetchIntervalSeconds(value: number | null): number {
   return Math.max(0, Math.round(value));
 }
 
+export function normalizeWorktreePoolSize(value: number | null): number {
+  if (value === null || !Number.isFinite(value)) return 3;
+  return Math.max(1, Math.round(value));
+}
+
 /** Preserve every other override while setting or deleting this row's own. */
 export function backgroundActivityOverrideSettings(
   current: BackgroundActivitySettings,

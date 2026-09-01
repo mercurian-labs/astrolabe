@@ -304,6 +304,7 @@ describe("DagExplorer", () => {
       repositoryId: "repo-web",
       repositoryName: "web",
       planRevisionCommitId: "root",
+      partial: true,
     });
     const markup = renderToStaticMarkup(
       <DagExplorer
@@ -319,6 +320,7 @@ describe("DagExplorer", () => {
     );
     expect(markup).toContain("Coding session in web");
     expect(markup).toContain("lucide-square-terminal");
+    expect(markup).toContain("Partial");
   });
 
   it("renders a checkpoint as authored query, effects, and response at the terminal id", () => {

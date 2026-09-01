@@ -23,5 +23,7 @@ export const CodingSessionRecord = Schema.Struct({
   endedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   outcome: Schema.NullOr(CodingSessionOutcome),
   prUrl: Schema.NullOr(Schema.String),
+  settledCommitOid: Schema.NullOr(TrimmedNonEmptyString),
+  partial: Schema.Union([Schema.Boolean, Schema.Number]),
 });
 export type CodingSessionRecord = typeof CodingSessionRecord.Type;

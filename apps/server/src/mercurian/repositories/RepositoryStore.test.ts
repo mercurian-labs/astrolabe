@@ -598,6 +598,42 @@ layer("RepositoryStore", (it) => {
     }),
   );
 
+  it.effect("counts project slot membership as a live worktree", () =>
+    Effect.gen(function* () {
+      yield* setGitScript({});
+      const store = yield* RepositoryStore.RepositoryStore;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = yield* insertProject("slot-project");
+      const repository = yield* store.addRepository({
+        path: yield* makeDirectory("slot-member"),
+        createdAt: at,
+      });
+      yield* sql`
+        INSERT INTO worktree_slots (
+          slot_id, project_id, path, current_line_root_commit_id, created_at, last_used_at
+        ) VALUES (
+          'slot-project:slot-1', ${projectId}, '/tmp/slot-project/slot-1',
+          'line-a', '2026-08-06T00:00:00.000Z', '2026-08-06T00:00:00.000Z'
+        )
+      `;
+      yield* sql`
+        INSERT INTO worktree_slot_members (
+          slot_id, repository_id, relative_path, current_branch
+        ) VALUES (
+          'slot-project:slot-1', ${repository.repositoryId}, 'slot-member', 'mercurian/line-a'
+        )
+      `;
+
+      const refusal = yield* store
+        .removeRepository({ repositoryId: repository.repositoryId })
+        .pipe(Effect.flip);
+      assert.strictEqual(refusal._tag, "RepositoryHasLiveWorktreesError");
+      if (refusal._tag === "RepositoryHasLiveWorktreesError") {
+        assert.strictEqual(refusal.worktreeCount, 1);
+      }
+    }),
+  );
+
   it.effect("a worktree the app does not own never blocks removal", () =>
     Effect.gen(function* () {
       const store = yield* RepositoryStore.RepositoryStore;

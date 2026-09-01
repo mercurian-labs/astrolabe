@@ -22,6 +22,7 @@
  * @module MercurianContracts
  */
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 // Import creates a plan, so it belongs to the planning surface — but the issue
@@ -56,6 +57,7 @@ export const MERCURIAN_WS_METHODS = {
   deletePlan: "mercurian.deletePlan",
   stopPlanningTurn: "mercurian.stopPlanningTurn",
   answerPlanningQuestion: "mercurian.answerPlanningQuestion",
+  subscribeWorktreeSlots: "mercurian.subscribeWorktreeSlots",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -75,6 +77,36 @@ export type MercurianCommitId = typeof MercurianCommitId.Type;
 // same brand schema locally instead of introducing a runtime import cycle.
 const MercurianRepositoryId = makeEntityId("MercurianRepositoryId");
 
+export const WorktreeSlotView = Schema.Struct({
+  slotId: TrimmedNonEmptyString,
+  projectId: MercurianProjectId,
+  path: TrimmedNonEmptyString,
+  currentLineRootCommitId: Schema.NullOr(MercurianCommitId),
+  members: Schema.Array(
+    Schema.Struct({
+      repositoryId: MercurianRepositoryId,
+      relativePath: TrimmedNonEmptyString,
+      currentBranch: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
+  leased: Schema.Boolean,
+  createdAt: IsoDateTime,
+  lastUsedAt: IsoDateTime,
+});
+export type WorktreeSlotView = typeof WorktreeSlotView.Type;
+
+export const WorktreeSlotSnapshot = Schema.Struct({ slots: Schema.Array(WorktreeSlotView) });
+export type WorktreeSlotSnapshot = typeof WorktreeSlotSnapshot.Type;
+
+export const WorktreeSlotStreamItem = Schema.Struct({
+  kind: Schema.Literal("snapshot"),
+  snapshot: WorktreeSlotSnapshot,
+});
+export type WorktreeSlotStreamItem = typeof WorktreeSlotStreamItem.Type;
+
+export const MercurianSubscribeWorktreeSlotsInput = Schema.Struct({});
+export type MercurianSubscribeWorktreeSlotsInput = typeof MercurianSubscribeWorktreeSlotsInput.Type;
+
 /** Mutable facts keyed by the coding-session leaf commit. */
 export const PlanCodingSessionRecord = Schema.Struct({
   commitId: MercurianCommitId,
@@ -87,6 +119,8 @@ export const PlanCodingSessionRecord = Schema.Struct({
   endedAt: Schema.NullOr(IsoDateTime),
   outcome: Schema.NullOr(Schema.Literals(["completed", "stopped", "failed"])),
   prUrl: Schema.NullOr(Schema.String),
+  settledCommitOid: Schema.NullOr(TrimmedNonEmptyString),
+  partial: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
 export type PlanCodingSessionRecord = typeof PlanCodingSessionRecord.Type;
 
@@ -329,6 +363,7 @@ export const PlanCodingSession = Schema.Struct({
   repositoryId: MercurianRepositoryId,
   repositoryName: TrimmedNonEmptyString,
   planRevisionCommitId: MercurianCommitId,
+  partial: Schema.optional(Schema.Boolean),
 });
 export type PlanCodingSession = typeof PlanCodingSession.Type;
 
@@ -1038,6 +1073,7 @@ export const CodingSessionBlockedReason = Schema.Literals([
   "base-ref-missing",
   "no-instance",
   "model-unavailable",
+  "pool-at-capacity",
 ]);
 export type CodingSessionBlockedReason = typeof CodingSessionBlockedReason.Type;
 
@@ -1061,6 +1097,8 @@ export class CodingSessionBlockedError extends Schema.TaggedErrorClass<CodingSes
         return "The selected agent is not currently available.";
       case "model-unavailable":
         return "The selected model is not available from that agent.";
+      case "pool-at-capacity":
+        return "Every worktree slot for this project is currently in use.";
     }
   }
 }
@@ -1121,6 +1159,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "deletePlan",
       "stopPlanningTurn",
       "answerPlanningQuestion",
+      "subscribeWorktreeSlots",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

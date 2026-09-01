@@ -11,7 +11,12 @@
 import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import { graphStratify, grid, sugiyama, zherebko } from "d3-dag";
 
-export type PlanCheckpointEffect = "plan-updated" | "spec-updated" | "interrupted" | "unanswered";
+export type PlanCheckpointEffect =
+  | "plan-updated"
+  | "spec-updated"
+  | "interrupted"
+  | "unanswered"
+  | "partial";
 
 export interface PlanCheckpoint {
   readonly query: PlanTimelineItem;
