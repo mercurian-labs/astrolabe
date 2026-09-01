@@ -1,5 +1,6 @@
 import {
   fitTransform,
+  MAP_GLYPH_ZOOM,
   wheelIntent,
   zoomAtPoint,
   type MapBounds,
@@ -27,6 +28,37 @@ export function spatialMapViewBox(frame: MapFrameSize): MapViewBox {
 
 export function fitSpatialMap(bounds: MapBounds, frame: MapFrameSize): MapTransform {
   return fitTransform(bounds, spatialMapViewBox(frame));
+}
+
+export function isAtFit(
+  transform: MapTransform,
+  bounds: MapBounds,
+  frame: MapFrameSize,
+  epsilon = 0.001,
+): boolean {
+  return transformsWithin(transform, fitSpatialMap(bounds, frame), epsilon);
+}
+
+export function spatialMapChromeVisibility(
+  transform: MapTransform,
+  bounds: MapBounds,
+  frame: MapFrameSize,
+  epsilon = 0.001,
+): { readonly fitButton: boolean; readonly minimap: boolean } {
+  const fitted = fitSpatialMap(bounds, frame);
+  const awayFromFit = !transformsWithin(transform, fitted, epsilon);
+  return {
+    fitButton: awayFromFit,
+    minimap: awayFromFit || fitted.zoom <= MAP_GLYPH_ZOOM,
+  };
+}
+
+function transformsWithin(left: MapTransform, right: MapTransform, epsilon: number): boolean {
+  return (
+    Math.abs(left.x - right.x) <= epsilon &&
+    Math.abs(left.y - right.y) <= epsilon &&
+    Math.abs(left.zoom - right.zoom) <= epsilon
+  );
 }
 
 export function spatialMapWheelTransform({

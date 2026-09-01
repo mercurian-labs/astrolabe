@@ -29,6 +29,7 @@ import {
 } from "./DagExplorer.logic";
 import {
   fitSpatialMap,
+  spatialMapChromeVisibility,
   spatialMapViewBox,
   spatialMapWheelTransform,
 } from "./SpatialMapCanvas.logic";
@@ -217,6 +218,7 @@ export function SpatialMapCanvas({
 
   const overviewSize = useMemo(() => minimapSize(frame.width, frame.height), [frame]);
   const renderContext = useMemo<SpatialMapRenderContext>(() => ({ markerId }), [markerId]);
+  const chrome = spatialMapChromeVisibility(transform, bounds, frame);
 
   return (
     <div
@@ -264,37 +266,43 @@ export function SpatialMapCanvas({
           ))}
         </g>
       </svg>
-      <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
-        <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-label="Fit graph to view"
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                  onClick={fitToView}
-                />
-              }
-            >
-              <Maximize2Icon />
-            </TooltipTrigger>
-            <TooltipPopup>Fit graph to view</TooltipPopup>
-          </Tooltip>
+      {chrome.fitButton || chrome.minimap ? (
+        <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
+          {chrome.fitButton ? (
+            <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label="Fit graph to view"
+                      size="icon-xs"
+                      type="button"
+                      variant="ghost"
+                      onClick={fitToView}
+                    />
+                  }
+                >
+                  <Maximize2Icon />
+                </TooltipTrigger>
+                <TooltipPopup>Fit graph to view</TooltipPopup>
+              </Tooltip>
+            </div>
+          ) : null}
+          {chrome.minimap ? (
+            <SpatialMapMinimap
+              ariaLabel={`${ariaLabel} minimap`}
+              bounds={bounds}
+              edges={edges}
+              frame={frame}
+              nodes={nodes}
+              size={overviewSize}
+              transform={transform}
+              viewBox={viewBox}
+              onCenter={recenterFromMinimap}
+            />
+          ) : null}
         </div>
-        <SpatialMapMinimap
-          ariaLabel={`${ariaLabel} minimap`}
-          bounds={bounds}
-          edges={edges}
-          frame={frame}
-          nodes={nodes}
-          size={overviewSize}
-          transform={transform}
-          viewBox={viewBox}
-          onCenter={recenterFromMinimap}
-        />
-      </div>
+      ) : null}
     </div>
   );
 }
