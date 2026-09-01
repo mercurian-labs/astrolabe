@@ -27,7 +27,7 @@ export const PLAN_SUGGESTIONS_CATALOG_ENTRIES = [
     section: "mercurian-grammar",
     group: "PlanSuggestions",
     title: "Suggested next messages",
-    description: "Two unresolved memory decisions offered as optional next messages.",
+    description: "Offered next messages above the composer; nothing is sent until one is chosen.",
     sourcePath: "src/components/mercurian/PlanSuggestions.tsx",
     render: () => (
       <PlanSuggestionsRow

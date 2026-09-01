@@ -59,10 +59,3 @@ The planning assistant can propose an amendment when a conversation earns a dura
 change. The proposal writes nothing by itself: you review the exact note and map diff, then choose
 **Amend memory** or **Not now**. Confirming lands the change in the memory&rsquo;s history and adds a
 muted amendment marker to the plan&rsquo;s history.
-
-## Use suggested next messages
-
-When the current plan mentions a memory note with unresolved **Open Decisions**, suggested next
-messages appear above the composer. Choosing one sends an ordinary message that names the note and
-asks to resolve that decision. You can dismiss the row; it returns during the session only when a
-new suggestion appears.
