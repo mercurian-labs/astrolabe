@@ -31,6 +31,9 @@ layer("010_CodingSessions", (it) => {
           "ended_at",
           "outcome",
           "pr_url",
+          // Added by 012_LineBranches; the chain runs whole, so this pins end-state.
+          "settled_commit_oid",
+          "partial",
         ],
       );
 

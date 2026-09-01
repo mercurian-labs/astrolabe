@@ -30,7 +30,7 @@ export function lineRoots(detail: PlanDetail): ReadonlyArray<PlanTimelineItem> {
       children.set(parent, existing);
     }
   }
-  const roots: Array<PlanTimelineItem> = [...items.filter((item) => item.parents.length === 0)];
+  const roots: Array<PlanTimelineItem> = items.filter((item) => item.parents.length === 0);
   for (const siblings of children.values()) {
     siblings.sort((left, right) => left.sequence - right.sequence);
     roots.push(...siblings.slice(1));
@@ -165,15 +165,13 @@ export const make = Effect.gen(function* () {
 export const LineBranchReactorLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const reactor = yield* make;
-    yield* reactor
-      .reconcile()
-      .pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("line-branch initial reconciliation failed", {
-            cause: Cause.pretty(cause),
-          }),
-        ),
-      );
+    yield* reactor.reconcile().pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("line-branch initial reconciliation failed", {
+          cause: Cause.pretty(cause),
+        }),
+      ),
+    );
     yield* forkParked(
       reactor.changes.pipe(
         Stream.debounce("50 millis"),
