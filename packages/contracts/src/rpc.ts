@@ -108,6 +108,7 @@ import {
   MercurianStopPlanningTurnInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
+  MercurianSubscribeWorktreeSlotsInput,
   MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
@@ -119,6 +120,7 @@ import {
   PlanMessage,
   PlanNotFoundError,
   PlanningTreeStreamItem,
+  WorktreeSlotStreamItem,
   PlanRevision,
   PlanSpecRevision,
   PlanStreamItem,
@@ -1136,6 +1138,16 @@ export const WsMercurianSubscribeTreeRpc = Rpc.make(MERCURIAN_WS_METHODS.subscri
   stream: true,
 });
 
+export const WsMercurianSubscribeWorktreeSlotsRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.subscribeWorktreeSlots,
+  {
+    payload: MercurianSubscribeWorktreeSlotsInput,
+    success: WorktreeSlotStreamItem,
+    error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
 export const WsMercurianCreateProjectRpc = Rpc.make(MERCURIAN_WS_METHODS.createProject, {
   payload: MercurianCreateProjectInput,
   success: MercurianProject,
@@ -1705,6 +1717,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
   WsMercurianSubscribeTreeRpc,
+  WsMercurianSubscribeWorktreeSlotsRpc,
   WsMercurianCreateProjectRpc,
   WsMercurianCreatePlanRpc,
   WsMercurianImportPlanRpc,

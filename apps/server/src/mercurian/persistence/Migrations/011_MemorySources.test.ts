@@ -12,7 +12,7 @@ layer("011_MemorySources", (it) => {
   it.effect("creates the designation without persisting a derived index", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 11);
+      assert.ok(migrationEntries.some(([id]) => id === 11));
       yield* runMigrations();
 
       const columns = yield* sql<{ readonly name: string }>`

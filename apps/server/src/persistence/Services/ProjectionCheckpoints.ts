@@ -32,6 +32,7 @@ export const ProjectionCheckpoint = Schema.Struct({
   files: Schema.Array(OrchestrationCheckpointFile),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
+  partial: Schema.optional(Schema.Boolean),
 });
 export type ProjectionCheckpoint = typeof ProjectionCheckpoint.Type;
 

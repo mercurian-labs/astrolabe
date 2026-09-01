@@ -1,4 +1,3 @@
-import { OrchestrationCheckpointFile } from "@t3tools/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Effect from "effect/Effect";
@@ -6,6 +5,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
+
+import {
+  CheckpointFilesStorage,
+  checkpointFilesFromStorage,
+  checkpointPartialFromStorage,
+  toCheckpointFilesStorage,
+} from "../CheckpointFilesStorage.ts";
 
 import { toPersistenceDecodeError, toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -19,7 +25,7 @@ import {
 
 const ProjectionCheckpointDbRowSchema = ProjectionCheckpoint.mapFields(
   Struct.assign({
-    files: Schema.fromJsonString(Schema.Array(OrchestrationCheckpointFile)),
+    files: Schema.fromJsonString(CheckpointFilesStorage),
   }),
 );
 
@@ -157,7 +163,10 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
     );
 
   const upsert: ProjectionCheckpointRepositoryShape["upsert"] = (row) =>
-    upsertCheckpointRow(row).pipe(
+    upsertCheckpointRow({
+      ...row,
+      files: toCheckpointFilesStorage(row.files, row.partial),
+    }).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
           "ProjectionCheckpointRepository.upsert:query",
@@ -174,7 +183,16 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
           "ProjectionCheckpointRepository.listByThreadId:decodeRows",
         ),
       ),
-      Effect.map((rows) => rows as ReadonlyArray<Schema.Schema.Type<typeof ProjectionCheckpoint>>),
+      Effect.map((rows) =>
+        rows.map((row) => {
+          const partial = checkpointPartialFromStorage(row.files);
+          return {
+            ...row,
+            files: checkpointFilesFromStorage(row.files),
+            ...(partial === undefined ? {} : { partial }),
+          };
+        }),
+      ),
     );
 
   const getByThreadAndTurnCount: ProjectionCheckpointRepositoryShape["getByThreadAndTurnCount"] = (
@@ -190,8 +208,16 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
       Effect.flatMap((rowOption) =>
         Option.match(rowOption, {
           onNone: () => Effect.succeed(Option.none()),
-          onSome: (row) =>
-            Effect.succeed(Option.some(row as Schema.Schema.Type<typeof ProjectionCheckpoint>)),
+          onSome: (row) => {
+            const partial = checkpointPartialFromStorage(row.files);
+            return Effect.succeed(
+              Option.some({
+                ...row,
+                files: checkpointFilesFromStorage(row.files),
+                ...(partial === undefined ? {} : { partial }),
+              }),
+            );
+          },
         }),
       ),
     );

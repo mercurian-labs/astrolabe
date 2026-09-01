@@ -28,12 +28,17 @@ import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderR
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
+import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
+import { LineBranchReactorLive } from "./mercurian/commitTree/LineBranchReactor.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/CodingSessionRecordReactor.ts";
+import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
+import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
+import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
@@ -296,6 +301,8 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   Layer.provideMerge(CodingSessionStore.layer),
+  Layer.provideMerge(LineBranchStore.layer),
+  Layer.provideMerge(SlotStore.layer),
   // The turn registry is runtime state shared by the store (the active-turn
   // refusal on human writes) and the assistant runtime (which opens and
   // closes turns) — merged so both resolve the same instance.
@@ -484,11 +491,38 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   ),
 );
 
-const RuntimeDependenciesLive = Layer.empty.pipe(
-  Layer.provideMerge(CodingSessionService.layer),
-  Layer.provideMerge(CodingSessionRecordReactorLive),
-  Layer.provideMerge(RuntimeCoreDependenciesLive),
+const SlotRegistryLayerLive = SlotRegistry.layer;
+
+// Checkpointing consumes slot leases while the slot service consumes the rest
+// of the runtime. Resolve that shared boundary once so both services observe
+// the same in-memory registry instance.
+const MercurianRuntimeCoreDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+  Layer.provideMerge(SlotRegistryLayerLive),
   Layer.provideMerge(MercurianPersistenceLayerLive),
+);
+
+const SlotServiceLayerLive = SlotService.layer.pipe(
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
+);
+
+const CodingSessionServiceLayerLive = CodingSessionService.layer.pipe(
+  Layer.provideMerge(SlotServiceLayerLive),
+);
+
+const CodingSessionRecordReactorLayerLive = CodingSessionRecordReactorLive.pipe(
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
+);
+
+const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
+);
+
+const RuntimeDependenciesLive = Layer.empty.pipe(
+  Layer.provideMerge(CodingSessionServiceLayerLive),
+  Layer.provideMerge(CodingSessionRecordReactorLayerLive),
+  Layer.provideMerge(LineBranchReactorLayerLive),
+  Layer.provideMerge(SlotServiceLayerLive),
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),

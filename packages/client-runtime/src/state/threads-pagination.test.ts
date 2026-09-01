@@ -262,28 +262,6 @@ const titleEvent = (title: string, sequence: number): OrchestrationThreadStreamI
   },
 });
 
-// Reverting to turnCount 1 retains only turns whose checkpoint count is <= 1:
-// turn-1 survives, turn-2 (the loaded window's newest turn) is discarded.
-const revertEvent = (sequence: number): OrchestrationThreadStreamItem => ({
-  kind: "event",
-  event: {
-    eventId: EventId.make(`event-revert-${sequence}`),
-    sequence,
-    occurredAt: "2026-04-01T02:00:00.000Z",
-    commandId: null,
-    causationEventId: null,
-    correlationId: null,
-    metadata: {},
-    aggregateKind: "thread",
-    aggregateId: THREAD_ID,
-    type: "thread.reverted",
-    payload: {
-      threadId: THREAD_ID,
-      turnCount: 1,
-    },
-  },
-});
-
 describe("thread pagination state", () => {
   it.effect("windows the initial load when the server advertises pagination", () =>
     Effect.gen(function* () {
@@ -336,29 +314,6 @@ describe("thread pagination state", () => {
         hasMore: false,
         loadingOlder: false,
       });
-    }),
-  );
-
-  it.effect("discards an in-flight older page when a revert rewrites history", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ initialResponse: Option.some(WINDOWED_SNAPSHOT) });
-      yield* harness.awaitState((value) => Option.isSome(value.page));
-
-      requestOlderThreadTurns(TARGET.environmentId, THREAD_ID);
-      yield* harness.awaitState((value) =>
-        Option.match(value.page, { onNone: () => false, onSome: (page) => page.loadingOlder }),
-      );
-      // Revert lands while the page fetch is in flight and removes turn-2.
-      yield* Queue.offer(harness.inputs, revertEvent(11));
-      yield* harness.awaitState((value) => !hasMessage(value, "message-recent"));
-      yield* harness.resolveNextPage(Option.some(OLDER_PAGE));
-
-      const state = yield* harness.awaitState((value) =>
-        Option.match(value.page, { onNone: () => false, onSome: (page) => !page.loadingOlder }),
-      );
-      // The stale page was dropped: no resurrected rows, cursor unchanged.
-      expect(hasMessage(state, "message-old")).toBe(false);
-      expect(Option.getOrThrow(state.page).beforeCursor).toBe("cursor-1");
     }),
   );
 
@@ -435,13 +390,12 @@ describe("thread pagination state", () => {
       );
       yield* harness.awaitState((value) => hasMessage(value, "message-old"));
 
-      // Event at sequence 11 must still apply after the merge: the revert
-      // discards turn-2, so the loaded window's row disappears while the
-      // merged older turn-1 row survives. If the merge had advanced the
-      // dedupe sequence to the page's 12, this event would be swallowed.
-      yield* Queue.offer(harness.inputs, revertEvent(11));
-      const state = yield* harness.awaitState(
-        (value) => !hasMessage(value, "message-recent") && hasMessage(value, "message-old"),
+      yield* Queue.offer(harness.inputs, titleEvent("Live event 11 applied", 11));
+      const state = yield* harness.awaitState((value) =>
+        Option.match(value.data, {
+          onNone: () => false,
+          onSome: (thread) => thread.title === "Live event 11 applied",
+        }),
       );
       expect(hasMessage(state, "message-old")).toBe(true);
     }),
@@ -475,25 +429,6 @@ describe("thread pagination state", () => {
       const state = yield* harness.awaitState((value) => hasMessage(value, "message-old"));
       expect(hasMessage(state, "message-recent")).toBe(true);
       expect(Option.getOrThrow(state.page).loadingOlder).toBe(false);
-    }),
-  );
-
-  it.effect("a revert keeps the page cursor and triggers no refresh fetch", () =>
-    Effect.gen(function* () {
-      // Cursors are an (anchor, turnId) keyset derived from event content, so
-      // they survive the revert projector's row rewrite: the machine keeps
-      // the stored cursor and performs no snapshot re-fetch. The revert
-      // reducer's turn filtering alone handles loaded history.
-      const harness = yield* makeHarness({ initialResponse: Option.some(WINDOWED_SNAPSHOT) });
-      yield* harness.awaitState((value) => Option.isSome(value.page));
-
-      yield* Queue.offer(harness.inputs, revertEvent(11));
-      const state = yield* harness.awaitState((value) => !hasMessage(value, "message-recent"));
-
-      expect(Option.getOrThrow(state.page).beforeCursor).toBe("cursor-1");
-      const windows = yield* Ref.get(harness.loaderWindows);
-      // Only the initial load hit the loader — no post-revert refresh fetch.
-      expect(windows.length).toBe(1);
     }),
   );
 

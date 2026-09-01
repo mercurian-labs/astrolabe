@@ -3,7 +3,7 @@ import { sanitizeBranchFragment } from "@t3tools/shared/git";
 export const CODING_SESSION_BRANCH_PREFIX = "mercurian";
 const MAX_TITLE_FRAGMENT = 52;
 
-export function buildCodingSessionBranchName(planTitle: string, randomHex: string): string {
+export function buildLineBranchName(planTitle: string, randomHex: string): string {
   const token = randomHex
     .toLowerCase()
     .replace(/[^0-9a-f]/g, "")
@@ -17,3 +17,5 @@ export function buildCodingSessionBranchName(planTitle: string, randomHex: strin
       .replace(/-+$/u, "") || "session";
   return `${CODING_SESSION_BRANCH_PREFIX}/${slug}-${token}`;
 }
+
+export const buildCodingSessionBranchName = buildLineBranchName;

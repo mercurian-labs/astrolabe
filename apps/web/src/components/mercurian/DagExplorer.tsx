@@ -2406,6 +2406,11 @@ function CommitRow({
             Ready to implement
           </span>
         ) : null}
+        {item._tag === "coding-session" && item.partial === true ? (
+          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+            {planCheckpointEffectLabel("partial")}
+          </span>
+        ) : null}
         {staleSpec ? (
           <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
             Spec stale

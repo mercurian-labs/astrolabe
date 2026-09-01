@@ -37,6 +37,7 @@ const EFFECT_LABELS: Readonly<Record<PlanCheckpointEffect, string>> = {
   "spec-updated": "Spec updated",
   interrupted: "Interrupted",
   unanswered: "Unanswered",
+  partial: "Partial",
 };
 
 /**
@@ -194,6 +195,9 @@ function effectsFor(
   if (members.some((member) => member._tag === "plan-revision")) effects.push("plan-updated");
   if (members.some((member) => member._tag === "spec-revision")) effects.push("spec-updated");
   if (response?._tag === "message" && response.interrupted === true) effects.push("interrupted");
+  if (members.some((member) => member._tag === "coding-session" && member.partial === true)) {
+    effects.push("partial");
+  }
   if (response === undefined) effects.push("unanswered");
   return effects;
 }

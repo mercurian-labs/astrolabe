@@ -6,6 +6,7 @@ import {
   backgroundActivityOverrideSettings,
   fetchIntervalDiffersFromDefault,
   normalizeFetchIntervalSeconds,
+  normalizeWorktreePoolSize,
 } from "./PreferencesSettings.logic";
 
 const settings: BackgroundActivitySettings = {
@@ -24,6 +25,16 @@ describe("normalizeFetchIntervalSeconds", () => {
     expect(normalizeFetchIntervalSeconds(-5)).toBe(0);
     expect(normalizeFetchIntervalSeconds(Number.NaN)).toBe(0);
     expect(normalizeFetchIntervalSeconds(null)).toBe(0);
+  });
+});
+
+describe("normalizeWorktreePoolSize", () => {
+  it("rounds values, clamps at one, and restores the default for invalid input", () => {
+    expect(normalizeWorktreePoolSize(4.6)).toBe(5);
+    expect(normalizeWorktreePoolSize(0)).toBe(1);
+    expect(normalizeWorktreePoolSize(-8)).toBe(1);
+    expect(normalizeWorktreePoolSize(Number.NaN)).toBe(3);
+    expect(normalizeWorktreePoolSize(null)).toBe(3);
   });
 });
 

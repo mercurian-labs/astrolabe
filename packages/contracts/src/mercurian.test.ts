@@ -5,12 +5,14 @@ import { ThreadId } from "./baseSchemas.ts";
 import {
   CodingSessionBlockedError,
   MercurianCommitId,
+  MercurianProjectId,
   MercurianRepositoryId,
   MercurianStartCodingSessionInput,
   PlanId,
   PlanStreamItem,
   type PlanTimelineItem,
   ProviderInstanceId,
+  WorktreeSlotStreamItem,
 } from "./index.ts";
 
 type Equal<A, B> =
@@ -48,6 +50,33 @@ type _PlanStreamKindsAreExact = Assert<
 >;
 
 describe("coding-session contracts", () => {
+  it("round-trips project-scoped slot members", () => {
+    const item = {
+      kind: "snapshot" as const,
+      snapshot: {
+        slots: [
+          {
+            slotId: "project:slot-1",
+            projectId: MercurianProjectId.make("project"),
+            path: "/worktrees/project/slot-1",
+            currentLineRootCommitId: MercurianCommitId.make("line"),
+            members: [
+              {
+                repositoryId: MercurianRepositoryId.make("repository"),
+                relativePath: "apps/repository",
+                currentBranch: "mercurian/line",
+              },
+            ],
+            leased: true,
+            createdAt: "2026-08-31T12:00:00.000Z",
+            lastUsedAt: "2026-08-31T12:00:00.000Z",
+          },
+        ],
+      },
+    };
+    expect(Schema.decodeUnknownSync(WorktreeSlotStreamItem)(item)).toEqual(item);
+  });
+
   it("pins plan history and stream discriminants without session-activity members", () => {
     expect(PLAN_TIMELINE_TAGS).toEqual([
       "message",
@@ -106,6 +135,8 @@ describe("coding-session contracts", () => {
           endedAt: null,
           outcome: null,
           prUrl: null,
+          settledCommitOid: null,
+          partial: false,
         },
       ],
     };
@@ -123,6 +154,7 @@ describe("coding-session contracts", () => {
       "base-ref-missing",
       "no-instance",
       "model-unavailable",
+      "pool-at-capacity",
     ] as const) {
       expect(new CodingSessionBlockedError({ reason }).message).not.toContain(reason);
     }

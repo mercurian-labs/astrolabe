@@ -207,6 +207,7 @@ const TouchRepositoryRequest = Schema.Struct({
   updatedAt: Schema.DateTimeUtcFromString,
 });
 const NoRequest = Schema.Struct({});
+const CountRow = Schema.Struct({ count: Schema.Number });
 
 // ===============================
 // Helpers
@@ -383,22 +384,29 @@ export const make = Effect.gen(function* () {
 
   const hosting = (repositoryPath: string) => Cache.get(hostingProbeCache, repositoryPath);
 
-  /**
-   * The teardown floor's live source today. Coding sessions have no table yet,
-   * but the workspaces this runtime owns are real on disk: a linked worktree
-   * under `worktreesDir` is one, and its existence refuses removal. When
-   * sessions land store-side worktree state this check gains that source
-   * without the refusal or the RPC moving.
-   */
+  const countSlotRows = SqlSchema.findAll({
+    Request: RepositoryIdRequest,
+    Result: CountRow,
+    execute: ({ repositoryId }) => sql`
+      SELECT COUNT(DISTINCT slot_id) AS "count"
+      FROM worktree_slot_members
+      WHERE repository_id = ${repositoryId}
+    `,
+  });
+
+  /** Store rows are authoritative; the disk probe also protects legacy worktrees. */
   const countLiveWorktrees = Effect.fn("RepositoryStore.countLiveWorktrees")(function* (
+    repositoryId: MercurianRepositoryId,
     repositoryPath: string,
   ) {
-    if (!(yield* hasGit(repositoryPath))) return 0;
+    const stored = (yield* countSlotRows({ repositoryId }))[0]?.count ?? 0;
+    if (!(yield* hasGit(repositoryPath))) return stored;
     const result = yield* runGit(repositoryPath, ["worktree", "list", "--porcelain"]);
-    if (Option.isNone(result) || result.value.code !== 0) return 0;
-    return parseWorktreePaths(result.value.stdout).filter((worktreePath) =>
+    if (Option.isNone(result) || result.value.code !== 0) return stored;
+    const onDisk = parseWorktreePaths(result.value.stdout).filter((worktreePath) =>
       isUnderDirectory(worktreePath, worktreesDir, path.sep),
     ).length;
+    return Math.max(stored, onDisk);
   });
 
   // ---------------------------------------------------------------
@@ -719,7 +727,7 @@ export const make = Effect.gen(function* () {
         return yield* new MercurianRepositoryNotFoundError({ repositoryId: input.repositoryId });
       }
 
-      const worktreeCount = yield* countLiveWorktrees(row.value.path);
+      const worktreeCount = yield* countLiveWorktrees(input.repositoryId, row.value.path);
       if (worktreeCount > 0) {
         return yield* new RepositoryHasLiveWorktreesError({
           repositoryId: input.repositoryId,

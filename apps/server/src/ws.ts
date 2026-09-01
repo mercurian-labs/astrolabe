@@ -5,6 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -96,6 +97,7 @@ import {
   EnvironmentAuthorizationError,
   ThreadId,
   type TerminalAttachStreamEvent,
+  TerminalCwdStatError,
   type TerminalError,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
@@ -128,7 +130,12 @@ import {
 } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
+import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
+import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
+import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
+import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
+import { toWireSlotSnapshot } from "./mercurian/worktreeSlots/wire.ts";
 import { toWireCodingSessionRecord } from "./mercurian/codingSessions/wire.ts";
 import {
   toWirePlanCommitEvent,
@@ -369,7 +376,6 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
       | "thread.proposed-plan-upserted"
       | "thread.activity-appended"
       | "thread.turn-diff-completed"
-      | "thread.reverted"
       | "thread.session-set";
   }
 > {
@@ -378,7 +384,6 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
     event.type === "thread.proposed-plan-upserted" ||
     event.type === "thread.activity-appended" ||
     event.type === "thread.turn-diff-completed" ||
-    event.type === "thread.reverted" ||
     event.type === "thread.session-set"
   );
 }
@@ -421,13 +426,14 @@ export const attachCreatedPullRequestToCodingSession = Effect.fn(
 )(function* (
   codingSessionStore: Pick<
     CodingSessionStore.CodingSessionStore["Service"],
-    "getByWorktreePath" | "attachPullRequest"
+    "getByBranch" | "attachPullRequest"
   >,
-  cwd: string,
   result: GitRunStackedActionResult,
+  sessionBranch: string | null,
 ) {
   if (result.pr.status !== "created" || result.pr.url === undefined) return;
-  const session = yield* codingSessionStore.getByWorktreePath(cwd);
+  if (sessionBranch === null) return;
+  const session = yield* codingSessionStore.getByBranch(sessionBranch);
   if (Option.isNone(session)) return;
   yield* codingSessionStore.attachPullRequest({
     threadId: session.value.threadId,
@@ -572,6 +578,10 @@ const makeWsRpcLayer = (
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
       const codingSessionStore = yield* CodingSessionStore.CodingSessionStore;
+      const lineBranchStore = yield* LineBranchStore.LineBranchStore;
+      const slotStore = yield* SlotStore.SlotStore;
+      const slotRegistry = yield* SlotRegistry.SlotRegistry;
+      const slotService = yield* SlotService.SlotService;
       const codingSessionService = yield* CodingSessionService.CodingSessionService;
       const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
@@ -618,6 +628,149 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
+      const path = yield* Path.Path;
+
+      const slotForCodingSessionThread = Effect.fn("ws.slotForCodingSessionThread")(function* (
+        threadId: ThreadId,
+      ) {
+        const session = yield* codingSessionStore.getByThreadId(threadId);
+        if (Option.isNone(session)) return Option.none();
+        const detail = yield* planningStore.getPlanSnapshot({ planId: session.value.planId });
+        const slot = (yield* slotStore.listAll).find(
+          (candidate) =>
+            candidate.projectId === detail.plan.projectId &&
+            candidate.members.some(
+              (member) =>
+                member.repositoryId === session.value.repositoryId &&
+                member.currentBranch === session.value.branch,
+            ),
+        );
+        return Option.fromNullishOr(slot);
+      });
+
+      const retainTerminalSlot = Effect.fn("ws.retainTerminalSlot")(function* (input: {
+        readonly threadId: string;
+        readonly terminalId: string;
+      }) {
+        return yield* acquireCodingSessionSlot(ThreadId.make(input.threadId), {
+          kind: "terminal",
+          threadId: input.threadId,
+          terminalId: input.terminalId,
+        });
+      });
+
+      const releaseTerminalSlots = Effect.fn("ws.releaseTerminalSlots")(function* (input: {
+        readonly threadId: string;
+        readonly terminalId?: string;
+      }) {
+        const slot = yield* slotForCodingSessionThread(ThreadId.make(input.threadId));
+        if (Option.isNone(slot)) return;
+        const lease = yield* slotRegistry.lease(slot.value.slotId);
+        if (Option.isNone(lease)) return;
+        for (const holder of lease.value.holders) {
+          if (
+            holder.kind === "terminal" &&
+            holder.threadId === input.threadId &&
+            (input.terminalId === undefined || holder.terminalId === input.terminalId)
+          ) {
+            yield* slotService.release(slot.value.slotId, holder);
+          }
+        }
+      });
+
+      const retainPreviewSlot = Effect.fn("ws.retainPreviewSlot")(function* (
+        threadId: ThreadId,
+        previewId: string,
+      ) {
+        return yield* acquireCodingSessionSlot(threadId, {
+          kind: "preview",
+          threadId,
+          previewId,
+        });
+      });
+
+      const releasePreviewSlots = Effect.fn("ws.releasePreviewSlots")(function* (input: {
+        readonly threadId: ThreadId;
+        readonly previewId?: string;
+      }) {
+        const slot = yield* slotForCodingSessionThread(input.threadId);
+        if (Option.isNone(slot)) return;
+        const lease = yield* slotRegistry.lease(slot.value.slotId);
+        if (Option.isNone(lease)) return;
+        for (const holder of lease.value.holders) {
+          if (
+            holder.kind === "preview" &&
+            holder.threadId === input.threadId &&
+            (input.previewId === undefined || holder.previewId === input.previewId)
+          ) {
+            yield* slotService.release(slot.value.slotId, holder);
+          }
+        }
+      });
+
+      const acquireCodingSessionSlot = Effect.fn("ws.acquireCodingSessionSlot")(function* (
+        threadId: ThreadId,
+        holder: SlotService.ClaimSlotInput["holder"],
+      ) {
+        const session = yield* codingSessionStore.getByThreadId(threadId);
+        if (Option.isNone(session)) return Option.none();
+        const lineBranch = (yield* lineBranchStore.listAll).find(
+          (candidate) =>
+            candidate.repositoryId === session.value.repositoryId &&
+            candidate.branch === session.value.branch,
+        );
+        if (lineBranch === undefined) return Option.none();
+        const detail = yield* planningStore.getPlanSnapshot({ planId: session.value.planId });
+
+        const assignedSlot = (yield* slotStore.listAll).find(
+          (candidate) =>
+            candidate.projectId === detail.plan.projectId &&
+            candidate.currentLineRootCommitId === lineBranch.lineRootCommitId,
+        );
+        if (assignedSlot !== undefined) {
+          const lease = yield* slotRegistry.lease(assignedSlot.slotId);
+          if (
+            Option.isSome(lease) &&
+            lease.value.holders.every((candidate) => candidate.threadId === threadId)
+          ) {
+            yield* slotService.retain(assignedSlot.slotId, holder);
+            const worktreePath = SlotService.slotMemberWorktreePath(
+              path,
+              assignedSlot,
+              session.value.repositoryId,
+            );
+            return worktreePath === null
+              ? Option.none()
+              : Option.some({ slotId: assignedSlot.slotId, worktreePath });
+          }
+        }
+
+        const claimed = yield* slotService.claim({
+          projectId: detail.plan.projectId,
+          lineRootCommitId: lineBranch.lineRootCommitId,
+          holder,
+        });
+        const claimedMemberPath = SlotService.slotMemberWorktreePath(
+          path,
+          claimed,
+          session.value.repositoryId,
+        );
+        if (claimedMemberPath === null) return Option.none();
+        if (claimedMemberPath !== session.value.worktreePath) {
+          yield* dispatchFromClient({
+            type: "thread.meta.update",
+            commandId: yield* serverCommandId("coding-session-slot-reclaimed"),
+            threadId,
+            branch: session.value.branch,
+            worktreePath: claimedMemberPath,
+          });
+        }
+        return Option.some({ slotId: claimed.slotId, worktreePath: claimedMemberPath });
+      });
+      const acquireCodingSessionTurnSlot = (threadId: ThreadId) =>
+        acquireCodingSessionSlot(threadId, { kind: "turn", threadId }).pipe(
+          Effect.map(Option.map((claimed) => claimed.slotId)),
+        );
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
@@ -1243,8 +1396,39 @@ const makeWsRpcLayer = (
         normalizedCommand: OrchestrationCommand,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
         const dispatchEffect =
-          normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap
-            ? dispatchBootstrapTurnStart(normalizedCommand)
+          normalizedCommand.type === "thread.turn.start"
+            ? Effect.gen(function* () {
+                const acquiredSlot = normalizedCommand.bootstrap
+                  ? Option.none()
+                  : yield* acquireCodingSessionTurnSlot(normalizedCommand.threadId);
+                return yield* (
+                  normalizedCommand.bootstrap
+                    ? dispatchBootstrapTurnStart(normalizedCommand)
+                    : dispatchFromClient(normalizedCommand).pipe(
+                        Effect.mapError((cause) =>
+                          toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                        ),
+                      )
+                ).pipe(
+                  Effect.tapError(() =>
+                    Option.isSome(acquiredSlot)
+                      ? slotService
+                          .release(acquiredSlot.value, {
+                            kind: "turn",
+                            threadId: normalizedCommand.threadId,
+                          })
+                          .pipe(Effect.ignoreCause({ log: true }))
+                      : Effect.void,
+                  ),
+                );
+              }).pipe(
+                Effect.mapError((cause) =>
+                  toDispatchCommandError(
+                    cause,
+                    "Failed to acquire the coding-session worktree slot",
+                  ),
+                ),
+              )
             : dispatchFromClient(normalizedCommand).pipe(
                 Effect.mapError((cause) =>
                   toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
@@ -1867,6 +2051,41 @@ const makeWsRpcLayer = (
                 ),
               );
             }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.subscribeWorktreeSlots]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_WS_METHODS.subscribeWorktreeSlots,
+            Effect.gen(function* () {
+              const snapshot = Effect.gen(function* () {
+                const rows = yield* slotStore.listAll;
+                const leased = new Set<string>();
+                for (const row of rows) {
+                  if (Option.isSome(yield* slotRegistry.lease(row.slotId))) leased.add(row.slotId);
+                }
+                return {
+                  kind: "snapshot" as const,
+                  snapshot: toWireSlotSnapshot(rows, leased),
+                };
+              });
+              return Stream.concat(
+                Stream.fromEffect(snapshot),
+                Stream.merge(slotStore.changes, slotRegistry.changes).pipe(
+                  Stream.debounce(Duration.millis(25)),
+                  Stream.mapEffect(() => snapshot),
+                ),
+              ).pipe(
+                Stream.mapError(
+                  (cause) =>
+                    new MercurianPlanningError({ operation: "subscribeWorktreeSlots", cause }),
+                ),
+              );
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new MercurianPlanningError({ operation: "subscribeWorktreeSlots", cause }),
+              ),
+            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.createProject]: (input) =>
@@ -3499,28 +3718,37 @@ const makeWsRpcLayer = (
           observeRpcStream(
             WS_METHODS.gitRunStackedAction,
             Stream.callback<GitActionProgressEvent, GitManagerServiceError>((queue) =>
-              gitWorkflow
-                .runStackedAction(input, {
-                  actionId: input.actionId,
-                  progressReporter: {
-                    publish: (event) => Queue.offer(queue, event).pipe(Effect.asVoid),
-                  },
-                })
-                .pipe(
-                  Effect.matchCauseEffect({
-                    onFailure: (cause) => Queue.failCause(queue, cause),
-                    onSuccess: (result) =>
-                      attachCreatedPullRequestToCodingSession(
-                        codingSessionStore,
-                        input.cwd,
-                        result,
-                      ).pipe(
-                        Effect.ignore({ log: true }),
-                        Effect.andThen(refreshGitStatus(input.cwd)),
-                        Effect.andThen(Queue.end(queue).pipe(Effect.asVoid)),
-                      ),
-                  }),
-                ),
+              Effect.gen(function* () {
+                // The session row carries the local branch checked out when the
+                // action begins. PR head labels can be remote-qualified, and a
+                // feature-branch action updates the session row asynchronously.
+                const sessionBranch =
+                  input.action === "create_pr" || input.action === "commit_push_pr"
+                    ? (yield* gitWorkflow.localStatus({ cwd: input.cwd })).refName
+                    : null;
+                yield* gitWorkflow
+                  .runStackedAction(input, {
+                    actionId: input.actionId,
+                    progressReporter: {
+                      publish: (event) => Queue.offer(queue, event).pipe(Effect.asVoid),
+                    },
+                  })
+                  .pipe(
+                    Effect.matchCauseEffect({
+                      onFailure: (cause) => Queue.failCause(queue, cause),
+                      onSuccess: (result) =>
+                        attachCreatedPullRequestToCodingSession(
+                          codingSessionStore,
+                          result,
+                          sessionBranch,
+                        ).pipe(
+                          Effect.ignore({ log: true }),
+                          Effect.andThen(refreshGitStatus(input.cwd)),
+                          Effect.andThen(Queue.end(queue).pipe(Effect.asVoid)),
+                        ),
+                    }),
+                  );
+              }),
             ),
             { "rpc.aggregate": "vcs" },
           ),
@@ -3587,9 +3815,43 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "review" },
           ),
         [WS_METHODS.terminalOpen]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalOpen,
+            Effect.gen(function* () {
+              const claimed = yield* retainTerminalSlot(input).pipe(
+                Effect.mapError((cause) => new TerminalCwdStatError({ cwd: input.cwd, cause })),
+              );
+              return yield* terminalManager
+                .open(
+                  Option.match(claimed, {
+                    onNone: () => input,
+                    onSome: ({ worktreePath }) => ({
+                      ...input,
+                      cwd: worktreePath,
+                      worktreePath,
+                    }),
+                  }),
+                )
+                .pipe(
+                  Effect.tapError(() =>
+                    Option.match(claimed, {
+                      onNone: () => Effect.void,
+                      onSome: ({ slotId }) =>
+                        slotService
+                          .release(slotId, {
+                            kind: "terminal",
+                            threadId: input.threadId,
+                            terminalId: input.terminalId,
+                          })
+                          .pipe(Effect.ignoreCause({ log: true })),
+                    }),
+                  ),
+                );
+            }),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalAttach]: (input) =>
           observeRpcStream(
             WS_METHODS.terminalAttach,
@@ -3618,9 +3880,20 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "terminal",
           }),
         [WS_METHODS.terminalClose]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalClose, terminalManager.close(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalClose,
+            terminalManager.close(input).pipe(
+              Effect.tap(() =>
+                releaseTerminalSlots({
+                  threadId: input.threadId,
+                  ...(input.terminalId === undefined ? {} : { terminalId: input.terminalId }),
+                }).pipe(Effect.ignoreCause({ log: true })),
+              ),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
           observeRpcStream(
             WS_METHODS.subscribeTerminalEvents,
@@ -3644,9 +3917,21 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "terminal" },
           ),
         [WS_METHODS.previewOpen]: (input) =>
-          observeRpcEffect(WS_METHODS.previewOpen, previewManager.open(input), {
-            "rpc.aggregate": "preview",
-          }),
+          observeRpcEffect(
+            WS_METHODS.previewOpen,
+            previewManager
+              .open(input)
+              .pipe(
+                Effect.tap((snapshot) =>
+                  retainPreviewSlot(input.threadId, snapshot.tabId).pipe(
+                    Effect.ignoreCause({ log: true }),
+                  ),
+                ),
+              ),
+            {
+              "rpc.aggregate": "preview",
+            },
+          ),
         [WS_METHODS.previewNavigate]: (input) =>
           observeRpcEffect(WS_METHODS.previewNavigate, previewManager.navigate(input), {
             "rpc.aggregate": "preview",
@@ -3660,9 +3945,20 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "preview",
           }),
         [WS_METHODS.previewClose]: (input) =>
-          observeRpcEffect(WS_METHODS.previewClose, previewManager.close(input), {
-            "rpc.aggregate": "preview",
-          }),
+          observeRpcEffect(
+            WS_METHODS.previewClose,
+            previewManager.close(input).pipe(
+              Effect.tap(() =>
+                releasePreviewSlots({
+                  threadId: input.threadId,
+                  ...(input.tabId === undefined ? {} : { previewId: input.tabId }),
+                }).pipe(Effect.ignoreCause({ log: true })),
+              ),
+            ),
+            {
+              "rpc.aggregate": "preview",
+            },
+          ),
         [WS_METHODS.previewList]: (input) =>
           observeRpcEffect(WS_METHODS.previewList, previewManager.list(input), {
             "rpc.aggregate": "preview",

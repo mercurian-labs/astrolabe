@@ -15,4 +15,6 @@ export const toWireCodingSessionRecord = (
   endedAt: record.endedAt === null ? null : DateTime.formatIso(record.endedAt),
   outcome: record.outcome,
   prUrl: record.prUrl,
+  settledCommitOid: record.settledCommitOid,
+  partial: record.partial !== false && record.partial !== 0,
 });

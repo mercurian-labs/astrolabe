@@ -223,6 +223,7 @@ export function PlanTimeline({
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span>Implemented {item.planRevisionCommitId.slice(0, 8)}</span>
                   <span>{status}</span>
+                  {record?.partial === true ? <PartialBadge /> : null}
                   {record === undefined ? null : <span>{record.branch}</span>}
                   {record?.prUrl === null || record?.prUrl === undefined ? null : (
                     <a className="underline" href={record.prUrl} rel="noreferrer" target="_blank">
@@ -358,6 +359,15 @@ function InterruptedBadge() {
   return (
     <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
       Interrupted
+    </span>
+  );
+}
+
+/** The session stopped before settling, so its changes remain a restorable snapshot. */
+function PartialBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
+      Partial
     </span>
   );
 }

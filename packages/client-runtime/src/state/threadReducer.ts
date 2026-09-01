@@ -481,6 +481,7 @@ export function applyThreadDetailEvent(
         files: event.payload.files,
         assistantMessageId: event.payload.assistantMessageId,
         completedAt: event.payload.completedAt,
+        ...(event.payload.partial === undefined ? {} : { partial: event.payload.partial }),
       };
 
       const existing = thread.checkpoints.find((entry) => entry.turnId === checkpoint.turnId);
@@ -520,60 +521,6 @@ export function applyThreadDetailEvent(
       };
     }
 
-    // ── Revert ──────────────────────────────────────────────────────
-    case "thread.reverted": {
-      const checkpoints = pipe(
-        thread.checkpoints,
-        Arr.filter(
-          (entry) =>
-            entry.checkpointTurnCount !== undefined &&
-            entry.checkpointTurnCount <= event.payload.turnCount,
-        ),
-        Arr.sort(checkpointOrder),
-      );
-
-      const retainedTurnIds = new Set(Arr.map(checkpoints, (entry) => entry.turnId));
-      const messages = retainMessagesAfterRevert(
-        thread.messages,
-        retainedTurnIds,
-        event.payload.turnCount,
-      );
-      const proposedPlans = pipe(
-        thread.proposedPlans,
-        Arr.filter((plan) => plan.turnId === null || retainedTurnIds.has(plan.turnId)),
-      );
-      const activities = pipe(
-        thread.activities,
-        Arr.filter((activity) => activity.turnId === null || retainedTurnIds.has(activity.turnId)),
-      );
-      const latestCheckpoint = checkpoints.at(-1) ?? null;
-
-      return {
-        kind: "updated",
-        thread: {
-          ...thread,
-          checkpoints,
-          messages,
-          proposedPlans,
-          activities,
-          latestTurn:
-            latestCheckpoint === null
-              ? null
-              : {
-                  turnId: latestCheckpoint.turnId,
-                  state: checkpointStatusToTurnState(
-                    latestCheckpoint.status as "ready" | "missing" | "error",
-                  ),
-                  requestedAt: latestCheckpoint.completedAt,
-                  startedAt: latestCheckpoint.completedAt,
-                  completedAt: latestCheckpoint.completedAt,
-                  assistantMessageId: latestCheckpoint.assistantMessageId ?? null,
-                },
-          updatedAt: event.occurredAt,
-        },
-      };
-    }
-
     // ── Activities ──────────────────────────────────────────────────
     case "thread.activity-appended": {
       const activity = event.payload.activity;
@@ -583,8 +530,7 @@ export function applyThreadDetailEvent(
       // retaining the history grows the thread by thousands of rows over a
       // long session. Mirrors the server-side snapshot rule in
       // dropStaleContextWindowActivities; retention stays per turn so a
-      // thread.reverted that discards turns can still resolve a value from
-      // the turns that survive.
+      // retention stays per turn so older completed turns keep their value.
       const supersedesContextWindow = isResolvableContextWindowActivity(activity);
       const activities = pipe(
         thread.activities,
@@ -610,7 +556,6 @@ export function applyThreadDetailEvent(
     // ── Events that don't mutate thread state directly ──────────────
     case "thread.approval-response-requested":
     case "thread.user-input-response-requested":
-    case "thread.checkpoint-revert-requested":
       return { kind: "unchanged" };
   }
 
@@ -664,67 +609,4 @@ function rebindCheckpointAssistantMessage(
   return Arr.map(checkpoints, (entry) =>
     entry.turnId === turnId ? { ...entry, assistantMessageId: messageId } : entry,
   );
-}
-
-function retainMessagesAfterRevert(
-  messages: ReadonlyArray<OrchestrationMessage>,
-  retainedTurnIds: ReadonlySet<string>,
-  turnCount: number,
-): OrchestrationMessage[] {
-  const retainedMessageIds = new Set<string>();
-  for (const message of messages) {
-    if (message.role === "system") {
-      retainedMessageIds.add(message.id);
-      continue;
-    }
-    if (message.turnId !== null && retainedTurnIds.has(message.turnId)) {
-      retainedMessageIds.add(message.id);
-    }
-  }
-
-  const retainedUserCount = messages.filter(
-    (message) => message.role === "user" && retainedMessageIds.has(message.id),
-  ).length;
-  const missingUserCount = Math.max(0, turnCount - retainedUserCount);
-  if (missingUserCount > 0) {
-    const fallbackUserMessages = messages
-      .filter(
-        (message) =>
-          message.role === "user" &&
-          !retainedMessageIds.has(message.id) &&
-          (message.turnId === null || retainedTurnIds.has(message.turnId)),
-      )
-      .toSorted(
-        (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
-      )
-      .slice(0, missingUserCount);
-    for (const message of fallbackUserMessages) {
-      retainedMessageIds.add(message.id);
-    }
-  }
-
-  const retainedAssistantCount = messages.filter(
-    (message) => message.role === "assistant" && retainedMessageIds.has(message.id),
-  ).length;
-  const missingAssistantCount = Math.max(0, turnCount - retainedAssistantCount);
-  if (missingAssistantCount > 0) {
-    const fallbackAssistantMessages = messages
-      .filter(
-        (message) =>
-          message.role === "assistant" &&
-          !retainedMessageIds.has(message.id) &&
-          (message.turnId === null || retainedTurnIds.has(message.turnId)),
-      )
-      .toSorted(
-        (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
-      )
-      .slice(0, missingAssistantCount);
-    for (const message of fallbackAssistantMessages) {
-      retainedMessageIds.add(message.id);
-    }
-  }
-
-  return messages.filter((message) => retainedMessageIds.has(message.id));
 }

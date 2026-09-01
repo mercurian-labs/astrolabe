@@ -69,6 +69,8 @@ const session: PlanCodingSessionRecord = {
   endedAt: null,
   outcome: null,
   prUrl: null,
+  settledCommitOid: null,
+  partial: false,
 };
 
 describe("applyPlanStreamItem", () => {
