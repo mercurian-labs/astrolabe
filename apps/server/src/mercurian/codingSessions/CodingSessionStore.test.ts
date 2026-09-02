@@ -30,6 +30,10 @@ const record = {
   prUrl: null,
   settledCommitOid: null,
   partial: false,
+  snapshotOid: null,
+  snapshotKind: null,
+  departedRef: null,
+  branchMovement: null,
 } as const;
 
 const seedPlanAndCommit = Effect.gen(function* () {
@@ -57,6 +61,37 @@ layer("CodingSessionStore", (it) => {
       assert.ok(Option.isSome(byWorktree));
       assert.strictEqual(byWorktree.value.threadId, record.threadId);
 
+      yield* store.recordSnapshot(record.threadId, {
+        snapshotOid: "snapshot-one",
+        kind: "settled",
+        branchTipOid: "branch-tip",
+        departedRef: null,
+        branchMovement: { kind: "added", count: 2 },
+      });
+      let snapshotted = yield* store.getByThreadId(record.threadId);
+      assert.ok(Option.isSome(snapshotted));
+      assert.strictEqual(snapshotted.value.partial, 0);
+      assert.strictEqual(snapshotted.value.settledCommitOid, "branch-tip");
+      yield* store.recordSnapshot(record.threadId, {
+        snapshotOid: "snapshot-partial",
+        kind: "partial",
+        branchTipOid: "partial-branch-tip",
+        departedRef: null,
+        branchMovement: { kind: "unchanged" },
+      });
+      yield* store.recordSnapshot(record.threadId, {
+        snapshotOid: "snapshot-external",
+        kind: "external",
+        branchTipOid: "external-branch-tip",
+        departedRef: null,
+        branchMovement: { kind: "added", count: 1 },
+      });
+      snapshotted = yield* store.getByThreadId(record.threadId);
+      assert.ok(Option.isSome(snapshotted));
+      assert.strictEqual(snapshotted.value.partial, 1);
+      assert.strictEqual(snapshotted.value.snapshotKind, "external");
+      assert.strictEqual(snapshotted.value.settledCommitOid, "external-branch-tip");
+
       yield* store.updateBranch(record.threadId, "renamed/session");
       const change = yield* store.changes.pipe(
         Stream.runHead,
@@ -77,6 +112,9 @@ layer("CodingSessionStore", (it) => {
       assert.strictEqual(updated?.branch, "renamed/session");
       assert.strictEqual(updated?.prUrl, "https://example.test/pr/1");
       assert.strictEqual(updated?.outcome, "completed");
+      assert.strictEqual(updated?.snapshotOid, "snapshot-external");
+      assert.strictEqual(updated?.settledCommitOid, "external-branch-tip");
+      assert.deepStrictEqual(updated?.branchMovement, { kind: "added", count: 1 });
       assert.strictEqual(DateTime.formatIso(updated!.endedAt!), "2026-08-14T13:00:00.000Z");
       yield* sql`DELETE FROM repositories WHERE repository_id = 'repository'`;
       const [stored] = yield* store.listForPlan(record.planId);

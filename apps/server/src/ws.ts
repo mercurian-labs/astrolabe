@@ -2088,6 +2088,20 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.readLineUncommittedDiff]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.readLineUncommittedDiff,
+            checkpointDiffQuery.getLineUncommittedDiff(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new MercurianPlanningError({
+                    operation: "readLineUncommittedDiff",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.createProject]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.createProject,

@@ -2247,6 +2247,10 @@ export const make = Effect.gen(function* () {
             prUrl: null,
             settledCommitOid: null,
             partial: false,
+            snapshotOid: null,
+            snapshotKind: null,
+            departedRef: null,
+            branchMovement: null,
           });
           yield* touchPlanRow({ planId: input.planId, updatedAt: input.startedAt });
           return { commit, payload } as const;

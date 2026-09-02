@@ -16,6 +16,8 @@ import {
   OrchestrationCheckpointStatus,
   ThreadId,
   TurnId,
+  SnapshotKind,
+  BranchMovement,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -49,6 +51,9 @@ export const ProjectionTurn = Schema.Struct({
   checkpointStatus: Schema.NullOr(OrchestrationCheckpointStatus),
   checkpointFiles: Schema.Array(OrchestrationCheckpointFile),
   checkpointPartial: Schema.optional(Schema.Boolean),
+  checkpointSnapshotKind: Schema.optional(SnapshotKind),
+  checkpointDepartedRef: Schema.optional(Schema.String),
+  checkpointBranchMovement: Schema.optional(BranchMovement),
 });
 export type ProjectionTurn = typeof ProjectionTurn.Type;
 
@@ -68,6 +73,9 @@ export const ProjectionTurnById = Schema.Struct({
   checkpointStatus: Schema.NullOr(OrchestrationCheckpointStatus),
   checkpointFiles: Schema.Array(OrchestrationCheckpointFile),
   checkpointPartial: Schema.optional(Schema.Boolean),
+  checkpointSnapshotKind: Schema.optional(SnapshotKind),
+  checkpointDepartedRef: Schema.optional(Schema.String),
+  checkpointBranchMovement: Schema.optional(BranchMovement),
 });
 export type ProjectionTurnById = typeof ProjectionTurnById.Type;
 

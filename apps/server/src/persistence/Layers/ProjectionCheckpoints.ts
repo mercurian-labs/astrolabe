@@ -10,6 +10,9 @@ import {
   CheckpointFilesStorage,
   checkpointFilesFromStorage,
   checkpointPartialFromStorage,
+  checkpointSnapshotKindFromStorage,
+  checkpointDepartedRefFromStorage,
+  checkpointBranchMovementFromStorage,
   toCheckpointFilesStorage,
 } from "../CheckpointFilesStorage.ts";
 
@@ -165,7 +168,13 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
   const upsert: ProjectionCheckpointRepositoryShape["upsert"] = (row) =>
     upsertCheckpointRow({
       ...row,
-      files: toCheckpointFilesStorage(row.files, row.partial),
+      files: toCheckpointFilesStorage(
+        row.files,
+        row.partial,
+        row.snapshotKind,
+        row.departedRef,
+        row.branchMovement,
+      ),
     }).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
@@ -186,10 +195,16 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
       Effect.map((rows) =>
         rows.map((row) => {
           const partial = checkpointPartialFromStorage(row.files);
+          const snapshotKind = checkpointSnapshotKindFromStorage(row.files);
+          const departedRef = checkpointDepartedRefFromStorage(row.files);
+          const branchMovement = checkpointBranchMovementFromStorage(row.files);
           return {
             ...row,
             files: checkpointFilesFromStorage(row.files),
             ...(partial === undefined ? {} : { partial }),
+            ...(snapshotKind === undefined ? {} : { snapshotKind }),
+            ...(departedRef === undefined ? {} : { departedRef }),
+            ...(branchMovement === undefined ? {} : { branchMovement }),
           };
         }),
       ),
@@ -210,11 +225,17 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
           onNone: () => Effect.succeed(Option.none()),
           onSome: (row) => {
             const partial = checkpointPartialFromStorage(row.files);
+            const snapshotKind = checkpointSnapshotKindFromStorage(row.files);
+            const departedRef = checkpointDepartedRefFromStorage(row.files);
+            const branchMovement = checkpointBranchMovementFromStorage(row.files);
             return Effect.succeed(
               Option.some({
                 ...row,
                 files: checkpointFilesFromStorage(row.files),
                 ...(partial === undefined ? {} : { partial }),
+                ...(snapshotKind === undefined ? {} : { snapshotKind }),
+                ...(departedRef === undefined ? {} : { departedRef }),
+                ...(branchMovement === undefined ? {} : { branchMovement }),
               }),
             );
           },

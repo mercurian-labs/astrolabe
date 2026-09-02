@@ -1,10 +1,12 @@
 import * as Schema from "effect/Schema";
 
 import {
+  BranchMovement,
   MercurianCommitId,
   MercurianRepositoryId,
   PlanId,
   ThreadId,
+  SnapshotKind,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 
@@ -25,5 +27,9 @@ export const CodingSessionRecord = Schema.Struct({
   prUrl: Schema.NullOr(Schema.String),
   settledCommitOid: Schema.NullOr(TrimmedNonEmptyString),
   partial: Schema.Union([Schema.Boolean, Schema.Number]),
+  snapshotOid: Schema.NullOr(TrimmedNonEmptyString),
+  snapshotKind: Schema.NullOr(SnapshotKind),
+  departedRef: Schema.NullOr(Schema.String),
+  branchMovement: Schema.NullOr(BranchMovement),
 });
 export type CodingSessionRecord = typeof CodingSessionRecord.Type;

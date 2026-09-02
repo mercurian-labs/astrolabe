@@ -25,6 +25,7 @@ const repositoryB = MercurianRepositoryId.make("repository-b");
 const root = MercurianCommitId.make("root");
 const mainChild = MercurianCommitId.make("main-child");
 const forkChild = MercurianCommitId.make("fork-child");
+const sessionCommit = MercurianCommitId.make("session-commit");
 const createdAt = DateTime.makeUnsafe("2026-08-31T12:00:00.000Z");
 
 const detail = {
@@ -49,7 +50,11 @@ const detail = {
   codingSessions: [],
 } as never;
 
-const makeHarness = (initial: ReadonlyArray<LineBranchStore.LineBranch> = [], oid = "base-new") => {
+const makeHarness = (
+  initial: ReadonlyArray<LineBranchStore.LineBranch> = [],
+  oid = "base-new",
+  planDetail = detail,
+) => {
   const rows = [...initial];
   const gitCalls: Array<{ readonly cwd: string; readonly args: ReadonlyArray<string> }> = [];
   const dependencies = Layer.mergeAll(
@@ -57,7 +62,7 @@ const makeHarness = (initial: ReadonlyArray<LineBranchStore.LineBranch> = [], oi
       getTreeSnapshot: Effect.succeed({
         plans: [{ planId, projectId, title: "Line branches" }],
       } as never),
-      getPlanSnapshot: () => Effect.succeed(detail),
+      getPlanSnapshot: () => Effect.succeed(planDetail),
       changes: Stream.empty,
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
@@ -197,6 +202,53 @@ describe("LineBranchReactor", () => {
         ),
       );
       assert.strictEqual(harness.rows[0]?.baseOid, "base-old");
+    }),
+  );
+
+  it.effect("seeds only an inherited line snapshot from its ancestor session", () =>
+    Effect.gen(function* () {
+      const inheritedDetail = {
+        plan: { planId, projectId, title: "Line branches" },
+        timeline: [
+          { _tag: "plan-revision", commitId: root, parents: [], sequence: 1, createdAt },
+          {
+            _tag: "coding-session",
+            commitId: sessionCommit,
+            repositoryId: repositoryA,
+            parents: [root],
+            sequence: 2,
+            createdAt,
+          },
+          {
+            _tag: "message",
+            commitId: mainChild,
+            parents: [sessionCommit],
+            sequence: 3,
+            createdAt,
+          },
+          {
+            _tag: "message",
+            commitId: forkChild,
+            parents: [sessionCommit],
+            sequence: 4,
+            createdAt,
+          },
+        ],
+        codingSessions: [
+          {
+            commitId: sessionCommit,
+            repositoryId: repositoryA,
+            settledCommitOid: "branch-tip",
+            snapshotOid: "ancestor-snapshot",
+          },
+        ],
+      } as never;
+      const harness = yield* makeHarness([], "base-new", inheritedDetail);
+      yield* harness.reactor.reconcile();
+      const inheritedUpdates = harness.gitCalls.filter((call) => call.args[0] === "update-ref");
+      assert.strictEqual(inheritedUpdates.length, 1);
+      assert.strictEqual(inheritedUpdates[0]?.args[2], "ancestor-snapshot");
+      assert.ok(inheritedUpdates[0]?.args[1]?.endsWith("/snapshot"));
     }),
   );
 });

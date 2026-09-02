@@ -24,6 +24,7 @@ import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotRegistry from "./SlotRegistry.ts";
 import * as SlotStore from "./SlotStore.ts";
+import * as SnapshotChain from "./SnapshotChain.ts";
 import { make, SlotPoolAtCapacityError } from "./SlotService.ts";
 import { type WorktreeSlot, WorktreeSlotId } from "./schema.ts";
 
@@ -63,6 +64,9 @@ interface HarnessOptions {
   readonly dirtyPaths?: ReadonlyArray<string>;
   readonly materializeGate?: Deferred.Deferred<void>;
   readonly failCreateAtCwd?: string;
+  readonly headRefs?: Readonly<Record<string, string | null>>;
+  readonly driftedPaths?: ReadonlyArray<string>;
+  readonly checkpointExists?: boolean;
   readonly links?: ReadonlyArray<{
     readonly projectId: MercurianProjectId;
     readonly repositoryId: MercurianRepositoryId;
@@ -80,6 +84,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
   const materializedPaths: Array<string> = [];
   const removedPaths: Array<string> = [];
   const captures: Array<{ readonly cwd: string; readonly checkpointRef: CheckpointRef }> = [];
+  const restores: Array<{ readonly cwd: string; readonly checkpointRef: CheckpointRef }> = [];
   let activeMaterializations = 0;
   let maxActiveMaterializations = 0;
 
@@ -186,6 +191,25 @@ const makeHarness = (options: HarnessOptions = {}) => {
               stderrTruncated: false,
             };
           }
+          if (input.args[0] === "symbolic-ref") {
+            const current =
+              options.headRefs?.[input.cwd] ??
+              options.initialSlots
+                ?.flatMap((slot) =>
+                  slot.members.map((member) => ({
+                    path: `${slot.path}/${member.relativePath}`,
+                    branch: member.currentBranch,
+                  })),
+                )
+                .find((entry) => entry.path === input.cwd)?.branch;
+            return {
+              exitCode: current === null || current === undefined ? 1 : 0,
+              stdout: current === null || current === undefined ? "" : `refs/heads/${current}\n`,
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            };
+          }
           if (input.args[0] === "checkout" || input.args[0] === "clean") dirty.delete(input.cwd);
           return {
             exitCode: 0,
@@ -198,8 +222,28 @@ const makeHarness = (options: HarnessOptions = {}) => {
     }),
     Layer.mock(CheckpointStore.CheckpointStore)({
       captureCheckpoint: (input) => Effect.sync(() => captures.push(input)),
-      hasCheckpointRef: () => Effect.succeed(false),
-      restoreCheckpoint: () => Effect.succeed(true),
+      hasCheckpointRef: () => Effect.succeed(options.checkpointExists ?? false),
+      restoreCheckpoint: (input) =>
+        Effect.sync(() => {
+          restores.push(input);
+          return true;
+        }),
+    }),
+    Layer.mock(SnapshotChain.SnapshotChain)({
+      capture: (input) =>
+        Effect.sync(() => {
+          captures.push({ cwd: input.cwd, checkpointRef: input.ref });
+          return {
+            oid: "snapshot",
+            previousOid: "previous",
+            headOid: "head",
+            headRef: "refs/heads/main",
+          };
+        }),
+      branchMovement: () => Effect.succeed({ kind: "unchanged" }),
+      departure: () => null,
+      isDrifted: ({ cwd }) =>
+        Effect.succeed(new Set(options.driftedPaths ?? options.dirtyPaths ?? []).has(cwd)),
     }),
   );
 
@@ -212,6 +256,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
       rows,
       gitCalls,
       captures,
+      restores,
       materializedPaths,
       removedPaths,
       stats: () => ({ maxActiveMaterializations }),
@@ -235,6 +280,26 @@ describe("SlotService", () => {
       assert.deepStrictEqual(
         claimed.members.map((member) => member.relativePath),
         ["a", "b"],
+      );
+    }),
+  );
+
+  it.effect("restores an inherited line snapshot into newly materialized members", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ checkpointExists: true });
+      yield* harness.service.claim({
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-a"),
+      });
+      assert.deepStrictEqual(
+        harness.restores.map((restore) => restore.cwd),
+        ["/worktrees/project-one/slot-1/a", "/worktrees/project-one/slot-1/b"],
+      );
+      assert.ok(
+        harness.restores.every(
+          (restore) => restore.checkpointRef === SnapshotChain.lineSnapshotRef(lineA),
+        ),
       );
     }),
   );
@@ -265,6 +330,7 @@ describe("SlotService", () => {
       });
       assert.strictEqual(claimed.slotId, existing.slotId);
       assert.strictEqual(harness.materializedPaths.length, 0);
+      assert.strictEqual(harness.captures.length, 0);
       assert.ok(!harness.gitCalls.some((call) => call.args[0] === "checkout"));
     }),
   );
@@ -291,7 +357,7 @@ describe("SlotService", () => {
     }),
   );
 
-  it.effect("snapshots dirty affinity members during restart recovery", () =>
+  it.effect("snapshots a drifted affinity member exactly once during restart recovery", () =>
     Effect.gen(function* () {
       const existing = slot(lineA);
       const harness = yield* makeHarness({
@@ -307,6 +373,37 @@ describe("SlotService", () => {
         harness.captures.map((capture) => capture.cwd),
         ["/worktrees/project-one/slot-1/b"],
       );
+      assert.strictEqual(harness.captures.length, 1);
+    }),
+  );
+
+  it.effect("settles a departed affinity member back onto its line branch", () =>
+    Effect.gen(function* () {
+      const existing = slot(lineA);
+      const memberPath = "/worktrees/project-one/slot-1/a";
+      const harness = yield* makeHarness({
+        initialSlots: [existing],
+        headRefs: { [memberPath]: "refs/heads/sibling" },
+        checkpointExists: true,
+      });
+      yield* harness.service.claim({
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-a"),
+      });
+      const memberCalls = harness.gitCalls
+        .filter((call) => call.cwd === memberPath)
+        .map((call) => call.args.slice(0, 2));
+      assert.deepStrictEqual(memberCalls.slice(1, 4), [
+        ["reset", "--hard"],
+        ["clean", "-fd"],
+        ["checkout", "mercurian/line-a-a"],
+      ]);
+      assert.strictEqual(harness.captures.length, 0);
+      assert.ok(
+        harness.gitCalls.some((call) => call.cwd === memberPath && call.args[0] === "checkout"),
+      );
+      assert.ok(harness.restores.some((restore) => restore.cwd === memberPath));
     }),
   );
 

@@ -10,6 +10,9 @@ import {
   CheckpointFilesStorage,
   checkpointFilesFromStorage,
   checkpointPartialFromStorage,
+  checkpointSnapshotKindFromStorage,
+  checkpointDepartedRefFromStorage,
+  checkpointBranchMovementFromStorage,
   toCheckpointFilesStorage,
 } from "../CheckpointFilesStorage.ts";
 
@@ -48,10 +51,16 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
 
 const fromDbRow = <A extends { readonly checkpointFiles: CheckpointFilesStorage }>(row: A) => {
   const partial = checkpointPartialFromStorage(row.checkpointFiles);
+  const snapshotKind = checkpointSnapshotKindFromStorage(row.checkpointFiles);
+  const departedRef = checkpointDepartedRefFromStorage(row.checkpointFiles);
+  const branchMovement = checkpointBranchMovementFromStorage(row.checkpointFiles);
   return {
     ...row,
     checkpointFiles: checkpointFilesFromStorage(row.checkpointFiles),
     ...(partial === undefined ? {} : { checkpointPartial: partial }),
+    ...(snapshotKind === undefined ? {} : { checkpointSnapshotKind: snapshotKind }),
+    ...(departedRef === undefined ? {} : { checkpointDepartedRef: departedRef }),
+    ...(branchMovement === undefined ? {} : { checkpointBranchMovement: branchMovement }),
   };
 };
 
@@ -272,7 +281,13 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
   const upsertByTurnId: ProjectionTurnRepositoryShape["upsertByTurnId"] = (row) =>
     upsertProjectionTurnById({
       ...row,
-      checkpointFiles: toCheckpointFilesStorage(row.checkpointFiles, row.checkpointPartial),
+      checkpointFiles: toCheckpointFilesStorage(
+        row.checkpointFiles,
+        row.checkpointPartial,
+        row.checkpointSnapshotKind,
+        row.checkpointDepartedRef,
+        row.checkpointBranchMovement,
+      ),
     }).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(

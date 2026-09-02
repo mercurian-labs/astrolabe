@@ -29,7 +29,13 @@ import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 // it creates one from is the tracker surface's own shape, passed back verbatim.
 import { TrackerConnectionId, TrackerIssue } from "./mercurianTrackers.ts";
 import { PlanningModelSelection } from "./mercurianWorkspace.ts";
-import { ChatAttachment, ModelSelection, UploadChatAttachment } from "./orchestration.ts";
+import {
+  BranchMovement,
+  ChatAttachment,
+  ModelSelection,
+  SnapshotKind,
+  UploadChatAttachment,
+} from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
   subscribeTree: "mercurian.subscribeTree",
@@ -58,6 +64,7 @@ export const MERCURIAN_WS_METHODS = {
   stopPlanningTurn: "mercurian.stopPlanningTurn",
   answerPlanningQuestion: "mercurian.answerPlanningQuestion",
   subscribeWorktreeSlots: "mercurian.subscribeWorktreeSlots",
+  readLineUncommittedDiff: "mercurian.readLineUncommittedDiff",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -107,6 +114,20 @@ export type WorktreeSlotStreamItem = typeof WorktreeSlotStreamItem.Type;
 export const MercurianSubscribeWorktreeSlotsInput = Schema.Struct({});
 export type MercurianSubscribeWorktreeSlotsInput = typeof MercurianSubscribeWorktreeSlotsInput.Type;
 
+export const MercurianReadLineUncommittedDiffInput = Schema.Struct({
+  threadId: ThreadId,
+  ignoreWhitespace: Schema.optional(Schema.Boolean),
+});
+export type MercurianReadLineUncommittedDiffInput =
+  typeof MercurianReadLineUncommittedDiffInput.Type;
+
+export const MercurianReadLineUncommittedDiffResult = Schema.Struct({
+  threadId: ThreadId,
+  diff: Schema.String,
+});
+export type MercurianReadLineUncommittedDiffResult =
+  typeof MercurianReadLineUncommittedDiffResult.Type;
+
 /** Mutable facts keyed by the coding-session leaf commit. */
 export const PlanCodingSessionRecord = Schema.Struct({
   commitId: MercurianCommitId,
@@ -121,6 +142,10 @@ export const PlanCodingSessionRecord = Schema.Struct({
   prUrl: Schema.NullOr(Schema.String),
   settledCommitOid: Schema.NullOr(TrimmedNonEmptyString),
   partial: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  snapshotOid: Schema.NullOr(TrimmedNonEmptyString),
+  snapshotKind: Schema.NullOr(SnapshotKind),
+  departedRef: Schema.NullOr(Schema.String),
+  branchMovement: Schema.NullOr(BranchMovement),
 });
 export type PlanCodingSessionRecord = typeof PlanCodingSessionRecord.Type;
 
@@ -1160,6 +1185,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "stopPlanningTurn",
       "answerPlanningQuestion",
       "subscribeWorktreeSlots",
+      "readLineUncommittedDiff",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

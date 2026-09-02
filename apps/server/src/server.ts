@@ -39,6 +39,7 @@ import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/Codin
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
+import * as SnapshotChain from "./mercurian/worktreeSlots/SnapshotChain.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
@@ -265,10 +266,8 @@ const PlatformServicesLive = Layer.unwrap(
 );
 
 const ReactorLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(OrchestrationReactorLive),
   Layer.provideMerge(ProviderRuntimeIngestionLive),
   Layer.provideMerge(ProviderCommandReactorLive),
-  Layer.provideMerge(CheckpointReactorLive),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
@@ -496,9 +495,21 @@ const SlotRegistryLayerLive = SlotRegistry.layer;
 // Checkpointing consumes slot leases while the slot service consumes the rest
 // of the runtime. Resolve that shared boundary once so both services observe
 // the same in-memory registry instance.
-const MercurianRuntimeCoreDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+const MercurianRuntimeBaseDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provideMerge(SlotRegistryLayerLive),
   Layer.provideMerge(MercurianPersistenceLayerLive),
+);
+
+const SnapshotChainDependenciesLive = SnapshotChain.layer.pipe(
+  Layer.provideMerge(MercurianRuntimeBaseDependenciesLive),
+);
+
+const CheckpointReactorDependenciesLive = CheckpointReactorLive.pipe(
+  Layer.provideMerge(SnapshotChainDependenciesLive),
+);
+
+const MercurianRuntimeCoreDependenciesLive = OrchestrationReactorLive.pipe(
+  Layer.provideMerge(CheckpointReactorDependenciesLive),
 );
 
 const SlotServiceLayerLive = SlotService.layer.pipe(

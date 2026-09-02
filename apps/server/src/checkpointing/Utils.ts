@@ -9,6 +9,10 @@ export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number
   );
 }
 
+export function chainParentRef(ref: CheckpointRef): CheckpointRef {
+  return CheckpointRef.make(`${ref}^1`);
+}
+
 export function resolveThreadWorkspaceCwd(input: {
   readonly thread: {
     readonly projectId: ProjectId;

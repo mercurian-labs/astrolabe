@@ -12,7 +12,7 @@ layer("013_WorktreeSlots", (it) => {
   it.effect("adds line branches, session settle facts, and the project slot pool", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 13);
+      assert.ok(migrationEntries.some(([id]) => id === 13));
       yield* runMigrations();
 
       const lineBranches = yield* sql<{ readonly name: string }>`

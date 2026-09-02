@@ -17,4 +17,8 @@ export const toWireCodingSessionRecord = (
   prUrl: record.prUrl,
   settledCommitOid: record.settledCommitOid,
   partial: record.partial !== false && record.partial !== 0,
+  snapshotOid: record.snapshotOid,
+  snapshotKind: record.snapshotKind,
+  departedRef: record.departedRef,
+  branchMovement: record.branchMovement,
 });

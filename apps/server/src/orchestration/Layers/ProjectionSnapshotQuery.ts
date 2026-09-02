@@ -37,6 +37,9 @@ import {
   CheckpointFilesStorage,
   checkpointFilesFromStorage,
   checkpointPartialFromStorage,
+  checkpointSnapshotKindFromStorage,
+  checkpointDepartedRefFromStorage,
+  checkpointBranchMovementFromStorage,
 } from "../../persistence/CheckpointFilesStorage.ts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -113,6 +116,9 @@ const checkpointSummaryFromRow = (
   row: typeof ProjectionCheckpointDbRowSchema.Type,
 ): OrchestrationCheckpointSummary => {
   const partial = checkpointPartialFromStorage(row.files);
+  const snapshotKind = checkpointSnapshotKindFromStorage(row.files);
+  const departedRef = checkpointDepartedRefFromStorage(row.files);
+  const branchMovement = checkpointBranchMovementFromStorage(row.files);
   return {
     turnId: row.turnId,
     checkpointTurnCount: row.checkpointTurnCount,
@@ -122,6 +128,9 @@ const checkpointSummaryFromRow = (
     assistantMessageId: row.assistantMessageId,
     completedAt: row.completedAt,
     ...(partial === undefined ? {} : { partial }),
+    ...(snapshotKind === undefined ? {} : { snapshotKind }),
+    ...(departedRef === undefined ? {} : { departedRef }),
+    ...(branchMovement === undefined ? {} : { branchMovement }),
   };
 };
 const ProjectionLatestTurnDbRowSchema = Schema.Struct({

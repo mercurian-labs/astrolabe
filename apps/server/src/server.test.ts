@@ -701,8 +701,7 @@ const buildAppUnderTest = (options?: {
           getByWorktreePath: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
-          recordSettledCommit: () => Effect.void,
-          recordPartial: () => Effect.void,
+          recordSnapshot: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,
@@ -1665,6 +1664,10 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
       prUrl: null,
       settledCommitOid: null,
       partial: false,
+      snapshotOid: null,
+      snapshotKind: null,
+      departedRef: null,
+      branchMovement: null,
     } as const;
     const lookedUpThreadIds: ThreadId[] = [];
 
@@ -4941,6 +4944,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           prUrl: null,
           settledCommitOid: null,
           partial: false,
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
         } as const;
       };
       const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
@@ -6731,6 +6738,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           prUrl: null,
           settledCommitOid: null,
           partial: false,
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
         } as const;
         const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
         const announcedPlans: PlanId[] = [];

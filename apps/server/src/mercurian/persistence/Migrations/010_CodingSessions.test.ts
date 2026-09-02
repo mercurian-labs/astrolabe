@@ -34,6 +34,10 @@ layer("010_CodingSessions", (it) => {
           // Added by 012_LineBranches; the chain runs whole, so this pins end-state.
           "settled_commit_oid",
           "partial",
+          "snapshot_oid",
+          "snapshot_kind",
+          "departed_ref",
+          "branch_movement",
         ],
       );
 

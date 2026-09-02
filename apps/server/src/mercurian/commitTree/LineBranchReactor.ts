@@ -15,6 +15,7 @@ import {
   type PlanTimelineItem,
 } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
+import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
 import { LineBranchStore } from "./LineBranchStore.ts";
 
 const planningItems = (detail: PlanDetail) =>
@@ -81,6 +82,24 @@ function inheritedCommitOid(detail: PlanDetail, lineRootCommitId: string, reposi
     .find((oid): oid is string => typeof oid === "string");
 }
 
+function inheritedSnapshotOid(detail: PlanDetail, lineRootCommitId: string, repositoryId: string) {
+  const ancestors = ancestorsAt(detail, lineRootCommitId);
+  const records = new Map(
+    detail.codingSessions.map((session) => [String(session.commitId), session]),
+  );
+  return detail.timeline
+    .filter(
+      (item) =>
+        item._tag === "coding-session" &&
+        item.repositoryId === repositoryId &&
+        ancestors.has(String(item.commitId)) &&
+        records.get(String(item.commitId))?.snapshotOid !== null,
+    )
+    .toSorted((left, right) => right.sequence - left.sequence)
+    .map((item) => records.get(String(item.commitId))?.snapshotOid)
+    .find((oid): oid is string => typeof oid === "string");
+}
+
 export const make = Effect.gen(function* () {
   const planning = yield* PlanningStore;
   const repositories = yield* RepositoryStore;
@@ -126,6 +145,11 @@ export const make = Effect.gen(function* () {
           );
           if (repository === undefined || !repository.hasGit) continue;
           const inherited = inheritedCommitOid(detail, String(root.commitId), repositoryId);
+          const inheritedSnapshot = inheritedSnapshotOid(
+            detail,
+            String(root.commitId),
+            repositoryId,
+          );
           const baseOid = inherited ?? (yield* repositoryDefaultOid(repository.path));
           const key = {
             lineRootCommitId: MercurianCommitId.make(root.commitId),
@@ -139,6 +163,17 @@ export const make = Effect.gen(function* () {
               cwd: repository.path,
               args: ["branch", branch, baseOid],
             });
+            if (inheritedSnapshot !== undefined) {
+              yield* git.execute({
+                operation: "LineBranchReactor.inheritSnapshot",
+                cwd: repository.path,
+                args: [
+                  "update-ref",
+                  lineSnapshotRef(MercurianCommitId.make(String(root.commitId))),
+                  inheritedSnapshot,
+                ],
+              });
+            }
             yield* branches.create({
               ...key,
               branch,
