@@ -1,6 +1,6 @@
 # Technical Plan — M-206: The snapshot chain
 
-_Generated from M-206's Goal/AC and the almagest Threads note ("The working state", amended 2026-09-01: "the runtime snapshots; only people and agents commit"). Replaces M-195's settle-time runtime commit on the line's branch with a hidden, parented, per-line snapshot chain; the line's branch moves only when a person or agent commits._
+_Generated from M-206's Goal/AC and the almagest Threads note ("The working state", amended 2026-09-01: "the runtime snapshots; only people and agents commit"). Replaces M-195's settle-time runtime commit on the line's branch with a hidden, parented, per-line snapshot chain; the line's branch moves only when a person or agent commits. **Build 1 landed as PR #104 on 2026-09-02; the section "Build 2" below plans the same-day amendments (built read from the chain, two guards on moving a branch, refs are the truth).**_
 
 **Goal, in one sentence:** the branch a person pushes carries only the commits they or their agent made, while a hidden snapshot chain beside it records every turn's whole tree — so a pull request never shows commits nobody made, nothing a turn produced is lost, and every checkpoint restores from its snapshot alone.
 
@@ -165,6 +165,104 @@ House pattern: real temp git for the reactor and the driver, mocked driver with 
 
 _The walk: settle a mock-provider turn, confirm the branch did not move and the session header's quick action reads Commit & push with Push still in the menu; check out another branch in the slot from a terminal, settle a turn, confirm the Departed badge and that the next turn returns the slot to the line's branch with the file present; edit a file in the slot between turns and confirm the external snapshot line in the work log._
 
+## Build 2 — the 2026-09-02 amendments
+
+_Build 1 (everything above) landed as PR #104. On 2026-09-02 three resolutions on the Threads vault note landed after that build and were carried into M-206 as **Amendments (2026-09-02)**: "built" is read from the chain per repository; two guards on moving a branch; refs are the truth and the recorded name follows them. This section plans the second build against the tree at `3fe37864c`. The original AC stands and nothing above is reopened. Same-day vault resolutions that M-206 does **not** carry: the per-thread home repository and the slot-root standing (Projects/Threads), reachability as a fact about the turn (Providers), a partial's per-repository record and the repository-only project link (M-196's territory), and reporting a turn's edits to ignored files — each belongs to the issue that owns that surface._
+
+### What discovery found in the built code
+
+- **`built` flips on any snapshot.** `CheckpointReactor.captureCheckpointForTurn` (`:431`) and `captureExternalSnapshot` (`:683`) call `lineBranches.markBuilt` unconditionally after every capture; `SlotService.settleMember`'s recovery capture (`:246-259`) never marks. Decision 6 of build 1 chose "first snapshot of any kind"; the vault has since resolved otherwise, and the two call sites are exactly where the new rule lands.
+- **Re-point has no guards.** `LineBranchReactor.reconcile` (`:184-191`) runs `branch -f <name> <base>` whenever the row is unbuilt and its base moved, without asking whether a slot holds the branch or whether the name still exists. The reactor's layer (`server.ts:527`) already sees `SlotStore` through `MercurianPersistenceLayerLive` (`server.ts:301-304`), so the checked-out guard needs no wiring.
+- **A hand rename is a departure today.** `SnapshotChain.departure` (`:277`) compares the symbolic HEAD to `refs/heads/<recorded>` by name only. `SlotService.claim`'s affinity path (`:432-448`) settles any mismatch with `reset --hard` + `checkout <recorded>`, which **fails** when the recorded name is gone; the switch path (`projectMembers`, `:171-201`) never checks that the ref exists before `checkout`. Nothing recreates a missing branch, and nothing tells the person.
+- **Three records carry the name.** `line_branches.branch` (`LineBranchStore`), the slot member's `currentBranch` (`SlotStore.assign` rewrites all members at once, `:68`), and `coding_sessions.branch` — the last is mirrored from `thread.meta-updated` by `CodingSessionRecordReactor` (`:29`) and also writable directly through `CodingSessionStore.updateBranch` (`:230`). The reactor and `ws.acquireCodingSessionSlot` (`ws.ts:711-767`) both locate a line by matching a member's `currentBranch` to the session's `branch`, so the three must move together.
+- **Where a refusal reaches a person.** Session birth maps `SlotPoolAtCapacityError` to `CodingSessionBlockedError("pool-at-capacity")` (`CodingSessionService.ts:435`), rendered by `implementFailureNotice` in `PlanningSpace.tsx:702`. A later turn's claim failure becomes a string on `OrchestrationDispatchCommandError` ("Failed to acquire the coding-session worktree slot", `ws.ts:1426`) — no typed payload rides it, so an offer with an action cannot come back on that path; it needs a durable fact the header can read. `CodingSessionHeader.tsx` mounts with `threadId`, `planId`, and `repositoryId` (`:49-57`).
+
+### Design
+
+#### Built is decided where the snapshot is written
+
+`SnapshotChain.capture` gains `repositoryId` and `lineBranch` inputs and, after the snapshot lands, decides in one place whether the repository is now built:
+
+- `snapshotTree = rev-parse <oid>^{tree}` versus `baseTree = rev-parse <baseOid>^{tree}` where `baseOid` is the line-branch row's recorded base; **or**
+- `rev-parse refs/heads/<lineBranch>` ≠ `baseOid` — the branch itself has moved.
+
+Either → `lineBranches.markBuilt`; neither → nothing. `capture` returns `built: boolean` beside the existing fields. The reactor's two unconditional `markBuilt` calls are deleted; `settleMember`'s recovery capture passes `member.repositoryId` and `member.currentBranch` and gets the same rule for free. `built` stays sticky once set. Consequences the AC names: a settled turn that changed nothing leaves the repository unbuilt and re-pointable; an external or recovery snapshot of an unchanged, unmoved tree leaves it unbuilt; a turn that edited only ignored files leaves it unbuilt (ignored files are outside the tree by design).
+
+#### Two guards on `LineBranchReactor.reconcile`
+
+Before `branch -f`, for an unbuilt row whose base moved:
+
+1. **Checked out somewhere.** `slots.listAll` has a member with this `repositoryId` and `currentBranch === row.branch` → skip, record hold `checked-out`.
+2. **Name gone.** `rev-parse --verify --quiet refs/heads/<row.branch>` fails → skip, record hold `name-missing`; never `branch -f` (it would mint the phantom).
+
+Otherwise re-point as today and clear the hold. The record: **`line_branches.repoint_hold TEXT NULL`** (`checked-out` | `name-missing`) via `LineBranchStore.recordRepointHold({ key, reason | null })`, exposed on the `LineBranch` row as `repointHold`. Not on the wire — no AC renders it; tests and forensics read the store. The reactor's log line names the hold too.
+
+#### Refs are the truth: one reading of where the slot stands
+
+**`SnapshotChain.readStanding({ cwd, lineRootCommitId, repositoryId, lineBranch })`** replaces the by-name `departure` check at every capture and at claim. It resolves `headRef` (`symbolic-ref -q HEAD`), `headOid`, and whether `refs/heads/<lineBranch>` exists, then:
+
+- `headRef === refs/heads/<lineBranch>` → **`on-line`**.
+- Otherwise compute **the line's commit**: the recorded ref's tip when it still exists; else the chain head's recorded HEAD (`^2 ?? ^1`); else the row's `baseOid`. A named `headRef` whose `headOid` equals it → **`renamed { branch }`** — the same commit under a different name.
+- Anything else → **`departed { ref: headRef ?? "detached", recordedMissing }`**.
+
+"Same commit" is literal, as the AC words it: a turn that renames the branch _and_ commits on it reads as departed, and the next claim raises the missing case below. That is the vault's rule, recorded here so nobody widens it silently.
+
+**Adopting a rename.** `SnapshotChain.adoptRename({ lineRootCommitId, repositoryId, branch })` moves the two persistence records the chain owns: `LineBranchStore.rename` (new `UPDATE … SET branch`) and `SlotStore.updateMemberBranch({ slotId, repositoryId, currentBranch })` (new; `assign` rewrites every member and is the wrong tool). The caller then moves the thread: dispatch `thread.meta.update { branch }` (the header, the sidebar subtitle, and mobile's thread list all read the thread's branch), call `codingSessions.updateBranch` **synchronously** (the record reactor mirrors the same event later, idempotently — the direct write is what keeps the very next `getByThreadId` from reading the old name), and append a `line.branch-renamed` activity ("Branch renamed to `<name>` by hand") so the work log shows it. Adoption is per repository by construction: the row is keyed by `(line, repository)`, and nothing touches the line's other repositories.
+
+**Where it runs.**
+
+- **Claim, affinity path** (`SlotService.claim`): per member, `readStanding` — `on-line` → nothing; `renamed` → `adoptRename`, no reset, hand the slot back on the new name; `departed` with `recordedMissing` → fail with **`LineBranchMissingError { lineRootCommitId, repositoryId, branch, commitOid }`**; `departed` otherwise → `settleMember` as today. **Claim, switch and materialize paths** (`projectMembers`): verify each desired branch exists in the repository first and raise `LineBranchMissingError` before any slot is touched. `commitOid` is the line's commit as defined above, resolved in the _repository's_ path since the slot may not exist. `ws.acquireCodingSessionSlot` already compares the claimed member to the session after claim; it now also compares `member.currentBranch` to `session.branch` and, when they differ, does the three thread-side moves above (the meta update it already dispatches gains the new branch).
+- **Settle** (`captureCheckpointForTurn`) and **turn open** (`captureExternalSnapshot`): after `capture`, `readStanding`; `renamed` → adopt + thread-side moves, `departedRef = null`, and `branchMovement` plus the recorded tip read the new name; `departed` → `departedRef` as today. A reactor-local `adoptStanding` helper shares this between the two hooks.
+- **Session birth** (`CodingSessionService.start`): re-read the branch from the claimed slot member rather than the row read before the claim, and map `LineBranchMissingError` to `CodingSessionBlockedError("line-branch-missing")`.
+
+**The one case that needs a person.** A claim that raises `LineBranchMissingError` on a turn records **`coding_sessions.line_branch_missing_oid`** = `commitOid` (new column; `CodingSessionStore.recordLineBranchMissing(threadId, oid | null)`) before the dispatch error goes back ("The line's branch `<name>` no longer exists in the repository; recreate it from the session header to continue"). The fact rides `PlanCodingSessionRecord.lineBranchMissingOid` to the client. **`mercurian.recreateLineBranch`** takes `{ threadId }` or `{ planId, commitId, repositoryId }` (the header has the first; the Implement door has the second) and resolves both to `(lineRootCommitId, repositoryId)` via `lineRootCommitIdFor`; it runs `git branch <recorded name> <commitOid>` in the repository's path (refuses if the name exists), clears `line_branch_missing_oid` on every session of that line and repository, and returns `{ branch, commitOid }`. The next claim checks the branch out and restores the chain head over it — "the line continues from that snapshot once it exists" is `settleMember` as built.
+
+**What renders.** `CodingSessionHeader`: when the session record carries `lineBranchMissingOid`, a notice row "Branch `<name>` no longer exists in this repository" with a **Recreate at `<oid7>`** button calling the RPC; the row disappears when the fact clears. `PlanningSpace`: `implementFailureNotice` for `line-branch-missing` carries the same button, calling the RPC with the door's `{ planId, commitId: parentCommitId, repositoryId }`. The adopted name shows wherever the thread's branch already shows (header, sidebar subtitle, popover **Branch** fact) — no new component. Mobile reads the thread's branch and follows a rename; the recreate offer is web-only this build.
+
+### File & module layout (build 2)
+
+| File                                                                                            | Change                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/server/src/mercurian/worktreeSlots/SnapshotChain.ts` (+ `.test.ts`)                       | `capture` takes `repositoryId`/`lineBranch`, decides and marks built, returns `built`; `readStanding` replaces `departure`; `adoptRename`; `lineCommit` helper. |
+| `apps/server/src/mercurian/commitTree/LineBranchStore.ts`                                       | `rename`, `recordRepointHold`; `repointHold` on the row.                                                                                                        |
+| `apps/server/src/mercurian/commitTree/LineBranchReactor.ts` (+ `.test.ts`)                      | The two guards before `branch -f`; hold recorded and cleared; depends on `SlotStore`.                                                                           |
+| `apps/server/src/mercurian/worktreeSlots/SlotStore.ts` (+ `.test.ts`)                           | `updateMemberBranch`.                                                                                                                                           |
+| `apps/server/src/mercurian/worktreeSlots/SlotService.ts` (+ `.test.ts`)                         | Affinity path uses `readStanding` (adopt / missing / settle); `projectMembers` verifies refs; `LineBranchMissingError`; recovery capture passes the new inputs. |
+| `apps/server/src/orchestration/Layers/CheckpointReactor.ts` (+ `.test.ts`)                      | `markBuilt` calls removed; `adoptStanding` at settle and turn open; `line.branch-renamed` activity.                                                             |
+| `apps/server/src/ws.ts`, `apps/server/src/server.test.ts`                                       | Post-claim rename follow-through; `LineBranchMissingError` → record fact + message; `recreateLineBranch` handler; mocks gain the new store methods.             |
+| `apps/server/src/mercurian/codingSessions/{CodingSessionService,CodingSessionStore,wire}.ts`    | Branch re-read after claim; `line-branch-missing` mapping; `recordLineBranchMissing`; `lineBranchMissingOid` on the record.                                     |
+| `apps/server/src/mercurian/persistence/Migrations/015_LineBranchHolds.ts` (+ `.test.ts`, index) | **(new)** `line_branches.repoint_hold`, `coding_sessions.line_branch_missing_oid`; entry `[15, "LineBranchHolds", …]`.                                          |
+| `packages/contracts/src/mercurian.ts`                                                           | `line-branch-missing` reason + message; `lineBranchMissingOid` on `PlanCodingSessionRecord`; `recreateLineBranch` method, input union, result.                  |
+| `packages/client-runtime/src/state/{planReducer,mercurianPlanning}.ts`                          | Spread the new record field; the RPC command.                                                                                                                   |
+| `apps/web/src/components/mercurian/{CodingSessionHeader,PlanningSpace}.tsx` (+ logic tests)     | Missing-branch notice with **Recreate** on the header and the Implement door.                                                                                   |
+| `docs/internals/glossary.md`, `docs/user/projects-and-plans.md`                                 | "Built" and the rename/missing rules under the line-branch entries; a user paragraph on renaming or deleting the branch by hand.                                |
+
+### Implementation checklist (build 2)
+
+- [ ] Contracts first: `line-branch-missing`, `lineBranchMissingOid`, `recreateLineBranch` (input union, result); `server.test.ts` mocks compile in the same commit.
+- [ ] Migration 015 + `LineBranchStore.rename`/`recordRepointHold` + `SlotStore.updateMemberBranch` + `CodingSessionStore.recordLineBranchMissing` + `wire.ts`.
+- [ ] `SnapshotChain`: built decided in `capture` (tree ≠ base tree, or branch ≠ base); `readStanding`; `adoptRename`; delete `departure`.
+- [ ] `LineBranchReactor`: the two guards, hold recorded/cleared, `SlotStore` dependency.
+- [ ] `SlotService`: affinity path on `readStanding`; ref verification in `projectMembers`; `LineBranchMissingError`.
+- [ ] Reactor: drop unconditional `markBuilt`; `adoptStanding` at settle and turn open; activity line; departed unchanged for a different commit or detached HEAD.
+- [ ] `ws.ts`: rename follow-through after claim (meta update, synchronous `updateBranch`, activity); missing-branch fact + message on the turn path; `recreateLineBranch` handler. `CodingSessionService`: branch from the claimed member; `line-branch-missing`.
+- [ ] Web: header notice + Recreate; Implement-door notice + Recreate; client-runtime command and reducer spread.
+- [ ] Docs: glossary and user guide.
+- [ ] Do not add a product-side rename (one name per line across repositories is a later feature); do not touch memory, teardown, mobile beyond what the thread's branch already gives, or upstream threads.
+
+### Test plan (build 2)
+
+- [ ] `SnapshotChain.test.ts` (real git): a capture whose tree equals the base tree and whose branch sits at the base marks nothing; a capture with a changed tree marks built; a branch moved with an identical tree marks built; a second unchanged capture on a built row stays built. `readStanding`: `on-line`; `renamed` after `git branch -m`; `renamed` after `checkout -b` at the same commit; `departed` after a commit on the renamed branch; `departed { recordedMissing: true }` after `branch -D` and a detached checkout.
+- [ ] `LineBranchReactor.test.ts`: base moves while a slot member has the branch checked out → no `branch -f`, hold `checked-out`; base moves while the ref is gone → no `branch -f`, hold `name-missing`; a later reconcile with the slot freed re-points and clears the hold; a built row is untouched as before.
+- [ ] `SlotService.test.ts` (recorded `gitCalls`): affinity claim with HEAD on a renamed branch at the line's commit → no reset/clean/checkout, store rename recorded, returned member carries the new name; affinity claim with the recorded ref gone and HEAD elsewhere → `LineBranchMissingError` with the chain head's commit; switch path with a missing desired branch → error before any checkout.
+- [ ] `CheckpointReactor.test.ts` (real git): a settled turn after `git branch -m` → no `departedRef`, session branch updated, `thread.meta.update` dispatched, `line.branch-renamed` activity appended, `branchMovement` read against the new name; a settled turn with an untouched tree → `markBuilt` never called; a turn ending on a different commit → departed as before.
+- [ ] `server.test.ts` (wire): `recreateLineBranch` by `threadId` creates the branch at the recorded commit and clears `lineBranchMissingOid`; by `{ planId, commitId, repositoryId }` resolves the same line; refuses when the name exists.
+- [ ] `015_LineBranchHolds.test.ts`: tail is 15; both columns present.
+- [ ] Web logic tests: header notice appears only with `lineBranchMissingOid`; Implement notice for `line-branch-missing` carries the action.
+- [ ] Targeted `vp test run` on touched suites + `tsgo --noEmit` for `apps/server`, `packages/contracts`, `packages/client-runtime`, `apps/web`.
+
+_The walk, build 2: settle a mock turn that changes nothing and confirm the row stays unbuilt (`line_branches.built = 0`) and a base-ref change still re-points it; `git branch -m` inside the slot between turns, send a turn, confirm the header shows the new name and the work log the rename line, with no Departed badge; `git branch -D` the line's branch from the primary checkout with the slot elsewhere, send a turn, confirm the header's Recreate offer, click it, confirm the branch exists at the chain head's commit and the next turn runs on it._
+
 ## Decision Log
 
 _Reviewed 2026-09-01 in `decision-review-m-206-snapshot-chain.md`; all nine recommendations accepted 2026-09-02._
@@ -174,7 +272,15 @@ _Reviewed 2026-09-01 in `decision-review-m-206-snapshot-chain.md`; all nine reco
 3. **`SnapshotChain` as a new service beside `SlotService`.** Kept. Keeps `CheckpointStore` content-blind and the reactor's dependency list honest; siblings provided from the same core layer.
 4. **Per-turn facts ride the `files` JSON sidecar**, not columns on `projection_turns`. Kept. The table is upstream's; the fork baseline says additive beside upstream, minimal edits inside. Third feature to reach for the sidecar earns a side table.
 5. **Uncommitted delta read from refs** (`readLineUncommittedDiff`, an **Uncommitted** diff scope). Kept. The only option that reads the line rather than the directory; closes the M-195 hazard of a session's worktree path outliving its slot.
-6. **`built` flips on the first snapshot of any kind.** Kept. A snapshot pins the base as parent two; re-pointing afterwards desyncs the chain. Meaning recorded in the store's doc comment.
+6. **`built` flips on the first snapshot of any kind.** Kept in build 1; **superseded in build 2** by the vault's 2026-09-02 resolution: built is read from the chain per repository (decision 10).
 7. **Turn diffs use the snapshot's first parent as base**; external changes surface as a work-log activity. Kept. Keeps human edits between turns off the agent's card at the cost of one `^1` helper.
 8. **A fork starts at the line's own branch tip, not HEAD.** Kept. The vault's rule in one field: the branch is the agent's to move, the ref is the product's to keep; the snapshot still records HEAD.
 9. **`partial` stays on the wire this PR.** Kept. Five readers, one concern per PR; retire it when the web moves to kinds.
+
+_Build 2, 2026-09-02 — calls made while planning the amendments; open to review._
+
+10. **Built is decided inside `SnapshotChain.capture`, not by its callers.** Tree ≠ base tree, or branch ≠ base, marks built; both the reactor and the slot service's recovery capture get the rule from the one place that has the snapshot, the base, and the branch in hand.
+11. **"Same commit" is literal.** A rename is adopted only when HEAD's commit equals the line's commit; rename plus commits in one turn reads as departed and the next claim raises the missing case. The AC's words, kept narrow on purpose.
+12. **A hold is a column on `line_branches`, not a wire field.** The AC says the record says why; nothing renders it, so it stays in the store where tests and forensics read it.
+13. **The missing-branch fact lives on the session record; one RPC serves both doors.** A turn's claim failure is a string on the dispatch error, so the offer needs a durable fact the header can read; the Implement door reaches the same `recreateLineBranch` with `{ planId, commitId, repositoryId }`.
+14. **Adoption moves the two chain-owned records in the helper and the thread-side three in the caller.** `SnapshotChain` cannot dispatch; the reactor and `ws.ts` can. `coding_sessions.branch` is written synchronously by the adopter so the next read sees the new name before the record reactor's mirror lands.
