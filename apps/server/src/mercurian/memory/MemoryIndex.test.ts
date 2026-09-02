@@ -234,6 +234,34 @@ layer("MemoryIndex", (it) => {
     }),
   );
 
+  it.effect("prepares a note edit that removes an Open Decisions heading", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const index = yield* MemoryIndex.MemoryIndex;
+      const fixture = yield* makeFixture("remove-open-decision-heading", { git: true });
+      const notePath = path.join(fixture.root, "Plans.md");
+      const before = "# Plans\n\n## Open Decisions\n\n### Which shape?\n\nStill open.\n";
+      const after = "# Plans\n\n## Open Decisions\n\nNo outstanding questions.\n";
+      yield* fs.writeFileString(notePath, before);
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed memory"]);
+
+      const proposal = yield* index.prepareAmendment({
+        projectId: fixture.projectId,
+        turnId: PlanTurnId.make("turn-remove-open-decision-heading"),
+        amendment: {
+          title: "Retire the answered question",
+          notes: [{ name: "Plans", markdown: after }],
+          placements: [],
+        },
+      });
+
+      assert.deepStrictEqual(proposal.changes, [{ path: "Plans.md", before, after }]);
+      assert.include(proposal.patch, "-### Which shape?");
+    }),
+  );
+
   it.effect("refuses amendment drift before touching any proposed file", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

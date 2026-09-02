@@ -116,7 +116,6 @@ import {
 import { PlanTimeline } from "./PlanTimeline";
 import { MemoryNoteReader } from "./MemoryNoteReader";
 import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
-import { PlanSuggestions } from "./PlanSuggestions";
 import { SpecArtifact } from "./SpecArtifact";
 import {
   planMayBeStaleAt,
@@ -214,7 +213,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [pendingEditAndBranch, setPendingEditAndBranch] = useState<PendingEditAndBranch | null>(
     null,
   );
-  const [planMessageSending, setPlanMessageSending] = useState(false);
   const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
   // The same resolution the server runs, read here so sending gates with the
@@ -385,7 +383,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setStalePlanWarningOpen(false);
     setImplementFromCommitId(null);
     setPendingEditAndBranch(null);
-    setPlanMessageSending(false);
     setMemoryReader({ stack: [] });
     setMemoryAmendmentSheetOpen(false);
     setDismissedMemoryAmendmentFailure(null);
@@ -588,24 +585,19 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
    */
   const send = useCallback(
     async ({ text, attachments }: PlanComposerSubmission) => {
-      setPlanMessageSending(true);
-      try {
-        const sent = await appendMessage({
-          planId,
-          text,
-          ...(actingHead === null ? {} : { parentCommitId: actingHead }),
-          ...(attachments.length === 0 ? {} : { attachments }),
-          ...(modelChoice === null ? {} : { modelChoice }),
-        });
-        if (sent === null) return false;
-        // The stream delivers the message back; there is nothing to refresh.
-        setPosition({ _tag: "at", commitId: sent.commitId, live: true });
-        // Only the sending branch's draft leaves; every other branch keeps its own.
-        if (actingHead !== null) clearDraft(planId, actingHead);
-        return true;
-      } finally {
-        setPlanMessageSending(false);
-      }
+      const sent = await appendMessage({
+        planId,
+        text,
+        ...(actingHead === null ? {} : { parentCommitId: actingHead }),
+        ...(attachments.length === 0 ? {} : { attachments }),
+        ...(modelChoice === null ? {} : { modelChoice }),
+      });
+      if (sent === null) return false;
+      // The stream delivers the message back; there is nothing to refresh.
+      setPosition({ _tag: "at", commitId: sent.commitId, live: true });
+      // Only the sending branch's draft leaves; every other branch keeps its own.
+      if (actingHead !== null) clearDraft(planId, actingHead);
+      return true;
     },
     [actingHead, appendMessage, clearDraft, modelChoice, planId],
   );
@@ -717,12 +709,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     memoryAmendmentFailure === null || memoryFailureKey === dismissedMemoryAmendmentFailure
       ? null
       : memoryAmendmentFailureNotice(memoryAmendmentFailure);
-  const composerDisabled =
-    actingHead === null ||
-    visibleInFlight !== undefined ||
-    visibleInFlightImplement !== undefined ||
-    planMessageSending ||
-    gateNotice !== null;
   const paneCornerControl = usesSideBySideLayout ? (
     <PlanPaneToggle state={pane} onChange={setPane} />
   ) : null;
@@ -802,17 +788,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   <XIcon aria-hidden className="size-3.5" />
                 </Button>
               </div>
-            </div>
-          )}
-          {detail === null ? null : (
-            <div className="px-3 pt-2 sm:px-5">
-              <PlanSuggestions
-                disabled={composerDisabled}
-                planId={planId}
-                projectId={detail.plan.projectId}
-                timeline={visibleTimeline}
-                onSend={(text) => send({ text, attachments: [] })}
-              />
             </div>
           )}
           <PlanComposer

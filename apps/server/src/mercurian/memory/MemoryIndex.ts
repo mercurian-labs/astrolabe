@@ -31,9 +31,7 @@ import {
   insertMapPlacement,
   isValidMemoryNoteName,
   legacyMemoryMapRefusal,
-  missingOpenDecisionHeadings,
   parseSkillMap,
-  parseOpenDecisions,
   serializeSkillMap,
   type MemoryGraph,
 } from "./memoryModel.ts";
@@ -305,7 +303,6 @@ export const make = Effect.gen(function* () {
           exists: false,
           links: [],
           backlinks: graph.backlinks.get(name) ?? [],
-          openDecisions: [],
         } satisfies MemoryNote;
       }
       return {
@@ -318,7 +315,6 @@ export const make = Effect.gen(function* () {
           exists: graph.noteByName.has(link),
         })),
         backlinks: graph.backlinks.get(name) ?? [],
-        openDecisions: parseOpenDecisions(selected.markdown),
       } satisfies MemoryNote;
     });
 
@@ -414,14 +410,6 @@ export const make = Effect.gen(function* () {
       const noteChanges: Array<MemoryAmendmentProposal["changes"][number]> = [];
       for (const note of input.amendment.notes) {
         const previous = loaded.graph.noteByName.get(note.name);
-        if (previous !== undefined) {
-          const missing = missingOpenDecisionHeadings(previous.markdown, note.markdown);
-          if (missing.length > 0) {
-            return yield* new MemoryAmendmentValidationError({
-              reason: `Keep the Open Decision heading${missing.length === 1 ? "" : "s"} ${missing.map((heading) => `“${heading}”`).join(", ")} and record any resolution beneath it.`,
-            });
-          }
-        }
         const relative =
           previous === undefined
             ? `${note.name}.md`

@@ -14,7 +14,6 @@ const writtenNote: MemoryNote = {
     { name: "Unwritten Boundary", exists: false },
   ],
   backlinks: ["Plans", "Composer"],
-  openDecisions: [],
 };
 
 const unwrittenNote: MemoryNote = {
@@ -22,7 +21,6 @@ const unwrittenNote: MemoryNote = {
   exists: false,
   links: [],
   backlinks: ["Planning Space", "Product"],
-  openDecisions: [],
 };
 
 export const MEMORY_NOTE_READER_CATALOG_ENTRIES = [

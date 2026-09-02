@@ -8,9 +8,7 @@ import {
   fingerprintMemoryFiles,
   insertMapPlacement,
   isValidMemoryNoteName,
-  missingOpenDecisionHeadings,
   parseContainsLines,
-  parseOpenDecisions,
   parseSkillMap,
   parseWikilinks,
   serializeSkillMap,
@@ -57,26 +55,6 @@ describe("memoryModel", () => {
       { parent: "Product", child: "Plans" },
       { parent: "Product", child: "Composer" },
     ]);
-  });
-
-  it("parses open decisions, resolutions, and ignores code", () => {
-    expect(
-      parseOpenDecisions(
-        "## Open Decisions\n### Keep it?\nTBD\n### Done?\n**Resolved:** Yes\n```md\n### Fake\n**Resolved**\n```\n## Later\n### Outside",
-      ),
-    ).toEqual([
-      { title: "Keep it?", resolved: false },
-      { title: "Done?", resolved: true },
-    ]);
-    expect(parseOpenDecisions("## Other\n### None")).toEqual([]);
-  });
-
-  it("detects deleted open-decision headings but permits appended resolutions", () => {
-    const before = "## Open Decisions\n### Which shape?\nStill open.\n";
-    expect(missingOpenDecisionHeadings(before, "## Open Decisions\n")).toEqual(["Which shape?"]);
-    expect(
-      missingOpenDecisionHeadings(before, `${before}\n**Resolved:** The small one.\n`),
-    ).toEqual([]);
   });
 
   it.each(["", " spaced", "../Note", ".Hidden", "Note.md", "dir/Note", "dir\\Note"])(

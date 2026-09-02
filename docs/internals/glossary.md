@@ -229,10 +229,10 @@ planning turn is grounded.
 
 #### Suggested next message
 
-An optional composer chip derived from unresolved Open Decisions in memory notes mentioned on the
-current plan timeline. It is client-derived, session-only, and sends through the ordinary plan
-message path; dismissing hides the current identities until a new one appears. Collection,
-filtering, and dismissal rules live in [planSuggestions.logic.ts][39].
+An optional composer chip rendered by [PlanSuggestionsRow][39]. Suggested next messages send
+through the ordinary plan message path, and identity-based dismissal hides the current entries
+until a new one appears. Nothing derives entries from memory notes; sources are teaching- or
+provider-driven, and none are currently built.
 
 #### Skill map
 
@@ -437,7 +437,7 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [36]: ../../packages/contracts/src/mercurianMemory.ts
 [37]: ../../apps/server/src/mercurian/memory/MemoryIndex.ts
 [38]: ../../apps/web/src/components/mercurian/MemoryAmendmentSheet.tsx
-[39]: ../../apps/web/src/components/mercurian/planSuggestions.logic.ts
+[39]: ../../apps/web/src/components/mercurian/PlanSuggestions.tsx
 
 ### Coding session
 
