@@ -42,7 +42,7 @@ Every slot-backed line keeps, per repository, **the line's branch** — `refs/he
 
 A chained snapshot is the existing temp-index capture with parents:
 
-- **parent 1** — the line's previous snapshot (the chain), absent only for the first snapshot of a line with nothing to inherit;
+- **parent 1** — the line's previous snapshot (the chain). Git cannot record a second parent without a first, so the first snapshot of a line with nothing to inherit carries HEAD as its only parent; every reader resolves the head as `^2 ?? ^1`, and the chain-parent preference in the diff query applies only to two-parent snapshots. _(Recorded 2026-09-02 from implementation.)_
 - **parent 2** — the commit `HEAD` resolved to when the tree was captured. This is the pin: however the branch is later rewritten, the commit stays reachable, and "what the branch did during this turn" is `prev^2..this^2` — derived from git, no table.
 
 The tree is always the whole working tree (tracked and untracked, ignored excluded), exactly as today; parent 2 supplies nothing to restore, only provenance. The commit message names the kind: `t3 snapshot kind=<settled|partial|recovery|external> ref=<ref>`.
