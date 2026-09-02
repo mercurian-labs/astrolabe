@@ -2,7 +2,7 @@
 
 _Where the plan's contestable choices are shown, one at a time, so they can be decided at leisure. The durable record is the plan's Decision Log. Grounded 2026-09-01 against the same tree as the plan (`6958be1a7`)._
 
-**How to read this.** Nine decisions. The first five shape structure or are hard to reverse; the last four are local and cheap to change later. Each one opens with a picture of the problem, lists the real alternatives fairly, names the honest cost of the recommendation, and ends with _Keep or change?_ Decisions 1 and 2 were already resolved in conversation and are marked so. Reply with one line, for example: "keep 3–8, change 9."
+**How to read this.** Nine decisions. The first five shape structure or are hard to reverse; the last four are local and cheap to change later. Each one opens with a picture of the problem, lists the real alternatives fairly, names the honest cost of the recommendation, and ends with _Resolved 2026-09-02: keep._ Decisions 1 and 2 were already resolved in conversation and are marked so. Reply with one line, for example: "keep 3–8, change 9."
 
 **Filtered out as settled or noise.** File placement and naming (repo conventions decide). Keeping upstream threads byte-identical (the M-195 plan set that fence and every reactor test enforces it). Departed turns leaving the ref alone rather than following HEAD (the vault resolved it 2026-09-01; the plan only implements it). Kind names in the commit message (free, and derivable either way). The `Astrolabe` author identity on snapshots (already the checkpoint author).
 
@@ -45,7 +45,7 @@ Every snapshot needs a name. Today there is one scheme, inherited from upstream:
 
 _Resolved 2026-09-01: keep._
 
-## 3 (architectural) — Who owns "take a chained snapshot"
+## 3 (architectural) — Who owns "take a chained snapshot" — **resolved: keep**
 
 Two pieces of code need the same recipe: the checkpoint reactor at the end of a turn, and the slot service when it finds a dirty slot before switching or reusing it. Find the line's previous snapshot, resolve HEAD and its branch, capture with two parents, move the chain head. Where does the recipe live?
 
@@ -62,9 +62,9 @@ Two pieces of code need the same recipe: the checkpoint reactor at the end of a 
 
 **Recommendation: keep the new service.** Every Mercurian module in that folder is a `Context.Service` with a `make` and a `layer`; small single-purpose services are how this repo shares behavior between reactors and services, and it is the only option that leaves upstream code content-blind.
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
-## 4 (architectural) — Where the new per-turn facts are stored in the projection
+## 4 (architectural) — Where the new per-turn facts are stored in the projection — **resolved: keep**
 
 Each turn now produces three small facts beside `partial`: the snapshot's kind, the ref a departed turn left HEAD on, and how the branch moved. They have to survive a server restart, so they belong in the projection database that backs the thread's checkpoint list.
 
@@ -80,9 +80,9 @@ Each turn now produces three small facts beside `partial`: the snapshot's kind, 
 
 **Recommendation: keep the sidecar.** It is the pattern the repo chose under the same constraint one migration ago, and the constraint has not moved.
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
-## 5 (architectural) — How the code view reads "what is not committed yet"
+## 5 (architectural) — How the code view reads "what is not committed yet" — **resolved: keep**
 
 After a settled turn, the working tree is dirty and the branch has not moved. The user needs to see that gap before pushing. The subtlety: a line's slot can be handed to another line, and then the working tree on disk belongs to someone else, while the line's real state lives only in its snapshot.
 
@@ -99,9 +99,9 @@ After a settled turn, the working tree is dirty and the branch has not moved. Th
 
 **Recommendation: keep the new query and scope.** It is the one option that reads the line rather than the directory, and the diff plumbing it needs is the existing two-revision `diffCheckpoints` (`GitVcsDriver.ts:834`), not new git.
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
-## 6 (local) — What "built" means on a line's branch row
+## 6 (local) — What "built" means on a line's branch row — **resolved: keep**
 
 A line's branch is minted eagerly, before any work happens. Until work happens, the product may re-point it if the base branch preference changes. The flag that stops re-pointing is `built`. Under M-195 it flipped when a settle-time commit landed. There is no settle-time commit anymore.
 
@@ -117,9 +117,9 @@ A line's branch is minted eagerly, before any work happens. Until work happens, 
 
 **Recommendation: keep first-snapshot, and note the meaning in the store's doc comment.**
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
-## 7 (local) — What a turn's diff is measured against
+## 7 (local) — What a turn's diff is measured against — **resolved: keep**
 
 Today a turn's changed-files card is "turn N minus turn N−1." With the chain, something can happen between turns: a person edits in the slot, a script runs, a pull lands. The plan snapshots that as an "external" snapshot at the next turn's start. The question is whether the turn's diff should include it.
 
@@ -135,9 +135,9 @@ Today a turn's changed-files card is "turn N minus turn N−1." With the chain, 
 
 **Recommendation: keep the first-parent base.** `diffCheckpoints` already interpolates `<ref>^{commit}`, so `<ref>^1` costs one helper and no driver change.
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
-## 8 (local) — Which commit a fork starts from after a departed turn
+## 8 (local) — Which commit a fork starts from after a departed turn — **resolved: keep**
 
 When a new line forks below a built line, its branch starts where the ancestor's branch stood. Usually that is HEAD. But a departed turn ended with HEAD on some other branch. Now "where the branch stood" has two answers.
 
@@ -153,9 +153,9 @@ When a new line forks below a built line, its branch starts where the ancestor's
 
 **Recommendation: keep the line's tip.** It is the vault's rule stated in one field: the branch is the agent's to move, the ref is the product's to keep.
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
-## 9 (local) — Whether `partial` stays on the wire
+## 9 (local) — Whether `partial` stays on the wire — **resolved: keep**
 
 M-195 put a `partial: true` boolean on four contracts and every reader in between. The new `snapshotKind` field says the same thing and more.
 
@@ -170,8 +170,8 @@ M-195 put a `partial: true` boolean on four contracts and every reader in betwee
 
 **Recommendation: keep it, retire it in the follow-up that moves the web to kinds.** One concern per PR is the house rule for pull requests, and this one has a concern already.
 
-_Keep or change?_
+_Resolved 2026-09-02: keep._
 
 ---
 
-**At a glance.** 1 keep (resolved) · 2 keep (resolved) · 3 keep · 4 keep · 5 keep · 6 keep · 7 keep · 8 keep · 9 keep. Reply with any overrides and the plan's Decision Log will be written from your answers.
+**At a glance.** 1 keep (resolved) · 2 keep (resolved) · 3 keep · 4 keep · 5 keep · 6 keep · 7 keep · 8 keep · 9 keep. All nine resolved 2026-09-02 as keep; the plan's Decision Log records them.

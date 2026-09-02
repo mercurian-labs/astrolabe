@@ -164,3 +164,17 @@ House pattern: real temp git for the reactor and the driver, mocked driver with 
 - [ ] Targeted `vp test run` on touched suites + `tsgo --noEmit` for `apps/server`, `packages/contracts`, `packages/client-runtime`, `apps/web`; no repo-wide runs.
 
 _The walk: settle a mock-provider turn, confirm the branch did not move and the session header's quick action reads Commit & push with Push still in the menu; check out another branch in the slot from a terminal, settle a turn, confirm the Departed badge and that the next turn returns the slot to the line's branch with the file present; edit a file in the slot between turns and confirm the external snapshot line in the work log._
+
+## Decision Log
+
+_Reviewed 2026-09-01 in `decision-review-m-206-snapshot-chain.md`; all nine recommendations accepted 2026-09-02._
+
+1. **Two parents on every snapshot (previous snapshot, HEAD).** Kept. Parent two is both the label for "what the branch did this turn" and the pin that keeps a rewritten commit alive; a message trailer cannot pin. Forensics must walk `--first-parent`.
+2. **Ref namespace stays split** (thread-turn refs for turn snapshots, a per-line head ref, a per-line bucket for external and recovery). Kept. Turn-count naming is load-bearing in the diff query, the projection row, and the client's diff target; consolidation waits for M-198.
+3. **`SnapshotChain` as a new service beside `SlotService`.** Kept. Keeps `CheckpointStore` content-blind and the reactor's dependency list honest; siblings provided from the same core layer.
+4. **Per-turn facts ride the `files` JSON sidecar**, not columns on `projection_turns`. Kept. The table is upstream's; the fork baseline says additive beside upstream, minimal edits inside. Third feature to reach for the sidecar earns a side table.
+5. **Uncommitted delta read from refs** (`readLineUncommittedDiff`, an **Uncommitted** diff scope). Kept. The only option that reads the line rather than the directory; closes the M-195 hazard of a session's worktree path outliving its slot.
+6. **`built` flips on the first snapshot of any kind.** Kept. A snapshot pins the base as parent two; re-pointing afterwards desyncs the chain. Meaning recorded in the store's doc comment.
+7. **Turn diffs use the snapshot's first parent as base**; external changes surface as a work-log activity. Kept. Keeps human edits between turns off the agent's card at the cost of one `^1` helper.
+8. **A fork starts at the line's own branch tip, not HEAD.** Kept. The vault's rule in one field: the branch is the agent's to move, the ref is the product's to keep; the snapshot still records HEAD.
+9. **`partial` stays on the wire this PR.** Kept. Five readers, one concern per PR; retire it when the web moves to kinds.
