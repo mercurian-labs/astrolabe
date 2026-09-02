@@ -186,10 +186,20 @@ it.effect(
                 }),
             }),
             Layer.mock(SnapshotChain)({
-              capture: () => Effect.die("clean integration slots must not snapshot"),
+              capture: (input) =>
+                Effect.sync(() => {
+                  runGit(input.cwd, ["update-ref", input.ref, "HEAD"]);
+                  return {
+                    oid: runGit(input.cwd, ["rev-parse", "HEAD"]).stdout.trim(),
+                    previousOid: null,
+                    headOid: runGit(input.cwd, ["rev-parse", "HEAD"]).stdout.trim(),
+                    headRef: runGit(input.cwd, ["symbolic-ref", "-q", "HEAD"]).stdout.trim(),
+                  };
+                }),
               branchMovement: () => Effect.succeed({ kind: "unchanged" }),
               departure: () => null,
-              isDrifted: () => Effect.succeed(false),
+              isDrifted: ({ cwd }) =>
+                Effect.sync(() => NodeFS.existsSync(NodePath.join(cwd, "between-turns.txt"))),
             }),
           );
           const service = yield* make.pipe(
@@ -274,6 +284,35 @@ it.effect(
             [],
           );
           assert.isTrue(NodeFS.existsSync(marker));
+
+          yield* service.release(third.slotId, holder("thread-c"));
+          const betweenTurnsPath = NodePath.join(
+            slotMemberWorktreePath(path, third, repositoryIds[0]!)!,
+            "between-turns.txt",
+          );
+          NodeFS.writeFileSync(betweenTurnsPath, "edited between turns\n");
+          const affinity = yield* service.claim({
+            projectId,
+            lineRootCommitId: lines[2]!,
+            holder: holder("thread-c-next"),
+          });
+          assert.strictEqual(affinity.slotId, third.slotId);
+          assert.strictEqual(
+            NodeFS.readFileSync(betweenTurnsPath, "utf8"),
+            "edited between turns\n",
+          );
+          assert.match(
+            runGit(NodePath.dirname(betweenTurnsPath), ["status", "--porcelain"]).stdout,
+            /^\?\? between-turns\.txt$/mu,
+          );
+          assert.deepStrictEqual(
+            repositoryPaths.flatMap((repositoryPath) =>
+              runGit(repositoryPath, ["for-each-ref", "--format=%(refname)", "refs/t3/lines/"])
+                .stdout.split("\n")
+                .filter((ref) => ref.includes("/snapshots/recovery-")),
+            ),
+            [],
+          );
         }).pipe(Effect.provide(NodeServicesLayer)),
       (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
     ),

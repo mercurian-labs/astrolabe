@@ -215,30 +215,6 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const captureRecoveryMember = Effect.fn("SlotService.captureRecoveryMember")(function* (
-    slot: WorktreeSlot,
-    member: WorktreeSlotMember,
-    now: DateTime.Utc,
-  ) {
-    if (slot.currentLineRootCommitId === null) return;
-    const worktreePath = memberPath(slot, member);
-    if (
-      !(yield* snapshotChain.isDrifted({
-        cwd: worktreePath,
-        lineRootCommitId: slot.currentLineRootCommitId,
-        lineBranch: member.currentBranch!,
-      }))
-    ) {
-      return;
-    }
-    yield* snapshotChain.capture({
-      cwd: worktreePath,
-      lineRootCommitId: slot.currentLineRootCommitId,
-      kind: "recovery",
-      ref: lineExtraSnapshotRef(slot.currentLineRootCommitId, "recovery", now),
-    });
-  });
-
   const settleMember = Effect.fn("SlotService.settleMember")(function* (
     slot: WorktreeSlot,
     member: WorktreeSlotMember,
@@ -461,8 +437,6 @@ export const make = Effect.gen(function* () {
                     member.currentBranch!,
                     now,
                   );
-                } else {
-                  yield* captureRecoveryMember(reusable, member, now);
                 }
               }
               claimed = reusable;

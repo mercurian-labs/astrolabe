@@ -85,6 +85,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
   const removedPaths: Array<string> = [];
   const captures: Array<{ readonly cwd: string; readonly checkpointRef: CheckpointRef }> = [];
   const restores: Array<{ readonly cwd: string; readonly checkpointRef: CheckpointRef }> = [];
+  const events: Array<string> = [];
   let activeMaterializations = 0;
   let maxActiveMaterializations = 0;
 
@@ -182,6 +183,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
       execute: (input) =>
         Effect.sync(() => {
           gitCalls.push({ operation: input.operation, cwd: input.cwd, args: input.args });
+          events.push(`git:${input.cwd}:${input.args[0]}`);
           if (input.args[0] === "status") {
             return {
               exitCode: 0,
@@ -232,6 +234,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
     Layer.mock(SnapshotChain.SnapshotChain)({
       capture: (input) =>
         Effect.sync(() => {
+          events.push(`capture:${input.cwd}:${input.kind}`);
           captures.push({ cwd: input.cwd, checkpointRef: input.ref });
           return {
             oid: "snapshot",
@@ -255,6 +258,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
       registry,
       rows,
       gitCalls,
+      events,
       captures,
       restores,
       materializedPaths,
@@ -357,7 +361,7 @@ describe("SlotService", () => {
     }),
   );
 
-  it.effect("snapshots a drifted affinity member exactly once during restart recovery", () =>
+  it.effect("leaves drift on an affinity member for the turn-start external capture", () =>
     Effect.gen(function* () {
       const existing = slot(lineA);
       const harness = yield* makeHarness({
@@ -369,21 +373,18 @@ describe("SlotService", () => {
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
       });
-      assert.deepStrictEqual(
-        harness.captures.map((capture) => capture.cwd),
-        ["/worktrees/project-one/slot-1/b"],
-      );
-      assert.strictEqual(harness.captures.length, 1);
+      assert.strictEqual(harness.captures.length, 0);
     }),
   );
 
-  it.effect("settles a departed affinity member back onto its line branch", () =>
+  it.effect("captures a departed affinity member once before resetting it", () =>
     Effect.gen(function* () {
       const existing = slot(lineA);
       const memberPath = "/worktrees/project-one/slot-1/a";
       const harness = yield* makeHarness({
         initialSlots: [existing],
         headRefs: { [memberPath]: "refs/heads/sibling" },
+        dirtyPaths: [memberPath],
         checkpointExists: true,
       });
       yield* harness.service.claim({
@@ -399,7 +400,14 @@ describe("SlotService", () => {
         ["clean", "-fd"],
         ["checkout", "mercurian/line-a-a"],
       ]);
-      assert.strictEqual(harness.captures.length, 0);
+      assert.deepStrictEqual(
+        harness.captures.map((capture) => capture.cwd),
+        [memberPath],
+      );
+      const captureIndex = harness.events.indexOf(`capture:${memberPath}:recovery`);
+      const resetIndex = harness.events.indexOf(`git:${memberPath}:reset`);
+      assert.ok(captureIndex >= 0);
+      assert.ok(captureIndex < resetIndex);
       assert.ok(
         harness.gitCalls.some((call) => call.cwd === memberPath && call.args[0] === "checkout"),
       );
