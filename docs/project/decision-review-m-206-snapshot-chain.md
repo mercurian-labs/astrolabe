@@ -2,7 +2,7 @@
 
 _Where the plan's contestable choices are shown, one at a time, so they can be decided at leisure. The durable record is the plan's Decision Log. Grounded 2026-09-01 against the same tree as the plan (`6958be1a7`)._
 
-**How to read this.** Nine decisions. The first five shape structure or are hard to reverse; the last four are local and cheap to change later. Each one opens with a picture of the problem, lists the real alternatives fairly, names the honest cost of the recommendation, and ends with _Resolved 2026-09-02: keep._ Decisions 1 and 2 were already resolved in conversation and are marked so. Reply with one line, for example: "keep 3–8, change 9."
+**How to read this.** Nine decisions. The first five shape structure or are hard to reverse; the last four are local and cheap to change later. Each one opens with a picture of the problem, lists the real alternatives fairly, names the honest cost of the recommendation, and ends with its resolution. All nine were resolved keep: 1 and 2 in conversation on 2026-09-01, the rest on 2026-09-02.
 
 **Filtered out as settled or noise.** File placement and naming (repo conventions decide). Keeping upstream threads byte-identical (the M-195 plan set that fence and every reactor test enforces it). Departed turns leaving the ref alone rather than following HEAD (the vault resolved it 2026-09-01; the plan only implements it). Kind names in the commit message (free, and derivable either way). The `Astrolabe` author identity on snapshots (already the checkpoint author).
 
