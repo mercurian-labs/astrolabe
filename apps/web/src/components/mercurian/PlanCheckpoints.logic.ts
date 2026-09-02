@@ -8,7 +8,11 @@
  * the PlanGraph shape so all existing layouts and graph traversals retain one
  * source of truth.
  */
-import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
+import type {
+  MercurianCommitId,
+  PlanCodingSessionRecord,
+  PlanTimelineItem,
+} from "@t3tools/contracts";
 
 import {
   descendantClosure,
@@ -38,6 +42,7 @@ const EFFECT_LABELS: Readonly<Record<PlanCheckpointEffect, string>> = {
   interrupted: "Interrupted",
   unanswered: "Unanswered",
   partial: "Partial",
+  departed: "Departed",
 };
 
 /**
@@ -187,7 +192,7 @@ function checkpointCandidate(graph: PlanGraph, opener: PlanGraphNode): Checkpoin
   return null;
 }
 
-function effectsFor(
+export function effectsFor(
   members: ReadonlyArray<PlanTimelineItem>,
   response?: PlanTimelineItem,
 ): ReadonlyArray<PlanCheckpointEffect> {
@@ -200,6 +205,16 @@ function effectsFor(
   }
   if (response === undefined) effects.push("unanswered");
   return effects;
+}
+
+/** Mutable session marks are derived from the keyed record, not immutable checkpoint members. */
+export function codingSessionEffects(
+  record: PlanCodingSessionRecord,
+): ReadonlyArray<PlanCheckpointEffect> {
+  return [
+    ...(record.partial ? (["partial"] as const) : []),
+    ...(record.departedRef === null ? [] : (["departed"] as const)),
+  ];
 }
 
 function remapParents(

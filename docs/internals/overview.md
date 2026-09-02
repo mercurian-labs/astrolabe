@@ -93,7 +93,8 @@ does not define turn end.
 Follow-up work runs asynchronously in queue-backed workers built on [`DrainableWorker`][worker]:
 [`ProviderRuntimeIngestion`][ingest] normalizes provider runtime streams into orchestration commands,
 [`ProviderCommandReactor`][cmd] dispatches provider calls in response to intent events, and
-[`CheckpointReactor`][checkpoint] captures and reverts workspace checkpoints.
+[`CheckpointReactor`][checkpoint] captures workspace checkpoints and coordinates snapshot-derived
+turn diffs.
 
 `DrainableWorker` pairs a transactional queue with a transactional count of outstanding items.
 `enqueue` atomically offers and increments; processing always decrements. `drain` retries until the
@@ -118,12 +119,19 @@ seeds `mock-default` as the workspace planning model when none has been chosen; 
 
 ## Checkpointing
 
-Each turn is bracketed by workspace checkpoints so diffs and reverts are exact. `CheckpointStore`
-captures state as hidden Git refs through the VCS driver's checkpoint operations;
-`CheckpointDiffQuery` answers turn and full-thread diff requests; `CheckpointReactor` coordinates
-baseline capture, completed-turn capture, diff projection, and reverting both the workspace and the
-provider conversation. The storage contract is `VcsCheckpointOps` in
+Each turn is bracketed by workspace checkpoints so diffs are exact. `CheckpointStore` captures state
+as hidden Git refs through the VCS driver's checkpoint operations; `CheckpointDiffQuery` answers
+turn and full-thread diff requests; and `CheckpointReactor` coordinates baseline capture,
+completed-turn capture, and diff projection. The storage contract is `VcsCheckpointOps` in
 [`VcsDriver.ts`](../../apps/server/src/vcs/VcsDriver.ts), implemented for Git in the same directory.
+
+Mercurian coding-session checkpoints form a snapshot chain per planning line. Each snapshot records
+the complete working tree, links to the previous line snapshot when one exists, and pins the
+checked-out `HEAD` as provenance. The line's hidden snapshot ref advances, while the line's branch
+moves only when a person or agent makes a commit. The runtime never runs `git commit`. Settled and
+partial turn snapshots keep their turn refs; recovery and external snapshots sit between turns on
+the same first-parent chain. Slot restoration reads the latest line snapshot, and turn diffs use the
+snapshot's chain parent so between-turn changes remain separate from the agent's next turn.
 
 ## Mercurian's commit store
 

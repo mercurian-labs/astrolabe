@@ -8,6 +8,7 @@ import { resolveStorage } from "./lib/storage";
 export type DiffPanelSelection =
   | { kind: "branch"; baseRef: string | null }
   | { kind: "unstaged" }
+  | { kind: "line-uncommitted" }
   | { kind: "session" }
   | { kind: "turn"; turnId: TurnId; filePath: string | null; revealRequestId: number };
 
@@ -22,6 +23,7 @@ interface DiffPanelStoreState {
   diffRenderMode: DiffRenderMode;
   setDiffRenderMode: (mode: DiffRenderMode) => void;
   selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged") => void;
+  selectLineUncommittedScope: (ref: ScopedThreadRef) => void;
   selectSessionScope: (ref: ScopedThreadRef) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
   selectTurn: (ref: ScopedThreadRef, turnId: TurnId, filePath?: string) => void;
@@ -68,6 +70,13 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
           byThreadKey: {
             ...state.byThreadKey,
             [scopedThreadKey(ref)]: { kind: "session" },
+          },
+        })),
+      selectLineUncommittedScope: (ref) =>
+        set((state) => ({
+          byThreadKey: {
+            ...state.byThreadKey,
+            [scopedThreadKey(ref)]: { kind: "line-uncommitted" },
           },
         })),
       selectBranchBaseRef: (ref, baseRef) =>

@@ -71,6 +71,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
+import { useMercurianTree } from "../state/mercurian";
+import { lineUncommittedDiff } from "../state/mercurianDiff";
 import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
 import { buildBaseRefChoices, filterBaseRefChoices } from "../lib/baseRefChoices";
@@ -127,6 +129,12 @@ export default function DiffPanel({
   const activeThreadRef = threadRef ?? routeThreadRef;
   const activeThreadId = activeThreadRef?.threadId ?? null;
   const activeThread = useThread(activeThreadRef);
+  const mercurianTree = useMercurianTree();
+  const isMercurianCodingSession =
+    activeThreadId !== null &&
+    mercurianTree.snapshot.plans.some((plan) =>
+      plan.codingSessions.some((session) => session.threadId === activeThreadId),
+    );
   const activeProjectId = activeThread?.projectId ?? null;
   const activeProject = useProject(
     activeThread && activeProjectId
@@ -156,13 +164,17 @@ export default function DiffPanel({
         })
       : null,
   );
-  const diffSelection = useDiffPanelStore((state) =>
+  const storedDiffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(
       state.byThreadKey,
       activeThreadRef,
       initialGitScope === "unstaged",
     ),
   );
+  const diffSelection =
+    storedDiffSelection.kind === "line-uncommitted" && !isMercurianCodingSession
+      ? ({ kind: "branch", baseRef: null } as const)
+      : storedDiffSelection;
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
@@ -190,6 +202,7 @@ export default function DiffPanel({
   }, [activeThreadRef, diffSelection, orderedTurnDiffSummaries]);
 
   const isSessionScope = diffSelection.kind === "session";
+  const isLineUncommittedScope = diffSelection.kind === "line-uncommitted";
   const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
   const selectedGitScope =
     diffSelection.kind === "unstaged"
@@ -213,20 +226,24 @@ export default function DiffPanel({
   const latestCheckpointTurnCount =
     latestTurn &&
     (latestTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[latestTurn.turnId]);
-  const selectedScopeLabel = isSessionScope
-    ? "Whole session"
-    : selectedTurnId === null
-      ? selectedGitScope === "unstaged"
-        ? "Working tree"
-        : "Branch changes"
-      : selectedTurn?.turnId === latestTurn?.turnId
-        ? "Latest turn"
-        : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
-  const reviewSectionId = isSessionScope
-    ? "session"
-    : selectedTurn
-      ? `turn:${selectedTurn.turnId}`
-      : (selectedGitScope ?? "branch");
+  const selectedScopeLabel = isLineUncommittedScope
+    ? "Uncommitted"
+    : isSessionScope
+      ? "Whole session"
+      : selectedTurnId === null
+        ? selectedGitScope === "unstaged"
+          ? "Working tree"
+          : "Branch changes"
+        : selectedTurn?.turnId === latestTurn?.turnId
+          ? "Latest turn"
+          : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
+  const reviewSectionId = isLineUncommittedScope
+    ? "line-uncommitted"
+    : isSessionScope
+      ? "session"
+      : selectedTurn
+        ? `turn:${selectedTurn.turnId}`
+        : (selectedGitScope ?? "branch");
   const collapseScopeKey = activeThreadRef
     ? `${activeThreadRef.environmentId}:${activeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -237,11 +254,13 @@ export default function DiffPanel({
       : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
   const reviewSectionTitle = selectedTurn
     ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
-    : isSessionScope
-      ? "Whole session"
-      : selectedGitScope === "unstaged"
-        ? "Working tree"
-        : "Branch changes";
+    : isLineUncommittedScope
+      ? "Uncommitted"
+      : isSessionScope
+        ? "Whole session"
+        : selectedGitScope === "unstaged"
+          ? "Working tree"
+          : "Branch changes";
   const selectedCheckpointRange = useMemo(() => {
     if (isSessionScope) {
       return typeof latestCheckpointTurnCount === "number"
@@ -265,6 +284,17 @@ export default function DiffPanel({
       cacheScope: isSessionScope ? "session" : selectedTurn ? `turn:${selectedTurn.turnId}` : null,
     },
     { enabled: isGitRepo && (isSessionScope || selectedTurn !== undefined) },
+  );
+  const activeLineUncommittedDiff = useEnvironmentQuery(
+    isLineUncommittedScope && isMercurianCodingSession && activeThread
+      ? lineUncommittedDiff({
+          environmentId: activeThread.environmentId,
+          input: {
+            threadId: activeThread.id,
+            ignoreWhitespace: diffIgnoreWhitespace,
+          },
+        })
+      : null,
   );
   const primaryBranchDiffPreview = useEnvironmentQuery(
     selectedGitScope !== null && activeThread && activeCwd
@@ -301,16 +331,25 @@ export default function DiffPanel({
   const refreshBranchDiffPreview = branchDiffPreview.refresh;
   const canRefreshGitDiff =
     isGitRepo && selectedGitScope !== null && activeThread != null && activeCwd != null;
+  const canRefreshLineUncommittedDiff =
+    isGitRepo && isLineUncommittedScope && isMercurianCodingSession && activeThread != null;
+  const canRefreshSelectedDiff = canRefreshGitDiff || canRefreshLineUncommittedDiff;
+  const refreshSelectedDiff = isLineUncommittedScope
+    ? activeLineUncommittedDiff.refresh
+    : refreshBranchDiffPreview;
+  const isRefreshingSelectedDiff = isLineUncommittedScope
+    ? activeLineUncommittedDiff.isPending
+    : branchDiffPreview.isPending;
   const activeThreadRefreshKey = activeThreadRef
     ? `${activeThreadRef.environmentId}:${activeThreadRef.threadId}`
     : null;
 
   useEffect(() => {
-    if (!canRefreshGitDiff) return;
-    const refreshOnFocus = () => refreshBranchDiffPreview();
+    if (!canRefreshSelectedDiff) return;
+    const refreshOnFocus = () => refreshSelectedDiff();
     window.addEventListener("focus", refreshOnFocus);
     return () => window.removeEventListener("focus", refreshOnFocus);
-  }, [canRefreshGitDiff, refreshBranchDiffPreview]);
+  }, [canRefreshSelectedDiff, refreshSelectedDiff]);
 
   useEffect(() => {
     const current = {
@@ -318,7 +357,7 @@ export default function DiffPanel({
       turnId: latestTurn?.turnId ?? null,
     };
     const previous = lastCompletedTurnRefreshRef.current;
-    if (!canRefreshGitDiff) {
+    if (!canRefreshSelectedDiff) {
       return;
     }
     if (previous === null || previous.threadKey !== current.threadKey) {
@@ -326,9 +365,9 @@ export default function DiffPanel({
       return;
     }
     if (previous.turnId === current.turnId) return;
-    refreshBranchDiffPreview();
+    refreshSelectedDiff();
     lastCompletedTurnRefreshRef.current = current;
-  }, [activeThreadRefreshKey, canRefreshGitDiff, latestTurn?.turnId, refreshBranchDiffPreview]);
+  }, [activeThreadRefreshKey, canRefreshSelectedDiff, latestTurn?.turnId, refreshSelectedDiff]);
 
   const selectedGitSource = branchDiffPreview.data?.sources.find(
     (source) => source.kind === (selectedGitScope === "unstaged" ? "working-tree" : "branch-range"),
@@ -405,14 +444,22 @@ export default function DiffPanel({
   const gitDiff = selectedGitSource?.diff;
 
   const isCheckpointScope = isSessionScope || selectedTurn !== undefined;
-  const selectedPatch = isCheckpointScope ? activeCheckpointDiff.data?.diff : gitDiff;
+  const selectedPatch = isCheckpointScope
+    ? activeCheckpointDiff.data?.diff
+    : isLineUncommittedScope
+      ? activeLineUncommittedDiff.data?.diff
+      : gitDiff;
   const isSelectedPatchTruncated = !isCheckpointScope && selectedGitSource?.truncated === true;
   const isLoadingSelectedPatch = isCheckpointScope
     ? activeCheckpointDiff.isPending
-    : branchDiffPreview.isPending;
+    : isLineUncommittedScope
+      ? activeLineUncommittedDiff.isPending
+      : branchDiffPreview.isPending;
   const selectedPatchError = isCheckpointScope
     ? activeCheckpointDiff.error
-    : branchDiffPreview.error;
+    : isLineUncommittedScope
+      ? activeLineUncommittedDiff.error
+      : branchDiffPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
   const renderablePatch = useMemo(
@@ -533,6 +580,10 @@ export default function DiffPanel({
     if (!activeThreadRef) return;
     useDiffPanelStore.getState().selectSessionScope(activeThreadRef);
   };
+  const selectLineUncommittedScope = () => {
+    if (!activeThreadRef) return;
+    useDiffPanelStore.getState().selectLineUncommittedScope(activeThreadRef);
+  };
   const selectBranchBaseRef = (baseRef: string | null) => {
     if (!activeThreadRef) return;
     useDiffPanelStore.getState().selectBranchBaseRef(activeThreadRef, baseRef);
@@ -570,6 +621,14 @@ export default function DiffPanel({
             >
               <span>Branch changes</span>
             </DropdownMenuItem>
+            {isMercurianCodingSession ? (
+              <DropdownMenuItem
+                className={isLineUncommittedScope ? "bg-foreground/[0.08]" : undefined}
+                onClick={selectLineUncommittedScope}
+              >
+                <span>Uncommitted</span>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem
               className={isSessionScope ? "bg-foreground/[0.08]" : undefined}
               disabled={latestCheckpointTurnCount === undefined}
@@ -755,7 +814,7 @@ export default function DiffPanel({
             layout="inline"
           />
         )}
-        {canRefreshGitDiff && (
+        {canRefreshSelectedDiff && (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -763,17 +822,17 @@ export default function DiffPanel({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
-                  onClick={refreshBranchDiffPreview}
+                  aria-label={isRefreshingSelectedDiff ? "Refreshing diff" : "Refresh diff"}
+                  onClick={refreshSelectedDiff}
                 />
               }
             >
               <RefreshCwIcon
-                className={cn("size-3.5", branchDiffPreview.isPending && "animate-spin")}
+                className={cn("size-3.5", isRefreshingSelectedDiff && "animate-spin")}
               />
             </TooltipTrigger>
             <TooltipPopup side="top">
-              {branchDiffPreview.isPending ? "Refreshing diff…" : "Refresh diff"}
+              {isRefreshingSelectedDiff ? "Refreshing diff…" : "Refresh diff"}
             </TooltipPopup>
           </Tooltip>
         )}
@@ -901,9 +960,11 @@ export default function DiffPanel({
                       ? "Loading checkpoint diff..."
                       : isSessionScope
                         ? "Loading whole session diff..."
-                        : selectedGitScope === "unstaged"
-                          ? "Loading working tree diff..."
-                          : "Loading branch diff..."
+                        : isLineUncommittedScope
+                          ? "Loading uncommitted diff..."
+                          : selectedGitScope === "unstaged"
+                            ? "Loading working tree diff..."
+                            : "Loading branch diff..."
                   }
                 />
               ) : (

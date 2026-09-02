@@ -224,6 +224,9 @@ export function PlanTimeline({
                   <span>Implemented {item.planRevisionCommitId.slice(0, 8)}</span>
                   <span>{status}</span>
                   {record?.partial === true ? <PartialBadge /> : null}
+                  {record?.departedRef === null || record?.departedRef === undefined ? null : (
+                    <DepartedBadge />
+                  )}
                   {record === undefined ? null : <span>{record.branch}</span>}
                   {record?.prUrl === null || record?.prUrl === undefined ? null : (
                     <a className="underline" href={record.prUrl} rel="noreferrer" target="_blank">
@@ -368,6 +371,15 @@ function PartialBadge() {
   return (
     <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
       Partial
+    </span>
+  );
+}
+
+/** The agent left the line branch during this session; the snapshot kept that destination. */
+function DepartedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
+      Departed
     </span>
   );
 }

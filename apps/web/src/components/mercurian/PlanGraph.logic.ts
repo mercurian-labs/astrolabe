@@ -16,7 +16,8 @@ export type PlanCheckpointEffect =
   | "spec-updated"
   | "interrupted"
   | "unanswered"
-  | "partial";
+  | "partial"
+  | "departed";
 
 export interface PlanCheckpoint {
   readonly query: PlanTimelineItem;

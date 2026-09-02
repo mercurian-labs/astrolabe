@@ -59,6 +59,10 @@ export const planCodingSessionRecord = (
     prUrl: null,
     settledCommitOid: null,
     partial: false,
+    snapshotOid: null,
+    snapshotKind: null,
+    departedRef: null,
+    branchMovement: null,
     ...fields,
   });
 };

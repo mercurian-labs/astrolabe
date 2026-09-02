@@ -59,7 +59,7 @@ The domain object a command or event belongs to. In [the contracts][1], that is 
 #### Command
 
 A typed request to change domain state. In [the contracts][1], commands are validated in [commandInvariants.ts][9] and turned into events by [decider.ts][8].
-Examples include `thread.create`, `thread.turn.start`, and `thread.checkpoint.revert`.
+Examples include `thread.create`, `thread.turn.start`, and `thread.turn.interrupt`.
 
 #### Domain Event
 
@@ -134,15 +134,19 @@ Checkpointing captures workspace state over time so the app can diff turns and r
 
 #### Checkpoint
 
-A saved snapshot of a thread workspace at a particular turn. In practice it is a hidden Git ref in [CheckpointStore.ts][19] plus a projected summary from [ProjectionCheckpoints.ts][21]. Capture and lifecycle work happen in [CheckpointReactor.ts][6]. Coding sessions expose checkpoints through the [Coding Session View](#coding-session-view), where they feed turn diffs and revert.
+A saved snapshot of a thread workspace. In practice it is a hidden Git commit addressed by a ref in [CheckpointStore.ts][19], plus a projected summary from [ProjectionCheckpoints.ts][21]. Capture and lifecycle work happen in [CheckpointReactor.ts][6].
+
+For a Mercurian coding-session line, snapshots form a chain owned by [SnapshotChain.ts][40]. A snapshot records the complete working tree without moving the line's branch or running `git commit`: its first parent is the previous line snapshot when one exists, and its other parent pins the checked-out `HEAD` at capture. The first snapshot has the branch head as its sole parent. Walk established chains with `--first-parent`; a one-parent first snapshot has no earlier snapshot to follow. Snapshot kinds name why capture happened: `settled` after a completed turn, `partial` after an interrupted turn, `recovery` while preserving dirty slot work, and `external` for changes detected between turns.
+
+The line's branch contains only commits made by a person or agent. The snapshot chain retains uncommitted trees separately. If a turn finishes with another branch or detached `HEAD` checked out, it is **departed**: the snapshot records that ref, the line branch stays put, and the next slot claim restores the line's latest snapshot over its own branch. See [SlotService.ts][41].
 
 #### Checkpoint ref
 
-The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed in [Utils.ts][22], and used by [CheckpointStore.ts][19].
+The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed for ordinary turn checkpoints in [Utils.ts][22], and used by [CheckpointStore.ts][19]. Mercurian keeps turn snapshots at the existing turn refs, the latest snapshot for each line at a line-head ref, and named recovery or external snapshots below that line's ref namespace. [SnapshotChain.ts][40] constructs and advances the line refs.
 
 #### Checkpoint baseline
 
-The starting checkpoint for diffing a thread timeline. This flow is surfaced through [RuntimeReceiptBus.ts][13], coordinated in [CheckpointReactor.ts][6], and supported by [Utils.ts][22].
+The starting checkpoint for diffing a thread timeline. Ordinary threads retain the turn-zero baseline constructed in [Utils.ts][22]. A Mercurian line also has its own chain baseline: an inherited line begins from the ancestor's latest snapshot, while a root line's first snapshot pins the line branch's starting head. [CheckpointReactor.ts][6] coordinates capture, and [CheckpointDiffQuery.ts][20] chooses the adjacent snapshot parent so external or recovery captures do not leak into the following turn diff.
 
 #### Checkpoint diff
 
@@ -162,7 +166,7 @@ A pending composer context anchored to an exact diff section, file, and selected
 
 #### Revert
 
-Restoring a thread's worktree and retained conversation to an earlier [checkpoint](#checkpoint). The decider refuses `thread.checkpoint.revert` while the latest turn is running; after interruption, [CheckpointReactor.ts][6] restores the checkpoint and discards later turns and [turn diffs](#turn-diff). A coding-session revert does not write Mercurian planning state, so its [coding-session leaf](#coding-session-leaf) survives.
+A retired user action that restored a thread and conversation to an earlier [checkpoint](#checkpoint). M-195 removed revert-to-message: current checkpoints support diffs and internal workspace restoration, but the product does not destructively rewind the thread timeline. For Mercurian coding sessions, [SlotService.ts][41] restores the latest line snapshot when a slot changes ownership or returns from a departed ref; that restoration does not discard messages or [turn diffs](#turn-diff).
 
 ### Planning history
 
@@ -438,6 +442,8 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [37]: ../../apps/server/src/mercurian/memory/MemoryIndex.ts
 [38]: ../../apps/web/src/components/mercurian/MemoryAmendmentSheet.tsx
 [39]: ../../apps/web/src/components/mercurian/PlanSuggestions.tsx
+[40]: ../../apps/server/src/mercurian/worktreeSlots/SnapshotChain.ts
+[41]: ../../apps/server/src/mercurian/worktreeSlots/SlotService.ts
 
 ### Coding session
 
@@ -456,8 +462,8 @@ The session-specific screen at `/sessions/$threadId`. It heads the underlying th
 and session title. Its header runs [repository scripts](#repository-script), opens the worktree in
 an editor, and exposes git actions; change-request creation is present only when the repository's
 [hosting provider](#hosting-provider) is authenticated. It then presents the thread timeline,
-composer, [checkpoints](#checkpoint), [turn diffs](#turn-diff), changed-files cards, and
-[revert](#revert). It is reached from the plan card's session details, a coding-session leaf's
+composer, [checkpoints](#checkpoint), [turn diffs](#turn-diff), and changed-files cards. It is
+reached from the plan card's session details, a coding-session leaf's
 Checkpoint Graph popover, or the plan timeline card. The view composes thread runtime state with
 the owning plan for presentation; it does not move session history into the Mercurian commit store.
 
@@ -473,5 +479,6 @@ implements. Mutable facts such as branch, outcome, and pull-request URL live in 
 
 ### Session branch
 
-The descriptive `mercurian/<plan-title>-<token>` branch created with a coding session. It is not a
-temporary t3code branch and therefore never enters first-turn automatic branch renaming.
+The descriptive `mercurian/<plan-title>-<token>` branch created with a coding session. It carries
+only commits made by a person or agent; runtime snapshots never advance it. It is not a temporary
+t3code branch and therefore never enters first-turn automatic branch renaming.

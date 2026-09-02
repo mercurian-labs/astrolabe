@@ -144,6 +144,8 @@ describe("PlanNodePopoverContent", () => {
       endedAt: null,
       outcome: null,
       prUrl: "https://example.com/pr/1",
+      branchMovement: { kind: "added", count: 2 },
+      departedRef: "feature/detour",
     });
     const markup = renderContent({
       nodeId: "session",
@@ -159,6 +161,9 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Coding session in web");
     expect(markup).toContain("Running");
     expect(markup).toContain("feature/checkpoint-graph");
+    expect(markup).toContain("2 commits added");
+    expect(markup).toContain("Departed to");
+    expect(markup).toContain("feature/detour");
     expect(markup).toContain("Pull request");
     expect(markup).toContain("Continue from here");
     expect(markup).toContain("Open session");

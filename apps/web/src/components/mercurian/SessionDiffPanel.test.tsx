@@ -7,6 +7,16 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const mocks = vi.hoisted(() => ({
   useCheckpointDiff: vi.fn(),
   useThread: vi.fn(),
+  lineUncommittedDiff: vi.fn((_input: unknown) => "line-uncommitted-query"),
+  getRenderablePatch: vi.fn(
+    (_patch: string | undefined, _key: string, _options: unknown) =>
+      null as null | { kind: "files"; files: Array<object> },
+  ),
+  diffSelection: { kind: "session" } as
+    | { kind: "session" }
+    | { kind: "branch"; baseRef: null }
+    | { kind: "line-uncommitted" },
+  isMercurianSession: true,
 }));
 
 vi.mock("@effect/atom-react", () => ({
@@ -22,13 +32,14 @@ vi.mock("../../diffPanelStore", () => {
     reconcileTurnSelection: vi.fn(),
     selectTurn: vi.fn(),
     selectGitScope: vi.fn(),
+    selectLineUncommittedScope: vi.fn(),
     selectSessionScope: vi.fn(),
     selectBranchBaseRef: vi.fn(),
   };
   const useDiffPanelStore = (selector: (value: typeof state) => unknown) => selector(state);
   useDiffPanelStore.getState = () => state;
   return {
-    selectThreadDiffPanelSelection: () => ({ kind: "session" }),
+    selectThreadDiffPanelSelection: () => mocks.diffSelection,
     useDiffPanelStore,
   };
 });
@@ -37,12 +48,13 @@ vi.mock("~/lib/checkpointDiffState", () => ({
 }));
 vi.mock("../../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 vi.mock("../../lib/diffRendering", () => ({
-  buildFileDiffRenderKey: vi.fn(),
+  buildFileDiffRenderKey: () => "src/snapshot.ts",
   getDiffCollapseIconClassName: () => "",
   getDiffLineStat: () => ({ additions: 0, deletions: 0 }),
-  getRenderablePatch: () => null,
+  getRenderablePatch: (patch: string | undefined, key: string, options: unknown) =>
+    mocks.getRenderablePatch(patch, key, options),
   resolveDiffThemeName: () => "light",
-  resolveFileDiffPath: () => "",
+  resolveFileDiffPath: () => "src/snapshot.ts",
   DIFF_SURFACE_THEME_UNSAFE_CSS: "",
 }));
 vi.mock("../../hooks/useTurnDiffSummaries", () => ({
@@ -70,11 +82,31 @@ vi.mock("../../hooks/useSettings", () => ({
 }));
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: (query: unknown) => ({
-    data: query === "git-status" ? { isRepo: true } : undefined,
+    data:
+      query === "git-status"
+        ? { isRepo: true }
+        : query === "line-uncommitted-query"
+          ? { threadId: ThreadId.make("thread-1"), diff: "snapshot diff" }
+          : undefined,
     error: null,
     isPending: false,
     refresh: vi.fn(),
   }),
+}));
+vi.mock("../../state/mercurian", () => ({
+  useMercurianTree: () => ({
+    snapshot: {
+      projects: [],
+      plans: mocks.isMercurianSession
+        ? [{ codingSessions: [{ threadId: ThreadId.make("thread-1") }] }]
+        : [],
+    },
+    isPending: false,
+    error: null,
+  }),
+}));
+vi.mock("../../state/mercurianDiff", () => ({
+  lineUncommittedDiff: (input: unknown) => mocks.lineUncommittedDiff(input),
 }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 vi.mock("../../state/server", () => ({
@@ -103,6 +135,11 @@ vi.mock("../DiffPanelShell", () => ({
 }));
 vi.mock("../DiffWorkerPoolProvider", () => ({
   DiffWorkerPoolProvider: ({ children }: { readonly children: ReactNode }) => <>{children}</>,
+}));
+vi.mock("../diffs/AnnotatableCodeView", () => ({
+  AnnotatableCodeView: ({ sectionTitle }: { readonly sectionTitle: string }) => (
+    <div data-testid="diff-viewer">{sectionTitle}</div>
+  ),
 }));
 vi.mock("../ui/menu", () => {
   const Container = ({ children }: { readonly children?: ReactNode }) => <div>{children}</div>;
@@ -145,6 +182,11 @@ const threadRef = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.m
 
 describe("DiffPanel", () => {
   beforeEach(() => {
+    mocks.diffSelection = { kind: "session" };
+    mocks.isMercurianSession = true;
+    mocks.lineUncommittedDiff.mockClear();
+    mocks.getRenderablePatch.mockReset();
+    mocks.getRenderablePatch.mockReturnValue(null);
     mocks.useThread.mockReturnValue({
       environmentId: threadRef.environmentId,
       id: threadRef.threadId,
@@ -177,7 +219,42 @@ describe("DiffPanel", () => {
     expect(markup).toContain("Whole session");
     expect(markup).toContain("Working tree");
     expect(markup).toContain("Branch changes");
+    expect(markup).toContain("Uncommitted");
     expect(markup).toContain("Latest turn");
+    expect(markup.indexOf("Branch changes")).toBeLessThan(markup.indexOf("Uncommitted"));
     expect(markup).not.toContain("Select a thread to inspect turn diffs.");
+  });
+
+  it("does not offer the line-uncommitted scope for a plain thread", () => {
+    mocks.diffSelection = { kind: "branch", baseRef: null };
+    mocks.isMercurianSession = false;
+
+    const markup = renderToStaticMarkup(
+      <DiffPanel composerDraftTarget={threadRef} initialGitScope="branch" threadRef={threadRef} />,
+    );
+
+    expect(markup).not.toContain("Uncommitted");
+    expect(mocks.lineUncommittedDiff).not.toHaveBeenCalled();
+  });
+
+  it("requests and renders the ref-backed diff for the line-uncommitted scope", () => {
+    mocks.diffSelection = { kind: "line-uncommitted" };
+    mocks.getRenderablePatch.mockReturnValue({ kind: "files", files: [{}] });
+
+    const markup = renderToStaticMarkup(
+      <DiffPanel composerDraftTarget={threadRef} initialGitScope="branch" threadRef={threadRef} />,
+    );
+
+    expect(mocks.lineUncommittedDiff).toHaveBeenCalledWith({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, ignoreWhitespace: false },
+    });
+    expect(mocks.getRenderablePatch).toHaveBeenCalledWith(
+      "snapshot diff",
+      "diff-panel:light",
+      expect.any(Object),
+    );
+    expect(markup).toContain('data-testid="diff-viewer"');
+    expect(markup).toContain(">Uncommitted</div>");
   });
 });

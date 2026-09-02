@@ -11,9 +11,11 @@ import {
 
 import { columnLayout, defaultBranchChoices } from "./PlanColumns.logic";
 import {
+  codingSessionEffects,
   condensePlanGraph,
   isUnansweredCheckpointInFlight,
   mapMarksToNodes,
+  planCheckpointEffectLabel,
   planNodeDetail,
   planNodeIdForCommit,
   planNodeStatusDots,
@@ -21,6 +23,7 @@ import {
 } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { threadLayout } from "./PlanThread.logic";
+import { planCodingSessionRecord } from "../../test/fixtures/sessionsAndSplits";
 
 describe("condensePlanGraph", () => {
   it("condenses a settled turn onto its terminal response in real member order", () => {
@@ -309,6 +312,27 @@ describe("condensePlanGraph", () => {
     expect(graph.nodes.map((node) => node.commitId)).toEqual(["query", "session"]);
     expect(graph.byId.get("query")?.checkpoint?.effects).toEqual(["unanswered"]);
     expect(graph.byId.get("session")?.checkpoint).toBeUndefined();
+  });
+});
+
+describe("coding-session checkpoint effects", () => {
+  it("derives partial and departed marks only from the mutable session record", () => {
+    expect(
+      codingSessionEffects(
+        planCodingSessionRecord("both", { partial: true, departedRef: "feature/detour" }),
+      ),
+    ).toEqual(["partial", "departed"]);
+    expect(
+      codingSessionEffects(
+        planCodingSessionRecord("departed", { partial: false, departedRef: "feature/detour" }),
+      ),
+    ).toEqual(["departed"]);
+    expect(
+      codingSessionEffects(
+        planCodingSessionRecord("neither", { partial: false, departedRef: null }),
+      ),
+    ).toEqual([]);
+    expect(planCheckpointEffectLabel("departed")).toBe("Departed");
   });
 });
 

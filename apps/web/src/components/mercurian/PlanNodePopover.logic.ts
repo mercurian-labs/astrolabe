@@ -15,7 +15,7 @@ import {
   type PlanTimelineItem,
 } from "@t3tools/contracts";
 
-import { planCheckpointEffectLabel } from "./PlanCheckpoints.logic";
+import { codingSessionEffects, planCheckpointEffectLabel } from "./PlanCheckpoints.logic";
 import {
   planCommitDetail,
   planCommitSummary,
@@ -32,6 +32,8 @@ export interface PlanNodeSessionFacts {
   readonly threadId?: PlanCodingSessionRecord["threadId"];
   readonly status?: "Running" | "Completed" | "Stopped" | "Ended";
   readonly branch?: string;
+  readonly commits?: string;
+  readonly departedRef?: string;
   readonly prUrl?: string;
 }
 
@@ -104,6 +106,19 @@ export function codingSessionStatus(
   return "Ended";
 }
 
+export function branchMovementLabel(
+  movement: NonNullable<PlanCodingSessionRecord["branchMovement"]>,
+): string {
+  switch (movement.kind) {
+    case "unchanged":
+      return "no commits";
+    case "added":
+      return `${movement.count} ${movement.count === 1 ? "commit" : "commits"} added`;
+    case "rewritten":
+      return "history rewritten";
+  }
+}
+
 export function derivePlanNodePopover({
   node,
   commitGraph,
@@ -133,10 +148,6 @@ export function derivePlanNodePopover({
     checkpoint?.response?._tag === "message" && checkpoint.response.authorKind === "assistant"
       ? checkpoint.response
       : undefined;
-  const effects =
-    checkpoint?.effects
-      .filter((effect) => !suppressUnanswered || effect !== "unanswered")
-      .map(planCheckpointEffectLabel) ?? [];
   const modelSwitch = query === undefined ? null : modelSwitchFor(commitGraph, query.commitId);
   const splitRepositoryName =
     node.item._tag === "plan-revision" ? node.item.split?.repositoryName : undefined;
@@ -144,6 +155,11 @@ export function derivePlanNodePopover({
     node.item._tag === "coding-session"
       ? codingSessionRecordFor(codingSessions, node.commitId)
       : undefined;
+  const effects = (
+    checkpoint?.effects ?? (record === undefined ? [] : codingSessionEffects(record))
+  )
+    .filter((effect) => !suppressUnanswered || effect !== "unanswered")
+    .map(planCheckpointEffectLabel);
   const session =
     node.item._tag === "coding-session"
       ? {
@@ -153,8 +169,12 @@ export function derivePlanNodePopover({
             ? {}
             : {
                 status: codingSessionStatus(record),
-                branch: record.branch,
                 threadId: record.threadId,
+                branch: record.branch,
+                ...(record.branchMovement === null
+                  ? {}
+                  : { commits: branchMovementLabel(record.branchMovement) }),
+                ...(record.departedRef === null ? {} : { departedRef: record.departedRef }),
                 ...(record.prUrl === null ? {} : { prUrl: record.prUrl }),
               }),
         }
