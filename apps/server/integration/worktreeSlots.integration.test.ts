@@ -21,6 +21,7 @@ import * as RepositoryStore from "../src/mercurian/repositories/RepositoryStore.
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 import { make, slotMemberWorktreePath } from "../src/mercurian/worktreeSlots/SlotService.ts";
 import * as SlotStore from "../src/mercurian/worktreeSlots/SlotStore.ts";
+import { lineSnapshotRef, SnapshotChain } from "../src/mercurian/worktreeSlots/SnapshotChain.ts";
 import type { WorktreeSlot } from "../src/mercurian/worktreeSlots/schema.ts";
 import * as ServerSettings from "../src/serverSettings.ts";
 import * as GitVcsDriver from "../src/vcs/GitVcsDriver.ts";
@@ -108,6 +109,7 @@ it.effect(
                     branch: `mercurian/${lineRootCommitId}`,
                     baseOid: "base",
                     built: false,
+                    repointHold: null,
                     createdAt: now,
                   }),
                 ),
@@ -159,8 +161,49 @@ it.effect(
             }),
             Layer.mock(CheckpointStore.CheckpointStore)({
               captureCheckpoint: () => Effect.die("clean integration slots must not snapshot"),
-              hasCheckpointRef: () => Effect.succeed(false),
-              restoreCheckpoint: () => Effect.succeed(true),
+              hasCheckpointRef: ({ cwd, checkpointRef }) =>
+                Effect.sync(
+                  () =>
+                    runGit(
+                      cwd,
+                      ["rev-parse", "--verify", "--quiet", `${checkpointRef}^{commit}`],
+                      true,
+                    ).exitCode === 0,
+                ),
+              restoreCheckpoint: ({ cwd, checkpointRef }) =>
+                Effect.sync(() => {
+                  runGit(cwd, [
+                    "restore",
+                    "--source",
+                    checkpointRef,
+                    "--worktree",
+                    "--staged",
+                    "--",
+                    ".",
+                  ]);
+                  runGit(cwd, ["clean", "-fd", "--", "."]);
+                  runGit(cwd, ["reset", "--quiet", "--", "."]);
+                  return true;
+                }),
+            }),
+            Layer.mock(SnapshotChain)({
+              capture: (input) =>
+                Effect.sync(() => {
+                  runGit(input.cwd, ["update-ref", input.ref, "HEAD"]);
+                  return {
+                    oid: runGit(input.cwd, ["rev-parse", "HEAD"]).stdout.trim(),
+                    previousOid: null,
+                    headOid: runGit(input.cwd, ["rev-parse", "HEAD"]).stdout.trim(),
+                    headRef: runGit(input.cwd, ["symbolic-ref", "-q", "HEAD"]).stdout.trim(),
+                    built: true,
+                  };
+                }),
+              branchMovement: () => Effect.succeed({ kind: "unchanged" }),
+              readStanding: () => Effect.succeed({ _tag: "on-line" }),
+              lineCommit: () => Effect.succeed("head"),
+              adoptRename: () => Effect.void,
+              isDrifted: ({ cwd }) =>
+                Effect.sync(() => NodeFS.existsSync(NodePath.join(cwd, "between-turns.txt"))),
             }),
           );
           const service = yield* make.pipe(
@@ -182,6 +225,10 @@ it.effect(
           const marker = NodePath.join(firstRepositoryPath, "node_modules", ".warm-slot");
           NodeFS.mkdirSync(NodePath.dirname(marker), { recursive: true });
           NodeFS.writeFileSync(marker, "warm\n");
+          assert.notStrictEqual(
+            runGit(firstRepositoryPath, ["checkout", "main"], true).exitCode,
+            0,
+          );
           const second = yield* service.claim({
             projectId,
             lineRootCommitId: lines[1]!,
@@ -189,6 +236,29 @@ it.effect(
           });
           assert.notStrictEqual(first.path, second.path);
           assert.strictEqual(rows.length, 2);
+
+          for (const repositoryPath of repositoryPaths) {
+            NodeFS.writeFileSync(
+              NodePath.join(repositoryPath, "inherited.txt"),
+              "ancestor uncommitted work\n",
+            );
+            runGit(repositoryPath, ["add", "-A", "--", "."]);
+            const tree = runGit(repositoryPath, ["write-tree"]).stdout.trim();
+            const branchTip = runGit(repositoryPath, [
+              "rev-parse",
+              "mercurian/line-c",
+            ]).stdout.trim();
+            const snapshot = runGit(repositoryPath, [
+              "commit-tree",
+              tree,
+              "-p",
+              branchTip,
+              "-m",
+              "t3 snapshot kind=settled ref=test",
+            ]).stdout.trim();
+            runGit(repositoryPath, ["update-ref", lineSnapshotRef(lines[2]!), snapshot]);
+            runGit(repositoryPath, ["reset", "--hard", "HEAD"]);
+          }
 
           yield* service.release(first.slotId, holder("thread-a"));
           const third = yield* service.claim({
@@ -203,8 +273,50 @@ it.effect(
               runGit(worktreePath, ["branch", "--show-current"]).stdout.trim(),
               "mercurian/line-c",
             );
+            assert.strictEqual(
+              NodeFS.readFileSync(NodePath.join(worktreePath, "inherited.txt"), "utf8"),
+              "ancestor uncommitted work\n",
+            );
+            assert.match(runGit(worktreePath, ["status", "--porcelain"]).stdout, /inherited\.txt/u);
           }
+          assert.deepStrictEqual(
+            repositoryPaths.flatMap((repositoryPath) =>
+              runGit(repositoryPath, ["for-each-ref", "--format=%(refname)", "refs/t3/lines/"])
+                .stdout.split("\n")
+                .filter((ref) => ref.includes("/snapshots/recovery-")),
+            ),
+            [],
+          );
           assert.isTrue(NodeFS.existsSync(marker));
+
+          yield* service.release(third.slotId, holder("thread-c"));
+          const betweenTurnsPath = NodePath.join(
+            slotMemberWorktreePath(path, third, repositoryIds[0]!)!,
+            "between-turns.txt",
+          );
+          NodeFS.writeFileSync(betweenTurnsPath, "edited between turns\n");
+          const affinity = yield* service.claim({
+            projectId,
+            lineRootCommitId: lines[2]!,
+            holder: holder("thread-c-next"),
+          });
+          assert.strictEqual(affinity.slotId, third.slotId);
+          assert.strictEqual(
+            NodeFS.readFileSync(betweenTurnsPath, "utf8"),
+            "edited between turns\n",
+          );
+          assert.match(
+            runGit(NodePath.dirname(betweenTurnsPath), ["status", "--porcelain"]).stdout,
+            /^\?\? between-turns\.txt$/mu,
+          );
+          assert.deepStrictEqual(
+            repositoryPaths.flatMap((repositoryPath) =>
+              runGit(repositoryPath, ["for-each-ref", "--format=%(refname)", "refs/t3/lines/"])
+                .stdout.split("\n")
+                .filter((ref) => ref.includes("/snapshots/recovery-")),
+            ),
+            [],
+          );
         }).pipe(Effect.provide(NodeServicesLayer)),
       (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
     ),

@@ -331,6 +331,16 @@ export type OrchestrationCheckpointFile = typeof OrchestrationCheckpointFile.Typ
 export const OrchestrationCheckpointStatus = Schema.Literals(["ready", "missing", "error"]);
 export type OrchestrationCheckpointStatus = typeof OrchestrationCheckpointStatus.Type;
 
+export const SnapshotKind = Schema.Literals(["settled", "partial", "recovery", "external"]);
+export type SnapshotKind = typeof SnapshotKind.Type;
+
+export const BranchMovement = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("unchanged") }),
+  Schema.Struct({ kind: Schema.Literal("added"), count: NonNegativeInt }),
+  Schema.Struct({ kind: Schema.Literal("rewritten") }),
+]);
+export type BranchMovement = typeof BranchMovement.Type;
+
 export const OrchestrationCheckpointSummary = Schema.Struct({
   turnId: TurnId,
   checkpointTurnCount: NonNegativeInt,
@@ -340,6 +350,9 @@ export const OrchestrationCheckpointSummary = Schema.Struct({
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
+  snapshotKind: Schema.optional(SnapshotKind),
+  departedRef: Schema.optional(Schema.String),
+  branchMovement: Schema.optional(BranchMovement),
 });
 export type OrchestrationCheckpointSummary = typeof OrchestrationCheckpointSummary.Type;
 
@@ -1033,6 +1046,9 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   checkpointTurnCount: NonNegativeInt,
   createdAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
+  snapshotKind: Schema.optional(SnapshotKind),
+  departedRef: Schema.optional(Schema.String),
+  branchMovement: Schema.optional(BranchMovement),
 });
 
 const ThreadActivityAppendCommand = Schema.Struct({
@@ -1314,6 +1330,9 @@ export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
+  snapshotKind: Schema.optional(SnapshotKind),
+  departedRef: Schema.optional(Schema.String),
+  branchMovement: Schema.optional(BranchMovement),
 });
 
 export const ThreadActivityAppendedPayload = Schema.Struct({

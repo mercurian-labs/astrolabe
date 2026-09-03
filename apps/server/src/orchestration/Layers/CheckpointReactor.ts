@@ -17,7 +17,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
@@ -25,6 +24,7 @@ import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
   checkpointRefForThreadTurn,
+  chainParentRef,
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
@@ -34,17 +34,17 @@ import { forkParked } from "../../serverActivation.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
-import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
-import type { OrchestrationDispatchError } from "../Errors.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { CodingSessionStore } from "../../mercurian/codingSessions/CodingSessionStore.ts";
-import { LineBranchStore } from "../../mercurian/commitTree/LineBranchStore.ts";
 import { SlotStore } from "../../mercurian/worktreeSlots/SlotStore.ts";
 import { SlotRegistry } from "../../mercurian/worktreeSlots/SlotRegistry.ts";
-import { linePartialCheckpointRef } from "../../mercurian/worktreeSlots/SlotService.ts";
+import {
+  lineExtraSnapshotRef,
+  SnapshotChain,
+} from "../../mercurian/worktreeSlots/SnapshotChain.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -97,10 +97,74 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const gitDriver = yield* GitVcsDriver;
   const codingSessions = yield* CodingSessionStore;
-  const lineBranches = yield* LineBranchStore;
   const slots = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
+  const snapshotChain = yield* SnapshotChain;
   const path = yield* Path.Path;
+
+  const adoptStanding = Effect.fn("CheckpointReactor.adoptStanding")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly cwd: string;
+    readonly lineRootCommitId: import("@t3tools/contracts").MercurianCommitId;
+    readonly repositoryId: import("@t3tools/contracts").MercurianRepositoryId;
+    readonly lineBranch: string;
+    readonly createdAt: string;
+  }) {
+    const standing = yield* snapshotChain.readStanding(input);
+    if (standing._tag !== "renamed") {
+      return {
+        branch: input.lineBranch,
+        departedRef: standing._tag === "departed" ? standing.ref : null,
+      };
+    }
+    yield* snapshotChain.adoptRename({
+      lineRootCommitId: input.lineRootCommitId,
+      repositoryId: input.repositoryId,
+      branch: standing.branch,
+    });
+    yield* codingSessions.updateBranch(input.threadId, standing.branch);
+    yield* orchestrationEngine.dispatch({
+      type: "thread.meta.update",
+      commandId: yield* serverCommandId("line-branch-renamed"),
+      threadId: input.threadId,
+      branch: standing.branch,
+    });
+    yield* orchestrationEngine.dispatch({
+      type: "thread.activity.append",
+      commandId: yield* serverCommandId("line-branch-renamed-activity"),
+      threadId: input.threadId,
+      activity: {
+        id: yield* serverEventId,
+        tone: "info",
+        kind: "line.branch-renamed",
+        summary: `Branch renamed to \`${standing.branch}\` by hand`,
+        payload: {},
+        turnId: null,
+        createdAt: input.createdAt,
+      },
+      createdAt: input.createdAt,
+    });
+    return { branch: standing.branch, departedRef: null };
+  });
+
+  const resolveLineBranchTip = Effect.fn("CheckpointReactor.resolveLineBranchTip")(
+    function* (input: {
+      readonly cwd: string;
+      readonly lineRootCommitId: import("@t3tools/contracts").MercurianCommitId;
+      readonly repositoryId: import("@t3tools/contracts").MercurianRepositoryId;
+      readonly lineBranch: string;
+      readonly operation: string;
+    }) {
+      const resolved = yield* gitDriver.execute({
+        operation: input.operation,
+        cwd: input.cwd,
+        args: ["rev-parse", `refs/heads/${input.lineBranch}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      const oid = resolved.exitCode === 0 ? resolved.stdout.trim() : "";
+      return oid.length > 0 ? oid : yield* snapshotChain.lineCommit(input);
+    },
+  );
 
   const appendCaptureFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -216,9 +280,17 @@ const make = Effect.gen(function* () {
     readonly createdAt: string;
     readonly capture?: boolean;
     readonly partial?: boolean;
+    readonly fromCheckpointRef?: CheckpointRef;
+    readonly snapshotKind?: "settled" | "partial" | "recovery" | "external";
+    readonly departedRef?: string;
+    readonly branchMovement?:
+      | { readonly kind: "unchanged" }
+      | { readonly kind: "added"; readonly count: number }
+      | { readonly kind: "rewritten" };
   }) {
     const fromTurnCount = Math.max(0, input.turnCount - 1);
-    const fromCheckpointRef = checkpointRefForThreadTurn(input.threadId, fromTurnCount);
+    const fromCheckpointRef =
+      input.fromCheckpointRef ?? checkpointRefForThreadTurn(input.threadId, fromTurnCount);
     const targetCheckpointRef = checkpointRefForThreadTurn(input.threadId, input.turnCount);
 
     const fromCheckpointExists = yield* checkpointStore.hasCheckpointRef({
@@ -299,6 +371,9 @@ const make = Effect.gen(function* () {
       checkpointTurnCount: input.turnCount,
       createdAt: input.createdAt,
       ...(input.partial === undefined ? {} : { partial: input.partial }),
+      ...(input.snapshotKind === undefined ? {} : { snapshotKind: input.snapshotKind }),
+      ...(input.departedRef === undefined ? {} : { departedRef: input.departedRef }),
+      ...(input.branchMovement === undefined ? {} : { branchMovement: input.branchMovement }),
     });
     yield* receiptBus.publish({
       type: "checkpoint.diff.finalized",
@@ -330,6 +405,9 @@ const make = Effect.gen(function* () {
           turnCount: input.turnCount,
           status: input.status,
           ...(input.partial === undefined ? {} : { partial: input.partial }),
+          ...(input.snapshotKind === undefined ? {} : { snapshotKind: input.snapshotKind }),
+          ...(input.departedRef === undefined ? {} : { departedRef: input.departedRef }),
+          ...(input.branchMovement === undefined ? {} : { branchMovement: input.branchMovement }),
         },
         turnId: input.turnId,
         createdAt: input.createdAt,
@@ -337,6 +415,148 @@ const make = Effect.gen(function* () {
       createdAt: input.createdAt,
     });
   });
+
+  const captureCheckpointForTurn = Effect.fn("CheckpointReactor.captureCheckpointForTurn")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly turnId: TurnId;
+      readonly thread: {
+        readonly messages: ReadonlyArray<{
+          readonly id: MessageId;
+          readonly role: string;
+          readonly turnId: TurnId | null;
+        }>;
+      };
+      readonly cwd: string;
+      readonly turnCount: number;
+      readonly settled: boolean;
+      readonly status: "ready" | "missing" | "error";
+      readonly assistantMessageId: MessageId | undefined;
+      readonly createdAt: string;
+    }) {
+      const session = yield* codingSessions.getByThreadId(input.threadId);
+      const matchingSlots = Option.isSome(session)
+        ? (yield* slots.listAll).filter((candidate) =>
+            candidate.members.some(
+              (member) =>
+                member.repositoryId === session.value.repositoryId &&
+                member.currentBranch === session.value.branch,
+            ),
+          )
+        : [];
+      let slot = matchingSlots[0];
+      for (const candidate of matchingSlots) {
+        const lease = yield* slotRegistry.lease(candidate.slotId);
+        if (
+          Option.isSome(lease) &&
+          lease.value.holders.some((holder) => holder.threadId === input.threadId)
+        ) {
+          slot = candidate;
+          break;
+        }
+      }
+
+      const checkpointRef = checkpointRefForThreadTurn(input.threadId, input.turnCount);
+      const capture =
+        Option.isSome(session) && slot?.currentLineRootCommitId !== null && slot !== undefined
+          ? Effect.gen(function* () {
+              const kind = input.settled ? "settled" : "partial";
+              const standing = yield* adoptStanding({
+                threadId: input.threadId,
+                cwd: input.cwd,
+                lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: session.value.branch,
+                createdAt: input.createdAt,
+              });
+              const snapshot = yield* snapshotChain.capture({
+                cwd: input.cwd,
+                lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: standing.branch,
+                kind,
+                ref: checkpointRef,
+              });
+              const branchMovement = yield* snapshotChain.branchMovement({
+                cwd: input.cwd,
+                previousOid: snapshot.previousOid,
+                lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: standing.branch,
+              });
+              const departedRef = standing.departedRef;
+              const branchTipOid = yield* resolveLineBranchTip({
+                operation: "CheckpointReactor.resolveLineBranchTip",
+                cwd: input.cwd,
+                lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: standing.branch,
+              });
+              yield* codingSessions.recordSnapshot(input.threadId, {
+                snapshotOid: snapshot.oid,
+                kind,
+                branchTipOid,
+                departedRef,
+                branchMovement,
+              });
+              yield* captureAndDispatchCheckpoint({
+                threadId: input.threadId,
+                turnId: input.turnId,
+                thread: input.thread,
+                cwd: input.cwd,
+                turnCount: input.turnCount,
+                status: input.status,
+                assistantMessageId: input.assistantMessageId,
+                createdAt: input.createdAt,
+                capture: false,
+                ...(snapshot.previousOid === null
+                  ? {}
+                  : { fromCheckpointRef: chainParentRef(checkpointRef) }),
+                ...(kind === "partial" ? { partial: true } : {}),
+                snapshotKind: kind,
+                ...(departedRef === null ? {} : { departedRef }),
+                branchMovement,
+              });
+            })
+          : captureAndDispatchCheckpoint({
+              threadId: input.threadId,
+              turnId: input.turnId,
+              thread: input.thread,
+              cwd: input.cwd,
+              turnCount: input.turnCount,
+              status: input.status,
+              assistantMessageId: input.assistantMessageId,
+              createdAt: input.createdAt,
+            });
+
+      yield* Option.isSome(session) && slot !== undefined
+        ? capture.pipe(
+            Effect.ensuring(
+              slotRegistry.release(slot.slotId, { kind: "turn", threadId: input.threadId }).pipe(
+                Effect.flatMap((free) =>
+                  free
+                    ? Effect.forEach(
+                        slot.members,
+                        (member) => {
+                          const worktreePath = path.join(slot.path, member.relativePath);
+                          return gitDriver.execute({
+                            operation: "CheckpointReactor.releaseSlot",
+                            cwd: worktreePath,
+                            args: ["worktree", "unlock", worktreePath],
+                            allowNonZeroExit: true,
+                          });
+                        },
+                        { discard: true },
+                      )
+                    : Effect.void,
+                ),
+                Effect.ignoreCause({ log: true }),
+              ),
+            ),
+          )
+        : capture;
+    },
+  );
 
   // Captures a real git checkpoint when a turn completes via a runtime event.
   const captureCheckpointFromTurnCompletion = Effect.fn("captureCheckpointFromTurnCompletion")(
@@ -391,136 +611,17 @@ const make = Effect.gen(function* () {
         ? existingPlaceholder.checkpointTurnCount
         : currentTurnCount + 1;
 
-      const session = yield* codingSessions.getByThreadId(thread.id);
-      const matchingSlots = Option.isSome(session)
-        ? (yield* slots.listAll).filter((candidate) =>
-            candidate.members.some(
-              (member) =>
-                member.repositoryId === session.value.repositoryId &&
-                member.currentBranch === session.value.branch,
-            ),
-          )
-        : [];
-      let slot = matchingSlots[0];
-      for (const candidate of matchingSlots) {
-        const lease = yield* slotRegistry.lease(candidate.slotId);
-        if (
-          Option.isSome(lease) &&
-          lease.value.holders.some((holder) => holder.threadId === thread.id)
-        ) {
-          slot = candidate;
-          break;
-        }
-      }
-      const settled = event.payload.state === "completed";
-      const checkpointRef = checkpointRefForThreadTurn(thread.id, nextTurnCount);
-      const capture =
-        Option.isSome(session) && slot !== undefined && settled
-          ? Effect.gen(function* () {
-              const commitEnv: NodeJS.ProcessEnv = {
-                ...process.env,
-                GIT_AUTHOR_NAME: "Astrolabe",
-                GIT_AUTHOR_EMAIL: "t3code@users.noreply.github.com",
-                GIT_COMMITTER_NAME: "Astrolabe",
-                GIT_COMMITTER_EMAIL: "t3code@users.noreply.github.com",
-              };
-              yield* gitDriver.execute({
-                operation: "CheckpointReactor.commitOnSettle",
-                cwd: checkpointCwd,
-                args: ["add", "-A", "--", "."],
-              });
-              yield* gitDriver.execute({
-                operation: "CheckpointReactor.commitOnSettle",
-                cwd: checkpointCwd,
-                args: [
-                  "commit",
-                  "--allow-empty",
-                  "-m",
-                  `Astrolabe checkpoint turn=${nextTurnCount}`,
-                ],
-                env: commitEnv,
-              });
-              const head = yield* gitDriver.execute({
-                operation: "CheckpointReactor.commitOnSettle",
-                cwd: checkpointCwd,
-                args: ["rev-parse", "HEAD^{commit}"],
-              });
-              const oid = head.stdout.trim();
-              yield* gitDriver.execute({
-                operation: "CheckpointReactor.commitOnSettle",
-                cwd: checkpointCwd,
-                args: ["update-ref", checkpointRef, oid],
-              });
-              if (slot.currentLineRootCommitId !== null) {
-                yield* checkpointStore.deleteCheckpointRefs({
-                  cwd: checkpointCwd,
-                  checkpointRefs: [linePartialCheckpointRef(slot.currentLineRootCommitId)],
-                });
-              }
-              yield* codingSessions.recordSettledCommit(thread.id, oid);
-              yield* codingSessions.recordPartial(thread.id, false);
-              if (slot.currentLineRootCommitId !== null) {
-                yield* lineBranches.markBuilt({
-                  lineRootCommitId: slot.currentLineRootCommitId,
-                  repositoryId: session.value.repositoryId,
-                });
-              }
-              yield* captureAndDispatchCheckpoint({
-                threadId: thread.id,
-                turnId,
-                thread,
-                cwd: checkpointCwd,
-                turnCount: nextTurnCount,
-                status: "ready",
-                assistantMessageId: undefined,
-                createdAt: event.createdAt,
-                capture: false,
-              });
-            })
-          : Effect.gen(function* () {
-              if (Option.isSome(session) && slot !== undefined && !settled) {
-                yield* codingSessions.recordPartial(thread.id, true);
-              }
-              yield* captureAndDispatchCheckpoint({
-                threadId: thread.id,
-                turnId,
-                thread,
-                cwd: checkpointCwd,
-                turnCount: nextTurnCount,
-                status: checkpointStatusFromRuntime(event.payload.state),
-                assistantMessageId: undefined,
-                createdAt: event.createdAt,
-                ...(Option.isSome(session) && slot !== undefined && !settled
-                  ? { partial: true }
-                  : {}),
-              });
-            });
-      yield* Option.isSome(session) && slot !== undefined
-        ? capture.pipe(
-            Effect.ensuring(
-              slotRegistry.release(slot.slotId, { kind: "turn", threadId: thread.id }).pipe(
-                Effect.flatMap((free) =>
-                  free
-                    ? Effect.forEach(
-                        slot.members,
-                        (member) => {
-                          const worktreePath = path.join(slot.path, member.relativePath);
-                          return gitDriver.execute({
-                            operation: "CheckpointReactor.releaseSlot",
-                            cwd: worktreePath,
-                            args: ["worktree", "unlock", worktreePath],
-                            allowNonZeroExit: true,
-                          });
-                        },
-                        { discard: true },
-                      )
-                    : Effect.void,
-                ),
-                Effect.ignoreCause({ log: true }),
-              ),
-            ),
-          )
-        : capture;
+      yield* captureCheckpointForTurn({
+        threadId: thread.id,
+        turnId,
+        thread,
+        cwd: checkpointCwd,
+        turnCount: nextTurnCount,
+        settled: event.payload.state === "completed",
+        status: checkpointStatusFromRuntime(event.payload.state),
+        assistantMessageId: undefined,
+        createdAt: event.createdAt,
+      });
     },
   );
 
@@ -574,17 +675,104 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    yield* captureAndDispatchCheckpoint({
+    yield* captureCheckpointForTurn({
       threadId,
       turnId,
       thread,
       cwd: checkpointCwd,
       turnCount: checkpointTurnCount,
+      settled: true,
       status: "ready",
       assistantMessageId: event.payload.assistantMessageId ?? undefined,
       createdAt: event.payload.completedAt,
     });
   });
+
+  const captureExternalSnapshot = Effect.fn("CheckpointReactor.captureExternalSnapshot")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly cwd: string;
+      readonly createdAt: string;
+      readonly checkpointTurnCount: number;
+    }) {
+      const session = yield* codingSessions.getByThreadId(input.threadId);
+      if (Option.isNone(session)) return;
+      const slot = (yield* slots.listAll).find(
+        (candidate) =>
+          candidate.currentLineRootCommitId !== null &&
+          candidate.members.some(
+            (member) =>
+              member.repositoryId === session.value.repositoryId &&
+              member.currentBranch === session.value.branch &&
+              path.join(candidate.path, member.relativePath) === input.cwd,
+          ),
+      );
+      if (slot?.currentLineRootCommitId === null || slot === undefined) return;
+      if (
+        !(yield* snapshotChain.isDrifted({
+          cwd: input.cwd,
+          lineRootCommitId: slot.currentLineRootCommitId,
+          lineBranch: session.value.branch,
+        }))
+      ) {
+        return;
+      }
+      const capturedAt = yield* DateTime.now;
+      const standing = yield* adoptStanding({
+        threadId: input.threadId,
+        cwd: input.cwd,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: session.value.branch,
+        createdAt: input.createdAt,
+      });
+      const snapshot = yield* snapshotChain.capture({
+        cwd: input.cwd,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: standing.branch,
+        kind: "external",
+        ref: lineExtraSnapshotRef(slot.currentLineRootCommitId, "external", capturedAt),
+      });
+      const branchMovement = yield* snapshotChain.branchMovement({
+        cwd: input.cwd,
+        previousOid: snapshot.previousOid,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: standing.branch,
+      });
+      const departedRef = standing.departedRef;
+      const branchTipOid = yield* resolveLineBranchTip({
+        operation: "CheckpointReactor.resolveExternalLineBranchTip",
+        cwd: input.cwd,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: standing.branch,
+      });
+      yield* codingSessions.recordSnapshot(input.threadId, {
+        snapshotOid: snapshot.oid,
+        kind: "external",
+        branchTipOid,
+        departedRef,
+        branchMovement,
+      });
+      yield* orchestrationEngine.dispatch({
+        type: "thread.activity.append",
+        commandId: yield* serverCommandId("checkpoint-external"),
+        threadId: input.threadId,
+        activity: {
+          id: yield* serverEventId,
+          tone: "info",
+          kind: "checkpoint.external",
+          summary: "Changes outside a turn were snapshotted",
+          payload: {},
+          turnId: null,
+          createdAt: input.createdAt,
+        },
+        createdAt: input.createdAt,
+      });
+    },
+  );
 
   const ensurePreTurnBaselineFromTurnStart = Effect.fn("ensurePreTurnBaselineFromTurnStart")(
     function* (event: Extract<ProviderRuntimeEvent, { type: "turn.started" }>) {
@@ -618,20 +806,24 @@ const make = Effect.gen(function* () {
         cwd: checkpointCwd,
         checkpointRef: baselineCheckpointRef,
       });
-      if (baselineExists) {
-        return;
+      if (!baselineExists) {
+        yield* checkpointStore.captureCheckpoint({
+          cwd: checkpointCwd,
+          checkpointRef: baselineCheckpointRef,
+        });
+        yield* receiptBus.publish({
+          type: "checkpoint.baseline.captured",
+          threadId: thread.id,
+          checkpointTurnCount: currentTurnCount,
+          checkpointRef: baselineCheckpointRef,
+          createdAt: event.createdAt,
+        });
       }
-
-      yield* checkpointStore.captureCheckpoint({
-        cwd: checkpointCwd,
-        checkpointRef: baselineCheckpointRef,
-      });
-      yield* receiptBus.publish({
-        type: "checkpoint.baseline.captured",
+      yield* captureExternalSnapshot({
         threadId: thread.id,
-        checkpointTurnCount: currentTurnCount,
-        checkpointRef: baselineCheckpointRef,
+        cwd: checkpointCwd,
         createdAt: event.createdAt,
+        checkpointTurnCount: currentTurnCount,
       });
     },
   );
@@ -654,7 +846,7 @@ const make = Effect.gen(function* () {
         }).pipe(Effect.as(null)),
       ),
     );
-    if (local !== null) {
+    if (local !== null && Option.isNone(yield* codingSessions.getByThreadId(event.threadId))) {
       yield* followWorktreeBranchDrift({
         threadId: event.threadId,
         cwd: sessionRuntime.value.cwd,
@@ -777,20 +969,24 @@ const make = Effect.gen(function* () {
       cwd: checkpointCwd,
       checkpointRef: baselineCheckpointRef,
     });
-    if (baselineExists) {
-      return;
+    if (!baselineExists) {
+      yield* checkpointStore.captureCheckpoint({
+        cwd: checkpointCwd,
+        checkpointRef: baselineCheckpointRef,
+      });
+      yield* receiptBus.publish({
+        type: "checkpoint.baseline.captured",
+        threadId,
+        checkpointTurnCount: currentTurnCount,
+        checkpointRef: baselineCheckpointRef,
+        createdAt: event.occurredAt,
+      });
     }
-
-    yield* checkpointStore.captureCheckpoint({
-      cwd: checkpointCwd,
-      checkpointRef: baselineCheckpointRef,
-    });
-    yield* receiptBus.publish({
-      type: "checkpoint.baseline.captured",
+    yield* captureExternalSnapshot({
       threadId,
-      checkpointTurnCount: currentTurnCount,
-      checkpointRef: baselineCheckpointRef,
+      cwd: checkpointCwd,
       createdAt: event.occurredAt,
+      checkpointTurnCount: currentTurnCount,
     });
   });
 
@@ -848,13 +1044,7 @@ const make = Effect.gen(function* () {
     }
   });
 
-  const processInput = (
-    input: ReactorInput,
-  ): Effect.Effect<
-    void,
-    CheckpointStoreError | OrchestrationDispatchError | PlatformError.PlatformError,
-    never
-  > =>
+  const processInput = (input: ReactorInput) =>
     input.source === "domain" ? processDomainEvent(input.event) : processRuntimeEvent(input.event);
 
   const processInputSafely = (input: ReactorInput) =>

@@ -20,6 +20,11 @@ const sessionRecord = {
   prUrl: null,
   settledCommitOid: null,
   partial: false,
+  snapshotOid: null,
+  snapshotKind: null,
+  departedRef: null,
+  branchMovement: null,
+  lineBranchMissingOid: null,
 } as const;
 
 const createdResult = {

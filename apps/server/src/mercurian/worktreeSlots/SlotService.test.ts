@@ -24,7 +24,8 @@ import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotRegistry from "./SlotRegistry.ts";
 import * as SlotStore from "./SlotStore.ts";
-import { make, SlotPoolAtCapacityError } from "./SlotService.ts";
+import * as SnapshotChain from "./SnapshotChain.ts";
+import { LineBranchMissingError, make, SlotPoolAtCapacityError } from "./SlotService.ts";
 import { type WorktreeSlot, WorktreeSlotId } from "./schema.ts";
 
 const repositoryA = MercurianRepositoryId.make("repository-a");
@@ -35,6 +36,8 @@ const lineA = MercurianCommitId.make("line-a");
 const lineB = MercurianCommitId.make("line-b");
 const now = DateTime.makeUnsafe("2026-08-31T12:00:00.000Z");
 const holder = (threadId: string) => ({ kind: "turn" as const, threadId });
+const isLineBranchMissingError = Schema.is(LineBranchMissingError);
+const isSlotPoolAtCapacityError = Schema.is(SlotPoolAtCapacityError);
 
 const slot = (lineRootCommitId: MercurianCommitId): WorktreeSlot => ({
   slotId: WorktreeSlotId.make("project-one:slot-1"),
@@ -63,6 +66,11 @@ interface HarnessOptions {
   readonly dirtyPaths?: ReadonlyArray<string>;
   readonly materializeGate?: Deferred.Deferred<void>;
   readonly failCreateAtCwd?: string;
+  readonly headRefs?: Readonly<Record<string, string | null>>;
+  readonly driftedPaths?: ReadonlyArray<string>;
+  readonly checkpointExists?: boolean;
+  readonly standings?: Readonly<Record<string, SnapshotChain.LineStanding>>;
+  readonly missingRefs?: ReadonlyArray<string>;
   readonly links?: ReadonlyArray<{
     readonly projectId: MercurianProjectId;
     readonly repositoryId: MercurianRepositoryId;
@@ -80,6 +88,10 @@ const makeHarness = (options: HarnessOptions = {}) => {
   const materializedPaths: Array<string> = [];
   const removedPaths: Array<string> = [];
   const captures: Array<{ readonly cwd: string; readonly checkpointRef: CheckpointRef }> = [];
+  const restores: Array<{ readonly cwd: string; readonly checkpointRef: CheckpointRef }> = [];
+  const events: Array<string> = [];
+  const lineRenames: Array<{ readonly repositoryId: string; readonly branch: string }> = [];
+  const memberRenames: Array<{ readonly repositoryId: string; readonly branch: string }> = [];
   let activeMaterializations = 0;
   let maxActiveMaterializations = 0;
 
@@ -107,6 +119,18 @@ const makeHarness = (options: HarnessOptions = {}) => {
             lastUsedAt: assignment.lastUsedAt,
           };
         }),
+      updateMemberBranch: ({ slotId, repositoryId, currentBranch }) =>
+        Effect.sync(() => {
+          memberRenames.push({ repositoryId, branch: currentBranch });
+          const index = rows.findIndex((row) => row.slotId === slotId);
+          if (index < 0) return;
+          rows[index] = {
+            ...rows[index]!,
+            members: rows[index]!.members.map((member) =>
+              member.repositoryId === repositoryId ? { ...member, currentBranch } : member,
+            ),
+          };
+        }),
       changes: Stream.empty,
     }),
     SlotRegistry.layer,
@@ -119,9 +143,12 @@ const makeHarness = (options: HarnessOptions = {}) => {
             branch: `mercurian/${lineRootCommitId}-${repositoryId === repositoryA ? "a" : "b"}`,
             baseOid: "base-oid",
             built: false,
+            repointHold: null,
             createdAt: now,
           }),
         ),
+      rename: ({ repositoryId, branch }) =>
+        Effect.sync(() => lineRenames.push({ repositoryId, branch })),
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
       getSnapshot: Effect.succeed({
@@ -177,10 +204,42 @@ const makeHarness = (options: HarnessOptions = {}) => {
       execute: (input) =>
         Effect.sync(() => {
           gitCalls.push({ operation: input.operation, cwd: input.cwd, args: input.args });
+          events.push(`git:${input.cwd}:${input.args[0]}`);
           if (input.args[0] === "status") {
             return {
               exitCode: 0,
               stdout: dirty.has(input.cwd) ? " M file.ts\n" : "",
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            };
+          }
+          if (input.args[0] === "symbolic-ref") {
+            const current =
+              options.headRefs?.[input.cwd] ??
+              options.initialSlots
+                ?.flatMap((slot) =>
+                  slot.members.map((member) => ({
+                    path: `${slot.path}/${member.relativePath}`,
+                    branch: member.currentBranch,
+                  })),
+                )
+                .find((entry) => entry.path === input.cwd)?.branch;
+            return {
+              exitCode: current === null || current === undefined ? 1 : 0,
+              stdout: current === null || current === undefined ? "" : `refs/heads/${current}\n`,
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            };
+          }
+          if (
+            input.args[0] === "rev-parse" &&
+            options.missingRefs?.includes(input.args.at(-1) ?? "")
+          ) {
+            return {
+              exitCode: 1,
+              stdout: "",
               stderr: "",
               stdoutTruncated: false,
               stderrTruncated: false,
@@ -198,8 +257,60 @@ const makeHarness = (options: HarnessOptions = {}) => {
     }),
     Layer.mock(CheckpointStore.CheckpointStore)({
       captureCheckpoint: (input) => Effect.sync(() => captures.push(input)),
-      hasCheckpointRef: () => Effect.succeed(false),
-      restoreCheckpoint: () => Effect.succeed(true),
+      hasCheckpointRef: () => Effect.succeed(options.checkpointExists ?? false),
+      restoreCheckpoint: (input) =>
+        Effect.sync(() => {
+          restores.push(input);
+          return true;
+        }),
+    }),
+    Layer.mock(SnapshotChain.SnapshotChain)({
+      capture: (input) =>
+        Effect.sync(() => {
+          events.push(`capture:${input.cwd}:${input.kind}`);
+          captures.push({ cwd: input.cwd, checkpointRef: input.ref });
+          return {
+            oid: "snapshot",
+            previousOid: "previous",
+            headOid: "head",
+            headRef: "refs/heads/main",
+            built: true,
+          };
+        }),
+      branchMovement: () => Effect.succeed({ kind: "unchanged" }),
+      readStanding: ({ cwd, lineBranch }) =>
+        Effect.succeed(
+          options.standings?.[cwd] ??
+            (options.headRefs?.[cwd] === undefined ||
+            options.headRefs?.[cwd] === `refs/heads/${lineBranch}`
+              ? { _tag: "on-line" as const }
+              : {
+                  _tag: "departed" as const,
+                  ref: options.headRefs[cwd] ?? "detached",
+                  recordedMissing: false,
+                }),
+        ),
+      lineCommit: () => Effect.succeed("chain-head"),
+      adoptRename: ({ repositoryId, branch }) =>
+        Effect.sync(() => {
+          lineRenames.push({ repositoryId, branch });
+          for (let index = 0; index < rows.length; index += 1) {
+            if (!rows[index]!.members.some((member) => member.repositoryId === repositoryId)) {
+              continue;
+            }
+            memberRenames.push({ repositoryId, branch });
+            rows[index] = {
+              ...rows[index]!,
+              members: rows[index]!.members.map((member) =>
+                member.repositoryId === repositoryId
+                  ? { ...member, currentBranch: branch }
+                  : member,
+              ),
+            };
+          }
+        }),
+      isDrifted: ({ cwd }) =>
+        Effect.succeed(new Set(options.driftedPaths ?? options.dirtyPaths ?? []).has(cwd)),
     }),
   );
 
@@ -211,9 +322,13 @@ const makeHarness = (options: HarnessOptions = {}) => {
       registry,
       rows,
       gitCalls,
+      events,
       captures,
+      restores,
       materializedPaths,
       removedPaths,
+      lineRenames,
+      memberRenames,
       stats: () => ({ maxActiveMaterializations }),
     };
   }).pipe(Effect.provide(Layer.merge(dependencies, NodeServicesLayer)));
@@ -235,6 +350,26 @@ describe("SlotService", () => {
       assert.deepStrictEqual(
         claimed.members.map((member) => member.relativePath),
         ["a", "b"],
+      );
+    }),
+  );
+
+  it.effect("restores an inherited line snapshot into newly materialized members", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ checkpointExists: true });
+      yield* harness.service.claim({
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-a"),
+      });
+      assert.deepStrictEqual(
+        harness.restores.map((restore) => restore.cwd),
+        ["/worktrees/project-one/slot-1/a", "/worktrees/project-one/slot-1/b"],
+      );
+      assert.ok(
+        harness.restores.every(
+          (restore) => restore.checkpointRef === SnapshotChain.lineSnapshotRef(lineA),
+        ),
       );
     }),
   );
@@ -265,6 +400,7 @@ describe("SlotService", () => {
       });
       assert.strictEqual(claimed.slotId, existing.slotId);
       assert.strictEqual(harness.materializedPaths.length, 0);
+      assert.strictEqual(harness.captures.length, 0);
       assert.ok(!harness.gitCalls.some((call) => call.args[0] === "checkout"));
     }),
   );
@@ -291,7 +427,7 @@ describe("SlotService", () => {
     }),
   );
 
-  it.effect("snapshots dirty affinity members during restart recovery", () =>
+  it.effect("leaves drift on an affinity member for the turn-start external capture", () =>
     Effect.gen(function* () {
       const existing = slot(lineA);
       const harness = yield* makeHarness({
@@ -303,10 +439,114 @@ describe("SlotService", () => {
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
       });
+      assert.strictEqual(harness.captures.length, 0);
+    }),
+  );
+
+  it.effect("captures a departed affinity member once before resetting it", () =>
+    Effect.gen(function* () {
+      const existing = slot(lineA);
+      const memberPath = "/worktrees/project-one/slot-1/a";
+      const harness = yield* makeHarness({
+        initialSlots: [existing],
+        headRefs: { [memberPath]: "refs/heads/sibling" },
+        dirtyPaths: [memberPath],
+        checkpointExists: true,
+      });
+      yield* harness.service.claim({
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-a"),
+      });
+      const memberCalls = harness.gitCalls
+        .filter((call) => call.cwd === memberPath)
+        .map((call) => call.args.slice(0, 2));
+      assert.deepStrictEqual(memberCalls.slice(0, 3), [
+        ["reset", "--hard"],
+        ["clean", "-fd"],
+        ["checkout", "mercurian/line-a-a"],
+      ]);
       assert.deepStrictEqual(
         harness.captures.map((capture) => capture.cwd),
-        ["/worktrees/project-one/slot-1/b"],
+        [memberPath],
       );
+      const captureIndex = harness.events.indexOf(`capture:${memberPath}:recovery`);
+      const resetIndex = harness.events.indexOf(`git:${memberPath}:reset`);
+      assert.ok(captureIndex >= 0);
+      assert.ok(captureIndex < resetIndex);
+      assert.ok(
+        harness.gitCalls.some((call) => call.cwd === memberPath && call.args[0] === "checkout"),
+      );
+      assert.ok(harness.restores.some((restore) => restore.cwd === memberPath));
+    }),
+  );
+
+  it.effect("adopts an affinity member renamed at the line commit without cleaning it", () =>
+    Effect.gen(function* () {
+      const existing = slot(lineA);
+      const memberPath = "/worktrees/project-one/slot-1/a";
+      const harness = yield* makeHarness({
+        initialSlots: [existing],
+        standings: { [memberPath]: { _tag: "renamed", branch: "renamed-by-hand" } },
+      });
+      const claimed = yield* harness.service.claim({
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-a"),
+      });
+      assert.strictEqual(claimed.members[0]?.currentBranch, "renamed-by-hand");
+      assert.deepStrictEqual(harness.lineRenames, [
+        { repositoryId: repositoryA, branch: "renamed-by-hand" },
+      ]);
+      assert.deepStrictEqual(harness.memberRenames, [
+        { repositoryId: repositoryA, branch: "renamed-by-hand" },
+      ]);
+      assert.ok(
+        !harness.gitCalls.some(
+          (call) =>
+            call.cwd === memberPath &&
+            (call.args[0] === "reset" || call.args[0] === "clean" || call.args[0] === "checkout"),
+        ),
+      );
+    }),
+  );
+
+  it.effect("reports the chain head when an affinity branch name is missing", () =>
+    Effect.gen(function* () {
+      const existing = slot(lineA);
+      const memberPath = "/worktrees/project-one/slot-1/a";
+      const harness = yield* makeHarness({
+        initialSlots: [existing],
+        standings: {
+          [memberPath]: {
+            _tag: "departed",
+            ref: "refs/heads/elsewhere",
+            recordedMissing: true,
+          },
+        },
+      });
+      const failure = yield* harness.service
+        .claim({ projectId, lineRootCommitId: lineA, holder: holder("thread-a") })
+        .pipe(Effect.flip);
+      assert.ok(isLineBranchMissingError(failure));
+      if (isLineBranchMissingError(failure)) {
+        assert.strictEqual(failure.commitOid, "chain-head");
+        assert.strictEqual(failure.branch, "mercurian/line-a-a");
+      }
+    }),
+  );
+
+  it.effect("verifies every desired branch before switching a slot", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        initialSlots: [slot(lineA)],
+        missingRefs: ["refs/heads/mercurian/line-b-a"],
+      });
+      const failure = yield* harness.service
+        .claim({ projectId, lineRootCommitId: lineB, holder: holder("thread-b") })
+        .pipe(Effect.flip);
+      assert.ok(isLineBranchMissingError(failure));
+      assert.ok(!harness.gitCalls.some((call) => call.args[0] === "checkout"));
     }),
   );
 
@@ -321,8 +561,8 @@ describe("SlotService", () => {
           holder: holder("b"),
         })
         .pipe(Effect.flip);
-      assert.ok(Schema.is(SlotPoolAtCapacityError)(refusal));
-      if (Schema.is(SlotPoolAtCapacityError)(refusal)) {
+      assert.ok(isSlotPoolAtCapacityError(refusal));
+      if (isSlotPoolAtCapacityError(refusal)) {
         assert.strictEqual(refusal.projectId, projectId);
         assert.strictEqual(refusal.poolSize, 1);
       }

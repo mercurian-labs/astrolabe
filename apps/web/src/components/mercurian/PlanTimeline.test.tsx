@@ -425,6 +425,7 @@ describe("PlanTimeline", () => {
       outcome: "completed",
       prUrl: "https://example.test/pull/1",
       partial: true,
+      departedRef: "feature/detour",
     });
     const markup = renderToStaticMarkup(
       <PlanTimeline timeline={[sessionCommit]} codingSessions={[session]} />,
@@ -433,6 +434,7 @@ describe("PlanTimeline", () => {
     expect(markup).toContain("Implemented revision");
     expect(markup).toContain("Completed");
     expect(markup).toContain("Partial");
+    expect(markup).toContain("Departed");
     expect(markup).toContain("mercurian/reshape-sidebar-12345678");
     expect(markup).toContain('href="https://example.test/pull/1"');
     expect(markup).toContain('href="/sessions/thread"');

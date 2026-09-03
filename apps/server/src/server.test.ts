@@ -1,6 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
@@ -34,6 +36,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
+  MERCURIAN_REPOSITORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianCommitId,
@@ -120,6 +123,7 @@ import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
+import type { CodingSessionRecord } from "./mercurian/codingSessions/schema.ts";
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
@@ -484,6 +488,7 @@ const buildAppUnderTest = (options?: {
     analyticsService?: Partial<AnalyticsService.AnalyticsService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
     codingSessionStore?: Partial<CodingSessionStore.CodingSessionStore["Service"]>;
+    lineBranchStore?: Partial<LineBranchStore.LineBranchStore["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
     serverLifecycleEvents?: Partial<ServerLifecycleEvents.ServerLifecycleEvents["Service"]>;
@@ -701,8 +706,8 @@ const buildAppUnderTest = (options?: {
           getByWorktreePath: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
-          recordSettledCommit: () => Effect.void,
-          recordPartial: () => Effect.void,
+          recordSnapshot: () => Effect.void,
+          recordLineBranchMissing: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,
@@ -1108,6 +1113,7 @@ const buildAppUnderTest = (options?: {
             get: () => Effect.succeed(Option.none()),
             create: () => Effect.void,
             assign: () => Effect.void,
+            updateMemberBranch: () => Effect.void,
             changes: Stream.empty,
           }),
           SlotRegistry.layer,
@@ -1122,7 +1128,10 @@ const buildAppUnderTest = (options?: {
             create: () => Effect.void,
             repointIfUnbuilt: () => Effect.succeed(false),
             markBuilt: () => Effect.void,
+            rename: () => Effect.void,
+            recordRepointHold: () => Effect.void,
             changes: Stream.empty,
+            ...options?.layers?.lineBranchStore,
           }),
         ),
       ),
@@ -1665,6 +1674,11 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
       prUrl: null,
       settledCommitOid: null,
       partial: false,
+      snapshotOid: null,
+      snapshotKind: null,
+      departedRef: null,
+      branchMovement: null,
+      lineBranchMissingOid: null,
     } as const;
     const lookedUpThreadIds: ThreadId[] = [];
 
@@ -4941,6 +4955,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           prUrl: null,
           settledCommitOid: null,
           partial: false,
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
+          lineBranchMissingOid: null,
         } as const;
       };
       const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
@@ -5343,6 +5362,195 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(failure._tag, "MercurianProjectNotFoundError");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "recreates a missing line branch from either rpc input and refuses an existing name",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const repositoryPath = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-recreate-line-branch-",
+        });
+        const runGit = (args: ReadonlyArray<string>) =>
+          NodeChildProcess.spawnSync("git", args, {
+            cwd: repositoryPath,
+            encoding: "utf8",
+          });
+        assert.equal(runGit(["init", "-b", "main"]).status, 0);
+        assert.equal(
+          runGit([
+            "-c",
+            "user.name=T3 Test",
+            "-c",
+            "user.email=t3@example.test",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "base",
+          ]).status,
+          0,
+        );
+        const baseOid = runGit(["rev-parse", "HEAD"]).stdout.trim();
+        const branch = "mercurian/recreated-line";
+        const threadId = ThreadId.make("thread-recreate-line");
+        let lineRootCommitId = MercurianCommitId.make("pending-line-root");
+        let repositoryId = MercurianRepositoryId.make("pending-repository");
+        let session: CodingSessionRecord | null = null;
+        const cleared: Array<{ threadId: ThreadId; oid: string | null }> = [];
+
+        const executeGit: GitVcsDriver.GitVcsDriver["Service"]["execute"] = (input) => {
+          const result = NodeChildProcess.spawnSync("git", input.args, {
+            cwd: input.cwd,
+            encoding: "utf8",
+            env: input.env,
+            input: input.stdin,
+          });
+          const exitCode = result.status ?? 1;
+          const output = {
+            exitCode: ChildProcessSpawner.ExitCode(exitCode),
+            stdout: result.stdout,
+            stderr: result.stderr,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          };
+          return exitCode !== 0 && input.allowNonZeroExit !== true
+            ? Effect.fail(
+                new GitCommandError({
+                  operation: input.operation,
+                  command: `git ${input.args.join(" ")}`,
+                  cwd: input.cwd,
+                  exitCode,
+                  detail: result.stderr.trim() || `git exited with ${exitCode}`,
+                }),
+              )
+            : Effect.succeed(output);
+        };
+
+        yield* buildAppUnderTest({
+          layers: {
+            gitVcsDriver: { execute: executeGit },
+            lineBranchStore: {
+              listAll: Effect.suspend(() =>
+                session === null
+                  ? Effect.succeed([])
+                  : Effect.succeed([
+                      {
+                        lineRootCommitId,
+                        repositoryId,
+                        branch,
+                        baseOid,
+                        built: true,
+                        repointHold: null,
+                        createdAt: session.startedAt,
+                      },
+                    ]),
+              ),
+              get: () =>
+                Effect.suspend(() =>
+                  session === null
+                    ? Effect.succeed(Option.none())
+                    : Effect.succeed(
+                        Option.some({
+                          lineRootCommitId,
+                          repositoryId,
+                          branch,
+                          baseOid,
+                          built: true,
+                          repointHold: null,
+                          createdAt: session.startedAt,
+                        }),
+                      ),
+                ),
+            },
+            codingSessionStore: {
+              listAll: Effect.suspend(() => Effect.succeed(session === null ? [] : [session])),
+              getByThreadId: (candidate) =>
+                Effect.suspend(() =>
+                  Effect.succeed(
+                    session !== null && candidate === session.threadId
+                      ? Option.some(session)
+                      : Option.none(),
+                  ),
+                ),
+              recordLineBranchMissing: (candidate, oid) =>
+                Effect.sync(() => {
+                  cleared.push({ threadId: candidate, oid });
+                  if (session !== null && candidate === session.threadId) {
+                    session = { ...session, lineBranchMissingOid: oid };
+                  }
+                }),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            Effect.gen(function* () {
+              const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+                name: "Recreated line project",
+              });
+              const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+                projectId: project.projectId,
+                message: "Recreate the line branch",
+              });
+              lineRootCommitId = created.timeline[0]!.commitId;
+              const repository = yield* client[MERCURIAN_REPOSITORY_WS_METHODS.addRepository]({
+                path: repositoryPath,
+              });
+              repositoryId = repository.repositoryId;
+              yield* client[MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]({
+                projectId: project.projectId,
+                repositoryIds: [repositoryId],
+              });
+              session = {
+                commitId: lineRootCommitId,
+                planId: created.plan.planId,
+                repositoryId,
+                threadId,
+                branch,
+                worktreePath: repositoryPath,
+                baseRef: "main",
+                startedAt: TEST_EPOCH,
+                endedAt: null,
+                outcome: null,
+                prUrl: null,
+                settledCommitOid: null,
+                partial: false,
+                snapshotOid: null,
+                snapshotKind: null,
+                departedRef: null,
+                branchMovement: null,
+                lineBranchMissingOid: baseOid,
+              };
+
+              const byThread = yield* client[MERCURIAN_WS_METHODS.recreateLineBranch]({ threadId });
+              assert.deepEqual(byThread, { branch, commitOid: baseOid });
+              assert.equal(runGit(["rev-parse", `refs/heads/${branch}`]).stdout.trim(), baseOid);
+              assert.deepEqual(cleared, [{ threadId, oid: null }]);
+
+              assert.equal(runGit(["branch", "-D", branch]).status, 0);
+              const byPlan = yield* client[MERCURIAN_WS_METHODS.recreateLineBranch]({
+                planId: created.plan.planId,
+                commitId: lineRootCommitId,
+                repositoryId,
+              });
+              assert.deepEqual(byPlan, { branch, commitOid: baseOid });
+              assert.equal(runGit(["rev-parse", `refs/heads/${branch}`]).stdout.trim(), baseOid);
+              assert.deepEqual(cleared, [
+                { threadId, oid: null },
+                { threadId, oid: null },
+              ]);
+
+              const failure = yield* Effect.flip(
+                client[MERCURIAN_WS_METHODS.recreateLineBranch]({ threadId }),
+              );
+              assert.equal(failure._tag, "MercurianPlanningError");
+            }),
+          ),
+        );
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>
@@ -6731,6 +6939,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           prUrl: null,
           settledCommitOid: null,
           partial: false,
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
+          lineBranchMissingOid: null,
         } as const;
         const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
         const announcedPlans: PlanId[] = [];

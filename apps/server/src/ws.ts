@@ -124,6 +124,7 @@ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngi
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
+import { lineRootCommitIdFor } from "./mercurian/commitTree/LineBranchReactor.ts";
 import {
   normalizePlanAttachments,
   removePlanAttachments,
@@ -135,6 +136,7 @@ import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionS
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
+import { lineSnapshotRef } from "./mercurian/worktreeSlots/SnapshotChain.ts";
 import { toWireSlotSnapshot } from "./mercurian/worktreeSlots/wire.ts";
 import { toWireCodingSessionRecord } from "./mercurian/codingSessions/wire.ts";
 import {
@@ -623,6 +625,7 @@ const makeWsRpcLayer = (
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+      const gitDriver = yield* GitVcsDriver.GitVcsDriver;
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
@@ -756,13 +759,39 @@ const makeWsRpcLayer = (
           session.value.repositoryId,
         );
         if (claimedMemberPath === null) return Option.none();
-        if (claimedMemberPath !== session.value.worktreePath) {
+        const claimedMember = claimed.members.find(
+          (member) => member.repositoryId === session.value.repositoryId,
+        );
+        if (claimedMember?.currentBranch === null || claimedMember === undefined) {
+          return Option.none();
+        }
+        const branchRenamed = claimedMember.currentBranch !== session.value.branch;
+        if (claimedMemberPath !== session.value.worktreePath || branchRenamed) {
           yield* dispatchFromClient({
             type: "thread.meta.update",
             commandId: yield* serverCommandId("coding-session-slot-reclaimed"),
             threadId,
-            branch: session.value.branch,
+            branch: claimedMember.currentBranch,
             worktreePath: claimedMemberPath,
+          });
+        }
+        if (branchRenamed) {
+          yield* codingSessionStore.updateBranch(threadId, claimedMember.currentBranch);
+          const createdAt = DateTime.formatIso(yield* DateTime.now);
+          yield* dispatchFromClient({
+            type: "thread.activity.append",
+            commandId: yield* serverCommandId("line-branch-renamed-activity"),
+            threadId,
+            activity: {
+              id: yield* serverEventId,
+              tone: "info",
+              kind: "line.branch-renamed",
+              summary: `Branch renamed to \`${claimedMember.currentBranch}\` by hand`,
+              payload: {},
+              turnId: null,
+              createdAt,
+            },
+            createdAt,
           });
         }
         return Option.some({ slotId: claimed.slotId, worktreePath: claimedMemberPath });
@@ -1400,7 +1429,21 @@ const makeWsRpcLayer = (
             ? Effect.gen(function* () {
                 const acquiredSlot = normalizedCommand.bootstrap
                   ? Option.none()
-                  : yield* acquireCodingSessionTurnSlot(normalizedCommand.threadId);
+                  : yield* acquireCodingSessionTurnSlot(normalizedCommand.threadId).pipe(
+                      Effect.catchTag("LineBranchMissingError", (error) =>
+                        codingSessionStore
+                          .recordLineBranchMissing(normalizedCommand.threadId, error.commitOid)
+                          .pipe(
+                            Effect.andThen(
+                              Effect.fail(
+                                new OrchestrationDispatchCommandError({
+                                  message: `The line's branch \`${error.branch}\` no longer exists in the repository; recreate it from the session header to continue.`,
+                                }),
+                              ),
+                            ),
+                          ),
+                      ),
+                    );
                 return yield* (
                   normalizedCommand.bootstrap
                     ? dispatchBootstrapTurnStart(normalizedCommand)
@@ -2084,6 +2127,129 @@ const makeWsRpcLayer = (
               Effect.mapError(
                 (cause) =>
                   new MercurianPlanningError({ operation: "subscribeWorktreeSlots", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.readLineUncommittedDiff]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.readLineUncommittedDiff,
+            checkpointDiffQuery.getLineUncommittedDiff(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new MercurianPlanningError({
+                    operation: "readLineUncommittedDiff",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.recreateLineBranch]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.recreateLineBranch,
+            Effect.gen(function* () {
+              const resolution = yield* "threadId" in input
+                ? Effect.gen(function* () {
+                    const session = yield* codingSessionStore.getByThreadId(input.threadId);
+                    if (Option.isNone(session)) {
+                      return yield* new MercurianPlanningError({
+                        operation: "recreateLineBranch",
+                        cause: new Error(`Coding session ${input.threadId} is missing`),
+                      });
+                    }
+                    const detail = yield* planningStore.getPlanSnapshot({
+                      planId: session.value.planId,
+                    });
+                    return {
+                      detail,
+                      lineRootCommitId: lineRootCommitIdFor(detail, String(session.value.commitId)),
+                      repositoryId: session.value.repositoryId,
+                      storedCommitOid: session.value.lineBranchMissingOid,
+                    };
+                  })
+                : planningStore.getPlanSnapshot({ planId: input.planId }).pipe(
+                    Effect.map((detail) => ({
+                      detail,
+                      lineRootCommitId: lineRootCommitIdFor(detail, String(input.commitId)),
+                      repositoryId: input.repositoryId,
+                      storedCommitOid: null,
+                    })),
+                  );
+              const line = yield* lineBranchStore.get({
+                lineRootCommitId: resolution.lineRootCommitId,
+                repositoryId: resolution.repositoryId,
+              });
+              if (Option.isNone(line)) {
+                return yield* new MercurianPlanningError({
+                  operation: "recreateLineBranch",
+                  cause: new Error("The line branch record is missing"),
+                });
+              }
+              const repositorySnapshot = yield* repositoryStore.getSnapshot;
+              const repository = repositorySnapshot.repositories.find(
+                (candidate) => candidate.repositoryId === resolution.repositoryId,
+              );
+              if (repository === undefined || !repository.hasGit) {
+                return yield* new MercurianPlanningError({
+                  operation: "recreateLineBranch",
+                  cause: new Error("The line repository is missing or is not a Git repository"),
+                });
+              }
+              const resolveCommit = Effect.fn("ws.recreateLineBranch.resolveCommit")(function* (
+                ref: string,
+              ) {
+                const result = yield* gitDriver.execute({
+                  operation: "ws.recreateLineBranch.resolveCommit",
+                  cwd: repository.path,
+                  args: ["rev-parse", "--verify", "--quiet", ref],
+                  allowNonZeroExit: true,
+                });
+                return result.exitCode === 0 ? result.stdout.trim() || null : null;
+              });
+              const snapshotRef = lineSnapshotRef(resolution.lineRootCommitId);
+              const commitOid =
+                resolution.storedCommitOid ??
+                (yield* resolveCommit(`refs/heads/${line.value.branch}^{commit}`)) ??
+                (yield* resolveCommit(`${snapshotRef}^2`)) ??
+                (yield* resolveCommit(`${snapshotRef}^1`)) ??
+                line.value.baseOid;
+              const existing = yield* gitDriver.execute({
+                operation: "ws.recreateLineBranch.verifyMissing",
+                cwd: repository.path,
+                args: ["rev-parse", "--verify", "--quiet", `refs/heads/${line.value.branch}`],
+                allowNonZeroExit: true,
+              });
+              if (existing.exitCode === 0) {
+                return yield* new MercurianPlanningError({
+                  operation: "recreateLineBranch",
+                  cause: new Error(`Branch ${line.value.branch} already exists`),
+                });
+              }
+              yield* gitDriver.execute({
+                operation: "ws.recreateLineBranch.create",
+                cwd: repository.path,
+                args: ["branch", line.value.branch, commitOid],
+              });
+              for (const session of yield* codingSessionStore.listAll) {
+                if (session.repositoryId !== resolution.repositoryId) continue;
+                const detail =
+                  session.planId === resolution.detail.plan.planId
+                    ? resolution.detail
+                    : yield* planningStore.getPlanSnapshot({ planId: session.planId });
+                if (
+                  lineRootCommitIdFor(detail, String(session.commitId)) ===
+                  resolution.lineRootCommitId
+                ) {
+                  yield* codingSessionStore.recordLineBranchMissing(session.threadId, null);
+                }
+              }
+              return { branch: line.value.branch, commitOid };
+            }).pipe(
+              Effect.mapError((cause) =>
+                cause._tag === "MercurianPlanningError"
+                  ? cause
+                  : new MercurianPlanningError({ operation: "recreateLineBranch", cause }),
               ),
             ),
             { "rpc.aggregate": "mercurian" },

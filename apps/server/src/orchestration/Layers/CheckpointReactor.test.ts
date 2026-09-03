@@ -71,7 +71,7 @@ import * as LineBranchStore from "../../mercurian/commitTree/LineBranchStore.ts"
 import * as SlotStore from "../../mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../../mercurian/worktreeSlots/SlotRegistry.ts";
 import { WorktreeSlotId } from "../../mercurian/worktreeSlots/schema.ts";
-import { linePartialCheckpointRef } from "../../mercurian/worktreeSlots/SlotService.ts";
+import * as SnapshotChain from "../../mercurian/worktreeSlots/SnapshotChain.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
@@ -307,6 +307,7 @@ describe("CheckpointReactor", () => {
     if (options?.slotBackedSession) {
       runGit(cwd, ["checkout", "-b", lineBranch]);
     }
+    const lineBaseOid = runGit(cwd, ["rev-parse", "HEAD^{commit}"]).trim();
     tempDirs.push(cwd);
     const provider = createProviderServiceHarness(
       cwd,
@@ -358,7 +359,13 @@ describe("CheckpointReactor", () => {
     const slotId = WorktreeSlotId.make("project-1:slot-1");
     const settledCommits: string[] = [];
     const partialStates: boolean[] = [];
+    const recordedSnapshots: Array<{
+      readonly kind: string;
+      readonly departedRef: string | null;
+      readonly branchTipOid: string;
+    }> = [];
     const builtLineRoots: MercurianCommitId[] = [];
+    const updatedBranches: string[] = [];
     const codingSessionStoreLayer = Layer.mock(CodingSessionStore.CodingSessionStore)({
       record: () => Effect.void,
       recordInTransaction: () => Effect.void,
@@ -382,20 +389,24 @@ describe("CheckpointReactor", () => {
                 prUrl: null,
                 settledCommitOid: null,
                 partial: false,
+                snapshotOid: null,
+                snapshotKind: null,
+                departedRef: null,
+                branchMovement: null,
+                lineBranchMissingOid: null,
               })
             : Option.none(),
         ),
       getByWorktreePath: () => Effect.succeed(Option.none()),
       getByBranch: () => Effect.succeed(Option.none()),
-      updateBranch: () => Effect.void,
-      recordSettledCommit: (_threadId, oid) =>
+      updateBranch: (_threadId, branch) => Effect.sync(() => updatedBranches.push(branch)),
+      recordSnapshot: (_threadId, snapshot) =>
         Effect.sync(() => {
-          settledCommits.push(oid);
+          recordedSnapshots.push(snapshot);
+          if (snapshot.kind === "settled") settledCommits.push(snapshot.branchTipOid);
+          partialStates.push(snapshot.kind === "partial");
         }),
-      recordPartial: (_threadId, partial) =>
-        Effect.sync(() => {
-          partialStates.push(partial);
-        }),
+      recordLineBranchMissing: () => Effect.void,
       end: () => Effect.void,
       attachPullRequest: () => Effect.void,
       changes: Stream.empty,
@@ -420,22 +431,45 @@ describe("CheckpointReactor", () => {
       get: () => Effect.succeed(Option.none()),
       create: () => Effect.void,
       assign: () => Effect.void,
+      updateMemberBranch: () => Effect.void,
       changes: Stream.empty,
     });
     const lineBranchStoreLayer = Layer.mock(LineBranchStore.LineBranchStore)({
       listAll: Effect.succeed([]),
-      get: () => Effect.succeed(Option.none()),
+      get: ({ lineRootCommitId, repositoryId: requestedRepositoryId }) =>
+        Effect.succeed(
+          options?.slotBackedSession
+            ? Option.some({
+                lineRootCommitId,
+                repositoryId: requestedRepositoryId,
+                branch: lineBranch,
+                baseOid: lineBaseOid,
+                built: false,
+                repointHold: null,
+                createdAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+              })
+            : Option.none(),
+        ),
       create: () => Effect.void,
       repointIfUnbuilt: () => Effect.succeed(false),
       markBuilt: ({ lineRootCommitId }) =>
         Effect.sync(() => {
           builtLineRoots.push(lineRootCommitId);
         }),
+      rename: () => Effect.void,
+      recordRepointHold: () => Effect.void,
       changes: Stream.empty,
     });
     const gitVcsDriverLayer = GitVcsDriver.layer.pipe(
       Layer.provide(VcsProcess.layer),
       Layer.provide(NodeServices.layer),
+    );
+    const checkpointStoreLayer = CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistry.layer));
+    const snapshotChainLayer = SnapshotChain.layer.pipe(
+      Layer.provideMerge(gitVcsDriverLayer),
+      Layer.provideMerge(checkpointStoreLayer),
+      Layer.provideMerge(lineBranchStoreLayer),
+      Layer.provideMerge(slotStoreLayer),
     );
 
     const layer = CheckpointReactorLive.pipe(
@@ -449,7 +483,8 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(slotStoreLayer),
       Layer.provideMerge(SlotRegistry.layer),
       Layer.provideMerge(gitVcsDriverLayer),
-      Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistry.layer))),
+      Layer.provideMerge(checkpointStoreLayer),
+      Layer.provideMerge(snapshotChainLayer),
       Layer.provideMerge(
         WorkspaceEntries.layer.pipe(
           Layer.provide(WorkspacePaths.layer),
@@ -561,7 +596,9 @@ describe("CheckpointReactor", () => {
       drain,
       settledCommits,
       partialStates,
+      recordedSnapshots,
       builtLineRoots,
+      updatedBranches,
       lineBranch,
       lineRootCommitId,
       checkpointStore,
@@ -644,13 +681,13 @@ describe("CheckpointReactor", () => {
     ).toBe("v2\n");
   });
 
-  it("deletes a crashed partial when a slot-backed turn settles before switching away and back", async () => {
+  it("captures a settled slot-backed turn without moving or cleaning its branch", async () => {
     const harness = await createHarness({
       seedFilesystemCheckpoints: false,
       slotBackedSession: true,
       threadBranch: "mercurian/checkpoint-line",
     });
-    const partialRef = linePartialCheckpointRef(harness.lineRootCommitId);
+    const partialRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
     NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "crashed partial S1\n", "utf8");
     await Effect.runPromise(
       harness.checkpointStore.captureCheckpoint({
@@ -659,6 +696,7 @@ describe("CheckpointReactor", () => {
       }),
     );
     expect(gitRefExists(harness.cwd, partialRef)).toBe(true);
+    const previousSnapshotOid = runGit(harness.cwd, ["rev-parse", partialRef]).trim();
 
     NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "settled slot work\n", "utf8");
 
@@ -675,16 +713,20 @@ describe("CheckpointReactor", () => {
     await harness.drain();
     const checkpointRef = checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1);
     const head = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
-    expect(runGit(harness.cwd, ["rev-parse", checkpointRef]).trim()).toBe(head);
-    expect(runGit(harness.cwd, ["branch", "--show-current"]).trim()).toBe(harness.lineBranch);
-    expect(runGit(harness.cwd, ["log", "-1", "--pretty=%s"]).trim()).toBe(
-      "Astrolabe checkpoint turn=1",
+    const snapshotOid = runGit(harness.cwd, ["rev-parse", checkpointRef]).trim();
+    expect(snapshotOid).not.toBe(head);
+    expect(runGit(harness.cwd, ["rev-parse", `${checkpointRef}^1`]).trim()).toBe(
+      previousSnapshotOid,
     );
+    expect(runGit(harness.cwd, ["rev-parse", `${checkpointRef}^2`]).trim()).toBe(head);
+    expect(runGit(harness.cwd, ["branch", "--show-current"]).trim()).toBe(harness.lineBranch);
+    expect(runGit(harness.cwd, ["log", "-1", "--pretty=%s"]).trim()).toBe("Initial");
+    expect(runGit(harness.cwd, ["status", "--porcelain"]).trim()).not.toBe("");
     expect(gitShowFileAtRef(harness.cwd, checkpointRef, "README.md")).toBe("settled slot work\n");
     expect(harness.settledCommits).toEqual([head]);
     expect(harness.partialStates).toEqual([false]);
     expect(harness.builtLineRoots.map(String)).toEqual(["line-root-1"]);
-    expect(gitRefExists(harness.cwd, partialRef)).toBe(false);
+    expect(runGit(harness.cwd, ["rev-parse", partialRef]).trim()).toBe(snapshotOid);
 
     runGit(harness.cwd, ["checkout", "main"]);
     runGit(harness.cwd, ["checkout", harness.lineBranch]);
@@ -703,9 +745,125 @@ describe("CheckpointReactor", () => {
     expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe(
       "settled slot work\n",
     );
+
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-next-turn-started-with-settled-tree"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-after-settled"),
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toHaveLength(1);
+    let current = await harness.readModel();
+    expect(
+      current.threads[0]?.activities.some((activity) => activity.kind === "checkpoint.external"),
+    ).toBe(false);
+
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "outside edit\n", "utf8");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-after-outside-edit"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:02:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-after-outside-edit"),
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toHaveLength(2);
+    expect(harness.recordedSnapshots[1]).toEqual(expect.objectContaining({ kind: "external" }));
+    current = await harness.readModel();
+    expect(
+      current.threads[0]?.activities.some((activity) => activity.kind === "checkpoint.external"),
+    ).toBe(true);
   });
 
-  it("keeps interrupted slot-backed work as a partial orphan checkpoint", async () => {
+  it("replaces a slot-backed placeholder with a settled chained snapshot", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-placeholder");
+    const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    await Effect.runPromise(
+      harness.checkpointStore.captureCheckpoint({ cwd: harness.cwd, checkpointRef: lineRef }),
+    );
+    const previousSnapshot = runGit(harness.cwd, ["rev-parse", lineRef]).trim();
+    const head = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "placeholder work\n", "utf8");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-placeholder-slot-capture"),
+        threadId,
+        turnId,
+        completedAt: "2026-01-01T00:00:00.000Z",
+        checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+        status: "missing",
+        files: [],
+        assistantMessageId: MessageId.make("assistant-placeholder"),
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+
+    const turnRef = checkpointRefForThreadTurn(threadId, 1);
+    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^1`]).trim()).toBe(previousSnapshot);
+    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^2`]).trim()).toBe(head);
+    expect(harness.recordedSnapshots).toEqual([expect.objectContaining({ kind: "settled" })]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ turnId, status: "ready", snapshotKind: "settled" }),
+      ]),
+    );
+  });
+
+  it("captures exactly once when placeholder and runtime completion race", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-raced-completion");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "raced work\n", "utf8");
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-raced-placeholder"),
+        threadId,
+        turnId,
+        completedAt: "2026-01-01T00:00:00.000Z",
+        checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+        status: "missing",
+        files: [],
+        assistantMessageId: MessageId.make("assistant-raced"),
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-raced-runtime-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    expect(harness.recordedSnapshots).toHaveLength(1);
+    expect(harness.recordedSnapshots[0]).toEqual(expect.objectContaining({ kind: "settled" }));
+  });
+
+  it("keeps interrupted slot-backed work as a partial chained snapshot", async () => {
     const harness = await createHarness({
       seedFilesystemCheckpoints: false,
       slotBackedSession: true,
@@ -740,10 +898,258 @@ describe("CheckpointReactor", () => {
     )?.checkpoints;
     expect(harness.settledCommits).toEqual([]);
     expect(harness.partialStates).toEqual([true]);
-    expect(harness.builtLineRoots).toEqual([]);
+    expect(harness.builtLineRoots.map(String)).toEqual(["line-root-1"]);
     expect(checkpoints).toEqual(
-      expect.arrayContaining([expect.objectContaining({ partial: true })]),
+      expect.arrayContaining([expect.objectContaining({ partial: true, snapshotKind: "partial" })]),
     );
+  });
+
+  it("records a departed branch without moving the line branch", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const lineTip = runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim();
+    runGit(harness.cwd, ["checkout", "-b", "sibling"]);
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "departed work\n", "utf8");
+    runGit(harness.cwd, ["add", "README.md"]);
+    runGit(harness.cwd, ["commit", "-m", "departed commit"]);
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-departed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-departed"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim()).toBe(lineTip);
+    expect(runGit(harness.cwd, ["branch", "--show-current"]).trim()).toBe("sibling");
+    expect(harness.recordedSnapshots).toEqual([
+      expect.objectContaining({ kind: "settled", departedRef: "refs/heads/sibling" }),
+    ]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ departedRef: "refs/heads/sibling" })]),
+    );
+  });
+
+  it("adopts a hand-renamed line branch while settling the turn", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    runGit(harness.cwd, ["branch", "-m", "renamed-by-hand"]);
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-renamed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-renamed"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toEqual([
+      expect.objectContaining({
+        kind: "settled",
+        departedRef: null,
+        branchMovement: { kind: "unchanged" },
+      }),
+    ]);
+    expect(harness.updatedBranches).toEqual(["renamed-by-hand"]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.branch).toBe("renamed-by-hand");
+    expect(snapshot.threads[0]?.activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "line.branch-renamed",
+          summary: "Branch renamed to `renamed-by-hand` by hand",
+        }),
+      ]),
+    );
+  });
+
+  it("leaves an untouched line unbuilt after a settled turn", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-untouched"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-untouched"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(harness.builtLineRoots).toEqual([]);
+  });
+
+  it("records a detached HEAD departure without moving the line branch", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const lineTip = runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim();
+    runGit(harness.cwd, ["checkout", "--detach"]);
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "detached work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-detached"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-detached"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim()).toBe(lineTip);
+    expect(runGit(harness.cwd, ["branch", "--show-current"]).trim()).toBe("");
+    expect(harness.recordedSnapshots).toEqual([
+      expect.objectContaining({ kind: "settled", departedRef: "detached" }),
+    ]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ departedRef: "detached" })]),
+    );
+  });
+
+  it("settles after the recorded branch is deleted with detached HEAD", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const lineCommit = runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim();
+    runGit(harness.cwd, ["checkout", "--detach", lineCommit]);
+    runGit(harness.cwd, ["branch", "-D", harness.lineBranch]);
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-deleted-line"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-deleted-line"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toEqual([
+      expect.objectContaining({
+        kind: "settled",
+        departedRef: "detached",
+        branchTipOid: lineCommit,
+      }),
+    ]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ departedRef: "detached" })]),
+    );
+  });
+
+  it("captures dirty work found at turn start as an external snapshot", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "external work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-external"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-external"),
+    });
+    await harness.drain();
+    const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    expect(gitShowFileAtRef(harness.cwd, lineRef, "README.md")).toBe("external work\n");
+    expect(harness.recordedSnapshots).toEqual([expect.objectContaining({ kind: "external" })]);
+    expect(harness.builtLineRoots.map(String)).toEqual(["line-root-1"]);
+    const snapshot = await harness.readModel();
+    expect(
+      snapshot.threads[0]?.activities.some((activity) => activity.kind === "checkpoint.external"),
+    ).toBe(true);
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "agent.txt"), "agent work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-after-external"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-external"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    const completed = await harness.readModel();
+    expect(completed.threads[0]?.checkpoints[0]?.files.map((file) => file.path)).toEqual([
+      "agent.txt",
+    ]);
+  });
+
+  it("does not capture an external snapshot for a clean unmoved line", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-clean-line"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-clean-line"),
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toEqual([]);
+    const snapshot = await harness.readModel();
+    expect(
+      snapshot.threads[0]?.activities.some((activity) => activity.kind === "checkpoint.external"),
+    ).toBe(false);
+  });
+
+  it("captures external work from the domain turn-start hook", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "domain external work\n", "utf8");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-domain-external"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("message-domain-external"),
+          role: "user",
+          text: "start turn",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+
+    const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    expect(gitShowFileAtRef(harness.cwd, lineRef, "README.md")).toBe("domain external work\n");
+    expect(harness.recordedSnapshots).toEqual([expect.objectContaining({ kind: "external" })]);
+    const snapshot = await harness.readModel();
+    expect(
+      snapshot.threads[0]?.activities.some((activity) => activity.kind === "checkpoint.external"),
+    ).toBe(true);
   });
 
   it("refreshes local git status state on turn completion using the session cwd", async () => {

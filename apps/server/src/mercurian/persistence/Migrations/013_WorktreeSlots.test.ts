@@ -12,7 +12,7 @@ layer("013_WorktreeSlots", (it) => {
   it.effect("adds line branches, session settle facts, and the project slot pool", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 13);
+      assert.ok(migrationEntries.some(([id]) => id === 13));
       yield* runMigrations();
 
       const lineBranches = yield* sql<{ readonly name: string }>`
@@ -20,7 +20,15 @@ layer("013_WorktreeSlots", (it) => {
       `;
       assert.deepStrictEqual(
         lineBranches.map(({ name }) => name),
-        ["line_root_commit_id", "repository_id", "branch", "base_oid", "built", "created_at"],
+        [
+          "line_root_commit_id",
+          "repository_id",
+          "branch",
+          "base_oid",
+          "built",
+          "created_at",
+          "repoint_hold",
+        ],
       );
 
       const sessionColumns = yield* sql<{ readonly name: string }>`

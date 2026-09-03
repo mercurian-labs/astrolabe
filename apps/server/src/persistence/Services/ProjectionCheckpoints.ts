@@ -13,6 +13,8 @@ import {
   NonNegativeInt,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointStatus,
+  SnapshotKind,
+  BranchMovement,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -33,6 +35,9 @@ export const ProjectionCheckpoint = Schema.Struct({
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
+  snapshotKind: Schema.optional(SnapshotKind),
+  departedRef: Schema.optional(Schema.String),
+  branchMovement: Schema.optional(BranchMovement),
 });
 export type ProjectionCheckpoint = typeof ProjectionCheckpoint.Type;
 

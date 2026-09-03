@@ -58,6 +58,16 @@ layer("SlotStore", (it) => {
         after.members.map((member) => member.currentBranch),
         ["line-b-a", "line-b-b"],
       );
+      yield* store.updateMemberBranch({
+        slotId,
+        repositoryId: repositoryA,
+        currentBranch: "line-b-a-renamed",
+      });
+      const renamed = Option.getOrThrow(yield* store.get(slotId));
+      assert.deepStrictEqual(
+        renamed.members.map((member) => member.currentBranch),
+        ["line-b-a-renamed", "line-b-b"],
+      );
     }),
   );
 });

@@ -15,6 +15,8 @@ import * as ServerSettings from "../../serverSettings.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import * as SlotStore from "../worktreeSlots/SlotStore.ts";
+import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 import { make } from "./LineBranchReactor.ts";
 import * as LineBranchStore from "./LineBranchStore.ts";
 
@@ -25,6 +27,7 @@ const repositoryB = MercurianRepositoryId.make("repository-b");
 const root = MercurianCommitId.make("root");
 const mainChild = MercurianCommitId.make("main-child");
 const forkChild = MercurianCommitId.make("fork-child");
+const sessionCommit = MercurianCommitId.make("session-commit");
 const createdAt = DateTime.makeUnsafe("2026-08-31T12:00:00.000Z");
 
 const detail = {
@@ -49,7 +52,16 @@ const detail = {
   codingSessions: [],
 } as never;
 
-const makeHarness = (initial: ReadonlyArray<LineBranchStore.LineBranch> = [], oid = "base-new") => {
+const makeHarness = (
+  initial: ReadonlyArray<LineBranchStore.LineBranch> = [],
+  oid = "base-new",
+  planDetail = detail,
+  options: {
+    readonly checkedOutBranch?: string;
+    readonly missingBranches?: ReadonlyArray<string>;
+    readonly slotChanges?: Stream.Stream<void>;
+  } = {},
+) => {
   const rows = [...initial];
   const gitCalls: Array<{ readonly cwd: string; readonly args: ReadonlyArray<string> }> = [];
   const dependencies = Layer.mergeAll(
@@ -57,7 +69,7 @@ const makeHarness = (initial: ReadonlyArray<LineBranchStore.LineBranch> = [], oi
       getTreeSnapshot: Effect.succeed({
         plans: [{ planId, projectId, title: "Line branches" }],
       } as never),
-      getPlanSnapshot: () => Effect.succeed(detail),
+      getPlanSnapshot: () => Effect.succeed(planDetail),
       changes: Stream.empty,
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
@@ -109,13 +121,48 @@ const makeHarness = (initial: ReadonlyArray<LineBranchStore.LineBranch> = [], oi
           rows[index] = { ...rows[index]!, baseOid: input.baseOid };
           return true;
         }),
+      recordRepointHold: ({ lineRootCommitId, repositoryId, reason }) =>
+        Effect.sync(() => {
+          const index = rows.findIndex(
+            (row) => row.lineRootCommitId === lineRootCommitId && row.repositoryId === repositoryId,
+          );
+          if (index >= 0) rows[index] = { ...rows[index]!, repointHold: reason };
+        }),
+    }),
+    Layer.mock(SlotStore.SlotStore)({
+      listAll:
+        options.checkedOutBranch === undefined
+          ? Effect.succeed([])
+          : Effect.succeed([
+              {
+                slotId: WorktreeSlotId.make("slot-one"),
+                projectId,
+                path: "/worktrees/slot-one",
+                currentLineRootCommitId: root,
+                members: [
+                  {
+                    repositoryId: repositoryA,
+                    relativePath: "a",
+                    currentBranch: options.checkedOutBranch,
+                  },
+                ],
+                createdAt,
+                lastUsedAt: createdAt,
+              },
+            ]),
+      changes: options.slotChanges ?? Stream.empty,
     }),
     Layer.mock(GitVcsDriver.GitVcsDriver)({
       execute: (input) =>
         Effect.sync(() => {
           gitCalls.push({ cwd: input.cwd, args: input.args });
+          const branchRef = input.args.at(-1)?.replace("refs/heads/", "");
+          const missing =
+            input.args[0] === "rev-parse" &&
+            branchRef !== undefined &&
+            options.missingBranches?.includes(branchRef);
           return {
-            exitCode: input.args[0] === "symbolic-ref" ? 1 : 0,
+            exitCode: input.args[0] === "symbolic-ref" || missing ? 1 : 0,
             stdout: input.args[0] === "rev-parse" ? `${oid}\n` : "",
             stderr: "",
             stdoutTruncated: false,
@@ -134,6 +181,15 @@ const makeHarness = (initial: ReadonlyArray<LineBranchStore.LineBranch> = [], oi
 };
 
 describe("LineBranchReactor", () => {
+  it.effect("includes slot changes in its reconciliation stream", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([], "base-new", detail, {
+        slotChanges: Stream.make(undefined),
+      });
+      assert.ok(Option.isSome(yield* Stream.runHead(harness.reactor.changes)));
+    }),
+  );
+
   it.effect("mints root and fork line branches in every linked repository", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
@@ -161,6 +217,7 @@ describe("LineBranchReactor", () => {
           branch: "mercurian/line-branches-root",
           baseOid: "base-old",
           built: false,
+          repointHold: null,
           createdAt,
         },
       ]);
@@ -186,6 +243,7 @@ describe("LineBranchReactor", () => {
           branch: "mercurian/line-branches-root",
           baseOid: "base-old",
           built: true,
+          repointHold: null,
           createdAt,
         },
       ]);
@@ -197,6 +255,114 @@ describe("LineBranchReactor", () => {
         ),
       );
       assert.strictEqual(harness.rows[0]?.baseOid, "base-old");
+    }),
+  );
+
+  it.effect("holds an unbuilt line while its branch is checked out in a slot", () =>
+    Effect.gen(function* () {
+      const branch = "mercurian/line-branches-root";
+      const harness = yield* makeHarness(
+        [
+          {
+            lineRootCommitId: root,
+            repositoryId: repositoryA,
+            branch,
+            baseOid: "base-old",
+            built: false,
+            repointHold: null,
+            createdAt,
+          },
+        ],
+        "base-new",
+        detail,
+        { checkedOutBranch: branch },
+      );
+      yield* harness.reactor.reconcile();
+      assert.ok(
+        !harness.gitCalls.some(
+          (call) =>
+            call.cwd === "/repositories/a" && call.args[0] === "branch" && call.args[1] === "-f",
+        ),
+      );
+      assert.strictEqual(harness.rows[0]?.repointHold, "checked-out");
+    }),
+  );
+
+  it.effect("holds a missing name and clears the hold after a successful re-point", () =>
+    Effect.gen(function* () {
+      const branch = "mercurian/line-branches-root";
+      const row: LineBranchStore.LineBranch = {
+        lineRootCommitId: root,
+        repositoryId: repositoryA,
+        branch,
+        baseOid: "base-old",
+        built: false,
+        repointHold: null,
+        createdAt,
+      };
+      const missing = yield* makeHarness([row], "base-new", detail, {
+        missingBranches: [branch],
+      });
+      yield* missing.reactor.reconcile();
+      assert.strictEqual(missing.rows[0]?.repointHold, "name-missing");
+      assert.ok(
+        !missing.gitCalls.some(
+          (call) =>
+            call.cwd === "/repositories/a" && call.args[0] === "branch" && call.args[1] === "-f",
+        ),
+      );
+
+      const available = yield* makeHarness([{ ...row, repointHold: "name-missing" }]);
+      yield* available.reactor.reconcile();
+      assert.strictEqual(available.rows[0]?.baseOid, "base-new");
+      assert.strictEqual(available.rows[0]?.repointHold, null);
+    }),
+  );
+
+  it.effect("seeds only an inherited line snapshot from its ancestor session", () =>
+    Effect.gen(function* () {
+      const inheritedDetail = {
+        plan: { planId, projectId, title: "Line branches" },
+        timeline: [
+          { _tag: "plan-revision", commitId: root, parents: [], sequence: 1, createdAt },
+          {
+            _tag: "coding-session",
+            commitId: sessionCommit,
+            repositoryId: repositoryA,
+            parents: [root],
+            sequence: 2,
+            createdAt,
+          },
+          {
+            _tag: "message",
+            commitId: mainChild,
+            parents: [sessionCommit],
+            sequence: 3,
+            createdAt,
+          },
+          {
+            _tag: "message",
+            commitId: forkChild,
+            parents: [sessionCommit],
+            sequence: 4,
+            createdAt,
+          },
+        ],
+        codingSessions: [
+          {
+            commitId: sessionCommit,
+            repositoryId: repositoryA,
+            settledCommitOid: "branch-tip",
+            snapshotOid: "ancestor-snapshot",
+          },
+        ],
+      } as never;
+      const harness = yield* makeHarness([], "base-new", inheritedDetail);
+      yield* harness.reactor.reconcile();
+      const inheritedUpdates = harness.gitCalls.filter((call) => call.args[0] === "update-ref");
+      assert.strictEqual(inheritedUpdates.length, 1);
+      assert.strictEqual(inheritedUpdates[0]?.args[2], "ancestor-snapshot");
+      assert.ok(inheritedUpdates[0]?.args[1]?.endsWith("/snapshot"));
     }),
   );
 });

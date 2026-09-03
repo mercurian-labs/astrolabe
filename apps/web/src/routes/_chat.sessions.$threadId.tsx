@@ -11,6 +11,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 import ChatView from "../components/ChatView";
 import { CodingSessionHeader } from "../components/mercurian/CodingSessionHeader";
+import { LineBranchMissingBanner } from "../components/mercurian/LineBranchMissingBanner";
 import { SessionPlanPanel } from "../components/mercurian/SessionPlanPanel";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
@@ -35,6 +36,8 @@ export function SessionThreadRouteContent(props: {
   readonly threadRef: ScopedThreadRef;
   readonly worktreePath: string | null;
   readonly repositoryId: MercurianRepositoryId | null;
+  readonly branch: string | null;
+  readonly lineBranchMissingOid: string | null;
 }) {
   const backToPlanLink =
     props.planId === null ? (
@@ -80,6 +83,13 @@ export function SessionThreadRouteContent(props: {
               threadRef={props.threadRef}
               worktreePath={props.worktreePath}
               repositoryId={props.repositoryId}
+            />
+          }
+          headerBanner={
+            <LineBranchMissingBanner
+              threadId={props.threadId}
+              branch={props.branch}
+              lineBranchMissingOid={props.lineBranchMissingOid}
             />
           }
         />
@@ -150,6 +160,8 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       threadRef={threadRef}
       worktreePath={serverThreadShell?.worktreePath ?? null}
       repositoryId={owningSession?.repositoryId ?? null}
+      branch={owningSession?.branch ?? null}
+      lineBranchMissingOid={owningSession?.lineBranchMissingOid ?? null}
     />
   );
 }

@@ -93,6 +93,42 @@ function buildLargeText(lineCount = 5_000): string {
 }
 
 it.layer(TestLayer)("CheckpointStore.layer", (it) => {
+  describe("captureCheckpoint", () => {
+    it.effect("writes requested parents and preserves the orphan default", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const checkpointStore = yield* CheckpointStore.CheckpointStore;
+        const firstParent = yield* git(tmp, ["rev-parse", "HEAD"]);
+        yield* writeTextFile(NodePath.join(tmp, "README.md"), "second commit\n");
+        yield* git(tmp, ["add", "."]);
+        yield* git(tmp, ["commit", "-m", "second"]);
+        const secondParent = yield* git(tmp, ["rev-parse", "HEAD"]);
+        const chainedRef = checkpointRefForThreadTurn(ThreadId.make("chained"), 1);
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: chainedRef,
+          parents: [firstParent, secondParent],
+          message: "t3 snapshot kind=settled ref=test",
+        });
+        expect(yield* git(tmp, ["rev-parse", `${chainedRef}^1`])).toBe(firstParent);
+        expect(yield* git(tmp, ["rev-parse", `${chainedRef}^2`])).toBe(secondParent);
+        expect(yield* git(tmp, ["log", "-1", "--pretty=%s", chainedRef])).toBe(
+          "t3 snapshot kind=settled ref=test",
+        );
+
+        const orphanRef = checkpointRefForThreadTurn(ThreadId.make("orphan"), 1);
+        yield* checkpointStore.captureCheckpoint({ cwd: tmp, checkpointRef: orphanRef });
+        expect(yield* git(tmp, ["rev-list", "--parents", "-n", "1", orphanRef])).toBe(
+          yield* git(tmp, ["rev-parse", orphanRef]),
+        );
+        expect(yield* git(tmp, ["log", "-1", "--pretty=%s", orphanRef])).toBe(
+          `t3 checkpoint ref=${orphanRef}`,
+        );
+      }),
+    );
+  });
+
   describe("isGitRepository", () => {
     it.effect("returns false when no Git repository is detected", () =>
       Effect.gen(function* () {

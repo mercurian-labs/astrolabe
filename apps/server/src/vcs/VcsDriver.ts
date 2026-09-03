@@ -17,6 +17,8 @@ import * as VcsProcess from "./VcsProcess.ts";
 export interface VcsCaptureCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
+  readonly parents?: ReadonlyArray<string>;
+  readonly message?: string;
 }
 
 export interface VcsRestoreCheckpointInput {

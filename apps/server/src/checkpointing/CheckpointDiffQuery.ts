@@ -7,12 +7,14 @@
  * @module CheckpointDiffQuery
  */
 import {
-  type CheckpointRef,
+  CheckpointRef,
   OrchestrationGetTurnDiffResult,
   type OrchestrationGetFullThreadDiffInput,
   type OrchestrationGetFullThreadDiffResult,
   type OrchestrationGetTurnDiffInput,
   type OrchestrationGetTurnDiffResult as OrchestrationGetTurnDiffResultType,
+  type MercurianReadLineUncommittedDiffInput,
+  type MercurianReadLineUncommittedDiffResult,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -30,8 +32,21 @@ import {
   CheckpointWorkspacePathMissingError,
 } from "./Errors.ts";
 import type { CheckpointServiceError } from "./Errors.ts";
-import { checkpointRefForThreadTurn } from "./Utils.ts";
+import { chainParentRef, checkpointRefForThreadTurn } from "./Utils.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
+import {
+  CodingSessionStore,
+  type CodingSessionStoreError,
+} from "../mercurian/codingSessions/CodingSessionStore.ts";
+import {
+  LineBranchStore,
+  type LineBranchStoreError,
+} from "../mercurian/commitTree/LineBranchStore.ts";
+import {
+  RepositoryStore,
+  type RepositoryStoreError,
+} from "../mercurian/repositories/RepositoryStore.ts";
+import { lineSnapshotRef } from "../mercurian/worktreeSlots/SnapshotChain.ts";
 
 /** Service tag for checkpoint diff queries. */
 export class CheckpointDiffQuery extends Context.Service<
@@ -54,6 +69,12 @@ export class CheckpointDiffQuery extends Context.Service<
     readonly getFullThreadDiff: (
       input: OrchestrationGetFullThreadDiffInput,
     ) => Effect.Effect<OrchestrationGetFullThreadDiffResult, CheckpointServiceError>;
+    readonly getLineUncommittedDiff: (
+      input: MercurianReadLineUncommittedDiffInput,
+    ) => Effect.Effect<
+      MercurianReadLineUncommittedDiffResult,
+      CheckpointServiceError | CodingSessionStoreError | LineBranchStoreError | RepositoryStoreError
+    >;
   }
 >()("t3/checkpointing/CheckpointDiffQuery") {}
 
@@ -78,6 +99,9 @@ function buildTurnDiffResult(
 export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
+  const codingSessions = yield* CodingSessionStore;
+  const lineBranches = yield* LineBranchStore;
+  const repositories = yield* RepositoryStore;
 
   const getTurnDiff: CheckpointDiffQuery["Service"]["getTurnDiff"] = Effect.fn("getTurnDiff")(
     function* (input) {
@@ -164,10 +188,26 @@ export const make = Effect.gen(function* () {
         });
       }
 
+      const adjacentParentRef = chainParentRef(toCheckpointRef);
+      const adjacentHeadRef = CheckpointRef.make(`${toCheckpointRef}^2`);
+      const hasAdjacentParent =
+        input.toTurnCount === input.fromTurnCount + 1 &&
+        (yield* checkpointStore.hasCheckpointRef({
+          cwd: workspaceCwd,
+          checkpointRef: adjacentParentRef,
+        }));
+      const effectiveFromRef =
+        hasAdjacentParent &&
+        (yield* checkpointStore.hasCheckpointRef({
+          cwd: workspaceCwd,
+          checkpointRef: adjacentHeadRef,
+        }))
+          ? adjacentParentRef
+          : fromCheckpointRef;
       const diff = yield* checkpointStore
         .diffCheckpoints({
           cwd: workspaceCwd,
-          fromCheckpointRef,
+          fromCheckpointRef: effectiveFromRef,
           toCheckpointRef,
           fallbackFromToHead: false,
           ignoreWhitespace,
@@ -282,9 +322,51 @@ export const make = Effect.gen(function* () {
     return turnDiff satisfies OrchestrationGetFullThreadDiffResult;
   });
 
+  const getLineUncommittedDiff: CheckpointDiffQuery["Service"]["getLineUncommittedDiff"] =
+    Effect.fn("CheckpointDiffQuery.getLineUncommittedDiff")(function* (input) {
+      const session = yield* codingSessions.getByThreadId(input.threadId);
+      if (Option.isNone(session)) {
+        return yield* new CheckpointThreadNotFoundError({
+          operation: "CheckpointDiffQuery.getLineUncommittedDiff",
+          threadId: input.threadId,
+        });
+      }
+      const line = (yield* lineBranches.listAll).find(
+        (candidate) =>
+          candidate.repositoryId === session.value.repositoryId &&
+          candidate.branch === session.value.branch,
+      );
+      if (line === undefined) {
+        return yield* new CheckpointRefUnavailableError({
+          operation: "CheckpointDiffQuery.getLineUncommittedDiff",
+          threadId: input.threadId,
+          turnCount: 0,
+          checkpoint: "to",
+        });
+      }
+      const repository = (yield* repositories.getSnapshot).repositories.find(
+        (candidate) => candidate.repositoryId === session.value.repositoryId,
+      );
+      if (repository === undefined) {
+        return yield* new CheckpointWorkspacePathMissingError({
+          operation: "CheckpointDiffQuery.getLineUncommittedDiff",
+          threadId: input.threadId,
+        });
+      }
+      const diff = yield* checkpointStore.diffCheckpoints({
+        cwd: repository.path,
+        fromCheckpointRef: CheckpointRef.make(`refs/heads/${session.value.branch}`),
+        toCheckpointRef: lineSnapshotRef(line.lineRootCommitId),
+        fallbackFromToHead: false,
+        ignoreWhitespace: input.ignoreWhitespace ?? false,
+      });
+      return { threadId: input.threadId, diff };
+    });
+
   return CheckpointDiffQuery.of({
     getTurnDiff,
     getFullThreadDiff,
+    getLineUncommittedDiff,
   });
 });
 

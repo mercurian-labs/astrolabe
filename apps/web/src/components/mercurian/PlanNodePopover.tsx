@@ -315,6 +315,12 @@ export function PlanNodePopoverContent({
           {reading.session.branch === undefined ? null : (
             <Fact label="Branch" value={reading.session.branch} />
           )}
+          {reading.session.commits === undefined ? null : (
+            <Fact label="Commits" value={reading.session.commits} />
+          )}
+          {reading.session.departedRef === undefined ? null : (
+            <Fact label="Departed to" value={reading.session.departedRef} />
+          )}
           {reading.session.prUrl === undefined ? null : (
             <a
               className="w-fit underline"

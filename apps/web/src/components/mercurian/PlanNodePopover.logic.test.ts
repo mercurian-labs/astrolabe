@@ -21,6 +21,7 @@ import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { planningModelOptionLabels } from "./PlanningModel.logic";
 import {
+  branchMovementLabel,
   codingSessionStatus,
   derivePlanNodePopover,
   modelSwitchFor,
@@ -341,6 +342,7 @@ describe("coding-session facts", () => {
       endedAt,
       outcome,
       prUrl: "https://example.com/pr/1",
+      branchMovement: { kind: "unchanged" },
     });
 
   it("uses the shared four-state wording", () => {
@@ -373,6 +375,7 @@ describe("coding-session facts", () => {
       planRevisionCommitId: "plan",
       status: "Running",
       branch: "feature/checkpoints",
+      commits: "no commits",
       threadId: "thread",
       prUrl: "https://example.com/pr/1",
     });
@@ -382,6 +385,55 @@ describe("coding-session facts", () => {
     });
     expect(withRecord.acts).toEqual(["continue", "open-session"]);
     expect(withoutRecord.acts).toEqual(["continue"]);
+  });
+
+  it("reads every branch movement and includes departure only when recorded", () => {
+    expect(branchMovementLabel({ kind: "unchanged" })).toBe("no commits");
+    expect(branchMovementLabel({ kind: "added", count: 1 })).toBe("1 commit added");
+    expect(branchMovementLabel({ kind: "added", count: 2 })).toBe("2 commits added");
+    expect(branchMovementLabel({ kind: "rewritten" })).toBe("history rewritten");
+
+    const graph = buildPlanGraph([revision("plan", 1, []), leaf]);
+    const withDeparture = derivePlanNodePopover({
+      node: graph.byId.get("session")!,
+      commitGraph: graph,
+      codingSessions: [
+        planCodingSessionRecord("session", {
+          repositoryId: "repo-web",
+          threadId: "thread",
+          branch: "feature/checkpoint-line",
+          branchMovement: { kind: "added", count: 1 },
+          departedRef: "feature/detour",
+        }),
+      ],
+      stalePlan: false,
+      staleSpec: false,
+      suppressUnanswered: false,
+    });
+    const withoutDeparture = derivePlanNodePopover({
+      node: graph.byId.get("session")!,
+      commitGraph: graph,
+      codingSessions: [
+        planCodingSessionRecord("session", {
+          repositoryId: "repo-web",
+          threadId: "thread",
+          branchMovement: { kind: "rewritten" },
+          departedRef: null,
+        }),
+      ],
+      stalePlan: false,
+      staleSpec: false,
+      suppressUnanswered: false,
+    });
+
+    expect(withDeparture.session?.branch).toBe("feature/checkpoint-line");
+    expect(withDeparture.session?.commits).toBe("1 commit added");
+    expect(withDeparture.session?.departedRef).toBe("feature/detour");
+    expect(withDeparture.effects).toContain("Departed");
+    expect(withoutDeparture.session?.branch).toBe("mercurian/session");
+    expect(withoutDeparture.session?.commits).toBe("history rewritten");
+    expect(withoutDeparture.session).not.toHaveProperty("departedRef");
+    expect(withoutDeparture.effects).not.toContain("Departed");
   });
 
   it("resolves implementation from a session leaf through its parent line", () => {

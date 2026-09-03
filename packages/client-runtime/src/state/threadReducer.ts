@@ -482,6 +482,15 @@ export function applyThreadDetailEvent(
         assistantMessageId: event.payload.assistantMessageId,
         completedAt: event.payload.completedAt,
         ...(event.payload.partial === undefined ? {} : { partial: event.payload.partial }),
+        ...(event.payload.snapshotKind === undefined
+          ? {}
+          : { snapshotKind: event.payload.snapshotKind }),
+        ...(event.payload.departedRef === undefined
+          ? {}
+          : { departedRef: event.payload.departedRef }),
+        ...(event.payload.branchMovement === undefined
+          ? {}
+          : { branchMovement: event.payload.branchMovement }),
       };
 
       const existing = thread.checkpoints.find((entry) => entry.turnId === checkpoint.turnId);

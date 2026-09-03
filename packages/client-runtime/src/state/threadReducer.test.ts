@@ -835,6 +835,9 @@ describe("applyThreadDetailEvent", () => {
           files: [],
           assistantMessageId: MessageId.make("msg-3"),
           completedAt: "2026-04-01T12:00:00.000Z",
+          snapshotKind: "settled",
+          departedRef: "refs/heads/sibling",
+          branchMovement: { kind: "added", count: 2 },
         },
       });
 
@@ -843,6 +846,13 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.checkpoints).toHaveLength(1);
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
         expect(result.thread.latestTurn?.state).toBe("completed");
+        expect(result.thread.checkpoints[0]).toEqual(
+          expect.objectContaining({
+            snapshotKind: "settled",
+            departedRef: "refs/heads/sibling",
+            branchMovement: { kind: "added", count: 2 },
+          }),
+        );
       }
     });
   });

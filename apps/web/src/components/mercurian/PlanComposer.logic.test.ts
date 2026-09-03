@@ -227,6 +227,7 @@ describe("implementFailureNotice", () => {
     ] as const) {
       expect(implementFailureNotice(reason)).toContain("nothing landed");
     }
+    expect(implementFailureNotice("line-branch-missing")).toContain("branch no longer exists");
   });
 });
 

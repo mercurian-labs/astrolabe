@@ -1,9 +1,4 @@
-import {
-  CheckpointRef,
-  MercurianCommitId,
-  MercurianProjectId,
-  MercurianRepositoryId,
-} from "@t3tools/contracts";
+import { MercurianCommitId, MercurianProjectId, MercurianRepositoryId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -21,6 +16,7 @@ import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryView } from "../repositories/schema.ts";
 import { SlotRegistry } from "./SlotRegistry.ts";
+import { lineExtraSnapshotRef, lineSnapshotRef, SnapshotChain } from "./SnapshotChain.ts";
 import { SlotStore } from "./SlotStore.ts";
 import {
   type SlotLeaseHolder,
@@ -42,6 +38,20 @@ export class SlotServiceError extends Schema.TaggedErrorClass<SlotServiceError>(
   "SlotServiceError",
   { operation: Schema.String, cause: Schema.Unknown },
 ) {}
+
+export class LineBranchMissingError extends Schema.TaggedErrorClass<LineBranchMissingError>()(
+  "LineBranchMissingError",
+  {
+    lineRootCommitId: MercurianCommitId,
+    repositoryId: MercurianRepositoryId,
+    branch: Schema.String,
+    commitOid: Schema.String,
+  },
+) {}
+
+const isSlotPoolAtCapacityError = Schema.is(SlotPoolAtCapacityError);
+const isLineBranchMissingError = Schema.is(LineBranchMissingError);
+const isSlotServiceError = Schema.is(SlotServiceError);
 
 export interface ClaimSlotInput {
   readonly projectId: MercurianProjectId;
@@ -115,17 +125,15 @@ export const slotMemberWorktreePath = (
   return member === undefined ? null : path.join(slot.path, member.relativePath);
 };
 
-export const linePartialCheckpointRef = (lineRootCommitId: MercurianCommitId) =>
-  CheckpointRef.make(
-    `refs/t3/lines/${Buffer.from(String(lineRootCommitId), "utf8").toString("base64url")}/partial`,
-  );
-
 export class SlotService extends Context.Service<
   SlotService,
   {
     readonly claim: (
       input: ClaimSlotInput,
-    ) => Effect.Effect<WorktreeSlot, SlotPoolAtCapacityError | SlotServiceError>;
+    ) => Effect.Effect<
+      WorktreeSlot,
+      SlotPoolAtCapacityError | LineBranchMissingError | SlotServiceError
+    >;
     readonly release: (
       slotId: WorktreeSlotId,
       holder: SlotLeaseHolder,
@@ -148,6 +156,7 @@ export const make = Effect.gen(function* () {
   const git = yield* GitWorkflowService;
   const gitDriver = yield* GitVcsDriver;
   const checkpoints = yield* CheckpointStore;
+  const snapshotChain = yield* SnapshotChain;
 
   const memberPath = (slot: WorktreeSlot, member: WorktreeSlotMember) =>
     path.join(slot.path, member.relativePath);
@@ -179,15 +188,6 @@ export const make = Effect.gen(function* () {
         allowNonZeroExit: true,
       }),
     ).pipe(Effect.asVoid);
-
-  const isDirty = (worktreePath: string) =>
-    gitDriver
-      .execute({
-        operation: "SlotService.status",
-        cwd: worktreePath,
-        args: ["status", "--porcelain", "--untracked-files=all"],
-      })
-      .pipe(Effect.map((result) => result.stdout.trim().length > 0));
 
   const projectMembers = Effect.fn("SlotService.projectMembers")(function* (
     projectId: MercurianProjectId,
@@ -227,23 +227,74 @@ export const make = Effect.gen(function* () {
             ),
           });
         }
+        const namedRef = yield* gitDriver.execute({
+          operation: "SlotService.projectMembers.verifyBranch",
+          cwd: entry.repository.path,
+          args: ["rev-parse", "--verify", "--quiet", `refs/heads/${branch.value.branch}`],
+          allowNonZeroExit: true,
+        });
+        if (namedRef.exitCode !== 0) {
+          const commitOid = yield* snapshotChain.lineCommit({
+            cwd: entry.repository.path,
+            lineRootCommitId,
+            repositoryId: entry.repository.repositoryId,
+            lineBranch: branch.value.branch,
+          });
+          return yield* new LineBranchMissingError({
+            lineRootCommitId,
+            repositoryId: entry.repository.repositoryId,
+            branch: branch.value.branch,
+            commitOid,
+          });
+        }
         return { ...entry, branch: branch.value.branch };
       }),
     );
   });
 
-  const captureRecoveryPartials = Effect.fn("SlotService.captureRecoveryPartials")(function* (
+  const settleMember = Effect.fn("SlotService.settleMember")(function* (
     slot: WorktreeSlot,
+    member: WorktreeSlotMember,
+    lineRootCommitId: MercurianCommitId,
+    branch: string,
+    now: DateTime.Utc,
   ) {
-    if (slot.currentLineRootCommitId === null) return;
-    for (const member of slot.members) {
-      const worktreePath = memberPath(slot, member);
-      if (yield* isDirty(worktreePath)) {
-        yield* checkpoints.captureCheckpoint({
-          cwd: worktreePath,
-          checkpointRef: linePartialCheckpointRef(slot.currentLineRootCommitId),
-        });
-      }
+    const worktreePath = memberPath(slot, member);
+    if (
+      slot.currentLineRootCommitId !== null &&
+      (yield* snapshotChain.isDrifted({
+        cwd: worktreePath,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        lineBranch: member.currentBranch!,
+      }))
+    ) {
+      yield* snapshotChain.capture({
+        cwd: worktreePath,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: member.repositoryId,
+        lineBranch: member.currentBranch!,
+        kind: "recovery",
+        ref: lineExtraSnapshotRef(slot.currentLineRootCommitId, "recovery", now),
+      });
+    }
+    yield* gitDriver.execute({
+      operation: "SlotService.clean",
+      cwd: worktreePath,
+      args: ["reset", "--hard", "HEAD"],
+    });
+    yield* gitDriver.execute({
+      operation: "SlotService.clean",
+      cwd: worktreePath,
+      args: ["clean", "-fd", "--", "."],
+    });
+    yield* gitDriver.execute({
+      operation: "SlotService.checkout",
+      cwd: worktreePath,
+      args: ["checkout", branch],
+    });
+    const checkpointRef = lineSnapshotRef(lineRootCommitId);
+    if (yield* checkpoints.hasCheckpointRef({ cwd: worktreePath, checkpointRef })) {
+      yield* checkpoints.restoreCheckpoint({ cwd: worktreePath, checkpointRef });
     }
   });
 
@@ -266,19 +317,9 @@ export const make = Effect.gen(function* () {
     const desiredByRepository = new Map(
       desired.map((entry) => [entry.repository.repositoryId, entry.branch]),
     );
-    for (const member of slot.members) {
-      const worktreePath = memberPath(slot, member);
-      if (slot.currentLineRootCommitId !== null && (yield* isDirty(worktreePath))) {
-        yield* checkpoints.captureCheckpoint({
-          cwd: worktreePath,
-          checkpointRef: linePartialCheckpointRef(slot.currentLineRootCommitId),
-        });
-      }
-    }
     const switched: Array<WorktreeSlotMember> = [];
     const performSwitch = Effect.gen(function* () {
       for (const member of slot.members) {
-        const worktreePath = memberPath(slot, member);
         const branch = desiredByRepository.get(member.repositoryId);
         if (branch === undefined) {
           return yield* new SlotServiceError({
@@ -286,26 +327,8 @@ export const make = Effect.gen(function* () {
             cause: new Error(`Missing line branch for ${member.repositoryId}`),
           });
         }
-        yield* gitDriver.execute({
-          operation: "SlotService.clean",
-          cwd: worktreePath,
-          args: ["reset", "--hard", "HEAD"],
-        });
-        yield* gitDriver.execute({
-          operation: "SlotService.clean",
-          cwd: worktreePath,
-          args: ["clean", "-fd", "--", "."],
-        });
-        yield* gitDriver.execute({
-          operation: "SlotService.checkout",
-          cwd: worktreePath,
-          args: ["checkout", branch],
-        });
         switched.push(member);
-        const checkpointRef = linePartialCheckpointRef(lineRootCommitId);
-        if (yield* checkpoints.hasCheckpointRef({ cwd: worktreePath, checkpointRef })) {
-          yield* checkpoints.restoreCheckpoint({ cwd: worktreePath, checkpointRef });
-        }
+        yield* settleMember(slot, member, lineRootCommitId, branch, usedAt);
       }
     });
     yield* performSwitch.pipe(
@@ -329,7 +352,7 @@ export const make = Effect.gen(function* () {
                 allowNonZeroExit: true,
               });
               if (slot.currentLineRootCommitId !== null) {
-                const checkpointRef = linePartialCheckpointRef(slot.currentLineRootCommitId);
+                const checkpointRef = lineSnapshotRef(slot.currentLineRootCommitId);
                 if (yield* checkpoints.hasCheckpointRef({ cwd: worktreePath, checkpointRef })) {
                   yield* checkpoints.restoreCheckpoint({ cwd: worktreePath, checkpointRef });
                 }
@@ -392,6 +415,10 @@ export const make = Effect.gen(function* () {
           path: worktreePath,
         });
         created.push({ repository: entry.repository, path: worktreePath });
+        const checkpointRef = lineSnapshotRef(lineRootCommitId);
+        if (yield* checkpoints.hasCheckpointRef({ cwd: worktreePath, checkpointRef })) {
+          yield* checkpoints.restoreCheckpoint({ cwd: worktreePath, checkpointRef });
+        }
       }
       yield* slots.create(slot);
     }).pipe(
@@ -418,7 +445,6 @@ export const make = Effect.gen(function* () {
       .withProjectLock(
         input.projectId,
         Effect.gen(function* () {
-          const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
           const poolSize = (yield* settings.getSettings).worktreePoolSize;
           const existing = yield* slots.list(input.projectId);
           const free: Array<WorktreeSlot> = [];
@@ -433,15 +459,59 @@ export const make = Effect.gen(function* () {
           let claimed: WorktreeSlot;
           if (reusable !== undefined) {
             if (reusable.currentLineRootCommitId === input.lineRootCommitId) {
-              yield* captureRecoveryPartials(reusable);
-              claimed = reusable;
+              const members: Array<WorktreeSlotMember> = [];
+              for (const member of reusable.members) {
+                const cwd = memberPath(reusable, member);
+                const standing = yield* snapshotChain.readStanding({
+                  cwd,
+                  lineRootCommitId: input.lineRootCommitId,
+                  repositoryId: member.repositoryId,
+                  lineBranch: member.currentBranch!,
+                });
+                if (standing._tag === "renamed") {
+                  yield* snapshotChain.adoptRename({
+                    lineRootCommitId: input.lineRootCommitId,
+                    repositoryId: member.repositoryId,
+                    branch: standing.branch,
+                  });
+                  members.push({ ...member, currentBranch: standing.branch });
+                  continue;
+                }
+                if (standing._tag === "departed" && standing.recordedMissing) {
+                  const commitOid = yield* snapshotChain.lineCommit({
+                    cwd,
+                    lineRootCommitId: input.lineRootCommitId,
+                    repositoryId: member.repositoryId,
+                    lineBranch: member.currentBranch!,
+                  });
+                  return yield* new LineBranchMissingError({
+                    lineRootCommitId: input.lineRootCommitId,
+                    repositoryId: member.repositoryId,
+                    branch: member.currentBranch!,
+                    commitOid,
+                  });
+                }
+                if (standing._tag === "departed") {
+                  yield* settleMember(
+                    reusable,
+                    member,
+                    input.lineRootCommitId,
+                    member.currentBranch!,
+                    now,
+                  );
+                }
+                members.push(member);
+              }
+              claimed = { ...reusable, members };
             } else {
+              const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
               claimed = yield* switchSlot(reusable, input.lineRootCommitId, desired, now);
             }
           } else {
             if (existing.length >= poolSize) {
               return yield* new SlotPoolAtCapacityError({ projectId: input.projectId, poolSize });
             }
+            const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
             claimed = yield* materialize(
               input.projectId,
               input.lineRootCommitId,
@@ -457,7 +527,9 @@ export const make = Effect.gen(function* () {
       )
       .pipe(
         Effect.mapError((cause) =>
-          Schema.is(SlotPoolAtCapacityError)(cause) || Schema.is(SlotServiceError)(cause)
+          isSlotPoolAtCapacityError(cause) ||
+          isLineBranchMissingError(cause) ||
+          isSlotServiceError(cause)
             ? cause
             : new SlotServiceError({ operation: "claim", cause }),
         ),

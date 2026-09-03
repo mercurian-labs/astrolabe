@@ -355,10 +355,15 @@ and model. Closing the sheet keeps those choices on this device; nothing is crea
 or disk until you press **Start**.
 
 Starting creates an isolated worktree on a descriptive `mercurian/…` branch and sends the exact
-plan text as the first turn. The resulting session appears as a leaf in the plan history. You can
-start another session from the same ready commit when a retry or a different model is useful.
-Selecting a session leaf keeps it visible while new planning continues from the checkpoint
-immediately before it.
+plan text as the first turn. That branch carries only commits you or the agent make. Astrolabe keeps
+uncommitted work in a separate snapshot chain without adding commits to the branch. The resulting
+session appears as a leaf in the plan history. You can start another session from the same ready
+commit when a retry or a different model is useful. Selecting a session leaf keeps it visible while
+new planning continues from the checkpoint immediately before it.
+
+If you rename a session branch by hand, Astrolabe adopts that name for this repository when the
+branch still points at the line's recorded commit. If you delete the branch instead, the session
+pauses and offers to recreate it at the last recorded commit before continuing.
 
 Open a session from its row in the plan card's hover details, from **Open session** in the coding
 session leaf's Checkpoint Graph details, or from **Open session** on the plan timeline card. The
@@ -367,12 +372,13 @@ conversation: send one turn at a time, stop a running turn from the same control
 **Supervised**, **Auto-accept edits**, and **Full access** from the composer. See
 [Permission modes](permission-modes.md).
 
-The session header acts on this session's worktree. Use its git control to commit selected files,
-commit on a new branch, push, pull, or open a pull request; generated commit messages and pull
-request text are suggestions you review, and nothing runs until you choose an action. Creating a
-pull request appears only when the repository's hosting provider is installed and authenticated.
-After Astrolabe creates one, its link is recorded on the session leaf in the plan. **Open in** hands
-the same worktree to an available editor.
+The session header acts on this session's worktree. When there is uncommitted work, its git control
+offers **Commit & push**. You can also commit selected files, commit on a new branch, push, pull, or
+open a pull request; generated commit messages and pull request text are suggestions you review,
+and nothing runs until you choose an action. Creating a pull request appears only when the
+repository's hosting provider is installed and authenticated. After Astrolabe creates one, its
+link is recorded on the session leaf in the plan. **Open in** hands the same worktree to an
+available editor.
 
 Repository scripts also run from the session header, with their output opened in a Terminal tab.
 Scripts are declared and edited on the Repositories page rather than in a session. On desktop, a
@@ -385,20 +391,25 @@ expand it, and completed turns fold to a **Worked for …** summary so long sess
 scannable. The timeline follows new work while you are at the bottom; if you scroll away, use the
 jump-to-bottom control to return to the newest activity. Each completed turn ends with a
 changed-files card listing the files touched and their added and removed lines. Open a file there
-to inspect its diff.
+to inspect its diff. If a turn finishes after the agent checked out another branch or detached
+state, the session leaf shows a **Departed** badge. Astrolabe preserves that destination in the
+snapshot, keeps the session's line branch unchanged, and returns the worktree to the line branch
+when the session next runs.
 
 The right panel keeps five session tools within reach: **Terminal**, **Files**, **Diff**, **Browser**,
 and **Plan**. Open one from the **+** menu, switch between the tabs you have open, or close a tab
 when you are finished with it. The terminal starts in the session worktree, and selected terminal
 output can be added to the next message as context.
 
-Diff can show the **Working tree**, **Branch changes**, the **Whole session**, or one completed turn.
-Whole session compares the session's starting checkpoint with its latest checkpoint. Use the
-whitespace control to include or ignore whitespace-only changes, and the word-wrap control to fit
-long lines to the panel. Select lines in a diff to leave a review comment. Each comment waits above
-the composer as a removable chip; commenting on the same lines again replaces that chip, while
-comments on other ranges stay alongside it. Sending carries the remaining comments with the next
-message and clears the chips.
+Diff can show the **Working tree**, **Branch changes**, **Uncommitted**, the **Whole session**, or one
+completed turn. **Uncommitted** compares the line's branch tip with its latest snapshot, so it keeps
+showing that line's uncommitted work even when its worktree slot is not active. Whole session
+compares the session's starting checkpoint with its latest checkpoint. Use the whitespace control
+to include or ignore whitespace-only changes, and the word-wrap control to fit long lines to the
+panel. Select lines in a diff to leave a review comment. Each comment waits above the composer as a
+removable chip; commenting on the same lines again replaces that chip, while comments on other
+ranges stay alongside it. Sending carries the remaining comments with the next message and clears
+the chips.
 
 Plan is a read-only view of the exact plan revision this session started to implement, even if
 planning has continued since. A repository-specific plan is headed **Plan for _repository_**. When
@@ -409,12 +420,6 @@ On desktop, starting a listening development server from the session terminal ad
 offer beside the session title. Choose it to open the server in Browser. Browser previews are a
 desktop feature; in the web client the Browser action remains visible but disabled and explains
 that it is available in the Astrolabe desktop app.
-
-Use **Revert to this message** on an earlier user message to restore the worktree and conversation
-to that checkpoint. Revert is permanent and asks for confirmation. A running turn must be
-interrupted first; the server refuses the revert until it is no longer running. Newer messages and
-turn diffs disappear after the revert, but the coding-session leaf remains in the plan history —
-reverting session work never rewrites the plan or destroys the leaf that records the session.
 
 In Supervised work, commands, file reads, and file changes can pause for approval. Approve once,
 allow requests like it for the session, decline while letting the turn continue, or cancel the

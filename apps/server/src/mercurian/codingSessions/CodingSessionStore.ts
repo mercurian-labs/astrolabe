@@ -8,7 +8,13 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
-import { PlanId, ThreadId } from "@t3tools/contracts";
+import {
+  BranchMovement,
+  PlanId,
+  SnapshotKind,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "@t3tools/contracts";
 
 import {
   isPersistenceError,
@@ -31,6 +37,15 @@ export type EndCodingSessionInput = typeof EndCodingSessionInput.Type;
 
 export const AttachPullRequestInput = Schema.Struct({ threadId: ThreadId, prUrl: Schema.String });
 export type AttachPullRequestInput = typeof AttachPullRequestInput.Type;
+
+export const RecordSnapshotInput = Schema.Struct({
+  snapshotOid: TrimmedNonEmptyString,
+  kind: SnapshotKind,
+  branchTipOid: TrimmedNonEmptyString,
+  departedRef: Schema.NullOr(Schema.String),
+  branchMovement: BranchMovement,
+});
+export type RecordSnapshotInput = typeof RecordSnapshotInput.Type;
 
 export class CodingSessionStore extends Context.Service<
   CodingSessionStore,
@@ -60,13 +75,13 @@ export class CodingSessionStore extends Context.Service<
       threadId: ThreadId,
       branch: string,
     ) => Effect.Effect<void, CodingSessionStoreError>;
-    readonly recordSettledCommit: (
+    readonly recordSnapshot: (
       threadId: ThreadId,
-      settledCommitOid: string,
+      input: RecordSnapshotInput,
     ) => Effect.Effect<void, CodingSessionStoreError>;
-    readonly recordPartial: (
+    readonly recordLineBranchMissing: (
       threadId: ThreadId,
-      partial: boolean,
+      oid: string | null,
     ) => Effect.Effect<void, CodingSessionStoreError>;
     readonly end: (input: EndCodingSessionInput) => Effect.Effect<void, CodingSessionStoreError>;
     readonly attachPullRequest: (
@@ -81,9 +96,17 @@ const ThreadRequest = Schema.Struct({ threadId: ThreadId });
 const WorktreeRequest = Schema.Struct({ worktreePath: Schema.String });
 const BranchLookupRequest = Schema.Struct({ branch: Schema.String });
 const BranchRequest = Schema.Struct({ threadId: ThreadId, branch: Schema.String });
-const SettledCommitRequest = Schema.Struct({ threadId: ThreadId, settledCommitOid: Schema.String });
-const PartialRequest = Schema.Struct({ threadId: ThreadId, partial: Schema.Boolean });
+const SnapshotRequest = Schema.Struct({ threadId: ThreadId, ...RecordSnapshotInput.fields });
+const LineBranchMissingRequest = Schema.Struct({
+  threadId: ThreadId,
+  oid: Schema.NullOr(TrimmedNonEmptyString),
+});
 const NoRequest = Schema.Struct({});
+
+const CodingSessionRow = Schema.Struct({
+  ...CodingSessionRecord.fields,
+  branchMovement: Schema.NullOr(Schema.fromJsonString(BranchMovement)),
+});
 
 function toStoreError(sqlOperation: string, decodeOperation: string) {
   return (cause: unknown): CodingSessionStoreError =>
@@ -102,7 +125,9 @@ export const make = Effect.gen(function* () {
     thread_id AS "threadId", branch AS "branch", worktree_path AS "worktreePath",
     base_ref AS "baseRef", started_at AS "startedAt", ended_at AS "endedAt",
     outcome AS "outcome", pr_url AS "prUrl", settled_commit_oid AS "settledCommitOid",
-    partial AS "partial"
+    partial AS "partial", snapshot_oid AS "snapshotOid", snapshot_kind AS "snapshotKind",
+    departed_ref AS "departedRef", branch_movement AS "branchMovement",
+    line_branch_missing_oid AS "lineBranchMissingOid"
   `;
 
   const insert = SqlSchema.void({
@@ -110,17 +135,21 @@ export const make = Effect.gen(function* () {
     execute: (row) => sql`
       INSERT INTO coding_sessions (
         commit_id, plan_id, repository_id, thread_id, branch, worktree_path,
-        base_ref, started_at, ended_at, outcome, pr_url, settled_commit_oid, partial
+        base_ref, started_at, ended_at, outcome, pr_url, settled_commit_oid, partial,
+        snapshot_oid, snapshot_kind, departed_ref, branch_movement, line_branch_missing_oid
       ) VALUES (
         ${row.commitId}, ${row.planId}, ${row.repositoryId}, ${row.threadId}, ${row.branch},
         ${row.worktreePath}, ${row.baseRef}, ${row.startedAt}, ${row.endedAt}, ${row.outcome},
-        ${row.prUrl}, ${row.settledCommitOid}, ${row.partial ? 1 : 0}
+        ${row.prUrl}, ${row.settledCommitOid}, ${row.partial ? 1 : 0}, ${row.snapshotOid},
+        ${row.snapshotKind}, ${row.departedRef},
+        ${row.branchMovement === null ? null : JSON.stringify(row.branchMovement)},
+        ${row.lineBranchMissingOid}
       )
     `,
   });
   const listForPlanRows = SqlSchema.findAll({
     Request: PlanRequest,
-    Result: CodingSessionRecord,
+    Result: CodingSessionRow,
     execute: ({ planId }) => sql`
       SELECT ${columns} FROM coding_sessions WHERE plan_id = ${planId}
       ORDER BY started_at ASC, commit_id ASC
@@ -128,25 +157,25 @@ export const make = Effect.gen(function* () {
   });
   const listAllRows = SqlSchema.findAll({
     Request: NoRequest,
-    Result: CodingSessionRecord,
+    Result: CodingSessionRow,
     execute: () =>
       sql`SELECT ${columns} FROM coding_sessions ORDER BY started_at ASC, commit_id ASC`,
   });
   const findByThread = SqlSchema.findOneOption({
     Request: ThreadRequest,
-    Result: CodingSessionRecord,
+    Result: CodingSessionRow,
     execute: ({ threadId }) =>
       sql`SELECT ${columns} FROM coding_sessions WHERE thread_id = ${threadId}`,
   });
   const findByWorktree = SqlSchema.findOneOption({
     Request: WorktreeRequest,
-    Result: CodingSessionRecord,
+    Result: CodingSessionRow,
     execute: ({ worktreePath }) =>
       sql`SELECT ${columns} FROM coding_sessions WHERE worktree_path = ${worktreePath}`,
   });
   const findByBranch = SqlSchema.findOneOption({
     Request: BranchLookupRequest,
-    Result: CodingSessionRecord,
+    Result: CodingSessionRow,
     execute: ({ branch }) => sql`SELECT ${columns} FROM coding_sessions WHERE branch = ${branch}`,
   });
   const updateBranchRow = SqlSchema.void({
@@ -155,16 +184,21 @@ export const make = Effect.gen(function* () {
       UPDATE coding_sessions SET branch = ${branch} WHERE thread_id = ${threadId}
     `,
   });
-  const settledCommitRow = SqlSchema.void({
-    Request: SettledCommitRequest,
-    execute: ({ threadId, settledCommitOid }) => sql`
-      UPDATE coding_sessions SET settled_commit_oid = ${settledCommitOid} WHERE thread_id = ${threadId}
+  const snapshotRow = SqlSchema.void({
+    Request: SnapshotRequest,
+    execute: ({ threadId, snapshotOid, kind, branchTipOid, departedRef, branchMovement }) => sql`
+      UPDATE coding_sessions SET
+        snapshot_oid = ${snapshotOid}, snapshot_kind = ${kind}, departed_ref = ${departedRef},
+        branch_movement = ${JSON.stringify(branchMovement)},
+        partial = CASE WHEN ${kind} = 'settled' THEN 0 WHEN ${kind} = 'partial' THEN 1 ELSE partial END,
+        settled_commit_oid = ${branchTipOid}
+      WHERE thread_id = ${threadId}
     `,
   });
-  const partialRow = SqlSchema.void({
-    Request: PartialRequest,
-    execute: ({ threadId, partial }) => sql`
-      UPDATE coding_sessions SET partial = ${partial ? 1 : 0} WHERE thread_id = ${threadId}
+  const lineBranchMissingRow = SqlSchema.void({
+    Request: LineBranchMissingRequest,
+    execute: ({ threadId, oid }) => sql`
+      UPDATE coding_sessions SET line_branch_missing_oid = ${oid} WHERE thread_id = ${threadId}
     `,
   });
   const endRow = SqlSchema.void({
@@ -214,17 +248,15 @@ export const make = Effect.gen(function* () {
         updateBranchRow({ threadId, branch }).pipe(Effect.andThen(announceThread(threadId))),
         "CodingSessionStore.updateBranch",
       ),
-    recordSettledCommit: (threadId, settledCommitOid) =>
+    recordSnapshot: (threadId, input) =>
       mapError(
-        settledCommitRow({ threadId, settledCommitOid }).pipe(
-          Effect.andThen(announceThread(threadId)),
-        ),
-        "CodingSessionStore.recordSettledCommit",
+        snapshotRow({ threadId, ...input }).pipe(Effect.andThen(announceThread(threadId))),
+        "CodingSessionStore.recordSnapshot",
       ),
-    recordPartial: (threadId, partial) =>
+    recordLineBranchMissing: (threadId, oid) =>
       mapError(
-        partialRow({ threadId, partial }).pipe(Effect.andThen(announceThread(threadId))),
-        "CodingSessionStore.recordPartial",
+        lineBranchMissingRow({ threadId, oid }).pipe(Effect.andThen(announceThread(threadId))),
+        "CodingSessionStore.recordLineBranchMissing",
       ),
     end: (input) =>
       mapError(

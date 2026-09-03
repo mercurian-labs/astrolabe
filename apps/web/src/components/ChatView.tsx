@@ -566,6 +566,7 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
       headerContent?: ReactNode;
+      headerBanner?: ReactNode;
       planPanel?: ReactNode;
       routeKind: "server";
       draftId?: never;
@@ -578,6 +579,7 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
       headerContent?: ReactNode;
+      headerBanner?: ReactNode;
       planPanel?: ReactNode;
       routeKind: "draft";
       draftId: DraftId;
@@ -1269,6 +1271,7 @@ function ChatViewContent(props: ChatViewProps) {
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
     headerContent,
+    headerBanner,
     planPanel,
   } = props;
   const planAvailable = planPanel !== undefined;
@@ -6717,6 +6720,8 @@ function ChatViewContent(props: ChatViewProps) {
             />
           )}
         </WorkspacePageHeader>
+
+        {headerBanner}
 
         <ThreadErrorBanner
           error={visibleThreadError}

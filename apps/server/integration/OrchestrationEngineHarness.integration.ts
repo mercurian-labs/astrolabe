@@ -88,6 +88,7 @@ import * as CodingSessionStore from "../src/mercurian/codingSessions/CodingSessi
 import * as LineBranchStore from "../src/mercurian/commitTree/LineBranchStore.ts";
 import * as SlotStore from "../src/mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
+import * as SnapshotChain from "../src/mercurian/worktreeSlots/SnapshotChain.ts";
 
 const decodeCodexSettings = Schema.decodeEffect(CodexSettings);
 
@@ -344,6 +345,16 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(serverSettingsLayer),
     );
     const checkpointReactorLayer = CheckpointReactorLive.pipe(
+      Layer.provideMerge(
+        Layer.mock(SnapshotChain.SnapshotChain)({
+          capture: () => Effect.die("snapshot capture is not used by this harness"),
+          branchMovement: () => Effect.succeed({ kind: "unchanged" }),
+          readStanding: () => Effect.succeed({ _tag: "on-line" }),
+          lineCommit: () => Effect.succeed("head"),
+          adoptRename: () => Effect.void,
+          isDrifted: () => Effect.succeed(false),
+        }),
+      ),
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(
         Layer.mock(CodingSessionStore.CodingSessionStore)({
@@ -356,8 +367,8 @@ export const makeOrchestrationIntegrationHarness = (
           getByWorktreePath: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
-          recordSettledCommit: () => Effect.void,
-          recordPartial: () => Effect.void,
+          recordSnapshot: () => Effect.void,
+          recordLineBranchMissing: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,

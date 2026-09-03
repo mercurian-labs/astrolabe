@@ -1213,6 +1213,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               ...(event.payload.partial === undefined
                 ? {}
                 : { checkpointPartial: event.payload.partial }),
+              ...(event.payload.snapshotKind === undefined
+                ? {}
+                : { checkpointSnapshotKind: event.payload.snapshotKind }),
+              ...(event.payload.departedRef === undefined
+                ? {}
+                : { checkpointDepartedRef: event.payload.departedRef }),
+              ...(event.payload.branchMovement === undefined
+                ? {}
+                : { checkpointBranchMovement: event.payload.branchMovement }),
               startedAt: existingTurn.value.startedAt ?? event.payload.completedAt,
               requestedAt: existingTurn.value.requestedAt ?? event.payload.completedAt,
               completedAt: event.payload.completedAt,
@@ -1237,6 +1246,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.partial === undefined
               ? {}
               : { checkpointPartial: event.payload.partial }),
+            ...(event.payload.snapshotKind === undefined
+              ? {}
+              : { checkpointSnapshotKind: event.payload.snapshotKind }),
+            ...(event.payload.departedRef === undefined
+              ? {}
+              : { checkpointDepartedRef: event.payload.departedRef }),
+            ...(event.payload.branchMovement === undefined
+              ? {}
+              : { checkpointBranchMovement: event.payload.branchMovement }),
           });
           return;
         }

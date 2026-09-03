@@ -46,6 +46,8 @@ import {
   withCodingSessionBirthCompensation,
 } from "./CodingSessionService.ts";
 
+const isCodingSessionBlockedError = Schema.is(CodingSessionBlockedError);
+
 const provider = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
   instanceId: ProviderInstanceId.make("codex-work"),
   driver: ProviderDriverKind.make("codex"),
@@ -107,6 +109,9 @@ interface SagaState {
   originExists: boolean;
   poolAtCapacity: boolean;
   repositoryPresent: boolean;
+  claimedBranch: string;
+  lineBranchMissing: boolean;
+  landedSessionBranch: string | null;
   failurePoint: SagaFailurePoint | null;
 }
 
@@ -157,6 +162,9 @@ function sagaState(overrides: Partial<SagaState> = {}): SagaState {
     originExists: true,
     poolAtCapacity: false,
     repositoryPresent: true,
+    claimedBranch: "mercurian/coding-session-birth-ready-revi",
+    lineBranchMissing: false,
+    landedSessionBranch: null,
     failurePoint: null,
     ...overrides,
   };
@@ -195,6 +203,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
           if (state.failurePoint === "leaf transaction") return yield* fail("leaf transaction");
           state.leaf = true;
           state.session = true;
+          state.landedSessionBranch = appendInput.branch;
           return {
             commitId: MercurianCommitId.make("coding-session-leaf"),
             ...appendInput,
@@ -357,6 +366,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
             branch: "mercurian/coding-session-birth-ready-revi",
             baseOid: "origin-base-oid",
             built: false,
+            repointHold: null,
             createdAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
           }),
         ),
@@ -371,6 +381,14 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
               poolSize: 1,
             });
           }
+          if (state.lineBranchMissing) {
+            return yield* new SlotService.LineBranchMissingError({
+              lineRootCommitId: parentCommitId,
+              repositoryId,
+              branch: "mercurian/coding-session-birth-ready-revi",
+              commitOid: "line-commit",
+            });
+          }
           if (state.failurePoint === "worktree creation") return yield* fail("worktree creation");
           state.worktree = true;
           const now = DateTime.makeUnsafe("2026-08-14T00:00:00.000Z");
@@ -383,7 +401,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
               {
                 repositoryId,
                 relativePath: ".",
-                currentBranch: "mercurian/coding-session-birth-ready-revi",
+                currentBranch: state.claimedBranch,
               },
             ],
             createdAt: now,
@@ -590,9 +608,28 @@ describe("CodingSessionService validation", () => {
   it.effect("maps a full repository pool to the typed coding-session refusal", () =>
     Effect.gen(function* () {
       const refusal = yield* runSaga(sagaState({ poolAtCapacity: true })).pipe(Effect.flip);
-      assert.ok(Schema.is(CodingSessionBlockedError)(refusal));
-      if (Schema.is(CodingSessionBlockedError)(refusal)) {
+      assert.ok(isCodingSessionBlockedError(refusal));
+      if (isCodingSessionBlockedError(refusal)) {
         assert.strictEqual(refusal.reason, "pool-at-capacity");
+      }
+    }),
+  );
+
+  it.effect("uses an adopted claim branch and maps a missing line branch refusal", () =>
+    Effect.gen(function* () {
+      const renamed = sagaState({ claimedBranch: "renamed-by-hand" });
+      yield* runSaga(renamed);
+      const metadata = renamed.commands.find((command) => command.type === "thread.meta.update");
+      assert.ok(metadata?.type === "thread.meta.update");
+      if (metadata?.type === "thread.meta.update") {
+        assert.strictEqual(metadata.branch, "renamed-by-hand");
+      }
+      assert.strictEqual(renamed.landedSessionBranch, "renamed-by-hand");
+
+      const refusal = yield* runSaga(sagaState({ lineBranchMissing: true })).pipe(Effect.flip);
+      assert.ok(isCodingSessionBlockedError(refusal));
+      if (isCodingSessionBlockedError(refusal)) {
+        assert.strictEqual(refusal.reason, "line-branch-missing");
       }
     }),
   );

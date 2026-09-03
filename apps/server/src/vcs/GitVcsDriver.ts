@@ -764,11 +764,17 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           });
         }
 
-        const message = `t3 checkpoint ref=${input.checkpointRef}`;
+        const message = input.message ?? `t3 checkpoint ref=${input.checkpointRef}`;
         const commitTreeResult = yield* execute({
           operation,
           cwd: input.cwd,
-          args: ["commit-tree", treeOid, "-m", message],
+          args: [
+            "commit-tree",
+            treeOid,
+            ...(input.parents?.flatMap((parent) => ["-p", parent]) ?? []),
+            "-m",
+            message,
+          ],
           env: commitEnv,
         });
         const commitOid = commitTreeResult.stdout.trim();

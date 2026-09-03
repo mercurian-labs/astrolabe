@@ -13,6 +13,7 @@ import type {
   MercurianRefreshSpecInput,
   MercurianTryImplementInput,
   MercurianStartCodingSessionInput,
+  MercurianRecreateLineBranchInput,
   PlanDetail,
   PlanId,
   PlanTurnId,
@@ -223,8 +224,13 @@ export function useCancelMemoryAmendment() {
 }
 
 export function useStartCodingSession() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.startCodingSession);
+  const run = useEnvironmentBoundCommandResult(mercurianPlanning.startCodingSession);
   return useCallback((input: MercurianStartCodingSessionInput) => run(input), [run]);
+}
+
+export function useRecreateLineBranch() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.recreateLineBranch);
+  return useCallback((input: MercurianRecreateLineBranchInput) => run(input), [run]);
 }
 
 export function useCancelImplementProposal() {

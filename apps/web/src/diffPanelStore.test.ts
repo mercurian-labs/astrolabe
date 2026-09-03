@@ -107,6 +107,19 @@ describe("diffPanelStore", () => {
     });
   });
 
+  it("round-trips the line-uncommitted selection without changing persistence shape", () => {
+    useDiffPanelStore.getState().selectLineUncommittedScope(THREAD_REF);
+
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "line-uncommitted" });
+    expect(
+      useDiffPanelStore.persist.getOptions().partialize?.(useDiffPanelStore.getState()),
+    ).toMatchObject({
+      byThreadKey: { "environment-1:thread-1": { kind: "line-uncommitted" } },
+    });
+  });
+
   it("leaves a whole-session selection alone while reconciling turns", () => {
     useDiffPanelStore.getState().selectSessionScope(THREAD_REF);
     useDiffPanelStore.getState().reconcileTurnSelection(THREAD_REF, [TurnId.make("turn-latest")]);

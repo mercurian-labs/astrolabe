@@ -1,15 +1,37 @@
-import { CheckpointRef, ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  CheckpointRef,
+  MercurianCommitId,
+  MercurianRepositoryId,
+  PlanId,
+  ProjectId,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as DateTime from "effect/DateTime";
 import { describe, expect } from "vite-plus/test";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { checkpointRefForThreadTurn } from "./Utils.ts";
+import { chainParentRef, checkpointRefForThreadTurn } from "./Utils.ts";
 import * as CheckpointDiffQuery from "./CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
-import { CheckpointThreadNotFoundError } from "./Errors.ts";
+import { CheckpointRefUnavailableError, CheckpointThreadNotFoundError } from "./Errors.ts";
+import * as CodingSessionStore from "../mercurian/codingSessions/CodingSessionStore.ts";
+import * as LineBranchStore from "../mercurian/commitTree/LineBranchStore.ts";
+import * as RepositoryStore from "../mercurian/repositories/RepositoryStore.ts";
+
+const lineDiffDependencies = Layer.mergeAll(
+  Layer.mock(CodingSessionStore.CodingSessionStore)({
+    getByThreadId: () => Effect.succeed(Option.none()),
+  }),
+  Layer.mock(LineBranchStore.LineBranchStore)({ listAll: Effect.succeed([]) }),
+  Layer.mock(RepositoryStore.RepositoryStore)({
+    getSnapshot: Effect.succeed({ repositories: [], projectRepositories: [] }),
+  }),
+);
 
 function makeThreadCheckpointContext(input: {
   readonly projectId: ProjectId;
@@ -39,6 +61,167 @@ function makeThreadCheckpointContext(input: {
 }
 
 describe("CheckpointDiffQuery.layer", () => {
+  it.effect("diffs the line branch to its latest snapshot", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread-line-diff");
+      const repositoryId = MercurianRepositoryId.make("repository-line-diff");
+      const lineRootCommitId = MercurianCommitId.make("line-root");
+      const calls: Array<{
+        readonly cwd: string;
+        readonly from: string;
+        readonly to: string;
+        readonly ignoreWhitespace: boolean;
+      }> = [];
+      const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({})),
+        Layer.provideMerge(
+          Layer.mock(CodingSessionStore.CodingSessionStore)({
+            getByThreadId: () =>
+              Effect.succeed(
+                Option.some({
+                  commitId: MercurianCommitId.make("session"),
+                  planId: PlanId.make("plan"),
+                  repositoryId,
+                  threadId,
+                  branch: "mercurian/line",
+                  worktreePath: "/tmp/line",
+                  baseRef: "main",
+                  startedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+                  endedAt: null,
+                  outcome: null,
+                  prUrl: null,
+                  settledCommitOid: null,
+                  partial: false,
+                  snapshotOid: "snapshot",
+                  snapshotKind: "settled",
+                  departedRef: null,
+                  branchMovement: { kind: "unchanged" },
+                  lineBranchMissingOid: null,
+                }),
+              ),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(LineBranchStore.LineBranchStore)({
+            listAll: Effect.succeed([
+              {
+                lineRootCommitId,
+                repositoryId,
+                branch: "mercurian/line",
+                baseOid: "base",
+                built: true,
+                repointHold: null,
+                createdAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+              },
+            ]),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(RepositoryStore.RepositoryStore)({
+            getSnapshot: Effect.succeed({
+              repositories: [
+                {
+                  repositoryId,
+                  name: "repository",
+                  path: "/repositories/line",
+                  scripts: [],
+                  hasGit: true,
+                  hosting: null,
+                  createdAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+                  updatedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+                },
+              ],
+              projectRepositories: [],
+            }),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(CheckpointStore.CheckpointStore)({
+            diffCheckpoints: ({ cwd, fromCheckpointRef, toCheckpointRef, ignoreWhitespace }) =>
+              Effect.sync(() => {
+                calls.push({ cwd, from: fromCheckpointRef, to: toCheckpointRef, ignoreWhitespace });
+                return "line patch";
+              }),
+          }),
+        ),
+      );
+      const result = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* query.getLineUncommittedDiff({ threadId });
+      }).pipe(Effect.provide(layer));
+      expect(result.diff).toBe("line patch");
+      expect(calls).toEqual([
+        {
+          cwd: "/repositories/line",
+          from: "refs/heads/mercurian/line",
+          to: "refs/t3/lines/bGluZS1yb290/snapshot",
+          ignoreWhitespace: false,
+        },
+      ]);
+    }),
+  );
+
+  it.effect("fails typed when the session branch has no line-branch row", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread-missing-line");
+      const repositoryId = MercurianRepositoryId.make("repository-missing-line");
+      const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({})),
+        Layer.provideMerge(
+          Layer.mock(CodingSessionStore.CodingSessionStore)({
+            getByThreadId: () =>
+              Effect.succeed(
+                Option.some({
+                  commitId: MercurianCommitId.make("session"),
+                  planId: PlanId.make("plan"),
+                  repositoryId,
+                  threadId,
+                  branch: "mercurian/missing",
+                  worktreePath: "/stale/slot/path",
+                  baseRef: "main",
+                  startedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+                  endedAt: null,
+                  outcome: null,
+                  prUrl: null,
+                  settledCommitOid: null,
+                  partial: false,
+                  snapshotOid: "snapshot",
+                  snapshotKind: "settled",
+                  departedRef: null,
+                  branchMovement: { kind: "unchanged" },
+                  lineBranchMissingOid: null,
+                }),
+              ),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(LineBranchStore.LineBranchStore)({ listAll: Effect.succeed([]) }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(RepositoryStore.RepositoryStore)({
+            getSnapshot: Effect.die("repository lookup must follow the line lookup"),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(CheckpointStore.CheckpointStore)({
+            diffCheckpoints: () => Effect.die("diff must not run without a line"),
+          }),
+        ),
+      );
+
+      const error = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* query.getLineUncommittedDiff({ threadId });
+      }).pipe(Effect.provide(layer), Effect.flip);
+
+      expect(error).toBeInstanceOf(CheckpointRefUnavailableError);
+      expect(error).toMatchObject({
+        operation: "CheckpointDiffQuery.getLineUncommittedDiff",
+        threadId,
+      });
+    }),
+  );
+
   it.effect("uses the narrow full-thread context lookup for all-turns diffs", () =>
     Effect.gen(function* () {
       const projectId = ProjectId.make("project-full-thread");
@@ -72,6 +255,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
           Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
@@ -141,7 +325,7 @@ describe("CheckpointDiffQuery.layer", () => {
     }),
   );
 
-  it.effect("computes diffs using canonical turn-0 checkpoint refs", () =>
+  it.effect("uses the chain parent when both snapshot parents resolve", () =>
     Effect.gen(function* () {
       const projectId = ProjectId.make("project-1");
       const threadId = ThreadId.make("thread-1");
@@ -181,6 +365,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
           Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
@@ -217,7 +402,7 @@ describe("CheckpointDiffQuery.layer", () => {
         });
       }).pipe(Effect.provide(layer));
 
-      const expectedFromRef = checkpointRefForThreadTurn(threadId, 0);
+      const expectedFromRef = chainParentRef(toCheckpointRef);
       expect(diffCheckpointsCalls).toEqual([
         {
           cwd: "/tmp/workspace",
@@ -265,6 +450,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
           Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
@@ -304,12 +490,13 @@ describe("CheckpointDiffQuery.layer", () => {
     }),
   );
 
-  it.effect("does not preflight checkpoint refs before diffing", () =>
+  it.effect("does not use a root snapshot's sole HEAD parent as the chain diff base", () =>
     Effect.gen(function* () {
       const projectId = ProjectId.make("project-no-preflight");
       const threadId = ThreadId.make("thread-no-preflight");
       const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
       let hasCheckpointRefCallCount = 0;
+      let diffFromRef: CheckpointRef | undefined;
 
       const threadCheckpointContext = makeThreadCheckpointContext({
         projectId,
@@ -323,17 +510,22 @@ describe("CheckpointDiffQuery.layer", () => {
       const checkpointStore: CheckpointStore.CheckpointStore["Service"] = {
         isGitRepository: () => Effect.succeed(true),
         captureCheckpoint: () => Effect.void,
-        hasCheckpointRef: () =>
+        hasCheckpointRef: ({ checkpointRef }) =>
           Effect.sync(() => {
             hasCheckpointRefCallCount += 1;
-            return true;
+            return checkpointRef.endsWith("^1");
           }),
         restoreCheckpoint: () => Effect.succeed(true),
-        diffCheckpoints: () => Effect.succeed("diff patch"),
+        diffCheckpoints: ({ fromCheckpointRef }) =>
+          Effect.sync(() => {
+            diffFromRef = fromCheckpointRef;
+            return "diff patch";
+          }),
         deleteCheckpointRefs: () => Effect.void,
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
           Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
@@ -370,7 +562,8 @@ describe("CheckpointDiffQuery.layer", () => {
         });
       }).pipe(Effect.provide(layer));
 
-      expect(hasCheckpointRefCallCount).toBe(0);
+      expect(hasCheckpointRefCallCount).toBe(2);
+      expect(diffFromRef).toBe(checkpointRefForThreadTurn(threadId, 0));
     }),
   );
 
@@ -388,6 +581,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
           Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {

@@ -137,6 +137,10 @@ describe("coding-session contracts", () => {
           prUrl: null,
           settledCommitOid: null,
           partial: false,
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
         },
       ],
     };
@@ -155,6 +159,7 @@ describe("coding-session contracts", () => {
       "no-instance",
       "model-unavailable",
       "pool-at-capacity",
+      "line-branch-missing",
     ] as const) {
       expect(new CodingSessionBlockedError({ reason }).message).not.toContain(reason);
     }

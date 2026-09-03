@@ -601,6 +601,11 @@ export function projectEvent(
             assistantMessageId: payload.assistantMessageId,
             completedAt: payload.completedAt,
             ...(payload.partial === undefined ? {} : { partial: payload.partial }),
+            ...(payload.snapshotKind === undefined ? {} : { snapshotKind: payload.snapshotKind }),
+            ...(payload.departedRef === undefined ? {} : { departedRef: payload.departedRef }),
+            ...(payload.branchMovement === undefined
+              ? {}
+              : { branchMovement: payload.branchMovement }),
           },
           event.type,
           "checkpoint",

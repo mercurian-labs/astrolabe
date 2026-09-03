@@ -1,3 +1,5 @@
+import * as NodeCrypto from "node:crypto";
+
 import {
   ApprovalRequestId,
   EventId,
@@ -29,6 +31,13 @@ import type {
 
 const PROVIDER = ProviderDriverKind.make("mock");
 const CREATED_AT = "2026-01-01T00:00:00.000Z";
+
+/**
+ * Turn and question ids carry a per-process nonce: the counter lives in
+ * memory, so without it a restarted server re-issues ids a thread already
+ * used and the decider drops the turn's events.
+ */
+const processNonce = NodeCrypto.randomUUID().slice(0, 8);
 const QUESTION_ID = "mock_direction";
 // Coupled to composeFirstTurnInput in PlanningPrompt.ts. Rebuilt sessions put
 // prior transcript content before this marker; only the final message may
@@ -317,7 +326,7 @@ export const makeMockAdapter = Effect.fn("makeMockAdapter")(function* (
       }
 
       state.turnCount += 1;
-      const turnId = TurnId.make(`mock-turn-${state.turnCount}`);
+      const turnId = TurnId.make(`mock-turn-${processNonce}-${state.turnCount}`);
       const active: ActiveTurn = {
         turnId,
         input: input.input ?? "",
@@ -350,7 +359,9 @@ export const makeMockAdapter = Effect.fn("makeMockAdapter")(function* (
         replyOrdinal = 5;
       }
       if (active.steeringText.includes("/question")) {
-        const requestId = ApprovalRequestId.make(`mock-question-${state.turnCount}`);
+        const requestId = ApprovalRequestId.make(
+          `mock-question-${processNonce}-${state.turnCount}`,
+        );
         active.pendingRequestId = requestId;
         yield* emit({
           ...eventBase({ threadId: input.threadId, turnId, ordinal: replyOrdinal }),

@@ -1323,6 +1323,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           assistantMessageId: command.assistantMessageId ?? null,
           completedAt: command.completedAt,
           ...(command.partial === undefined ? {} : { partial: command.partial }),
+          ...(command.snapshotKind === undefined ? {} : { snapshotKind: command.snapshotKind }),
+          ...(command.departedRef === undefined ? {} : { departedRef: command.departedRef }),
+          ...(command.branchMovement === undefined
+            ? {}
+            : { branchMovement: command.branchMovement }),
         },
       };
     }
