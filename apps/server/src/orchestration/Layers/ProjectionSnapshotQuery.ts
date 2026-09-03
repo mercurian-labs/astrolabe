@@ -24,6 +24,7 @@ import {
   ModelSelection,
   ProjectId,
   ThreadLinkedPullRequest,
+  ThreadWorkspaceMember,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
@@ -40,6 +41,7 @@ import {
   checkpointSnapshotKindFromStorage,
   checkpointDepartedRefFromStorage,
   checkpointBranchMovementFromStorage,
+  checkpointRepositoriesFromStorage,
 } from "../../persistence/CheckpointFilesStorage.ts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -97,6 +99,7 @@ const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    workspaceMembers: Schema.NullOr(Schema.fromJsonString(Schema.Array(ThreadWorkspaceMember))),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
   }),
 );
@@ -119,6 +122,7 @@ const checkpointSummaryFromRow = (
   const snapshotKind = checkpointSnapshotKindFromStorage(row.files);
   const departedRef = checkpointDepartedRefFromStorage(row.files);
   const branchMovement = checkpointBranchMovementFromStorage(row.files);
+  const repositories = checkpointRepositoriesFromStorage(row.files);
   return {
     turnId: row.turnId,
     checkpointTurnCount: row.checkpointTurnCount,
@@ -131,6 +135,7 @@ const checkpointSummaryFromRow = (
     ...(snapshotKind === undefined ? {} : { snapshotKind }),
     ...(departedRef === undefined ? {} : { departedRef }),
     ...(branchMovement === undefined ? {} : { branchMovement }),
+    ...(repositories === undefined ? {} : { repositories }),
   };
 };
 const ProjectionLatestTurnDbRowSchema = Schema.Struct({
@@ -452,6 +457,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          workspace_members_json AS "workspaceMembers",
           linked_pull_request_json AS "linkedPullRequest",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
@@ -490,6 +496,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          workspace_members_json AS "workspaceMembers",
           linked_pull_request_json AS "linkedPullRequest",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
@@ -530,6 +537,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          workspace_members_json AS "workspaceMembers",
           linked_pull_request_json AS "linkedPullRequest",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
@@ -974,6 +982,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          workspace_members_json AS "workspaceMembers",
           linked_pull_request_json AS "linkedPullRequest",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
@@ -1723,6 +1732,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 interactionMode: row.interactionMode,
                 branch: row.branch,
                 worktreePath: row.worktreePath,
+                workspaceMembers: row.workspaceMembers,
                 ...(row.linkedPullRequest === null
                   ? {}
                   : { linkedPullRequest: row.linkedPullRequest }),
@@ -1934,6 +1944,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   interactionMode: row.interactionMode,
                   branch: row.branch,
                   worktreePath: row.worktreePath,
+                  workspaceMembers: row.workspaceMembers,
                   ...(row.linkedPullRequest === null
                     ? {}
                     : { linkedPullRequest: row.linkedPullRequest }),
@@ -2074,6 +2085,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                       interactionMode: row.interactionMode,
                       branch: row.branch,
                       worktreePath: row.worktreePath,
+                      workspaceMembers: row.workspaceMembers,
                       ...(row.linkedPullRequest === null
                         ? {}
                         : { linkedPullRequest: row.linkedPullRequest }),
@@ -2223,6 +2235,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   interactionMode: row.interactionMode,
                   branch: row.branch,
                   worktreePath: row.worktreePath,
+                  workspaceMembers: row.workspaceMembers,
                   ...(row.linkedPullRequest === null
                     ? {}
                     : { linkedPullRequest: row.linkedPullRequest }),
@@ -2496,6 +2509,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
+        workspaceMembers: threadRow.value.workspaceMembers,
         ...(threadRow.value.linkedPullRequest === null
           ? {}
           : { linkedPullRequest: threadRow.value.linkedPullRequest }),
@@ -2641,6 +2655,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
+        workspaceMembers: threadRow.value.workspaceMembers,
         ...(threadRow.value.linkedPullRequest === null
           ? {}
           : { linkedPullRequest: threadRow.value.linkedPullRequest }),

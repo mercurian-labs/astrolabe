@@ -35,6 +35,7 @@ const record = {
   departedRef: null,
   branchMovement: null,
   lineBranchMissingOid: null,
+  unreachableRepositories: [],
 } as const;
 
 const seedPlanAndCommit = Effect.gen(function* () {
@@ -53,6 +54,7 @@ layer("CodingSessionStore", (it) => {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`INSERT INTO repositories (repository_id, name, path, created_at, updated_at) VALUES ('repository', 'server', '/tmp/repository', '2026-08-14T12:00:00.000Z', '2026-08-14T12:00:00.000Z')`;
       yield* store.record(record);
+      yield* store.recordRepositoriesInTransaction(record.threadId, [record.repositoryId]);
 
       assert.strictEqual((yield* store.listForPlan(record.planId)).length, 1);
       const byThread = yield* store.getByThreadId(record.threadId);
@@ -104,8 +106,16 @@ layer("CodingSessionStore", (it) => {
         Stream.runHead,
         Effect.forkChild({ startImmediately: true }),
       );
+      yield* store.recordRepositorySnapshot(record.threadId, record.repositoryId, {
+        snapshotOid: "member-snapshot",
+        kind: "settled",
+        branchTipOid: "member-tip",
+        departedRef: "refs/heads/elsewhere",
+        branchMovement: { kind: "rewritten" },
+      });
       yield* store.attachPullRequest({
         threadId: record.threadId,
+        repositoryId: record.repositoryId,
         prUrl: "https://example.test/pr/1",
       });
       const announcedPlan = yield* Fiber.join(change);
@@ -117,7 +127,19 @@ layer("CodingSessionStore", (it) => {
       });
       const [updated] = yield* store.listAll;
       assert.strictEqual(updated?.branch, "renamed/session");
-      assert.strictEqual(updated?.prUrl, "https://example.test/pr/1");
+      assert.strictEqual(updated?.prUrl, null);
+      assert.deepStrictEqual(updated?.repositories, [
+        {
+          repositoryId: record.repositoryId,
+          repositoryName: "server",
+          snapshotOid: "member-snapshot",
+          snapshotKind: "settled",
+          branchTipOid: "member-tip",
+          departedRef: "refs/heads/elsewhere",
+          branchMovement: { kind: "rewritten" },
+          prUrl: "https://example.test/pr/1",
+        },
+      ]);
       assert.strictEqual(updated?.outcome, "completed");
       assert.strictEqual(updated?.snapshotOid, "snapshot-external");
       assert.strictEqual(updated?.settledCommitOid, "external-branch-tip");

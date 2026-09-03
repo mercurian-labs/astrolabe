@@ -1156,19 +1156,19 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       const threadId = asThreadId("thread-opencode-permission-tools");
       const sessionID = "http://127.0.0.1:9999/session";
       const messageID = "msg-permission-tool";
-      const callID = "call-save-implement-proposal";
+      const callID = "call-save-plan-revision";
       runtimeMock.state.subscribedEvents = [
         {
           type: "message.part.updated",
           properties: {
             sessionID,
             part: {
-              id: "part-save-implement-proposal",
+              id: "part-save-plan-revision",
               sessionID,
               messageID,
               type: "tool",
               callID,
-              tool: "t3-code_save_implement_proposal",
+              tool: "t3-code_save_plan_revision",
               state: {
                 status: "pending",
                 input: { planId: "plan-1" },
@@ -1257,7 +1257,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(dynamicTool.payload.requestType, "dynamic_tool_call");
       NodeAssert.deepEqual(dynamicTool.payload.args, {
         source: "planning-mcp",
-        toolName: "t3-code_save_implement_proposal",
+        toolName: "t3-code_save_plan_revision",
         input: { planId: "plan-1" },
         toolUseId: callID,
       });
@@ -1267,7 +1267,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(bash.payload.requestType, "command_execution_approval");
       NodeAssert.deepEqual(bash.payload.args, {
         source: "shell",
-        toolName: "t3-code_save_implement_proposal",
+        toolName: "t3-code_save_plan_revision",
         input: { planId: "plan-1" },
         toolUseId: callID,
       });

@@ -12,7 +12,7 @@ layer("015_LineBranchHolds", (it) => {
   it.effect("adds the line branch hold and missing branch facts", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 15);
+      assert.ok(migrationEntries.some(([id]) => id === 15));
       yield* runMigrations();
 
       const lineBranchColumns = yield* sql<{

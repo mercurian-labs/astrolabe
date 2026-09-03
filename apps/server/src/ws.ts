@@ -31,6 +31,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
+  type ThreadWorkspaceMember,
   type OrchestrationThreadStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
@@ -43,16 +44,15 @@ import {
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianCommitId,
+  MercurianRepositoryId,
   MercurianPlanningError,
   MercurianRepositoryError,
   MercurianMemoryError,
   ConfirmMemoryAmendmentBlockedError,
   MercurianTrackerError,
   MercurianWorkspaceError,
-  isConfirmSplitsBlockedError,
   isConfirmMemoryAmendmentBlockedError,
   isCodingSessionBlockedError,
-  isImplementBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
   isMemoryNotDesignatedError,
@@ -136,6 +136,7 @@ import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionS
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
+import type { WorktreeSlot } from "./mercurian/worktreeSlots/schema.ts";
 import { lineSnapshotRef } from "./mercurian/worktreeSlots/SnapshotChain.ts";
 import { toWireSlotSnapshot } from "./mercurian/worktreeSlots/wire.ts";
 import { toWireCodingSessionRecord } from "./mercurian/codingSessions/wire.ts";
@@ -153,6 +154,7 @@ import {
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
+import type { RepositoryView } from "./mercurian/repositories/schema.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
 import { toWireMemorySourcesSnapshot } from "./mercurian/memory/wire.ts";
@@ -432,13 +434,30 @@ export const attachCreatedPullRequestToCodingSession = Effect.fn(
   >,
   result: GitRunStackedActionResult,
   sessionBranch: string | null,
+  actingCwd: string,
+  getThreadShellById: ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]["getThreadShellById"],
+  repositories: ReadonlyArray<RepositoryView>,
 ) {
   if (result.pr.status !== "created" || result.pr.url === undefined) return;
   if (sessionBranch === null) return;
   const session = yield* codingSessionStore.getByBranch(sessionBranch);
   if (Option.isNone(session)) return;
+  const shell = yield* getThreadShellById(session.value.threadId);
+  const repositoryId =
+    Option.getOrUndefined(shell)?.workspaceMembers?.find(
+      (member) => member.worktreePath === actingCwd,
+    )?.repositoryId ??
+    repositories
+      .filter(
+        (repository) =>
+          actingCwd === repository.path || actingCwd.startsWith(`${repository.path}/`),
+      )
+      .sort((left, right) => right.path.length - left.path.length)[0]?.repositoryId ??
+    session.value.repositoryId;
+  if (repositoryId == null) return;
   yield* codingSessionStore.attachPullRequest({
     threadId: session.value.threadId,
+    repositoryId: MercurianRepositoryId.make(repositoryId),
     prUrl: result.pr.url,
   });
 });
@@ -565,6 +584,51 @@ export function memoryAmendmentNoteNames(
         path.endsWith(".md") && !path.endsWith(".skillmap.md") && !path.startsWith("maps/"),
     )
     .map(({ path }) => path.slice(0, -3).split("/").at(-1)!);
+}
+
+interface CodingSessionSlotMetadata {
+  readonly branch: string;
+  readonly worktreePath: string;
+  readonly workspaceMembers: ReadonlyArray<ThreadWorkspaceMember>;
+}
+
+export function codingSessionSlotMetadataChanged(
+  current:
+    | {
+        readonly branch: string | null;
+        readonly worktreePath: string | null;
+        readonly workspaceMembers?: ReadonlyArray<ThreadWorkspaceMember> | null | undefined;
+      }
+    | undefined,
+  desired: CodingSessionSlotMetadata,
+): boolean {
+  if (current?.branch !== desired.branch || current.worktreePath !== desired.worktreePath) {
+    return true;
+  }
+  const currentMembers = current.workspaceMembers;
+  return (
+    currentMembers === undefined ||
+    currentMembers === null ||
+    currentMembers.length !== desired.workspaceMembers.length ||
+    currentMembers.some((member, index) => {
+      const desiredMember = desired.workspaceMembers[index];
+      return (
+        desiredMember === undefined ||
+        member.repositoryId !== desiredMember.repositoryId ||
+        member.worktreePath !== desiredMember.worktreePath
+      );
+    })
+  );
+}
+
+export function updateCodingSessionSlotMetadataIfChanged<E, R>(
+  current: Parameters<typeof codingSessionSlotMetadataChanged>[0],
+  desired: CodingSessionSlotMetadata,
+  dispatch: Effect.Effect<unknown, E, R>,
+): Effect.Effect<boolean, E, R> {
+  return codingSessionSlotMetadataChanged(current, desired)
+    ? dispatch.pipe(Effect.as(true))
+    : Effect.succeed(false);
 }
 
 const makeWsRpcLayer = (
@@ -711,15 +775,51 @@ const makeWsRpcLayer = (
         }
       });
 
+      const updateCodingSessionSlotMetadata = Effect.fn("ws.updateCodingSessionSlotMetadata")(
+        function* (threadId: ThreadId, desired: CodingSessionSlotMetadata, commandTag: string) {
+          const current = Option.getOrUndefined(
+            yield* projectionSnapshotQuery.getThreadShellById(threadId),
+          );
+          yield* updateCodingSessionSlotMetadataIfChanged(
+            current,
+            desired,
+            Effect.gen(function* () {
+              yield* dispatchFromClient({
+                type: "thread.meta.update",
+                commandId: yield* serverCommandId(commandTag),
+                threadId,
+                ...desired,
+              });
+            }),
+          );
+        },
+      );
+
       const acquireCodingSessionSlot = Effect.fn("ws.acquireCodingSessionSlot")(function* (
         threadId: ThreadId,
         holder: SlotService.ClaimSlotInput["holder"],
       ) {
         const session = yield* codingSessionStore.getByThreadId(threadId);
         if (Option.isNone(session)) return Option.none();
+        const primaryRepositoryId =
+          session.value.repositoryId ?? session.value.repositories?.[0]?.repositoryId;
+        if (primaryRepositoryId == null) return Option.none();
+        const workspaceMembersOf = (slot: WorktreeSlot) =>
+          [...slot.members]
+            .sort((left, right) =>
+              left.repositoryId === primaryRepositoryId
+                ? -1
+                : right.repositoryId === primaryRepositoryId
+                  ? 1
+                  : 0,
+            )
+            .map((member) => ({
+              repositoryId: member.repositoryId,
+              worktreePath: path.join(slot.path, member.relativePath),
+            }));
         const lineBranch = (yield* lineBranchStore.listAll).find(
           (candidate) =>
-            candidate.repositoryId === session.value.repositoryId &&
+            candidate.repositoryId === primaryRepositoryId &&
             candidate.branch === session.value.branch,
         );
         if (lineBranch === undefined) return Option.none();
@@ -737,14 +837,21 @@ const makeWsRpcLayer = (
             lease.value.holders.every((candidate) => candidate.threadId === threadId)
           ) {
             yield* slotService.retain(assignedSlot.slotId, holder);
-            const worktreePath = SlotService.slotMemberWorktreePath(
-              path,
-              assignedSlot,
-              session.value.repositoryId,
+            const workspaceMembers = workspaceMembersOf(assignedSlot);
+            const worktreePath = workspaceMembers.find(
+              (member) => member.repositoryId === primaryRepositoryId,
+            )?.worktreePath;
+            if (worktreePath === undefined) return Option.none();
+            yield* updateCodingSessionSlotMetadata(
+              threadId,
+              {
+                branch: session.value.branch,
+                worktreePath,
+                workspaceMembers,
+              },
+              "coding-session-slot-retained",
             );
-            return worktreePath === null
-              ? Option.none()
-              : Option.some({ slotId: assignedSlot.slotId, worktreePath });
+            return Option.some({ slotId: assignedSlot.slotId, worktreePath });
           }
         }
 
@@ -753,28 +860,30 @@ const makeWsRpcLayer = (
           lineRootCommitId: lineBranch.lineRootCommitId,
           holder,
         });
-        const claimedMemberPath = SlotService.slotMemberWorktreePath(
-          path,
-          claimed,
-          session.value.repositoryId,
-        );
-        if (claimedMemberPath === null) return Option.none();
+        const workspaceMembers = workspaceMembersOf(claimed);
         const claimedMember = claimed.members.find(
-          (member) => member.repositoryId === session.value.repositoryId,
+          (member) => member.repositoryId === primaryRepositoryId,
         );
-        if (claimedMember?.currentBranch === null || claimedMember === undefined) {
+        const claimedMemberPath = workspaceMembers.find(
+          (member) => member.repositoryId === primaryRepositoryId,
+        )?.worktreePath;
+        if (
+          claimedMemberPath === undefined ||
+          claimedMember?.currentBranch === null ||
+          claimedMember === undefined
+        ) {
           return Option.none();
         }
         const branchRenamed = claimedMember.currentBranch !== session.value.branch;
-        if (claimedMemberPath !== session.value.worktreePath || branchRenamed) {
-          yield* dispatchFromClient({
-            type: "thread.meta.update",
-            commandId: yield* serverCommandId("coding-session-slot-reclaimed"),
-            threadId,
+        yield* updateCodingSessionSlotMetadata(
+          threadId,
+          {
             branch: claimedMember.currentBranch,
             worktreePath: claimedMemberPath,
-          });
-        }
+            workspaceMembers,
+          },
+          "coding-session-slot-reclaimed",
+        );
         if (branchRenamed) {
           yield* codingSessionStore.updateBranch(threadId, claimedMember.currentBranch);
           const createdAt = DateTime.formatIso(yield* DateTime.now);
@@ -2164,75 +2273,71 @@ const makeWsRpcLayer = (
                     return {
                       detail,
                       lineRootCommitId: lineRootCommitIdFor(detail, String(session.value.commitId)),
-                      repositoryId: session.value.repositoryId,
-                      storedCommitOid: session.value.lineBranchMissingOid,
+                      repositoryIds:
+                        session.value.repositories?.map((repository) => repository.repositoryId) ??
+                        (session.value.repositoryId == null ? [] : [session.value.repositoryId]),
                     };
                   })
-                : planningStore.getPlanSnapshot({ planId: input.planId }).pipe(
-                    Effect.map((detail) => ({
+                : Effect.gen(function* () {
+                    const detail = yield* planningStore.getPlanSnapshot({ planId: input.planId });
+                    const repositoryIds =
+                      input.repositoryId === undefined
+                        ? (yield* repositoryStore.getSnapshot).projectRepositories
+                            .filter((link) => link.projectId === detail.plan.projectId)
+                            .map((link) => link.repositoryId)
+                        : [input.repositoryId];
+                    return {
                       detail,
                       lineRootCommitId: lineRootCommitIdFor(detail, String(input.commitId)),
-                      repositoryId: input.repositoryId,
-                      storedCommitOid: null,
-                    })),
-                  );
-              const line = yield* lineBranchStore.get({
-                lineRootCommitId: resolution.lineRootCommitId,
-                repositoryId: resolution.repositoryId,
-              });
-              if (Option.isNone(line)) {
-                return yield* new MercurianPlanningError({
-                  operation: "recreateLineBranch",
-                  cause: new Error("The line branch record is missing"),
-                });
-              }
+                      repositoryIds,
+                    };
+                  });
               const repositorySnapshot = yield* repositoryStore.getSnapshot;
-              const repository = repositorySnapshot.repositories.find(
-                (candidate) => candidate.repositoryId === resolution.repositoryId,
-              );
-              if (repository === undefined || !repository.hasGit) {
-                return yield* new MercurianPlanningError({
-                  operation: "recreateLineBranch",
-                  cause: new Error("The line repository is missing or is not a Git repository"),
+              // Recreate every missing branch of the line across the repositories
+              // asked for; a branch that still exists is left alone. The line
+              // continues from the chain's recorded commit in each repository.
+              const recreated: Array<{ readonly branch: string; readonly commitOid: string }> = [];
+              for (const repositoryId of resolution.repositoryIds) {
+                const line = yield* lineBranchStore.get({
+                  lineRootCommitId: resolution.lineRootCommitId,
+                  repositoryId,
                 });
-              }
-              const resolveCommit = Effect.fn("ws.recreateLineBranch.resolveCommit")(function* (
-                ref: string,
-              ) {
-                const result = yield* gitDriver.execute({
-                  operation: "ws.recreateLineBranch.resolveCommit",
+                if (Option.isNone(line)) continue;
+                const repository = repositorySnapshot.repositories.find(
+                  (candidate) => candidate.repositoryId === repositoryId,
+                );
+                if (repository === undefined || !repository.hasGit) continue;
+                const resolveCommit = Effect.fn("ws.recreateLineBranch.resolveCommit")(function* (
+                  ref: string,
+                ) {
+                  const result = yield* gitDriver.execute({
+                    operation: "ws.recreateLineBranch.resolveCommit",
+                    cwd: repository.path,
+                    args: ["rev-parse", "--verify", "--quiet", ref],
+                    allowNonZeroExit: true,
+                  });
+                  return result.exitCode === 0 ? result.stdout.trim() || null : null;
+                });
+                if ((yield* resolveCommit(`refs/heads/${line.value.branch}`)) !== null) continue;
+                const snapshotRef = lineSnapshotRef(resolution.lineRootCommitId);
+                const commitOid =
+                  (yield* resolveCommit(`${snapshotRef}^2`)) ??
+                  (yield* resolveCommit(`${snapshotRef}^1`)) ??
+                  line.value.baseOid;
+                yield* gitDriver.execute({
+                  operation: "ws.recreateLineBranch.create",
                   cwd: repository.path,
-                  args: ["rev-parse", "--verify", "--quiet", ref],
-                  allowNonZeroExit: true,
+                  args: ["branch", line.value.branch, commitOid],
                 });
-                return result.exitCode === 0 ? result.stdout.trim() || null : null;
-              });
-              const snapshotRef = lineSnapshotRef(resolution.lineRootCommitId);
-              const commitOid =
-                resolution.storedCommitOid ??
-                (yield* resolveCommit(`refs/heads/${line.value.branch}^{commit}`)) ??
-                (yield* resolveCommit(`${snapshotRef}^2`)) ??
-                (yield* resolveCommit(`${snapshotRef}^1`)) ??
-                line.value.baseOid;
-              const existing = yield* gitDriver.execute({
-                operation: "ws.recreateLineBranch.verifyMissing",
-                cwd: repository.path,
-                args: ["rev-parse", "--verify", "--quiet", `refs/heads/${line.value.branch}`],
-                allowNonZeroExit: true,
-              });
-              if (existing.exitCode === 0) {
+                recreated.push({ branch: line.value.branch, commitOid });
+              }
+              if (recreated.length === 0) {
                 return yield* new MercurianPlanningError({
                   operation: "recreateLineBranch",
-                  cause: new Error(`Branch ${line.value.branch} already exists`),
+                  cause: new Error("No line branch is missing in the repositories asked for"),
                 });
               }
-              yield* gitDriver.execute({
-                operation: "ws.recreateLineBranch.create",
-                cwd: repository.path,
-                args: ["branch", line.value.branch, commitOid],
-              });
               for (const session of yield* codingSessionStore.listAll) {
-                if (session.repositoryId !== resolution.repositoryId) continue;
                 const detail =
                   session.planId === resolution.detail.plan.planId
                     ? resolution.detail
@@ -2244,7 +2349,7 @@ const makeWsRpcLayer = (
                   yield* codingSessionStore.recordLineBranchMissing(session.threadId, null);
                 }
               }
-              return { branch: line.value.branch, commitOid };
+              return recreated[0]!;
             }).pipe(
               Effect.mapError((cause) =>
                 cause._tag === "MercurianPlanningError"
@@ -2563,70 +2668,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.tryImplement]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.tryImplement,
-            planningAssistant
-              .tryImplement({
-                planId: input.planId,
-                ...(input.parentCommitId === undefined
-                  ? {}
-                  : { parentCommitId: CommitId.make(input.parentCommitId) }),
-              })
-              .pipe(
-                Effect.as({}),
-                Effect.mapError((cause) =>
-                  isPlanNotFoundError(cause) ||
-                  isPlanTurnActiveError(cause) ||
-                  isImplementBlockedError(cause)
-                    ? cause
-                    : new MercurianPlanningError({ operation: "tryImplement", cause }),
-                ),
-              ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.confirmSplits]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.confirmSplits,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                planningStore.saveSplits({
-                  planId: input.planId,
-                  parentCommitId: CommitId.make(input.parentCommitId),
-                  splits: input.splits,
-                  createdAt,
-                }),
-              ),
-              Effect.tap((revisions) =>
-                Effect.forEach(
-                  revisions,
-                  (revision) =>
-                    revision.split === undefined
-                      ? Effect.void
-                      : planningAssistant.publishImplementReady({
-                          planId: input.planId,
-                          ready: {
-                            commitId: MercurianCommitId.make(revision.commitId),
-                            ...revision.split,
-                          },
-                        }),
-                  { discard: true },
-                ),
-              ),
-              Effect.tap(() => planningAssistant.clearImplementProposal(input.planId)),
-              Effect.map((revisions) =>
-                revisions.map((revision) => MercurianCommitId.make(revision.commitId)),
-              ),
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) ||
-                isPlanTurnActiveError(cause) ||
-                isConfirmSplitsBlockedError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "confirmSplits", cause }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.confirmMemoryAmendment]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.confirmMemoryAmendment,
@@ -2694,12 +2735,6 @@ const makeWsRpcLayer = (
                     : new MercurianPlanningError({ operation: "startCodingSession", cause }),
                 ),
               ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.cancelImplementProposal]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.cancelImplementProposal,
-            planningAssistant.cancelImplementProposal(input.planId).pipe(Effect.as({})),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
@@ -2936,40 +2971,25 @@ const makeWsRpcLayer = (
                         // with no frame replay (ADR 002 §3).
                         Effect.all({
                           inFlightTurns: planningAssistant.inFlightTurns(input.planId),
-                          inFlightImplement: planningAssistant.inFlightImplement(input.planId),
-                          implementProposal: planningAssistant.implementProposal(input.planId),
                           memoryAmendmentProposal: planningAssistant.memoryAmendmentProposal(
                             input.planId,
                           ),
                         }).pipe(
-                          Effect.map(
-                            ({
-                              inFlightTurns,
-                              inFlightImplement,
-                              implementProposal,
-                              memoryAmendmentProposal,
-                            }) => ({
-                              cursor: detail.snapshotSequence,
-                              items: [
-                                {
-                                  kind: "snapshot" as const,
-                                  snapshot: {
-                                    ...toWirePlanDetail(detail),
-                                    inFlightTurns,
-                                    ...(inFlightImplement === undefined
-                                      ? {}
-                                      : { inFlightImplement }),
-                                    ...(implementProposal === undefined
-                                      ? {}
-                                      : { implementProposal }),
-                                    ...(memoryAmendmentProposal === undefined
-                                      ? {}
-                                      : { memoryAmendmentProposal }),
-                                  },
+                          Effect.map(({ inFlightTurns, memoryAmendmentProposal }) => ({
+                            cursor: detail.snapshotSequence,
+                            items: [
+                              {
+                                kind: "snapshot" as const,
+                                snapshot: {
+                                  ...toWirePlanDetail(detail),
+                                  inFlightTurns,
+                                  ...(memoryAmendmentProposal === undefined
+                                    ? {}
+                                    : { memoryAmendmentProposal }),
                                 },
-                              ] satisfies ReadonlyArray<PlanStreamItem>,
-                            }),
-                          ),
+                              },
+                            ] satisfies ReadonlyArray<PlanStreamItem>,
+                          })),
                         ),
                       ),
                       Effect.mapError(toPlanStreamError),
@@ -3892,6 +3912,7 @@ const makeWsRpcLayer = (
                   input.action === "create_pr" || input.action === "commit_push_pr"
                     ? (yield* gitWorkflow.localStatus({ cwd: input.cwd })).refName
                     : null;
+                const repositorySnapshot = yield* repositoryStore.getSnapshot.pipe(Effect.orDie);
                 yield* gitWorkflow
                   .runStackedAction(input, {
                     actionId: input.actionId,
@@ -3907,6 +3928,9 @@ const makeWsRpcLayer = (
                           codingSessionStore,
                           result,
                           sessionBranch,
+                          input.cwd,
+                          projectionSnapshotQuery.getThreadShellById,
+                          repositorySnapshot.repositories,
                         ).pipe(
                           Effect.ignore({ log: true }),
                           Effect.andThen(refreshGitStatus(input.cwd)),

@@ -6500,9 +6500,9 @@ function ChatViewContent(props: ChatViewProps) {
     setExpandedImage(preview);
   }, []);
   const onOpenTurnDiff = useCallback(
-    (turnId: TurnId, filePath?: string) => {
+    (turnId: TurnId, filePath?: string, repositoryId?: string) => {
       if (!isServerThread || !activeThreadRef) return;
-      useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath);
+      useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath, repositoryId);
       useRightPanelStore.getState().open(activeThreadRef, "diff");
       onDiffPanelOpen?.();
     },

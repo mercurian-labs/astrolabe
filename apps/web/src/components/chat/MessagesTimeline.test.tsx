@@ -1,4 +1,10 @@
-import { CheckpointRef, EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import {
+  CheckpointRef,
+  EnvironmentId,
+  MercurianRepositoryId,
+  MessageId,
+  TurnId,
+} from "@t3tools/contracts";
 import { codexFeedbackMessage } from "@t3tools/client-runtime/state/threads";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -400,6 +406,72 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Collapse all folders"');
     expect(markup).toContain('aria-label="Open diff"');
     expect(markup).toContain("1 changed file");
+  });
+
+  it("groups assistant changed files by repository", () => {
+    const assistantMessageId = MessageId.make("message-assistant-multi-repository");
+    const turnId = TurnId.make("turn-multi-repository");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={{
+          turnId,
+          state: "completed",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: MESSAGE_CREATED_AT,
+        }}
+        timelineEntries={[
+          {
+            id: "entry-assistant-multi-repository",
+            kind: "message",
+            createdAt: MESSAGE_CREATED_AT,
+            message: {
+              id: assistantMessageId,
+              role: "assistant",
+              text: "Updated both repositories.",
+              turnId,
+              createdAt: MESSAGE_CREATED_AT,
+              updatedAt: MESSAGE_CREATED_AT,
+              streaming: false,
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              assistantMessageId,
+              {
+                turnId,
+                checkpointTurnCount: 1,
+                checkpointRef: CheckpointRef.make("checkpoint-multi-repository"),
+                status: "ready",
+                files: [{ path: "server.ts", kind: "modified", additions: 2, deletions: 1 }],
+                repositories: [
+                  {
+                    repositoryId: MercurianRepositoryId.make("repository-server"),
+                    repositoryName: "server",
+                    files: [{ path: "server.ts", kind: "modified", additions: 2, deletions: 1 }],
+                  },
+                  {
+                    repositoryId: MercurianRepositoryId.make("repository-web"),
+                    repositoryName: "web",
+                    files: [{ path: "App.tsx", kind: "modified", additions: 4, deletions: 0 }],
+                  },
+                ],
+                assistantMessageId,
+                completedAt: MESSAGE_CREATED_AT,
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(markup).toContain(">server</p>");
+    expect(markup).toContain(">web</p>");
+    expect(markup).toContain("server.ts");
+    expect(markup).toContain("App.tsx");
+    expect(markup.match(/1 changed file/g)).toHaveLength(2);
   });
 
   it("treats only the strict list end as the live edge", async () => {

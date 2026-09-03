@@ -43,6 +43,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "The header coordinates router links, repository state, thread commands, source control, previews, and scripts.",
   },
+  "src/components/mercurian/NarrowedGroundingNotice.tsx": {
+    category: "deferred",
+    reason:
+      "A future entry should show the notice narrowed to one repository and to several, as the session view and the plan timeline render it.",
+  },
   "src/components/mercurian/LineBranchMissingBanner.tsx": {
     category: "requires-live-workspace",
     reason:
@@ -172,11 +177,6 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     category: "deferred",
     reason:
       "A future entry should show the delayed open hover card and its pointer-safe handoff from trigger to popup.",
-  },
-  "src/components/mercurian/SplitSheet.tsx": {
-    category: "deferred",
-    reason:
-      "A future entry should show atomic, multi-repository split, and already-landed implementation states.",
   },
   "src/components/mercurian/TrackersSettings.tsx": {
     category: "requires-live-workspace",

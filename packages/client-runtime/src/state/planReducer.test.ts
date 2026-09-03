@@ -7,7 +7,6 @@ import {
   PlanId,
   PlanTurnId,
   type PlanDetail,
-  type PlanImplementReady,
   type PlanCodingSessionRecord,
   type PlanQuestion,
   type PlanStreamItem,
@@ -50,7 +49,6 @@ const snapshot: PlanDetail = {
   spec: null,
   timeline: [message("commit-1", 1, "Reshape the sidebar")],
   snapshotSequence: 1,
-  readyCommits: [],
   codingSessions: [],
   inFlightTurns: [],
 };
@@ -483,115 +481,7 @@ describe("applyPlanStreamItem concurrent turns", () => {
   });
 });
 
-describe("applyPlanStreamItem implement frames", () => {
-  const implementTurnId = PlanTurnId.make("implement-1");
-  const implement = {
-    turnId: implementTurnId,
-    parentCommitId: MercurianCommitId.make("commit-1"),
-    grounding: [],
-  };
-  const proposal = {
-    turnId: implementTurnId,
-    parentCommitId: MercurianCommitId.make("commit-1"),
-    verdict: {
-      kind: "atomic" as const,
-      repositoryId: MercurianRepositoryId.make("repo-1"),
-      repositoryName: "server",
-    },
-  };
-
-  it("starts, routes grounding, and publishes the proposal", () => {
-    const item = { kind: "search" as const, label: "saveSplits" };
-    const state = fold([
-      { kind: "snapshot", snapshot },
-      { kind: "implement-started", implement },
-      { kind: "turn-grounding", turnId: implementTurnId, item },
-      { kind: "implement-analyzed", proposal },
-    ]);
-    expect(state.detail?.inFlightImplement).toBeUndefined();
-    expect(state.detail?.implementProposal).toEqual(proposal);
-    expect(state.implementFailure).toBeNull();
-  });
-
-  it("folds a short-circuited proposal with no in-flight analysis", () => {
-    const state = fold([
-      { kind: "snapshot", snapshot },
-      { kind: "implement-analyzed", proposal },
-    ]);
-    expect(state.detail?.implementProposal).toEqual(proposal);
-  });
-
-  it("folds a proposal beside a streaming reply, but not against a different live analysis", () => {
-    // A reply on some branch is no reason to drop the analysis; only a
-    // different live implement marks this one stale.
-    const besideReply = fold([
-      { kind: "snapshot", snapshot },
-      started,
-      { kind: "implement-analyzed", proposal },
-    ]);
-    expect(besideReply.detail?.implementProposal).toEqual(proposal);
-    expect(besideReply.detail?.inFlightTurns[0]?.turnId).toBe(turnId);
-
-    const otherAnalysis = fold([
-      { kind: "snapshot", snapshot },
-      {
-        kind: "implement-started",
-        implement: { ...implement, turnId: PlanTurnId.make("newer-implement") },
-      },
-      { kind: "implement-analyzed", proposal },
-    ]);
-    expect(otherAnalysis.detail?.implementProposal).toBeUndefined();
-  });
-
-  it("inserts readiness before its commit and replaces readiness on snapshot", () => {
-    const ready: PlanImplementReady = {
-      commitId: MercurianCommitId.make("commit-not-here-yet"),
-      repositoryId: MercurianRepositoryId.make("repo-1"),
-      repositoryName: "server",
-    };
-    const inserted = fold([
-      { kind: "snapshot", snapshot },
-      { kind: "implement-ready", ready },
-    ]);
-    expect(inserted.readyCommits.get(ready.commitId)).toEqual(ready);
-    expect(inserted.detail?.timeline.some((item) => item.commitId === ready.commitId)).toBe(false);
-
-    const replacement: PlanImplementReady = {
-      ...ready,
-      commitId: MercurianCommitId.make("commit-replacement"),
-      repositoryName: "web",
-    };
-    const resnapshotted = applyPlanStreamItem(inserted, {
-      kind: "snapshot",
-      snapshot: { ...snapshot, readyCommits: [replacement] },
-    });
-    expect([...resnapshotted.readyCommits.values()]).toEqual([replacement]);
-  });
-
-  it("records failure and clears it on the next analysis", () => {
-    const failed = fold([
-      { kind: "snapshot", snapshot },
-      { kind: "implement-started", implement },
-      { kind: "implement-failed", turnId: implementTurnId, reason: "invalid-proposal" },
-    ]);
-    expect(failed.detail?.inFlightImplement).toBeUndefined();
-    expect(failed.implementFailure).toBe("invalid-proposal");
-    const restarted = applyPlanStreamItem(failed, { kind: "implement-started", implement });
-    expect(restarted.implementFailure).toBeNull();
-  });
-
-  it("keeps proposal state through a snapshot join and clears stale proposals on turns", () => {
-    const joined = fold([
-      { kind: "snapshot", snapshot: { ...snapshot, implementProposal: proposal } },
-    ]);
-    expect(joined.detail?.implementProposal).toEqual(proposal);
-    expect(applyPlanStreamItem(joined, started).detail?.implementProposal).toBeUndefined();
-    expect(
-      applyPlanStreamItem(joined, { kind: "implement-started", implement }).detail
-        ?.implementProposal,
-    ).toBeUndefined();
-  });
-
+describe("applyPlanStreamItem historical split revisions", () => {
   it("appends a split commit without changing plan text", () => {
     const split = {
       _tag: "plan-revision" as const,
@@ -604,30 +494,12 @@ describe("applyPlanStreamItem implement frames", () => {
     const state = fold([
       {
         kind: "snapshot",
-        snapshot: { ...snapshot, planText: "# Parent plan", implementProposal: proposal },
+        snapshot: { ...snapshot, planText: "# Parent plan" },
       },
       { kind: "commit", sequence: 2, item: split },
     ]);
     expect(state.detail?.planText).toBe("# Parent plan");
     expect(state.detail?.timeline.at(-1)).toEqual(split);
-    expect(state.detail?.implementProposal).toBeUndefined();
-  });
-
-  it("clears a matching cancelled proposal and ignores a stale cancellation", () => {
-    const joined = fold([
-      { kind: "snapshot", snapshot: { ...snapshot, implementProposal: proposal } },
-    ]);
-    const unmatched = applyPlanStreamItem(joined, {
-      kind: "implement-cancelled",
-      turnId: PlanTurnId.make("other-implement"),
-    });
-    expect(unmatched.detail?.implementProposal).toEqual(proposal);
-
-    const cancelled = applyPlanStreamItem(unmatched, {
-      kind: "implement-cancelled",
-      turnId: implementTurnId,
-    });
-    expect(cancelled.detail?.implementProposal).toBeUndefined();
   });
 });
 

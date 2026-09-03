@@ -82,6 +82,16 @@ vi.mock("../../state/mercurianRepositories", () => ({
           createdAt: "2026-08-20T00:00:00.000Z",
           updatedAt: "2026-08-20T00:00:00.000Z",
         },
+        {
+          repositoryId: "repository-web",
+          name: "Web",
+          path: "/web",
+          hasGit: true,
+          hosting: null,
+          scripts: [],
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
       ],
       projectRepositories: [],
     },
@@ -140,7 +150,11 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-import { CodingSessionHeader, resolveCodingSessionRename } from "./CodingSessionHeader";
+import {
+  CodingSessionHeader,
+  resolveCodingSessionMember,
+  resolveCodingSessionRename,
+} from "./CodingSessionHeader";
 
 const environmentId = EnvironmentId.make("environment-test");
 const threadId = ThreadId.make("thread-test");
@@ -198,6 +212,45 @@ describe("CodingSessionHeader", () => {
     expect(markup).toContain('href="/"');
     expect(markup).toContain("Plans");
     expect(markup).toContain("Detached session");
+  });
+
+  it("shows a multi-repository switcher and scopes controls to the selected member", () => {
+    const workspaceMembers = [
+      {
+        repositoryId: MercurianRepositoryId.make("repository-test"),
+        worktreePath: "/slot/server",
+      },
+      {
+        repositoryId: MercurianRepositoryId.make("repository-web"),
+        worktreePath: "/slot/web",
+      },
+    ];
+    const markup = renderToStaticMarkup(
+      <CodingSessionHeader
+        environmentId={environmentId}
+        planId={PlanId.make("plan-test")}
+        planTitle="Reviewed plan"
+        threadId={threadId}
+        threadTitle="Implementation session"
+        threadRef={threadRef}
+        worktreePath="/slot/server"
+        repositoryId={null}
+        workspaceMembers={workspaceMembers}
+        unreachableRepositories={["Web"]}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Repository"');
+    expect(markup).toContain('value="repository-test" selected=""');
+    expect(markup).toContain(">Astrolabe</option>");
+    expect(markup).toContain(">Web</option>");
+    expect(markup).toContain('data-git-cwd="/slot/server"');
+    expect(markup).toContain('data-open-in-cwd="/slot/server"');
+    expect(markup).toContain('data-script-cwd="/slot/server"');
+    expect(markup).toContain("Grounded without Web");
+    expect(resolveCodingSessionMember(workspaceMembers, "repository-web")?.worktreePath).toBe(
+      "/slot/web",
+    );
   });
 
   it("uses the shared explicit rename commit rule so generated completion cannot win", () => {

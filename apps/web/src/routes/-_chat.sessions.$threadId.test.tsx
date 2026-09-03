@@ -115,6 +115,7 @@ describe("session thread route", () => {
         repositoryId={repositoryId}
         branch="mercurian/session"
         lineBranchMissingOid="1234567890abcdef"
+        workspaceMembers={null}
       />,
     );
 
@@ -154,6 +155,7 @@ describe("session thread route", () => {
         repositoryId={repositoryId}
         branch="mercurian/session"
         lineBranchMissingOid={null}
+        workspaceMembers={null}
       />,
     );
 
@@ -177,6 +179,7 @@ describe("session thread route", () => {
         repositoryId={repositoryId}
         branch="mercurian/session"
         lineBranchMissingOid={null}
+        workspaceMembers={null}
       />,
     );
     expect(fallbackMarkup).toContain('href="/"');
@@ -199,6 +202,7 @@ describe("session thread route", () => {
         repositoryId={null}
         branch={null}
         lineBranchMissingOid={null}
+        workspaceMembers={null}
       />,
     );
 

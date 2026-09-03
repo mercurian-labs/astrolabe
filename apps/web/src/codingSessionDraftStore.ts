@@ -1,16 +1,12 @@
 import type { ModelSelection } from "@t3tools/contracts";
 import { create } from "zustand";
 
-export const CODING_SESSION_DRAFTS_STORAGE_KEY = "t3code:coding-session-drafts:v1";
+export const CODING_SESSION_DRAFTS_STORAGE_KEY = "t3code:coding-session-drafts:v2";
 
 export interface CodingSessionDraft {
   readonly draftId: string;
   readonly planId: string;
   readonly parentCommitId: string;
-  readonly repositoryId: string;
-  readonly repositoryName: string;
-  readonly baseRef: string;
-  readonly startFromOrigin: boolean;
   readonly runtimeMode: "approval-required" | "auto-accept-edits" | "full-access";
   readonly modelSelection: ModelSelection;
   readonly createdAt: string;
@@ -39,10 +35,6 @@ const isDraft = (value: unknown): value is CodingSessionDraft => {
     typeof draft.draftId === "string" &&
     typeof draft.planId === "string" &&
     typeof draft.parentCommitId === "string" &&
-    typeof draft.repositoryId === "string" &&
-    typeof draft.repositoryName === "string" &&
-    typeof draft.baseRef === "string" &&
-    typeof draft.startFromOrigin === "boolean" &&
     (draft.runtimeMode === "approval-required" ||
       draft.runtimeMode === "auto-accept-edits" ||
       draft.runtimeMode === "full-access") &&
@@ -109,9 +101,7 @@ interface CodingSessionDraftStore {
   readonly openDraft: (draft: CodingSessionDraft) => CodingSessionDraft;
   readonly updateDraft: (
     draftId: string,
-    patch: Partial<
-      Pick<CodingSessionDraft, "baseRef" | "startFromOrigin" | "runtimeMode" | "modelSelection">
-    >,
+    patch: Partial<Pick<CodingSessionDraft, "runtimeMode" | "modelSelection">>,
   ) => void;
   readonly completeStart: (draftId: string) => void;
   readonly discardDraft: (draftId: string) => void;

@@ -76,18 +76,13 @@ import {
 } from "./orchestration.ts";
 import {
   CodingSessionBlockedError,
-  ConfirmSplitsBlockedError,
   ConfirmMemoryAmendmentBlockedError,
-  ImplementBlockedError,
   MERCURIAN_WS_METHODS,
   MercurianAnswerPlanningQuestionInput,
   MercurianAppendPlanMessageInput,
   MercurianArchivePlanInput,
-  MercurianCancelImplementProposalInput,
   MercurianCancelMemoryAmendmentInput,
   MercurianConfirmMemoryAmendmentInput,
-  MercurianConfirmSplitsInput,
-  MercurianConfirmSplitsResult,
   MercurianStartCodingSessionInput,
   MercurianStartCodingSessionResult,
   MercurianCreatePlanInput,
@@ -116,7 +111,6 @@ import {
   MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
-  MercurianTryImplementInput,
   NoPendingQuestionError,
   PlanDeleteBlockedError,
   PlanDetail,
@@ -1247,30 +1241,6 @@ export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSp
   ]),
 });
 
-export const WsMercurianTryImplementRpc = Rpc.make(MERCURIAN_WS_METHODS.tryImplement, {
-  payload: MercurianTryImplementInput,
-  success: MercurianPlanAcknowledged,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    ImplementBlockedError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-export const WsMercurianConfirmSplitsRpc = Rpc.make(MERCURIAN_WS_METHODS.confirmSplits, {
-  payload: MercurianConfirmSplitsInput,
-  success: MercurianConfirmSplitsResult,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    ConfirmSplitsBlockedError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
 export const WsMercurianConfirmMemoryAmendmentRpc = Rpc.make(
   MERCURIAN_WS_METHODS.confirmMemoryAmendment,
   {
@@ -1308,15 +1278,6 @@ export const WsMercurianStartCodingSessionRpc = Rpc.make(MERCURIAN_WS_METHODS.st
     EnvironmentAuthorizationError,
   ]),
 });
-
-export const WsMercurianCancelImplementProposalRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.cancelImplementProposal,
-  {
-    payload: MercurianCancelImplementProposalInput,
-    success: MercurianPlanAcknowledged,
-    error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
-  },
-);
 
 // The planning turn's two acts. Turns are never started by RPC — a turn
 // starts server-side when a human message commits — so the only verbs a
@@ -1746,12 +1707,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSaveSpecRevisionRpc,
   WsMercurianRefreshSpecRpc,
-  WsMercurianTryImplementRpc,
-  WsMercurianConfirmSplitsRpc,
   WsMercurianConfirmMemoryAmendmentRpc,
   WsMercurianCancelMemoryAmendmentRpc,
   WsMercurianStartCodingSessionRpc,
-  WsMercurianCancelImplementProposalRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,

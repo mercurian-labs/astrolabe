@@ -86,6 +86,7 @@ import * as VcsProcess from "../src/vcs/VcsProcess.ts";
 import * as AgentAwarenessRelay from "../src/relay/AgentAwarenessRelay.ts";
 import * as CodingSessionStore from "../src/mercurian/codingSessions/CodingSessionStore.ts";
 import * as LineBranchStore from "../src/mercurian/commitTree/LineBranchStore.ts";
+import * as RepositoryStore from "../src/mercurian/repositories/RepositoryStore.ts";
 import * as SlotStore from "../src/mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SnapshotChain from "../src/mercurian/worktreeSlots/SnapshotChain.ts";
@@ -381,6 +382,12 @@ export const makeOrchestrationIntegrationHarness = (
           create: () => Effect.void,
           repointIfUnbuilt: () => Effect.succeed(false),
           markBuilt: () => Effect.void,
+          changes: Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.mock(RepositoryStore.RepositoryStore)({
+          getSnapshot: Effect.succeed({ repositories: [], projectRepositories: [] }),
           changes: Stream.empty,
         }),
       ),

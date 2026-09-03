@@ -35,15 +35,16 @@ describe("SessionScriptsControl logic", () => {
     const request = buildSessionScriptRunRequest({
       script: script!,
       threadId: ThreadId.make("thread-session"),
+      repositoryId: "repository-server",
       repositoryPath: "/repo/root",
       worktreePath: "/repo/worktrees/session",
     });
 
     expect(request).toEqual({
-      terminalId: "script-dev",
+      terminalId: "script-repository-server-dev",
       openInput: {
         threadId: "thread-session",
-        terminalId: "script-dev",
+        terminalId: "script-repository-server-dev",
         cwd: "/repo/worktrees/session",
         worktreePath: "/repo/worktrees/session",
         env: {
@@ -53,7 +54,7 @@ describe("SessionScriptsControl logic", () => {
       },
       writeInput: {
         threadId: "thread-session",
-        terminalId: "script-dev",
+        terminalId: "script-repository-server-dev",
         data: "pnpm dev\r",
       },
     });

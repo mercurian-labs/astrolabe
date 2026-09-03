@@ -30,13 +30,14 @@ export function buildSessionScriptRunRequest(input: {
   readonly script: ProjectScript;
   readonly threadId: ThreadId;
   readonly repositoryPath: string;
+  readonly repositoryId: string;
   readonly worktreePath: string;
 }): {
   readonly terminalId: string;
   readonly openInput: TerminalOpenInput;
   readonly writeInput: TerminalWriteInput;
 } {
-  const terminalId = `script-${input.script.id}`;
+  const terminalId = `script-${input.repositoryId}-${input.script.id}`;
   return {
     terminalId,
     openInput: {

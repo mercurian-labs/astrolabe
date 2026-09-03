@@ -5,10 +5,12 @@ import * as NodePath from "node:path";
 
 import {
   ModelSelection,
+  MercurianRepositoryId,
   ProviderRuntimeEvent,
   ProviderSession,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ThreadWorkspaceMember,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import {
@@ -147,6 +149,8 @@ describe("ProviderCommandReactor", () => {
     readonly baseDir?: string;
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
+    readonly groundingRoots?: "cwd-only" | "multi";
+    readonly workspaceMembers?: ReadonlyArray<ThreadWorkspaceMember>;
     readonly requiresNewThreadForModelChange?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
     readonly titleRegenerationBeforeStart?: "one" | "two";
@@ -330,7 +334,7 @@ describe("ProviderCommandReactor", () => {
       getCapabilities: (_provider) =>
         Effect.succeed({
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
-          groundingRoots: "multi" as const,
+          groundingRoots: input?.groundingRoots ?? "multi",
         }),
       getInstanceInfo: (instanceId) => {
         const raw = String(instanceId);
@@ -460,7 +464,10 @@ describe("ProviderCommandReactor", () => {
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         branch: null,
-        worktreePath: null,
+        worktreePath: input?.workspaceMembers?.[0]?.worktreePath ?? null,
+        ...(input?.workspaceMembers === undefined
+          ? {}
+          : { workspaceMembers: input.workspaceMembers }),
         createdAt: now,
       }),
     );
@@ -567,6 +574,91 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.status).toBe("starting");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("starts a multi-root provider with every additional workspace member", async () => {
+    const harness = await createHarness({
+      groundingRoots: "multi",
+      workspaceMembers: [
+        {
+          repositoryId: MercurianRepositoryId.make("repository-server"),
+          worktreePath: "/tmp/project/server",
+        },
+        {
+          repositoryId: MercurianRepositoryId.make("repository-web"),
+          worktreePath: "/tmp/project/web",
+        },
+      ],
+    });
+    expect(
+      (await harness.readModel()).threads.find((thread) => thread.id === ThreadId.make("thread-1"))
+        ?.workspaceMembers,
+    ).toEqual([
+      {
+        repositoryId: MercurianRepositoryId.make("repository-server"),
+        worktreePath: "/tmp/project/server",
+      },
+      {
+        repositoryId: MercurianRepositoryId.make("repository-web"),
+        worktreePath: "/tmp/project/web",
+      },
+    ]);
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-multi-root"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("message-multi-root"),
+          role: "user",
+          text: "Edit both repositories",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      cwd: "/tmp/project/server",
+      additionalDirectories: ["/tmp/project/web"],
+    });
+  });
+
+  it("keeps a cwd-only provider on the primary workspace member", async () => {
+    const harness = await createHarness({
+      groundingRoots: "cwd-only",
+      workspaceMembers: [
+        {
+          repositoryId: MercurianRepositoryId.make("repository-server"),
+          worktreePath: "/tmp/project/server",
+        },
+        {
+          repositoryId: MercurianRepositoryId.make("repository-web"),
+          worktreePath: "/tmp/project/web",
+        },
+      ],
+    });
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-cwd-only"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("message-cwd-only"),
+          role: "user",
+          text: "Edit what you can reach",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({ cwd: "/tmp/project/server" });
+    expect(harness.startSession.mock.calls[0]?.[1]).not.toHaveProperty("additionalDirectories");
   });
 
   effectIt.effect("projects starting before a slow provider session finishes", () =>

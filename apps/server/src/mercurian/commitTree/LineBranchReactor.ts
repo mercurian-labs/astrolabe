@@ -65,39 +65,47 @@ function ancestorsAt(detail: PlanDetail, commitId: string): ReadonlySet<string> 
   return seen;
 }
 
-function inheritedCommitOid(detail: PlanDetail, lineRootCommitId: string, repositoryId: string) {
+/** Ancestor sessions on the line, newest first, with their records. */
+function ancestorSessions(detail: PlanDetail, lineRootCommitId: string) {
   const ancestors = ancestorsAt(detail, lineRootCommitId);
   const records = new Map(
     detail.codingSessions.map((session) => [String(session.commitId), session]),
   );
   return detail.timeline
     .filter(
-      (item) =>
-        item._tag === "coding-session" &&
-        item.repositoryId === repositoryId &&
-        ancestors.has(String(item.commitId)) &&
-        records.get(String(item.commitId))?.settledCommitOid !== null,
+      (item): item is Extract<PlanTimelineItem, { readonly _tag: "coding-session" }> =>
+        item._tag === "coding-session" && ancestors.has(String(item.commitId)),
     )
     .toSorted((left, right) => right.sequence - left.sequence)
-    .map((item) => records.get(String(item.commitId))?.settledCommitOid)
+    .map((item) => ({ item, record: records.get(String(item.commitId)) }));
+}
+
+// Where a new line's branch starts in a repository: the nearest ancestor
+// session's recorded branch tip there. Sessions recorded before project
+// scoping carry one repository's facts on the record itself.
+function inheritedCommitOid(detail: PlanDetail, lineRootCommitId: string, repositoryId: string) {
+  return ancestorSessions(detail, lineRootCommitId)
+    .map(({ item, record }) => {
+      const row = record?.repositories?.find(
+        (repository) => repository.repositoryId === repositoryId,
+      );
+      if (row !== undefined) return row.branchTipOid ?? undefined;
+      return item.repositoryId === repositoryId ? record?.settledCommitOid : undefined;
+    })
     .find((oid): oid is string => typeof oid === "string");
 }
 
+// The snapshot a new line lays over its branch: the same ancestor's chain head
+// in that repository.
 function inheritedSnapshotOid(detail: PlanDetail, lineRootCommitId: string, repositoryId: string) {
-  const ancestors = ancestorsAt(detail, lineRootCommitId);
-  const records = new Map(
-    detail.codingSessions.map((session) => [String(session.commitId), session]),
-  );
-  return detail.timeline
-    .filter(
-      (item) =>
-        item._tag === "coding-session" &&
-        item.repositoryId === repositoryId &&
-        ancestors.has(String(item.commitId)) &&
-        records.get(String(item.commitId))?.snapshotOid !== null,
-    )
-    .toSorted((left, right) => right.sequence - left.sequence)
-    .map((item) => records.get(String(item.commitId))?.snapshotOid)
+  return ancestorSessions(detail, lineRootCommitId)
+    .map(({ item, record }) => {
+      const row = record?.repositories?.find(
+        (repository) => repository.repositoryId === repositoryId,
+      );
+      if (row !== undefined) return row.snapshotOid ?? undefined;
+      return item.repositoryId === repositoryId ? record?.snapshotOid : undefined;
+    })
     .find((oid): oid is string => typeof oid === "string");
 }
 
@@ -105,9 +113,9 @@ export const make = Effect.gen(function* () {
   const planning = yield* PlanningStore;
   const repositories = yield* RepositoryStore;
   const branches = yield* LineBranchStore;
+  const slots = yield* SlotStore;
   const git = yield* GitVcsDriver;
   const settings = yield* ServerSettingsService;
-  const slots = yield* SlotStore;
 
   const repositoryDefaultOid = Effect.fn("LineBranchReactor.repositoryDefaultOid")(function* (
     path: string,
@@ -143,90 +151,103 @@ export const make = Effect.gen(function* () {
         .map((link) => link.repositoryId);
       for (const root of lineRoots(detail)) {
         for (const repositoryId of linkedRepositoryIds) {
-          const repository = repositorySnapshot.repositories.find(
-            (candidate) => candidate.repositoryId === repositoryId,
-          );
-          if (repository === undefined || !repository.hasGit) continue;
-          const inherited = inheritedCommitOid(detail, String(root.commitId), repositoryId);
-          const inheritedSnapshot = inheritedSnapshotOid(
-            detail,
-            String(root.commitId),
-            repositoryId,
-          );
-          const baseOid = inherited ?? (yield* repositoryDefaultOid(repository.path));
-          const key = {
-            lineRootCommitId: MercurianCommitId.make(root.commitId),
-            repositoryId,
-          };
-          const current = yield* branches.get(key);
-          if (Option.isNone(current)) {
-            const branch = buildLineBranchName(detail.plan.title, String(root.commitId));
-            yield* git.execute({
-              operation: "LineBranchReactor.createBranch",
-              cwd: repository.path,
-              args: ["branch", branch, baseOid],
-            });
-            if (inheritedSnapshot !== undefined) {
-              yield* git.execute({
-                operation: "LineBranchReactor.inheritSnapshot",
-                cwd: repository.path,
-                args: [
-                  "update-ref",
-                  lineSnapshotRef(MercurianCommitId.make(String(root.commitId))),
-                  inheritedSnapshot,
-                ],
-              });
-            }
-            yield* branches.create({
-              ...key,
-              branch,
-              baseOid,
-              built: false,
-              repointHold: null,
-              createdAt: root.createdAt,
-            });
-          } else if (!current.value.built && current.value.baseOid !== baseOid) {
-            const checkedOut = allSlots.some((slot) =>
-              slot.members.some(
-                (member) =>
-                  member.repositoryId === repositoryId &&
-                  member.currentBranch === current.value.branch,
-              ),
+          yield* Effect.gen(function* () {
+            const repository = repositorySnapshot.repositories.find(
+              (candidate) => candidate.repositoryId === repositoryId,
             );
-            if (checkedOut) {
-              yield* branches.recordRepointHold({ ...key, reason: "checked-out" });
-              yield* Effect.logDebug("line-branch re-point held", {
-                lineRootCommitId: key.lineRootCommitId,
-                repositoryId,
-                branch: current.value.branch,
-                hold: "checked-out",
+            if (repository === undefined || !repository.hasGit) return;
+            const inherited = inheritedCommitOid(detail, String(root.commitId), repositoryId);
+            const inheritedSnapshot = inheritedSnapshotOid(
+              detail,
+              String(root.commitId),
+              repositoryId,
+            );
+            const baseOid = inherited ?? (yield* repositoryDefaultOid(repository.path));
+            const key = {
+              lineRootCommitId: MercurianCommitId.make(root.commitId),
+              repositoryId,
+            };
+            const current = yield* branches.get(key);
+            if (Option.isNone(current)) {
+              const branch = buildLineBranchName(detail.plan.title, String(root.commitId));
+              yield* git.execute({
+                operation: "LineBranchReactor.createBranch",
+                cwd: repository.path,
+                args: ["branch", branch, baseOid],
               });
-              continue;
-            }
-            const namedRef = yield* git.execute({
-              operation: "LineBranchReactor.verifyBranch",
-              cwd: repository.path,
-              args: ["rev-parse", "--verify", "--quiet", `refs/heads/${current.value.branch}`],
-              allowNonZeroExit: true,
-            });
-            if (namedRef.exitCode !== 0) {
-              yield* branches.recordRepointHold({ ...key, reason: "name-missing" });
-              yield* Effect.logDebug("line-branch re-point held", {
-                lineRootCommitId: key.lineRootCommitId,
-                repositoryId,
-                branch: current.value.branch,
-                hold: "name-missing",
+              if (inheritedSnapshot !== undefined) {
+                yield* git.execute({
+                  operation: "LineBranchReactor.inheritSnapshot",
+                  cwd: repository.path,
+                  args: [
+                    "update-ref",
+                    lineSnapshotRef(MercurianCommitId.make(String(root.commitId))),
+                    inheritedSnapshot,
+                  ],
+                });
+              }
+              yield* branches.create({
+                ...key,
+                branch,
+                baseOid,
+                built: false,
+                repointHold: null,
+                createdAt: root.createdAt,
               });
-              continue;
+            } else if (!current.value.built && current.value.baseOid !== baseOid) {
+              const checkedOut = allSlots.some((slot) =>
+                slot.members.some(
+                  (member) =>
+                    member.repositoryId === repositoryId &&
+                    member.currentBranch === current.value.branch,
+                ),
+              );
+              if (checkedOut) {
+                yield* branches.recordRepointHold({ ...key, reason: "checked-out" });
+                yield* Effect.logDebug("line-branch re-point held", {
+                  lineRootCommitId: key.lineRootCommitId,
+                  repositoryId,
+                  branch: current.value.branch,
+                  hold: "checked-out",
+                });
+                return;
+              }
+              const namedRef = yield* git.execute({
+                operation: "LineBranchReactor.verifyBranch",
+                cwd: repository.path,
+                args: ["rev-parse", "--verify", "--quiet", `refs/heads/${current.value.branch}`],
+                allowNonZeroExit: true,
+              });
+              if (namedRef.exitCode !== 0) {
+                yield* branches.recordRepointHold({ ...key, reason: "name-missing" });
+                yield* Effect.logDebug("line-branch re-point held", {
+                  lineRootCommitId: key.lineRootCommitId,
+                  repositoryId,
+                  branch: current.value.branch,
+                  hold: "name-missing",
+                });
+                return;
+              }
+              yield* git.execute({
+                operation: "LineBranchReactor.repointBranch",
+                cwd: repository.path,
+                args: ["branch", "-f", current.value.branch, baseOid],
+              });
+              yield* branches.repointIfUnbuilt({ ...key, baseOid });
+              yield* branches.recordRepointHold({ ...key, reason: null });
             }
-            yield* git.execute({
-              operation: "LineBranchReactor.repointBranch",
-              cwd: repository.path,
-              args: ["branch", "-f", current.value.branch, baseOid],
-            });
-            yield* branches.repointIfUnbuilt({ ...key, baseOid });
-            yield* branches.recordRepointHold({ ...key, reason: null });
-          }
+          }).pipe(
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.failCause(cause)
+                : Effect.logWarning("line-branch reconciliation entry failed", {
+                    planId: plan.planId,
+                    lineRootCommitId: root.commitId,
+                    repositoryId,
+                    cause: Cause.pretty(cause),
+                  }),
+            ),
+          );
         }
       }
     }

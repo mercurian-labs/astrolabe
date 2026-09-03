@@ -1,13 +1,11 @@
 import { isCodingSessionBlockedError, type ModelSelection } from "@t3tools/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
 import { usePrimarySettings } from "../../hooks/useSettings";
-import { usePrimaryEnvironmentId } from "../../state/environments";
-import { useStartCodingSession } from "../../state/mercurian";
-import { useRepositories } from "../../state/mercurianRepositories";
+import { useMercurianTree, useStartCodingSession } from "../../state/mercurian";
+import { useProjectRepositories } from "../../state/mercurianRepositories";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
-import { usePaginatedBranches } from "../../state/queries";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -21,8 +19,6 @@ import {
 import {
   CODING_SESSION_RUNTIME_MODES,
   codingSessionModelGroups,
-  localBranchOptions,
-  seedBaseRef,
   startCodingSessionPayload,
 } from "./codingSessionDraft.logic";
 
@@ -35,23 +31,16 @@ export function CodingSessionDraftSheet({
   readonly open: boolean;
   readonly draftId: string | null;
   readonly onOpenChange: (open: boolean) => void;
-  readonly onLineBranchMissing: (input: {
-    readonly commitId: string;
-    readonly repositoryId: string;
-  }) => void;
+  readonly onLineBranchMissing: (input: { readonly commitId: string }) => void;
 }) {
   const draft = useCodingSessionDraftStore((state) =>
     draftId === null ? undefined : state.draftsById[draftId],
   );
   const updateDraft = useCodingSessionDraftStore((state) => state.updateDraft);
   const completeStart = useCodingSessionDraftStore((state) => state.completeStart);
-  const repositories = useRepositories().snapshot.repositories;
-  const repository = repositories.find((entry) => entry.repositoryId === draft?.repositoryId);
-  const environmentId = usePrimaryEnvironmentId();
-  const branches = usePaginatedBranches({
-    environmentId,
-    cwd: repository?.path ?? null,
-  });
+  const tree = useMercurianTree().snapshot;
+  const plan = tree.plans.find((candidate) => candidate.planId === draft?.planId);
+  const repositories = useProjectRepositories(plan?.projectId ?? null);
   const planningModel = usePlanningModel();
   const settings = usePrimarySettings();
   const groups = useMemo(
@@ -61,16 +50,8 @@ export function CodingSessionDraftSheet({
   const start = useStartCodingSession();
   const [starting, setStarting] = useState(false);
 
-  useEffect(() => {
-    if (draft === undefined || draft.baseRef.length > 0 || branches.refs.length === 0) return;
-    const baseRef = seedBaseRef(branches.refs);
-    if (baseRef.length > 0) updateDraft(draft.draftId, { baseRef });
-  }, [branches.refs, draft, updateDraft]);
-
-  const localBranches = localBranchOptions(branches.refs);
   const canStart =
     draft !== undefined &&
-    draft.baseRef.length > 0 &&
     groups.some(
       (group) =>
         group.instance.instanceId === draft.modelSelection.instanceId &&
@@ -101,38 +82,13 @@ export function CodingSessionDraftSheet({
         {draft === undefined ? null : (
           <DialogPanel className="flex flex-col gap-4">
             <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
-              <p className="font-medium">{draft.repositoryName}</p>
+              <p className="font-medium">
+                Works across: {repositories.map((repository) => repository.name).join(", ")}
+              </p>
               <p className="text-xs text-muted-foreground">
                 Implements commit {draft.parentCommitId.slice(0, 8)}
               </p>
             </div>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Base branch</span>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2"
-                value={draft.baseRef}
-                onChange={(event) => updateDraft(draft.draftId, { baseRef: event.target.value })}
-              >
-                {draft.baseRef.length === 0 ? (
-                  <option value="">Choose a local branch</option>
-                ) : null}
-                {localBranches.map((ref) => (
-                  <option key={ref.name} value={ref.name}>
-                    {ref.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                checked={draft.startFromOrigin}
-                type="checkbox"
-                onChange={(event) =>
-                  updateDraft(draft.draftId, { startFromOrigin: event.target.checked })
-                }
-              />
-              Start from origin when available
-            </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Runtime mode</span>
               <select
@@ -193,10 +149,7 @@ export function CodingSessionDraftSheet({
                     isCodingSessionBlockedError(result.error) &&
                     result.error.reason === "line-branch-missing"
                   ) {
-                    onLineBranchMissing({
-                      commitId: draft.parentCommitId,
-                      repositoryId: draft.repositoryId,
-                    });
+                    onLineBranchMissing({ commitId: draft.parentCommitId });
                     onOpenChange(false);
                   }
                   return;

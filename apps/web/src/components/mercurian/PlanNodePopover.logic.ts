@@ -8,9 +8,9 @@
  */
 import {
   planningModelSelectionsEqual,
+  type BranchMovement,
   type MercurianCommitId,
   type PlanCodingSessionRecord,
-  type PlanImplementReady,
   type PlanningModelSelection,
   type PlanTimelineItem,
 } from "@t3tools/contracts";
@@ -27,7 +27,8 @@ import { resolveActingHead } from "./PlanPosition.logic";
 export type PlanNodePopoverAct = "continue" | "edit-and-branch" | "implement" | "open-session";
 
 export interface PlanNodeSessionFacts {
-  readonly repositoryName: string;
+  readonly repositoryName?: string;
+  readonly repositories?: PlanCodingSessionRecord["repositories"];
   readonly planRevisionCommitId: MercurianCommitId;
   readonly threadId?: PlanCodingSessionRecord["threadId"];
   readonly status?: "Running" | "Completed" | "Stopped" | "Ended";
@@ -52,7 +53,6 @@ export interface PlanNodePopoverReading {
   readonly stalePlan: boolean;
   readonly movedPastPlan: boolean;
   readonly movedPastRepositoryName?: string;
-  readonly ready?: PlanImplementReady;
   readonly session?: PlanNodeSessionFacts;
   readonly acts: ReadonlyArray<PlanNodePopoverAct>;
 }
@@ -119,11 +119,24 @@ export function branchMovementLabel(
   }
 }
 
+/** One repository's line on a session card: what its branch did, and where the tree went. */
+export function repositoryFactsLabel(repository: {
+  readonly branchMovement: BranchMovement | null;
+  readonly departedRef: string | null;
+}): string {
+  const movement =
+    repository.branchMovement === null
+      ? "not yet built"
+      : branchMovementLabel(repository.branchMovement);
+  return repository.departedRef === null
+    ? movement
+    : `${movement} · departed to ${repository.departedRef}`;
+}
+
 export function derivePlanNodePopover({
   node,
   commitGraph,
   codingSessions,
-  ready,
   stalePlan,
   staleSpec,
   suppressUnanswered,
@@ -131,7 +144,6 @@ export function derivePlanNodePopover({
   readonly node: PlanGraphNode;
   readonly commitGraph: PlanGraph;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
-  readonly ready?: PlanImplementReady;
   readonly stalePlan: boolean;
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
@@ -163,7 +175,9 @@ export function derivePlanNodePopover({
   const session =
     node.item._tag === "coding-session"
       ? {
-          repositoryName: node.item.repositoryName,
+          ...(node.item.repositoryName === undefined
+            ? {}
+            : { repositoryName: node.item.repositoryName }),
           planRevisionCommitId: node.item.planRevisionCommitId,
           ...(record === undefined
             ? {}
@@ -175,6 +189,7 @@ export function derivePlanNodePopover({
                   ? {}
                   : { commits: branchMovementLabel(record.branchMovement) }),
                 ...(record.departedRef === null ? {} : { departedRef: record.departedRef }),
+                ...(record.repositories === undefined ? {} : { repositories: record.repositories }),
                 ...(record.prUrl === null ? {} : { prUrl: record.prUrl }),
               }),
         }
@@ -201,7 +216,6 @@ export function derivePlanNodePopover({
     movedPastPlan:
       splitRepositoryName !== undefined && planMovedPastSplit(commitGraph, node.commitId),
     ...(splitRepositoryName === undefined ? {} : { movedPastRepositoryName: splitRepositoryName }),
-    ...(ready === undefined ? {} : { ready }),
     ...(session === undefined ? {} : { session }),
     acts: offeredActs(node, commitGraph, record !== undefined),
   };

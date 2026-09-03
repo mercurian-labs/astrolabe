@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as DateTime from "effect/DateTime";
+import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -97,6 +98,7 @@ describe("CheckpointDiffQuery.layer", () => {
                   departedRef: null,
                   branchMovement: { kind: "unchanged" },
                   lineBranchMissingOid: null,
+                  unreachableRepositories: [],
                 }),
               ),
           }),
@@ -190,6 +192,7 @@ describe("CheckpointDiffQuery.layer", () => {
                   departedRef: null,
                   branchMovement: { kind: "unchanged" },
                   lineBranchMissingOid: null,
+                  unreachableRepositories: [],
                 }),
               ),
           }),
@@ -417,6 +420,108 @@ describe("CheckpointDiffQuery.layer", () => {
         toTurnCount: 1,
         diff: "diff patch",
       });
+    }),
+  );
+
+  it.effect("resolves repository-scoped turn diffs from a member path or repository fallback", () =>
+    Effect.gen(function* () {
+      const projectId = ProjectId.make("project-multi-repository");
+      const threadId = ThreadId.make("thread-multi-repository");
+      const memberRepositoryId = MercurianRepositoryId.make("repository-member");
+      const fallbackRepositoryId = MercurianRepositoryId.make("repository-fallback");
+      const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+      const diffCwds: string[] = [];
+      const checkpointStore: CheckpointStore.CheckpointStore["Service"] = {
+        isGitRepository: () => Effect.succeed(true),
+        captureCheckpoint: () => Effect.void,
+        hasCheckpointRef: () => Effect.succeed(true),
+        restoreCheckpoint: () => Effect.succeed(true),
+        diffCheckpoints: ({ cwd }) =>
+          Effect.sync(() => {
+            diffCwds.push(cwd);
+            return "repository diff";
+          }),
+        deleteCheckpointRefs: () => Effect.void,
+      };
+      const context = makeThreadCheckpointContext({
+        projectId,
+        threadId,
+        workspaceRoot: "/tmp/primary",
+        worktreePath: "/tmp/primary-slot",
+        checkpointTurnCount: 1,
+        checkpointRef: toCheckpointRef,
+      });
+      const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(
+          Layer.mock(CodingSessionStore.CodingSessionStore)({
+            getByThreadId: () => Effect.succeed(Option.none()),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(LineBranchStore.LineBranchStore)({ listAll: Effect.succeed([]) }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(RepositoryStore.RepositoryStore)({
+            getSnapshot: Effect.succeed({
+              repositories: [
+                {
+                  repositoryId: fallbackRepositoryId,
+                  path: "/tmp/fallback-repository",
+                },
+              ],
+              projectRepositories: [],
+            } as never),
+            changes: Stream.empty,
+          }),
+        ),
+        Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
+        Layer.provideMerge(
+          Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+            getCommandReadModel: () => Effect.die("unused"),
+            getSnapshot: () => Effect.die("unused"),
+            getShellSnapshot: () => Effect.die("unused"),
+            getArchivedShellSnapshot: () => Effect.die("unused"),
+            getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
+            getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
+            getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+            getProjectShellById: () => Effect.succeed(Option.none()),
+            getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+            getThreadCheckpointContext: () => Effect.succeed(Option.some(context)),
+            getFullThreadDiffContext: () => Effect.die("unused"),
+            getThreadShellById: () =>
+              Effect.succeed(
+                Option.some({
+                  workspaceMembers: [
+                    {
+                      repositoryId: memberRepositoryId,
+                      worktreePath: "/tmp/member-worktree",
+                    },
+                  ],
+                } as never),
+              ),
+            getThreadDetailById: () => Effect.succeed(Option.none()),
+            getThreadDetailSnapshot: () => Effect.succeed(Option.none()),
+            searchThreads: () => Effect.succeed({ matches: [] }),
+          }),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        yield* query.getTurnDiff({
+          threadId,
+          fromTurnCount: 0,
+          toTurnCount: 1,
+          repositoryId: memberRepositoryId,
+        });
+        yield* query.getTurnDiff({
+          threadId,
+          fromTurnCount: 0,
+          toTurnCount: 1,
+          repositoryId: fallbackRepositoryId,
+        });
+      }).pipe(Effect.provide(layer));
+      expect(diffCwds).toEqual(["/tmp/member-worktree", "/tmp/fallback-repository"]);
     }),
   );
 

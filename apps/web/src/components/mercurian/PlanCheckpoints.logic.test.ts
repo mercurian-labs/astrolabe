@@ -337,18 +337,17 @@ describe("coding-session checkpoint effects", () => {
 });
 
 describe("planNodeStatusDots", () => {
-  it("orders readiness before spec and plan staleness with their status colors", () => {
-    expect(planNodeStatusDots({ ready: true, staleSpec: true, stalePlan: true })).toEqual([
-      { key: "ready", fillClass: "fill-emerald-500" },
+  it("orders spec and plan staleness with their status colors", () => {
+    expect(planNodeStatusDots({ staleSpec: true, stalePlan: true })).toEqual([
       { key: "stale-spec", fillClass: "fill-amber-500" },
       { key: "stale-plan", fillClass: "fill-orange-500" },
     ]);
   });
 
   it("returns only applicable marks and none for an unmarked node", () => {
-    expect(planNodeStatusDots({ ready: false, staleSpec: true, stalePlan: false })).toEqual([
+    expect(planNodeStatusDots({ staleSpec: true, stalePlan: false })).toEqual([
       { key: "stale-spec", fillClass: "fill-amber-500" },
     ]);
-    expect(planNodeStatusDots({ ready: false, staleSpec: false, stalePlan: false })).toEqual([]);
+    expect(planNodeStatusDots({ staleSpec: false, stalePlan: false })).toEqual([]);
   });
 });

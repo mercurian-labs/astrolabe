@@ -3,10 +3,7 @@ import type {
   MercurianCommitId,
   PlanDetail,
   PlanGroundingItem,
-  PlanInFlightImplement,
   PlanInFlightTurn,
-  PlanImplementProposal,
-  PlanImplementReady,
   MemoryAmendmentProposal,
   PlanCodingSessionRecord,
   PlanStreamItem,
@@ -20,8 +17,6 @@ import type {
  */
 export interface PlanSubscriptionState {
   readonly detail: PlanDetail | null;
-  /** Ready verdicts are side-facts keyed independently of timeline arrival. */
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly codingSessions: ReadonlyMap<MercurianCommitId, PlanCodingSessionRecord>;
   readonly synchronized: boolean;
   /**
@@ -30,9 +25,6 @@ export interface PlanSubscriptionState {
    * the honest backstop for the window that raced a settings change.
    */
   readonly turnRefusal: PlanTurnRefusalReason | null;
-  readonly implementFailure:
-    | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
-    | null;
   readonly memoryAmendmentFailure: Extract<
     PlanStreamItem,
     { readonly kind: "memory-amendment-failed" }
@@ -41,11 +33,9 @@ export interface PlanSubscriptionState {
 
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   detail: null,
-  readyCommits: new Map(),
   codingSessions: new Map(),
   synchronized: false,
   turnRefusal: null,
-  implementFailure: null,
   memoryAmendmentFailure: null,
 };
 
@@ -102,30 +92,6 @@ function turnSettledByCommit(
   return undefined;
 }
 
-function withInFlightImplement(
-  state: PlanSubscriptionState,
-  inFlightImplement: PlanInFlightImplement | undefined,
-): PlanSubscriptionState {
-  if (state.detail === null) return state;
-  const { inFlightImplement: _previous, ...rest } = state.detail;
-  return {
-    ...state,
-    detail: { ...rest, ...(inFlightImplement === undefined ? {} : { inFlightImplement }) },
-  };
-}
-
-function withImplementProposal(
-  state: PlanSubscriptionState,
-  implementProposal: PlanImplementProposal | undefined,
-): PlanSubscriptionState {
-  if (state.detail === null) return state;
-  const { implementProposal: _previous, ...rest } = state.detail;
-  return {
-    ...state,
-    detail: { ...rest, ...(implementProposal === undefined ? {} : { implementProposal }) },
-  };
-}
-
 function withMemoryAmendmentProposal(
   state: PlanSubscriptionState,
   proposal: MemoryAmendmentProposal | undefined,
@@ -161,13 +127,11 @@ export function applyPlanStreamItem(
     case "snapshot":
       return {
         detail: item.snapshot,
-        readyCommits: new Map(item.snapshot.readyCommits.map((ready) => [ready.commitId, ready])),
         codingSessions: new Map(
           item.snapshot.codingSessions.map((session) => [session.commitId, session]),
         ),
         synchronized: state.synchronized,
         turnRefusal: null,
-        implementFailure: null,
         memoryAmendmentFailure: null,
       };
     case "synchronized":
@@ -199,19 +163,14 @@ export function applyPlanStreamItem(
         settled === undefined
           ? detail.inFlightTurns
           : detail.inFlightTurns.filter((turn) => turn.turnId !== settled.turnId);
-      const closesImplementProposal =
-        item.item._tag === "plan-revision" && item.item.split !== undefined;
       const closesMemoryAmendment =
         item.item._tag === "message" && item.item.memoryAmendment !== undefined;
-      const { implementProposal, memoryAmendmentProposal, ...rest } = detail;
+      const { memoryAmendmentProposal, ...rest } = detail;
       return {
         ...state,
         detail: {
           ...rest,
           inFlightTurns,
-          ...(closesImplementProposal || implementProposal === undefined
-            ? {}
-            : { implementProposal }),
           ...(closesMemoryAmendment || memoryAmendmentProposal === undefined
             ? {}
             : { memoryAmendmentProposal }),
@@ -225,10 +184,7 @@ export function applyPlanStreamItem(
       };
     }
     case "turn-started": {
-      const cleared = withMemoryAmendmentProposal(
-        withImplementProposal(state, undefined),
-        undefined,
-      );
+      const cleared = withMemoryAmendmentProposal(state, undefined);
       const existing = cleared.detail?.inFlightTurns ?? [];
       return {
         ...withInFlightTurns(cleared, [
@@ -245,11 +201,6 @@ export function applyPlanStreamItem(
         memoryAmendmentFailure: null,
       };
     }
-    case "implement-started":
-      return {
-        ...withInFlightImplement(withImplementProposal(state, undefined), item.implement),
-        implementFailure: null,
-      };
     case "turn-delta":
       return updateInFlightTurn(state, item.turnId, (turn) =>
         // A delta wholly below the text this window already holds is a replay
@@ -269,15 +220,7 @@ export function applyPlanStreamItem(
             : { ...current, grounding: Arr.append(current.grounding, item.item) },
         );
       }
-      const implement = state.detail?.inFlightImplement;
-      if (implement === undefined || implement.turnId !== item.turnId) return state;
-      if (implement.grounding.some((existing) => sameGroundingItem(existing, item.item))) {
-        return state;
-      }
-      return withInFlightImplement(state, {
-        ...implement,
-        grounding: Arr.append(implement.grounding, item.item),
-      });
+      return state;
     }
     case "turn-question":
       return updateInFlightTurn(state, item.turnId, (turn) => ({
@@ -293,36 +236,6 @@ export function applyPlanStreamItem(
       return updateInFlightTurn(state, item.turnId, () => undefined);
     case "turn-refused":
       return { ...state, turnRefusal: item.reason };
-    case "implement-analyzed": {
-      // A reply streaming on some branch is no reason to drop the analysis;
-      // only a *different* live analysis marks this one stale.
-      const implement = state.detail?.inFlightImplement;
-      if (implement !== undefined && implement.turnId !== item.proposal.turnId) {
-        return state;
-      }
-      return {
-        ...withImplementProposal(withInFlightImplement(state, undefined), item.proposal),
-        implementFailure: null,
-      };
-    }
-    case "implement-ready": {
-      const readyCommits = new Map(state.readyCommits);
-      readyCommits.set(item.ready.commitId, item.ready);
-      return { ...state, readyCommits };
-    }
-    case "implement-cancelled": {
-      const proposal = state.detail?.implementProposal;
-      if (proposal === undefined || proposal.turnId !== item.turnId) return state;
-      return withImplementProposal(state, undefined);
-    }
-    case "implement-failed": {
-      const implement = state.detail?.inFlightImplement;
-      if (implement === undefined || implement.turnId !== item.turnId) return state;
-      return {
-        ...withInFlightImplement(state, undefined),
-        implementFailure: item.reason,
-      };
-    }
     case "memory-amendment-proposed": {
       const relevant = state.detail?.inFlightTurns.some(
         (turn) => turn.turnId === item.proposal.turnId,

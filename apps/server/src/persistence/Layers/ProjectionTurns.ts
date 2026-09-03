@@ -13,6 +13,7 @@ import {
   checkpointSnapshotKindFromStorage,
   checkpointDepartedRefFromStorage,
   checkpointBranchMovementFromStorage,
+  checkpointRepositoriesFromStorage,
   toCheckpointFilesStorage,
 } from "../CheckpointFilesStorage.ts";
 
@@ -54,6 +55,7 @@ const fromDbRow = <A extends { readonly checkpointFiles: CheckpointFilesStorage 
   const snapshotKind = checkpointSnapshotKindFromStorage(row.checkpointFiles);
   const departedRef = checkpointDepartedRefFromStorage(row.checkpointFiles);
   const branchMovement = checkpointBranchMovementFromStorage(row.checkpointFiles);
+  const repositories = checkpointRepositoriesFromStorage(row.checkpointFiles);
   return {
     ...row,
     checkpointFiles: checkpointFilesFromStorage(row.checkpointFiles),
@@ -61,6 +63,7 @@ const fromDbRow = <A extends { readonly checkpointFiles: CheckpointFilesStorage 
     ...(snapshotKind === undefined ? {} : { checkpointSnapshotKind: snapshotKind }),
     ...(departedRef === undefined ? {} : { checkpointDepartedRef: departedRef }),
     ...(branchMovement === undefined ? {} : { checkpointBranchMovement: branchMovement }),
+    ...(repositories === undefined ? {} : { checkpointRepositories: repositories }),
   };
 };
 
@@ -287,6 +290,7 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
         row.checkpointSnapshotKind,
         row.checkpointDepartedRef,
         row.checkpointBranchMovement,
+        row.checkpointRepositories,
       ),
     }).pipe(
       Effect.mapError(

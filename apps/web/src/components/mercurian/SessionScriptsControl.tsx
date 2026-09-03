@@ -59,6 +59,7 @@ export function SessionScriptsControl(props: {
       const request = buildSessionScriptRunRequest({
         script,
         threadId: props.threadRef.threadId,
+        repositoryId: props.repository.repositoryId,
         repositoryPath: props.repository.path,
         worktreePath: props.worktreePath,
       });

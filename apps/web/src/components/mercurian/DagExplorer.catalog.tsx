@@ -1,5 +1,3 @@
-import { MercurianRepositoryId } from "@t3tools/contracts";
-
 import type { CatalogAxeException, CatalogEntry } from "../../design-system/catalog";
 import { setLocalStorageItem } from "../../hooks/useLocalStorage";
 import { message, planRevision, specRevision, timeline } from "../../test/fixtures/timeline";
@@ -79,7 +77,6 @@ const baseProps = {
   historyWalkViewsEnabled: true,
   providers: [],
   codingSessions: [],
-  readyCommits: new Map(),
   stalePlanCommitIds: new Set<string>(),
   staleSpecCommitIds: new Set<string>(),
   onColumnsWidthCapChange: () => undefined,
@@ -132,23 +129,11 @@ export const DAG_EXPLORER_CATALOG_ENTRIES = [
     section: "checkpoint-graph",
     group: "DagExplorer",
     title: "Stale artifacts flagged",
-    description: "Thread history with ready work and stale plan and spec markers.",
+    description: "Thread history with stale plan and spec markers.",
     sourcePath: "src/components/mercurian/DagExplorer.tsx",
     render: () => (
       <DagExplorer
         {...baseProps}
-        readyCommits={
-          new Map([
-            [
-              webResponse,
-              {
-                commitId: webResponse,
-                repositoryId: MercurianRepositoryId.make("repo-web"),
-                repositoryName: "web",
-              },
-            ],
-          ])
-        }
         stalePlanCommitIds={new Set([webResponse])}
         staleSpecCommitIds={new Set([mobileResponse])}
       />

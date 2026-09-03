@@ -652,6 +652,13 @@ const make = Effect.gen(function* () {
       thread,
       projects: project ? [project] : [],
     });
+    const desiredCapabilities = yield* providerService.getCapabilities(desiredInstanceId);
+    const additionalDirectories =
+      desiredCapabilities.groundingRoots === "multi"
+        ? (thread.workspaceMembers ?? [])
+            .map((member) => member.worktreePath)
+            .filter((memberPath) => memberPath !== effectiveCwd)
+        : [];
 
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
@@ -662,6 +669,7 @@ const make = Effect.gen(function* () {
         ...(preferredProvider ? { provider: preferredProvider } : {}),
         providerInstanceId: desiredInstanceId,
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+        ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
         ...(thread.title ? { title: thread.title } : {}),
         modelSelection: desiredModelSelection,
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
@@ -702,8 +710,7 @@ const make = Effect.gen(function* () {
     if (existingSessionThreadId) {
       const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
       const cwdChanged = effectiveCwd !== activeSession?.cwd;
-      const sessionModelSwitch = (yield* providerService.getCapabilities(desiredInstanceId))
-        .sessionModelSwitch;
+      const sessionModelSwitch = desiredCapabilities.sessionModelSwitch;
       const modelChanged =
         requestedModelSelection !== undefined &&
         requestedModelSelection.model !== activeSession?.model;

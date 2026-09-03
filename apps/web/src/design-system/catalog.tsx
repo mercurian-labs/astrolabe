@@ -43,7 +43,6 @@ import { PLAN_NODE_POPOVER_CATALOG_ENTRIES } from "../components/mercurian/PlanN
 import { PLAN_STATUS_DOT_CATALOG_ENTRIES } from "../components/mercurian/PlanStatusDot.catalog";
 import { PLAN_TIMELINE_CATALOG_ENTRIES } from "../components/mercurian/PlanTimeline.catalog";
 import { SPEC_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/SpecArtifact.catalog";
-import { STALE_PLAN_WARNING_CATALOG_ENTRIES } from "../components/mercurian/StalePlanWarning.catalog";
 
 export const CATALOG_SECTIONS = [
   {
@@ -816,7 +815,6 @@ export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
   ...MEMORY_NOTE_READER_CATALOG_ENTRIES,
   ...MEMORY_AMENDMENT_SHEET_CATALOG_ENTRIES,
   ...SPEC_ARTIFACT_CATALOG_ENTRIES,
-  ...STALE_PLAN_WARNING_CATALOG_ENTRIES,
   ...PLAN_TIMELINE_CATALOG_ENTRIES,
   ...PLAN_NODE_POPOVER_CATALOG_ENTRIES,
   ...SPATIAL_MAP_CANVAS_CATALOG_ENTRIES,

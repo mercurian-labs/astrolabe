@@ -1993,7 +1993,6 @@ layer("PlanningStore", (it) => {
       const root = created.timeline[0]!;
 
       yield* registry.open({
-        flavor: "reply",
         planId: created.plan.planId,
         turnId: PlanTurnId.make("turn-1"),
         threadId: ThreadId.make("thread-1"),
@@ -2055,7 +2054,6 @@ layer("PlanningStore", (it) => {
 
       // The turn claims branch A's chain, revision included.
       yield* registry.open({
-        flavor: "reply",
         planId: created.plan.planId,
         turnId: PlanTurnId.make("turn-a"),
         threadId: ThreadId.make("thread-a"),
@@ -2514,202 +2512,6 @@ layer("PlanningStore", (it) => {
     }),
   );
 
-  it.effect("lands repository-stamped split siblings without changing the parent artifact", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const repositories = yield* RepositoryStore.RepositoryStore;
-      const created = yield* seedPlan("2026-08-09T00:00:00.000Z");
-      const revision = yield* store.savePlanRevision({
-        planId: created.plan.planId,
-        text: "# Shared implementation plan",
-        createdAt: at("2026-08-09T00:01:00.000Z"),
-      });
-      const serverRepository = yield* repositories.addRepository({
-        path: process.cwd(),
-        createdAt: at("2026-08-09T00:02:00.000Z"),
-      });
-      const contractsRepository = yield* repositories.addRepository({
-        path: new URL("../../../../../packages/contracts", import.meta.url).pathname,
-        createdAt: at("2026-08-09T00:02:00.000Z"),
-      });
-      yield* repositories.setProjectRepositories({
-        projectId: created.plan.projectId,
-        repositoryIds: [serverRepository.repositoryId, contractsRepository.repositoryId],
-        addedAt: at("2026-08-09T00:03:00.000Z"),
-      });
-
-      const landed = yield* store.saveSplits({
-        planId: created.plan.planId,
-        parentCommitId: revision.commitId,
-        splits: [
-          { repositoryId: serverRepository.repositoryId, text: "Server projection" },
-          { repositoryId: contractsRepository.repositoryId, text: "Contracts projection" },
-        ],
-        createdAt: at("2026-08-09T00:04:00.000Z"),
-      });
-
-      assert.strictEqual(landed.length, 2);
-      assert.deepStrictEqual(
-        landed.map((split) => split.parents),
-        [[revision.commitId], [revision.commitId]],
-      );
-      assert.deepStrictEqual(
-        landed.map((split) => split.split?.repositoryName),
-        [serverRepository.name, contractsRepository.name],
-      );
-      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
-      assert.strictEqual(snapshot.planText, "# Shared implementation plan");
-      assert.deepStrictEqual(
-        snapshot.readyCommits
-          .map((ready) => ({
-            commitId: ready.commitId,
-            repositoryId: ready.repositoryId,
-            repositoryName: ready.repositoryName,
-          }))
-          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
-        landed
-          .map((split) => ({
-            commitId: split.commitId,
-            repositoryId: split.split!.repositoryId,
-            repositoryName: split.split!.repositoryName,
-          }))
-          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
-      );
-      assert.deepStrictEqual(
-        (yield* store.listImplementVerdicts({ planId: created.plan.planId }))
-          .map(({ commitId, verdict }) => ({ commitId, verdict }))
-          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
-        landed
-          .map((split) => ({
-            commitId: split.commitId,
-            verdict: {
-              kind: "ready" as const,
-              payload: split.split!,
-            },
-          }))
-          .sort((left, right) => left.commitId.localeCompare(right.commitId)),
-      );
-      const events = yield* store.listTimelineSince({
-        planId: created.plan.planId,
-        afterSequence: 0,
-      });
-      const splitEvents = events.filter(
-        (event) => event.item._tag === "plan-revision" && event.item.split !== undefined,
-      );
-      assert.strictEqual(splitEvents.length, 2);
-      assert.ok(splitEvents.every((event) => event.planText === undefined));
-      assert.strictEqual(
-        yield* store.getPlanTextAt({ planId: created.plan.planId, commitId: landed[0]!.commitId }),
-        "Server projection",
-      );
-      assert.deepStrictEqual(yield* store.getImplementContext({ planId: created.plan.planId }), {
-        atCommitId: landed[1]!.commitId,
-        planText: "Contracts projection",
-      });
-      assert.deepStrictEqual(
-        yield* store.getImplementContext({
-          planId: created.plan.planId,
-          atCommitId: revision.commitId,
-        }),
-        { atCommitId: revision.commitId, planText: "# Shared implementation plan" },
-      );
-
-      const sessionLeaf = yield* store.appendCodingSession({
-        planId: created.plan.planId,
-        parentCommitId: landed[0]!.commitId,
-        repositoryId: serverRepository.repositoryId,
-        repositoryName: serverRepository.name,
-        threadId: ThreadId.make("split-session-thread"),
-        branch: "mercurian/server-projection-12345678",
-        worktreePath: "/tmp/split-session",
-        baseRef: "main",
-        startedAt: at("2026-08-09T00:05:00.000Z"),
-      });
-      assert.strictEqual(sessionLeaf.planRevisionCommitId, landed[0]!.commitId);
-      assert.strictEqual(
-        yield* store.getPlanTextAt({
-          planId: created.plan.planId,
-          commitId: sessionLeaf.commitId,
-        }),
-        "Server projection",
-      );
-    }),
-  );
-
-  it.effect("keeps the first implement verdict for a commit and scopes lists to a plan", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const firstPlan = yield* seedPlan("2026-08-09T00:10:00.000Z");
-      const secondPlan = yield* seedPlan("2026-08-09T00:20:00.000Z");
-      const firstCommit = firstPlan.timeline[0]!.commitId;
-      const secondCommit = secondPlan.timeline[0]!.commitId;
-
-      yield* store.recordImplementVerdict({
-        planId: firstPlan.plan.planId,
-        commitId: firstCommit,
-        verdict: {
-          kind: "ready",
-          payload: {
-            repositoryId: MercurianRepositoryId.make("repository-first"),
-            repositoryName: "first",
-          },
-        },
-        recordedAt: at("2026-08-09T00:11:00.000Z"),
-      });
-      yield* store.recordImplementVerdict({
-        planId: firstPlan.plan.planId,
-        commitId: firstCommit,
-        verdict: {
-          kind: "needs-split",
-          payload: {
-            repositories: [
-              {
-                repositoryId: MercurianRepositoryId.make("repository-later"),
-                repositoryName: "later",
-              },
-            ],
-          },
-        },
-        recordedAt: at("2026-08-09T00:12:00.000Z"),
-      });
-      yield* store.recordImplementVerdict({
-        planId: secondPlan.plan.planId,
-        commitId: secondCommit,
-        verdict: {
-          kind: "ready",
-          payload: {
-            repositoryId: MercurianRepositoryId.make("repository-second"),
-            repositoryName: "second",
-          },
-        },
-        recordedAt: at("2026-08-09T00:21:00.000Z"),
-      });
-
-      const firstVerdicts = yield* store.listImplementVerdicts({
-        planId: firstPlan.plan.planId,
-      });
-      assert.strictEqual(firstVerdicts.length, 1);
-      assert.strictEqual(firstVerdicts[0]?.commitId, firstCommit);
-      assert.deepStrictEqual(firstVerdicts[0]?.verdict, {
-        kind: "ready",
-        payload: {
-          repositoryId: MercurianRepositoryId.make("repository-first"),
-          repositoryName: "first",
-        },
-      });
-      assert.strictEqual(
-        firstVerdicts[0] === undefined ? null : DateTime.formatIso(firstVerdicts[0].recordedAt),
-        "2026-08-09T00:11:00.000Z",
-      );
-      assert.deepStrictEqual(
-        (yield* store.listImplementVerdicts({ planId: secondPlan.plan.planId })).map(
-          (record) => record.commitId,
-        ),
-        [secondCommit],
-      );
-    }),
-  );
-
   it.effect("lands coding-session leaves and keyed rows as one guarded transaction", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
@@ -2725,70 +2527,27 @@ layer("PlanningStore", (it) => {
         createdAt: at("2026-08-09T02:01:00.000Z"),
       });
       const repositoryId = MercurianRepositoryId.make("repository-session");
-      yield* store.recordImplementVerdict({
-        planId: created.plan.planId,
-        commitId: revision.commitId,
-        verdict: {
-          kind: "ready",
-          payload: { repositoryId, repositoryName: "server" },
-        },
-        recordedAt: at("2026-08-09T02:02:00.000Z"),
-      });
 
       const append = (thread: string, minute: string) =>
         store.appendCodingSession({
           planId: created.plan.planId,
           parentCommitId: revision.commitId,
-          repositoryId,
-          repositoryName: "server",
           threadId: ThreadId.make(thread),
           branch: `mercurian/session-${thread}`,
           worktreePath: `/tmp/${thread}`,
-          baseRef: "main",
+          homeRepositoryId: repositoryId,
+          repositoryIds: [repositoryId],
+          unreachableRepositories: [],
           startedAt: at(`2026-08-09T02:${minute}:00.000Z`),
         });
-
-      const notReady = yield* store
-        .appendCodingSession({
-          planId: created.plan.planId,
-          parentCommitId: root,
-          repositoryId,
-          repositoryName: "server",
-          threadId: ThreadId.make("not-ready-thread"),
-          branch: "mercurian/not-ready-12345678",
-          worktreePath: "/tmp/not-ready",
-          baseRef: "main",
-          startedAt: at("2026-08-09T02:02:30.000Z"),
-        })
-        .pipe(Effect.flip);
-      assert.strictEqual(notReady._tag, "CodingSessionBlockedError");
-      if (notReady._tag === "CodingSessionBlockedError") {
-        assert.strictEqual(notReady.reason, "not-ready");
-      }
-
-      const repositoryMismatch = yield* store
-        .appendCodingSession({
-          planId: created.plan.planId,
-          parentCommitId: revision.commitId,
-          repositoryId: MercurianRepositoryId.make("another-repository"),
-          repositoryName: "other",
-          threadId: ThreadId.make("mismatch-thread"),
-          branch: "mercurian/mismatch-12345678",
-          worktreePath: "/tmp/mismatch",
-          baseRef: "main",
-          startedAt: at("2026-08-09T02:02:40.000Z"),
-        })
-        .pipe(Effect.flip);
-      assert.strictEqual(repositoryMismatch._tag, "CodingSessionBlockedError");
-      if (repositoryMismatch._tag === "CodingSessionBlockedError") {
-        assert.strictEqual(repositoryMismatch.reason, "repository-mismatch");
-      }
 
       const first = yield* append("thread-one", "03");
       const second = yield* append("thread-two", "04");
       assert.deepStrictEqual(first.parents, [revision.commitId]);
       assert.deepStrictEqual(second.parents, [revision.commitId]);
       assert.strictEqual(first.planRevisionCommitId, revision.commitId);
+      assert.strictEqual(first.repositoryId, undefined);
+      assert.strictEqual(first.repositoryName, undefined);
 
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       assert.strictEqual(snapshot.planText, "# Implement this exact revision");
@@ -2818,7 +2577,6 @@ layer("PlanningStore", (it) => {
       assert.strictEqual((yield* sessions.listForPlan(created.plan.planId)).length, 2);
 
       yield* registry.open({
-        flavor: "reply",
         planId: created.plan.planId,
         turnId: PlanTurnId.make("active-session-refusal"),
         threadId: ThreadId.make("planning-thread"),
@@ -2834,145 +2592,6 @@ layer("PlanningStore", (it) => {
     }),
   );
 
-  it.effect("rolls split commits and ready verdicts back together", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const repositories = yield* RepositoryStore.RepositoryStore;
-      const sql = yield* SqlClient.SqlClient;
-      const created = yield* seedPlan("2026-08-09T00:30:00.000Z");
-      const parent = created.timeline[0]!.commitId;
-      const first = yield* repositories.addRepository({
-        path: "/tmp",
-        createdAt: at("2026-08-09T00:31:00.000Z"),
-      });
-      const second = yield* repositories.addRepository({
-        path: "/usr",
-        createdAt: at("2026-08-09T00:31:00.000Z"),
-      });
-      yield* repositories.setProjectRepositories({
-        projectId: created.plan.projectId,
-        repositoryIds: [first.repositoryId, second.repositoryId],
-        addedAt: at("2026-08-09T00:32:00.000Z"),
-      });
-      yield* sql`
-        CREATE TEMP TRIGGER poison_second_split_verdict
-        BEFORE INSERT ON plan_implement_verdicts
-        WHEN (
-          SELECT COUNT(*) FROM plan_implement_verdicts WHERE plan_id = NEW.plan_id
-        ) = 1
-        BEGIN
-          SELECT RAISE(ABORT, 'poisoned split verdict');
-        END
-      `;
-
-      const poisoned = yield* Effect.result(
-        store.saveSplits({
-          planId: created.plan.planId,
-          parentCommitId: parent,
-          splits: [
-            { repositoryId: first.repositoryId, text: "First projection" },
-            { repositoryId: second.repositoryId, text: "Second projection" },
-          ],
-          createdAt: at("2026-08-09T00:33:00.000Z"),
-        }),
-      );
-      assert.strictEqual(poisoned._tag, "Failure");
-      assert.strictEqual(
-        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
-        1,
-      );
-      assert.deepStrictEqual(
-        yield* store.listImplementVerdicts({ planId: created.plan.planId }),
-        [],
-      );
-    }),
-  );
-
-  it.effect("deleting a plan removes its implement verdicts", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const sql = yield* SqlClient.SqlClient;
-      const created = yield* seedPlan("2026-08-09T00:40:00.000Z");
-      yield* store.recordImplementVerdict({
-        planId: created.plan.planId,
-        commitId: created.timeline[0]!.commitId,
-        verdict: {
-          kind: "ready",
-          payload: {
-            repositoryId: MercurianRepositoryId.make("repository-ready"),
-            repositoryName: "ready",
-          },
-        },
-        recordedAt: at("2026-08-09T00:41:00.000Z"),
-      });
-
-      yield* store.deletePlan({ planId: created.plan.planId });
-      const [row] = yield* sql<{ readonly count: number }>`
-        SELECT COUNT(*) AS "count"
-        FROM plan_implement_verdicts
-        WHERE plan_id = ${created.plan.planId}
-      `;
-      assert.strictEqual(row?.count, 0);
-    }),
-  );
-
-  it.effect("refuses invalid split confirmations atomically and while a turn is active", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
-      const created = yield* seedPlan("2026-08-09T01:00:00.000Z");
-      const parent = created.timeline[0]!.commitId;
-      const unknown = MercurianRepositoryId.make("unknown-repository");
-
-      for (const [splits, reason] of [
-        [[], "no-splits"],
-        [
-          [
-            { repositoryId: unknown, text: "one" },
-            { repositoryId: unknown, text: "two" },
-          ],
-          "duplicate-repository",
-        ],
-        [[{ repositoryId: unknown, text: "one" }], "repository-not-in-project"],
-      ] as const) {
-        const refused = yield* Effect.flip(
-          store.saveSplits({
-            planId: created.plan.planId,
-            parentCommitId: parent,
-            splits,
-            createdAt: at("2026-08-09T01:01:00.000Z"),
-          }),
-        );
-        assert.strictEqual(refused._tag, "ConfirmSplitsBlockedError");
-        if (refused._tag === "ConfirmSplitsBlockedError") {
-          assert.strictEqual(refused.reason, reason);
-        }
-      }
-      assert.strictEqual(
-        (yield* store.getPlanSnapshot({ planId: created.plan.planId })).timeline.length,
-        1,
-      );
-
-      yield* registry.open({
-        flavor: "implement",
-        planId: created.plan.planId,
-        turnId: PlanTurnId.make("implement-turn"),
-        threadId: ThreadId.make("implement-thread"),
-        parentCommitId: parent,
-        tipCommitId: parent,
-      });
-      const activeRefusal = yield* Effect.flip(
-        store.saveSplits({
-          planId: created.plan.planId,
-          parentCommitId: parent,
-          splits: [],
-          createdAt: at("2026-08-09T01:02:00.000Z"),
-        }),
-      );
-      assert.strictEqual(activeRefusal._tag, "PlanTurnActiveError");
-    }),
-  );
-
   it.effect("appends a stamped human memory amendment without opening a turn", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
@@ -2981,7 +2600,6 @@ layer("PlanningStore", (it) => {
       const parent = created.timeline[0]!.commitId;
       const turnId = PlanTurnId.make("memory-amendment-active");
       yield* registry.open({
-        flavor: "reply",
         planId: created.plan.planId,
         turnId,
         threadId: ThreadId.make("memory-amendment-thread"),

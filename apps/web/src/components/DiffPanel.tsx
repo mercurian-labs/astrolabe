@@ -212,6 +212,7 @@ export default function DiffPanel({
         : null;
   const selectedBaseRef = diffSelection.kind === "branch" ? diffSelection.baseRef : null;
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
+  const selectedRepositoryId = diffSelection.kind === "turn" ? diffSelection.repositoryId : null;
   const selectedFileRevealRequestId =
     diffSelection.kind === "turn" ? diffSelection.revealRequestId : 0;
   const selectedTurn =
@@ -281,6 +282,7 @@ export default function DiffPanel({
       fromTurnCount: selectedCheckpointRange?.fromTurnCount ?? null,
       toTurnCount: selectedCheckpointRange?.toTurnCount ?? null,
       ignoreWhitespace: diffIgnoreWhitespace,
+      repositoryId: selectedRepositoryId,
       cacheScope: isSessionScope ? "session" : selectedTurn ? `turn:${selectedTurn.turnId}` : null,
     },
     { enabled: isGitRepo && (isSessionScope || selectedTurn !== undefined) },

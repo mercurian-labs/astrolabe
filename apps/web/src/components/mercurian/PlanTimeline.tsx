@@ -1,12 +1,8 @@
 import type {
   ChatAttachment,
   EnvironmentId,
-  MercurianCommitId,
   PlanGroundingItem,
-  PlanGroundingScope,
   PlanInFlightTurn,
-  PlanInFlightImplement,
-  PlanImplementReady,
   PlanQuestion,
   PlanQuestionRecord,
   PlanTimelineItem,
@@ -21,7 +17,6 @@ import {
   ChevronRightIcon,
   BookOpenIcon,
   BookOpenCheckIcon,
-  CircleAlertIcon,
   CircleDotIcon,
   FileSearchIcon,
   FileTextIcon,
@@ -48,7 +43,12 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
-import { codingSessionRecordFor, codingSessionStatus } from "./PlanNodePopover.logic";
+import {
+  codingSessionRecordFor,
+  codingSessionStatus,
+  repositoryFactsLabel,
+} from "./PlanNodePopover.logic";
+import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 
 /**
  * The planning space's history: messages, plan revisions and an imported issue
@@ -65,24 +65,18 @@ import { codingSessionRecordFor, codingSessionStatus } from "./PlanNodePopover.l
 export function PlanTimeline({
   timeline,
   inFlight,
-  inFlightImplement,
   providers = EMPTY_PROVIDERS,
   skills = EMPTY_SKILLS,
-  readyCommits = EMPTY_READY_COMMITS,
   onAnswerQuestion,
-  onStopImplement,
   onOpenNote,
   codingSessions = EMPTY_CODING_SESSIONS,
 }: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The turn streaming on this path right now, when one is. */
   readonly inFlight?: PlanInFlightTurn | undefined;
-  readonly inFlightImplement?: PlanInFlightImplement | undefined;
   readonly providers?: ReadonlyArray<ServerProvider> | undefined;
   readonly skills?: ReadonlyArray<ServerProviderSkill> | undefined;
-  readonly readyCommits?: ReadonlyMap<MercurianCommitId, PlanImplementReady> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
-  readonly onStopImplement?: (() => void) | undefined;
   readonly onOpenNote?: ((name: string) => void) | undefined;
   readonly codingSessions?: ReadonlyArray<PlanCodingSessionRecord> | undefined;
 }) {
@@ -95,7 +89,7 @@ export function PlanTimeline({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [timeline.length, streamedLength > 0, inFlight?.questions !== undefined]);
 
-  if (timeline.length === 0 && inFlight === undefined && inFlightImplement === undefined) {
+  if (timeline.length === 0 && inFlight === undefined) {
     return <div className="min-h-0 flex-1" />;
   }
 
@@ -131,7 +125,6 @@ export function PlanTimeline({
                     )}
                     <MessageText text={item.text} skills={skills} onOpenNote={onOpenNote} />
                   </div>
-                  {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                   <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
                     <Tooltip>
                       <TooltipTrigger
@@ -181,7 +174,6 @@ export function PlanTimeline({
                     )}
                   </div>
                   {item.interrupted === true ? <InterruptedBadge /> : null}
-                  {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
                 </div>
               </li>
             );
@@ -218,8 +210,35 @@ export function PlanTimeline({
               >
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <GitBranchIcon className="size-4" />
-                  Coding session · {item.repositoryName}
+                  Coding session
+                  {item.repositoryName === undefined ? "" : ` · ${item.repositoryName}`}
                 </div>
+                {record?.unreachableRepositories === undefined ||
+                record.unreachableRepositories.length === 0 ? null : (
+                  <NarrowedGroundingNotice
+                    scope={{ unreachableRepositories: record.unreachableRepositories }}
+                  />
+                )}
+                {record?.repositories === undefined ? null : (
+                  <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                    {record.repositories.map((repository) => (
+                      <div key={repository.repositoryId} className="flex items-center gap-2">
+                        <span>{repository.repositoryName}</span>
+                        <span>{repositoryFactsLabel(repository)}</span>
+                        {repository.prUrl === null ? null : (
+                          <a
+                            className="underline"
+                            href={repository.prUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Pull request
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span>Implemented {item.planRevisionCommitId.slice(0, 8)}</span>
                   <span>{status}</span>
@@ -264,7 +283,6 @@ export function PlanTimeline({
                     : "The assistant revised the plan"}
               </span>
               <span>{formatRelativeTimeLabel(item.createdAt)}</span>
-              {readyCommits.has(item.commitId) ? <ReadyBadge /> : null}
             </li>
           );
         })}
@@ -295,35 +313,12 @@ export function PlanTimeline({
             )}
           </li>
         )}
-        {inFlightImplement === undefined ? null : (
-          <li className="rounded-lg border border-border/70 bg-muted/15 px-3 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner aria-hidden className="size-3.5" />
-                Checking whether this plan is ready to implement. A coding session works in one
-                repository at a time.
-              </span>
-              <Button size="sm" variant="ghost" onClick={onStopImplement}>
-                Stop
-              </Button>
-            </div>
-            {inFlightImplement.groundingScope === undefined ? null : (
-              <NarrowedGroundingNotice scope={inFlightImplement.groundingScope} />
-            )}
-            {inFlightImplement.grounding.length === 0 ? null : (
-              <div className="mt-2">
-                <GroundingFold items={inFlightImplement.grounding} live />
-              </div>
-            )}
-          </li>
-        )}
       </ol>
       <div ref={bottomRef} />
     </div>
   );
 }
 
-const EMPTY_READY_COMMITS: ReadonlyMap<MercurianCommitId, PlanImplementReady> = new Map();
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 const EMPTY_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const EMPTY_CODING_SESSIONS: ReadonlyArray<PlanCodingSessionRecord> = [];
@@ -345,14 +340,6 @@ export function ModelAttribution({
     <span className="text-[11px] text-muted-foreground/65">
       {providerLabel(selection.provider)} · {modelLabel}
       {optionLabels.length === 0 ? "" : ` · ${optionLabels.join(" · ")}`}
-    </span>
-  );
-}
-
-function ReadyBadge() {
-  return (
-    <span className="inline-flex shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-      Ready to implement
     </span>
   );
 }
@@ -383,23 +370,6 @@ function DepartedBadge() {
     </span>
   );
 }
-
-/**
- * Grounding that could not reach everything: quiet, above the fold, and only
- * ever rendered when narrowing actually happened.
- */
-function NarrowedGroundingNotice({ scope }: { readonly scope: PlanGroundingScope }) {
-  return (
-    <p className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-      <CircleAlertIcon className="size-3 shrink-0" />
-      <span>
-        Grounded without {scope.unreachableRepositories.join(", ")} — out of reach for this
-        provider.
-      </span>
-    </p>
-  );
-}
-
 const GROUNDING_KIND_ICONS = {
   "file-read": FileSearchIcon,
   search: SearchIcon,

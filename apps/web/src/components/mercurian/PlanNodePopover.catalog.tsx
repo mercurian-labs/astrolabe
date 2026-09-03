@@ -1,4 +1,4 @@
-import { MercurianRepositoryId, ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@t3tools/contracts";
 import type { ComponentProps } from "react";
 
 import type { CatalogEntry } from "../../design-system/catalog";
@@ -20,11 +20,6 @@ const popoverArgs = (
     commitGraph,
     node,
     providers: [],
-    ready: {
-      commitId: node.commitId,
-      repositoryId: MercurianRepositoryId.make("repo-web"),
-      repositoryName: "web",
-    },
     stalePlan: false,
     staleSpec: false,
     suppressUnanswered: false,

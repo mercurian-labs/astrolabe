@@ -140,7 +140,7 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onImageExpand: (preview: ExpandedImagePreview) => void;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, repositoryId?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   agentPanelModel: AgentPanelModel;
@@ -212,7 +212,7 @@ interface MessagesTimelineProps {
   runningTurnId: TurnId | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   routeThreadKey: string;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, repositoryId?: string) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
   markdownCwd: string | undefined;
@@ -1591,10 +1591,11 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   turnSummary: TurnDiffSummary | undefined;
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, repositoryId?: string) => void;
 }) {
   if (!turnSummary) return null;
-  const checkpointFiles = turnSummary.files;
+  const checkpointFiles =
+    turnSummary.repositories?.flatMap((repository) => repository.files) ?? turnSummary.files;
   if (checkpointFiles.length === 0) return null;
 
   return (
@@ -1621,7 +1622,7 @@ function AssistantChangedFilesSectionInner({
   checkpointFiles: TurnDiffSummary["files"];
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, repositoryId?: string) => void;
 }) {
   const activity = use(TimelineRowActivityCtx);
   const isLatestTurn = activity.latestTurnId === turnSummary.turnId;
@@ -1635,21 +1636,40 @@ function AssistantChangedFilesSectionInner({
   const [allDirectoriesExpanded, setAllDirectoriesExpanded] = useState(autoExpanded);
   const expanded = persistedExpanded ?? (isLatestTurn && autoExpanded);
 
-  return (
-    <ChangedFilesCard
-      turnId={turnSummary.turnId}
-      files={checkpointFiles}
-      expanded={expanded}
-      showCompactPreview={isLatestTurn}
-      allDirectoriesExpanded={allDirectoriesExpanded}
-      resolvedTheme={resolvedTheme}
-      onExpandedChange={(nextExpanded) =>
-        setExpanded(routeThreadKey, turnSummary.turnId, nextExpanded)
-      }
-      onToggleAllDirectories={() => setAllDirectoriesExpanded((current) => !current)}
-      onOpenTurnDiff={onOpenTurnDiff}
-    />
-  );
+  const cardProps = {
+    turnId: turnSummary.turnId,
+    expanded,
+    showCompactPreview: isLatestTurn,
+    allDirectoriesExpanded,
+    resolvedTheme,
+    onExpandedChange: (nextExpanded: boolean) =>
+      setExpanded(routeThreadKey, turnSummary.turnId, nextExpanded),
+    onToggleAllDirectories: () => setAllDirectoriesExpanded((current) => !current),
+    onOpenTurnDiff,
+  };
+
+  if (turnSummary.repositories) {
+    return (
+      <div className="mt-4 space-y-3">
+        {turnSummary.repositories.map((repository) =>
+          repository.files.length === 0 ? null : (
+            <section key={repository.repositoryId}>
+              <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">
+                {repository.repositoryName}
+              </p>
+              <ChangedFilesCard
+                {...cardProps}
+                files={repository.files}
+                repositoryId={repository.repositoryId}
+              />
+            </section>
+          ),
+        )}
+      </div>
+    );
+  }
+
+  return <ChangedFilesCard {...cardProps} files={checkpointFiles} />;
 }
 
 // ---------------------------------------------------------------------------

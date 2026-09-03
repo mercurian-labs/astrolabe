@@ -1,7 +1,6 @@
 import type {
   MercurianCommitId,
   PlanCodingSessionRecord,
-  PlanImplementReady,
   PlanTimelineItem,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -165,7 +164,6 @@ export function DagExplorer({
   inFlightAnchorCommitIds,
   providers,
   codingSessions,
-  readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
   cornerControl,
@@ -182,7 +180,6 @@ export function DagExplorer({
   readonly inFlightAnchorCommitIds?: ReadonlyArray<MercurianCommitId>;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   /** The planning-space pane toggle; omitted in standalone renderings. */
@@ -211,16 +208,6 @@ export function DagExplorer({
   const currentCommitId = planNodeIdForCommit(
     anchoredCommitId ?? graph.latest,
     checkpointGraph.nodeIdByCommit,
-  );
-  const readyNodes = useMemo(
-    () =>
-      new Map<MercurianCommitId, PlanImplementReady>(
-        [...readyCommits].map(
-          ([commitId, ready]) =>
-            [checkpointGraph.nodeIdByCommit.get(commitId) ?? commitId, ready] as const,
-        ),
-      ),
-    [checkpointGraph.nodeIdByCommit, readyCommits],
   );
   const stalePlanNodes = useMemo(
     () => mapMarksToNodes(stalePlanCommitIds, checkpointGraph.nodeIdByCommit),
@@ -307,7 +294,6 @@ export function DagExplorer({
           graph={checkpointGraph}
           inFlightUnansweredNodes={inFlightUnansweredNodes}
           providers={providers}
-          readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
           onEditAndBranch={onEditAndBranch}
@@ -321,7 +307,6 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={checkpointGraph}
           inFlightUnansweredNodes={inFlightUnansweredNodes}
-          readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
           providers={providers}
@@ -337,7 +322,6 @@ export function DagExplorer({
           currentCommitId={currentCommitId}
           graph={checkpointGraph}
           inFlightUnansweredNodes={inFlightUnansweredNodes}
-          readyCommits={readyNodes}
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
           providers={providers}
@@ -356,7 +340,6 @@ function ActivePlanNodePopover({
   commitGraph,
   codingSessions,
   providers,
-  readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
   inFlightUnansweredNodes,
@@ -369,7 +352,6 @@ function ActivePlanNodePopover({
   readonly commitGraph: PlanGraph;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly providers: ReadonlyArray<ServerProvider>;
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
@@ -387,9 +369,6 @@ function ActivePlanNodePopover({
       controller={controller}
       node={node}
       providers={providers}
-      {...(node === undefined || readyCommits.get(node.commitId) === undefined
-        ? {}
-        : { ready: readyCommits.get(node.commitId)! })}
       stalePlan={node !== undefined && stalePlanCommitIds.has(node.commitId)}
       staleSpec={node !== undefined && staleSpecCommitIds.has(node.commitId)}
       suppressUnanswered={node !== undefined && inFlightUnansweredNodes.has(node.commitId)}
@@ -607,7 +586,6 @@ function ThreadView({
   providers,
   currentCommitId,
   inFlightUnansweredNodes,
-  readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
@@ -620,7 +598,6 @@ function ThreadView({
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onEditAndBranch: (
@@ -649,7 +626,6 @@ function ThreadView({
                 isCurrent={row.commitId === currentCommitId}
                 node={row}
                 popover={popover}
-                ready={readyCommits.has(row.commitId)}
                 stalePlan={stalePlanCommitIds.has(row.commitId)}
                 staleSpec={staleSpecCommitIds.has(row.commitId)}
                 suppressUnanswered={inFlightUnansweredNodes.has(row.commitId)}
@@ -702,7 +678,6 @@ function ThreadView({
         graph={graph}
         inFlightUnansweredNodes={inFlightUnansweredNodes}
         providers={providers}
-        readyCommits={readyCommits}
         stalePlanCommitIds={stalePlanCommitIds}
         staleSpecCommitIds={staleSpecCommitIds}
         onEditAndBranch={onEditAndBranch}
@@ -819,7 +794,6 @@ function ColumnsView({
   providers,
   currentCommitId,
   inFlightUnansweredNodes,
-  readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
@@ -833,7 +807,6 @@ function ColumnsView({
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onEditAndBranch: (
@@ -1047,7 +1020,6 @@ function ColumnsView({
                         isCurrent={isCurrent}
                         node={row}
                         popover={popover}
-                        ready={readyCommits.has(row.commitId)}
                         stalePlan={stalePlanCommitIds.has(row.commitId)}
                         staleSpec={staleSpecCommitIds.has(row.commitId)}
                         suppressUnanswered={inFlightUnansweredNodes.has(row.commitId)}
@@ -1091,7 +1063,6 @@ function ColumnsView({
         graph={graph}
         inFlightUnansweredNodes={inFlightUnansweredNodes}
         providers={providers}
-        readyCommits={readyCommits}
         stalePlanCommitIds={stalePlanCommitIds}
         staleSpecCommitIds={staleSpecCommitIds}
         onEditAndBranch={onEditAndBranch}
@@ -1266,7 +1237,6 @@ function GraphView({
   providers,
   currentCommitId,
   inFlightUnansweredNodes,
-  readyCommits,
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
@@ -1279,7 +1249,6 @@ function GraphView({
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly onEditAndBranch: (
@@ -1309,7 +1278,6 @@ function GraphView({
       inFlightUnansweredNodes={inFlightUnansweredNodes}
       layout={layout}
       providers={providers}
-      readyCommits={readyCommits}
       settings={settings}
       stalePlanCommitIds={stalePlanCommitIds}
       staleSpecCommitIds={staleSpecCommitIds}
@@ -1329,7 +1297,6 @@ function SpatialMap({
   layout,
   currentCommitId,
   inFlightUnansweredNodes,
-  readyCommits,
   settings,
   stalePlanCommitIds,
   staleSpecCommitIds,
@@ -1345,7 +1312,6 @@ function SpatialMap({
   readonly layout: SpatialLayout;
   readonly currentCommitId: MercurianCommitId | null;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly readyCommits: ReadonlyMap<MercurianCommitId, PlanImplementReady>;
   readonly settings: DagExplorerDisplaySettingsValue;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
@@ -1669,7 +1635,6 @@ function SpatialMap({
             const isPlanStale = stalePlanCommitIds.has(node.commitId);
             const isSpecStale = staleSpecCommitIds.has(node.commitId);
             const statusDots = planNodeStatusDots({
-              ready: readyCommits.has(node.commitId),
               staleSpec: isSpecStale,
               stalePlan: isPlanStale,
             });
@@ -1794,7 +1759,6 @@ function SpatialMap({
         graph={graph}
         inFlightUnansweredNodes={inFlightUnansweredNodes}
         providers={providers}
-        readyCommits={readyCommits}
         stalePlanCommitIds={stalePlanCommitIds}
         staleSpecCommitIds={staleSpecCommitIds}
         onEditAndBranch={onEditAndBranch}
@@ -2175,7 +2139,6 @@ interface PlanNodeRowProps {
   readonly node: PlanGraphNode;
   readonly popover: PlanNodePopoverController;
   readonly isCurrent: boolean;
-  readonly ready: boolean;
   readonly stalePlan?: boolean;
   readonly staleSpec?: boolean;
   readonly suppressUnanswered?: boolean;
@@ -2199,7 +2162,6 @@ function CheckpointRow({
   node,
   popover,
   isCurrent,
-  ready,
   stalePlan = false,
   staleSpec = false,
   suppressUnanswered = false,
@@ -2263,7 +2225,7 @@ function CheckpointRow({
           ) : null}
           <span className="shrink-0 text-[11px] font-medium text-muted-foreground">You</span>
         </span>
-        {effects.length === 0 && !ready && !stalePlan && !staleSpec ? null : (
+        {effects.length === 0 && !stalePlan && !staleSpec ? null : (
           <span className="flex min-w-0 flex-wrap items-center gap-1">
             {effects.map((effect) => (
               <span
@@ -2273,11 +2235,6 @@ function CheckpointRow({
                 {planCheckpointEffectLabel(effect)}
               </span>
             ))}
-            {ready ? (
-              <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                Ready to implement
-              </span>
-            ) : null}
             {staleSpec ? (
               <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
                 Spec stale
@@ -2339,7 +2296,6 @@ function CommitRow({
   node,
   popover,
   isCurrent,
-  ready,
   stalePlan = false,
   staleSpec = false,
   trailing,
@@ -2401,11 +2357,6 @@ function CommitRow({
         >
           {planCommitSummary(item)}
         </span>
-        {ready ? (
-          <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-            Ready to implement
-          </span>
-        ) : null}
         {item._tag === "coding-session" && item.partial === true ? (
           <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
             {planCheckpointEffectLabel("partial")}

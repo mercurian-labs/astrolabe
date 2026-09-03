@@ -35,7 +35,6 @@ const MIGRATED_STORY_TITLES = [
   "Memory amendment blocked",
   "Imported from an issue",
   "No spec yet",
-  "Plan may be stale",
   "Structured question",
   "Assistant replying",
   "Turn with a model switch",
@@ -127,7 +126,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(31);
+    expect(migratedEntries).toHaveLength(30);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }
