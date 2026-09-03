@@ -100,7 +100,7 @@ export function RepositoriesPage() {
                 {isPending ? "Loading repositories…" : "No repositories yet"}
               </EmptyTitle>
               <EmptyDescription className="mt-2 text-sm text-muted-foreground/78">
-                Repositories are the context a project&rsquo;s plans ground in. Add one to give
+                Repositories are the context a project&rsquo;s threads ground in. Add one to give
                 Mercurian something to read.
               </EmptyDescription>
               {isPending ? null : (

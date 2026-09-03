@@ -773,6 +773,21 @@ export const make = Effect.gen(function* () {
           phase: "running",
           ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
         });
+        // The provider session runs under the *thread's* runtime mode, which
+        // only `thread.runtime-mode.set` moves — so a mode chosen after the
+        // line runtime was born must be set on the thread before the turn.
+        const lineThread = yield* projections
+          .getThreadDetailById(ensured.record.threadId)
+          .pipe(Effect.orElseSucceed(() => Option.none()));
+        if (Option.getOrUndefined(lineThread)?.runtimeMode !== runtimeMode) {
+          yield* orchestration.dispatch({
+            type: "thread.runtime-mode.set",
+            commandId: yield* commandId("runtime-mode"),
+            threadId: ensured.record.threadId,
+            runtimeMode,
+            createdAt: DateTime.formatIso(yield* DateTime.now),
+          });
+        }
         const createdAt = DateTime.formatIso(yield* DateTime.now);
         yield* orchestration
           .dispatch({

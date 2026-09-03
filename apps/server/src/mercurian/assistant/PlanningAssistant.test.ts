@@ -15,6 +15,7 @@ import {
   type PlanningModelSelection,
   type ProviderRuntimeEvent,
   type ServerProvider,
+  type RuntimeMode,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -112,6 +113,7 @@ interface HarnessOptions {
   readonly providers?: ReadonlyArray<ServerProvider>;
   readonly timeline?: ReadonlyArray<ReturnType<typeof messageItem>>;
   readonly unreachableRepositories?: ReadonlyArray<string>;
+  readonly lineThreadRuntimeMode?: RuntimeMode;
   readonly repositoryNames?: ReadonlyArray<string>;
   readonly ancestors?: (commitId: CommitId) => ReadonlyArray<Commit>;
   readonly planText?: string;
@@ -236,6 +238,12 @@ const makeHarness = (options: HarnessOptions = {}) => {
       getThreadShellById: () =>
         Effect.succeed(
           Option.some({ latestTurn: { state: "running", turnId: "engine-turn" } } as never),
+        ),
+      getThreadDetailById: () =>
+        Effect.succeed(
+          Option.some({
+            runtimeMode: options.lineThreadRuntimeMode ?? "approval-required",
+          } as never),
         ),
     }),
     Layer.mock(LineRuntimeService.LineRuntimeService)({
@@ -363,6 +371,48 @@ describe("PlanningAssistant", () => {
       yield* assistant.teardownPlan({ planId, commitPartial: false });
     }).pipe(Effect.scoped, Effect.provide(harness.layer));
   });
+
+  it.effect("sets the line thread's runtime mode before the turn only when it changed", () => {
+    const harness = makeHarness({ lineThreadRuntimeMode: "approval-required" });
+    return Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      yield* assistant.startTurn({
+        planId,
+        parentCommitId: CommitId.make("root"),
+        text: "First",
+        runtimeMode: "full-access",
+      });
+      const types = harness.state.commands.map((command) => command.type);
+      const set = harness.state.commands.find(
+        (command) => command.type === "thread.runtime-mode.set",
+      );
+      assert.ok(set !== undefined && set.type === "thread.runtime-mode.set");
+      assert.strictEqual(set.runtimeMode, "full-access");
+      assert.ok(types.indexOf("thread.runtime-mode.set") < types.indexOf("thread.turn.start"));
+      yield* assistant.teardownPlan({ planId, commitPartial: false });
+    }).pipe(Effect.scoped, Effect.provide(harness.layer));
+  });
+
+  it.effect(
+    "leaves the line thread's runtime mode alone when the turn carries the same one",
+    () => {
+      const harness = makeHarness({ lineThreadRuntimeMode: "full-access" });
+      return Effect.gen(function* () {
+        const assistant = yield* PlanningAssistant.PlanningAssistant;
+        yield* assistant.startTurn({
+          planId,
+          parentCommitId: CommitId.make("root"),
+          text: "First",
+          runtimeMode: "full-access",
+        });
+        assert.ok(
+          !harness.state.commands.some((command) => command.type === "thread.runtime-mode.set"),
+        );
+        assert.ok(harness.state.commands.some((command) => command.type === "thread.turn.start"));
+        yield* assistant.teardownPlan({ planId, commitPartial: false });
+      }).pipe(Effect.scoped, Effect.provide(harness.layer));
+    },
+  );
 
   it.effect("refuses honestly when no planning model is set", () => {
     const harness = makeHarness({ planningModel: null });
