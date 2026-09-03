@@ -20,7 +20,15 @@ layer("013_WorktreeSlots", (it) => {
       `;
       assert.deepStrictEqual(
         lineBranches.map(({ name }) => name),
-        ["line_root_commit_id", "repository_id", "branch", "base_oid", "built", "created_at"],
+        [
+          "line_root_commit_id",
+          "repository_id",
+          "branch",
+          "base_oid",
+          "built",
+          "created_at",
+          "repoint_hold",
+        ],
       );
 
       const sessionColumns = yield* sql<{ readonly name: string }>`

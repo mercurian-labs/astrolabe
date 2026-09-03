@@ -38,6 +38,7 @@ layer("010_CodingSessions", (it) => {
           "snapshot_kind",
           "departed_ref",
           "branch_movement",
+          "line_branch_missing_oid",
         ],
       );
 
