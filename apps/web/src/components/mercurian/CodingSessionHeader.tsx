@@ -25,7 +25,6 @@ import { useRemoteOpenState } from "../../remoteOpen";
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useRepositories } from "../../state/mercurianRepositories";
-import { useRecreateLineBranch } from "../../state/mercurian";
 import { useEnvironmentQuery } from "../../state/query";
 import {
   primaryServerAvailableEditorsAtom,
@@ -42,7 +41,6 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { resolveRenameCommit, shouldShowOpenInPicker } from "../chat/ChatHeader";
 import { OpenInPicker } from "../chat/OpenInPicker";
-import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { changeRequestsAllowed } from "./hostingProviders.logic";
 import { SessionPreviewOffer } from "./SessionPreviewOffer";
@@ -57,8 +55,6 @@ export interface CodingSessionHeaderProps {
   readonly threadRef: ScopedThreadRef;
   readonly worktreePath: string | null;
   readonly repositoryId: MercurianRepositoryId | null;
-  readonly branch: string | null;
-  readonly lineBranchMissingOid: string | null;
 }
 
 /** Session rename uses the same trim/reject/no-op contract as the parked thread header. */
@@ -104,7 +100,6 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
-  const recreateLineBranch = useRecreateLineBranch();
   const [renaming, setRenaming] = useState<{ threadId: ThreadId; title: string } | null>(null);
   if (renaming !== null && renaming.threadId !== props.threadId) setRenaming(null);
   const renameTitle = renaming?.threadId === props.threadId ? renaming.title : null;
@@ -156,107 +151,87 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
   );
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-        <WorkspaceBreadcrumb ariaLabel="Coding session breadcrumb" className="flex-1">
-          <WorkspaceBreadcrumbItem>
-            {props.planId === null || props.planTitle === null ? (
-              <Link
-                className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                to="/"
-              >
-                Plans
-              </Link>
-            ) : (
-              <Link
-                className="max-w-40 truncate rounded-sm transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                to="/plans/$planId"
-                params={{ planId: props.planId }}
-              >
-                {props.planTitle}
-              </Link>
-            )}
-          </WorkspaceBreadcrumbItem>
-          <WorkspaceBreadcrumbSeparator />
-          <WorkspaceBreadcrumbItem current className="flex-1">
-            {renameTitle === null ? (
-              <button
-                type="button"
-                aria-label={`Rename session ${props.threadTitle}`}
-                className="min-w-0 max-w-full cursor-pointer truncate rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={startRename}
-              >
-                {props.threadTitle}
-              </button>
-            ) : (
-              <input
-                autoFocus
-                aria-label="Session title"
-                className="min-w-0 flex-1 rounded-sm bg-transparent text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring"
-                defaultValue={renameTitle}
-                onBlur={(event) => {
-                  if (renameCommittedRef.current) return;
-                  commitRename(event.currentTarget.value);
-                }}
-                onFocus={(event) => event.currentTarget.select()}
-                onKeyDown={handleRenameKeyDown}
-              />
-            )}
-          </WorkspaceBreadcrumbItem>
-        </WorkspaceBreadcrumb>
-        <div
-          data-chat-header-actions
-          className={cn(
-            "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
-            rightPanelOpen ? "pr-0" : "pr-16",
+    <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+      <WorkspaceBreadcrumb ariaLabel="Coding session breadcrumb" className="flex-1">
+        <WorkspaceBreadcrumbItem>
+          {props.planId === null || props.planTitle === null ? (
+            <Link
+              className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              to="/"
+            >
+              Plans
+            </Link>
+          ) : (
+            <Link
+              className="max-w-40 truncate rounded-sm transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              to="/plans/$planId"
+              params={{ planId: props.planId }}
+            >
+              {props.planTitle}
+            </Link>
           )}
-        >
-          {props.worktreePath !== null && repository !== null ? (
-            <SessionScriptsControl
-              threadRef={props.threadRef}
-              worktreePath={props.worktreePath}
-              repository={repository}
-              keybindings={keybindings}
+        </WorkspaceBreadcrumbItem>
+        <WorkspaceBreadcrumbSeparator />
+        <WorkspaceBreadcrumbItem current className="flex-1">
+          {renameTitle === null ? (
+            <button
+              type="button"
+              aria-label={`Rename session ${props.threadTitle}`}
+              className="min-w-0 max-w-full cursor-pointer truncate rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={startRename}
+            >
+              {props.threadTitle}
+            </button>
+          ) : (
+            <input
+              autoFocus
+              aria-label="Session title"
+              className="min-w-0 flex-1 rounded-sm bg-transparent text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring"
+              defaultValue={renameTitle}
+              onBlur={(event) => {
+                if (renameCommittedRef.current) return;
+                commitRename(event.currentTarget.value);
+              }}
+              onFocus={(event) => event.currentTarget.select()}
+              onKeyDown={handleRenameKeyDown}
             />
-          ) : null}
-          {showOpenInPicker ? (
-            <OpenInPicker
-              environmentId={props.environmentId}
-              keybindings={keybindings}
-              availableEditors={availableEditors}
-              openInCwd={props.worktreePath}
-            />
-          ) : null}
-          {props.worktreePath !== null ? (
-            <GitActionsControl
-              gitCwd={props.worktreePath}
-              activeThreadRef={props.threadRef}
-              changeRequestsAllowed={changeRequestsGate}
-            />
-          ) : null}
-          <WorkspaceBreadcrumb ariaLabel="Session previews">
-            <SessionPreviewOffer environmentId={props.environmentId} threadId={props.threadId} />
-          </WorkspaceBreadcrumb>
-        </div>
+          )}
+        </WorkspaceBreadcrumbItem>
+      </WorkspaceBreadcrumb>
+      <div
+        data-chat-header-actions
+        className={cn(
+          "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
+          rightPanelOpen ? "pr-0" : "pr-16",
+        )}
+      >
+        {props.worktreePath !== null && repository !== null ? (
+          <SessionScriptsControl
+            threadRef={props.threadRef}
+            worktreePath={props.worktreePath}
+            repository={repository}
+            keybindings={keybindings}
+          />
+        ) : null}
+        {showOpenInPicker ? (
+          <OpenInPicker
+            environmentId={props.environmentId}
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            openInCwd={props.worktreePath}
+          />
+        ) : null}
+        {props.worktreePath !== null ? (
+          <GitActionsControl
+            gitCwd={props.worktreePath}
+            activeThreadRef={props.threadRef}
+            changeRequestsAllowed={changeRequestsGate}
+          />
+        ) : null}
+        <WorkspaceBreadcrumb ariaLabel="Session previews">
+          <SessionPreviewOffer environmentId={props.environmentId} threadId={props.threadId} />
+        </WorkspaceBreadcrumb>
       </div>
-      {props.lineBranchMissingOid === null || props.branch === null ? null : (
-        <div
-          role="alert"
-          className="flex items-center gap-2 border-t border-destructive/20 px-2 pt-1 text-xs text-destructive-foreground"
-        >
-          <span className="min-w-0 flex-1 truncate">
-            Branch <code>{props.branch}</code> no longer exists in this repository
-          </span>
-          <Button
-            size="xs"
-            type="button"
-            variant="outline"
-            onClick={() => void recreateLineBranch({ threadId: props.threadId })}
-          >
-            Recreate at {props.lineBranchMissingOid.slice(0, 7)}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

@@ -15,10 +15,12 @@ vi.mock("../components/ChatView", () => ({
     readonly threadId: ThreadId;
     readonly routeKind: string;
     readonly headerContent?: ReactNode;
+    readonly headerBanner?: ReactNode;
     readonly planPanel?: ReactNode;
   }) => (
     <div data-route-kind={props.routeKind}>
       {props.headerContent}
+      {props.headerBanner}
       {props.planPanel}
       Chat {props.threadId}
     </div>
@@ -31,6 +33,20 @@ vi.mock("../components/mercurian/SessionPlanPanel", () => ({
       Standing plan
     </div>
   ),
+}));
+
+vi.mock("../components/mercurian/LineBranchMissingBanner", () => ({
+  LineBranchMissingBanner: (props: {
+    readonly threadId: ThreadId;
+    readonly branch: string | null;
+    readonly lineBranchMissingOid: string | null;
+  }) =>
+    props.lineBranchMissingOid === null ? null : (
+      <div
+        role="alert"
+        data-line-branch-missing={`${props.threadId}:${props.branch}:${props.lineBranchMissingOid}`}
+      />
+    ),
 }));
 
 vi.mock("../components/mercurian/CodingSessionHeader", () => ({
@@ -98,7 +114,7 @@ describe("session thread route", () => {
         worktreePath={worktreePath}
         repositoryId={repositoryId}
         branch="mercurian/session"
-        lineBranchMissingOid={null}
+        lineBranchMissingOid="1234567890abcdef"
       />,
     );
 
@@ -111,6 +127,9 @@ describe("session thread route", () => {
     expect(markup).toContain('data-thread-ref="environment-test:thread-test"');
     expect(markup).toContain('data-worktree-path="/repo/worktrees/session"');
     expect(markup).toContain('data-repository-id="repository-test"');
+    expect(markup).toContain(
+      'data-line-branch-missing="thread-test:mercurian/session:1234567890abcdef"',
+    );
     expect(markup).toContain('data-session-plan-panel="plan-test:session-leaf"');
     expect(markup).toContain("Standing plan");
     expect(markup).not.toContain("Thread breadcrumb");

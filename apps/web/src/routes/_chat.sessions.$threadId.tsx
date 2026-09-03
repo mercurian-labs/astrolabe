@@ -11,6 +11,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 import ChatView from "../components/ChatView";
 import { CodingSessionHeader } from "../components/mercurian/CodingSessionHeader";
+import { LineBranchMissingBanner } from "../components/mercurian/LineBranchMissingBanner";
 import { SessionPlanPanel } from "../components/mercurian/SessionPlanPanel";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
@@ -82,6 +83,11 @@ export function SessionThreadRouteContent(props: {
               threadRef={props.threadRef}
               worktreePath={props.worktreePath}
               repositoryId={props.repositoryId}
+            />
+          }
+          headerBanner={
+            <LineBranchMissingBanner
+              threadId={props.threadId}
               branch={props.branch}
               lineBranchMissingOid={props.lineBranchMissingOid}
             />
