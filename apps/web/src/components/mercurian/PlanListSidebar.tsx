@@ -8,7 +8,7 @@ import {
   type MercurianProjectId,
   type PlanTreeRow,
 } from "@t3tools/contracts";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
@@ -54,7 +54,6 @@ import { readLocalApi } from "../../localApi";
 import { cn, randomUUID } from "../../lib/utils";
 import { usePlanDraftStore, type PlanDraft } from "../../planDraftStore";
 import { useProjectScopeStore } from "../../projectScopeStore";
-import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { useMarkPlanUnread, useMercurianTree } from "../../state/mercurian";
 import { primaryServerKeybindingsAtom } from "../../state/server";
@@ -78,7 +77,6 @@ import {
   type PlanRowMenuAction,
 } from "./planListing.logic";
 import {
-  codingSessionDetailLabel,
   listJumpTargets,
   pageArchivedPlans,
   partitionSidebarPlans,
@@ -160,10 +158,6 @@ export default function PlanListSidebar() {
     () => resolveTreeActivePlanId(selection, snapshot.plans),
     [selection, snapshot.plans],
   );
-  const pruneSessionDrafts = useCodingSessionDraftStore((state) => state.pruneMissingPlans);
-  useEffect(() => {
-    pruneSessionDrafts(new Set(snapshot.plans.map((plan) => plan.planId)));
-  }, [pruneSessionDrafts, snapshot.plans]);
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
   const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
   const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
@@ -719,31 +713,11 @@ const PlanCard = memo(function PlanCard(props: {
             Updated {formatRelativeTimeLabel(props.plan.updatedAt)}
           </SidebarPlanTooltipRow>
           {cardStatus.slot === null ? null : <PlanTooltipStatusRow status={cardStatus.slot} />}
-          <SidebarCodingSessionRows sessions={props.plan.codingSessions ?? []} />
         </SidebarPlanHoverCardContent>
       </SidebarPlanHoverCard>
     </li>
   );
 });
-
-export function SidebarCodingSessionRows(props: {
-  readonly sessions: PlanTreeRow["codingSessions"];
-}) {
-  return props.sessions.map((session) => (
-    <Link
-      key={session.commitId}
-      className="rounded-sm hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-      to="/sessions/$threadId"
-      params={{ threadId: session.threadId }}
-    >
-      <SidebarPlanTooltipRow
-        icon={<GitBranchIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />}
-      >
-        {codingSessionDetailLabel(session)}
-      </SidebarPlanTooltipRow>
-    </Link>
-  ));
-}
 
 function PlanTooltipStatusRow(props: { readonly status: "awaiting-input" | "working" }) {
   const isWorking = props.status === "working";

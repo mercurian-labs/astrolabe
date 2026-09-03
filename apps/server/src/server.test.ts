@@ -114,9 +114,10 @@ import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
-import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
-import type { CodingSessionRecord } from "./mercurian/codingSessions/schema.ts";
-import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
+import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
+import type { LineRuntimeRecord } from "./mercurian/lineRuntimes/schema.ts";
+import * as LineRuntimeService from "./mercurian/lineRuntimes/LineRuntimeService.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
@@ -589,7 +590,7 @@ const buildAppUnderTest = (options?: {
     threadDeletionReactor?: Partial<ThreadDeletionReactor["Service"]>;
     analyticsService?: Partial<AnalyticsService.AnalyticsService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
-    codingSessionStore?: Partial<CodingSessionStore.CodingSessionStore["Service"]>;
+    lineRuntimeStore?: Partial<LineRuntimeStore.LineRuntimeStore["Service"]>;
     lineBranchStore?: Partial<LineBranchStore.LineBranchStore["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
@@ -803,26 +804,22 @@ const buildAppUnderTest = (options?: {
     const serviceLauncherClientLayer = ServiceLauncherClient.layer.pipe(
       Layer.provide(Layer.succeed(HostProcessEnvironment, {})),
     );
-    const codingSessionStoreLayer = options?.layers?.codingSessionStore
-      ? Layer.mock(CodingSessionStore.CodingSessionStore)({
-          record: () => Effect.void,
-          recordInTransaction: () => Effect.void,
-          announce: () => Effect.void,
-          listForPlan: () => Effect.succeed([]),
-          listAll: Effect.succeed([]),
+    const lineRuntimeStoreLayer = options?.layers?.lineRuntimeStore
+      ? Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+          getOrNone: () => Effect.succeed(Option.none()),
+          listByPlan: () => Effect.succeed([]),
           getByThreadId: () => Effect.succeed(Option.none()),
-          getByWorktreePath: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
+          create: () => Effect.void,
           updateBranch: () => Effect.void,
           recordSnapshot: () => Effect.void,
           recordRepositorySnapshot: () => Effect.void,
           recordLineBranchMissing: () => Effect.void,
-          end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,
-          ...options.layers.codingSessionStore,
+          ...options.layers.lineRuntimeStore,
         })
-      : CodingSessionStore.layer;
+      : LineRuntimeStore.layer;
 
     const servedRoutesLayer = HttpRouter.serve(
       makeRoutesLayer.pipe(Layer.provide(serviceLauncherClientLayer)),
@@ -1290,8 +1287,8 @@ const buildAppUnderTest = (options?: {
         ),
         Layer.provide(
           Layer.mergeAll(
-            Layer.mock(CodingSessionService.CodingSessionService)({
-              start: () => Effect.die("CodingSessionService not stubbed in this test"),
+            Layer.mock(LineRuntimeService.LineRuntimeService)({
+              ensure: () => Effect.die("LineRuntimeService not stubbed in this test"),
             }),
             Layer.mock(SlotStore.SlotStore)({
               list: () => Effect.succeed([]),
@@ -1326,7 +1323,8 @@ const buildAppUnderTest = (options?: {
         Layer.provide(
           Layer.mergeAll(
             PlanningStore.layer.pipe(
-              Layer.provideMerge(codingSessionStoreLayer),
+              Layer.provideMerge(LegacySessionStore.layer),
+              Layer.provideMerge(lineRuntimeStoreLayer),
               Layer.provideMerge(RepositoryStore.layer),
             ),
             MemoryIndex.layer.pipe(Layer.provideMerge(MemorySourceStore.layer)),
@@ -5201,7 +5199,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     }).pipe(Effect.asVoid)
                   : Effect.void,
               ),
-              Stream.take(4),
+              Stream.take(5),
               Stream.runCollect,
             );
             // The artifact as of an earlier commit is the one thing the
@@ -5215,7 +5213,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               planId: created.plan.planId,
               commitId: created.timeline[0]!.commitId,
             });
-            const revisionEvent = items[3];
+            const revisionEvent = items[4];
             const atRevision =
               revisionEvent?.kind === "commit"
                 ? yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
@@ -5272,7 +5270,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
       assert.equal(snapshot?.planText, "");
       assert.deepEqual(result.items[1], { kind: "coding-sessions", sessions: [] });
-      assert.deepEqual(result.items[2], { kind: "synchronized" });
+      assert.deepEqual(result.items[2], { kind: "line-runtimes", lineRuntimes: [] });
+      assert.deepEqual(result.items[3], { kind: "synchronized" });
 
       // The graph's shape rides along: the explorer draws the history from
       // these rather than from a second read.
@@ -5283,7 +5282,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
       assert.equal(snapshot?.timeline[0]?.published, false);
 
-      const event = result.items[3];
+      const event = result.items[4];
       assert.equal(event?.kind, "commit");
       if (event?.kind === "commit") {
         assert.equal(event.item._tag, "plan-revision");
@@ -5366,25 +5365,21 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const sessionRecord = () => {
         if (sessionPlanId === null) return null;
         return {
-          commitId: MercurianCommitId.make("session-status-commit"),
+          lineRootCommitId: MercurianCommitId.make("session-status-commit"),
           planId: sessionPlanId,
-          repositoryId: MercurianRepositoryId.make("repository-status"),
+          homeRepositoryId: MercurianRepositoryId.make("repository-status"),
           threadId: sessionThreadId,
           branch: "mercurian/session-status-12345678",
           worktreePath: "/tmp/session-status",
-          baseRef: "main",
-          startedAt: DateTime.makeUnsafe("2026-08-19T12:00:00.000Z"),
-          endedAt: null,
-          outcome: null,
-          prUrl: null,
-          settledCommitOid: null,
-          partial: false,
           snapshotOid: null,
           snapshotKind: null,
           departedRef: null,
           branchMovement: null,
           lineBranchMissingOid: null,
           unreachableRepositories: [],
+          createdAt: DateTime.makeUnsafe("2026-08-19T12:00:00.000Z"),
+          updatedAt: DateTime.makeUnsafe("2026-08-19T12:00:00.000Z"),
+          repositories: [],
         } as const;
       };
       const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
@@ -5412,11 +5407,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             getThreadShellById: (threadId) =>
               Effect.succeed(threadId === sessionThreadId ? Option.some(liveShell) : Option.none()),
           },
-          codingSessionStore: {
-            listAll: Effect.sync(() => {
-              const record = sessionRecord();
-              return record === null ? [] : [record];
-            }),
+          lineRuntimeStore: {
+            listByPlan: () =>
+              Effect.sync(() => {
+                const record = sessionRecord();
+                return record === null ? [] : [record];
+              }),
             getByThreadId: (threadId) =>
               Effect.sync(() => {
                 const record = sessionRecord();
@@ -5821,7 +5817,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const threadId = ThreadId.make("thread-recreate-line");
         let lineRootCommitId = MercurianCommitId.make("pending-line-root");
         let repositoryId = MercurianRepositoryId.make("pending-repository");
-        let session: CodingSessionRecord | null = null;
+        let session: LineRuntimeRecord | null = null;
         const cleared: Array<{ threadId: ThreadId; oid: string | null }> = [];
 
         const executeGit: GitVcsDriver.GitVcsDriver["Service"]["execute"] = (input) => {
@@ -5867,7 +5863,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                         baseOid,
                         built: true,
                         repointHold: null,
-                        createdAt: session.startedAt,
+                        createdAt: session.createdAt,
                       },
                     ]),
               ),
@@ -5883,13 +5879,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                           baseOid,
                           built: true,
                           repointHold: null,
-                          createdAt: session.startedAt,
+                          createdAt: session.createdAt,
                         }),
                       ),
                 ),
             },
-            codingSessionStore: {
-              listAll: Effect.suspend(() => Effect.succeed(session === null ? [] : [session])),
+            lineRuntimeStore: {
+              listByPlan: () =>
+                Effect.suspend(() => Effect.succeed(session === null ? [] : [session])),
               getByThreadId: (candidate) =>
                 Effect.suspend(() =>
                   Effect.succeed(
@@ -5930,25 +5927,21 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 repositoryIds: [repositoryId],
               });
               session = {
-                commitId: lineRootCommitId,
+                lineRootCommitId,
                 planId: created.plan.planId,
-                repositoryId,
+                homeRepositoryId: repositoryId,
                 threadId,
                 branch,
                 worktreePath: repositoryPath,
-                baseRef: "main",
-                startedAt: TEST_EPOCH,
-                endedAt: null,
-                outcome: null,
-                prUrl: null,
-                settledCommitOid: null,
-                partial: false,
                 snapshotOid: null,
                 snapshotKind: null,
                 departedRef: null,
                 branchMovement: null,
                 lineBranchMissingOid: baseOid,
                 unreachableRepositories: [],
+                createdAt: DateTime.makeUnsafe(TEST_EPOCH),
+                updatedAt: DateTime.makeUnsafe(TEST_EPOCH),
+                repositories: [],
               };
 
               const byThread = yield* client[MERCURIAN_WS_METHODS.recreateLineBranch]({ threadId });
@@ -8012,25 +8005,21 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const sessionCwd = "/tmp/session-pr";
         const sessionThreadId = ThreadId.make("thread-session-pr");
         const sessionRecord = {
-          commitId: MercurianCommitId.make("session-pr-commit"),
+          lineRootCommitId: MercurianCommitId.make("session-pr-commit"),
           planId: PlanId.make("session-pr-plan"),
-          repositoryId: MercurianRepositoryId.make("session-pr-repository"),
+          homeRepositoryId: MercurianRepositoryId.make("session-pr-repository"),
           threadId: sessionThreadId,
           branch: "feature/session-pr",
           worktreePath: sessionCwd,
-          baseRef: "main",
-          startedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
-          endedAt: null,
-          outcome: null,
-          prUrl: null,
-          settledCommitOid: null,
-          partial: false,
           snapshotOid: null,
           snapshotKind: null,
           departedRef: null,
           branchMovement: null,
           lineBranchMissingOid: null,
           unreachableRepositories: [],
+          createdAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+          updatedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+          repositories: [],
         } as const;
         const attached: Array<{
           readonly threadId: ThreadId;
@@ -8064,7 +8053,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         yield* buildAppUnderTest({
           layers: {
             vcsDriver: { isInsideWorkTree: () => Effect.succeed(true) },
-            codingSessionStore: {
+            lineRuntimeStore: {
               getByBranch: (branch) =>
                 Effect.succeed(
                   branch === sessionRecord.branch ? Option.some(sessionRecord) : Option.none(),
@@ -8128,7 +8117,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepStrictEqual(attached, [
           {
             threadId: sessionThreadId,
-            repositoryId: sessionRecord.repositoryId,
+            repositoryId: sessionRecord.homeRepositoryId,
             prUrl: "https://example.com/pr/119",
           },
         ]);

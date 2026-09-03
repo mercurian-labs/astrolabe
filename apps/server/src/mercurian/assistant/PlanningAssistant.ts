@@ -1,27 +1,18 @@
 /**
- * PlanningAssistant — planning turns on the provider-session runtime.
+ * PlanningAssistant — planning turns on line runtimes.
  *
- * A reply in a planning space is one turn of a provider session: the human
- * message commits first, then this service generates the reply under the
- * workspace planning model, streams it as transient frames on the plan's
- * subscription, and lands exactly one message commit when the turn settles —
- * full text on completion, partial text marked interrupted on a stop or an
- * abnormal end. The commit is the record; everything here is runtime state
- * (ADR 002 §3), and a server restart rightly starts with no turns.
+ * A reply in a planning space is one upstream orchestration turn: the human
+ * message commits first, then this service ensures the line's runtime, starts
+ * the turn with the human commit as its message id, folds provider events into
+ * transient plan frames, and lands exactly one assistant message commit when
+ * the turn settles. The commit is the record; everything here is runtime state.
  *
  * The invariants this service enforces at the runtime, not in a prompt:
  *
- * - planning is mode-free and read-only. Sessions open at the most
- *   restrictive runtime mode, `interactionMode` is never passed, and every
- *   approval request is auto-answered — file reads and the two planning MCP
- *   artifact tools approved for the session, commands, file changes, and all
- *   other dynamic tools declined — so no approval ever surfaces and no
- *   filesystem write ever lands, whatever a provider tries;
- * - the assistant only ever continues from where things left off. A turn on
- *   the session's own tip rides the live session; a fork, a model change, or
- *   a dead session rebuilds a fresh session whose first turn carries the
- *   ancestor transcript. Structurally, the commit store's assistant-fork and
- *   assistant-merge refusals remain the guarantee;
+ * - every branch line owns one orchestration thread and one claimed project
+ *   slot, reused by later turns on that line and separated when a line forks;
+ * - runtime mode and approvals are enforced at the orchestration seams, so
+ *   planning uses the same provider lifecycle and interruption path as chat;
  * - one turn per branch at a time, as a server fact: a turn's {@link PlanTurnRegistry}
  *   claim covers exactly the chain it writes, so replies on different branches
  *   run concurrently while both this service and the store's human-write
@@ -34,6 +25,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Option from "effect/Option";
@@ -42,6 +34,9 @@ import * as Stream from "effect/Stream";
 
 import {
   ApprovalRequestId,
+  CommandId,
+  type ChatAttachment,
+  MessageId,
   MercurianCommitId,
   type MercurianProjectId,
   type MemoryAmendmentProposal,
@@ -53,29 +48,22 @@ import {
   type PlanQuestion,
   type PlanReconstructionMeasure,
   type PlanStreamItem,
-  planningModelSelectionsEqual,
   type PlanningModelSelection,
   PlanTurnId,
   type PlanTurnRefusalReason,
-  type ProviderInstanceId,
   type ProviderRuntimeEvent,
+  type RuntimeMode,
   resolvePlanningModel,
   specDocumentFromIssue,
   type SpecDocument,
   ThreadId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
-import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
-
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
-import type {
-  ReadPlanTool,
-  ReadSpecTool,
-  ProposeMemoryAmendmentTool,
-  SavePlanRevisionTool,
-  SaveSpecRevisionTool,
-} from "../../mcp/toolkits/planning/tools.ts";
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadDeletionReactor } from "../../orchestration/Services/ThreadDeletionReactor.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import { type Commit, type CommitId } from "../commitTree/schema.ts";
 import {
@@ -86,19 +74,21 @@ import {
   type PlanningStoreError,
 } from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
+import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
+import { LineRuntimeService, isRepositoryNotGitError } from "../lineRuntimes/LineRuntimeService.ts";
+import { LineRuntimeStore } from "../lineRuntimes/LineRuntimeStore.ts";
+import type { LineRuntimeRecord } from "../lineRuntimes/schema.ts";
+import { SlotService, isLineBranchMissingError } from "../worktreeSlots/SlotService.ts";
+import { SlotStore } from "../worktreeSlots/SlotStore.ts";
+import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
-import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as MemoryIndex from "../memory/MemoryIndex.ts";
 import { WorkspaceSettingsStore } from "../workspace/WorkspaceSettingsStore.ts";
 import { foldGroundingEvent } from "./GroundingFold.ts";
 import {
-  composeFirstTurnInput,
-  appendMemoryMentionStanza,
   measureTranscript,
-  memoryMentionResolutionStanza,
   planningSystemAppendix,
   TRANSCRIPT_FRAMING_MARGIN,
-  transcriptPreamble,
   type TranscriptEntry,
 } from "./PlanningPrompt.ts";
 import * as Schema from "effect/Schema";
@@ -115,6 +105,8 @@ export interface StartTurnInput {
   readonly parentCommitId: CommitId;
   /** That message's text — what the provider is asked to reply to. */
   readonly text: string;
+  readonly attachments?: ReadonlyArray<ChatAttachment>;
+  readonly runtimeMode?: RuntimeMode;
   /** The provider/model pair stamped on that human message. */
   readonly ranUnder?: PlanningModelSelection;
 }
@@ -130,21 +122,10 @@ export interface MeasureReconstructionInput {
   readonly parentCommitId: CommitId;
 }
 
-/** A provider session bound to a plan branch, and the commit its context stands at. */
-interface PlanSession {
-  readonly planId: PlanId;
-  readonly threadId: ThreadId;
-  readonly instanceId: ProviderInstanceId;
-  readonly modelSelection: PlanningModelSelection;
-  /** The tip the session last settled on — what a continuation must extend. */
-  readonly tipCommitId: CommitId;
-}
-
 /** The conversational state of one running turn. Mutated in place; single process. */
 interface TurnRuntime {
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
-  /** Mutable: a continuation whose session turned out dead moves threads. */
   threadId: ThreadId;
   readonly parentCommitId: CommitId;
   /** Captured at start so settlement records the model that actually ran. */
@@ -152,8 +133,8 @@ interface TurnRuntime {
   text: string;
   readonly grounding: Array<PlanGroundingItem>;
   readonly groundingKeys: Set<string>;
-  /** Mutable: re-decided when a dead continuation falls back to a rebuild. */
   groundingScope: PlanGroundingScope | undefined;
+  phase: "waiting-for-slot" | "running";
   /** The question currently waiting, if any. */
   pendingQuestions: ReadonlyArray<PlanQuestion> | undefined;
   pendingRequestId: ApprovalRequestId | undefined;
@@ -174,34 +155,6 @@ interface TurnRuntime {
  * honest without an unbounded wire payload.
  */
 const MAX_GROUNDING_ITEMS = 200;
-
-type PlanningMcpToolName =
-  | typeof SavePlanRevisionTool.name
-  | typeof SaveSpecRevisionTool.name
-  | typeof ProposeMemoryAmendmentTool.name
-  | typeof ReadPlanTool.name
-  | typeof ReadSpecTool.name;
-const APPROVED_PLANNING_MCP_TOOLS = [
-  "save_plan_revision",
-  "save_spec_revision",
-  "propose_memory_amendment",
-  "read_plan",
-  "read_spec",
-] as const satisfies ReadonlyArray<PlanningMcpToolName>;
-const PLANNING_MCP_TOOL_PREFIXES = ["mcp__t3-code__", "t3-code_"] as const;
-
-const normalizePlanningMcpToolName = (toolName: string): string | undefined => {
-  const prefix = PLANNING_MCP_TOOL_PREFIXES.find((candidate) => toolName.startsWith(candidate));
-  return prefix === undefined ? undefined : toolName.slice(prefix.length);
-};
-
-const isApprovedPlanningMcpToolName = (toolName: string): boolean => {
-  const normalized = normalizePlanningMcpToolName(toolName);
-  return (
-    normalized !== undefined &&
-    APPROVED_PLANNING_MCP_TOOLS.some((approved) => approved === normalized)
-  );
-};
 
 export class PlanningAssistant extends Context.Service<
   PlanningAssistant,
@@ -261,6 +214,8 @@ export class PlanningAssistant extends Context.Service<
     readonly teardownPlan: (input: {
       readonly planId: PlanId;
       readonly commitPartial: boolean;
+      /** Captured before plan deletion, because its rows cascade with the plan. */
+      readonly lineRuntimes?: ReadonlyArray<LineRuntimeRecord>;
     }) => Effect.Effect<void>;
     /**
      * The MCP write door: a provider session asking to revise the plan. Maps
@@ -419,10 +374,17 @@ export const make = Effect.gen(function* () {
   const registry = yield* PlanTurnRegistry;
   const workspaceSettings = yield* WorkspaceSettingsStore;
   const repositoryStore = yield* RepositoryStore.RepositoryStore;
-  const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
   const memoryIndex = yield* MemoryIndex.MemoryIndex;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerService = yield* ProviderService.ProviderService;
+  const orchestration = yield* OrchestrationEngineService;
+  const projections = yield* ProjectionSnapshotQuery;
+  const lineRuntimeService = yield* LineRuntimeService;
+  const lineRuntimes = yield* LineRuntimeStore;
+  const slots = yield* SlotStore;
+  const slotRegistry = yield* SlotRegistry;
+  const slotService = yield* SlotService;
+  const deletionReactor = yield* ThreadDeletionReactor;
   const crypto = yield* Crypto.Crypto;
 
   const framesPubSub = yield* PubSub.unbounded<{
@@ -433,24 +395,14 @@ export const make = Effect.gen(function* () {
 
   // Mutated only inside Effect.sync/gen blocks of this single service —
   // the same in-process discipline the provider adapters use for theirs.
-  // Turns are keyed by their own identity — a plan can hold one per branch —
-  // and sessions by their thread, one live session per branch being worked.
+  // Turns are keyed by their own identity — a plan can hold one per branch.
   const turns = new Map<PlanTurnId, TurnRuntime>();
-  const sessions = new Map<ThreadId, PlanSession>();
   const memoryAmendmentProposals = new Map<PlanId, MemoryAmendmentProposal>();
 
   const turnsOfPlan = (planId: PlanId): Array<TurnRuntime> => {
     const result: Array<TurnRuntime> = [];
     for (const turn of turns.values()) {
       if (turn.planId === planId) result.push(turn);
-    }
-    return result;
-  };
-
-  const sessionsOfPlan = (planId: PlanId): Array<PlanSession> => {
-    const result: Array<PlanSession> = [];
-    for (const session of sessions.values()) {
-      if (session.planId === planId) result.push(session);
     }
     return result;
   };
@@ -467,9 +419,11 @@ export const make = Effect.gen(function* () {
   };
 
   const mintTurnId = crypto.randomUUIDv4.pipe(Effect.map(PlanTurnId.make));
-  const mintThreadId = crypto.randomUUIDv4.pipe(
-    Effect.map((uuid) => ThreadId.make(`mercurian-plan-${uuid}`)),
-  );
+  const commandId = (tag: string) =>
+    crypto.randomUUIDv4.pipe(
+      Effect.map((uuid) => CommandId.make(`server:planning-assistant-${tag}:${uuid}`)),
+      Effect.orDie,
+    );
 
   /**
    * Land the turn's one message commit and release everything the turn
@@ -515,15 +469,7 @@ export const make = Effect.gen(function* () {
     turns.delete(turn.turnId);
     yield* registry.close(planId, turn.turnId);
 
-    if (Result.isSuccess(appended)) {
-      const session = sessions.get(turn.threadId);
-      if (session !== undefined) {
-        sessions.set(turn.threadId, { ...session, tipCommitId: appended.success.commitId });
-      }
-    } else {
-      // The session's context now holds a reply the history does not. Drop
-      // the binding so the next turn on this branch rebuilds from the record.
-      sessions.delete(turn.threadId);
+    if (Result.isFailure(appended)) {
       yield* Effect.logError("planning turn settle failed to commit", {
         planId,
         cause: appended.failure,
@@ -565,48 +511,6 @@ export const make = Effect.gen(function* () {
       });
     }
     yield* announceChange;
-  });
-
-  /** The auto-answer policy: reads and the planning artifact door approved, all else declined. */
-  const respondToApproval = Effect.fn("PlanningAssistant.respondToApproval")(function* (
-    turn: TurnRuntime,
-    event: ProviderRuntimeEvent & { readonly type: "request.opened" },
-  ) {
-    if (event.requestId === undefined) return;
-    // Token refreshes are the adapter's own plumbing, not a permission ask.
-    if (event.payload.requestType === "auth_tokens_refresh") return;
-    const args = event.payload.args;
-    const dynamicToolName =
-      typeof args === "object" &&
-      args !== null &&
-      "toolName" in args &&
-      typeof args.toolName === "string"
-        ? args.toolName
-        : undefined;
-    const approvesPlanningMcpTool =
-      event.payload.requestType === "dynamic_tool_call" &&
-      dynamicToolName !== undefined &&
-      isApprovedPlanningMcpToolName(dynamicToolName);
-    const decision =
-      event.payload.requestType === "file_read_approval" || approvesPlanningMcpTool
-        ? "acceptForSession"
-        : "decline";
-    yield* providerService
-      .respondToRequest({
-        threadId: turn.threadId,
-        // The runtime event's request id is the approval id on the answer path.
-        requestId: ApprovalRequestId.make(String(event.requestId)),
-        decision,
-      })
-      .pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("planning approval auto-response failed", {
-            planId: turn.planId,
-            requestType: event.payload.requestType,
-            cause,
-          }),
-        ),
-      );
   });
 
   const recordGrounding = Effect.fn("PlanningAssistant.recordGrounding")(function* (
@@ -689,7 +593,6 @@ export const make = Effect.gen(function* () {
         return;
       }
       case "request.opened": {
-        yield* respondToApproval(turn, event);
         yield* recordGrounding(turn, event);
         return;
       }
@@ -705,7 +608,6 @@ export const make = Effect.gen(function* () {
       case "session.exited": {
         // The session died under a live turn: the partial reply is what
         // there was, and the record says it was cut short.
-        sessions.delete(turn.threadId);
         yield* settleTurn(turn, { interrupted: true });
         return;
       }
@@ -771,172 +673,6 @@ export const make = Effect.gen(function* () {
     };
   });
 
-  const resolvedMemorySource = (projectId: MercurianProjectId) =>
-    memorySourceStore.getResolvedSource(projectId).pipe(Effect.orElseSucceed(() => Option.none()));
-
-  const resolveMemoryMentionStanza = Effect.fn("PlanningAssistant.resolveMemoryMentionStanza")(
-    function* (projectId: MercurianProjectId, text: string) {
-      const names = [
-        ...new Set(
-          collectComposerInlineTokens(text, { includeNotes: true })
-            .filter((token) => token.type === "note")
-            .map((token) => token.value),
-        ),
-      ];
-      if (names.length === 0 || Option.isNone(yield* resolvedMemorySource(projectId))) return null;
-
-      const resolutions = [];
-      for (const name of names) {
-        const result = yield* memoryIndex.readNote(projectId, name).pipe(Effect.option);
-        if (Option.isNone(result)) continue;
-        const note = result.value;
-        if (note.exists && note.path !== undefined) {
-          resolutions.push({ name, path: note.path });
-        } else if (note.backlinks.length > 0) {
-          resolutions.push({ name, referencedBy: note.backlinks });
-        }
-      }
-      return memoryMentionResolutionStanza(resolutions);
-    },
-  );
-
-  /**
-   * Everything a fresh session needs, assembled before any provider call:
-   * grounding roots narrowed to the capability, the ancestor transcript, and
-   * the first turn's whole input.
-   */
-  const buildRebuildMaterials = Effect.fn("PlanningAssistant.buildRebuildMaterials")(
-    function* (input: {
-      readonly planId: PlanId;
-      readonly parentCommitId: CommitId;
-      readonly text: string;
-      readonly planTitle: string;
-      readonly projectId: MercurianProjectId;
-      readonly instanceId: ProviderInstanceId;
-      readonly model: string;
-    }) {
-      const repositories = yield* repositoriesForProject(input.projectId);
-
-      const memorySource = yield* resolvedMemorySource(input.projectId);
-      const capabilities = yield* providerService.getCapabilities(input.instanceId);
-      // Narrowed, and visibly so: a cwd-only provider grounds the first
-      // repository alone, and the turn carries which ones were out of reach —
-      // silent narrowing is exactly what "grounding is visible" forbids.
-      const groundingRoots = [
-        ...repositories.map((repository) => ({ ...repository, kind: "repository" as const })),
-        ...(Option.isNone(memorySource)
-          ? []
-          : [
-              {
-                name: memorySource.value.repositoryName,
-                path: memorySource.value.rootPath,
-                kind: "memory" as const,
-              },
-            ]),
-      ];
-      const reachable =
-        capabilities.groundingRoots === "multi" ? groundingRoots : groundingRoots.slice(0, 1);
-      const unreachable =
-        capabilities.groundingRoots === "multi"
-          ? []
-          : groundingRoots.slice(1).map((root) => root.name);
-      const groundingScope: PlanGroundingScope | undefined =
-        unreachable.length === 0 ? undefined : { unreachableRepositories: unreachable };
-
-      const ancestors = yield* commits.ancestors({
-        commitId: input.parentCommitId,
-        visibility: "all",
-      });
-      const transcript = yield* projectTranscript(ancestors);
-
-      const appendix = planningSystemAppendix({
-        planTitle: input.planTitle,
-        repositories: reachable.filter((root) => root.kind === "repository"),
-        unreachableRepositories: unreachable,
-        memoryRoot: reachable.find((root) => root.kind === "memory") ?? null,
-        memoryAmendmentsAvailable: Option.isSome(memorySource),
-      });
-      const memoryMentionStanza = yield* resolveMemoryMentionStanza(input.projectId, input.text);
-      const preamble =
-        transcript.entries.length === 0
-          ? null
-          : transcriptPreamble({
-              entries: transcript.entries,
-              planText: transcript.planText,
-              spec: transcript.spec,
-              reservedChars:
-                appendix.length + input.text.length + (memoryMentionStanza?.length ?? 0),
-            });
-
-      const threadId = yield* mintThreadId;
-      return {
-        threadId,
-        groundingScope,
-        repositories,
-        cwd: reachable[0]?.path,
-        additionalDirectories: reachable.slice(1).map((root) => root.path),
-        firstTurnInput: composeFirstTurnInput({
-          appendix,
-          preamble,
-          message: input.text,
-          memoryMentionStanza,
-        }),
-      } satisfies RebuildMaterials;
-    },
-  );
-
-  interface RebuildMaterials {
-    readonly threadId: ThreadId;
-    readonly groundingScope: PlanGroundingScope | undefined;
-    readonly repositories: ReadonlyArray<{ readonly name: string; readonly path: string }>;
-    readonly cwd: string | undefined;
-    readonly additionalDirectories: ReadonlyArray<string>;
-    readonly firstTurnInput: string;
-  }
-
-  /** Open the fresh session the materials describe and send its first turn. */
-  const runRebuild = Effect.fn("PlanningAssistant.runRebuild")(function* (input: {
-    readonly planId: PlanId;
-    readonly parentCommitId: CommitId;
-    readonly instanceId: ProviderInstanceId;
-    readonly modelSelection: PlanningModelSelection;
-    readonly materials: RebuildMaterials;
-  }) {
-    const { materials } = input;
-    yield* providerService.startSession(materials.threadId, {
-      threadId: materials.threadId,
-      providerInstanceId: input.instanceId,
-      ...(materials.cwd === undefined ? {} : { cwd: materials.cwd }),
-      ...(materials.additionalDirectories.length === 0
-        ? {}
-        : { additionalDirectories: materials.additionalDirectories }),
-      modelSelection: {
-        instanceId: input.instanceId,
-        model: input.modelSelection.model,
-        ...(input.modelSelection.options === undefined
-          ? {}
-          : { options: input.modelSelection.options }),
-      },
-      isolateProviderSettings: true,
-      // The read-only sandbox constrains writes and network. "untrusted"
-      // only produced command approvals that the planning approver declines,
-      // so skip those round-trips while retaining the sandbox boundary.
-      approvalPolicy: "never",
-      runtimeMode: "approval-required",
-    });
-    yield* providerService.sendTurn({
-      threadId: materials.threadId,
-      input: materials.firstTurnInput,
-    });
-    sessions.set(materials.threadId, {
-      planId: input.planId,
-      threadId: materials.threadId,
-      instanceId: input.instanceId,
-      modelSelection: input.modelSelection,
-      tipCommitId: input.parentCommitId,
-    });
-  });
-
   const startTurn: PlanningAssistant["Service"]["startTurn"] = (input) =>
     Effect.gen(function* () {
       const effectiveSelection =
@@ -956,53 +692,14 @@ export const make = Effect.gen(function* () {
           ? {}
           : { options: effectiveSelection.options }),
       } satisfies PlanningModelSelection;
-
       const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
       const turnId = yield* mintTurnId;
-
-      // Decide the session strategy structurally, before any provider call:
-      // a live session continues only when the new message hangs from the
-      // tip that session's context stands at, under the same resolved model.
-      // Sessions are per branch, so the lookup finds this branch's session —
-      // sessions parked on other branches are neither continued nor touched.
-      const parent = yield* commits.getCommit({
-        commitId: input.parentCommitId,
-        visibility: "all",
-      });
-      const parentParents = Option.isSome(parent) ? parent.value.parents : [];
-      const branchSession = sessionsOfPlan(input.planId).find((session) =>
-        parentParents.includes(session.tipCommitId),
-      );
-      const existing =
-        branchSession !== undefined &&
-        branchSession.instanceId === resolution.instanceId &&
-        planningModelSelectionsEqual(branchSession.modelSelection, resolvedSelection)
-          ? branchSession
-          : undefined;
-      const canContinue = existing !== undefined;
-
-      const materials = canContinue
-        ? null
-        : yield* buildRebuildMaterials({
-            planId: input.planId,
-            parentCommitId: input.parentCommitId,
-            text: input.text,
-            planTitle: snapshot.plan.title,
-            projectId: snapshot.plan.projectId,
-            instanceId: resolution.instanceId,
-            model: resolution.model,
-          });
-
-      const threadId = materials === null ? existing!.threadId : materials.threadId;
-
-      // Claim the plan before anything reaches the provider: from here on,
-      // human writes refuse and the MCP door resolves this thread to this
-      // turn — a tool call racing the first delta cannot slip past.
+      const placeholderThreadId = ThreadId.make(`mercurian-pending-${yield* crypto.randomUUIDv4}`);
       const claim = yield* registry
         .open({
           planId: input.planId,
           turnId,
-          threadId,
+          threadId: placeholderThreadId,
           parentCommitId: input.parentCommitId,
           tipCommitId: input.parentCommitId,
         })
@@ -1014,13 +711,14 @@ export const make = Effect.gen(function* () {
       const turn: TurnRuntime = {
         planId: input.planId,
         turnId,
-        threadId,
+        threadId: placeholderThreadId,
         parentCommitId: input.parentCommitId,
         modelSelection: resolvedSelection,
         text: "",
         grounding: [],
         groundingKeys: new Set(),
-        groundingScope: materials?.groundingScope,
+        groundingScope: undefined,
+        phase: "waiting-for-slot",
         pendingQuestions: undefined,
         pendingRequestId: undefined,
         askedQuestions: [],
@@ -1035,76 +733,77 @@ export const make = Effect.gen(function* () {
         kind: "turn-started",
         turnId,
         parentCommitId: MercurianCommitId.make(input.parentCommitId),
-        ...(materials?.groundingScope === undefined
-          ? {}
-          : { groundingScope: materials.groundingScope }),
+        phase: "waiting-for-slot",
       });
       yield* announceChange;
-
-      // The provider work, with one fallback: a continuation whose session
-      // turned out dead moves the turn to a fresh session.
+      const runtimeMode = input.runtimeMode ?? "approval-required";
+      const lineRootCommitId = lineRootCommitIdFor(snapshot, input.parentCommitId);
       const opened = yield* Effect.gen(function* () {
-        if (materials !== null) {
-          // A rebuild replaces this branch's session — including one under
-          // another model, which would otherwise sit parked forever.
-          if (branchSession !== undefined) {
-            sessions.delete(branchSession.threadId);
-            yield* providerService
-              .stopSession({ threadId: branchSession.threadId })
-              .pipe(Effect.catch(() => Effect.void));
-          }
-          return yield* runRebuild({
-            planId: input.planId,
-            parentCommitId: input.parentCommitId,
+        const ensured = yield* lineRuntimeService.ensure({
+          planId: input.planId,
+          lineRootCommitId,
+          runtimeMode,
+          modelSelection: {
             instanceId: resolution.instanceId,
-            modelSelection: resolvedSelection,
-            materials,
+            model: resolution.model,
+            ...(effectiveSelection?.options === undefined
+              ? {}
+              : { options: effectiveSelection.options }),
+          },
+          holder: { kind: "turn" },
+        });
+        if (!turns.has(turnId)) {
+          yield* slotService.release(ensured.slotId, {
+            kind: "turn",
+            threadId: ensured.record.threadId,
           });
-        }
-
-        const memoryMentionStanza = yield* resolveMemoryMentionStanza(
-          snapshot.plan.projectId,
-          input.text,
-        );
-        const continued = yield* providerService
-          .sendTurn({
-            threadId,
-            input: appendMemoryMentionStanza(input.text, memoryMentionStanza),
-          })
-          .pipe(Effect.result);
-        if (Result.isSuccess(continued)) {
-          sessions.set(threadId, { ...existing!, tipCommitId: input.parentCommitId });
           return;
         }
-        yield* Effect.logInfo("planning session continuation failed; rebuilding", {
-          planId: input.planId,
-          cause: continued.failure,
+        turn.threadId = ensured.record.threadId;
+        turn.phase = "running";
+        turn.groundingScope =
+          ensured.record.unreachableRepositories.length === 0
+            ? undefined
+            : { unreachableRepositories: ensured.record.unreachableRepositories };
+        yield* registry.reassignThread(input.planId, turnId, ensured.record.threadId);
+        yield* publishFrame(input.planId, {
+          kind: "turn-started",
+          turnId,
+          parentCommitId: MercurianCommitId.make(input.parentCommitId),
+          phase: "running",
+          ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
         });
-        const fallback = yield* buildRebuildMaterials({
-          planId: input.planId,
-          parentCommitId: input.parentCommitId,
-          text: input.text,
-          planTitle: snapshot.plan.title,
-          projectId: snapshot.plan.projectId,
-          instanceId: resolution.instanceId,
-          model: resolution.model,
-        });
-        // Move the turn to the new thread before the old session is torn
-        // down, so its exit event no longer matches this turn.
-        turn.threadId = fallback.threadId;
-        turn.groundingScope = fallback.groundingScope;
-        yield* registry.reassignThread(input.planId, turnId, fallback.threadId);
-        sessions.delete(threadId);
-        yield* providerService.stopSession({ threadId }).pipe(Effect.catch(() => Effect.void));
-        yield* runRebuild({
-          planId: input.planId,
-          parentCommitId: input.parentCommitId,
-          instanceId: resolution.instanceId,
-          modelSelection: resolvedSelection,
-          materials: fallback,
-        });
+        const createdAt = DateTime.formatIso(yield* DateTime.now);
+        yield* orchestration
+          .dispatch({
+            type: "thread.turn.start",
+            commandId: yield* commandId("turn-start"),
+            threadId: ensured.record.threadId,
+            message: {
+              messageId: MessageId.make(input.parentCommitId),
+              role: "user",
+              text: input.text,
+              attachments: [...(input.attachments ?? [])],
+            },
+            modelSelection: {
+              instanceId: resolution.instanceId,
+              model: resolution.model,
+              ...(effectiveSelection?.options === undefined
+                ? {}
+                : { options: effectiveSelection.options }),
+            },
+            runtimeMode,
+            interactionMode: "default",
+            createdAt,
+          })
+          .pipe(
+            Effect.tapError(() =>
+              slotService
+                .release(ensured.slotId, { kind: "turn", threadId: ensured.record.threadId })
+                .pipe(Effect.ignoreCause({ log: true })),
+            ),
+          );
       }).pipe(Effect.result);
-
       if (Result.isFailure(opened)) {
         // The message landed; the reply could not start. Release everything
         // and say why nothing is streaming — an empty interrupted commit
@@ -1116,7 +815,22 @@ export const make = Effect.gen(function* () {
         turns.delete(turnId);
         yield* registry.close(input.planId, turnId);
         yield* publishFrame(input.planId, { kind: "turn-settled", turnId });
-        yield* refuse(input.planId, "no-instance");
+        const lineBranchMissing = isLineBranchMissingError(opened.failure);
+        const reason: PlanTurnRefusalReason = lineBranchMissing
+          ? "line-branch-missing"
+          : isRepositoryNotGitError(opened.failure)
+            ? "repository-not-git"
+            : "no-instance";
+        if (lineBranchMissing) {
+          const runtime = yield* lineRuntimes.getOrNone(input.planId, lineRootCommitId);
+          if (Option.isSome(runtime)) {
+            yield* lineRuntimes.recordLineBranchMissing(
+              runtime.value.threadId,
+              opened.failure.commitOid,
+            );
+          }
+        }
+        yield* refuse(input.planId, reason);
         yield* announceChange;
       }
     }).pipe(
@@ -1132,9 +846,22 @@ export const make = Effect.gen(function* () {
       // a window that raced the settle is the same nothing.
       if (turn === undefined || turn.planId !== planId || turn.settling) return;
       turn.stopRequested = true;
-      const interrupted = yield* providerService
-        .interruptTurn({ threadId: turn.threadId })
-        .pipe(Effect.result);
+      const shell = yield* projections
+        .getThreadShellById(turn.threadId)
+        .pipe(Effect.orElseSucceed(() => Option.none()));
+      const activeTurn = Option.getOrUndefined(shell)?.latestTurn;
+      const interrupted =
+        activeTurn?.state === "running"
+          ? yield* orchestration
+              .dispatch({
+                type: "thread.turn.interrupt",
+                commandId: yield* commandId("turn-interrupt"),
+                threadId: turn.threadId,
+                turnId: activeTurn.turnId,
+                createdAt: DateTime.formatIso(yield* DateTime.now),
+              })
+              .pipe(Effect.result)
+          : Result.fail(new Error("orchestration turn is not running"));
       if (Result.isFailure(interrupted)) {
         // The session cannot be reached; settle what we have rather than
         // leaving the plan wedged behind a dead session.
@@ -1181,11 +908,14 @@ export const make = Effect.gen(function* () {
         return yield* new NoPendingQuestionError({ planId: input.planId });
       }
       const requestId = turn.pendingRequestId;
-      const answered = yield* providerService
-        .respondToUserInput({
+      const answered = yield* orchestration
+        .dispatch({
+          type: "thread.user-input.respond",
+          commandId: yield* commandId("user-input-respond"),
           threadId: turn.threadId,
           requestId,
           answers: input.answers as Record<string, unknown>,
+          createdAt: DateTime.formatIso(yield* DateTime.now),
         })
         .pipe(Effect.result);
       if (Result.isFailure(answered)) {
@@ -1222,6 +952,7 @@ export const make = Effect.gen(function* () {
               parentCommitId: MercurianCommitId.make(turn.parentCommitId),
               text: turn.text,
               grounding: [...turn.grounding],
+              phase: turn.phase,
               ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
               ...(turn.pendingQuestions === undefined ? {} : { questions: turn.pendingQuestions }),
             }) satisfies PlanInFlightTurn,
@@ -1277,13 +1008,50 @@ export const make = Effect.gen(function* () {
           yield* announceChange;
         }
       }
-      for (const session of sessionsOfPlan(input.planId)) {
-        sessions.delete(session.threadId);
-        yield* providerService
-          .stopSession({ threadId: session.threadId })
-          .pipe(Effect.catch(() => Effect.void));
+      if (!input.commitPartial) {
+        const runtimes = input.lineRuntimes ?? (yield* lineRuntimes.listByPlan(input.planId));
+        let lastDeleteSequence: number | undefined;
+        for (const runtime of runtimes) {
+          const slot = (yield* slots.listAll).find(
+            (candidate) => candidate.currentLineRootCommitId === runtime.lineRootCommitId,
+          );
+          if (slot !== undefined) {
+            const lease = yield* slotRegistry.lease(slot.slotId);
+            if (Option.isSome(lease)) {
+              for (const holder of lease.value.holders) {
+                if (holder.threadId === runtime.threadId) {
+                  yield* slotService.release(slot.slotId, holder).pipe(Effect.ignoreCause());
+                }
+              }
+            }
+          }
+          const deleted = yield* Effect.exit(
+            orchestration.dispatch({
+              type: "thread.delete",
+              commandId: yield* commandId("delete-line-thread"),
+              threadId: runtime.threadId,
+            }),
+          );
+          if (Exit.isSuccess(deleted)) {
+            lastDeleteSequence = deleted.value.sequence;
+          } else {
+            yield* Effect.logWarning("Could not delete line thread during teardown.", {
+              threadId: runtime.threadId,
+              cause: deleted.cause,
+            });
+          }
+        }
+        if (lastDeleteSequence !== undefined) {
+          yield* deletionReactor
+            .drainThrough(lastDeleteSequence)
+            .pipe(Effect.ignoreCause({ log: true }));
+        }
       }
-    });
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logError("planning teardown failed", { planId: input.planId, cause }),
+      ),
+    );
 
   const saveRevisionFromThread: PlanningAssistant["Service"]["saveRevisionFromThread"] = (input) =>
     Effect.gen(function* () {

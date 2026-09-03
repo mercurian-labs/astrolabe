@@ -32,11 +32,8 @@ describe("resolveTreeSelection", () => {
       activeSessionThreadId: "thread one",
     });
     expect(
-      resolveTreeActivePlanId(selection, [
-        { planId: "plan-1", codingSessions: [{ threadId: "thread one" }] },
-        { planId: "plan-2", codingSessions: [] },
-      ]),
-    ).toBe("plan-1");
+      resolveTreeActivePlanId(selection, [{ planId: "plan-1" }, { planId: "plan-2" }]),
+    ).toBeNull();
   });
 
   it("selects the workspace rows by prefix", () => {

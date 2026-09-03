@@ -56,7 +56,6 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.refreshSpec]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.confirmMemoryAmendment]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.cancelMemoryAmendment]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.startCodingSession]: AuthOrchestrationOperateScope,
   // A plan's disappearance, reversible or not.
   [MERCURIAN_WS_METHODS.archivePlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.unarchivePlan]: AuthOrchestrationOperateScope,

@@ -6,14 +6,7 @@ import {
   type ServerProviderSlashCommand,
   type UploadChatAttachment,
 } from "@t3tools/contracts";
-import {
-  BookOpenIcon,
-  CircleAlertIcon,
-  FileIcon,
-  HammerIcon,
-  ImageIcon,
-  XIcon,
-} from "lucide-react";
+import { BookOpenIcon, CircleAlertIcon, FileIcon, ImageIcon, XIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -192,7 +185,6 @@ export function PlanComposer({
   gateNotice = null,
   menuGateNotice = gateNotice,
   notice = null,
-  implementDisabledReason = null,
   modelPicker,
   meter,
   onChangeText,
@@ -201,7 +193,6 @@ export function PlanComposer({
   onMentionQueryChange,
   onSend,
   onStop,
-  onImplement,
 }: {
   readonly placeholder: string;
   readonly text: string;
@@ -232,7 +223,6 @@ export function PlanComposer({
   readonly menuGateNotice?: string | null;
   /** A transient line under the gate's slot: the last turn refusal. */
   readonly notice?: string | null;
-  readonly implementDisabledReason?: string | null;
   /** The branch-local model control, derived and owned by the surface. */
   readonly modelPicker?: ReactNode;
   /** Informational status beside the send control, derived and owned by the surface. */
@@ -249,7 +239,6 @@ export function PlanComposer({
   readonly onSend: (submission: PlanComposerSubmission) => Promise<boolean>;
   /** Stop the streaming reply. Only rendered while `turnActive`. */
   readonly onStop?: () => void;
-  readonly onImplement?: (() => void) | undefined;
 }) {
   const [state, setState] = useState<PlanComposerState>("idle");
   const [cursor, setCursor] = useState(() =>
@@ -605,22 +594,6 @@ export function PlanComposer({
                   <ComposerControlIcon icon={ImageIcon} />
                 </ComposerControl>
                 {modelPicker}
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <ComposerControl
-                        disabled={implementDisabledReason !== null || onImplement === undefined}
-                        onClick={onImplement}
-                      />
-                    }
-                  >
-                    <ComposerControlIcon icon={HammerIcon} />
-                    Implement
-                  </TooltipTrigger>
-                  {implementDisabledReason === null ? null : (
-                    <TooltipPopup>{implementDisabledReason}</TooltipPopup>
-                  )}
-                </Tooltip>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {meter}

@@ -85,7 +85,6 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
-  CodingSessionBlockedError,
   ConfirmMemoryAmendmentBlockedError,
   MERCURIAN_WS_METHODS,
   MercurianAnswerPlanningQuestionInput,
@@ -93,8 +92,6 @@ import {
   MercurianArchivePlanInput,
   MercurianCancelMemoryAmendmentInput,
   MercurianConfirmMemoryAmendmentInput,
-  MercurianStartCodingSessionInput,
-  MercurianStartCodingSessionResult,
   MercurianCreatePlanInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
@@ -1401,19 +1398,6 @@ export const WsMercurianCancelMemoryAmendmentRpc = Rpc.make(
   },
 );
 
-export const WsMercurianStartCodingSessionRpc = Rpc.make(MERCURIAN_WS_METHODS.startCodingSession, {
-  payload: MercurianStartCodingSessionInput,
-  success: MercurianStartCodingSessionResult,
-  error: Schema.Union([
-    PlanNotFoundError,
-    MercurianRepositoryNotFoundError,
-    PlanTurnActiveError,
-    CodingSessionBlockedError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
 // The planning turn's two acts. Turns are never started by RPC — a turn
 // starts server-side when a human message commits — so the only verbs a
 // client holds are stopping the reply and answering its question.
@@ -1858,7 +1842,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRefreshSpecRpc,
   WsMercurianConfirmMemoryAmendmentRpc,
   WsMercurianCancelMemoryAmendmentRpc,
-  WsMercurianStartCodingSessionRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,

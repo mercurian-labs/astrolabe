@@ -1,6 +1,7 @@
 import * as DateTime from "effect/DateTime";
-import type { PlanCodingSessionRecord } from "@t3tools/contracts";
-import type { CodingSessionRecord } from "./schema.ts";
+import type { PlanCodingSessionRecord, PlanLineRuntimeRecord } from "@t3tools/contracts";
+import type { CodingSessionRecord } from "./LegacySessionSchema.ts";
+import type { LineRuntimeRecord } from "./schema.ts";
 
 export const toWireCodingSessionRecord = (
   record: CodingSessionRecord,
@@ -28,4 +29,20 @@ export const toWireCodingSessionRecord = (
   ...(record.unreachableRepositories.length === 0
     ? {}
     : { unreachableRepositories: record.unreachableRepositories }),
+});
+
+export const toWireLineRuntimeRecord = (record: LineRuntimeRecord): PlanLineRuntimeRecord => ({
+  planId: record.planId,
+  lineRootCommitId: record.lineRootCommitId,
+  threadId: record.threadId,
+  homeRepositoryId: record.homeRepositoryId,
+  branch: record.branch,
+  worktreePath: record.worktreePath,
+  unreachableRepositories: record.unreachableRepositories,
+  snapshotOid: record.snapshotOid,
+  snapshotKind: record.snapshotKind,
+  departedRef: record.departedRef,
+  branchMovement: record.branchMovement,
+  lineBranchMissingOid: record.lineBranchMissingOid,
+  ...(record.repositories === undefined ? {} : { repositories: record.repositories }),
 });

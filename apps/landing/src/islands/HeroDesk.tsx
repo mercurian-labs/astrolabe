@@ -365,7 +365,6 @@ const composerProps = {
   ],
   onAddAttachments: () => undefined,
   onRemoveAttachment: () => undefined,
-  onImplement: () => undefined,
 } satisfies Omit<
   HeroComposerProps,
   "banner" | "modelPicker" | "onChangeText" | "onSend" | "onStop" | "text" | "turnActive"

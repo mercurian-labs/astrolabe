@@ -374,6 +374,8 @@ const GROUNDING_KIND_ICONS = {
   "file-read": FileSearchIcon,
   search: SearchIcon,
   listing: FolderOpenIcon,
+  command: WrenchIcon,
+  edit: WrenchIcon,
   other: WrenchIcon,
 } as const;
 

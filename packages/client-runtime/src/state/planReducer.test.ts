@@ -8,6 +8,7 @@ import {
   PlanTurnId,
   type PlanDetail,
   type PlanCodingSessionRecord,
+  type PlanLineRuntimeRecord,
   type PlanQuestion,
   type PlanStreamItem,
   type PlanTimelineItem,
@@ -50,6 +51,7 @@ const snapshot: PlanDetail = {
   timeline: [message("commit-1", 1, "Reshape the sidebar")],
   snapshotSequence: 1,
   codingSessions: [],
+  lineRuntimes: [],
   inFlightTurns: [],
 };
 
@@ -69,6 +71,20 @@ const session: PlanCodingSessionRecord = {
   prUrl: null,
   settledCommitOid: null,
   partial: false,
+  snapshotOid: null,
+  snapshotKind: null,
+  departedRef: null,
+  branchMovement: null,
+};
+
+const lineRuntime: PlanLineRuntimeRecord = {
+  planId: snapshot.plan.planId,
+  lineRootCommitId: MercurianCommitId.make("commit-1"),
+  threadId: session.threadId,
+  homeRepositoryId: MercurianRepositoryId.make("repo-1"),
+  branch: "mercurian/sidebar-12345678",
+  worktreePath: "/tmp/sidebar",
+  unreachableRepositories: [],
   snapshotOid: null,
   snapshotKind: null,
   departedRef: null,
@@ -226,6 +242,21 @@ describe("applyPlanStreamItem", () => {
     expect(state.detail?.timeline.at(-1)?._tag).toBe("coding-session");
     expect(state.codingSessions.size).toBe(1);
   });
+
+  it("replaces line-runtime side facts from snapshots and keyed frames", () => {
+    const fromSnapshot = fold([
+      { kind: "snapshot", snapshot: { ...snapshot, lineRuntimes: [lineRuntime] } },
+    ]);
+    expect(fromSnapshot.lineRuntimes.get(lineRuntime.lineRootCommitId)).toEqual(lineRuntime);
+
+    const renamed = { ...lineRuntime, branch: "mercurian/renamed" };
+    const replaced = applyPlanStreamItem(fromSnapshot, {
+      kind: "line-runtimes",
+      lineRuntimes: [renamed],
+    });
+    expect(replaced.lineRuntimes.get(lineRuntime.lineRootCommitId)).toEqual(renamed);
+    expect(replaced.detail?.lineRuntimes).toEqual([renamed]);
+  });
 });
 
 const turnId = PlanTurnId.make("turn-1");
@@ -255,6 +286,16 @@ describe("applyPlanStreamItem turn frames", () => {
     const state = fold([{ kind: "snapshot", snapshot }, started, delta("Hel", 0), delta("lo", 3)]);
     expect(state.detail?.inFlightTurns[0]?.text).toBe("Hello");
     expect(state.detail?.inFlightTurns[0]?.parentCommitId).toBe("commit-1");
+  });
+
+  it("updates an in-flight turn from waiting for a slot to running", () => {
+    const state = fold([
+      { kind: "snapshot", snapshot },
+      { ...started, phase: "waiting-for-slot" },
+      { ...started, phase: "running" },
+    ]);
+    expect(state.detail?.inFlightTurns).toHaveLength(1);
+    expect(state.detail?.inFlightTurns[0]?.phase).toBe("running");
   });
 
   it("folds away a delta replayed across the snapshot join", () => {

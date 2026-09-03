@@ -102,12 +102,6 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
-    startCodingSession: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:start-coding-session",
-      tag: MERCURIAN_WS_METHODS.startCodingSession,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
     recreateLineBranch: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:recreate-line-branch",
       tag: MERCURIAN_WS_METHODS.recreateLineBranch,

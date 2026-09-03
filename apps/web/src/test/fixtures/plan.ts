@@ -63,6 +63,7 @@ export const planDetail = (name: string, overrides: PlanDetailOverrides = {}): P
     timeline: [],
     snapshotSequence: 0,
     codingSessions: [],
+    lineRuntimes: [],
     inFlightTurns: [],
     ...overrides,
   });

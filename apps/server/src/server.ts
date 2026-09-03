@@ -34,9 +34,13 @@ import { LineBranchReactorLive } from "./mercurian/commitTree/LineBranchReactor.
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
-import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
-import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
-import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/CodingSessionRecordReactor.ts";
+import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
+import * as LineRuntimeService from "./mercurian/lineRuntimes/LineRuntimeService.ts";
+import { LineRuntimeRecordReactorLive } from "./mercurian/lineRuntimes/LineRuntimeRecordReactor.ts";
+import { MercurianThreadLineServiceLive } from "./mercurian/lineRuntimes/MercurianThreadLineService.ts";
+import { MercurianTurnPreparationLive } from "./mercurian/assistant/MercurianTurnPreparation.ts";
+import { MercurianApprovalAutoResponderLive } from "./mercurian/assistant/MercurianApprovalAutoResponder.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
@@ -87,7 +91,7 @@ import { OrchestrationReactorLive } from "./orchestration/Layers/OrchestrationRe
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus.ts";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
-import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
+import { CheckpointReactorLive } from "./checkpointing/CheckpointReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "./orchestration/ThreadSettlementReactor.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -289,8 +293,10 @@ const PlatformServicesLive = Layer.unwrap(
 );
 
 const ReactorLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(ProviderRuntimeIngestionLive),
-  Layer.provideMerge(ProviderCommandReactorLive),
+  Layer.provideMerge(
+    ProviderRuntimeIngestionLive.pipe(Layer.provide(MercurianApprovalAutoResponderLive)),
+  ),
+  Layer.provideMerge(ProviderCommandReactorLive.pipe(Layer.provide(MercurianTurnPreparationLive))),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
@@ -323,7 +329,8 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // exists: those settings belong to the workspace, and the workspace is what
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
-  Layer.provideMerge(CodingSessionStore.layer),
+  Layer.provideMerge(LegacySessionStore.layer),
+  Layer.provideMerge(LineRuntimeStore.layer),
   Layer.provideMerge(LineBranchStore.layer),
   Layer.provideMerge(SlotStore.layer),
   // The turn registry is runtime state shared by the store (the active-turn
@@ -505,7 +512,6 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
 );
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
-  Layer.provideMerge(PlanningAssistant.layer),
   Layer.provideMerge(AntigravityInstallationRefreshLive),
   Layer.provideMerge(ProviderAuthServiceLive),
   // Core Services
@@ -580,6 +586,7 @@ const SnapshotChainDependenciesLive = SnapshotChain.layer.pipe(
 );
 
 const CheckpointReactorDependenciesLive = CheckpointReactorLive.pipe(
+  Layer.provide(MercurianThreadLineServiceLive),
   Layer.provideMerge(SnapshotChainDependenciesLive),
 );
 
@@ -591,11 +598,17 @@ const SlotServiceLayerLive = SlotService.layer.pipe(
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 
-const CodingSessionServiceLayerLive = CodingSessionService.layer.pipe(
+const LineRuntimeServiceLayerLive = LineRuntimeService.layer.pipe(
   Layer.provideMerge(SlotServiceLayerLive),
 );
 
-const CodingSessionRecordReactorLayerLive = CodingSessionRecordReactorLive.pipe(
+const PlanningAssistantLayerLive = PlanningAssistant.layer.pipe(
+  Layer.provideMerge(LineRuntimeServiceLayerLive),
+  Layer.provideMerge(SlotServiceLayerLive),
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
+);
+
+const LineRuntimeRecordReactorLayerLive = LineRuntimeRecordReactorLive.pipe(
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 
@@ -604,8 +617,9 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 );
 
 const RuntimeDependenciesLive = Layer.empty.pipe(
-  Layer.provideMerge(CodingSessionServiceLayerLive),
-  Layer.provideMerge(CodingSessionRecordReactorLayerLive),
+  Layer.provideMerge(PlanningAssistantLayerLive),
+  Layer.provideMerge(LineRuntimeServiceLayerLive),
+  Layer.provideMerge(LineRuntimeRecordReactorLayerLive),
   Layer.provideMerge(LineBranchReactorLayerLive),
   Layer.provideMerge(SlotServiceLayerLive),
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),

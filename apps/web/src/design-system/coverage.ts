@@ -33,11 +33,6 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Its empty and grouped archive states come from the live Mercurian tree and invoke restore or delete commands.",
   },
-  "src/components/mercurian/CodingSessionDraftSheet.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "The draft resolves environment settings, repositories, branches, and the current planning model before starting a session.",
-  },
   "src/components/mercurian/CodingSessionHeader.tsx": {
     category: "requires-live-workspace",
     reason:

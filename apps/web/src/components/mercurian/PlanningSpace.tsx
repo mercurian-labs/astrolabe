@@ -35,7 +35,6 @@ import {
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useExperiments } from "../../lib/experiments";
-import { randomUUID } from "../../lib/utils";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { cn } from "../../lib/utils";
@@ -45,8 +44,6 @@ import {
   type PlanComposerAttachment,
 } from "../../planComposerStore";
 import { usePlanDraftStore } from "../../planDraftStore";
-import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
-import { usePrimarySettings } from "../../hooks/useSettings";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import {
   useAnswerPlanningQuestion,
@@ -96,7 +93,6 @@ import { standingModelChoice } from "./PlanModelChoice.logic";
 import { PlanModelPicker } from "./PlanModelPicker";
 import { PlanReconstructionMeter } from "./PlanReconstructionMeter";
 import { PlanTraitsPicker } from "./PlanTraitsPicker";
-import { resolveImplementFrom } from "./PlanNodePopover.logic";
 import {
   advance,
   isViewingPast,
@@ -111,11 +107,6 @@ import { MemoryNoteReader } from "./MemoryNoteReader";
 import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
 import { SpecArtifact } from "./SpecArtifact";
 import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
-import { CodingSessionDraftSheet } from "./CodingSessionDraftSheet";
-import {
-  createCodingSessionDraft,
-  seedCodingSessionModelSelection,
-} from "./codingSessionDraft.logic";
 
 const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
 const RIGHT_PANE_DEFAULT_WIDTH = 480;
@@ -143,15 +134,6 @@ const DEFAULT_RIGHT_PANE: RightPaneState = { open: true, view: "artifact", artif
 const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
 const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 type PlanHumanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
-
-function implementDisabledReason(input: {
-  readonly turnActive: boolean;
-  readonly planTextEmpty: boolean;
-}): string | null {
-  if (input.turnActive) return "Wait for the current plan turn to finish.";
-  if (input.planTextEmpty) return "Write a plan before implementing it.";
-  return null;
-}
 
 interface PendingEditAndBranch {
   readonly query: PlanHumanMessage;
@@ -183,7 +165,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [pendingEditAndBranch, setPendingEditAndBranch] = useState<PendingEditAndBranch | null>(
     null,
   );
-  const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
   const [missingLineBranchDoor, setMissingLineBranchDoor] = useState<{
     readonly commitId: MercurianCommitId;
   } | null>(null);
@@ -191,33 +172,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   // reason stated instead of failing silently. The two can only disagree for
   // the width of a race, which `turn-refused` covers.
   const planningModel = usePlanningModel();
-  const settings = usePrimarySettings();
   const environmentId = usePrimaryEnvironmentId();
   const recreateLineBranch = useRecreateLineBranch();
-  const openSessionDraft = useCodingSessionDraftStore((state) => state.openDraft);
-  const lastSessionModel = useCodingSessionDraftStore((state) => state.lastModelSelection);
-  const materializeSessionDraft = useCallback(
-    (parentCommitId: MercurianCommitId) => {
-      const modelSelection = seedCodingSessionModelSelection(
-        planningModel.providers,
-        settings,
-        lastSessionModel,
-      );
-      if (modelSelection === null) return null;
-      const draftId = randomUUID();
-      const draft = openSessionDraft(
-        createCodingSessionDraft({
-          draftId,
-          planId,
-          parentCommitId,
-          modelSelection,
-          createdAt: new Date().toISOString(),
-        }),
-      );
-      return draft.draftId;
-    },
-    [lastSessionModel, openSessionDraft, planId, planningModel.providers, settings],
-  );
   const [pane, setPane] = useLocalStorage(
     RIGHT_PANE_STORAGE_KEY,
     DEFAULT_RIGHT_PANE,
@@ -580,18 +536,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const backToNow = useCallback(() => setPosition(LATEST), []);
 
-  const beginImplementFrom = useCallback(
-    (fromCommitId: MercurianCommitId | null) => {
-      const resolved = resolveImplementFrom(graph, fromCommitId);
-      if (resolved === null) return;
-      const draftId = materializeSessionDraft(resolved);
-      if (draftId !== null) setSessionDraftId(draftId);
-    },
-    [graph, materializeSessionDraft],
-  );
-
-  const beginImplement = useCallback(() => beginImplementFrom(head), [beginImplementFrom, head]);
-
   if (error !== null) {
     return (
       <PlanningSurface>
@@ -610,10 +554,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const artifactText = needsPathText ? pathText : (detail?.planText ?? null);
   const artifactSpec = needsPathSpec ? pathSpec : detail?.spec;
-  const implementReason = implementDisabledReason({
-    turnActive: visibleInFlight !== undefined,
-    planTextEmpty: artifactText === null || artifactText.trim().length === 0,
-  });
   const missingLineBranch = missingLineBranchDoor;
   const memoryFailureKey =
     memoryAmendmentFailure === null
@@ -784,7 +724,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 />
               </>
             }
-            implementDisabledReason={implementReason}
             notice={turnRefusal === null ? null : turnRefusalNotice(modelChoice, turnRefusal)}
             placeholder="Message this plan"
             text={draft.text}
@@ -806,7 +745,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             onStop={() => {
               if (visibleInFlight !== undefined) void stopTurn(planId, visibleInFlight.turnId);
             }}
-            onImplement={beginImplement}
           />
         </div>
         {detail === null || !pane.open ? null : (
@@ -852,7 +790,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   cornerControl={paneCornerControl}
                   onColumnsWidthCapChange={setColumnsWidthCap}
                   onEditAndBranch={editAndBranch}
-                  onImplementFrom={beginImplementFrom}
+                  onImplementFrom={() => {}}
                   onSelect={select}
                 />
               ) : pane.artifact === "plan" && artifactText === null ? (
@@ -978,16 +916,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           turnActive={visibleInFlight !== undefined}
         />
       )}
-      <CodingSessionDraftSheet
-        draftId={sessionDraftId}
-        open={sessionDraftId !== null}
-        onOpenChange={(open) => {
-          if (!open) setSessionDraftId(null);
-        }}
-        onLineBranchMissing={({ commitId }) =>
-          setMissingLineBranchDoor({ commitId: MercurianCommitId.make(commitId) })
-        }
-      />
     </PlanningSurface>
   );
 }
@@ -1288,10 +1216,6 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
               slashCommands: providerStatus.slashCommands,
               skills: providerStatus.skills,
             })}
-        implementDisabledReason={implementDisabledReason({
-          turnActive: false,
-          planTextEmpty: true,
-        })}
         mentionCandidates={mentions.candidates}
         menuGateNotice={draftPlanningModelNotice}
         modelPicker={

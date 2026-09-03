@@ -17,7 +17,6 @@ const MIGRATED_STORY_TITLES = [
   "Awaiting input",
   "Working",
   "Unseen updates",
-  "Sessions running and ended",
   "Plan hover card",
   "Ready to send",
   "Assistant working",
@@ -126,7 +125,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(30);
+    expect(migratedEntries).toHaveLength(29);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

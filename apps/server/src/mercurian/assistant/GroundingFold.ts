@@ -9,10 +9,8 @@
  * one place that drift is absorbed, kept pure so table-driven tests can pin
  * each provider's vocabulary as it is discovered.
  *
- * Command-shaped and file-change-shaped work cannot occur in a planning turn
- * — the approval policy declines it at the runtime — so those fold to
- * nothing, defensively, rather than rendering a provider misbehavior as
- * grounding.
+ * Building work shares this fold: command executions and file changes become
+ * explicit actions beside the consultation kinds.
  *
  * @module GroundingFold
  */
@@ -106,12 +104,23 @@ export function foldGroundingEvent(event: ProviderRuntimeEvent): GroundingFoldRe
     case "item.completed": {
       const payload = event.payload;
       if (!isToolLifecycleItemType(payload.itemType)) return null;
-      // Work items, not consultations — and impossible under the planning
-      // approval policy. Dropped rather than shown.
-      if (payload.itemType === "command_execution" || payload.itemType === "file_change") {
-        return null;
-      }
       const key = event.itemId !== undefined ? `item:${event.itemId}` : `item:${payload.title}`;
+      if (payload.itemType === "command_execution") {
+        const item = toItem(
+          "command",
+          payload.title ?? payload.detail ?? "Command",
+          payload.detail,
+        );
+        return item === null ? null : { key, item };
+      }
+      if (payload.itemType === "file_change") {
+        const item = toItem(
+          "edit",
+          payload.title ?? payload.detail ?? "File change",
+          payload.detail,
+        );
+        return item === null ? null : { key, item };
+      }
       if (payload.itemType === "web_search") {
         const item = toItem("search", payload.title ?? payload.detail ?? "Web search");
         return item === null ? null : { key, item };

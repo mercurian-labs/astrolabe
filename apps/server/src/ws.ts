@@ -55,7 +55,6 @@ import {
   MercurianTrackerError,
   MercurianWorkspaceError,
   isConfirmMemoryAmendmentBlockedError,
-  isCodingSessionBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
   isMemoryNotDesignatedError,
@@ -136,16 +135,20 @@ import {
   removePlanAttachments,
 } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
-import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
+import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
+import { resolveThreadLine } from "./mercurian/lineRuntimes/resolveThreadLine.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
-import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
 import type { WorktreeSlot } from "./mercurian/worktreeSlots/schema.ts";
 import { lineSnapshotRef } from "./mercurian/worktreeSlots/SnapshotChain.ts";
 import { toWireSlotSnapshot } from "./mercurian/worktreeSlots/wire.ts";
-import { toWireCodingSessionRecord } from "./mercurian/codingSessions/wire.ts";
+import {
+  toWireCodingSessionRecord,
+  toWireLineRuntimeRecord,
+} from "./mercurian/lineRuntimes/wire.ts";
 import {
   toWirePlanCommitEvent,
   composePlanRowStatus,
@@ -426,7 +429,7 @@ export function isCodingSessionStatusEvent(event: OrchestrationEvent): event is 
 
 export const codingSessionStatusChanges = (
   events: Stream.Stream<OrchestrationEvent>,
-  getByThreadId: CodingSessionStore.CodingSessionStore["Service"]["getByThreadId"],
+  getByThreadId: (threadId: ThreadId) => Effect.Effect<Option.Option<unknown>, Error>,
 ) =>
   events.pipe(
     Stream.filter(isCodingSessionStatusEvent),
@@ -438,10 +441,11 @@ export const codingSessionStatusChanges = (
 export const attachCreatedPullRequestToCodingSession = Effect.fn(
   "ws.attachCreatedPullRequestToCodingSession",
 )(function* (
-  codingSessionStore: Pick<
-    CodingSessionStore.CodingSessionStore["Service"],
+  lineRuntimeStore: Pick<
+    LineRuntimeStore.LineRuntimeStore["Service"],
     "getByBranch" | "attachPullRequest"
   >,
+  legacySessionStore: Pick<LegacySessionStore.LegacySessionStore["Service"], "getByBranch">,
   result: GitRunStackedActionResult,
   sessionBranch: string | null,
   actingCwd: string,
@@ -450,9 +454,13 @@ export const attachCreatedPullRequestToCodingSession = Effect.fn(
 ) {
   if (result.pr.status !== "created" || result.pr.url === undefined) return;
   if (sessionBranch === null) return;
-  const session = yield* codingSessionStore.getByBranch(sessionBranch);
-  if (Option.isNone(session)) return;
-  const shell = yield* getThreadShellById(session.value.threadId);
+  const runtime = yield* lineRuntimeStore.getByBranch(sessionBranch);
+  const legacy = Option.isNone(runtime)
+    ? yield* legacySessionStore.getByBranch(sessionBranch)
+    : Option.none();
+  const session = Option.isSome(runtime) ? runtime.value : Option.getOrUndefined(legacy);
+  if (session === undefined) return;
+  const shell = yield* getThreadShellById(session.threadId);
   const repositoryId =
     Option.getOrUndefined(shell)?.workspaceMembers?.find(
       (member) => member.worktreePath === actingCwd,
@@ -463,10 +471,10 @@ export const attachCreatedPullRequestToCodingSession = Effect.fn(
           actingCwd === repository.path || actingCwd.startsWith(`${repository.path}/`),
       )
       .sort((left, right) => right.path.length - left.path.length)[0]?.repositoryId ??
-    session.value.repositoryId;
+    ("homeRepositoryId" in session ? session.homeRepositoryId : session.repositoryId);
   if (repositoryId == null) return;
-  yield* codingSessionStore.attachPullRequest({
-    threadId: session.value.threadId,
+  yield* lineRuntimeStore.attachPullRequest({
+    threadId: session.threadId,
     repositoryId: MercurianRepositoryId.make(repositoryId),
     prUrl: result.pr.url,
   });
@@ -682,12 +690,12 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
-      const codingSessionStore = yield* CodingSessionStore.CodingSessionStore;
+      const legacySessionStore = yield* LegacySessionStore.LegacySessionStore;
+      const lineRuntimeStore = yield* LineRuntimeStore.LineRuntimeStore;
       const lineBranchStore = yield* LineBranchStore.LineBranchStore;
       const slotStore = yield* SlotStore.SlotStore;
       const slotRegistry = yield* SlotRegistry.SlotRegistry;
       const slotService = yield* SlotService.SlotService;
-      const codingSessionService = yield* CodingSessionService.CodingSessionService;
       const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
@@ -741,7 +749,7 @@ const makeWsRpcLayer = (
       const slotForCodingSessionThread = Effect.fn("ws.slotForCodingSessionThread")(function* (
         threadId: ThreadId,
       ) {
-        const session = yield* codingSessionStore.getByThreadId(threadId);
+        const session = yield* resolveThreadLine(lineRuntimeStore, legacySessionStore, threadId);
         if (Option.isNone(session)) return Option.none();
         const detail = yield* planningStore.getPlanSnapshot({ planId: session.value.planId });
         const slot = (yield* slotStore.listAll).find(
@@ -749,7 +757,7 @@ const makeWsRpcLayer = (
             candidate.projectId === detail.plan.projectId &&
             candidate.members.some(
               (member) =>
-                member.repositoryId === session.value.repositoryId &&
+                member.repositoryId === session.value.homeRepositoryId &&
                 member.currentBranch === session.value.branch,
             ),
         );
@@ -760,7 +768,7 @@ const makeWsRpcLayer = (
         readonly threadId: string;
         readonly terminalId: string;
       }) {
-        return yield* acquireCodingSessionSlot(ThreadId.make(input.threadId), {
+        return yield* acquireLineSlot(ThreadId.make(input.threadId), {
           kind: "terminal",
           threadId: input.threadId,
           terminalId: input.terminalId,
@@ -790,7 +798,7 @@ const makeWsRpcLayer = (
         threadId: ThreadId,
         previewId: string,
       ) {
-        return yield* acquireCodingSessionSlot(threadId, {
+        return yield* acquireLineSlot(threadId, {
           kind: "preview",
           threadId,
           previewId,
@@ -836,14 +844,13 @@ const makeWsRpcLayer = (
         },
       );
 
-      const acquireCodingSessionSlot = Effect.fn("ws.acquireCodingSessionSlot")(function* (
+      const acquireLineSlot = Effect.fn("ws.acquireLineSlot")(function* (
         threadId: ThreadId,
         holder: SlotService.ClaimSlotInput["holder"],
       ) {
-        const session = yield* codingSessionStore.getByThreadId(threadId);
+        const session = yield* resolveThreadLine(lineRuntimeStore, legacySessionStore, threadId);
         if (Option.isNone(session)) return Option.none();
-        const primaryRepositoryId =
-          session.value.repositoryId ?? session.value.repositories?.[0]?.repositoryId;
+        const primaryRepositoryId = session.value.homeRepositoryId;
         if (primaryRepositoryId == null) return Option.none();
         const workspaceMembersOf = (slot: WorktreeSlot) =>
           [...slot.members]
@@ -926,7 +933,7 @@ const makeWsRpcLayer = (
           "coding-session-slot-reclaimed",
         );
         if (branchRenamed) {
-          yield* codingSessionStore.updateBranch(threadId, claimedMember.currentBranch);
+          yield* lineRuntimeStore.updateBranch(threadId, claimedMember.currentBranch);
           const createdAt = DateTime.formatIso(yield* DateTime.now);
           yield* dispatchFromClient({
             type: "thread.activity.append",
@@ -947,7 +954,7 @@ const makeWsRpcLayer = (
         return Option.some({ slotId: claimed.slotId, worktreePath: claimedMemberPath });
       });
       const acquireCodingSessionTurnSlot = (threadId: ThreadId) =>
-        acquireCodingSessionSlot(threadId, { kind: "turn", threadId }).pipe(
+        acquireLineSlot(threadId, { kind: "turn", threadId }).pipe(
           Effect.map(Option.map((claimed) => claimed.slotId)),
         );
       const portDiscovery = yield* PortScanner.PortDiscovery;
@@ -1631,7 +1638,7 @@ const makeWsRpcLayer = (
                   ? Option.none()
                   : yield* acquireCodingSessionTurnSlot(normalizedCommand.threadId).pipe(
                       Effect.catchTag("LineBranchMissingError", (error) =>
-                        codingSessionStore
+                        lineRuntimeStore
                           .recordLineBranchMissing(normalizedCommand.threadId, error.commitOid)
                           .pipe(
                             Effect.andThen(
@@ -1755,43 +1762,39 @@ const makeWsRpcLayer = (
       // runtime says which plans are streaming or waiting on input, and the
       // rows carry it (ADR 002 §4).
       const loadPlanningTreeSnapshot = Effect.gen(function* () {
-        const [snapshot, status, sessions] = yield* Effect.all([
+        const [snapshot, status] = yield* Effect.all([
           planningStore.getTreeSnapshot,
           planningAssistant.status,
-          codingSessionStore.listAll,
         ]);
-        const sessionsWithLiveStatus = yield* Effect.forEach(sessions, (session) =>
-          session.endedAt !== null
-            ? Effect.succeed([session, null] as const)
-            : projectionSnapshotQuery.getThreadShellById(session.threadId).pipe(
-                Effect.map(
-                  (shell) =>
-                    [
-                      session,
-                      Option.match(shell, {
-                        onNone: () => null,
-                        onSome: (value) => ({
-                          isWorking: value.latestTurn?.state === "running",
-                          hasPendingInput: value.hasPendingApprovals || value.hasPendingUserInput,
-                        }),
-                      }),
-                    ] as const,
-                ),
-              ),
+        const lineRuntimes = (yield* Effect.forEach(snapshot.plans, (plan) =>
+          lineRuntimeStore.listByPlan(plan.planId),
+        )).flat();
+        const runtimesWithLiveStatus = yield* Effect.forEach(lineRuntimes, (runtime) =>
+          projectionSnapshotQuery.getThreadShellById(runtime.threadId).pipe(
+            Effect.map(
+              (shell) =>
+                [
+                  runtime,
+                  Option.match(shell, {
+                    onNone: () => null,
+                    onSome: (value) => ({
+                      isWorking: value.latestTurn?.state === "running",
+                      hasPendingInput: value.hasPendingApprovals || value.hasPendingUserInput,
+                    }),
+                  }),
+                ] as const,
+            ),
+          ),
         );
         const composedStatus = new Map(status);
-        const byPlan = new Map<PlanId, Array<ReturnType<typeof toWireCodingSessionRecord>>>();
         const liveStatusByPlan = new Map<
           PlanId,
-          Array<(typeof sessionsWithLiveStatus)[number][1]>
+          Array<(typeof runtimesWithLiveStatus)[number][1]>
         >();
-        for (const [session, liveStatus] of sessionsWithLiveStatus) {
-          const entries = byPlan.get(session.planId) ?? [];
-          entries.push(toWireCodingSessionRecord(session));
-          byPlan.set(session.planId, entries);
-          const liveEntries = liveStatusByPlan.get(session.planId) ?? [];
+        for (const [runtime, liveStatus] of runtimesWithLiveStatus) {
+          const liveEntries = liveStatusByPlan.get(runtime.planId) ?? [];
           liveEntries.push(liveStatus);
-          liveStatusByPlan.set(session.planId, liveEntries);
+          liveStatusByPlan.set(runtime.planId, liveEntries);
         }
         for (const [planId, liveStatuses] of liveStatusByPlan) {
           composedStatus.set(
@@ -1799,7 +1802,7 @@ const makeWsRpcLayer = (
             composePlanRowStatus(composedStatus.get(planId), liveStatuses),
           );
         }
-        return toWireTreeSnapshot(snapshot, composedStatus, byPlan);
+        return toWireTreeSnapshot(snapshot, composedStatus);
       }).pipe(
         Effect.tapError((cause) =>
           Effect.logError("mercurian planning tree snapshot load failed", { cause }),
@@ -2266,7 +2269,7 @@ const makeWsRpcLayer = (
               const changes = yield* Queue.unbounded<void>();
               const sessionStatusChanges = codingSessionStatusChanges(
                 orchestrationEngine.streamDomainEvents,
-                codingSessionStore.getByThreadId,
+                (threadId) => resolveThreadLine(lineRuntimeStore, legacySessionStore, threadId),
               ).pipe(
                 Stream.mapError(
                   (cause) => new MercurianPlanningError({ operation: "subscribeTree", cause }),
@@ -2276,7 +2279,7 @@ const makeWsRpcLayer = (
                 Stream.merge(
                   Stream.merge(
                     Stream.merge(planningStore.changes, planningAssistant.changes),
-                    codingSessionStore.changes,
+                    lineRuntimeStore.changes,
                   ),
                   sessionStatusChanges,
                 ).pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
@@ -2299,7 +2302,7 @@ const makeWsRpcLayer = (
         [MERCURIAN_WS_METHODS.subscribeWorktreeSlots]: (_input) =>
           observeRpcStreamEffect(
             MERCURIAN_WS_METHODS.subscribeWorktreeSlots,
-            Effect.gen(function* () {
+            Effect.sync(() => {
               const snapshot = Effect.gen(function* () {
                 const rows = yield* slotStore.listAll;
                 const leased = new Set<string>();
@@ -2351,22 +2354,32 @@ const makeWsRpcLayer = (
             Effect.gen(function* () {
               const resolution = yield* "threadId" in input
                 ? Effect.gen(function* () {
-                    const session = yield* codingSessionStore.getByThreadId(input.threadId);
-                    if (Option.isNone(session)) {
+                    const line = yield* resolveThreadLine(
+                      lineRuntimeStore,
+                      legacySessionStore,
+                      input.threadId,
+                    );
+                    if (Option.isNone(line)) {
                       return yield* new MercurianPlanningError({
                         operation: "recreateLineBranch",
                         cause: new Error(`Coding session ${input.threadId} is missing`),
                       });
                     }
                     const detail = yield* planningStore.getPlanSnapshot({
-                      planId: session.value.planId,
+                      planId: line.value.planId,
                     });
                     return {
                       detail,
-                      lineRootCommitId: lineRootCommitIdFor(detail, String(session.value.commitId)),
+                      lineRootCommitId:
+                        line.value.runtime?.lineRootCommitId ??
+                        lineRootCommitIdFor(
+                          detail,
+                          String(line.value.legacySession?.commitId ?? line.value.lineRootCommitId),
+                        ),
                       repositoryIds:
-                        session.value.repositories?.map((repository) => repository.repositoryId) ??
-                        (session.value.repositoryId == null ? [] : [session.value.repositoryId]),
+                        line.value.repositories.length === 0
+                          ? [line.value.homeRepositoryId]
+                          : line.value.repositories.map((repository) => repository.repositoryId),
                     };
                   })
                 : Effect.gen(function* () {
@@ -2428,16 +2441,11 @@ const makeWsRpcLayer = (
                   cause: new Error("No line branch is missing in the repositories asked for"),
                 });
               }
-              for (const session of yield* codingSessionStore.listAll) {
-                const detail =
-                  session.planId === resolution.detail.plan.planId
-                    ? resolution.detail
-                    : yield* planningStore.getPlanSnapshot({ planId: session.planId });
-                if (
-                  lineRootCommitIdFor(detail, String(session.commitId)) ===
-                  resolution.lineRootCommitId
-                ) {
-                  yield* codingSessionStore.recordLineBranchMissing(session.threadId, null);
+              for (const runtime of yield* lineRuntimeStore.listByPlan(
+                resolution.detail.plan.planId,
+              )) {
+                if (runtime.lineRootCommitId === resolution.lineRootCommitId) {
+                  yield* lineRuntimeStore.recordLineBranchMissing(runtime.threadId, null);
                 }
               }
               return recreated[0]!;
@@ -2497,6 +2505,10 @@ const makeWsRpcLayer = (
                       planId: created.plan.planId,
                       parentCommitId: root.commitId,
                       text: input.message,
+                      ...(root.attachments === undefined ? {} : { attachments: root.attachments }),
+                      ...(input.runtimeMode === undefined
+                        ? {}
+                        : { runtimeMode: input.runtimeMode }),
                       ...(root.ranUnder === undefined ? {} : { ranUnder: root.ranUnder }),
                     });
                   }
@@ -2570,6 +2582,10 @@ const makeWsRpcLayer = (
                     planId: input.planId,
                     parentCommitId: appended.commitId,
                     text: input.text,
+                    ...(appended.attachments === undefined
+                      ? {}
+                      : { attachments: appended.attachments }),
+                    ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
                     ...(appended.ranUnder === undefined ? {} : { ranUnder: appended.ranUnder }),
                   });
                   return appended;
@@ -2811,23 +2827,6 @@ const makeWsRpcLayer = (
             planningAssistant.cancelMemoryAmendment(input.planId).pipe(Effect.as({})),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.startCodingSession]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.startCodingSession,
-            codingSessionService
-              .start(input)
-              .pipe(
-                Effect.mapError((cause) =>
-                  isPlanNotFoundError(cause) ||
-                  isMercurianRepositoryNotFoundError(cause) ||
-                  isPlanTurnActiveError(cause) ||
-                  isCodingSessionBlockedError(cause)
-                    ? cause
-                    : new MercurianPlanningError({ operation: "startCodingSession", cause }),
-                ),
-              ),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.visitPlan,
@@ -2920,16 +2919,21 @@ const makeWsRpcLayer = (
         [MERCURIAN_WS_METHODS.deletePlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.deletePlan,
-            planningStore.deletePlan({ planId: input.planId }).pipe(
+            Effect.gen(function* () {
+              const lineRuntimes = yield* lineRuntimeStore.listByPlan(input.planId);
+              const deletion = yield* planningStore.deletePlan({ planId: input.planId });
               // Bytes go after the rows that named them, never before: a
               // refused delete must leave the plan's images where they are.
-              Effect.tap((deletion) => removePlanAttachments(deletion)),
+              yield* removePlanAttachments(deletion);
               // The history is gone; a partial reply has nothing to land in.
-              // Discard the turn and stop the plan's session.
-              Effect.tap(() =>
-                planningAssistant.teardownPlan({ planId: input.planId, commitPartial: false }),
-              ),
-              Effect.as({}),
+              // Discard the turn and delete every captured line thread.
+              yield* planningAssistant.teardownPlan({
+                planId: input.planId,
+                commitPartial: false,
+                lineRuntimes,
+              });
+              return {};
+            }).pipe(
               Effect.mapError((cause) =>
                 isPlanNotFoundError(cause) || isPlanDeleteBlockedError(cause)
                   ? cause
@@ -3017,7 +3021,7 @@ const makeWsRpcLayer = (
               );
               const sessionChanges = yield* Queue.unbounded<void>();
               yield* Effect.forkScoped(
-                codingSessionStore.changes.pipe(
+                lineRuntimeStore.changes.pipe(
                   Stream.filter((planId) => planId === input.planId),
                   Stream.runForEach(() => Queue.offer(sessionChanges, undefined)),
                 ),
@@ -3091,7 +3095,7 @@ const makeWsRpcLayer = (
                     };
 
               const cursor = yield* Ref.make(opening.cursor);
-              const readSessionFrame = codingSessionStore.listForPlan(input.planId).pipe(
+              const readSessionFrame = legacySessionStore.listByPlan(input.planId).pipe(
                 Effect.map((sessions) => ({
                   kind: "coding-sessions" as const,
                   sessions: sessions.map(toWireCodingSessionRecord),
@@ -3099,6 +3103,14 @@ const makeWsRpcLayer = (
                 Effect.mapError(toPlanStreamError),
               );
               const openingSessionFrame = yield* readSessionFrame;
+              const readLineRuntimeFrame = lineRuntimeStore.listByPlan(input.planId).pipe(
+                Effect.map((lineRuntimes) => ({
+                  kind: "line-runtimes" as const,
+                  lineRuntimes: lineRuntimes.map(toWireLineRuntimeRecord),
+                })),
+                Effect.mapError(toPlanStreamError),
+              );
+              const openingLineRuntimeFrame = yield* readLineRuntimeFrame;
 
               // The change signal is not per-plan, so filtering *is* the
               // cursor query: a mutation on some other plan reads zero rows
@@ -3121,6 +3133,7 @@ const makeWsRpcLayer = (
                 Stream.fromIterable<PlanStreamItem>([
                   ...opening.items,
                   openingSessionFrame,
+                  openingLineRuntimeFrame,
                   { kind: "synchronized" as const },
                 ]),
                 // Turn frames are transport beside the commit events: no
@@ -3128,7 +3141,10 @@ const makeWsRpcLayer = (
                 // caught-up-on-commits (ADR 002 §3).
                 Stream.merge(
                   Stream.merge(liveStream, Stream.fromQueue(turnFrames)),
-                  Stream.fromQueue(sessionChanges).pipe(Stream.mapEffect(() => readSessionFrame)),
+                  Stream.fromQueue(sessionChanges).pipe(
+                    Stream.mapEffect(() => Effect.all([readSessionFrame, readLineRuntimeFrame])),
+                    Stream.flatMap(Stream.fromIterable),
+                  ),
                 ),
               );
             }),
@@ -4130,7 +4146,8 @@ const makeWsRpcLayer = (
                       onFailure: (cause) => Queue.failCause(queue, cause),
                       onSuccess: (result) =>
                         attachCreatedPullRequestToCodingSession(
-                          codingSessionStore,
+                          lineRuntimeStore,
+                          legacySessionStore,
                           result,
                           sessionBranch,
                           input.cwd,

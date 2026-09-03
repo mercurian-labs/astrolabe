@@ -97,13 +97,13 @@ vi.mock("../../state/query", () => ({
   }),
 }));
 vi.mock("../../state/mercurian", () => ({
-  useMercurianTree: () => ({
-    snapshot: {
-      projects: [],
-      plans: mocks.isMercurianSession
-        ? [{ codingSessions: [{ threadId: ThreadId.make("thread-1") }] }]
-        : [],
-    },
+  usePlanDetail: () => ({
+    detail: mocks.isMercurianSession
+      ? {
+          lineRuntimes: [{ threadId: ThreadId.make("thread-1") }],
+          codingSessions: [],
+        }
+      : null,
     isPending: false,
     error: null,
   }),

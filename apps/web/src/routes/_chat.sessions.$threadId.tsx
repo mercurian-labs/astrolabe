@@ -18,7 +18,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/
 import { SidebarInset } from "../components/ui/sidebar";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
-import { useMercurianTree } from "../state/mercurian";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { resolveThreadRouteRenderState, type ThreadRouteRenderState } from "../threadRoutes";
@@ -126,13 +125,6 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
   const serverThreadShell = useThreadShell(threadRef);
   const serverThreadDetail = useThreadDetail(threadRef);
   const serverThreadStatus = useThreadStatus(threadRef);
-  const tree = useMercurianTree();
-  const owningPlan =
-    tree.snapshot.plans.find((plan) =>
-      plan.codingSessions.some((session) => session.threadId === threadId),
-    ) ?? null;
-  const owningSession =
-    owningPlan?.codingSessions.find((session) => session.threadId === threadId) ?? null;
 
   if (environmentId === null || threadRef === null) return null;
 
@@ -160,19 +152,16 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       threadSyncPhase={threadSyncPhase}
       renderState={renderState}
       shellExists={serverThreadShell !== null}
-      planId={owningPlan?.planId ?? null}
-      sessionLeafCommitId={owningSession?.commitId ?? null}
-      planTitle={owningPlan?.title ?? null}
+      planId={null}
+      sessionLeafCommitId={null}
+      planTitle={null}
       threadTitle={serverThreadShell?.title ?? serverThreadDetail?.title ?? "Coding session"}
       threadRef={threadRef}
       worktreePath={serverThreadShell?.worktreePath ?? null}
-      repositoryId={owningSession?.repositoryId ?? null}
-      branch={owningSession?.branch ?? null}
-      lineBranchMissingOid={owningSession?.lineBranchMissingOid ?? null}
+      repositoryId={null}
+      branch={null}
+      lineBranchMissingOid={null}
       workspaceMembers={serverThreadShell?.workspaceMembers ?? null}
-      {...(owningSession?.unreachableRepositories === undefined
-        ? {}
-        : { unreachableRepositories: owningSession.unreachableRepositories })}
     />
   );
 }

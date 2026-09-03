@@ -32,8 +32,8 @@ import { PlanningModelSelection } from "./mercurianWorkspace.ts";
 import {
   BranchMovement,
   ChatAttachment,
-  ModelSelection,
   SnapshotKind,
+  RuntimeMode,
   UploadChatAttachment,
 } from "./orchestration.ts";
 
@@ -49,7 +49,6 @@ export const MERCURIAN_WS_METHODS = {
   refreshSpec: "mercurian.refreshSpec",
   confirmMemoryAmendment: "mercurian.confirmMemoryAmendment",
   cancelMemoryAmendment: "mercurian.cancelMemoryAmendment",
-  startCodingSession: "mercurian.startCodingSession",
   getPlanTextAt: "mercurian.getPlanTextAt",
   measurePlanReconstruction: "mercurian.measurePlanReconstruction",
   getSpecAt: "mercurian.getSpecAt",
@@ -184,6 +183,24 @@ export const PlanCodingSessionRecord = Schema.Struct({
 });
 export type PlanCodingSessionRecord = typeof PlanCodingSessionRecord.Type;
 
+/** Mutable working-state facts keyed by a plan line. */
+export const PlanLineRuntimeRecord = Schema.Struct({
+  planId: PlanId,
+  lineRootCommitId: MercurianCommitId,
+  threadId: ThreadId,
+  homeRepositoryId: MercurianRepositoryId,
+  branch: TrimmedNonEmptyString,
+  worktreePath: TrimmedNonEmptyString,
+  unreachableRepositories: Schema.Array(TrimmedNonEmptyString),
+  snapshotOid: Schema.NullOr(TrimmedNonEmptyString),
+  snapshotKind: Schema.NullOr(SnapshotKind),
+  departedRef: Schema.NullOr(Schema.String),
+  branchMovement: Schema.NullOr(BranchMovement),
+  lineBranchMissingOid: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  repositories: Schema.optional(Schema.Array(PlanCodingSessionRepository)),
+});
+export type PlanLineRuntimeRecord = typeof PlanLineRuntimeRecord.Type;
+
 /** Mirrors the commit store's author axis. */
 export const PlanAuthorKind = Schema.Literals(["human", "assistant"]);
 export type PlanAuthorKind = typeof PlanAuthorKind.Type;
@@ -201,7 +218,7 @@ export type PlanTurnId = typeof PlanTurnId.Type;
  * provider's own tool vocabulary, so every client renders one shape.
  */
 export const PlanGroundingItem = Schema.Struct({
-  kind: Schema.Literals(["file-read", "search", "listing", "other"]),
+  kind: Schema.Literals(["file-read", "search", "listing", "command", "edit", "other"]),
   /** What a person would recognize it by — a path, a query, a tool name. */
   label: TrimmedNonEmptyString,
   detail: Schema.optional(Schema.String),
@@ -306,7 +323,6 @@ export const PlanTreeRow = Schema.Struct({
    * Derived per read from the plan's commits, never stored.
    */
   hasPublishedCommits: Schema.Boolean,
-  codingSessions: Schema.Array(PlanCodingSessionRecord),
 });
 export type PlanTreeRow = typeof PlanTreeRow.Type;
 
@@ -465,6 +481,7 @@ export const PlanInFlightTurn = Schema.Struct({
   parentCommitId: MercurianCommitId,
   text: Schema.String,
   grounding: Schema.Array(PlanGroundingItem),
+  phase: Schema.optional(Schema.Literals(["waiting-for-slot", "running"])),
   groundingScope: Schema.optional(PlanGroundingScope),
   /** Present while a structured question waits on the person. */
   questions: Schema.optional(Schema.Array(PlanQuestion)),
@@ -514,6 +531,8 @@ export const PlanDetail = Schema.Struct({
   snapshotSequence: Schema.Number,
   /** Mutable coding-session facts, keyed by their immutable leaf commits. */
   codingSessions: Schema.Array(PlanCodingSessionRecord),
+  /** Working-state facts keyed by line root. */
+  lineRuntimes: Schema.Array(PlanLineRuntimeRecord),
   /** The turns streaming right now — one per branch. Runtime state, never stored. */
   inFlightTurns: Schema.Array(PlanInFlightTurn),
   memoryAmendmentProposal: Schema.optional(MemoryAmendmentProposal),
@@ -533,6 +552,8 @@ export const PlanTurnRefusalReason = Schema.Literals([
   "model-unavailable",
   "option-unavailable",
   "turn-active",
+  "line-branch-missing",
+  "repository-not-git",
 ]);
 export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
 
@@ -563,10 +584,15 @@ export const PlanStreamItem = Schema.Union([
     sessions: Schema.Array(PlanCodingSessionRecord),
   }),
   Schema.Struct({
+    kind: Schema.Literal("line-runtimes"),
+    lineRuntimes: Schema.Array(PlanLineRuntimeRecord),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("turn-started"),
     turnId: PlanTurnId,
     parentCommitId: MercurianCommitId,
     groundingScope: Schema.optional(PlanGroundingScope),
+    phase: Schema.optional(Schema.Literals(["waiting-for-slot", "running"])),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn-delta"),
@@ -649,6 +675,7 @@ export const MercurianCreatePlanInput = Schema.Struct({
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
   /** Absent means seed from the pair this workspace last planned under. */
   modelChoice: Schema.optional(PlanningModelSelection),
+  runtimeMode: Schema.optional(RuntimeMode),
 });
 export type MercurianCreatePlanInput = typeof MercurianCreatePlanInput.Type;
 
@@ -699,6 +726,7 @@ export const MercurianAppendPlanMessageInput = Schema.Struct({
   attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
   /** Absent means inherit the nearest pair already carried by this branch. */
   modelChoice: Schema.optional(PlanningModelSelection),
+  runtimeMode: Schema.optional(RuntimeMode),
 });
 export type MercurianAppendPlanMessageInput = typeof MercurianAppendPlanMessageInput.Type;
 
@@ -760,20 +788,6 @@ export const MercurianConfirmMemoryAmendmentInput = Schema.Struct({
 export type MercurianConfirmMemoryAmendmentInput = typeof MercurianConfirmMemoryAmendmentInput.Type;
 export const MercurianCancelMemoryAmendmentInput = Schema.Struct({ planId: PlanId });
 export type MercurianCancelMemoryAmendmentInput = typeof MercurianCancelMemoryAmendmentInput.Type;
-
-export const MercurianStartCodingSessionInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: MercurianCommitId,
-  runtimeMode: Schema.Literals(["approval-required", "auto-accept-edits", "full-access"]),
-  modelSelection: ModelSelection,
-});
-export type MercurianStartCodingSessionInput = typeof MercurianStartCodingSessionInput.Type;
-
-export const MercurianStartCodingSessionResult = Schema.Struct({
-  commitId: MercurianCommitId,
-  threadId: ThreadId,
-});
-export type MercurianStartCodingSessionResult = typeof MercurianStartCodingSessionResult.Type;
 
 /**
  * The plan as of one commit — what the artifact showed when that commit
@@ -981,35 +995,6 @@ export class ConfirmMemoryAmendmentBlockedError extends Schema.TaggedErrorClass<
   }
 }
 
-export const CodingSessionBlockedReason = Schema.Literals([
-  "repository-not-git",
-  "no-instance",
-  "model-unavailable",
-  "pool-at-capacity",
-  "line-branch-missing",
-]);
-export type CodingSessionBlockedReason = typeof CodingSessionBlockedReason.Type;
-
-export class CodingSessionBlockedError extends Schema.TaggedErrorClass<CodingSessionBlockedError>()(
-  "CodingSessionBlockedError",
-  { reason: CodingSessionBlockedReason },
-) {
-  override get message(): string {
-    switch (this.reason) {
-      case "repository-not-git":
-        return "A linked repository is not a Git repository.";
-      case "no-instance":
-        return "The selected agent is not currently available.";
-      case "model-unavailable":
-        return "The selected model is not available from that agent.";
-      case "pool-at-capacity":
-        return "Every worktree slot for this project is currently in use.";
-      case "line-branch-missing":
-        return "The line's branch no longer exists in the repository.";
-    }
-  }
-}
-
 /** Nothing is waiting for an answer on this plan. */
 export class NoPendingQuestionError extends Schema.TaggedErrorClass<NoPendingQuestionError>()(
   "NoPendingQuestionError",
@@ -1027,7 +1012,6 @@ export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
 export const isSpecRevisionOutdatedError = Schema.is(SpecRevisionOutdatedError);
 export const isSpecRefreshUnavailableError = Schema.is(SpecRefreshUnavailableError);
 export const isConfirmMemoryAmendmentBlockedError = Schema.is(ConfirmMemoryAmendmentBlockedError);
-export const isCodingSessionBlockedError = Schema.is(CodingSessionBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
 
 /**
@@ -1050,7 +1034,6 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "refreshSpec",
       "confirmMemoryAmendment",
       "cancelMemoryAmendment",
-      "startCodingSession",
       "getPlanTextAt",
       "measurePlanReconstruction",
       "getSpecAt",

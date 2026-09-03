@@ -65,6 +65,12 @@ import {
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+import {
+  type PreparedTurn,
+  TurnPreparation,
+  TurnPreparationDefault,
+  type TurnPreparationInput,
+} from "../Services/TurnPreparation.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -183,6 +189,7 @@ describe("ProviderCommandReactor", () => {
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
     readonly tryHandlePromptCommandEffect?: ProviderAuthService["Service"]["tryHandlePromptCommand"];
+    readonly prepareTurn?: (input: TurnPreparationInput) => Effect.Effect<PreparedTurn, object>;
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -439,7 +446,12 @@ describe("ProviderCommandReactor", () => {
         } satisfies OrchestrationEngineService["Service"];
       }),
     ).pipe(Layer.provide(orchestrationLayer));
+    const turnPreparationLayer =
+      input?.prepareTurn === undefined
+        ? TurnPreparationDefault
+        : Layer.succeed(TurnPreparation, TurnPreparation.of({ prepare: input.prepareTurn }));
     const layer = ProviderCommandReactorLive.pipe(
+      Layer.provideMerge(turnPreparationLayer),
       Layer.provideMerge(reactorOrchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
@@ -844,6 +856,54 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.status).toBe("starting");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("prepares fresh and continued turns and can suppress resume on restart", async () => {
+    const harness = await createHarness({
+      prepareTurn: ({ message, sessionIsFresh }) =>
+        Effect.succeed({
+          text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
+          session: { skipResume: true },
+        }),
+    });
+    const startTurn = (suffix: string) =>
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make(`cmd-turn-preparation-${suffix}`),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId(`message-preparation-${suffix}`),
+          role: "user",
+          text: suffix,
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+
+    await Effect.runPromise(startTurn("one"));
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "fresh:one" });
+
+    await Effect.runPromise(startTurn("two"));
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+    expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({ input: "continued:two" });
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-turn-preparation-move"),
+        threadId: ThreadId.make("thread-1"),
+        worktreePath: "/tmp/provider-project-moved",
+      }),
+    );
+    await Effect.runPromise(startTurn("three"));
+    await waitFor(() => harness.sendTurn.mock.calls.length === 3);
+
+    expect(harness.startSession).toHaveBeenCalledTimes(2);
+    expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
+    expect(harness.sendTurn.mock.calls[2]?.[0]).toMatchObject({ input: "fresh:three" });
   });
 
   it("starts a multi-root provider with every additional workspace member", async () => {
@@ -2731,7 +2791,7 @@ describe("ProviderCommandReactor", () => {
     });
     const now = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-set-runtime-mode-claude"),
@@ -3466,7 +3526,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.activity.append",
         commandId: CommandId.make("cmd-approval-requested"),
@@ -3561,7 +3621,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.activity.append",
         commandId: CommandId.make("cmd-user-input-requested"),
@@ -3594,7 +3654,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.user-input.respond",
         commandId: CommandId.make("cmd-user-input-respond-stale"),

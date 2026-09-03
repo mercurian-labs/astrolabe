@@ -26,7 +26,7 @@ import type {
   PlanTreeRow,
   PlanCodingSession,
 } from "./PlanningStore.ts";
-import { toWireCodingSessionRecord } from "../codingSessions/wire.ts";
+import { toWireCodingSessionRecord, toWireLineRuntimeRecord } from "../lineRuntimes/wire.ts";
 
 const iso = (value: DateTime.Utc) => DateTime.formatIso(value);
 
@@ -136,6 +136,7 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => {
     ),
     snapshotSequence: detail.snapshotSequence,
     codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
+    lineRuntimes: detail.lineRuntimes.map(toWireLineRuntimeRecord),
     // The store's detail knows nothing live; the subscribe path overlays the
     // assistant's actual in-flight turns onto this.
     inFlightTurns: [],
@@ -194,14 +195,12 @@ const IDLE_STATUS: PlanRowStatus = { isWorking: false, hasPendingInput: false };
 export const toWirePlanTreeRow = (
   row: PlanTreeRow,
   status: PlanRowStatus = IDLE_STATUS,
-  codingSessions: ReadonlyArray<Contracts.PlanCodingSessionRecord> = [],
 ): Contracts.PlanTreeRow => ({
   ...toWirePlanShell(row),
   hasPendingInput: status.hasPendingInput,
   isWorking: status.isWorking,
   archivedAt: row.archivedAt === null ? null : iso(row.archivedAt),
   hasPublishedCommits: row.hasPublishedCommits,
-  codingSessions,
   ...(row.visitedAt === undefined ? {} : { visitedAt: iso(row.visitedAt) }),
 });
 
@@ -219,10 +218,7 @@ export const composePlanRowStatus = (
 export const toWireTreeSnapshot = (
   snapshot: PlanningTreeSnapshot,
   statusByPlan?: ReadonlyMap<string, PlanRowStatus>,
-  sessionsByPlan?: ReadonlyMap<string, ReadonlyArray<Contracts.PlanCodingSessionRecord>>,
 ): Contracts.PlanningTreeSnapshot => ({
   projects: snapshot.projects.map(toWireProject),
-  plans: snapshot.plans.map((plan) =>
-    toWirePlanTreeRow(plan, statusByPlan?.get(plan.planId), sessionsByPlan?.get(plan.planId) ?? []),
-  ),
+  plans: snapshot.plans.map((plan) => toWirePlanTreeRow(plan, statusByPlan?.get(plan.planId))),
 });

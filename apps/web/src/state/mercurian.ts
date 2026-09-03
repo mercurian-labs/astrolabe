@@ -10,7 +10,6 @@ import type {
   MercurianSavePlanRevisionInput,
   MercurianSaveSpecRevisionInput,
   MercurianRefreshSpecInput,
-  MercurianStartCodingSessionInput,
   MercurianRecreateLineBranchInput,
   PlanDetail,
   PlanId,
@@ -51,6 +50,10 @@ const EMPTY_PLAN_ATOM = Atom.make(
       readonly codingSessions: ReadonlyMap<
         MercurianCommitId,
         import("@t3tools/contracts").PlanCodingSessionRecord
+      >;
+      readonly lineRuntimes: ReadonlyMap<
+        MercurianCommitId,
+        import("@t3tools/contracts").PlanLineRuntimeRecord
       >;
       readonly synchronized: boolean;
       readonly turnRefusal: PlanTurnRefusalReason | null;
@@ -196,11 +199,6 @@ export function useConfirmMemoryAmendment() {
 export function useCancelMemoryAmendment() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.cancelMemoryAmendment);
   return useCallback((input: MercurianCancelMemoryAmendmentInput) => run(input), [run]);
-}
-
-export function useStartCodingSession() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.startCodingSession);
-  return useCallback((input: MercurianStartCodingSessionInput) => run(input), [run]);
 }
 
 export function useRecreateLineBranch() {

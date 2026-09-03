@@ -45,6 +45,7 @@ import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
+import { ApprovalAutoResponder } from "../Services/ApprovalAutoResponder.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerTaskKey = (threadId: ThreadId, taskId: string) => `${threadId}:${taskId}`;
@@ -908,6 +909,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const approvalAutoResponder = yield* ApprovalAutoResponder;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
   const providerCommandId = (event: ProviderRuntimeEvent, tag: string) =>
@@ -1518,6 +1520,18 @@ const make = Effect.gen(function* () {
 
       const thread = yield* resolveThreadShell(event.threadId);
       if (!thread) return;
+      const autoDecision =
+        event.type === "request.opened"
+          ? yield* approvalAutoResponder.decide({ threadId: thread.id, request: event })
+          : Option.none();
+      const autoResponded = Option.isSome(autoDecision) && event.requestId !== undefined;
+      if (autoResponded) {
+        yield* providerService.respondToRequest({
+          threadId: thread.id,
+          requestId: ApprovalRequestId.make(String(event.requestId)),
+          decision: autoDecision.value,
+        });
+      }
 
       let loadedThreadDetail: OrchestrationThread | null | undefined;
       const getLoadedThreadDetail = () =>
@@ -2057,7 +2071,7 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const activities = runtimeEventToActivities(event, taskTitle);
+      const activities = autoResponded ? [] : runtimeEventToActivities(event, taskTitle);
       yield* Effect.forEach(activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>

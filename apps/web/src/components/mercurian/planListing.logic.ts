@@ -42,23 +42,13 @@ export function resolveTreeSelection(pathname: string): TreeSelection {
   };
 }
 
-interface SessionOwningPlanFields {
-  readonly planId: string;
-  readonly codingSessions: ReadonlyArray<{ readonly threadId: string }>;
-}
-
-/** Resolve a session route's thread selection to the plan card that owns it. */
+/** Session ownership is no longer carried in tree rows; detail routes resolve it separately. */
 export function resolveTreeActivePlanId(
   selection: Pick<TreeSelection, "activePlanId" | "activeSessionThreadId">,
-  plans: ReadonlyArray<SessionOwningPlanFields>,
+  _plans: ReadonlyArray<{ readonly planId: string }>,
 ): string | null {
   if (selection.activePlanId !== null) return selection.activePlanId;
-  if (selection.activeSessionThreadId === null) return null;
-  return (
-    plans.find((plan) =>
-      plan.codingSessions.some((session) => session.threadId === selection.activeSessionThreadId),
-    )?.planId ?? null
-  );
+  return null;
 }
 
 export function sortPlansNewestFirst<T extends Pick<PlanRowFields, "updatedAt" | "planId">>(

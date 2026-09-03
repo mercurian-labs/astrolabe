@@ -14,14 +14,14 @@ import {
 } from "./PlanningPrompt.ts";
 
 describe("planningSystemAppendix", () => {
-  it("names the identity, the read-only rule, and the one write door", () => {
+  it("names the identity, editable runtime boundary, and artifact tools", () => {
     const appendix = planningSystemAppendix({
       planTitle: "Reshape the sidebar",
       repositories: [{ name: "astrolabe", path: "/repos/astrolabe" }],
       unreachableRepositories: [],
     });
     expect(appendix).toContain('planning assistant for the plan "Reshape the sidebar"');
-    expect(appendix).toContain("read-only");
+    expect(appendix).toContain("editable within the runtime mode and permissions");
     expect(appendix).toContain("save_plan_revision");
     expect(appendix).toContain("save_spec_revision");
     expect(appendix).toContain("Goal / user story describes the outcome");
