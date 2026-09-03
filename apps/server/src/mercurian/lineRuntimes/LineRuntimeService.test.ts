@@ -28,6 +28,7 @@ import * as ThreadDeletionReactor from "../../orchestration/Services/ThreadDelet
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
 import * as TerminalManager from "../../terminal/Manager.ts";
 import * as VcsStatusBroadcaster from "../../vcs/VcsStatusBroadcaster.ts";
+import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotRegistry from "../worktreeSlots/SlotRegistry.ts";
@@ -91,6 +92,8 @@ interface SagaState {
   claimGate: Deferred.Deferred<void> | null;
   claimEntered: Queue.Queue<void> | null;
   claimWait: boolean | undefined;
+  lineBranchRowsPresent: boolean;
+  lineBranchSignal: Queue.Queue<void> | null;
 }
 
 const scripts: ReadonlyArray<MercurianRepositoryScript> = [
@@ -140,6 +143,8 @@ const sagaState = (overrides: Partial<SagaState> = {}): SagaState => ({
   claimGate: null,
   claimEntered: null,
   claimWait: undefined,
+  lineBranchRowsPresent: true,
+  lineBranchSignal: null,
   ...overrides,
 });
 
@@ -315,6 +320,12 @@ const makeSagaLayer = (state: SagaState) => {
           return true;
         }),
     }),
+    Layer.mock(LineBranchStore.LineBranchStore)({
+      get: () =>
+        Effect.sync(() => (state.lineBranchRowsPresent ? Option.some({} as never) : Option.none())),
+      changes:
+        state.lineBranchSignal === null ? Stream.never : Stream.fromQueue(state.lineBranchSignal),
+    }),
     Layer.mock(SlotStore.SlotStore)({ listAll: Effect.succeed([]) }),
     Layer.mock(SlotRegistry.SlotRegistry)({ lease: () => Effect.succeed(Option.none()) }),
     Layer.mock(LineRuntimeStore.LineRuntimeStore)({
@@ -473,6 +484,22 @@ describe("LineRuntimeService", () => {
       if (SlotService.isLineBranchMissingError(error)) {
         assert.strictEqual(error.commitOid, "line-commit");
       }
+    }),
+  );
+
+  it.effect("waits for the line's branches before claiming a slot", () =>
+    Effect.gen(function* () {
+      const signal = yield* Queue.unbounded<void>();
+      const state = sagaState({ lineBranchRowsPresent: false, lineBranchSignal: signal });
+      const fiber = yield* Effect.forkChild(runSaga(state), { startImmediately: true });
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      assert.ok(!state.calls.includes("slot:claim"));
+      state.lineBranchRowsPresent = true;
+      yield* Queue.offer(signal, undefined);
+      yield* Fiber.join(fiber);
+      assert.ok(state.calls.includes("slot:claim"));
+      assert.strictEqual(state.record, true);
     }),
   );
 

@@ -2,6 +2,7 @@ import {
   CommandId,
   EventId,
   type MercurianCommitId,
+  type MercurianRepositoryId,
   type ModelSelection,
   ProjectId,
   type RuntimeMode,
@@ -17,6 +18,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -24,6 +26,7 @@ import { ThreadDeletionReactor } from "../../orchestration/Services/ThreadDeleti
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { TerminalManager } from "../../terminal/Manager.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
+import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryScript } from "../repositories/schema.ts";
@@ -95,6 +98,8 @@ const setupFailureDetail = (error: unknown): string => {
   return error instanceof Error ? error.message : String(error);
 };
 
+const LINE_BRANCH_WAIT = "30 seconds";
+
 export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const planning = yield* PlanningStore.PlanningStore;
@@ -109,7 +114,42 @@ export const make = Effect.gen(function* () {
   const slotStore = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
   const lineRuntimes = yield* LineRuntimeStore;
+  const branches = yield* LineBranchStore;
   const path = yield* Path.Path;
+
+  /**
+   * A line's branches are minted eagerly by the line-branch reactor, which
+   * runs off the planning store's change signal — so a turn started the
+   * instant its root commit lands can reach the slot claim before the rows
+   * exist. Wait on the store's own signal, subscribed before the first check
+   * so a reconcile landing in between is never missed; the claim then reads
+   * rows that are there. Bounded, because a line whose branches never appear
+   * is a bug to surface, not a turn to hang.
+   */
+  const awaitLineBranches = Effect.fn("LineRuntimeService.awaitLineBranches")(function* (
+    lineRootCommitId: MercurianCommitId,
+    repositoryIds: ReadonlyArray<MercurianRepositoryId>,
+  ) {
+    const ready = Effect.forEach(repositoryIds, (repositoryId) =>
+      branches.get({ lineRootCommitId, repositoryId }),
+    ).pipe(Effect.map((rows) => rows.every(Option.isSome)));
+    yield* Stream.merge(Stream.succeed(undefined), branches.changes).pipe(
+      Stream.mapEffect(() => ready),
+      Stream.filter((isReady) => isReady),
+      Stream.take(1),
+      Stream.runDrain,
+      Effect.timeoutOrElse({
+        duration: LINE_BRANCH_WAIT,
+        orElse: () =>
+          Effect.fail(
+            new LineRuntimeServiceError({
+              operation: "ensure:lineBranches",
+              cause: new Error(`Line ${lineRootCommitId} never received its branches`),
+            }),
+          ),
+      }),
+    );
+  });
 
   const uuid = crypto.randomUUIDv4;
   const commandId = (tag: string) =>
@@ -333,6 +373,10 @@ export const make = Effect.gen(function* () {
       });
       return yield* withLineRuntimeBirthCompensation(
         Effect.gen(function* () {
+          yield* awaitLineBranches(
+            input.lineRootCommitId,
+            linkedRepositories.map((repository) => repository.repositoryId),
+          );
           const slot = yield* slotService.claim({
             projectId: detail.plan.projectId,
             lineRootCommitId: input.lineRootCommitId,
