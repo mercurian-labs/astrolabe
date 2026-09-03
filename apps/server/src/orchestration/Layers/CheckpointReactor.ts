@@ -39,7 +39,6 @@ import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { CodingSessionStore } from "../../mercurian/codingSessions/CodingSessionStore.ts";
-import { LineBranchStore } from "../../mercurian/commitTree/LineBranchStore.ts";
 import { SlotStore } from "../../mercurian/worktreeSlots/SlotStore.ts";
 import { SlotRegistry } from "../../mercurian/worktreeSlots/SlotRegistry.ts";
 import {
@@ -98,11 +97,74 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const gitDriver = yield* GitVcsDriver;
   const codingSessions = yield* CodingSessionStore;
-  const lineBranches = yield* LineBranchStore;
   const slots = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
   const snapshotChain = yield* SnapshotChain;
   const path = yield* Path.Path;
+
+  const adoptStanding = Effect.fn("CheckpointReactor.adoptStanding")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly cwd: string;
+    readonly lineRootCommitId: import("@t3tools/contracts").MercurianCommitId;
+    readonly repositoryId: import("@t3tools/contracts").MercurianRepositoryId;
+    readonly lineBranch: string;
+    readonly createdAt: string;
+  }) {
+    const standing = yield* snapshotChain.readStanding(input);
+    if (standing._tag !== "renamed") {
+      return {
+        branch: input.lineBranch,
+        departedRef: standing._tag === "departed" ? standing.ref : null,
+      };
+    }
+    yield* snapshotChain.adoptRename({
+      lineRootCommitId: input.lineRootCommitId,
+      repositoryId: input.repositoryId,
+      branch: standing.branch,
+    });
+    yield* codingSessions.updateBranch(input.threadId, standing.branch);
+    yield* orchestrationEngine.dispatch({
+      type: "thread.meta.update",
+      commandId: yield* serverCommandId("line-branch-renamed"),
+      threadId: input.threadId,
+      branch: standing.branch,
+    });
+    yield* orchestrationEngine.dispatch({
+      type: "thread.activity.append",
+      commandId: yield* serverCommandId("line-branch-renamed-activity"),
+      threadId: input.threadId,
+      activity: {
+        id: yield* serverEventId,
+        tone: "info",
+        kind: "line.branch-renamed",
+        summary: `Branch renamed to \`${standing.branch}\` by hand`,
+        payload: {},
+        turnId: null,
+        createdAt: input.createdAt,
+      },
+      createdAt: input.createdAt,
+    });
+    return { branch: standing.branch, departedRef: null };
+  });
+
+  const resolveLineBranchTip = Effect.fn("CheckpointReactor.resolveLineBranchTip")(
+    function* (input: {
+      readonly cwd: string;
+      readonly lineRootCommitId: import("@t3tools/contracts").MercurianCommitId;
+      readonly repositoryId: import("@t3tools/contracts").MercurianRepositoryId;
+      readonly lineBranch: string;
+      readonly operation: string;
+    }) {
+      const resolved = yield* gitDriver.execute({
+        operation: input.operation,
+        cwd: input.cwd,
+        args: ["rev-parse", `refs/heads/${input.lineBranch}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      const oid = resolved.exitCode === 0 ? resolved.stdout.trim() : "";
+      return oid.length > 0 ? oid : yield* snapshotChain.lineCommit(input);
+    },
+  );
 
   const appendCaptureFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -399,9 +461,19 @@ const make = Effect.gen(function* () {
         Option.isSome(session) && slot?.currentLineRootCommitId !== null && slot !== undefined
           ? Effect.gen(function* () {
               const kind = input.settled ? "settled" : "partial";
+              const standing = yield* adoptStanding({
+                threadId: input.threadId,
+                cwd: input.cwd,
+                lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: session.value.branch,
+                createdAt: input.createdAt,
+              });
               const snapshot = yield* snapshotChain.capture({
                 cwd: input.cwd,
                 lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: standing.branch,
                 kind,
                 ref: checkpointRef,
               });
@@ -410,27 +482,22 @@ const make = Effect.gen(function* () {
                 previousOid: snapshot.previousOid,
                 lineRootCommitId: slot.currentLineRootCommitId!,
                 repositoryId: session.value.repositoryId,
-                lineBranch: session.value.branch,
+                lineBranch: standing.branch,
               });
-              const departedRef = snapshotChain.departure({
-                headRef: snapshot.headRef,
-                lineBranch: session.value.branch,
-              });
-              const branchTip = yield* gitDriver.execute({
+              const departedRef = standing.departedRef;
+              const branchTipOid = yield* resolveLineBranchTip({
                 operation: "CheckpointReactor.resolveLineBranchTip",
                 cwd: input.cwd,
-                args: ["rev-parse", `refs/heads/${session.value.branch}^{commit}`],
+                lineRootCommitId: slot.currentLineRootCommitId!,
+                repositoryId: session.value.repositoryId,
+                lineBranch: standing.branch,
               });
               yield* codingSessions.recordSnapshot(input.threadId, {
                 snapshotOid: snapshot.oid,
                 kind,
-                branchTipOid: branchTip.stdout.trim(),
+                branchTipOid,
                 departedRef,
                 branchMovement,
-              });
-              yield* lineBranches.markBuilt({
-                lineRootCommitId: slot.currentLineRootCommitId!,
-                repositoryId: session.value.repositoryId,
               });
               yield* captureAndDispatchCheckpoint({
                 threadId: input.threadId,
@@ -651,9 +718,19 @@ const make = Effect.gen(function* () {
         return;
       }
       const capturedAt = yield* DateTime.now;
+      const standing = yield* adoptStanding({
+        threadId: input.threadId,
+        cwd: input.cwd,
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: session.value.branch,
+        createdAt: input.createdAt,
+      });
       const snapshot = yield* snapshotChain.capture({
         cwd: input.cwd,
         lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: standing.branch,
         kind: "external",
         ref: lineExtraSnapshotRef(slot.currentLineRootCommitId, "external", capturedAt),
       });
@@ -662,27 +739,22 @@ const make = Effect.gen(function* () {
         previousOid: snapshot.previousOid,
         lineRootCommitId: slot.currentLineRootCommitId,
         repositoryId: session.value.repositoryId,
-        lineBranch: session.value.branch,
+        lineBranch: standing.branch,
       });
-      const departedRef = snapshotChain.departure({
-        headRef: snapshot.headRef,
-        lineBranch: session.value.branch,
-      });
-      const branchTip = yield* gitDriver.execute({
+      const departedRef = standing.departedRef;
+      const branchTipOid = yield* resolveLineBranchTip({
         operation: "CheckpointReactor.resolveExternalLineBranchTip",
         cwd: input.cwd,
-        args: ["rev-parse", `refs/heads/${session.value.branch}^{commit}`],
+        lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: session.value.repositoryId,
+        lineBranch: standing.branch,
       });
       yield* codingSessions.recordSnapshot(input.threadId, {
         snapshotOid: snapshot.oid,
         kind: "external",
-        branchTipOid: branchTip.stdout.trim(),
+        branchTipOid,
         departedRef,
         branchMovement,
-      });
-      yield* lineBranches.markBuilt({
-        lineRootCommitId: slot.currentLineRootCommitId,
-        repositoryId: session.value.repositoryId,
       });
       yield* orchestrationEngine.dispatch({
         type: "thread.activity.append",

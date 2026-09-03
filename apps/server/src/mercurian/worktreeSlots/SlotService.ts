@@ -39,6 +39,20 @@ export class SlotServiceError extends Schema.TaggedErrorClass<SlotServiceError>(
   { operation: Schema.String, cause: Schema.Unknown },
 ) {}
 
+export class LineBranchMissingError extends Schema.TaggedErrorClass<LineBranchMissingError>()(
+  "LineBranchMissingError",
+  {
+    lineRootCommitId: MercurianCommitId,
+    repositoryId: MercurianRepositoryId,
+    branch: Schema.String,
+    commitOid: Schema.String,
+  },
+) {}
+
+const isSlotPoolAtCapacityError = Schema.is(SlotPoolAtCapacityError);
+const isLineBranchMissingError = Schema.is(LineBranchMissingError);
+const isSlotServiceError = Schema.is(SlotServiceError);
+
 export interface ClaimSlotInput {
   readonly projectId: MercurianProjectId;
   readonly lineRootCommitId: MercurianCommitId;
@@ -116,7 +130,10 @@ export class SlotService extends Context.Service<
   {
     readonly claim: (
       input: ClaimSlotInput,
-    ) => Effect.Effect<WorktreeSlot, SlotPoolAtCapacityError | SlotServiceError>;
+    ) => Effect.Effect<
+      WorktreeSlot,
+      SlotPoolAtCapacityError | LineBranchMissingError | SlotServiceError
+    >;
     readonly release: (
       slotId: WorktreeSlotId,
       holder: SlotLeaseHolder,
@@ -210,6 +227,26 @@ export const make = Effect.gen(function* () {
             ),
           });
         }
+        const namedRef = yield* gitDriver.execute({
+          operation: "SlotService.projectMembers.verifyBranch",
+          cwd: entry.repository.path,
+          args: ["rev-parse", "--verify", "--quiet", `refs/heads/${branch.value.branch}`],
+          allowNonZeroExit: true,
+        });
+        if (namedRef.exitCode !== 0) {
+          const commitOid = yield* snapshotChain.lineCommit({
+            cwd: entry.repository.path,
+            lineRootCommitId,
+            repositoryId: entry.repository.repositoryId,
+            lineBranch: branch.value.branch,
+          });
+          return yield* new LineBranchMissingError({
+            lineRootCommitId,
+            repositoryId: entry.repository.repositoryId,
+            branch: branch.value.branch,
+            commitOid,
+          });
+        }
         return { ...entry, branch: branch.value.branch };
       }),
     );
@@ -234,6 +271,8 @@ export const make = Effect.gen(function* () {
       yield* snapshotChain.capture({
         cwd: worktreePath,
         lineRootCommitId: slot.currentLineRootCommitId,
+        repositoryId: member.repositoryId,
+        lineBranch: member.currentBranch!,
         kind: "recovery",
         ref: lineExtraSnapshotRef(slot.currentLineRootCommitId, "recovery", now),
       });
@@ -406,7 +445,6 @@ export const make = Effect.gen(function* () {
       .withProjectLock(
         input.projectId,
         Effect.gen(function* () {
-          const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
           const poolSize = (yield* settings.getSettings).worktreePoolSize;
           const existing = yield* slots.list(input.projectId);
           const free: Array<WorktreeSlot> = [];
@@ -421,15 +459,39 @@ export const make = Effect.gen(function* () {
           let claimed: WorktreeSlot;
           if (reusable !== undefined) {
             if (reusable.currentLineRootCommitId === input.lineRootCommitId) {
+              const members: Array<WorktreeSlotMember> = [];
               for (const member of reusable.members) {
-                const expected = `refs/heads/${member.currentBranch}`;
-                const head = yield* gitDriver.execute({
-                  operation: "SlotService.claim.headRef",
-                  cwd: memberPath(reusable, member),
-                  args: ["symbolic-ref", "-q", "HEAD"],
-                  allowNonZeroExit: true,
+                const cwd = memberPath(reusable, member);
+                const standing = yield* snapshotChain.readStanding({
+                  cwd,
+                  lineRootCommitId: input.lineRootCommitId,
+                  repositoryId: member.repositoryId,
+                  lineBranch: member.currentBranch!,
                 });
-                if (head.exitCode !== 0 || head.stdout.trim() !== expected) {
+                if (standing._tag === "renamed") {
+                  yield* snapshotChain.adoptRename({
+                    lineRootCommitId: input.lineRootCommitId,
+                    repositoryId: member.repositoryId,
+                    branch: standing.branch,
+                  });
+                  members.push({ ...member, currentBranch: standing.branch });
+                  continue;
+                }
+                if (standing._tag === "departed" && standing.recordedMissing) {
+                  const commitOid = yield* snapshotChain.lineCommit({
+                    cwd,
+                    lineRootCommitId: input.lineRootCommitId,
+                    repositoryId: member.repositoryId,
+                    lineBranch: member.currentBranch!,
+                  });
+                  return yield* new LineBranchMissingError({
+                    lineRootCommitId: input.lineRootCommitId,
+                    repositoryId: member.repositoryId,
+                    branch: member.currentBranch!,
+                    commitOid,
+                  });
+                }
+                if (standing._tag === "departed") {
                   yield* settleMember(
                     reusable,
                     member,
@@ -438,15 +500,18 @@ export const make = Effect.gen(function* () {
                     now,
                   );
                 }
+                members.push(member);
               }
-              claimed = reusable;
+              claimed = { ...reusable, members };
             } else {
+              const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
               claimed = yield* switchSlot(reusable, input.lineRootCommitId, desired, now);
             }
           } else {
             if (existing.length >= poolSize) {
               return yield* new SlotPoolAtCapacityError({ projectId: input.projectId, poolSize });
             }
+            const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
             claimed = yield* materialize(
               input.projectId,
               input.lineRootCommitId,
@@ -462,7 +527,9 @@ export const make = Effect.gen(function* () {
       )
       .pipe(
         Effect.mapError((cause) =>
-          Schema.is(SlotPoolAtCapacityError)(cause) || Schema.is(SlotServiceError)(cause)
+          isSlotPoolAtCapacityError(cause) ||
+          isLineBranchMissingError(cause) ||
+          isSlotServiceError(cause)
             ? cause
             : new SlotServiceError({ operation: "claim", cause }),
         ),

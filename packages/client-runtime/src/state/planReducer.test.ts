@@ -187,6 +187,7 @@ describe("applyPlanStreamItem", () => {
       snapshotKind: "settled" as const,
       departedRef: "refs/heads/sibling",
       branchMovement: { kind: "added" as const, count: 1 },
+      lineBranchMissingOid: "1234567890abcdef",
     };
     const replaced = applyPlanStreamItem(fromSnapshot, {
       kind: "coding-sessions",
@@ -199,6 +200,9 @@ describe("applyPlanStreamItem", () => {
     expect(replayed.codingSessions.size).toBe(1);
     expect(replayed.codingSessions.get(session.commitId)).toEqual(ended);
     expect(replayed.detail?.codingSessions).toEqual([ended]);
+    expect(replayed.codingSessions.get(session.commitId)?.lineBranchMissingOid).toBe(
+      "1234567890abcdef",
+    );
   });
 
   it("accepts a session frame before its leaf and keeps plan text unchanged", () => {

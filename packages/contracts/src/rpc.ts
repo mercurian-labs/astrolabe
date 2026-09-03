@@ -111,6 +111,8 @@ import {
   MercurianSubscribeWorktreeSlotsInput,
   MercurianReadLineUncommittedDiffInput,
   MercurianReadLineUncommittedDiffResult,
+  MercurianRecreateLineBranchInput,
+  MercurianRecreateLineBranchResult,
   MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
@@ -1159,6 +1161,12 @@ export const WsMercurianReadLineUncommittedDiffRpc = Rpc.make(
   },
 );
 
+export const WsMercurianRecreateLineBranchRpc = Rpc.make(MERCURIAN_WS_METHODS.recreateLineBranch, {
+  payload: MercurianRecreateLineBranchInput,
+  success: MercurianRecreateLineBranchResult,
+  error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
 export const WsMercurianCreateProjectRpc = Rpc.make(MERCURIAN_WS_METHODS.createProject, {
   payload: MercurianCreateProjectInput,
   success: MercurianProject,
@@ -1730,6 +1738,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSubscribeTreeRpc,
   WsMercurianSubscribeWorktreeSlotsRpc,
   WsMercurianReadLineUncommittedDiffRpc,
+  WsMercurianRecreateLineBranchRpc,
   WsMercurianCreateProjectRpc,
   WsMercurianCreatePlanRpc,
   WsMercurianImportPlanRpc,

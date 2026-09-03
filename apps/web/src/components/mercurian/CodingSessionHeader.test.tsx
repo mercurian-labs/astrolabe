@@ -7,6 +7,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 vi.mock("../../state/threads", () => ({
   threadEnvironment: { updateMetadata: Symbol("updateMetadata") },
 }));
+vi.mock("../../state/mercurian", () => ({
+  useRecreateLineBranch: () => vi.fn(),
+}));
 vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));
@@ -159,6 +162,8 @@ describe("CodingSessionHeader", () => {
         threadRef={threadRef}
         worktreePath={worktreePath}
         repositoryId={MercurianRepositoryId.make("repository-test")}
+        branch="mercurian/session"
+        lineBranchMissingOid={null}
       />,
     );
 
@@ -178,6 +183,7 @@ describe("CodingSessionHeader", () => {
     // refused immediately — no stale hosting-cache window (M-119 walk finding).
     expect(markup).toContain('data-gate-github="true"');
     expect(markup).toContain('data-gate-gitlab="false"');
+    expect(markup).not.toContain("Recreate at");
     expect(markup).not.toMatch(/delete|new thread/iu);
   });
 
@@ -192,6 +198,8 @@ describe("CodingSessionHeader", () => {
         threadRef={threadRef}
         worktreePath={null}
         repositoryId={null}
+        branch={null}
+        lineBranchMissingOid={null}
       />,
     );
 
@@ -213,5 +221,24 @@ describe("CodingSessionHeader", () => {
         originalTitle: "My durable rename",
       }),
     ).toEqual({ action: "noop" });
+  });
+
+  it("renders the recreate offer only when a missing branch oid is recorded", () => {
+    const markup = renderToStaticMarkup(
+      <CodingSessionHeader
+        environmentId={environmentId}
+        planId={PlanId.make("plan-test")}
+        planTitle="Reviewed plan"
+        threadId={threadId}
+        threadTitle="Implementation session"
+        threadRef={threadRef}
+        worktreePath={worktreePath}
+        repositoryId={MercurianRepositoryId.make("repository-test")}
+        branch="mercurian/session"
+        lineBranchMissingOid="1234567890abcdef"
+      />,
+    );
+    expect(markup).toContain("Branch <code>mercurian/session</code> no longer exists");
+    expect(markup).toContain("Recreate at 1234567");
   });
 });

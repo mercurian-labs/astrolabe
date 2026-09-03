@@ -26,6 +26,7 @@ export const LineBranch = Schema.Struct({
   branch: TrimmedNonEmptyString,
   baseOid: TrimmedNonEmptyString,
   built: Schema.Boolean,
+  repointHold: Schema.NullOr(Schema.Literals(["checked-out", "name-missing"])),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type LineBranch = typeof LineBranch.Type;
@@ -39,6 +40,11 @@ const Key = Schema.Struct({
   repositoryId: MercurianRepositoryId,
 });
 const Repoint = Schema.Struct({ ...Key.fields, baseOid: TrimmedNonEmptyString });
+const Rename = Schema.Struct({ ...Key.fields, branch: TrimmedNonEmptyString });
+const RepointHold = Schema.Struct({
+  ...Key.fields,
+  reason: Schema.NullOr(Schema.Literals(["checked-out", "name-missing"])),
+});
 
 export type LineBranchStoreError = PersistenceSqlError | PersistenceDecodeError;
 
@@ -54,6 +60,10 @@ export class LineBranchStore extends Context.Service<
       input: typeof Repoint.Type,
     ) => Effect.Effect<boolean, LineBranchStoreError>;
     readonly markBuilt: (input: typeof Key.Type) => Effect.Effect<void, LineBranchStoreError>;
+    readonly rename: (input: typeof Rename.Type) => Effect.Effect<void, LineBranchStoreError>;
+    readonly recordRepointHold: (
+      input: typeof RepointHold.Type,
+    ) => Effect.Effect<void, LineBranchStoreError>;
     readonly changes: Stream.Stream<void>;
   }
 >()("t3/mercurian/commitTree/LineBranchStore") {}
@@ -72,7 +82,8 @@ export const make = Effect.gen(function* () {
   const changes = yield* PubSub.unbounded<void>();
   const columns = sql`
     line_root_commit_id AS "lineRootCommitId", repository_id AS "repositoryId",
-    branch AS "branch", base_oid AS "baseOid", built AS "built", created_at AS "createdAt"
+    branch AS "branch", base_oid AS "baseOid", built AS "built",
+    repoint_hold AS "repointHold", created_at AS "createdAt"
   `;
   const listRows = SqlSchema.findAll({
     Request: Schema.Struct({}),
@@ -92,10 +103,10 @@ export const make = Effect.gen(function* () {
     Request: LineBranch,
     execute: (row) => sql`
       INSERT INTO line_branches (
-        line_root_commit_id, repository_id, branch, base_oid, built, created_at
+        line_root_commit_id, repository_id, branch, base_oid, built, repoint_hold, created_at
       ) VALUES (
         ${row.lineRootCommitId}, ${row.repositoryId}, ${row.branch}, ${row.baseOid},
-        ${row.built ? 1 : 0}, ${row.createdAt}
+        ${row.built ? 1 : 0}, ${row.repointHold}, ${row.createdAt}
       ) ON CONFLICT(line_root_commit_id, repository_id) DO NOTHING
     `,
   });
@@ -112,6 +123,20 @@ export const make = Effect.gen(function* () {
     Request: Key,
     execute: ({ lineRootCommitId, repositoryId }) => sql`
       UPDATE line_branches SET built = 1
+      WHERE line_root_commit_id = ${lineRootCommitId} AND repository_id = ${repositoryId}
+    `,
+  });
+  const renameRow = SqlSchema.void({
+    Request: Rename,
+    execute: ({ lineRootCommitId, repositoryId, branch }) => sql`
+      UPDATE line_branches SET branch = ${branch}
+      WHERE line_root_commit_id = ${lineRootCommitId} AND repository_id = ${repositoryId}
+    `,
+  });
+  const recordRepointHoldRow = SqlSchema.void({
+    Request: RepointHold,
+    execute: ({ lineRootCommitId, repositoryId, reason }) => sql`
+      UPDATE line_branches SET repoint_hold = ${reason}
       WHERE line_root_commit_id = ${lineRootCommitId} AND repository_id = ${repositoryId}
     `,
   });
@@ -149,6 +174,16 @@ export const make = Effect.gen(function* () {
       map(
         sql.withTransaction(markBuiltRow(input)).pipe(Effect.andThen(announce)),
         "LineBranchStore.markBuilt",
+      ),
+    rename: (input) =>
+      map(
+        sql.withTransaction(renameRow(input)).pipe(Effect.andThen(announce)),
+        "LineBranchStore.rename",
+      ),
+    recordRepointHold: (input) =>
+      map(
+        sql.withTransaction(recordRepointHoldRow(input)).pipe(Effect.andThen(announce)),
+        "LineBranchStore.recordRepointHold",
       ),
     get changes() {
       return Stream.fromPubSub(changes);

@@ -24,6 +24,7 @@ const sessionRecord = {
   snapshotKind: null,
   departedRef: null,
   branchMovement: null,
+  lineBranchMissingOid: null,
 } as const;
 
 const createdResult = {

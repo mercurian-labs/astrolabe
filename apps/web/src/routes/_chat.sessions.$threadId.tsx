@@ -35,6 +35,8 @@ export function SessionThreadRouteContent(props: {
   readonly threadRef: ScopedThreadRef;
   readonly worktreePath: string | null;
   readonly repositoryId: MercurianRepositoryId | null;
+  readonly branch: string | null;
+  readonly lineBranchMissingOid: string | null;
 }) {
   const backToPlanLink =
     props.planId === null ? (
@@ -80,6 +82,8 @@ export function SessionThreadRouteContent(props: {
               threadRef={props.threadRef}
               worktreePath={props.worktreePath}
               repositoryId={props.repositoryId}
+              branch={props.branch}
+              lineBranchMissingOid={props.lineBranchMissingOid}
             />
           }
         />
@@ -150,6 +154,8 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       threadRef={threadRef}
       worktreePath={serverThreadShell?.worktreePath ?? null}
       repositoryId={owningSession?.repositoryId ?? null}
+      branch={owningSession?.branch ?? null}
+      lineBranchMissingOid={owningSession?.lineBranchMissingOid ?? null}
     />
   );
 }

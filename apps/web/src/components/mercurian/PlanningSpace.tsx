@@ -1,8 +1,10 @@
 import {
+  isCodingSessionBlockedError,
   resolvePlanningModel,
   type EnvironmentId,
-  type MercurianCommitId,
+  MercurianCommitId,
   type MercurianProjectId,
+  type MercurianRepositoryId,
   type MemoryNote,
   type PlanId,
   type PlanInFlightTurn,
@@ -59,6 +61,7 @@ import {
   useGetSpecAt,
   useMeasurePlanReconstruction,
   usePlanDetail,
+  useRecreateLineBranch,
   useStopPlanningTurn,
   useStartCodingSession,
   useTryImplement,
@@ -215,6 +218,10 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   );
   const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
+  const [missingLineBranchDoor, setMissingLineBranchDoor] = useState<{
+    readonly commitId: MercurianCommitId;
+    readonly repositoryId: MercurianRepositoryId;
+  } | null>(null);
   // The same resolution the server runs, read here so sending gates with the
   // reason stated instead of failing silently. The two can only disagree for
   // the width of a race, which `turn-refused` covers.
@@ -223,6 +230,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const environmentId = usePrimaryEnvironmentId();
   const repositories = useRepositories().snapshot.repositories;
   const startCodingSession = useStartCodingSession();
+  const recreateLineBranch = useRecreateLineBranch();
   const openSessionDraft = useCodingSessionDraftStore((state) => state.openDraft);
   const completeSessionStart = useCodingSessionDraftStore((state) => state.completeStart);
   const lastSessionModel = useCodingSessionDraftStore((state) => state.lastModelSelection);
@@ -701,6 +709,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   });
   const implementNotice =
     implementFailure === null ? null : implementFailureNotice(implementFailure);
+  const missingLineBranch = missingLineBranchDoor;
   const memoryFailureKey =
     memoryAmendmentFailure === null
       ? null
@@ -771,6 +780,34 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
           {mentions.sources}
+          {missingLineBranch === null ? null : (
+            <div className="px-3 pt-2 sm:px-5">
+              <div
+                role="alert"
+                className="mx-auto flex w-full max-w-3xl items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground"
+              >
+                <span className="min-w-0 flex-1">
+                  {implementFailureNotice("line-branch-missing")}
+                </span>
+                <Button
+                  size="xs"
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    void recreateLineBranch({
+                      planId,
+                      commitId: missingLineBranch.commitId,
+                      repositoryId: missingLineBranch.repositoryId,
+                    }).then((result) => {
+                      if (result !== null) setMissingLineBranchDoor(null);
+                    })
+                  }
+                >
+                  Recreate branch
+                </Button>
+              </div>
+            </div>
+          )}
           {memoryFailureNotice === null ? null : (
             <div className="px-3 pt-2 sm:px-5">
               <div
@@ -1114,8 +1151,21 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             const draft = useCodingSessionDraftStore.getState().draftsById[draftId];
             if (draft === undefined) return;
             void startCodingSession(startCodingSessionPayload(draft)).then((result) => {
-              if (result !== null) completeSessionStart(draftId);
-              else setSessionDraftId(draftId);
+              if (result.ok) {
+                completeSessionStart(draftId);
+                setMissingLineBranchDoor(null);
+              } else {
+                if (
+                  isCodingSessionBlockedError(result.error) &&
+                  result.error.reason === "line-branch-missing"
+                ) {
+                  setMissingLineBranchDoor({
+                    commitId: MercurianCommitId.make(draft.parentCommitId),
+                    repositoryId: draft.repositoryId as MercurianRepositoryId,
+                  });
+                }
+                setSessionDraftId(draftId);
+              }
             });
             setSplitSheetOpen(false);
           }}
@@ -1158,6 +1208,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         onOpenChange={(open) => {
           if (!open) setSessionDraftId(null);
         }}
+        onLineBranchMissing={({ commitId, repositoryId }) =>
+          setMissingLineBranchDoor({
+            commitId: MercurianCommitId.make(commitId),
+            repositoryId: repositoryId as MercurianRepositoryId,
+          })
+        }
       />
       <StalePlanWarning
         open={stalePlanWarningOpen}

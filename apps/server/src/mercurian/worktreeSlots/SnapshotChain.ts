@@ -29,6 +29,8 @@ import { CheckpointStore } from "../../checkpointing/CheckpointStore.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import type { LineBranchStoreError } from "../commitTree/LineBranchStore.ts";
+import { SlotStore } from "./SlotStore.ts";
+import type { SlotStoreError } from "./SlotStore.ts";
 
 const LINE_REFS_PREFIX = "refs/t3/lines";
 
@@ -57,9 +59,23 @@ export function lineExtraSnapshotRef(
 interface CaptureInput {
   readonly cwd: string;
   readonly lineRootCommitId: MercurianCommitId;
+  readonly repositoryId: MercurianRepositoryId;
+  readonly lineBranch: string;
   readonly kind: SnapshotKind;
   readonly ref: CheckpointRef;
 }
+
+interface StandingInput {
+  readonly cwd: string;
+  readonly lineRootCommitId: MercurianCommitId;
+  readonly repositoryId: MercurianRepositoryId;
+  readonly lineBranch: string;
+}
+
+export type LineStanding =
+  | { readonly _tag: "on-line" }
+  | { readonly _tag: "renamed"; readonly branch: string }
+  | { readonly _tag: "departed"; readonly ref: string; readonly recordedMissing: boolean };
 
 interface BranchMovementInput {
   readonly cwd: string;
@@ -84,16 +100,24 @@ export class SnapshotChain extends Context.Service<
         readonly previousOid: string | null;
         readonly headOid: string | null;
         readonly headRef: string | null;
+        readonly built: boolean;
       },
-      VcsError | GitCommandError | SnapshotChainError
+      VcsError | GitCommandError | LineBranchStoreError | SnapshotChainError
     >;
     readonly branchMovement: (
       input: BranchMovementInput,
     ) => Effect.Effect<BranchMovement, GitCommandError | LineBranchStoreError | SnapshotChainError>;
-    readonly departure: (input: {
-      readonly headRef: string | null;
-      readonly lineBranch: string;
-    }) => string | null;
+    readonly readStanding: (
+      input: StandingInput,
+    ) => Effect.Effect<LineStanding, GitCommandError | LineBranchStoreError | SnapshotChainError>;
+    readonly lineCommit: (
+      input: StandingInput,
+    ) => Effect.Effect<string, GitCommandError | LineBranchStoreError | SnapshotChainError>;
+    readonly adoptRename: (input: {
+      readonly lineRootCommitId: MercurianCommitId;
+      readonly repositoryId: MercurianRepositoryId;
+      readonly branch: string;
+    }) => Effect.Effect<void, LineBranchStoreError | SlotStoreError>;
     readonly isDrifted: (input: DriftInput) => Effect.Effect<boolean, GitCommandError>;
   }
 >()("t3/mercurian/worktreeSlots/SnapshotChain") {}
@@ -102,6 +126,7 @@ export const make = Effect.gen(function* () {
   const checkpoints = yield* CheckpointStore;
   const git = yield* GitVcsDriver;
   const lineBranches = yield* LineBranchStore;
+  const slots = yield* SlotStore;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
@@ -147,7 +172,97 @@ export const make = Effect.gen(function* () {
       cwd: input.cwd,
       args: ["update-ref", snapshotRef, oid],
     });
-    return { oid, previousOid, headOid, headRef };
+    const line = yield* lineBranches.get({
+      lineRootCommitId: input.lineRootCommitId,
+      repositoryId: input.repositoryId,
+    });
+    if (Option.isNone(line)) {
+      return yield* new SnapshotChainError({
+        operation: "capture:lineBranch",
+        cause: new Error(`Line branch ${input.lineRootCommitId} is missing`),
+      });
+    }
+    const [snapshotTree, baseTree, branchTip] = yield* Effect.all([
+      resolve(input.cwd, `${oid}^{tree}`),
+      resolve(input.cwd, `${line.value.baseOid}^{tree}`),
+      resolve(input.cwd, `refs/heads/${input.lineBranch}^{commit}`),
+    ]);
+    const changed = snapshotTree !== baseTree || branchTip !== line.value.baseOid;
+    if (changed && !line.value.built) {
+      yield* lineBranches.markBuilt({
+        lineRootCommitId: input.lineRootCommitId,
+        repositoryId: input.repositoryId,
+      });
+    }
+    return { oid, previousOid, headOid, headRef, built: line.value.built || changed };
+  });
+
+  const lineCommit = Effect.fn("SnapshotChain.lineCommit")(function* (input: StandingInput) {
+    const recorded = yield* resolve(input.cwd, `refs/heads/${input.lineBranch}^{commit}`);
+    if (recorded !== null) return recorded;
+    const snapshotRef = lineSnapshotRef(input.lineRootCommitId);
+    const recordedHead =
+      (yield* resolve(input.cwd, `${snapshotRef}^2`)) ??
+      (yield* resolve(input.cwd, `${snapshotRef}^1`));
+    if (recordedHead !== null) return recordedHead;
+    const line = yield* lineBranches.get({
+      lineRootCommitId: input.lineRootCommitId,
+      repositoryId: input.repositoryId,
+    });
+    if (Option.isNone(line)) {
+      return yield* new SnapshotChainError({
+        operation: "lineCommit",
+        cause: new Error(`Line branch ${input.lineRootCommitId} is missing`),
+      });
+    }
+    return line.value.baseOid;
+  });
+
+  const readStanding = Effect.fn("SnapshotChain.readStanding")(function* (input: StandingInput) {
+    const symbolicHead = yield* git.execute({
+      operation: "SnapshotChain.readStanding.headRef",
+      cwd: input.cwd,
+      args: ["symbolic-ref", "-q", "HEAD"],
+      allowNonZeroExit: true,
+    });
+    const headRef = symbolicHead.exitCode === 0 ? symbolicHead.stdout.trim() || null : null;
+    if (headRef === `refs/heads/${input.lineBranch}`) return { _tag: "on-line" } as const;
+    const [headOid, recordedOid, commitOid] = yield* Effect.all([
+      resolve(input.cwd, "HEAD^{commit}"),
+      resolve(input.cwd, `refs/heads/${input.lineBranch}^{commit}`),
+      lineCommit(input),
+    ]);
+    if (recordedOid === null && headRef !== null && headOid !== null && headOid === commitOid) {
+      return { _tag: "renamed", branch: headRef.replace(/^refs\/heads\//u, "") } as const;
+    }
+    return {
+      _tag: "departed",
+      ref: headRef ?? "detached",
+      recordedMissing: recordedOid === null,
+    } as const;
+  });
+
+  const adoptRename = Effect.fn("SnapshotChain.adoptRename")(function* (input: {
+    readonly lineRootCommitId: MercurianCommitId;
+    readonly repositoryId: MercurianRepositoryId;
+    readonly branch: string;
+  }) {
+    yield* lineBranches.rename(input);
+    const allSlots = yield* slots.listAll;
+    yield* Effect.forEach(
+      allSlots.filter(
+        (slot) =>
+          slot.currentLineRootCommitId === input.lineRootCommitId &&
+          slot.members.some((member) => member.repositoryId === input.repositoryId),
+      ),
+      (slot) =>
+        slots.updateMemberBranch({
+          slotId: slot.slotId,
+          repositoryId: input.repositoryId,
+          currentBranch: input.branch,
+        }),
+      { discard: true },
+    );
   });
 
   const workingTreeOid = Effect.fn("SnapshotChain.workingTreeOid")(function* (cwd: string) {
@@ -230,9 +345,6 @@ export const make = Effect.gen(function* () {
     return { kind: "added", count: Number.parseInt(count.stdout.trim(), 10) } as const;
   });
 
-  const departure: SnapshotChain["Service"]["departure"] = ({ headRef, lineBranch }) =>
-    headRef === `refs/heads/${lineBranch}` ? null : (headRef ?? "detached");
-
   const isDrifted = Effect.fn("SnapshotChain.isDrifted")(function* (input: DriftInput) {
     const snapshotRef = lineSnapshotRef(input.lineRootCommitId);
     const snapshotOid = yield* resolve(input.cwd, `${snapshotRef}^{commit}`);
@@ -254,7 +366,14 @@ export const make = Effect.gen(function* () {
     return (yield* workingTreeOid(input.cwd)) !== snapshotTree || head !== snapshotHead;
   });
 
-  return SnapshotChain.of({ capture, branchMovement, departure, isDrifted });
+  return SnapshotChain.of({
+    capture,
+    branchMovement,
+    readStanding,
+    lineCommit,
+    adoptRename,
+    isDrifted,
+  });
 });
 
 export const layer = Layer.effect(SnapshotChain, make);

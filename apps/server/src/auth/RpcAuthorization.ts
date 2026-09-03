@@ -40,6 +40,7 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.subscribeTree]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.subscribeWorktreeSlots]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.readLineUncommittedDiff]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.recreateLineBranch]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.measurePlanReconstruction]: AuthOrchestrationReadScope,

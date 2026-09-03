@@ -66,6 +66,9 @@ export class SlotStore extends Context.Service<
     ) => Effect.Effect<Option.Option<WorktreeSlot>, SlotStoreError>;
     readonly create: (slot: WorktreeSlot) => Effect.Effect<void, SlotStoreError>;
     readonly assign: (input: typeof Assignment.Type) => Effect.Effect<void, SlotStoreError>;
+    readonly updateMemberBranch: (
+      input: typeof MemberAssignment.Type,
+    ) => Effect.Effect<void, SlotStoreError>;
     readonly changes: Stream.Stream<void>;
   }
 >()("t3/mercurian/worktreeSlots/SlotStore") {}
@@ -254,6 +257,8 @@ export const make = Effect.gen(function* () {
         ),
         "SlotStore.assign",
       ),
+    updateMemberBranch: (input) =>
+      map(announced(sql.withTransaction(assignMember(input))), "SlotStore.updateMemberBranch"),
     get changes() {
       return Stream.fromPubSub(changes);
     },

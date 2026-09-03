@@ -79,6 +79,10 @@ export class CodingSessionStore extends Context.Service<
       threadId: ThreadId,
       input: RecordSnapshotInput,
     ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly recordLineBranchMissing: (
+      threadId: ThreadId,
+      oid: string | null,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
     readonly end: (input: EndCodingSessionInput) => Effect.Effect<void, CodingSessionStoreError>;
     readonly attachPullRequest: (
       input: AttachPullRequestInput,
@@ -93,6 +97,10 @@ const WorktreeRequest = Schema.Struct({ worktreePath: Schema.String });
 const BranchLookupRequest = Schema.Struct({ branch: Schema.String });
 const BranchRequest = Schema.Struct({ threadId: ThreadId, branch: Schema.String });
 const SnapshotRequest = Schema.Struct({ threadId: ThreadId, ...RecordSnapshotInput.fields });
+const LineBranchMissingRequest = Schema.Struct({
+  threadId: ThreadId,
+  oid: Schema.NullOr(TrimmedNonEmptyString),
+});
 const NoRequest = Schema.Struct({});
 
 const CodingSessionRow = Schema.Struct({
@@ -118,7 +126,8 @@ export const make = Effect.gen(function* () {
     base_ref AS "baseRef", started_at AS "startedAt", ended_at AS "endedAt",
     outcome AS "outcome", pr_url AS "prUrl", settled_commit_oid AS "settledCommitOid",
     partial AS "partial", snapshot_oid AS "snapshotOid", snapshot_kind AS "snapshotKind",
-    departed_ref AS "departedRef", branch_movement AS "branchMovement"
+    departed_ref AS "departedRef", branch_movement AS "branchMovement",
+    line_branch_missing_oid AS "lineBranchMissingOid"
   `;
 
   const insert = SqlSchema.void({
@@ -127,13 +136,14 @@ export const make = Effect.gen(function* () {
       INSERT INTO coding_sessions (
         commit_id, plan_id, repository_id, thread_id, branch, worktree_path,
         base_ref, started_at, ended_at, outcome, pr_url, settled_commit_oid, partial,
-        snapshot_oid, snapshot_kind, departed_ref, branch_movement
+        snapshot_oid, snapshot_kind, departed_ref, branch_movement, line_branch_missing_oid
       ) VALUES (
         ${row.commitId}, ${row.planId}, ${row.repositoryId}, ${row.threadId}, ${row.branch},
         ${row.worktreePath}, ${row.baseRef}, ${row.startedAt}, ${row.endedAt}, ${row.outcome},
         ${row.prUrl}, ${row.settledCommitOid}, ${row.partial ? 1 : 0}, ${row.snapshotOid},
         ${row.snapshotKind}, ${row.departedRef},
-        ${row.branchMovement === null ? null : JSON.stringify(row.branchMovement)}
+        ${row.branchMovement === null ? null : JSON.stringify(row.branchMovement)},
+        ${row.lineBranchMissingOid}
       )
     `,
   });
@@ -183,6 +193,12 @@ export const make = Effect.gen(function* () {
         partial = CASE WHEN ${kind} = 'settled' THEN 0 WHEN ${kind} = 'partial' THEN 1 ELSE partial END,
         settled_commit_oid = ${branchTipOid}
       WHERE thread_id = ${threadId}
+    `,
+  });
+  const lineBranchMissingRow = SqlSchema.void({
+    Request: LineBranchMissingRequest,
+    execute: ({ threadId, oid }) => sql`
+      UPDATE coding_sessions SET line_branch_missing_oid = ${oid} WHERE thread_id = ${threadId}
     `,
   });
   const endRow = SqlSchema.void({
@@ -236,6 +252,11 @@ export const make = Effect.gen(function* () {
       mapError(
         snapshotRow({ threadId, ...input }).pipe(Effect.andThen(announceThread(threadId))),
         "CodingSessionStore.recordSnapshot",
+      ),
+    recordLineBranchMissing: (threadId, oid) =>
+      mapError(
+        lineBranchMissingRow({ threadId, oid }).pipe(Effect.andThen(announceThread(threadId))),
+        "CodingSessionStore.recordLineBranchMissing",
       ),
     end: (input) =>
       mapError(

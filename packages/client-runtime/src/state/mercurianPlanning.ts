@@ -120,6 +120,11 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
+    recreateLineBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:recreate-line-branch",
+      tag: MERCURIAN_WS_METHODS.recreateLineBranch,
+      scheduler: writeScheduler,
+    }),
     cancelImplementProposal: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:cancel-implement-proposal",
       tag: MERCURIAN_WS_METHODS.cancelImplementProposal,

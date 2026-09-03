@@ -1,4 +1,4 @@
-import type { ModelSelection } from "@t3tools/contracts";
+import { isCodingSessionBlockedError, type ModelSelection } from "@t3tools/contracts";
 import { useEffect, useMemo, useState } from "react";
 
 import { useCodingSessionDraftStore } from "../../codingSessionDraftStore";
@@ -30,10 +30,15 @@ export function CodingSessionDraftSheet({
   open,
   draftId,
   onOpenChange,
+  onLineBranchMissing,
 }: {
   readonly open: boolean;
   readonly draftId: string | null;
   readonly onOpenChange: (open: boolean) => void;
+  readonly onLineBranchMissing: (input: {
+    readonly commitId: string;
+    readonly repositoryId: string;
+  }) => void;
 }) {
   const draft = useCodingSessionDraftStore((state) =>
     draftId === null ? undefined : state.draftsById[draftId],
@@ -183,7 +188,19 @@ export function CodingSessionDraftSheet({
               setStarting(true);
               void start(startCodingSessionPayload(draft)).then((result) => {
                 setStarting(false);
-                if (result === null) return;
+                if (!result.ok) {
+                  if (
+                    isCodingSessionBlockedError(result.error) &&
+                    result.error.reason === "line-branch-missing"
+                  ) {
+                    onLineBranchMissing({
+                      commitId: draft.parentCommitId,
+                      repositoryId: draft.repositoryId,
+                    });
+                    onOpenChange(false);
+                  }
+                  return;
+                }
                 completeStart(draft.draftId);
                 onOpenChange(false);
               });

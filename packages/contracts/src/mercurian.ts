@@ -65,6 +65,7 @@ export const MERCURIAN_WS_METHODS = {
   answerPlanningQuestion: "mercurian.answerPlanningQuestion",
   subscribeWorktreeSlots: "mercurian.subscribeWorktreeSlots",
   readLineUncommittedDiff: "mercurian.readLineUncommittedDiff",
+  recreateLineBranch: "mercurian.recreateLineBranch",
 } as const;
 
 const makeEntityId = <Brand extends string>(brand: Brand) =>
@@ -128,6 +129,22 @@ export const MercurianReadLineUncommittedDiffResult = Schema.Struct({
 export type MercurianReadLineUncommittedDiffResult =
   typeof MercurianReadLineUncommittedDiffResult.Type;
 
+export const MercurianRecreateLineBranchInput = Schema.Union([
+  Schema.Struct({ threadId: ThreadId }),
+  Schema.Struct({
+    planId: PlanId,
+    commitId: MercurianCommitId,
+    repositoryId: MercurianRepositoryId,
+  }),
+]);
+export type MercurianRecreateLineBranchInput = typeof MercurianRecreateLineBranchInput.Type;
+
+export const MercurianRecreateLineBranchResult = Schema.Struct({
+  branch: TrimmedNonEmptyString,
+  commitOid: TrimmedNonEmptyString,
+});
+export type MercurianRecreateLineBranchResult = typeof MercurianRecreateLineBranchResult.Type;
+
 /** Mutable facts keyed by the coding-session leaf commit. */
 export const PlanCodingSessionRecord = Schema.Struct({
   commitId: MercurianCommitId,
@@ -146,6 +163,7 @@ export const PlanCodingSessionRecord = Schema.Struct({
   snapshotKind: Schema.NullOr(SnapshotKind),
   departedRef: Schema.NullOr(Schema.String),
   branchMovement: Schema.NullOr(BranchMovement),
+  lineBranchMissingOid: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type PlanCodingSessionRecord = typeof PlanCodingSessionRecord.Type;
 
@@ -1099,6 +1117,7 @@ export const CodingSessionBlockedReason = Schema.Literals([
   "no-instance",
   "model-unavailable",
   "pool-at-capacity",
+  "line-branch-missing",
 ]);
 export type CodingSessionBlockedReason = typeof CodingSessionBlockedReason.Type;
 
@@ -1124,6 +1143,8 @@ export class CodingSessionBlockedError extends Schema.TaggedErrorClass<CodingSes
         return "The selected model is not available from that agent.";
       case "pool-at-capacity":
         return "Every worktree slot for this project is currently in use.";
+      case "line-branch-missing":
+        return "The line's branch no longer exists in the repository.";
     }
   }
 }
@@ -1186,6 +1207,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "answerPlanningQuestion",
       "subscribeWorktreeSlots",
       "readLineUncommittedDiff",
+      "recreateLineBranch",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

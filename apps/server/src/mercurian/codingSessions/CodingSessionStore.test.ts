@@ -34,6 +34,7 @@ const record = {
   snapshotKind: null,
   departedRef: null,
   branchMovement: null,
+  lineBranchMissingOid: null,
 } as const;
 
 const seedPlanAndCommit = Effect.gen(function* () {
@@ -91,6 +92,12 @@ layer("CodingSessionStore", (it) => {
       assert.strictEqual(snapshotted.value.partial, 1);
       assert.strictEqual(snapshotted.value.snapshotKind, "external");
       assert.strictEqual(snapshotted.value.settledCommitOid, "external-branch-tip");
+
+      yield* store.recordLineBranchMissing(record.threadId, "missing-tip");
+      const missing = yield* store.getByThreadId(record.threadId);
+      assert.ok(Option.isSome(missing));
+      assert.strictEqual(missing.value.lineBranchMissingOid, "missing-tip");
+      yield* store.recordLineBranchMissing(record.threadId, null);
 
       yield* store.updateBranch(record.threadId, "renamed/session");
       const change = yield* store.changes.pipe(

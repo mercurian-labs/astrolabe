@@ -21,4 +21,7 @@ export const toWireCodingSessionRecord = (
   snapshotKind: record.snapshotKind,
   departedRef: record.departedRef,
   branchMovement: record.branchMovement,
+  ...(record.lineBranchMissingOid === undefined
+    ? {}
+    : { lineBranchMissingOid: record.lineBranchMissingOid }),
 });

@@ -349,7 +349,9 @@ export const makeOrchestrationIntegrationHarness = (
         Layer.mock(SnapshotChain.SnapshotChain)({
           capture: () => Effect.die("snapshot capture is not used by this harness"),
           branchMovement: () => Effect.succeed({ kind: "unchanged" }),
-          departure: () => null,
+          readStanding: () => Effect.succeed({ _tag: "on-line" }),
+          lineCommit: () => Effect.succeed("head"),
+          adoptRename: () => Effect.void,
           isDrifted: () => Effect.succeed(false),
         }),
       ),
@@ -366,6 +368,7 @@ export const makeOrchestrationIntegrationHarness = (
           getByBranch: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
           recordSnapshot: () => Effect.void,
+          recordLineBranchMissing: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,

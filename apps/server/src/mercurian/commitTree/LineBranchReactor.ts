@@ -16,6 +16,7 @@ import {
 } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
+import { SlotStore } from "../worktreeSlots/SlotStore.ts";
 import { LineBranchStore } from "./LineBranchStore.ts";
 
 const planningItems = (detail: PlanDetail) =>
@@ -106,6 +107,7 @@ export const make = Effect.gen(function* () {
   const branches = yield* LineBranchStore;
   const git = yield* GitVcsDriver;
   const settings = yield* ServerSettingsService;
+  const slots = yield* SlotStore;
 
   const repositoryDefaultOid = Effect.fn("LineBranchReactor.repositoryDefaultOid")(function* (
     path: string,
@@ -129,9 +131,10 @@ export const make = Effect.gen(function* () {
   });
 
   const reconcile = Effect.fn("LineBranchReactor.reconcile")(function* () {
-    const [tree, repositorySnapshot] = yield* Effect.all([
+    const [tree, repositorySnapshot, allSlots] = yield* Effect.all([
       planning.getTreeSnapshot,
       repositories.getSnapshot,
+      slots.listAll,
     ]);
     for (const plan of tree.plans) {
       const detail = yield* planning.getPlanSnapshot({ planId: plan.planId });
@@ -179,22 +182,60 @@ export const make = Effect.gen(function* () {
               branch,
               baseOid,
               built: false,
+              repointHold: null,
               createdAt: root.createdAt,
             });
           } else if (!current.value.built && current.value.baseOid !== baseOid) {
+            const checkedOut = allSlots.some((slot) =>
+              slot.members.some(
+                (member) =>
+                  member.repositoryId === repositoryId &&
+                  member.currentBranch === current.value.branch,
+              ),
+            );
+            if (checkedOut) {
+              yield* branches.recordRepointHold({ ...key, reason: "checked-out" });
+              yield* Effect.logDebug("line-branch re-point held", {
+                lineRootCommitId: key.lineRootCommitId,
+                repositoryId,
+                branch: current.value.branch,
+                hold: "checked-out",
+              });
+              continue;
+            }
+            const namedRef = yield* git.execute({
+              operation: "LineBranchReactor.verifyBranch",
+              cwd: repository.path,
+              args: ["rev-parse", "--verify", "--quiet", `refs/heads/${current.value.branch}`],
+              allowNonZeroExit: true,
+            });
+            if (namedRef.exitCode !== 0) {
+              yield* branches.recordRepointHold({ ...key, reason: "name-missing" });
+              yield* Effect.logDebug("line-branch re-point held", {
+                lineRootCommitId: key.lineRootCommitId,
+                repositoryId,
+                branch: current.value.branch,
+                hold: "name-missing",
+              });
+              continue;
+            }
             yield* git.execute({
               operation: "LineBranchReactor.repointBranch",
               cwd: repository.path,
               args: ["branch", "-f", current.value.branch, baseOid],
             });
             yield* branches.repointIfUnbuilt({ ...key, baseOid });
+            yield* branches.recordRepointHold({ ...key, reason: null });
           }
         }
       }
     }
   });
 
-  return { reconcile, changes: Stream.merge(planning.changes, repositories.changes) };
+  return {
+    reconcile,
+    changes: Stream.merge(Stream.merge(planning.changes, repositories.changes), slots.changes),
+  };
 });
 
 export const LineBranchReactorLive = Layer.effectDiscard(

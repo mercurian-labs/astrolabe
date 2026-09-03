@@ -31,5 +31,6 @@ export const CodingSessionRecord = Schema.Struct({
   snapshotKind: Schema.NullOr(SnapshotKind),
   departedRef: Schema.NullOr(Schema.String),
   branchMovement: Schema.NullOr(BranchMovement),
+  lineBranchMissingOid: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type CodingSessionRecord = typeof CodingSessionRecord.Type;

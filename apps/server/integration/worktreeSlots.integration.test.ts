@@ -109,6 +109,7 @@ it.effect(
                     branch: `mercurian/${lineRootCommitId}`,
                     baseOid: "base",
                     built: false,
+                    repointHold: null,
                     createdAt: now,
                   }),
                 ),
@@ -194,10 +195,13 @@ it.effect(
                     previousOid: null,
                     headOid: runGit(input.cwd, ["rev-parse", "HEAD"]).stdout.trim(),
                     headRef: runGit(input.cwd, ["symbolic-ref", "-q", "HEAD"]).stdout.trim(),
+                    built: true,
                   };
                 }),
               branchMovement: () => Effect.succeed({ kind: "unchanged" }),
-              departure: () => null,
+              readStanding: () => Effect.succeed({ _tag: "on-line" }),
+              lineCommit: () => Effect.succeed("head"),
+              adoptRename: () => Effect.void,
               isDrifted: ({ cwd }) =>
                 Effect.sync(() => NodeFS.existsSync(NodePath.join(cwd, "between-turns.txt"))),
             }),

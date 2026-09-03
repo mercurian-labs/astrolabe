@@ -307,6 +307,7 @@ describe("CheckpointReactor", () => {
     if (options?.slotBackedSession) {
       runGit(cwd, ["checkout", "-b", lineBranch]);
     }
+    const lineBaseOid = runGit(cwd, ["rev-parse", "HEAD^{commit}"]).trim();
     tempDirs.push(cwd);
     const provider = createProviderServiceHarness(
       cwd,
@@ -364,6 +365,7 @@ describe("CheckpointReactor", () => {
       readonly branchTipOid: string;
     }> = [];
     const builtLineRoots: MercurianCommitId[] = [];
+    const updatedBranches: string[] = [];
     const codingSessionStoreLayer = Layer.mock(CodingSessionStore.CodingSessionStore)({
       record: () => Effect.void,
       recordInTransaction: () => Effect.void,
@@ -391,18 +393,20 @@ describe("CheckpointReactor", () => {
                 snapshotKind: null,
                 departedRef: null,
                 branchMovement: null,
+                lineBranchMissingOid: null,
               })
             : Option.none(),
         ),
       getByWorktreePath: () => Effect.succeed(Option.none()),
       getByBranch: () => Effect.succeed(Option.none()),
-      updateBranch: () => Effect.void,
+      updateBranch: (_threadId, branch) => Effect.sync(() => updatedBranches.push(branch)),
       recordSnapshot: (_threadId, snapshot) =>
         Effect.sync(() => {
           recordedSnapshots.push(snapshot);
           if (snapshot.kind === "settled") settledCommits.push(snapshot.branchTipOid);
           partialStates.push(snapshot.kind === "partial");
         }),
+      recordLineBranchMissing: () => Effect.void,
       end: () => Effect.void,
       attachPullRequest: () => Effect.void,
       changes: Stream.empty,
@@ -427,6 +431,7 @@ describe("CheckpointReactor", () => {
       get: () => Effect.succeed(Option.none()),
       create: () => Effect.void,
       assign: () => Effect.void,
+      updateMemberBranch: () => Effect.void,
       changes: Stream.empty,
     });
     const lineBranchStoreLayer = Layer.mock(LineBranchStore.LineBranchStore)({
@@ -438,8 +443,9 @@ describe("CheckpointReactor", () => {
                 lineRootCommitId,
                 repositoryId: requestedRepositoryId,
                 branch: lineBranch,
-                baseOid: runGit(cwd, ["rev-parse", `${lineBranch}^{commit}`]).trim(),
+                baseOid: lineBaseOid,
                 built: false,
+                repointHold: null,
                 createdAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
               })
             : Option.none(),
@@ -450,6 +456,8 @@ describe("CheckpointReactor", () => {
         Effect.sync(() => {
           builtLineRoots.push(lineRootCommitId);
         }),
+      rename: () => Effect.void,
+      recordRepointHold: () => Effect.void,
       changes: Stream.empty,
     });
     const gitVcsDriverLayer = GitVcsDriver.layer.pipe(
@@ -461,6 +469,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(gitVcsDriverLayer),
       Layer.provideMerge(checkpointStoreLayer),
       Layer.provideMerge(lineBranchStoreLayer),
+      Layer.provideMerge(slotStoreLayer),
     );
 
     const layer = CheckpointReactorLive.pipe(
@@ -589,6 +598,7 @@ describe("CheckpointReactor", () => {
       partialStates,
       recordedSnapshots,
       builtLineRoots,
+      updatedBranches,
       lineBranch,
       lineRootCommitId,
       checkpointStore,
@@ -903,6 +913,8 @@ describe("CheckpointReactor", () => {
     const lineTip = runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim();
     runGit(harness.cwd, ["checkout", "-b", "sibling"]);
     NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "departed work\n", "utf8");
+    runGit(harness.cwd, ["add", "README.md"]);
+    runGit(harness.cwd, ["commit", "-m", "departed commit"]);
     harness.provider.emit({
       type: "turn.completed",
       eventId: EventId.make("evt-turn-completed-departed"),
@@ -922,6 +934,62 @@ describe("CheckpointReactor", () => {
     expect(snapshot.threads[0]?.checkpoints).toEqual(
       expect.arrayContaining([expect.objectContaining({ departedRef: "refs/heads/sibling" })]),
     );
+  });
+
+  it("adopts a hand-renamed line branch while settling the turn", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    runGit(harness.cwd, ["branch", "-m", "renamed-by-hand"]);
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-renamed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-renamed"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toEqual([
+      expect.objectContaining({
+        kind: "settled",
+        departedRef: null,
+        branchMovement: { kind: "unchanged" },
+      }),
+    ]);
+    expect(harness.updatedBranches).toEqual(["renamed-by-hand"]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.branch).toBe("renamed-by-hand");
+    expect(snapshot.threads[0]?.activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "line.branch-renamed",
+          summary: "Branch renamed to `renamed-by-hand` by hand",
+        }),
+      ]),
+    );
+  });
+
+  it("leaves an untouched line unbuilt after a settled turn", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-untouched"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-untouched"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(harness.builtLineRoots).toEqual([]);
   });
 
   it("records a detached HEAD departure without moving the line branch", async () => {
@@ -947,6 +1015,38 @@ describe("CheckpointReactor", () => {
     expect(runGit(harness.cwd, ["branch", "--show-current"]).trim()).toBe("");
     expect(harness.recordedSnapshots).toEqual([
       expect.objectContaining({ kind: "settled", departedRef: "detached" }),
+    ]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ departedRef: "detached" })]),
+    );
+  });
+
+  it("settles after the recorded branch is deleted with detached HEAD", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const lineCommit = runGit(harness.cwd, ["rev-parse", harness.lineBranch]).trim();
+    runGit(harness.cwd, ["checkout", "--detach", lineCommit]);
+    runGit(harness.cwd, ["branch", "-D", harness.lineBranch]);
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-deleted-line"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-deleted-line"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    expect(harness.recordedSnapshots).toEqual([
+      expect.objectContaining({
+        kind: "settled",
+        departedRef: "detached",
+        branchTipOid: lineCommit,
+      }),
     ]);
     const snapshot = await harness.readModel();
     expect(snapshot.threads[0]?.checkpoints).toEqual(

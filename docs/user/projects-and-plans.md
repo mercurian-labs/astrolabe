@@ -361,6 +361,10 @@ session appears as a leaf in the plan history. You can start another session fro
 commit when a retry or a different model is useful. Selecting a session leaf keeps it visible while
 new planning continues from the checkpoint immediately before it.
 
+If you rename a session branch by hand, Astrolabe adopts that name for this repository when the
+branch still points at the line's recorded commit. If you delete the branch instead, the session
+pauses and offers to recreate it at the last recorded commit before continuing.
+
 Open a session from its row in the plan card's hover details, from **Open session** in the coding
 session leaf's Checkpoint Graph details, or from **Open session** on the plan timeline card. The
 plan stays highlighted in the sidebar while its session is open. A session is a focused coding

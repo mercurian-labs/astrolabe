@@ -39,11 +39,7 @@ import { buildLineBranchName } from "./branch.ts";
 import { CommitId } from "../commitTree/schema.ts";
 import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
-import {
-  slotMemberWorktreePath,
-  SlotPoolAtCapacityError,
-  SlotService,
-} from "../worktreeSlots/SlotService.ts";
+import { slotMemberWorktreePath, SlotService } from "../worktreeSlots/SlotService.ts";
 import type { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 
 export class CodingSessionService extends Context.Service<
@@ -314,6 +310,7 @@ export const make = Effect.gen(function* () {
           branch,
           baseOid: desiredBaseOid,
           built: false,
+          repointHold: null,
           createdAt: startedAt,
         });
         lineBranch = yield* lineBranches.get(lineBranchKey);
@@ -383,17 +380,25 @@ export const make = Effect.gen(function* () {
           holder,
         });
         slotId = slot.slotId;
+        const claimedMember = slot.members.find(
+          (member) => member.repositoryId === input.repositoryId,
+        );
         worktreePath = slotMemberWorktreePath(path, slot, input.repositoryId) ?? undefined;
-        if (worktreePath === undefined) {
+        if (
+          worktreePath === undefined ||
+          claimedMember?.currentBranch === null ||
+          claimedMember === undefined
+        ) {
           return yield* Effect.die(
             new Error(`Project slot ${slot.slotId} is missing repository ${input.repositoryId}`),
           );
         }
+        const claimedBranch = claimedMember.currentBranch;
         yield* orchestration.dispatch({
           type: "thread.meta.update",
           commandId: yield* commandId("thread-meta"),
           threadId,
-          branch,
+          branch: claimedBranch,
           worktreePath,
         });
         yield* vcsStatus
@@ -423,7 +428,7 @@ export const make = Effect.gen(function* () {
           repositoryId: input.repositoryId,
           repositoryName: repository.name,
           threadId,
-          branch,
+          branch: claimedBranch,
           worktreePath,
           baseRef: input.baseRef,
           startedAt,
@@ -432,7 +437,10 @@ export const make = Effect.gen(function* () {
       });
 
       return yield* withCodingSessionBirthCompensation(birth, cleanup).pipe(
-        Effect.catchTag("SlotPoolAtCapacityError", () => Effect.fail(blocked("pool-at-capacity"))),
+        Effect.catchTags({
+          SlotPoolAtCapacityError: () => Effect.fail(blocked("pool-at-capacity")),
+          LineBranchMissingError: () => Effect.fail(blocked("line-branch-missing")),
+        }),
       );
     },
   );
