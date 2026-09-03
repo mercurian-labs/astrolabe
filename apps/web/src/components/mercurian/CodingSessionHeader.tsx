@@ -9,11 +9,13 @@ import type {
   PlanId,
   ScopedThreadRef,
   SourceControlProviderKind,
+  ThreadWorkspaceMember,
   ThreadId,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -43,6 +45,7 @@ import { resolveRenameCommit, shouldShowOpenInPicker } from "../chat/ChatHeader"
 import { OpenInPicker } from "../chat/OpenInPicker";
 import { toastManager } from "../ui/toast";
 import { changeRequestsAllowed } from "./hostingProviders.logic";
+import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 import { SessionPreviewOffer } from "./SessionPreviewOffer";
 import { SessionScriptsControl } from "./SessionScriptsControl";
 
@@ -55,6 +58,8 @@ export interface CodingSessionHeaderProps {
   readonly threadRef: ScopedThreadRef;
   readonly worktreePath: string | null;
   readonly repositoryId: MercurianRepositoryId | null;
+  readonly workspaceMembers?: ReadonlyArray<ThreadWorkspaceMember> | null;
+  readonly unreachableRepositories?: ReadonlyArray<string>;
 }
 
 /** Session rename uses the same trim/reject/no-op contract as the parked thread header. */
@@ -65,19 +70,48 @@ export function resolveCodingSessionRename(input: {
   return resolveRenameCommit(input);
 }
 
+export function resolveCodingSessionMember(
+  members: ReadonlyArray<ThreadWorkspaceMember>,
+  selectedRepositoryId: string | null,
+): ThreadWorkspaceMember | null {
+  return (
+    members.find((member) => member.repositoryId === selectedRepositoryId) ?? members[0] ?? null
+  );
+}
+
 export function CodingSessionHeader(props: CodingSessionHeaderProps) {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const remoteOpenState = useRemoteOpenState(props.environmentId);
   const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { snapshot: repositoriesSnapshot } = useRepositories();
+  const members = useMemo(
+    () =>
+      props.workspaceMembers ??
+      (props.repositoryId === null || props.worktreePath === null
+        ? []
+        : [{ repositoryId: props.repositoryId, worktreePath: props.worktreePath }]),
+    [props.repositoryId, props.workspaceMembers, props.worktreePath],
+  );
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
+    members.find((member) => member.repositoryId === props.repositoryId)?.repositoryId ??
+      members[0]?.repositoryId ??
+      null,
+  );
+  useEffect(() => {
+    if (!members.some((member) => member.repositoryId === selectedRepositoryId)) {
+      setSelectedRepositoryId(members[0]?.repositoryId ?? null);
+    }
+  }, [members, selectedRepositoryId]);
+  const selectedMember = resolveCodingSessionMember(members, selectedRepositoryId);
   const repository = useMemo(
     () =>
       repositoriesSnapshot.repositories.find(
-        (candidate) => candidate.repositoryId === props.repositoryId,
+        (candidate) => candidate.repositoryId === selectedMember?.repositoryId,
       ) ?? null,
-    [props.repositoryId, repositoriesSnapshot.repositories],
+    [repositoriesSnapshot.repositories, selectedMember?.repositoryId],
   );
+  const selectedWorktreePath = selectedMember?.worktreePath ?? null;
   const discovery = useEnvironmentQuery(
     sourceControlEnvironment.discovery({ environmentId: props.environmentId, input: {} }),
   );
@@ -90,9 +124,9 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
     [discoveryData],
   );
   const showOpenInPicker =
-    props.worktreePath !== null &&
+    selectedWorktreePath !== null &&
     shouldShowOpenInPicker({
-      activeProjectName: repository?.name ?? props.worktreePath,
+      activeProjectName: repository?.name ?? selectedWorktreePath,
       activeThreadEnvironmentId: props.environmentId,
       primaryEnvironmentId,
       remoteOpenMode: remoteOpenState.mode,
@@ -205,10 +239,32 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >
-        {props.worktreePath !== null && repository !== null ? (
+        {props.unreachableRepositories === undefined ||
+        props.unreachableRepositories.length === 0 ? null : (
+          <NarrowedGroundingNotice
+            scope={{ unreachableRepositories: props.unreachableRepositories }}
+          />
+        )}
+        {members.length > 1 ? (
+          <select
+            aria-label="Repository"
+            className="h-8 max-w-36 rounded-md border border-input bg-background px-2 text-xs"
+            value={selectedRepositoryId ?? ""}
+            onChange={(event) => setSelectedRepositoryId(event.target.value)}
+          >
+            {members.map((member) => (
+              <option key={member.repositoryId} value={member.repositoryId}>
+                {repositoriesSnapshot.repositories.find(
+                  (candidate) => candidate.repositoryId === member.repositoryId,
+                )?.name ?? member.repositoryId}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {selectedWorktreePath !== null && repository !== null ? (
           <SessionScriptsControl
             threadRef={props.threadRef}
-            worktreePath={props.worktreePath}
+            worktreePath={selectedWorktreePath}
             repository={repository}
             keybindings={keybindings}
           />
@@ -218,12 +274,12 @@ export function CodingSessionHeader(props: CodingSessionHeaderProps) {
             environmentId={props.environmentId}
             keybindings={keybindings}
             availableEditors={availableEditors}
-            openInCwd={props.worktreePath}
+            openInCwd={selectedWorktreePath}
           />
         ) : null}
-        {props.worktreePath !== null ? (
+        {selectedWorktreePath !== null ? (
           <GitActionsControl
-            gitCwd={props.worktreePath}
+            gitCwd={selectedWorktreePath}
             activeThreadRef={props.threadRef}
             changeRequestsAllowed={changeRequestsGate}
           />

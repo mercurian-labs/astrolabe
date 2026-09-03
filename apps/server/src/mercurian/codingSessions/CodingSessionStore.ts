@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -10,6 +11,7 @@ import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
   BranchMovement,
+  MercurianRepositoryId,
   PlanId,
   SnapshotKind,
   ThreadId,
@@ -21,7 +23,11 @@ import {
   PersistenceDecodeError,
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
-import { CodingSessionOutcome, CodingSessionRecord } from "./schema.ts";
+import {
+  CodingSessionOutcome,
+  CodingSessionRecord,
+  CodingSessionRepositoryRecord,
+} from "./schema.ts";
 
 export type CodingSessionStoreError = PersistenceSqlError | PersistenceDecodeError;
 
@@ -35,7 +41,11 @@ export const EndCodingSessionInput = Schema.Struct({
 });
 export type EndCodingSessionInput = typeof EndCodingSessionInput.Type;
 
-export const AttachPullRequestInput = Schema.Struct({ threadId: ThreadId, prUrl: Schema.String });
+export const AttachPullRequestInput = Schema.Struct({
+  threadId: ThreadId,
+  repositoryId: MercurianRepositoryId,
+  prUrl: Schema.String,
+});
 export type AttachPullRequestInput = typeof AttachPullRequestInput.Type;
 
 export const RecordSnapshotInput = Schema.Struct({
@@ -56,6 +66,10 @@ export class CodingSessionStore extends Context.Service<
     /** Transaction participant for PlanningStore; caller announces after commit. */
     readonly recordInTransaction: (
       input: RecordCodingSessionInput,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly recordRepositoriesInTransaction: (
+      threadId: ThreadId,
+      repositoryIds: ReadonlyArray<MercurianRepositoryId>,
     ) => Effect.Effect<void, CodingSessionStoreError>;
     readonly announce: (planId: PlanId) => Effect.Effect<void>;
     readonly listForPlan: (
@@ -79,6 +93,12 @@ export class CodingSessionStore extends Context.Service<
       threadId: ThreadId,
       input: RecordSnapshotInput,
     ) => Effect.Effect<void, CodingSessionStoreError>;
+    /** A member's snapshot facts, one row per repository the session spans. */
+    readonly recordRepositorySnapshot: (
+      threadId: ThreadId,
+      repositoryId: MercurianRepositoryId,
+      input: RecordSnapshotInput,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
     readonly recordLineBranchMissing: (
       threadId: ThreadId,
       oid: string | null,
@@ -87,6 +107,12 @@ export class CodingSessionStore extends Context.Service<
     readonly attachPullRequest: (
       input: AttachPullRequestInput,
     ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly listRepositories: (
+      threadId: ThreadId,
+    ) => Effect.Effect<
+      ReadonlyArray<typeof CodingSessionRepositoryRecord.Type>,
+      CodingSessionStoreError
+    >;
     readonly changes: Stream.Stream<PlanId>;
   }
 >()("t3/mercurian/codingSessions/CodingSessionStore") {}
@@ -97,6 +123,11 @@ const WorktreeRequest = Schema.Struct({ worktreePath: Schema.String });
 const BranchLookupRequest = Schema.Struct({ branch: Schema.String });
 const BranchRequest = Schema.Struct({ threadId: ThreadId, branch: Schema.String });
 const SnapshotRequest = Schema.Struct({ threadId: ThreadId, ...RecordSnapshotInput.fields });
+const RepositorySnapshotRequest = Schema.Struct({
+  threadId: ThreadId,
+  repositoryId: MercurianRepositoryId,
+  ...RecordSnapshotInput.fields,
+});
 const LineBranchMissingRequest = Schema.Struct({
   threadId: ThreadId,
   oid: Schema.NullOr(TrimmedNonEmptyString),
@@ -105,6 +136,10 @@ const NoRequest = Schema.Struct({});
 
 const CodingSessionRow = Schema.Struct({
   ...CodingSessionRecord.fields,
+  branchMovement: Schema.NullOr(Schema.fromJsonString(BranchMovement)),
+});
+const CodingSessionRepositoryRow = Schema.Struct({
+  ...CodingSessionRepositoryRecord.fields,
   branchMovement: Schema.NullOr(Schema.fromJsonString(BranchMovement)),
 });
 
@@ -127,26 +162,38 @@ export const make = Effect.gen(function* () {
     outcome AS "outcome", pr_url AS "prUrl", settled_commit_oid AS "settledCommitOid",
     partial AS "partial", snapshot_oid AS "snapshotOid", snapshot_kind AS "snapshotKind",
     departed_ref AS "departedRef", branch_movement AS "branchMovement",
-    line_branch_missing_oid AS "lineBranchMissingOid"
+    line_branch_missing_oid AS "lineBranchMissingOid",
+    unreachable_repositories_json AS "unreachableRepositories"
   `;
 
-  const insert = SqlSchema.void({
-    Request: CodingSessionRecord,
-    execute: (row) => sql`
+  const insert = (row: RecordCodingSessionInput) => sql`
       INSERT INTO coding_sessions (
         commit_id, plan_id, repository_id, thread_id, branch, worktree_path,
         base_ref, started_at, ended_at, outcome, pr_url, settled_commit_oid, partial,
-        snapshot_oid, snapshot_kind, departed_ref, branch_movement, line_branch_missing_oid
+        snapshot_oid, snapshot_kind, departed_ref, branch_movement, line_branch_missing_oid,
+        unreachable_repositories_json
       ) VALUES (
-        ${row.commitId}, ${row.planId}, ${row.repositoryId}, ${row.threadId}, ${row.branch},
-        ${row.worktreePath}, ${row.baseRef}, ${row.startedAt}, ${row.endedAt}, ${row.outcome},
+        ${row.commitId}, ${row.planId}, ${row.repositoryId ?? null}, ${row.threadId}, ${row.branch},
+        ${row.worktreePath}, ${row.baseRef}, ${DateTime.formatIso(row.startedAt)},
+        ${row.endedAt === null ? null : DateTime.formatIso(row.endedAt)}, ${row.outcome},
         ${row.prUrl}, ${row.settledCommitOid}, ${row.partial ? 1 : 0}, ${row.snapshotOid},
         ${row.snapshotKind}, ${row.departedRef},
         ${row.branchMovement === null ? null : JSON.stringify(row.branchMovement)},
-        ${row.lineBranchMissingOid}
+        ${row.lineBranchMissingOid}, ${JSON.stringify(row.unreachableRepositories)}
       )
-    `,
-  });
+    `;
+  const insertRepositoryRows = (input: {
+    readonly threadId: ThreadId;
+    readonly repositoryIds: ReadonlyArray<MercurianRepositoryId>;
+  }) =>
+    Effect.forEach(
+      input.repositoryIds,
+      (repositoryId) => sql`
+        INSERT OR IGNORE INTO coding_session_repositories (thread_id, repository_id)
+        VALUES (${input.threadId}, ${repositoryId})
+      `,
+      { discard: true },
+    );
   const listForPlanRows = SqlSchema.findAll({
     Request: PlanRequest,
     Result: CodingSessionRow,
@@ -195,6 +242,30 @@ export const make = Effect.gen(function* () {
       WHERE thread_id = ${threadId}
     `,
   });
+  const repositorySnapshotRow = SqlSchema.void({
+    Request: RepositorySnapshotRequest,
+    execute: ({
+      threadId,
+      repositoryId,
+      snapshotOid,
+      kind,
+      branchTipOid,
+      departedRef,
+      branchMovement,
+    }) => sql`
+      INSERT INTO coding_session_repositories (
+        thread_id, repository_id, snapshot_oid, snapshot_kind, branch_tip_oid, departed_ref,
+        branch_movement
+      ) VALUES (
+        ${threadId}, ${repositoryId}, ${snapshotOid}, ${kind}, ${branchTipOid}, ${departedRef},
+        ${JSON.stringify(branchMovement)}
+      )
+      ON CONFLICT(thread_id, repository_id) DO UPDATE SET
+        snapshot_oid = excluded.snapshot_oid, snapshot_kind = excluded.snapshot_kind,
+        branch_tip_oid = excluded.branch_tip_oid, departed_ref = excluded.departed_ref,
+        branch_movement = excluded.branch_movement
+    `,
+  });
   const lineBranchMissingRow = SqlSchema.void({
     Request: LineBranchMissingRequest,
     execute: ({ threadId, oid }) => sql`
@@ -210,8 +281,30 @@ export const make = Effect.gen(function* () {
   });
   const attachPrRow = SqlSchema.void({
     Request: AttachPullRequestInput,
-    execute: ({ threadId, prUrl }) => sql`
-      UPDATE coding_sessions SET pr_url = ${prUrl} WHERE thread_id = ${threadId}
+    execute: ({ threadId, repositoryId, prUrl }) => sql`
+      INSERT INTO coding_session_repositories (thread_id, repository_id, pr_url)
+      VALUES (${threadId}, ${repositoryId}, ${prUrl})
+      ON CONFLICT(thread_id, repository_id)
+      DO UPDATE SET pr_url = excluded.pr_url
+    `,
+  });
+  const listRepositoryRows = SqlSchema.findAll({
+    Request: ThreadRequest,
+    Result: CodingSessionRepositoryRow,
+    execute: ({ threadId }) => sql`
+      SELECT
+        session.repository_id AS "repositoryId",
+        repository.name AS "repositoryName",
+        session.snapshot_oid AS "snapshotOid",
+        session.snapshot_kind AS "snapshotKind",
+        session.branch_tip_oid AS "branchTipOid",
+        session.departed_ref AS "departedRef",
+        session.branch_movement AS "branchMovement",
+        session.pr_url AS "prUrl"
+      FROM coding_session_repositories session
+      JOIN repositories repository ON repository.repository_id = session.repository_id
+      WHERE session.thread_id = ${threadId}
+      ORDER BY repository.created_at ASC, repository.repository_id ASC
     `,
   });
 
@@ -224,6 +317,21 @@ export const make = Effect.gen(function* () {
   const mapError = <A, E, R>(effect: Effect.Effect<A, E, R>, operation: string) =>
     effect.pipe(Effect.mapError(toStoreError(`${operation}:query`, `${operation}:decodeRow`)));
 
+  const withRepositories = (record: CodingSessionRecord) =>
+    mapError(
+      listRepositoryRows({ threadId: record.threadId }),
+      "CodingSessionStore.listRepositories",
+    ).pipe(
+      Effect.map((repositories) => ({
+        ...record,
+        ...(repositories.length === 0 ? {} : { repositories }),
+      })),
+    );
+  const withRepositoriesOption = (record: Option.Option<CodingSessionRecord>) =>
+    Option.isNone(record)
+      ? Effect.succeed(Option.none<CodingSessionRecord>())
+      : withRepositories(record.value).pipe(Effect.map(Option.some));
+
   return CodingSessionStore.of({
     record: (input) =>
       mapError(
@@ -234,15 +342,31 @@ export const make = Effect.gen(function* () {
       ),
     recordInTransaction: (input) =>
       mapError(insert(input), "CodingSessionStore.recordInTransaction"),
+    recordRepositoriesInTransaction: (threadId, repositoryIds) =>
+      mapError(
+        insertRepositoryRows({ threadId, repositoryIds }),
+        "CodingSessionStore.recordRepositoriesInTransaction",
+      ),
     announce: (planId) => PubSub.publish(changesPubSub, planId).pipe(Effect.asVoid),
     listForPlan: (planId) =>
-      mapError(listForPlanRows({ planId }), "CodingSessionStore.listForPlan"),
-    listAll: mapError(listAllRows({}), "CodingSessionStore.listAll"),
+      mapError(listForPlanRows({ planId }), "CodingSessionStore.listForPlan").pipe(
+        Effect.flatMap((records) => Effect.forEach(records, withRepositories)),
+      ),
+    listAll: mapError(listAllRows({}), "CodingSessionStore.listAll").pipe(
+      Effect.flatMap((records) => Effect.forEach(records, withRepositories)),
+    ),
     getByThreadId: (threadId) =>
-      mapError(findByThread({ threadId }), "CodingSessionStore.getByThreadId"),
+      mapError(findByThread({ threadId }), "CodingSessionStore.getByThreadId").pipe(
+        Effect.flatMap(withRepositoriesOption),
+      ),
     getByWorktreePath: (worktreePath) =>
-      mapError(findByWorktree({ worktreePath }), "CodingSessionStore.getByWorktreePath"),
-    getByBranch: (branch) => mapError(findByBranch({ branch }), "CodingSessionStore.getByBranch"),
+      mapError(findByWorktree({ worktreePath }), "CodingSessionStore.getByWorktreePath").pipe(
+        Effect.flatMap(withRepositoriesOption),
+      ),
+    getByBranch: (branch) =>
+      mapError(findByBranch({ branch }), "CodingSessionStore.getByBranch").pipe(
+        Effect.flatMap(withRepositoriesOption),
+      ),
     updateBranch: (threadId, branch) =>
       mapError(
         updateBranchRow({ threadId, branch }).pipe(Effect.andThen(announceThread(threadId))),
@@ -252,6 +376,11 @@ export const make = Effect.gen(function* () {
       mapError(
         snapshotRow({ threadId, ...input }).pipe(Effect.andThen(announceThread(threadId))),
         "CodingSessionStore.recordSnapshot",
+      ),
+    recordRepositorySnapshot: (threadId, repositoryId, input) =>
+      mapError(
+        repositorySnapshotRow({ threadId, repositoryId, ...input }),
+        "CodingSessionStore.recordRepositorySnapshot",
       ),
     recordLineBranchMissing: (threadId, oid) =>
       mapError(
@@ -268,6 +397,8 @@ export const make = Effect.gen(function* () {
         attachPrRow(input).pipe(Effect.andThen(announceThread(input.threadId))),
         "CodingSessionStore.attachPullRequest",
       ),
+    listRepositories: (threadId) =>
+      mapError(listRepositoryRows({ threadId }), "CodingSessionStore.listRepositories"),
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

@@ -294,24 +294,6 @@ export function turnRefusalNotice(
   }
 }
 
-export function implementFailureNotice(
-  reason:
-    | Extract<PlanStreamItem, { readonly kind: "implement-failed" }>["reason"]
-    | "line-branch-missing",
-): string {
-  switch (reason) {
-    case "stopped":
-      return "The implement analysis was stopped; nothing landed.";
-    case "provider-error":
-      return "The assistant could not finish the implement analysis; nothing landed.";
-    case "line-branch-missing":
-      return "The line's branch no longer exists in this repository.";
-    case "no-proposal":
-    case "invalid-proposal":
-      return "The assistant couldn't produce a usable analysis; nothing landed.";
-  }
-}
-
 export function memoryAmendmentFailureNotice(
   failure: Extract<PlanStreamItem, { readonly kind: "memory-amendment-failed" }>,
 ): string {

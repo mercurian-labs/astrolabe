@@ -6,7 +6,7 @@ export const toWireCodingSessionRecord = (
   record: CodingSessionRecord,
 ): PlanCodingSessionRecord => ({
   commitId: record.commitId,
-  repositoryId: record.repositoryId,
+  ...(record.repositoryId == null ? {} : { repositoryId: record.repositoryId }),
   threadId: record.threadId,
   branch: record.branch,
   worktreePath: record.worktreePath,
@@ -24,4 +24,8 @@ export const toWireCodingSessionRecord = (
   ...(record.lineBranchMissingOid === undefined
     ? {}
     : { lineBranchMissingOid: record.lineBranchMissingOid }),
+  ...(record.repositories === undefined ? {} : { repositories: record.repositories }),
+  ...(record.unreachableRepositories.length === 0
+    ? {}
+    : { unreachableRepositories: record.unreachableRepositories }),
 });

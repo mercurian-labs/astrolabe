@@ -6,6 +6,7 @@ import {
   type MercurianRepositoryId,
   type PlanId,
   type ScopedThreadRef,
+  type ThreadWorkspaceMember,
 } from "@t3tools/contracts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
@@ -38,6 +39,8 @@ export function SessionThreadRouteContent(props: {
   readonly repositoryId: MercurianRepositoryId | null;
   readonly branch: string | null;
   readonly lineBranchMissingOid: string | null;
+  readonly workspaceMembers: ReadonlyArray<ThreadWorkspaceMember> | null;
+  readonly unreachableRepositories?: ReadonlyArray<string>;
 }) {
   const backToPlanLink =
     props.planId === null ? (
@@ -83,6 +86,10 @@ export function SessionThreadRouteContent(props: {
               threadRef={props.threadRef}
               worktreePath={props.worktreePath}
               repositoryId={props.repositoryId}
+              workspaceMembers={props.workspaceMembers}
+              {...(props.unreachableRepositories === undefined
+                ? {}
+                : { unreachableRepositories: props.unreachableRepositories })}
             />
           }
           headerBanner={
@@ -162,6 +169,10 @@ export function SessionThreadRouteView({ threadId }: { readonly threadId: Thread
       repositoryId={owningSession?.repositoryId ?? null}
       branch={owningSession?.branch ?? null}
       lineBranchMissingOid={owningSession?.lineBranchMissingOid ?? null}
+      workspaceMembers={serverThreadShell?.workspaceMembers ?? null}
+      {...(owningSession?.unreachableRepositories === undefined
+        ? {}
+        : { unreachableRepositories: owningSession.unreachableRepositories })}
     />
   );
 }

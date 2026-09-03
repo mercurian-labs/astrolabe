@@ -53,11 +53,6 @@ const renderContent = ({
       commitGraph={commitGraph}
       node={node}
       providers={[]}
-      ready={{
-        commitId: node.commitId,
-        repositoryId: MercurianRepositoryId.make("repo-web"),
-        repositoryName: "web",
-      }}
       stalePlan={stalePlan}
       staleSpec={staleSpec}
       suppressUnanswered={false}
@@ -118,8 +113,6 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Plan updated");
     expect(markup).toContain("Spec stale");
     expect(markup).toContain("Plan may be stale");
-    expect(markup).toContain("Ready to implement");
-    expect(markup).toContain("covers web");
     expect(markup).toContain("Continue from here");
     expect(markup).toContain("Edit and branch");
     expect(markup).toContain("Implement from here");
@@ -170,6 +163,52 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain('href="/sessions/thread"');
     expect(markup).not.toContain("Edit and branch");
     expect(markup).not.toContain("Implement from here");
+  });
+
+  it("renders every repository and pull request for a project-scoped session", () => {
+    const session = codingSessionLeaf("session-multi", {
+      sequence: 2,
+      parents: ["plan"],
+      repositoryId: null,
+      planRevisionCommitId: "plan",
+    });
+    const record = planCodingSessionRecord("session-multi", {
+      repositoryId: null,
+      threadId: "thread-multi",
+      repositories: [
+        {
+          repositoryId: MercurianRepositoryId.make("repo-server"),
+          repositoryName: "server",
+          snapshotOid: "server-snapshot",
+          snapshotKind: "settled",
+          branchTipOid: "server-oid",
+          departedRef: null,
+          branchMovement: { kind: "added", count: 1 },
+          prUrl: "https://example.com/server/pr/1",
+        },
+        {
+          repositoryId: MercurianRepositoryId.make("repo-web"),
+          repositoryName: "web",
+          snapshotOid: null,
+          snapshotKind: null,
+          branchTipOid: null,
+          departedRef: null,
+          branchMovement: null,
+          prUrl: "https://example.com/web/pr/2",
+        },
+      ],
+    });
+    const markup = renderContent({
+      nodeId: "session-multi",
+      codingSessions: [record],
+      timeline: [planRevision("plan"), session],
+    });
+
+    expect(markup).toContain("server · 1 commit added");
+    expect(markup).toContain("web · not yet built");
+    expect(markup).toContain('href="https://example.com/server/pr/1"');
+    expect(markup).toContain('href="https://example.com/web/pr/2"');
+    expect(markup).not.toContain("Repository</span><span");
   });
 
   it("uses mirrored and unmirrored bubbles for standalone human and assistant messages", () => {

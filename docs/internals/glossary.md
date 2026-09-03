@@ -298,21 +298,13 @@ The behavioral contract a plan is planned from, held in two prose fields: Goal /
 
 A complete `{ goal, acceptanceCriteria }` `SpecDocument` snapshot recorded as a `spec-revision` commit in the same history as messages and plan revisions. Earlier stored `{ title, description }` forms decode at the persistence boundary; new writes use only the semantic prose names. Provenance is `import`, `tracker-refresh`, `tracker-reconciliation`, or `direct`; authorship remains the commit's human/assistant field. Imported issues derive root spec revisions by mapping issue title to Goal and description to Acceptance criteria. A direct human revision or tracker refresh lands without starting an assistant turn; the next rebuilt planning turn receives the path's current spec with its transcript. An assistant revision already belongs to the turn that must reconcile the plan before responding. Reply prose is never authoritative without the commit.
 
-#### Atomic plan
-
-Internal term, never surfaced in product copy: a plan whose implementation belongs in exactly one repository. The [implement gate](#implement-gate) identifies the repository but does not write history or start a coding session.
-
 #### Split
 
-Internal term, never surfaced in product copy: a plan projection for one repository, landed as a human-authored `plan-revision` branch from the commit where the implement gate ran. Its payload stamps the repository id and name beside the projected text. A split changes the artifact on its own branch, never the parent line; it remains readable even if the repository is later disconnected.
-
-#### Readiness verdict
-
-The implement gate's immutable, recorded answer about one commit. A ready verdict names the one repository where a coding session can run and crosses the wire as a keyed side-fact, rendered as **Ready to implement** wherever that commit appears. A needs-split verdict records the repositories still requiring projections for server-side short-circuiting but is not itself surfaced. Absence means the commit has never been evaluated.
-
-#### Implement gate
-
-The read-only analysis between a finished plan and implementation. It grounds across the project's repository set and produces either an [atomic plan](#atomic-plan) verdict or editable split proposals, then records that [readiness verdict](#readiness-verdict) against the analyzed commit. Analysis and cancellation write no commits. Only explicit confirmation lands splits, as sibling plan-revision branches at the analyzed commit; those projected commits are born with ready verdicts of their own.
+A historical plan shape written by the former implementation flow: a projection for one repository,
+landed as a human-authored `plan-revision` branch. Its payload stamps the repository id and name
+beside the projected text. A split changes the artifact on its own branch, never the parent line;
+existing splits remain readable even if the repository is later disconnected, but new sessions no
+longer create them.
 
 #### Planning turn
 
@@ -475,9 +467,10 @@ The read-only right-panel surface on a [Coding Session View](#coding-session-vie
 
 ### Coding-session leaf
 
-An immutable terminal commit recording the repository and nearest plan revision a coding session
-implements. Mutable facts such as branch, outcome, and pull-request URL live in the keyed
-`coding_sessions` record beside it.
+An immutable terminal commit recording the nearest plan revision a coding session implements.
+Sessions recorded before project scoping also stamp their one repository. Mutable facts such as
+branch, outcome, and per-repository snapshot and pull-request facts live in the keyed
+`coding_sessions` record and its `coding_session_repositories` rows beside it.
 
 ### Session branch
 

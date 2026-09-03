@@ -10,7 +10,13 @@ export type DiffPanelSelection =
   | { kind: "unstaged" }
   | { kind: "line-uncommitted" }
   | { kind: "session" }
-  | { kind: "turn"; turnId: TurnId; filePath: string | null; revealRequestId: number };
+  | {
+      kind: "turn";
+      turnId: TurnId;
+      filePath: string | null;
+      repositoryId: string | null;
+      revealRequestId: number;
+    };
 
 export type DiffRenderMode = "stacked" | "split";
 
@@ -26,7 +32,12 @@ interface DiffPanelStoreState {
   selectLineUncommittedScope: (ref: ScopedThreadRef) => void;
   selectSessionScope: (ref: ScopedThreadRef) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
-  selectTurn: (ref: ScopedThreadRef, turnId: TurnId, filePath?: string) => void;
+  selectTurn: (
+    ref: ScopedThreadRef,
+    turnId: TurnId,
+    filePath?: string,
+    repositoryId?: string,
+  ) => void;
   reconcileTurnSelection: (ref: ScopedThreadRef, availableTurnIds: ReadonlyArray<TurnId>) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
@@ -94,7 +105,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
             },
           };
         }),
-      selectTurn: (ref, turnId, filePath) =>
+      selectTurn: (ref, turnId, filePath, repositoryId) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
           const previous = state.byThreadKey[threadKey];
@@ -105,6 +116,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
                 kind: "turn",
                 turnId,
                 filePath: filePath?.trim() || null,
+                repositoryId: repositoryId?.trim() || null,
                 revealRequestId: previous?.kind === "turn" ? previous.revealRequestId + 1 : 1,
               },
             },

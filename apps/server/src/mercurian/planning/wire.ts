@@ -88,8 +88,8 @@ export const toWirePlanCodingSession = (
   partial = false,
 ): Contracts.PlanCodingSession => ({
   ...toWirePlanCommitFields(session),
-  repositoryId: session.repositoryId,
-  repositoryName: session.repositoryName,
+  ...(session.repositoryId === undefined ? {} : { repositoryId: session.repositoryId }),
+  ...(session.repositoryName === undefined ? {} : { repositoryName: session.repositoryName }),
   planRevisionCommitId: MercurianCommitId.make(session.planRevisionCommitId),
   ...(partial ? { partial: true } : {}),
 });
@@ -135,10 +135,6 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => {
         : toWirePlanTimelineItem(item),
     ),
     snapshotSequence: detail.snapshotSequence,
-    readyCommits: detail.readyCommits.map((ready) => ({
-      ...ready,
-      commitId: MercurianCommitId.make(ready.commitId),
-    })),
     codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
     // The store's detail knows nothing live; the subscribe path overlays the
     // assistant's actual in-flight turns onto this.

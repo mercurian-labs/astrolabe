@@ -39,6 +39,7 @@ layer("010_CodingSessions", (it) => {
           "departed_ref",
           "branch_movement",
           "line_branch_missing_oid",
+          "unreachable_repositories_json",
         ],
       );
 

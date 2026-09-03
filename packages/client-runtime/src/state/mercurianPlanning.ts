@@ -90,18 +90,6 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
-    tryImplement: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:try-implement",
-      tag: MERCURIAN_WS_METHODS.tryImplement,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
-    confirmSplits: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:confirm-splits",
-      tag: MERCURIAN_WS_METHODS.confirmSplits,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
     confirmMemoryAmendment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:confirm-memory-amendment",
       tag: MERCURIAN_WS_METHODS.confirmMemoryAmendment,
@@ -124,12 +112,6 @@ export function createMercurianPlanningAtoms<R, E>(
       label: "environment-data:mercurian:recreate-line-branch",
       tag: MERCURIAN_WS_METHODS.recreateLineBranch,
       scheduler: writeScheduler,
-    }),
-    cancelImplementProposal: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:cancel-implement-proposal",
-      tag: MERCURIAN_WS_METHODS.cancelImplementProposal,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
     }),
     /**
      * The planning turn's two verbs. Same per-plan key as the writes: a stop

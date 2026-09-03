@@ -510,6 +510,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
+            workspaceMembers: event.payload.workspaceMembers ?? null,
             linkedPullRequest: null,
             latestTurnId: null,
             createdAt: event.payload.createdAt,
@@ -707,6 +708,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.branch !== undefined ? { branch: event.payload.branch } : {}),
             ...(event.payload.worktreePath !== undefined
               ? { worktreePath: event.payload.worktreePath }
+              : {}),
+            ...(event.payload.workspaceMembers !== undefined
+              ? { workspaceMembers: event.payload.workspaceMembers }
               : {}),
             ...(event.payload.linkedPullRequest !== undefined
               ? { linkedPullRequest: event.payload.linkedPullRequest }
@@ -1210,6 +1214,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               checkpointRef: event.payload.checkpointRef,
               checkpointStatus: event.payload.status,
               checkpointFiles: event.payload.files,
+              ...(event.payload.repositories === undefined
+                ? {}
+                : { checkpointRepositories: event.payload.repositories }),
               ...(event.payload.partial === undefined
                 ? {}
                 : { checkpointPartial: event.payload.partial }),
@@ -1243,6 +1250,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             checkpointRef: event.payload.checkpointRef,
             checkpointStatus: event.payload.status,
             checkpointFiles: event.payload.files,
+            ...(event.payload.repositories === undefined
+              ? {}
+              : { checkpointRepositories: event.payload.repositories }),
             ...(event.payload.partial === undefined
               ? {}
               : { checkpointPartial: event.payload.partial }),

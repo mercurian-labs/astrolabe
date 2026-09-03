@@ -12,7 +12,7 @@ layer("014_SnapshotChain", (it) => {
   it.effect("adds the coding session snapshot facts", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.at(-2)?.[0], 14);
+      assert.ok(migrationEntries.some(([id]) => id === 14));
       yield* runMigrations();
 
       const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(coding_sessions)`;

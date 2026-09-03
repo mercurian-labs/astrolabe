@@ -6,6 +6,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { runMigrations } from "../Migrations.ts";
+import { runProjectionAugmentations } from "../../mercurian/persistence/ProjectionAugmentations.ts";
 import { ServerConfig } from "../../config.ts";
 
 type RuntimeSqliteLayerConfig = {
@@ -38,6 +39,9 @@ const setup = Layer.effectDiscard(
     yield* sql`PRAGMA foreign_keys = ON;`;
     yield* sql`PRAGMA journal_mode = WAL;`;
     yield* runMigrations();
+    // `setup` must finish before this layer re-exports SqlClient, so fork
+    // projection columns exist before repositories or snapshot queries load.
+    yield* runProjectionAugmentations();
   }),
 );
 

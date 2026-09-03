@@ -13,6 +13,7 @@ import {
   checkpointSnapshotKindFromStorage,
   checkpointDepartedRefFromStorage,
   checkpointBranchMovementFromStorage,
+  checkpointRepositoriesFromStorage,
   toCheckpointFilesStorage,
 } from "../CheckpointFilesStorage.ts";
 
@@ -174,6 +175,7 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
         row.snapshotKind,
         row.departedRef,
         row.branchMovement,
+        row.repositories,
       ),
     }).pipe(
       Effect.mapError(
@@ -198,6 +200,7 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
           const snapshotKind = checkpointSnapshotKindFromStorage(row.files);
           const departedRef = checkpointDepartedRefFromStorage(row.files);
           const branchMovement = checkpointBranchMovementFromStorage(row.files);
+          const repositories = checkpointRepositoriesFromStorage(row.files);
           return {
             ...row,
             files: checkpointFilesFromStorage(row.files),
@@ -205,6 +208,7 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
             ...(snapshotKind === undefined ? {} : { snapshotKind }),
             ...(departedRef === undefined ? {} : { departedRef }),
             ...(branchMovement === undefined ? {} : { branchMovement }),
+            ...(repositories === undefined ? {} : { repositories }),
           };
         }),
       ),
@@ -228,6 +232,7 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
             const snapshotKind = checkpointSnapshotKindFromStorage(row.files);
             const departedRef = checkpointDepartedRefFromStorage(row.files);
             const branchMovement = checkpointBranchMovementFromStorage(row.files);
+            const repositories = checkpointRepositoriesFromStorage(row.files);
             return Effect.succeed(
               Option.some({
                 ...row,
@@ -236,6 +241,7 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
                 ...(snapshotKind === undefined ? {} : { snapshotKind }),
                 ...(departedRef === undefined ? {} : { departedRef }),
                 ...(branchMovement === undefined ? {} : { branchMovement }),
+                ...(repositories === undefined ? {} : { repositories }),
               }),
             );
           },

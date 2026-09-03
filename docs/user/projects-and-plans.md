@@ -170,8 +170,8 @@ badge naturally.
 
 Changing the spec records only that revision; it does not start an assistant turn. When the newest
 spec on a path has no later plan revision, the Checkpoint Graph shows **Plan may be stale** separately from a
-stale spec branch. If you implement from there, review the plan or continue through the ordinary
-readiness check. While any assistant turn is active, artifact editing is disabled so two writers
+stale spec branch. If you implement from there, the warning remains visible while the coding-session
+draft opens normally. While any assistant turn is active, artifact editing is disabled so two writers
 cannot silently fork the history.
 
 ## The plan
@@ -192,24 +192,15 @@ another window open on the same plan.
 ## Implementing a plan
 
 When the plan is ready, choose **Implement** beside the composer. The assistant reads the plan and
-the project's repositories, then works out where the implementation belongs. This analysis is a
-gate: it does not edit the plan, start a coding session, or add anything to history.
+the project's repositories only after you start the coding session. Implement opens the local
+session draft immediately; it does not run an analysis turn or change plan history. The resulting
+session works across every repository linked to the project. Its completed turns group changed files
+by repository, and its header lets you choose which repository receives git actions, scripts, and
+**Open in**.
 
-If all of the work belongs in one repository, the result says **This plan is ready to implement**
-and names where its coding session will run. That readiness is remembered on the commit you tried
-from, which shows a **Ready to implement** badge in the conversation and Checkpoint Graph views. Trying that
-commit again can return the recorded answer without running another analysis.
-
-If the work crosses repositories, the sheet explains that a coding session works in one repository
-at a time and proposes one self-contained plan for each repository. You can edit every projected
-plan or remove a card before confirming. A repository that already has its own plan from this point
-appears as a jump row instead of another editable card. **Cancel** adds nothing; **Add a plan for
-each repository** is the only act that writes.
-
-Confirmation adds ordinary branches to the plan's history, all starting at the commit where you
-pressed Implement, and leaves you standing at that original commit. The sheet stays open as a jump
-list with one **You added a plan for {repository}** row per new branch. Choose a row to go to that
-repository's plan and keep planning there; the plan on the original line stays unchanged.
+Histories created by an older version may contain per-repository plan branches from the former
+implementation flow. They remain ordinary, readable history and keep their **Plan for
+{repository}** and **You added a plan for {repository}** labels.
 
 ## The Checkpoint Graph
 
@@ -218,13 +209,13 @@ queries, direct artifact revisions, repository plans, and coding-session leaves.
 inside one assistant turn stay inside that turn's checkpoint rather than appearing as separate
 places to continue. The history is a spatial graph with every connection visible and no text on the
 map itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's
-top-right mark readiness and stale spec or plan status. Drag the map to move around it and scroll to
+top-right mark stale spec or plan status. Drag the map to move around it and scroll to
 zoom; where you are standing is ringed and comes to the middle.
 
 Work you have published reads solid; work still private to you reads muted.
 
 Choose a continuable checkpoint to move the planning surface there. Checkpoint details record model
-facts, changes, warnings, readiness, and the acts available from that point in history.
+facts, changes, warnings, and the acts available from that point in history.
 
 After moving, the conversation shows the path through that checkpoint, the plan shows what it said
 at the time, and the Checkpoint Graph highlights where you are standing. The conversation is always
@@ -349,19 +340,18 @@ Both the width and whether the sidebar is collapsed are remembered the next time
 
 ## Coding sessions
 
-When a plan is ready to implement, **Start a coding session** opens a local draft. Choose the local
-base branch, whether to refresh from `origin`, the runtime mode, and the installed agent instance
-and model. Closing the sheet keeps those choices on this device; nothing is created on the server
-or disk until you press **Start**.
+**Start a coding session** opens a local draft. Review the linked repositories, then choose the
+runtime mode and installed agent instance and model. Closing the sheet keeps those choices on this
+device; nothing is created on the server or disk until you press **Start**.
 
-Starting creates an isolated worktree on a descriptive `mercurian/…` branch and sends the exact
-plan text as the first turn. That branch carries only commits you or the agent make. Astrolabe keeps
-uncommitted work in a separate snapshot chain without adding commits to the branch. The resulting
-session appears as a leaf in the plan history. You can start another session from the same ready
-commit when a retry or a different model is useful. Selecting a session leaf keeps it visible while
-new planning continues from the checkpoint immediately before it.
+Starting creates isolated worktrees on the same descriptive `mercurian/…` branch in every linked
+repository and sends the exact plan text as the first turn. Those branches carry only commits you or
+the agent make. Astrolabe keeps uncommitted work in a separate snapshot chain per repository without
+adding commits to the branches. The resulting session appears as a leaf in the plan history. You can
+start another session from the same commit when a retry or a different model is useful. Selecting a
+session leaf keeps it visible while new planning continues from the checkpoint immediately before it.
 
-If you rename a session branch by hand, Astrolabe adopts that name for this repository when the
+If you rename a session branch by hand, Astrolabe adopts that name for that repository when the
 branch still points at the line's recorded commit. If you delete the branch instead, the session
 pauses and offers to recreate it at the last recorded commit before continuing.
 
@@ -372,13 +362,14 @@ conversation: send one turn at a time, stop a running turn from the same control
 **Supervised**, **Auto-accept edits**, and **Full access** from the composer. See
 [Permission modes](permission-modes.md).
 
-The session header acts on this session's worktree. When there is uncommitted work, its git control
-offers **Commit & push**. You can also commit selected files, commit on a new branch, push, pull, or
-open a pull request; generated commit messages and pull request text are suggestions you review,
-and nothing runs until you choose an action. Creating a pull request appears only when the
-repository's hosting provider is installed and authenticated. After Astrolabe creates one, its
-link is recorded on the session leaf in the plan. **Open in** hands the same worktree to an
-available editor.
+The session header acts on one repository at a time. When the project has several repositories,
+choose one from the repository switcher. When the selected repository has uncommitted work, its git
+control offers **Commit & push**. You can also commit selected files, commit on a new branch, push,
+pull, or open a pull request; generated commit messages and pull request text are suggestions you
+review, and nothing runs until you choose an action. Creating a pull request appears only when the
+repository's hosting provider is installed and authenticated. After Astrolabe creates one, its link
+is recorded beside that repository on the session leaf in the plan. **Open in** hands the selected
+repository's worktree to an available editor.
 
 Repository scripts also run from the session header, with their output opened in a Terminal tab.
 Scripts are declared and edited on the Repositories page rather than in a session. On desktop, a
@@ -390,11 +381,12 @@ The session timeline reads turn by turn. Work-log detail stays folded to a quiet
 expand it, and completed turns fold to a **Worked for …** summary so long sessions remain
 scannable. The timeline follows new work while you are at the bottom; if you scroll away, use the
 jump-to-bottom control to return to the newest activity. Each completed turn ends with a
-changed-files card listing the files touched and their added and removed lines. Open a file there
-to inspect its diff. If a turn finishes after the agent checked out another branch or detached
-state, the session leaf shows a **Departed** badge. Astrolabe preserves that destination in the
-snapshot, keeps the session's line branch unchanged, and returns the worktree to the line branch
-when the session next runs.
+changed-files card listing the files touched and their added and removed lines, grouped by
+repository when the session spans more than one. Open a file there to inspect its diff. If a turn
+finishes after the agent checked out another branch or detached state in any repository, the session
+leaf shows a **Departed** badge. Astrolabe preserves that destination in the snapshot, keeps the
+session's line branch unchanged, and returns the worktree to the line branch when the session next
+runs.
 
 The right panel keeps five session tools within reach: **Terminal**, **Files**, **Diff**, **Browser**,
 and **Plan**. Open one from the **+** menu, switch between the tabs you have open, or close a tab

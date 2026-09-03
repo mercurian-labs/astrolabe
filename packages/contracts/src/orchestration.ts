@@ -328,6 +328,12 @@ export const OrchestrationCheckpointFile = Schema.Struct({
 });
 export type OrchestrationCheckpointFile = typeof OrchestrationCheckpointFile.Type;
 
+export const ThreadWorkspaceMember = Schema.Struct({
+  repositoryId: TrimmedNonEmptyString,
+  worktreePath: TrimmedNonEmptyString,
+});
+export type ThreadWorkspaceMember = typeof ThreadWorkspaceMember.Type;
+
 export const OrchestrationCheckpointStatus = Schema.Literals(["ready", "missing", "error"]);
 export type OrchestrationCheckpointStatus = typeof OrchestrationCheckpointStatus.Type;
 
@@ -341,12 +347,23 @@ export const BranchMovement = Schema.Union([
 ]);
 export type BranchMovement = typeof BranchMovement.Type;
 
+/** One repository's slice of a multi-repository turn: its files, and where its branch went. */
+export const OrchestrationCheckpointRepository = Schema.Struct({
+  repositoryId: TrimmedNonEmptyString,
+  repositoryName: TrimmedNonEmptyString,
+  files: Schema.Array(OrchestrationCheckpointFile),
+  departedRef: Schema.optional(Schema.String),
+  branchMovement: Schema.optional(BranchMovement),
+});
+export type OrchestrationCheckpointRepository = typeof OrchestrationCheckpointRepository.Type;
+
 export const OrchestrationCheckpointSummary = Schema.Struct({
   turnId: TurnId,
   checkpointTurnCount: NonNegativeInt,
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
@@ -420,6 +437,7 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
@@ -496,6 +514,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
@@ -720,6 +739,7 @@ const ThreadCreateCommand = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   createdAt: IsoDateTime,
 });
 
@@ -815,6 +835,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   expectedBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
 }).check(
   Schema.makeFilter(
@@ -848,6 +869,7 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   createdAt: IsoDateTime,
 });
 
@@ -1042,6 +1064,7 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
   assistantMessageId: Schema.optional(MessageId),
   checkpointTurnCount: NonNegativeInt,
   createdAt: IsoDateTime,
@@ -1160,6 +1183,7 @@ export const ThreadCreatedPayload = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -1242,6 +1266,7 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workspaceMembers: Schema.optional(Schema.NullOr(Schema.Array(ThreadWorkspaceMember))),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   updatedAt: IsoDateTime,
 });
@@ -1327,6 +1352,7 @@ export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
@@ -1595,6 +1621,7 @@ export type DispatchResult = typeof DispatchResult.Type;
 export const OrchestrationGetTurnDiffInput = TurnCountRange.mapFields(
   Struct.assign({
     threadId: ThreadId,
+    repositoryId: Schema.optionalKey(TrimmedNonEmptyString),
     ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
   }),
   { unsafePreserveChecks: true },

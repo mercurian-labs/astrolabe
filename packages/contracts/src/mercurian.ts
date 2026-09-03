@@ -47,11 +47,8 @@ export const MERCURIAN_WS_METHODS = {
   savePlanRevision: "mercurian.savePlanRevision",
   saveSpecRevision: "mercurian.saveSpecRevision",
   refreshSpec: "mercurian.refreshSpec",
-  tryImplement: "mercurian.tryImplement",
-  confirmSplits: "mercurian.confirmSplits",
   confirmMemoryAmendment: "mercurian.confirmMemoryAmendment",
   cancelMemoryAmendment: "mercurian.cancelMemoryAmendment",
-  cancelImplementProposal: "mercurian.cancelImplementProposal",
   startCodingSession: "mercurian.startCodingSession",
   getPlanTextAt: "mercurian.getPlanTextAt",
   measurePlanReconstruction: "mercurian.measurePlanReconstruction",
@@ -134,7 +131,8 @@ export const MercurianRecreateLineBranchInput = Schema.Union([
   Schema.Struct({
     planId: PlanId,
     commitId: MercurianCommitId,
-    repositoryId: MercurianRepositoryId,
+    /** One repository, or every linked repository whose branch is missing when absent. */
+    repositoryId: Schema.optional(MercurianRepositoryId),
   }),
 ]);
 export type MercurianRecreateLineBranchInput = typeof MercurianRecreateLineBranchInput.Type;
@@ -146,9 +144,26 @@ export const MercurianRecreateLineBranchResult = Schema.Struct({
 export type MercurianRecreateLineBranchResult = typeof MercurianRecreateLineBranchResult.Type;
 
 /** Mutable facts keyed by the coding-session leaf commit. */
+/**
+ * One repository's facts on a session that spans several: the chain's latest
+ * snapshot there, where the line's branch stood when it was taken, and the
+ * repository's own exit. Absent on sessions recorded before project scoping.
+ */
+export const PlanCodingSessionRepository = Schema.Struct({
+  repositoryId: MercurianRepositoryId,
+  repositoryName: TrimmedNonEmptyString,
+  snapshotOid: Schema.NullOr(TrimmedNonEmptyString),
+  snapshotKind: Schema.NullOr(SnapshotKind),
+  branchTipOid: Schema.NullOr(TrimmedNonEmptyString),
+  departedRef: Schema.NullOr(Schema.String),
+  branchMovement: Schema.NullOr(BranchMovement),
+  prUrl: Schema.NullOr(Schema.String),
+});
+export type PlanCodingSessionRepository = typeof PlanCodingSessionRepository.Type;
+
 export const PlanCodingSessionRecord = Schema.Struct({
   commitId: MercurianCommitId,
-  repositoryId: MercurianRepositoryId,
+  repositoryId: Schema.optional(MercurianRepositoryId),
   threadId: ThreadId,
   branch: TrimmedNonEmptyString,
   worktreePath: TrimmedNonEmptyString,
@@ -164,6 +179,8 @@ export const PlanCodingSessionRecord = Schema.Struct({
   departedRef: Schema.NullOr(Schema.String),
   branchMovement: Schema.NullOr(BranchMovement),
   lineBranchMissingOid: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  repositories: Schema.optional(Schema.Array(PlanCodingSessionRepository)),
+  unreachableRepositories: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
 });
 export type PlanCodingSessionRecord = typeof PlanCodingSessionRecord.Type;
 
@@ -403,8 +420,8 @@ export type PlanSpecRevision = typeof PlanSpecRevision.Type;
 /** Immutable facts stamped by the leaf about the plan revision it implements. */
 export const PlanCodingSession = Schema.Struct({
   ...PlanCommitFields,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
+  repositoryId: Schema.optional(MercurianRepositoryId),
+  repositoryName: Schema.optional(TrimmedNonEmptyString),
   planRevisionCommitId: MercurianCommitId,
   partial: Schema.optional(Schema.Boolean),
 });
@@ -454,51 +471,6 @@ export const PlanInFlightTurn = Schema.Struct({
 });
 export type PlanInFlightTurn = typeof PlanInFlightTurn.Type;
 
-export const PlanSplitProposal = Schema.Struct({
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-  text: Schema.String,
-});
-export type PlanSplitProposal = typeof PlanSplitProposal.Type;
-
-/** A commit whose recorded implementation verdict says it needs no projection. */
-export const PlanImplementReady = Schema.Struct({
-  commitId: MercurianCommitId,
-  repositoryId: MercurianRepositoryId,
-  repositoryName: TrimmedNonEmptyString,
-});
-export type PlanImplementReady = typeof PlanImplementReady.Type;
-
-export const PlanImplementVerdict = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("atomic"),
-    repositoryId: MercurianRepositoryId,
-    repositoryName: TrimmedNonEmptyString,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("needs-split"),
-    rationale: Schema.optional(Schema.String),
-    splits: Schema.NonEmptyArray(PlanSplitProposal),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("already-covered"),
-    repositories: Schema.NonEmptyArray(
-      Schema.Struct({
-        repositoryId: MercurianRepositoryId,
-        repositoryName: TrimmedNonEmptyString,
-      }),
-    ),
-  }),
-]);
-export type PlanImplementVerdict = typeof PlanImplementVerdict.Type;
-
-export const PlanImplementProposal = Schema.Struct({
-  turnId: PlanTurnId,
-  parentCommitId: MercurianCommitId,
-  verdict: PlanImplementVerdict,
-});
-export type PlanImplementProposal = typeof PlanImplementProposal.Type;
-
 export const MemoryNoteChange = Schema.Struct({
   path: TrimmedNonEmptyString,
   before: Schema.NullOr(Schema.String),
@@ -523,14 +495,6 @@ export const MemoryAmendmentProposal = Schema.Struct({
 });
 export type MemoryAmendmentProposal = typeof MemoryAmendmentProposal.Type;
 
-export const PlanInFlightImplement = Schema.Struct({
-  turnId: PlanTurnId,
-  parentCommitId: MercurianCommitId,
-  grounding: Schema.Array(PlanGroundingItem),
-  groundingScope: Schema.optional(PlanGroundingScope),
-});
-export type PlanInFlightImplement = typeof PlanInFlightImplement.Type;
-
 /**
  * A planning space: the plan artifact beside the history that evolves it.
  *
@@ -548,16 +512,10 @@ export const PlanDetail = Schema.Struct({
   timeline: Schema.Array(PlanTimelineItem),
   /** The highest commit sequence this snapshot accounts for — the resume cursor. */
   snapshotSequence: Schema.Number,
-  /** Ready verdicts keyed by commit identity rather than embedded in history items. */
-  readyCommits: Schema.Array(PlanImplementReady),
   /** Mutable coding-session facts, keyed by their immutable leaf commits. */
   codingSessions: Schema.Array(PlanCodingSessionRecord),
   /** The turns streaming right now — one per branch. Runtime state, never stored. */
   inFlightTurns: Schema.Array(PlanInFlightTurn),
-  /** An implement analysis currently running. Runtime state, never stored. */
-  inFlightImplement: Schema.optional(PlanInFlightImplement),
-  /** The latest analysis result awaiting a person's decision. */
-  implementProposal: Schema.optional(PlanImplementProposal),
   memoryAmendmentProposal: Schema.optional(MemoryAmendmentProposal),
 });
 export type PlanDetail = typeof PlanDetail.Type;
@@ -635,27 +593,6 @@ export const PlanStreamItem = Schema.Union([
   /** The turn is over; the commit event that follows is the record arriving. */
   Schema.Struct({ kind: Schema.Literal("turn-settled"), turnId: PlanTurnId }),
   Schema.Struct({ kind: Schema.Literal("turn-refused"), reason: PlanTurnRefusalReason }),
-  Schema.Struct({
-    kind: Schema.Literal("implement-started"),
-    implement: PlanInFlightImplement,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("implement-analyzed"),
-    proposal: PlanImplementProposal,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("implement-ready"),
-    ready: PlanImplementReady,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("implement-cancelled"),
-    turnId: PlanTurnId,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("implement-failed"),
-    turnId: PlanTurnId,
-    reason: Schema.Literals(["no-proposal", "invalid-proposal", "stopped", "provider-error"]),
-  }),
   Schema.Struct({
     kind: Schema.Literal("memory-amendment-proposed"),
     proposal: MemoryAmendmentProposal,
@@ -816,28 +753,6 @@ export const MercurianRefreshSpecResult = Schema.Union([
 ]);
 export type MercurianRefreshSpecResult = typeof MercurianRefreshSpecResult.Type;
 
-export const MercurianTryImplementInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: Schema.optional(MercurianCommitId),
-});
-export type MercurianTryImplementInput = typeof MercurianTryImplementInput.Type;
-
-export const MercurianConfirmSplitInput = Schema.Struct({
-  repositoryId: MercurianRepositoryId,
-  text: Schema.String,
-});
-export type MercurianConfirmSplitInput = typeof MercurianConfirmSplitInput.Type;
-
-export const MercurianConfirmSplitsInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: MercurianCommitId,
-  splits: Schema.Array(MercurianConfirmSplitInput),
-});
-export type MercurianConfirmSplitsInput = typeof MercurianConfirmSplitsInput.Type;
-
-export const MercurianConfirmSplitsResult = Schema.Array(MercurianCommitId);
-export type MercurianConfirmSplitsResult = typeof MercurianConfirmSplitsResult.Type;
-
 export const MercurianConfirmMemoryAmendmentInput = Schema.Struct({
   planId: PlanId,
   parentCommitId: MercurianCommitId,
@@ -849,9 +764,6 @@ export type MercurianCancelMemoryAmendmentInput = typeof MercurianCancelMemoryAm
 export const MercurianStartCodingSessionInput = Schema.Struct({
   planId: PlanId,
   parentCommitId: MercurianCommitId,
-  repositoryId: MercurianRepositoryId,
-  baseRef: TrimmedNonEmptyString,
-  startFromOrigin: Schema.Boolean,
   runtimeMode: Schema.Literals(["approval-required", "auto-accept-edits", "full-access"]),
   modelSelection: ModelSelection,
 });
@@ -862,10 +774,6 @@ export const MercurianStartCodingSessionResult = Schema.Struct({
   threadId: ThreadId,
 });
 export type MercurianStartCodingSessionResult = typeof MercurianStartCodingSessionResult.Type;
-
-export const MercurianCancelImplementProposalInput = Schema.Struct({ planId: PlanId });
-export type MercurianCancelImplementProposalInput =
-  typeof MercurianCancelImplementProposalInput.Type;
 
 /**
  * The plan as of one commit — what the artifact showed when that commit
@@ -1052,41 +960,6 @@ export class SpecRefreshUnavailableError extends Schema.TaggedErrorClass<SpecRef
   }
 }
 
-export const ImplementBlockedReason = Schema.Literals([
-  "plan-empty",
-  "model-unset",
-  "no-instance",
-  "not-signed-in",
-  "model-unavailable",
-  "option-unavailable",
-]);
-export type ImplementBlockedReason = typeof ImplementBlockedReason.Type;
-
-export class ImplementBlockedError extends Schema.TaggedErrorClass<ImplementBlockedError>()(
-  "ImplementBlockedError",
-  { reason: ImplementBlockedReason },
-) {
-  override get message(): string {
-    return `Implement analysis is blocked: ${this.reason}`;
-  }
-}
-
-export const ConfirmSplitsBlockedReason = Schema.Literals([
-  "no-splits",
-  "duplicate-repository",
-  "repository-not-in-project",
-]);
-export type ConfirmSplitsBlockedReason = typeof ConfirmSplitsBlockedReason.Type;
-
-export class ConfirmSplitsBlockedError extends Schema.TaggedErrorClass<ConfirmSplitsBlockedError>()(
-  "ConfirmSplitsBlockedError",
-  { reason: ConfirmSplitsBlockedReason },
-) {
-  override get message(): string {
-    return `Split confirmation is blocked: ${this.reason}`;
-  }
-}
-
 export const ConfirmMemoryAmendmentBlockedReason = Schema.Literals([
   "no-proposal",
   "memory-changed",
@@ -1109,11 +982,7 @@ export class ConfirmMemoryAmendmentBlockedError extends Schema.TaggedErrorClass<
 }
 
 export const CodingSessionBlockedReason = Schema.Literals([
-  "not-ready",
-  "repository-mismatch",
-  "repository-not-in-project",
   "repository-not-git",
-  "base-ref-missing",
   "no-instance",
   "model-unavailable",
   "pool-at-capacity",
@@ -1127,16 +996,8 @@ export class CodingSessionBlockedError extends Schema.TaggedErrorClass<CodingSes
 ) {
   override get message(): string {
     switch (this.reason) {
-      case "not-ready":
-        return "This plan is not ready to implement.";
-      case "repository-mismatch":
-        return "The selected repository no longer matches this ready plan.";
-      case "repository-not-in-project":
-        return "The selected repository is no longer connected to this project.";
       case "repository-not-git":
-        return "The selected repository is not a Git repository.";
-      case "base-ref-missing":
-        return "The selected local base branch no longer exists.";
+        return "A linked repository is not a Git repository.";
       case "no-instance":
         return "The selected agent is not currently available.";
       case "model-unavailable":
@@ -1165,8 +1026,6 @@ export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
 export const isSpecRevisionOutdatedError = Schema.is(SpecRevisionOutdatedError);
 export const isSpecRefreshUnavailableError = Schema.is(SpecRefreshUnavailableError);
-export const isImplementBlockedError = Schema.is(ImplementBlockedError);
-export const isConfirmSplitsBlockedError = Schema.is(ConfirmSplitsBlockedError);
 export const isConfirmMemoryAmendmentBlockedError = Schema.is(ConfirmMemoryAmendmentBlockedError);
 export const isCodingSessionBlockedError = Schema.is(CodingSessionBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
@@ -1189,12 +1048,9 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "savePlanRevision",
       "saveSpecRevision",
       "refreshSpec",
-      "tryImplement",
-      "confirmSplits",
       "confirmMemoryAmendment",
       "cancelMemoryAmendment",
       "startCodingSession",
-      "cancelImplementProposal",
       "getPlanTextAt",
       "measurePlanReconstruction",
       "getSpecAt",

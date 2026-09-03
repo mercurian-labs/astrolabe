@@ -1,16 +1,13 @@
 import {
-  isCodingSessionBlockedError,
   resolvePlanningModel,
   type EnvironmentId,
   MercurianCommitId,
   type MercurianProjectId,
-  type MercurianRepositoryId,
   type MemoryNote,
   type PlanId,
   type PlanInFlightTurn,
   type PlanSpecAt,
   type PlanTimelineItem,
-  type PlanImplementReady,
   type PlanReconstructionMeasure,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -54,8 +51,6 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import {
   useAnswerPlanningQuestion,
   useAppendPlanMessage,
-  useCancelImplementProposal,
-  useConfirmSplits,
   useCreatePlan,
   useGetPlanTextAt,
   useGetSpecAt,
@@ -63,14 +58,10 @@ import {
   usePlanDetail,
   useRecreateLineBranch,
   useStopPlanningTurn,
-  useStartCodingSession,
-  useTryImplement,
   useVisitPlan,
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
-import { useRepositories } from "../../state/mercurianRepositories";
 import { useReadMemoryNote } from "../../state/mercurianMemory";
-import { usePaginatedBranches } from "../../state/queries";
 import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
@@ -94,7 +85,6 @@ import {
   type PlanComposerSubmission,
 } from "./PlanComposer";
 import {
-  implementFailureNotice,
   memoryAmendmentFailureNotice,
   planningModelGateNotice,
   turnRefusalNotice,
@@ -120,28 +110,12 @@ import { PlanTimeline } from "./PlanTimeline";
 import { MemoryNoteReader } from "./MemoryNoteReader";
 import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
 import { SpecArtifact } from "./SpecArtifact";
-import {
-  planMayBeStaleAt,
-  snapshotSpecIsForPath,
-  stalePlanLeafIds,
-  staleSpecLeafIds,
-} from "./SpecArtifact.logic";
-import { SplitSheet } from "./SplitSheet";
+import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
 import { CodingSessionDraftSheet } from "./CodingSessionDraftSheet";
 import {
   createCodingSessionDraft,
-  seedBaseRef,
   seedCodingSessionModelSelection,
-  startCodingSessionPayload,
 } from "./codingSessionDraft.logic";
-import { StalePlanWarning } from "./StalePlanWarning";
-import {
-  existingSplitsAt,
-  implementDisabledReason,
-  implementFlowAction,
-  type ImplementFlowEvent,
-  type LandedPlan,
-} from "./splits.logic";
 
 const RIGHT_PANE_WIDTH_STORAGE_KEY = "mercurian:plan-right-pane-width:v1";
 const RIGHT_PANE_DEFAULT_WIDTH = 480;
@@ -170,6 +144,15 @@ const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
 const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 type PlanHumanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
+function implementDisabledReason(input: {
+  readonly turnActive: boolean;
+  readonly planTextEmpty: boolean;
+}): string | null {
+  if (input.turnActive) return "Wait for the current plan turn to finish.";
+  if (input.planTextEmpty) return "Write a plan before implementing it.";
+  return null;
+}
+
 interface PendingEditAndBranch {
   readonly query: PlanHumanMessage;
   readonly parentCommitId: MercurianCommitId;
@@ -185,15 +168,7 @@ interface PendingEditAndBranch {
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const {
-    detail,
-    readyCommits,
-    isPending,
-    error,
-    turnRefusal,
-    implementFailure,
-    memoryAmendmentFailure,
-  } = usePlanDetail(planId);
+  const { detail, isPending, error, turnRefusal, memoryAmendmentFailure } = usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const getSpecAt = useGetSpecAt();
@@ -201,26 +176,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const visitPlan = useVisitPlan();
   const stopTurn = useStopPlanningTurn();
   const answerQuestion = useAnswerPlanningQuestion();
-  const tryImplement = useTryImplement();
-  const confirmSplits = useConfirmSplits();
-  const cancelImplementProposal = useCancelImplementProposal();
-  const [splitSheetOpen, setSplitSheetOpen] = useState(false);
   const [memoryAmendmentSheetOpen, setMemoryAmendmentSheetOpen] = useState(false);
   const [dismissedMemoryAmendmentFailure, setDismissedMemoryAmendmentFailure] = useState<
     string | null
   >(null);
-  const [stalePlanWarningOpen, setStalePlanWarningOpen] = useState(false);
-  const [implementFromCommitId, setImplementFromCommitId] = useState<MercurianCommitId | null>(
-    null,
-  );
   const [pendingEditAndBranch, setPendingEditAndBranch] = useState<PendingEditAndBranch | null>(
     null,
   );
-  const [landedPlans, setLandedPlans] = useState<ReadonlyArray<LandedPlan>>([]);
   const [sessionDraftId, setSessionDraftId] = useState<string | null>(null);
   const [missingLineBranchDoor, setMissingLineBranchDoor] = useState<{
     readonly commitId: MercurianCommitId;
-    readonly repositoryId: MercurianRepositoryId;
   } | null>(null);
   // The same resolution the server runs, read here so sending gates with the
   // reason stated instead of failing silently. The two can only disagree for
@@ -228,15 +193,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const planningModel = usePlanningModel();
   const settings = usePrimarySettings();
   const environmentId = usePrimaryEnvironmentId();
-  const repositories = useRepositories().snapshot.repositories;
-  const startCodingSession = useStartCodingSession();
   const recreateLineBranch = useRecreateLineBranch();
   const openSessionDraft = useCodingSessionDraftStore((state) => state.openDraft);
-  const completeSessionStart = useCodingSessionDraftStore((state) => state.completeStart);
   const lastSessionModel = useCodingSessionDraftStore((state) => state.lastModelSelection);
-  const [sessionBaseRefs, setSessionBaseRefs] = useState<ReadonlyMap<string, string>>(new Map());
   const materializeSessionDraft = useCallback(
-    (ready: PlanImplementReady, baseRef = "") => {
+    (parentCommitId: MercurianCommitId) => {
       const modelSelection = seedCodingSessionModelSelection(
         planningModel.providers,
         settings,
@@ -248,9 +209,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
         createCodingSessionDraft({
           draftId,
           planId,
-          ready,
-          baseRef,
-          startFromOrigin: settings.newWorktreesStartFromOrigin,
+          parentCommitId,
           modelSelection,
           createdAt: new Date().toISOString(),
         }),
@@ -275,12 +234,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const explorerGraph = useMemo(() => condensePlanGraph(graph), [graph]);
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
-  const proposal = detail?.implementProposal;
   const memoryAmendmentProposal = detail?.memoryAmendmentProposal;
-  const existingSplits = useMemo(
-    () => (proposal === undefined ? new Map() : existingSplitsAt(graph, proposal.parentCommitId)),
-    [graph, proposal],
-  );
   const effectiveExplorerView = effectivePlanExplorerView(
     explorerGraph,
     explorerView,
@@ -387,9 +341,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   // not name anything here.
   useEffect(() => {
     setPosition(LATEST);
-    setLandedPlans([]);
-    setStalePlanWarningOpen(false);
-    setImplementFromCommitId(null);
     setPendingEditAndBranch(null);
     setMemoryReader({ stack: [] });
     setMemoryAmendmentSheetOpen(false);
@@ -520,22 +471,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     return inFlightTurns.find((turn) => closure.has(turn.parentCommitId));
   }, [graph, head, inFlightTurns]);
 
-  const inFlightImplement = detail?.inFlightImplement;
-  const visibleInFlightImplement = useMemo(() => {
-    if (inFlightImplement === undefined) return undefined;
-    if (head === null) return inFlightImplement;
-    return ancestorClosure(graph, head).has(inFlightImplement.parentCommitId)
-      ? inFlightImplement
-      : undefined;
-  }, [graph, head, inFlightImplement]);
-
-  useEffect(() => {
-    if (detail?.implementProposal !== undefined) {
-      setLandedPlans([]);
-      setSplitSheetOpen(true);
-    }
-  }, [detail?.implementProposal]);
-
   useEffect(() => {
     if (memoryAmendmentProposal !== undefined) setMemoryAmendmentSheetOpen(true);
   }, [memoryAmendmentProposal]);
@@ -645,41 +580,14 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   const backToNow = useCallback(() => setPosition(LATEST), []);
 
-  const handleImplementFlow = useCallback(
-    (event: ImplementFlowEvent, fromCommitId: MercurianCommitId | null) => {
-      const action = implementFlowAction(event);
-      if (action === "show-warning") {
-        setImplementFromCommitId(fromCommitId);
-        setStalePlanWarningOpen(true);
-        return;
-      }
-      setStalePlanWarningOpen(false);
-      if (action === "show-plan") {
-        setImplementFromCommitId(null);
-        setPane({ open: true, view: "artifact", artifact: "plan" });
-        return;
-      }
-      setImplementFromCommitId(null);
-      void tryImplement({
-        planId,
-        ...(fromCommitId === null ? {} : { parentCommitId: fromCommitId }),
-      });
-    },
-    [planId, setPane, tryImplement],
-  );
-
   const beginImplementFrom = useCallback(
     (fromCommitId: MercurianCommitId | null) => {
       const resolved = resolveImplementFrom(graph, fromCommitId);
-      handleImplementFlow(
-        {
-          kind: "invoke",
-          planMayBeStale: resolved !== null && planMayBeStaleAt(graph, resolved),
-        },
-        resolved,
-      );
+      if (resolved === null) return;
+      const draftId = materializeSessionDraft(resolved);
+      if (draftId !== null) setSessionDraftId(draftId);
     },
-    [graph, handleImplementFlow],
+    [graph, materializeSessionDraft],
   );
 
   const beginImplement = useCallback(() => beginImplementFrom(head), [beginImplementFrom, head]);
@@ -703,12 +611,9 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const artifactText = needsPathText ? pathText : (detail?.planText ?? null);
   const artifactSpec = needsPathSpec ? pathSpec : detail?.spec;
   const implementReason = implementDisabledReason({
-    turnActive: visibleInFlight !== undefined || inFlightImplement !== undefined,
+    turnActive: visibleInFlight !== undefined,
     planTextEmpty: artifactText === null || artifactText.trim().length === 0,
-    isDraft: false,
   });
-  const implementNotice =
-    implementFailure === null ? null : implementFailureNotice(implementFailure);
   const missingLineBranch = missingLineBranchDoor;
   const memoryFailureKey =
     memoryAmendmentFailure === null
@@ -760,20 +665,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           <PlanTimeline
             codingSessions={detail?.codingSessions ?? []}
             inFlight={visibleInFlight}
-            inFlightImplement={visibleInFlightImplement}
             providers={planningModel.providers}
             {...(providerStatus === undefined ? {} : { skills: providerStatus.skills })}
-            readyCommits={readyCommits}
             timeline={visibleTimeline}
             onOpenNote={openMemoryNote}
             onAnswerQuestion={(answers) => {
               if (visibleInFlight !== undefined) {
                 void answerQuestion(planId, visibleInFlight.turnId, answers);
-              }
-            }}
-            onStopImplement={() => {
-              if (visibleInFlightImplement !== undefined) {
-                void stopTurn(planId, visibleInFlightImplement.turnId);
               }
             }}
           />
@@ -787,7 +685,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 className="mx-auto flex w-full max-w-3xl items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground"
               >
                 <span className="min-w-0 flex-1">
-                  {implementFailureNotice("line-branch-missing")}
+                  The line's branch no longer exists in a linked repository.
                 </span>
                 <Button
                   size="xs"
@@ -797,7 +695,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                     void recreateLineBranch({
                       planId,
                       commitId: missingLineBranch.commitId,
-                      repositoryId: missingLineBranch.repositoryId,
                     }).then((result) => {
                       if (result !== null) setMissingLineBranchDoor(null);
                     })
@@ -859,7 +756,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             modelPicker={
               <>
                 <PlanModelPicker
-                  disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
+                  disabled={visibleInFlight !== undefined}
                   providers={planningModel.providers}
                   selection={modelChoice}
                   onChange={(selection) => {
@@ -869,7 +766,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   }}
                 />
                 <PlanTraitsPicker
-                  disabled={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
+                  disabled={visibleInFlight !== undefined}
                   prompt={draft.text}
                   providers={planningModel.providers}
                   resolution={effectiveModelResolution}
@@ -888,15 +785,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               </>
             }
             implementDisabledReason={implementReason}
-            notice={
-              turnRefusal === null ? implementNotice : turnRefusalNotice(modelChoice, turnRefusal)
-            }
+            notice={turnRefusal === null ? null : turnRefusalNotice(modelChoice, turnRefusal)}
             placeholder="Message this plan"
             text={draft.text}
             // One turn at a time per branch: Stop wears the send button only
             // while this branch's own reply streams. A reply on another
             // branch never gates sending here.
-            turnActive={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
+            turnActive={visibleInFlight !== undefined}
             onAddAttachments={(added) => {
               if (actingHead !== null) addDraftAttachments(planId, actingHead, added, draftLive);
             }}
@@ -909,8 +804,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             }}
             onSend={send}
             onStop={() => {
-              const streaming = visibleInFlight ?? visibleInFlightImplement;
-              if (streaming !== undefined) void stopTurn(planId, streaming.turnId);
+              if (visibleInFlight !== undefined) void stopTurn(planId, visibleInFlight.turnId);
             }}
             onImplement={beginImplement}
           />
@@ -953,7 +847,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   graph={graph}
                   inFlightAnchorCommitIds={inFlightTurns.map((turn) => turn.parentCommitId)}
                   providers={planningModel.providers}
-                  readyCommits={readyCommits}
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
                   cornerControl={paneCornerControl}
@@ -1014,9 +907,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                       planId={planId}
                       planText={artifactText ?? ""}
                       readOnly={viewingPast || viewingSessionLeaf}
-                      turnActive={
-                        visibleInFlight !== undefined || visibleInFlightImplement !== undefined
-                      }
+                      turnActive={visibleInFlight !== undefined}
                       readOnlyAction={
                         <Button size="sm" variant="ghost" onClick={backToNow}>
                           Back to now
@@ -1051,9 +942,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                         />
                       }
                       timeline={visibleTimeline}
-                      turnActive={
-                        visibleInFlight !== undefined || visibleInFlightImplement !== undefined
-                      }
+                      turnActive={visibleInFlight !== undefined}
                     />
                   )}
                 </div>
@@ -1079,99 +968,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           </div>
         )}
       </div>
-      {proposal === undefined && landedPlans.length === 0 ? null : (
-        <SplitSheet
-          existingSplits={existingSplits}
-          landedPlans={landedPlans}
-          open={splitSheetOpen}
-          proposal={proposal}
-          onCancel={() => {
-            setLandedPlans([]);
-            if (proposal !== undefined) void cancelImplementProposal(planId);
-          }}
-          onConfirm={(plans) => {
-            if (proposal === undefined) return;
-            void confirmSplits({
-              planId,
-              parentCommitId: proposal.parentCommitId,
-              splits: plans.map(({ repositoryId, text }) => ({ repositoryId, text })),
-            }).then((result) => {
-              if (result === null) return;
-              setPosition({ _tag: "at", commitId: proposal.parentCommitId, live: false });
-              setLandedPlans(
-                result.map((commitId, index) => ({
-                  commitId,
-                  repositoryId: plans[index]!.repositoryId,
-                  repositoryName: plans[index]!.repositoryName,
-                })),
-              );
-            });
-          }}
-          onOpenChange={setSplitSheetOpen}
-          onSelect={(commitId) => {
-            select(commitId);
-            setLandedPlans([]);
-            setSplitSheetOpen(false);
-          }}
-          onOpenSessionDraft={(readyProposal) => {
-            if (readyProposal.verdict.kind !== "atomic") return;
-            const draftId = materializeSessionDraft({
-              commitId: readyProposal.parentCommitId,
-              repositoryId: readyProposal.verdict.repositoryId,
-              repositoryName: readyProposal.verdict.repositoryName,
-            });
-            if (draftId !== null) {
-              setSessionDraftId(draftId);
-              setSplitSheetOpen(false);
-            }
-          }}
-          onOpenLandedSessionDraft={(landed) => {
-            const draftId = materializeSessionDraft({
-              commitId: landed.commitId,
-              repositoryId: landed.repositoryId,
-              repositoryName: landed.repositoryName,
-            });
-            if (draftId !== null) {
-              setSessionDraftId(draftId);
-              setSplitSheetOpen(false);
-            }
-          }}
-          onStartAll={(landed) => {
-            const baseRef = sessionBaseRefs.get(landed.repositoryId);
-            if (baseRef === undefined) return;
-            const draftId = materializeSessionDraft(
-              {
-                commitId: landed.commitId,
-                repositoryId: landed.repositoryId,
-                repositoryName: landed.repositoryName,
-              },
-              baseRef,
-            );
-            if (draftId === null) return;
-            const draft = useCodingSessionDraftStore.getState().draftsById[draftId];
-            if (draft === undefined) return;
-            void startCodingSession(startCodingSessionPayload(draft)).then((result) => {
-              if (result.ok) {
-                completeSessionStart(draftId);
-                setMissingLineBranchDoor(null);
-              } else {
-                if (
-                  isCodingSessionBlockedError(result.error) &&
-                  result.error.reason === "line-branch-missing"
-                ) {
-                  setMissingLineBranchDoor({
-                    commitId: MercurianCommitId.make(draft.parentCommitId),
-                    repositoryId: draft.repositoryId as MercurianRepositoryId,
-                  });
-                }
-                setSessionDraftId(draftId);
-              }
-            });
-            setSplitSheetOpen(false);
-          }}
-          startAllDisabled={landedPlans.some((landed) => !sessionBaseRefs.has(landed.repositoryId))}
-        />
-      )}
       {memoryAmendmentProposal === undefined ? null : (
         <MemoryAmendmentSheet
           onOpenChange={setMemoryAmendmentSheetOpen}
@@ -1179,47 +975,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           parentCommitId={actingHead}
           planId={planId}
           proposal={memoryAmendmentProposal}
-          turnActive={visibleInFlight !== undefined || visibleInFlightImplement !== undefined}
+          turnActive={visibleInFlight !== undefined}
         />
       )}
-      {landedPlans.map((landed) => {
-        const repository = repositories.find(
-          (candidate) => candidate.repositoryId === landed.repositoryId,
-        );
-        return repository === undefined ? null : (
-          <CodingSessionBaseRefLoader
-            key={landed.repositoryId}
-            cwd={repository.path}
-            environmentId={environmentId}
-            onResolved={(baseRef) =>
-              setSessionBaseRefs((current) => {
-                if (current.get(landed.repositoryId) === baseRef) return current;
-                const next = new Map(current);
-                next.set(landed.repositoryId, baseRef);
-                return next;
-              })
-            }
-          />
-        );
-      })}
       <CodingSessionDraftSheet
         draftId={sessionDraftId}
         open={sessionDraftId !== null}
         onOpenChange={(open) => {
           if (!open) setSessionDraftId(null);
         }}
-        onLineBranchMissing={({ commitId, repositoryId }) =>
-          setMissingLineBranchDoor({
-            commitId: MercurianCommitId.make(commitId),
-            repositoryId: repositoryId as MercurianRepositoryId,
-          })
+        onLineBranchMissing={({ commitId }) =>
+          setMissingLineBranchDoor({ commitId: MercurianCommitId.make(commitId) })
         }
-      />
-      <StalePlanWarning
-        open={stalePlanWarningOpen}
-        onContinue={() => handleImplementFlow({ kind: "continue-anyway" }, implementFromCommitId)}
-        onOpenChange={setStalePlanWarningOpen}
-        onReviewPlan={() => handleImplementFlow({ kind: "review-plan" }, implementFromCommitId)}
       />
     </PlanningSurface>
   );
@@ -1278,23 +1045,6 @@ function EditAndBranchAttachmentLoader({
     };
   }, [attachments, onReady, urls]);
 
-  return null;
-}
-
-function CodingSessionBaseRefLoader({
-  cwd,
-  environmentId,
-  onResolved,
-}: {
-  readonly cwd: string;
-  readonly environmentId: ReturnType<typeof usePrimaryEnvironmentId>;
-  readonly onResolved: (baseRef: string) => void;
-}) {
-  const branches = usePaginatedBranches({ cwd, environmentId });
-  useEffect(() => {
-    const baseRef = seedBaseRef(branches.refs);
-    if (baseRef.length > 0) onResolved(baseRef);
-  }, [branches.refs, onResolved]);
   return null;
 }
 
@@ -1541,7 +1291,6 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         implementDisabledReason={implementDisabledReason({
           turnActive: false,
           planTextEmpty: true,
-          isDraft: true,
         })}
         mentionCandidates={mentions.candidates}
         menuGateNotice={draftPlanningModelNotice}

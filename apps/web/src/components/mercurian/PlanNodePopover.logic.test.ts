@@ -151,7 +151,7 @@ describe("planMovedPastSplit", () => {
 });
 
 describe("derivePlanNodePopover", () => {
-  it("derives a turn from recorded commits, including models, warnings, and readiness", () => {
+  it("derives a turn from recorded commits, including models and warnings", () => {
     const commitGraph = buildPlanGraph([
       commit("old", 1, [], "human", { ranUnder: model("claude", "sonnet") }),
       commit("query", 2, ["old"], "human", {
@@ -169,11 +169,6 @@ describe("derivePlanNodePopover", () => {
       node,
       commitGraph,
       codingSessions: [],
-      ready: {
-        commitId: id("response"),
-        repositoryId: MercurianRepositoryId.make("repo-web"),
-        repositoryName: "web",
-      },
       stalePlan: true,
       staleSpec: true,
       suppressUnanswered: false,
@@ -188,7 +183,6 @@ describe("derivePlanNodePopover", () => {
       modelSwitch: model("claude", "sonnet"),
       stalePlan: true,
       staleSpec: true,
-      ready: { repositoryName: "web" },
       acts: ["continue", "edit-and-branch", "implement"],
     });
     expect(reading.query?.ranUnder).toEqual(model("codex", "gpt-5"));

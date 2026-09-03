@@ -707,6 +707,7 @@ const buildAppUnderTest = (options?: {
           getByBranch: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
           recordSnapshot: () => Effect.void,
+          recordRepositorySnapshot: () => Effect.void,
           recordLineBranchMissing: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
@@ -1083,21 +1084,15 @@ const buildAppUnderTest = (options?: {
           startTurn: () => Effect.void,
           measureReconstruction: () =>
             Effect.succeed({ transcriptChars: 0, entryCount: 0, fixedReservedChars: 0 }),
-          tryImplement: () => Effect.void,
           stopTurn: () => Effect.void,
           answerQuestion: () => Effect.void,
           status: Effect.succeed(new Map()),
           changes: Stream.empty,
           frames: () => Stream.empty,
           inFlightTurns: () => Effect.succeed([]),
-          inFlightImplement: () => Effect.succeed(undefined),
-          implementProposal: () => Effect.succeed(undefined),
           memoryAmendmentProposal: () => Effect.succeed(undefined),
-          cancelImplementProposal: () => Effect.void,
           cancelMemoryAmendment: () => Effect.void,
-          clearImplementProposal: () => Effect.void,
           clearMemoryAmendment: () => Effect.void,
-          publishImplementReady: () => Effect.void,
           teardownPlan: () => Effect.void,
           ...options?.layers?.planningAssistant,
         }),
@@ -1679,6 +1674,7 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
       departedRef: null,
       branchMovement: null,
       lineBranchMissingOid: null,
+      unreachableRepositories: [],
     } as const;
     const lookedUpThreadIds: ThreadId[] = [];
 
@@ -4960,6 +4956,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           departedRef: null,
           branchMovement: null,
           lineBranchMissingOid: null,
+          unreachableRepositories: [],
         } as const;
       };
       const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
@@ -5523,6 +5520,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 departedRef: null,
                 branchMovement: null,
                 lineBranchMissingOid: baseOid,
+                unreachableRepositories: [],
               };
 
               const byThread = yield* client[MERCURIAN_WS_METHODS.recreateLineBranch]({ threadId });
@@ -6944,8 +6942,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           departedRef: null,
           branchMovement: null,
           lineBranchMissingOid: null,
+          unreachableRepositories: [],
         } as const;
-        const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
+        const attached: Array<{
+          readonly threadId: ThreadId;
+          readonly repositoryId: MercurianRepositoryId;
+          readonly prUrl: string;
+        }> = [];
         const announcedPlans: PlanId[] = [];
         const result = {
           action: "create_pr" as const,
@@ -7035,7 +7038,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         );
 
         assert.deepStrictEqual(attached, [
-          { threadId: sessionThreadId, prUrl: "https://example.com/pr/119" },
+          {
+            threadId: sessionThreadId,
+            repositoryId: sessionRecord.repositoryId,
+            prUrl: "https://example.com/pr/119",
+          },
         ]);
         assert.deepStrictEqual(announcedPlans, [sessionRecord.planId]);
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),

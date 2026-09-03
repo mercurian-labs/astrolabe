@@ -107,7 +107,6 @@ const renderExplorer = (
       {...sharedExplorerProps}
       anchoredCommitId={anchoredCommitId}
       graph={buildPlanGraph(items)}
-      readyCommits={new Map()}
       stalePlanCommitIds={new Set()}
       staleSpecCommitIds={new Set()}
       onColumnsWidthCapChange={vi.fn()}
@@ -216,7 +215,6 @@ describe("DagExplorer", () => {
           anchoredCommitId={null}
           graph={buildPlanGraph(timeline)}
           historyWalkViewsEnabled={false}
-          readyCommits={new Map()}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}
           onColumnsWidthCapChange={vi.fn()}
@@ -242,7 +240,6 @@ describe("DagExplorer", () => {
         anchoredCommitId={null}
         graph={buildPlanGraph(timeline)}
         historyWalkViewsEnabled
-        readyCommits={new Map()}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
         onColumnsWidthCapChange={vi.fn()}
@@ -261,18 +258,6 @@ describe("DagExplorer", () => {
         {...sharedExplorerProps}
         anchoredCommitId={planStaleTip}
         graph={buildPlanGraph(timeline)}
-        readyCommits={
-          new Map([
-            [
-              planStaleTip,
-              {
-                commitId: planStaleTip,
-                repositoryId: MercurianRepositoryId.make("repo-web"),
-                repositoryName: "web",
-              },
-            ],
-          ])
-        }
         stalePlanCommitIds={new Set([planStaleTip])}
         staleSpecCommitIds={new Set([specStaleTip])}
         onColumnsWidthCapChange={vi.fn()}
@@ -289,7 +274,6 @@ describe("DagExplorer", () => {
     expect(markup).not.toContain("1 stale spec branch");
     expect(markup).not.toContain("1 plan may be stale");
     expect(markup).toContain("Plan may be stale");
-    expect(markup).toContain("Ready to implement");
     expect(warningContent).toContain("1 stale spec branch");
     expect(warningContent).toContain("spec changed since the branch&#x27;s base");
     expect(warningContent).toContain("1 plan may be stale");
@@ -311,7 +295,6 @@ describe("DagExplorer", () => {
         {...sharedExplorerProps}
         anchoredCommitId={session.commitId}
         graph={buildPlanGraph([timeline[0]!, session])}
-        readyCommits={new Map()}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
         onColumnsWidthCapChange={vi.fn()}
@@ -360,7 +343,6 @@ describe("DagExplorer", () => {
           }),
         ])}
         inFlightAnchorCommitIds={[anchor]}
-        readyCommits={new Map()}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
         onColumnsWidthCapChange={vi.fn()}
@@ -424,7 +406,7 @@ describe("DagExplorer", () => {
     }
   });
 
-  it("stacks readiness and stale-status dots outward from a Graph node", () => {
+  it("stacks stale-status dots outward from a Graph node", () => {
     const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
     setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "graph", ExplorerView);
     try {
@@ -434,18 +416,6 @@ describe("DagExplorer", () => {
           {...sharedExplorerProps}
           anchoredCommitId={response}
           graph={buildPlanGraph(checkpointTimeline)}
-          readyCommits={
-            new Map([
-              [
-                response,
-                {
-                  commitId: response,
-                  repositoryId: MercurianRepositoryId.make("repo-web"),
-                  repositoryName: "web",
-                },
-              ],
-            ])
-          }
           stalePlanCommitIds={new Set([response])}
           staleSpecCommitIds={new Set([response])}
           onColumnsWidthCapChange={vi.fn()}
@@ -462,15 +432,12 @@ describe("DagExplorer", () => {
       ].map(([tag]) => tag);
       const xPositions = statusDots.map((tag) => Number(tag.match(/cx="([^"]+)"/)?.[1]));
 
-      expect(statusDots).toHaveLength(3);
-      expect(statusDots[0]).toContain('data-status="ready"');
-      expect(statusDots[0]).toContain("fill-emerald-500");
-      expect(statusDots[1]).toContain('data-status="stale-spec"');
-      expect(statusDots[1]).toContain("fill-amber-500");
-      expect(statusDots[2]).toContain('data-status="stale-plan"');
-      expect(statusDots[2]).toContain("fill-orange-500");
+      expect(statusDots).toHaveLength(2);
+      expect(statusDots[0]).toContain('data-status="stale-spec"');
+      expect(statusDots[0]).toContain("fill-amber-500");
+      expect(statusDots[1]).toContain('data-status="stale-plan"');
+      expect(statusDots[1]).toContain("fill-orange-500");
       expect(xPositions[1]).toBeGreaterThan(xPositions[0]!);
-      expect(xPositions[2]).toBeGreaterThan(xPositions[1]!);
     } finally {
       if (previous === null) removeLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY);
       else setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, previous, ExplorerView);
@@ -505,7 +472,6 @@ describe("DagExplorer", () => {
             }),
           ])}
           inFlightAnchorCommitIds={[anchor]}
-          readyCommits={new Map()}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}
           onColumnsWidthCapChange={vi.fn()}

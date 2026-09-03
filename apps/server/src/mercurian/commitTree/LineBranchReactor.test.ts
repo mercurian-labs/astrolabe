@@ -28,6 +28,9 @@ const root = MercurianCommitId.make("root");
 const mainChild = MercurianCommitId.make("main-child");
 const forkChild = MercurianCommitId.make("fork-child");
 const sessionCommit = MercurianCommitId.make("session-commit");
+const sessionLeaf = MercurianCommitId.make("session-leaf");
+const sessionMainChild = MercurianCommitId.make("session-main-child");
+const sessionForkChild = MercurianCommitId.make("session-fork-child");
 const createdAt = DateTime.makeUnsafe("2026-08-31T12:00:00.000Z");
 
 const detail = {
@@ -52,14 +55,77 @@ const detail = {
   codingSessions: [],
 } as never;
 
+const repositoryFacts = (overrides: Record<string, unknown>) => ({
+  snapshotOid: null,
+  snapshotKind: null,
+  branchTipOid: null,
+  departedRef: null,
+  branchMovement: null,
+  prUrl: null,
+  ...overrides,
+});
+
+/** A session leaf on the root line: project-scoped (rows per repository) or legacy (one repository on the record). */
+const detailWithSession = (legacy: boolean): PlanningStore.PlanDetail =>
+  ({
+    plan: { planId, projectId, title: "Line branches" },
+    timeline: [
+      { _tag: "plan-revision", commitId: root, parents: [], sequence: 1, createdAt },
+      {
+        _tag: "coding-session",
+        commitId: sessionLeaf,
+        parents: [root],
+        sequence: 2,
+        createdAt,
+        ...(legacy ? { repositoryId: repositoryA, repositoryName: "a" } : {}),
+      },
+      {
+        _tag: "message",
+        commitId: sessionMainChild,
+        parents: [sessionLeaf],
+        sequence: 3,
+        createdAt,
+      },
+      {
+        _tag: "message",
+        commitId: sessionForkChild,
+        parents: [sessionLeaf],
+        sequence: 4,
+        createdAt,
+      },
+    ],
+    codingSessions: [
+      {
+        commitId: sessionLeaf,
+        ...(legacy ? { repositoryId: repositoryA } : {}),
+        settledCommitOid: legacy ? "legacy-oid-a" : null,
+        snapshotOid: legacy ? "legacy-snapshot-a" : null,
+        ...(legacy
+          ? {}
+          : {
+              repositories: [
+                repositoryFacts({
+                  repositoryId: repositoryA,
+                  repositoryName: "a",
+                  snapshotOid: "snapshot-a",
+                  branchTipOid: "tip-a",
+                }),
+                repositoryFacts({ repositoryId: repositoryB, repositoryName: "b" }),
+              ],
+            }),
+      },
+    ],
+  }) as never;
+
 const makeHarness = (
   initial: ReadonlyArray<LineBranchStore.LineBranch> = [],
   oid = "base-new",
-  planDetail = detail,
+  planDetail: PlanningStore.PlanDetail = detail,
   options: {
     readonly checkedOutBranch?: string;
     readonly missingBranches?: ReadonlyArray<string>;
     readonly slotChanges?: Stream.Stream<void>;
+    readonly failBranchCwd?: string;
   } = {},
 ) => {
   const rows = [...initial];
@@ -154,20 +220,22 @@ const makeHarness = (
     }),
     Layer.mock(GitVcsDriver.GitVcsDriver)({
       execute: (input) =>
-        Effect.sync(() => {
+        Effect.suspend(() => {
           gitCalls.push({ cwd: input.cwd, args: input.args });
           const branchRef = input.args.at(-1)?.replace("refs/heads/", "");
           const missing =
             input.args[0] === "rev-parse" &&
             branchRef !== undefined &&
             options.missingBranches?.includes(branchRef);
-          return {
-            exitCode: input.args[0] === "symbolic-ref" || missing ? 1 : 0,
-            stdout: input.args[0] === "rev-parse" ? `${oid}\n` : "",
-            stderr: "",
-            stdoutTruncated: false,
-            stderrTruncated: false,
-          };
+          return input.args[0] === "branch" && input.cwd === options.failBranchCwd
+            ? Effect.die(`git failed in ${input.cwd}`)
+            : Effect.succeed({
+                exitCode: input.args[0] === "symbolic-ref" || missing ? 1 : 0,
+                stdout: input.args[0] === "rev-parse" ? `${oid}\n` : "",
+                stderr: "",
+                stdoutTruncated: false,
+                stderrTruncated: false,
+              });
         }) as never,
     }),
     Layer.mock(ServerSettings.ServerSettingsService)({
@@ -208,6 +276,45 @@ describe("LineBranchReactor", () => {
     }),
   );
 
+  it.effect(
+    "inherits each repository's branch tip and snapshot from a project-scoped session",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness([], "repository-default", detailWithSession(false));
+        yield* harness.reactor.reconcile();
+
+        const forkRow = (repositoryId: MercurianRepositoryId) =>
+          harness.rows.find(
+            (row) => row.lineRootCommitId === sessionForkChild && row.repositoryId === repositoryId,
+          );
+        assert.strictEqual(forkRow(repositoryA)?.baseOid, "tip-a");
+        assert.strictEqual(forkRow(repositoryB)?.baseOid, "repository-default");
+        const seeded = harness.gitCalls.filter((call) => call.args[0] === "update-ref");
+        assert.strictEqual(seeded.length, 1);
+        assert.strictEqual(seeded[0]?.cwd, "/repositories/a");
+        assert.strictEqual(seeded[0]?.args[2], "snapshot-a");
+      }),
+  );
+
+  it.effect("still inherits a legacy session's singular facts", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([], "repository-default", detailWithSession(true));
+      yield* harness.reactor.reconcile();
+
+      const forkRow = (repositoryId: MercurianRepositoryId) =>
+        harness.rows.find(
+          (row) => row.lineRootCommitId === sessionForkChild && row.repositoryId === repositoryId,
+        );
+      assert.strictEqual(forkRow(repositoryA)?.baseOid, "legacy-oid-a");
+      assert.strictEqual(forkRow(repositoryB)?.baseOid, "repository-default");
+      const seeded = harness.gitCalls.filter((call) => call.args[0] === "update-ref");
+      assert.deepStrictEqual(
+        seeded.map((call) => [call.cwd, call.args[2]]),
+        [["/repositories/a", "legacy-snapshot-a"]],
+      );
+    }),
+  );
+
   it.effect("re-points an unbuilt line when its resolved base changes", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness([
@@ -230,6 +337,25 @@ describe("LineBranchReactor", () => {
           (row) => row.lineRootCommitId === root && row.repositoryId === repositoryA,
         )?.baseOid,
         "base-new",
+      );
+    }),
+  );
+
+  it.effect("continues reconciling after git fails for one repository", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([], "base-new", detail, {
+        failBranchCwd: "/repositories/a",
+      });
+      yield* harness.reactor.reconcile();
+
+      assert.strictEqual(harness.rows.filter((row) => row.repositoryId === repositoryA).length, 0);
+      assert.deepStrictEqual(
+        new Set(
+          harness.rows
+            .filter((row) => row.repositoryId === repositoryB)
+            .map((row) => row.lineRootCommitId),
+        ),
+        new Set([root, forkChild]),
       );
     }),
   );

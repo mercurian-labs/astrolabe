@@ -25,28 +25,26 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
 import * as OrchestrationEngine from "../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ThreadDeletionReactor from "../../orchestration/Services/ThreadDeletionReactor.ts";
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
+import * as ProviderService from "../../provider/Services/ProviderService.ts";
 import * as TerminalManager from "../../terminal/Manager.ts";
-import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as VcsStatusBroadcaster from "../../vcs/VcsStatusBroadcaster.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
-import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
 import * as SlotService from "../worktreeSlots/SlotService.ts";
 import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 import {
   make,
-  codingSessionBranchCasDeleteArgs,
   codingSessionProviderRefusal,
   withCodingSessionBirthCompensation,
 } from "./CodingSessionService.ts";
 
 const isCodingSessionBlockedError = Schema.is(CodingSessionBlockedError);
+const isSlotServiceError = Schema.is(SlotService.SlotServiceError);
 
 const provider = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
   instanceId: ProviderInstanceId.make("codex-work"),
@@ -66,13 +64,11 @@ const provider = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
 const planId = PlanId.make("plan-coding-session");
 const projectId = MercurianProjectId.make("mercurian-project");
 const repositoryId = MercurianRepositoryId.make("repository-server");
+const secondRepositoryId = MercurianRepositoryId.make("repository-web");
 const parentCommitId = MercurianCommitId.make("ready-revision");
 const input: MercurianStartCodingSessionInput = {
   planId,
   parentCommitId,
-  repositoryId,
-  baseRef: "main",
-  startFromOrigin: true,
   runtimeMode: "full-access",
   modelSelection: {
     instanceId: ProviderInstanceId.make("codex-work"),
@@ -83,7 +79,6 @@ const input: MercurianStartCodingSessionInput = {
 type SagaFailurePoint =
   | "project creation"
   | "thread creation"
-  | "origin fetch/base resolution"
   | "worktree creation"
   | "metadata update"
   | "turn start"
@@ -105,24 +100,17 @@ interface SagaState {
   >;
   failSetupTerminalId: string | null;
   unrelatedProjectHasSetupScript: boolean;
-  movedBranch: boolean;
-  originExists: boolean;
   poolAtCapacity: boolean;
+  missingLineBranch: boolean;
   repositoryPresent: boolean;
-  claimedBranch: string;
+  secondRepositoryPresent: boolean;
+  groundingRoots: "cwd-only" | "multi";
+  appendedUnreachableRepositories: ReadonlyArray<string> | null;
   lineBranchMissing: boolean;
   landedSessionBranch: string | null;
+  appendedHomeRepositoryId: string | null;
   failurePoint: SagaFailurePoint | null;
 }
-
-const executeResult = (exitCode = 0, stdout = "") =>
-  ({
-    exitCode,
-    stdout,
-    stderr: "",
-    stdoutTruncated: false,
-    stderrTruncated: false,
-  }) as const;
 
 function sagaState(overrides: Partial<SagaState> = {}): SagaState {
   return {
@@ -158,13 +146,15 @@ function sagaState(overrides: Partial<SagaState> = {}): SagaState {
     terminalWrites: [],
     failSetupTerminalId: null,
     unrelatedProjectHasSetupScript: false,
-    movedBranch: false,
-    originExists: true,
     poolAtCapacity: false,
+    missingLineBranch: false,
     repositoryPresent: true,
-    claimedBranch: "mercurian/coding-session-birth-ready-revi",
+    secondRepositoryPresent: false,
+    groundingRoots: "multi",
+    appendedUnreachableRepositories: null,
     lineBranchMissing: false,
     landedSessionBranch: null,
+    appendedHomeRepositoryId: null,
     failurePoint: null,
     ...overrides,
   };
@@ -178,13 +168,6 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
       getPlanSnapshot: () =>
         Effect.succeed({
           plan: { planId, projectId, title: "Coding session birth" },
-          readyCommits: [
-            {
-              commitId: parentCommitId,
-              repositoryId,
-              repositoryName: "astrolabe",
-            },
-          ],
           timeline: [
             {
               _tag: "plan-revision",
@@ -200,10 +183,12 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
       appendCodingSession: (appendInput) =>
         Effect.gen(function* () {
           state.calls.push("leaf");
+          state.appendedUnreachableRepositories = appendInput.unreachableRepositories;
           if (state.failurePoint === "leaf transaction") return yield* fail("leaf transaction");
           state.leaf = true;
           state.session = true;
           state.landedSessionBranch = appendInput.branch;
+          state.appendedHomeRepositoryId = appendInput.homeRepositoryId;
           return {
             commitId: MercurianCommitId.make("coding-session-leaf"),
             ...appendInput,
@@ -221,15 +206,47 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
                 scripts: state.repositoryScripts,
                 hasGit: true,
               },
+              ...(state.secondRepositoryPresent
+                ? [
+                    {
+                      repositoryId: secondRepositoryId,
+                      name: "web",
+                      path: "/repo/web",
+                      scripts: [
+                        {
+                          scriptId: MercurianRepositoryScriptId.make("web-install"),
+                          name: "Web install",
+                          command: "vp web:install",
+                          isSetup: true,
+                        },
+                      ],
+                      hasGit: true,
+                    },
+                  ]
+                : []),
             ]
           : [],
-        projectRepositories: [{ projectId, repositoryId }],
+        projectRepositories: state.repositoryPresent
+          ? [
+              { projectId, repositoryId },
+              ...(state.secondRepositoryPresent
+                ? [{ projectId, repositoryId: secondRepositoryId }]
+                : []),
+            ]
+          : [],
       } as never),
       changes: Stream.empty,
     }),
     Layer.mock(ProviderRegistry.ProviderRegistry)({
       getProviders: Effect.succeed([provider()]),
       streamChanges: Stream.empty,
+    }),
+    Layer.mock(ProviderService.ProviderService)({
+      getCapabilities: () =>
+        Effect.succeed({
+          sessionModelSwitch: "in-session",
+          groundingRoots: state.groundingRoots,
+        }),
     }),
     Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
       getActiveProjectByWorkspaceRoot: () =>
@@ -281,45 +298,6 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
       streamDomainEvents: Stream.empty,
       latestSequence: Effect.succeed(0),
     }),
-    Layer.mock(GitWorkflowService.GitWorkflowService)({
-      remoteExists: () => Effect.succeed(state.originExists),
-      fetchRemote: () =>
-        state.failurePoint === "origin fetch/base resolution"
-          ? (fail("origin fetch/base resolution") as never)
-          : Effect.sync(() => state.calls.push("fetch")).pipe(Effect.asVoid),
-      resolveRemoteTrackingCommit: () =>
-        Effect.succeed({ commitSha: "origin-base-oid", remoteRefName: "origin/main" }),
-      createWorktree: (createInput) =>
-        Effect.gen(function* () {
-          state.calls.push(`worktree:${createInput.refName}`);
-          state.branch = true;
-          if (state.failurePoint === "worktree creation") return yield* fail("worktree creation");
-          state.worktree = true;
-          return {
-            worktree: {
-              refName: createInput.newRefName,
-              path: "/worktrees/coding-session",
-            },
-          } as never;
-        }),
-      removeWorktree: () =>
-        Effect.sync(() => {
-          state.calls.push("cleanup:worktree");
-          state.worktree = false;
-        }),
-    }),
-    Layer.mock(GitVcsDriver.GitVcsDriver)({
-      execute: (executeInput) =>
-        Effect.sync(() => {
-          if (executeInput.operation === "coding-session-base-ref") {
-            state.calls.push("local-base");
-            return executeResult(0, "local-base-oid\n");
-          }
-          state.calls.push("cleanup:branch");
-          if (!state.movedBranch) state.branch = false;
-          return executeResult(state.movedBranch ? 1 : 0);
-        }) as never,
-    }),
     Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
       refreshStatus: () =>
         Effect.sync(() => {
@@ -357,20 +335,6 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
     Layer.mock(PlanTurnRegistry.PlanTurnRegistry)({
       activeChainMember: () => Effect.succeed(false),
     }),
-    Layer.mock(LineBranchStore.LineBranchStore)({
-      get: () =>
-        Effect.succeed(
-          Option.some({
-            lineRootCommitId: parentCommitId,
-            repositoryId,
-            branch: "mercurian/coding-session-birth-ready-revi",
-            baseOid: "origin-base-oid",
-            built: false,
-            repointHold: null,
-            createdAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
-          }),
-        ),
-    }),
     Layer.mock(SlotService.SlotService)({
       claim: () =>
         Effect.gen(function* () {
@@ -401,8 +365,19 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
               {
                 repositoryId,
                 relativePath: ".",
-                currentBranch: state.claimedBranch,
+                currentBranch: state.missingLineBranch
+                  ? null
+                  : "mercurian/coding-session-birth-ready-revi",
               },
+              ...(state.secondRepositoryPresent
+                ? [
+                    {
+                      repositoryId: secondRepositoryId,
+                      relativePath: "web",
+                      currentBranch: "mercurian/coding-session-birth-ready-revi",
+                    },
+                  ]
+                : []),
             ],
             createdAt: now,
             lastUsedAt: now,
@@ -442,15 +417,6 @@ describe("CodingSessionService validation", () => {
     assert.strictEqual(codingSessionProviderRefusal(provider(), "gpt-5.6"), null);
   });
 
-  it("builds the fixed compare-and-swap branch delete command", () => {
-    assert.deepStrictEqual(codingSessionBranchCasDeleteArgs("mercurian/plan-12345678", "abc123"), [
-      "update-ref",
-      "-d",
-      "refs/heads/mercurian/plan-12345678",
-      "abc123",
-    ]);
-  });
-
   it.effect("builds every birth artifact in order and lands the leaf last", () =>
     Effect.gen(function* () {
       const state = sagaState();
@@ -463,10 +429,9 @@ describe("CodingSessionService validation", () => {
       assert.strictEqual(state.leaf, true);
       assert.strictEqual(state.session, true);
       const orderedBirthSteps = [
-        "fetch",
+        "slot:claim",
         "dispatch:project.create",
         "dispatch:thread.create",
-        "slot:claim",
         "dispatch:thread.meta.update",
         "setup:write:vp install\r",
         "setup:write:vp generate\r",
@@ -486,6 +451,12 @@ describe("CodingSessionService validation", () => {
       assert.ok(metadata?.type === "thread.meta.update");
       if (metadata?.type === "thread.meta.update") {
         assert.strictEqual(metadata.worktreePath, "/worktrees/coding-session");
+        assert.deepStrictEqual(metadata.workspaceMembers, [
+          {
+            repositoryId,
+            worktreePath: "/worktrees/coding-session",
+          },
+        ]);
       }
       assert.ok(
         metadataIndex < state.commands.findIndex((command) => command.type === "thread.turn.start"),
@@ -496,7 +467,7 @@ describe("CodingSessionService validation", () => {
         state.terminalOpens.map(({ threadId: _threadId, ...open }) => open),
         [
           {
-            terminalId: "setup-install",
+            terminalId: "setup-repository-server-install",
             cwd: "/worktrees/coding-session",
             worktreePath: "/worktrees/coding-session",
             env: {
@@ -505,7 +476,7 @@ describe("CodingSessionService validation", () => {
             },
           },
           {
-            terminalId: "setup-generate",
+            terminalId: "setup-repository-server-generate",
             cwd: "/worktrees/coding-session",
             worktreePath: "/worktrees/coding-session",
             env: {
@@ -518,8 +489,8 @@ describe("CodingSessionService validation", () => {
       assert.deepStrictEqual(
         state.terminalWrites.map(({ threadId: _threadId, ...write }) => write),
         [
-          { terminalId: "setup-install", data: "vp install\r" },
-          { terminalId: "setup-generate", data: "vp generate\r" },
+          { terminalId: "setup-repository-server-install", data: "vp install\r" },
+          { terminalId: "setup-repository-server-generate", data: "vp generate\r" },
         ],
       );
       assert.ok(!state.calls.some((call) => call.includes("setup-preview")));
@@ -548,16 +519,48 @@ describe("CodingSessionService validation", () => {
     }),
   );
 
+  it.effect("dispatches every slot member and runs setup scripts in each repository", () =>
+    Effect.gen(function* () {
+      const state = sagaState({ secondRepositoryPresent: true });
+      yield* runSaga(state);
+      const metadata = state.commands.find((command) => command.type === "thread.meta.update");
+      assert.ok(metadata?.type === "thread.meta.update");
+      if (metadata?.type === "thread.meta.update") {
+        assert.deepStrictEqual(metadata.workspaceMembers, [
+          { repositoryId, worktreePath: "/worktrees/coding-session" },
+          { repositoryId: secondRepositoryId, worktreePath: "/worktrees/coding-session/web" },
+        ]);
+      }
+      assert.ok(state.calls.includes("setup:write:vp web:install\r"));
+      assert.ok(
+        state.terminalOpens.some(
+          (open) =>
+            open.terminalId === "setup-repository-web-web-install" &&
+            open.cwd === "/worktrees/coding-session/web",
+        ),
+      );
+    }),
+  );
+
+  it.effect("records repositories unreachable by a cwd-only provider", () =>
+    Effect.gen(function* () {
+      const state = sagaState({
+        secondRepositoryPresent: true,
+        groundingRoots: "cwd-only",
+      });
+      yield* runSaga(state);
+      assert.deepStrictEqual(state.appendedUnreachableRepositories, ["web"]);
+    }),
+  );
+
   it.effect("ignores unrelated project scripts when the repository has no setup scripts", () =>
     Effect.gen(function* () {
       const state = sagaState({
         repositoryScripts: [],
         unrelatedProjectHasSetupScript: true,
-        originExists: false,
       });
       yield* runSaga(state);
       assert.ok(state.calls.includes("slot:claim"));
-      assert.ok(!state.calls.includes("fetch"));
       assert.ok(!state.calls.includes("dispatch:thread.activity.append"));
       assert.deepStrictEqual(state.terminalOpens, []);
       assert.deepStrictEqual(state.terminalWrites, []);
@@ -568,7 +571,7 @@ describe("CodingSessionService validation", () => {
 
   it.effect("records setup launch failure and continues to the turn and leaf", () =>
     Effect.gen(function* () {
-      const state = sagaState({ failSetupTerminalId: "setup-install" });
+      const state = sagaState({ failSetupTerminalId: "setup-repository-server-install" });
       yield* runSaga(state);
       assert.strictEqual(state.leaf, true);
       assert.ok(state.calls.includes("dispatch:thread.activity.append"));
@@ -597,11 +600,13 @@ describe("CodingSessionService validation", () => {
     }),
   );
 
-  it.effect("passes through the ordinary missing-repository refusal", () =>
+  it.effect("refuses when the project has no linked git repository", () =>
     Effect.gen(function* () {
       const refusal = yield* runSaga(sagaState({ repositoryPresent: false })).pipe(Effect.flip);
-      assert.ok("_tag" in refusal);
-      assert.strictEqual(refusal._tag, "MercurianRepositoryNotFoundError");
+      assert.ok(isCodingSessionBlockedError(refusal));
+      if (isCodingSessionBlockedError(refusal)) {
+        assert.strictEqual(refusal.reason, "repository-not-git");
+      }
     }),
   );
 
@@ -615,21 +620,31 @@ describe("CodingSessionService validation", () => {
     }),
   );
 
-  it.effect("uses an adopted claim branch and maps a missing line branch refusal", () =>
+  it.effect("maps a missing line branch at claim to a typed refusal", () =>
     Effect.gen(function* () {
-      const renamed = sagaState({ claimedBranch: "renamed-by-hand" });
-      yield* runSaga(renamed);
-      const metadata = renamed.commands.find((command) => command.type === "thread.meta.update");
-      assert.ok(metadata?.type === "thread.meta.update");
-      if (metadata?.type === "thread.meta.update") {
-        assert.strictEqual(metadata.branch, "renamed-by-hand");
-      }
-      assert.strictEqual(renamed.landedSessionBranch, "renamed-by-hand");
-
       const refusal = yield* runSaga(sagaState({ lineBranchMissing: true })).pipe(Effect.flip);
       assert.ok(isCodingSessionBlockedError(refusal));
       if (isCodingSessionBlockedError(refusal)) {
         assert.strictEqual(refusal.reason, "line-branch-missing");
+      }
+    }),
+  );
+
+  it.effect("records the claimed member's branch on the leaf", () =>
+    Effect.gen(function* () {
+      const state = sagaState();
+      yield* runSaga(state);
+      assert.strictEqual(state.landedSessionBranch, "mercurian/coding-session-birth-ready-revi");
+      assert.strictEqual(state.appendedHomeRepositoryId, repositoryId);
+    }),
+  );
+
+  it.effect("refuses when the claimed slot is missing its primary line branch", () =>
+    Effect.gen(function* () {
+      const refusal = yield* runSaga(sagaState({ missingLineBranch: true })).pipe(Effect.flip);
+      assert.ok(isSlotServiceError(refusal));
+      if (isSlotServiceError(refusal)) {
+        assert.strictEqual(refusal.operation, "claim:lineBranch");
       }
     }),
   );
@@ -639,7 +654,6 @@ describe("CodingSessionService compensation", () => {
   for (const failurePoint of [
     "project creation",
     "thread creation",
-    "origin fetch/base resolution",
     "worktree creation",
     "metadata update",
     "turn start",
@@ -666,7 +680,7 @@ describe("CodingSessionService compensation", () => {
         if (
           failurePoint !== "project creation" &&
           failurePoint !== "thread creation" &&
-          failurePoint !== "origin fetch/base resolution"
+          failurePoint !== "worktree creation"
         ) {
           assert.ok(state.calls.includes("cleanup:drain"));
         }

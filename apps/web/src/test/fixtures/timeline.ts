@@ -33,9 +33,10 @@ type PlanRevisionOverrides = Omit<TimelineOverrides<PlanRevision>, "split"> & {
 type SpecRevisionOverrides = TimelineOverrides<PlanSpecRevision>;
 type CodingSessionOverrides = Omit<
   TimelineOverrides<PlanCodingSession>,
-  "repositoryId" | "planRevisionCommitId"
+  "repositoryId" | "repositoryName" | "planRevisionCommitId"
 > & {
-  readonly repositoryId?: string;
+  readonly repositoryId?: string | null;
+  readonly repositoryName?: string;
   readonly planRevisionCommitId?: string;
 };
 
@@ -115,12 +116,16 @@ export const codingSessionLeaf = (
   name: string,
   overrides: CodingSessionOverrides = {},
 ): TimelineMember<"coding-session"> => {
-  const { repositoryId, planRevisionCommitId, ...fields } = overrides;
+  const { repositoryId, repositoryName, planRevisionCommitId, ...fields } = overrides;
   return decodeTimelineItem({
     _tag: "coding-session",
     commitId: commitId(name),
-    repositoryId: MercurianRepositoryId.make(repositoryId ?? `${name}-repository`),
-    repositoryName: name,
+    ...(repositoryId === null
+      ? {}
+      : {
+          repositoryId: MercurianRepositoryId.make(repositoryId ?? `${name}-repository`),
+          repositoryName: repositoryName ?? name,
+        }),
     planRevisionCommitId: commitId(planRevisionCommitId ?? `${name}-plan-revision`),
     ...commonFields(fields),
   }) as TimelineMember<"coding-session">;

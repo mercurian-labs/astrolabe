@@ -9,7 +9,6 @@ import * as PlanTurnRegistry from "./PlanTurnRegistry.ts";
 
 const plan = PlanId.make("plan-1");
 const openInput = (turn: string, parent: string) => ({
-  flavor: "reply" as const,
   planId: plan,
   turnId: PlanTurnId.make(turn),
   threadId: ThreadId.make(`thread-${turn}`),

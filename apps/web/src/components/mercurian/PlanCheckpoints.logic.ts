@@ -264,16 +264,13 @@ export function planNodeSummary(node: PlanGraphNode): string {
 
 /** Status marks keep their semantic order when several share one graph node. */
 export function planNodeStatusDots({
-  ready,
   staleSpec,
   stalePlan,
 }: {
-  readonly ready: boolean;
   readonly staleSpec: boolean;
   readonly stalePlan: boolean;
 }): ReadonlyArray<{ readonly key: string; readonly fillClass: string }> {
   return [
-    ...(ready ? [{ key: "ready", fillClass: "fill-emerald-500" }] : []),
     ...(staleSpec ? [{ key: "stale-spec", fillClass: "fill-amber-500" }] : []),
     ...(stalePlan ? [{ key: "stale-plan", fillClass: "fill-orange-500" }] : []),
   ];

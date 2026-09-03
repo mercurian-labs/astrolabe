@@ -2,13 +2,12 @@
  * One checkpoint reading shared by the explorer's three views.
  *
  * Rows and map nodes own only how the popover is summoned. Identity, recorded
- * model facts, effects, honesty warnings, readiness, and acts stay here so a
+ * model facts, effects, honesty warnings, and acts stay here so a
  * checkpoint cannot tell a different story when the explorer changes shape.
  */
 import type {
   MercurianCommitId,
   PlanCodingSessionRecord,
-  PlanImplementReady,
   PlanTimelineItem,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -29,7 +28,11 @@ import { Button } from "../ui/button";
 import { Popover, PopoverPopup } from "../ui/popover";
 import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
 import type { PlanGraph, PlanGraphNode } from "./PlanGraph.logic";
-import { derivePlanNodePopover, type PlanNodePopoverAct } from "./PlanNodePopover.logic";
+import {
+  derivePlanNodePopover,
+  repositoryFactsLabel,
+  type PlanNodePopoverAct,
+} from "./PlanNodePopover.logic";
 import { ModelAttribution } from "./PlanTimeline";
 
 export const NODE_POPOVER_HOVER_DELAY = 500;
@@ -137,7 +140,6 @@ export function PlanNodePopover({
   commitGraph,
   codingSessions,
   providers,
-  ready,
   stalePlan,
   staleSpec,
   suppressUnanswered,
@@ -150,7 +152,6 @@ export function PlanNodePopover({
   readonly commitGraph: PlanGraph;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly providers: ReadonlyArray<ServerProvider>;
-  readonly ready?: PlanImplementReady;
   readonly stalePlan: boolean;
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
@@ -181,7 +182,6 @@ export function PlanNodePopover({
             commitGraph={commitGraph}
             node={node}
             providers={providers}
-            {...(ready === undefined ? {} : { ready })}
             stalePlan={stalePlan}
             staleSpec={staleSpec}
             suppressUnanswered={suppressUnanswered}
@@ -201,7 +201,6 @@ export function PlanNodePopoverContent({
   commitGraph,
   codingSessions,
   providers,
-  ready,
   stalePlan,
   staleSpec,
   suppressUnanswered,
@@ -214,7 +213,6 @@ export function PlanNodePopoverContent({
   readonly commitGraph: PlanGraph;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly providers: ReadonlyArray<ServerProvider>;
-  readonly ready?: PlanImplementReady;
   readonly stalePlan: boolean;
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
@@ -229,7 +227,6 @@ export function PlanNodePopoverContent({
     node,
     commitGraph,
     codingSessions,
-    ...(ready === undefined ? {} : { ready }),
     stalePlan,
     staleSpec,
     suppressUnanswered,
@@ -307,7 +304,9 @@ export function PlanNodePopoverContent({
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
             Coding session
           </p>
-          <Fact label="Repository" value={reading.session.repositoryName} />
+          {reading.session.repositoryName === undefined ? null : (
+            <Fact label="Repository" value={reading.session.repositoryName} />
+          )}
           <Fact label="Plan revision" value={reading.session.planRevisionCommitId.slice(0, 8)} />
           {reading.session.status === undefined ? null : (
             <Fact label="Status" value={reading.session.status} />
@@ -331,6 +330,18 @@ export function PlanNodePopoverContent({
               Pull request
             </a>
           )}
+          {reading.session.repositories?.map((repository) => (
+            <div className="flex items-center justify-between gap-2" key={repository.repositoryId}>
+              <span>
+                {repository.repositoryName} · {repositoryFactsLabel(repository)}
+              </span>
+              {repository.prUrl === null ? null : (
+                <a className="underline" href={repository.prUrl} rel="noreferrer" target="_blank">
+                  Pull request
+                </a>
+              )}
+            </div>
+          ))}
         </section>
       )}
 
@@ -347,17 +358,6 @@ export function PlanNodePopoverContent({
               label={`Planning has moved past this plan${reading.movedPastRepositoryName === undefined ? "" : ` for ${reading.movedPastRepositoryName}`}`}
             />
           ) : null}
-        </section>
-      )}
-
-      {reading.ready === undefined ? null : (
-        <section className="flex items-center justify-between gap-2 border-t border-border pt-3">
-          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-            Ready to implement
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            covers {reading.ready.repositoryName}
-          </span>
         </section>
       )}
 
@@ -517,7 +517,9 @@ function nodeAccessibleName(node: PlanGraphNode): string {
   return node.item._tag === "message"
     ? `${node.item.authorKind === "human" ? "You" : "Assistant"}: ${node.item.text}`
     : node.item._tag === "coding-session"
-      ? `Coding session in ${node.item.repositoryName}`
+      ? node.item.repositoryName === undefined
+        ? "Coding session"
+        : `Coding session in ${node.item.repositoryName}`
       : node.item._tag === "plan-revision" && node.item.split !== undefined
         ? `Plan for ${node.item.split.repositoryName}`
         : node.item._tag === "plan-revision"

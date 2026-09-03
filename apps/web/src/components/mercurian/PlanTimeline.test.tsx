@@ -383,28 +383,6 @@ describe("PlanTimeline", () => {
     expect(markup).toContain("You added a plan for server");
   });
 
-  it("badges a ready commit", () => {
-    const readyMessage = timelineMessage("ready-1", "human", "Implement this");
-    const markup = renderToStaticMarkup(
-      <PlanTimeline
-        readyCommits={
-          new Map([
-            [
-              readyMessage.commitId,
-              {
-                commitId: readyMessage.commitId,
-                repositoryId: MercurianRepositoryId.make("repo-server"),
-                repositoryName: "server",
-              },
-            ],
-          ])
-        }
-        timeline={[readyMessage]}
-      />,
-    );
-    expect(markup).toContain("Ready to implement");
-  });
-
   it("renders structured coding-session facts without a generated summary", () => {
     const sessionCommit = codingSessionLeaf("session-1", {
       sequence: 3,
@@ -450,21 +428,46 @@ describe("PlanTimeline", () => {
     expect(missingRecordMarkup).not.toContain('href="/sessions/');
   });
 
-  it("renders the implement analyzing card with grounding and Stop", () => {
+  it("renders one repository row and pull-request link per session member", () => {
+    const sessionCommit = codingSessionLeaf("session-multi", {
+      repositoryId: null,
+      planRevisionCommitId: "revision-abcdef12",
+      createdAt: CREATED_AT,
+    });
+    const session = planCodingSessionRecord("session-multi", {
+      repositoryId: null,
+      threadId: "thread-multi",
+      repositories: [
+        {
+          repositoryId: MercurianRepositoryId.make("repo-server"),
+          repositoryName: "server",
+          snapshotOid: "server-snapshot",
+          snapshotKind: "settled",
+          branchTipOid: "server-oid",
+          departedRef: null,
+          branchMovement: { kind: "added", count: 1 },
+          prUrl: "https://example.test/server/pull/1",
+        },
+        {
+          repositoryId: MercurianRepositoryId.make("repo-web"),
+          repositoryName: "web",
+          snapshotOid: null,
+          snapshotKind: null,
+          branchTipOid: null,
+          departedRef: null,
+          branchMovement: null,
+          prUrl: "https://example.test/web/pull/2",
+        },
+      ],
+    });
     const markup = renderToStaticMarkup(
-      <PlanTimeline
-        inFlightImplement={{
-          turnId: PlanTurnId.make("implement-turn"),
-          parentCommitId: id("parent-1"),
-          grounding: [{ kind: "search", label: "repository coverage" }],
-        }}
-        timeline={[]}
-        onStopImplement={() => undefined}
-      />,
+      <PlanTimeline timeline={[sessionCommit]} codingSessions={[session]} />,
     );
-    expect(markup).toContain("Checking whether this plan is ready to implement.");
-    expect(markup).toContain("A coding session works in one repository at a time.");
-    expect(markup).toContain("Consulted 1 item…");
-    expect(markup).toContain(">Stop</button>");
+
+    expect(markup).toContain(">server</span>");
+    expect(markup).toContain(">web</span>");
+    expect(markup).toContain('href="https://example.test/server/pull/1"');
+    expect(markup).toContain('href="https://example.test/web/pull/2"');
+    expect(markup).not.toContain("Coding session ·");
   });
 });

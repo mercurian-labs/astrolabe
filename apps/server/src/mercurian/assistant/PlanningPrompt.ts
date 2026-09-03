@@ -254,19 +254,3 @@ export function memoryMentionResolutionStanza(
 export function appendMemoryMentionStanza(input: string, stanza: string | null): string {
   return stanza === null ? input : `${input}\n\n---\n\n${stanza}`;
 }
-
-/** A one-shot implement analysis whose only output is the proposal tool. */
-export function implementTurnInput(input: {
-  readonly repositories: ReadonlyArray<string>;
-  readonly planText: string;
-}): string {
-  const repositories = input.repositories.map((name) => `- ${name}`).join("\n");
-  return [
-    "Analyze where the plan below must be implemented across the project's repositories.",
-    `Use repository names exactly as listed:\n${repositories}`,
-    "If exactly one repository is required, call `save_implement_proposal` with that repository and omit splits.",
-    "If several repositories are required, also provide one self-contained plan projection per repository and a one-line rationale for the cut. Each projection must contain only what that repository owns while carrying everything its implementation needs.",
-    "Call `save_implement_proposal` with the complete result; the last call wins. Do not edit files, do not revise the source plan, do not ask questions, and do not treat narration as the result.",
-    `Source plan:\n---\n${input.planText}\n---`,
-  ].join("\n\n");
-}

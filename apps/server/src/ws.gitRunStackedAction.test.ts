@@ -25,6 +25,7 @@ const sessionRecord = {
   departedRef: null,
   branchMovement: null,
   lineBranchMissingOid: null,
+  unreachableRepositories: [],
 } as const;
 
 const createdResult = {
@@ -50,9 +51,13 @@ const createdResult = {
   },
 };
 
-it.effect("attaches a newly-created PR to the session resolved by branch", () =>
+it.effect("attaches a newly-created PR to the session repository resolved by cwd", () =>
   Effect.gen(function* () {
-    const attached: Array<{ readonly threadId: ThreadId; readonly prUrl: string }> = [];
+    const attached: Array<{
+      readonly threadId: ThreadId;
+      readonly repositoryId: MercurianRepositoryId;
+      readonly prUrl: string;
+    }> = [];
     yield* attachCreatedPullRequestToCodingSession(
       {
         getByBranch: () => Effect.succeed(Option.some(sessionRecord)),
@@ -60,9 +65,26 @@ it.effect("attaches a newly-created PR to the session resolved by branch", () =>
       },
       createdResult,
       sessionRecord.branch,
+      "/tmp/member-b",
+      () =>
+        Effect.succeed(
+          Option.some({
+            workspaceMembers: [
+              {
+                repositoryId: MercurianRepositoryId.make("member-b"),
+                worktreePath: "/tmp/member-b",
+              },
+            ],
+          } as never),
+        ),
+      [],
     );
     assert.deepStrictEqual(attached, [
-      { threadId: sessionRecord.threadId, prUrl: "https://example.com/pr/119" },
+      {
+        threadId: sessionRecord.threadId,
+        repositoryId: MercurianRepositoryId.make("member-b"),
+        prUrl: "https://example.com/pr/119",
+      },
     ]);
   }),
 );
@@ -77,6 +99,9 @@ it.effect("leaves an upstream thread with no coding-session row untouched", () =
       },
       createdResult,
       "feature/upstream",
+      "/tmp/upstream",
+      () => Effect.succeed(Option.none()),
+      [],
     );
     assert.strictEqual(attachCalls, 0);
   }),

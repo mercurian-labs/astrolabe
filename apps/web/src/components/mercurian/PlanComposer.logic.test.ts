@@ -10,7 +10,6 @@ import {
 import { detectComposerTrigger, type ComposerTrigger } from "../../composer-logic.ts";
 import {
   detectPlanComposerTrigger,
-  implementFailureNotice,
   planComposerMenuItems,
   planningModelGateNotice,
   resolveComposerControl,
@@ -214,20 +213,6 @@ describe("resolveComposerControl", () => {
     ]) {
       expect(resolveComposerControl(input)).toEqual({ face: "stop", enabled: true });
     }
-  });
-});
-
-describe("implementFailureNotice", () => {
-  it("states that every analysis failure landed nothing", () => {
-    for (const reason of [
-      "no-proposal",
-      "invalid-proposal",
-      "stopped",
-      "provider-error",
-    ] as const) {
-      expect(implementFailureNotice(reason)).toContain("nothing landed");
-    }
-    expect(implementFailureNotice("line-branch-missing")).toContain("branch no longer exists");
   });
 });
 

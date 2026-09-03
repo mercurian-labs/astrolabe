@@ -153,7 +153,18 @@ export const make = Effect.gen(function* () {
         });
       }
 
-      const workspaceCwd = threadContext.value.worktreePath ?? threadContext.value.workspaceRoot;
+      let workspaceCwd: string | undefined =
+        threadContext.value.worktreePath ?? threadContext.value.workspaceRoot;
+      if (input.repositoryId !== undefined) {
+        const thread = yield* projectionSnapshotQuery.getThreadShellById(input.threadId);
+        workspaceCwd =
+          Option.getOrUndefined(thread)?.workspaceMembers?.find(
+            (member) => member.repositoryId === input.repositoryId,
+          )?.worktreePath ??
+          (yield* repositories.getSnapshot.pipe(Effect.orDie)).repositories.find(
+            (repository) => repository.repositoryId === input.repositoryId,
+          )?.path;
+      }
       if (!workspaceCwd) {
         return yield* new CheckpointWorkspacePathMissingError({
           operation,

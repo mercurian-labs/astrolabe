@@ -154,14 +154,16 @@ exist. Neither artifact has a table: complete plan and spec snapshots land as `p
 `spec-revision` commits, and current or historical values are derived from revisions on the selected
 path. Spec provenance distinguishes import, tracker refresh, reconciliation, and direct authorship
 without duplicating the commit's author.
-The implement gate is a read-only planning turn over that text and the project's repository set. Its
-immutable readiness verdict is recorded beside the commit it evaluated, while a pending proposal
-remains transient in memory. A ready answer writes no commit; only a person's confirmation writes
-repository projections as sibling `plan-revision` commits whose repository stamp does not change
-the parent line's derived artifact, and each projected commit is recorded ready in the same
-transaction. Before that gate, the client warns when the selected path's newest spec revision has
-no descendant plan revision in the same ancestry. The warning is advisory and does not alter an
-existing readiness verdict or write history.
+Implementing from a checkpoint opens a local coding-session draft directly. Starting it claims the
+line's worktree slot across every linked repository, records all member paths on the thread, and
+starts the provider in the primary repository with the remaining reachable roots alongside it.
+Every turn end captures a chained snapshot in every member of the slot, and each repository's
+snapshot decides on its own whether that repository is now built; the runtime commits nowhere. The
+session record keeps one row per repository (latest snapshot, where the line's branch stood, whether
+the tree departed, the pull request), and a checkpoint summary keeps the home repository's file list
+beside per-repository groups when the session spans more than one.
+The client still warns when the selected path's newest spec revision has no descendant plan revision
+in the same ancestry. The warning is advisory and never blocks opening the draft or writes history.
 The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
 re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
 planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed

@@ -1,4 +1,9 @@
-import { BranchMovement, OrchestrationCheckpointFile, SnapshotKind } from "@t3tools/contracts";
+import {
+  BranchMovement,
+  OrchestrationCheckpointFile,
+  OrchestrationCheckpointRepository,
+  SnapshotKind,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 const CheckpointFiles = Schema.Array(OrchestrationCheckpointFile);
@@ -11,6 +16,7 @@ export const CheckpointFilesStorage = Schema.Union([
     snapshotKind: Schema.optional(SnapshotKind),
     departedRef: Schema.optional(Schema.String),
     branchMovement: Schema.optional(BranchMovement),
+    repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
   }),
 ]);
 export type CheckpointFilesStorage = typeof CheckpointFilesStorage.Type;
@@ -21,11 +27,13 @@ export const toCheckpointFilesStorage = (
   snapshotKind?: SnapshotKind,
   departedRef?: string,
   branchMovement?: BranchMovement,
+  repositories?: ReadonlyArray<typeof OrchestrationCheckpointRepository.Type>,
 ): CheckpointFilesStorage =>
   partial === undefined &&
   snapshotKind === undefined &&
   departedRef === undefined &&
-  branchMovement === undefined
+  branchMovement === undefined &&
+  repositories === undefined
     ? files
     : {
         files,
@@ -33,6 +41,7 @@ export const toCheckpointFilesStorage = (
         ...(snapshotKind === undefined ? {} : { snapshotKind }),
         ...(departedRef === undefined ? {} : { departedRef }),
         ...(branchMovement === undefined ? {} : { branchMovement }),
+        ...(repositories === undefined ? {} : { repositories }),
       };
 
 export const checkpointFilesFromStorage = (stored: CheckpointFilesStorage) =>
@@ -49,3 +58,5 @@ export const checkpointDepartedRefFromStorage = (stored: CheckpointFilesStorage)
 
 export const checkpointBranchMovementFromStorage = (stored: CheckpointFilesStorage) =>
   "files" in stored ? stored.branchMovement : undefined;
+export const checkpointRepositoriesFromStorage = (stored: CheckpointFilesStorage) =>
+  "files" in stored ? stored.repositories : undefined;

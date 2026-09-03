@@ -5,7 +5,6 @@ import {
   isProviderAvailable,
   MessageId,
   MercurianCommitId,
-  MercurianRepositoryNotFoundError,
   PlanTurnActiveError,
   type MercurianStartCodingSessionInput,
   type MercurianStartCodingSessionResult,
@@ -23,23 +22,20 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
-import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "../../orchestration/Services/ThreadDeletionReactor.ts";
 import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
+import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { TerminalManager } from "../../terminal/Manager.ts";
-import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryScript } from "../repositories/schema.ts";
-import { buildLineBranchName } from "./branch.ts";
 import { CommitId } from "../commitTree/schema.ts";
-import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
-import { slotMemberWorktreePath, SlotService } from "../worktreeSlots/SlotService.ts";
+import { SlotService, SlotServiceError } from "../worktreeSlots/SlotService.ts";
 import type { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 
 export class CodingSessionService extends Context.Service<
@@ -65,9 +61,6 @@ export function codingSessionProviderRefusal(
   }
   return provider.models.some((candidate) => candidate.slug === model) ? null : "model-unavailable";
 }
-
-export const codingSessionBranchCasDeleteArgs = (branch: string, capturedOid: string) =>
-  ["update-ref", "-d", `refs/heads/${branch}`, capturedOid] as const;
 
 export function withCodingSessionBirthCompensation<A, E, R, E2, R2>(
   birth: Effect.Effect<A, E, R>,
@@ -105,15 +98,13 @@ export const make = Effect.gen(function* () {
   const planning = yield* PlanningStore.PlanningStore;
   const repositories = yield* RepositoryStore;
   const providers = yield* ProviderRegistry;
+  const providerService = yield* ProviderService;
   const projections = yield* ProjectionSnapshotQuery;
   const orchestration = yield* OrchestrationEngineService;
-  const git = yield* GitWorkflowService;
-  const gitDriver = yield* GitVcsDriver;
   const vcsStatus = yield* VcsStatusBroadcaster;
   const terminals = yield* TerminalManager;
   const deletionReactor = yield* ThreadDeletionReactor;
   const planTurns = yield* PlanTurnRegistry;
-  const lineBranches = yield* LineBranchStore;
   const slotService = yield* SlotService;
   const path = yield* Path.Path;
 
@@ -148,12 +139,13 @@ export const make = Effect.gen(function* () {
 
   const launchSetupScript = Effect.fn("CodingSessionService.launchSetupScript")(function* (
     threadId: ThreadId,
+    repositoryId: string,
     repositoryPath: string,
     worktreePath: string,
     script: RepositoryScript,
   ) {
     const requestedAt = DateTime.formatIso(yield* DateTime.now);
-    const terminalId = `setup-${script.scriptId}`;
+    const terminalId = `setup-${repositoryId}-${script.scriptId}`;
     const payload = {
       scriptId: script.scriptId,
       scriptName: script.name,
@@ -239,36 +231,22 @@ export const make = Effect.gen(function* () {
         return yield* new PlanTurnActiveError({ planId: input.planId });
       }
       const detail = yield* planning.getPlanSnapshot({ planId: input.planId });
-      const ready = detail.readyCommits.find(
-        (candidate) => String(candidate.commitId) === String(input.parentCommitId),
-      );
-      if (ready === undefined) return yield* blocked("not-ready");
-      if (ready.repositoryId !== input.repositoryId) {
-        return yield* blocked("repository-mismatch");
-      }
-
       const repositorySnapshot = yield* repositories.getSnapshot;
-      const repository = repositorySnapshot.repositories.find(
-        (candidate) => candidate.repositoryId === input.repositoryId,
-      );
-      const linked = repositorySnapshot.projectRepositories.some(
-        (link) =>
-          link.projectId === detail.plan.projectId && link.repositoryId === input.repositoryId,
-      );
-      if (repository === undefined) {
-        return yield* new MercurianRepositoryNotFoundError({ repositoryId: input.repositoryId });
+      const linkedRepositories = repositorySnapshot.projectRepositories
+        .filter((link) => link.projectId === detail.plan.projectId)
+        .flatMap((link) => {
+          const repository = repositorySnapshot.repositories.find(
+            (candidate) => candidate.repositoryId === link.repositoryId,
+          );
+          return repository === undefined ? [] : [repository];
+        });
+      const primaryRepository = linkedRepositories[0];
+      if (
+        primaryRepository === undefined ||
+        linkedRepositories.some((repository) => !repository.hasGit)
+      ) {
+        return yield* blocked("repository-not-git");
       }
-      if (!linked) return yield* blocked("repository-not-in-project");
-      if (!repository.hasGit) return yield* blocked("repository-not-git");
-
-      const localBase = yield* gitDriver.execute({
-        operation: "coding-session-base-ref",
-        cwd: repository.path,
-        args: ["rev-parse", "--verify", `refs/heads/${input.baseRef}^{commit}`],
-        allowNonZeroExit: true,
-      });
-      if (localBase.exitCode !== 0) return yield* blocked("base-ref-missing");
-      const localBaseOid = localBase.stdout.trim();
 
       const snapshots = yield* providers.getProviders;
       const provider = snapshots.find(
@@ -276,6 +254,11 @@ export const make = Effect.gen(function* () {
       );
       const providerRefusal = codingSessionProviderRefusal(provider, input.modelSelection.model);
       if (providerRefusal !== null) return yield* blocked(providerRefusal);
+      const capabilities = yield* providerService.getCapabilities(input.modelSelection.instanceId);
+      const unreachableRepositories =
+        capabilities.groundingRoots === "multi"
+          ? []
+          : linkedRepositories.slice(1).map((repository) => repository.name);
 
       const planText = yield* planning.getPlanTextAt({
         planId: input.planId,
@@ -284,46 +267,10 @@ export const make = Effect.gen(function* () {
       const createdAt = DateTime.formatIso(yield* DateTime.now);
       const startedAt = yield* DateTime.now;
       const lineRootCommitId = lineRootCommitIdFor(detail, input.parentCommitId);
-      let desiredBaseOid = localBaseOid;
-      if (
-        input.startFromOrigin &&
-        (yield* git.remoteExists({ cwd: repository.path, remoteName: "origin" }))
-      ) {
-        yield* git.fetchRemote({ cwd: repository.path, remoteName: "origin" });
-        desiredBaseOid = (yield* git.resolveRemoteTrackingCommit({
-          cwd: repository.path,
-          refName: input.baseRef,
-          fallbackRemoteName: "origin",
-        })).commitSha;
-      }
-      const lineBranchKey = { lineRootCommitId, repositoryId: input.repositoryId };
-      let lineBranch = yield* lineBranches.get(lineBranchKey);
-      if (Option.isNone(lineBranch)) {
-        const branch = buildLineBranchName(detail.plan.title, String(lineRootCommitId));
-        yield* gitDriver.execute({
-          operation: "coding-session-create-line-branch",
-          cwd: repository.path,
-          args: ["branch", branch, desiredBaseOid],
-        });
-        yield* lineBranches.create({
-          ...lineBranchKey,
-          branch,
-          baseOid: desiredBaseOid,
-          built: false,
-          repointHold: null,
-          createdAt: startedAt,
-        });
-        lineBranch = yield* lineBranches.get(lineBranchKey);
-      }
-      if (Option.isNone(lineBranch)) {
-        return yield* Effect.die(new Error("Failed to create line branch"));
-      }
-      const branch = lineBranch.value.branch;
       const threadId = ThreadId.make(yield* uuid);
       const messageId = MessageId.make(yield* uuid);
       const holder = { kind: "turn" as const, threadId };
       let threadCreated = false;
-      let worktreePath: string | undefined;
       let slotId: WorktreeSlotId | undefined;
 
       const cleanup = Effect.gen(function* () {
@@ -343,7 +290,36 @@ export const make = Effect.gen(function* () {
       });
 
       const birth = Effect.gen(function* () {
-        const existingProject = yield* projections.getActiveProjectByWorkspaceRoot(repository.path);
+        const slot = yield* slotService.claim({
+          projectId: detail.plan.projectId,
+          lineRootCommitId,
+          holder,
+        });
+        slotId = slot.slotId;
+        const primaryMember = slot.members.find(
+          (member) => member.repositoryId === primaryRepository.repositoryId,
+        );
+        // The home member leads every list the thread hands out, so the header
+        // and the provider stand in the same repository the record names.
+        const workspaceMembers = [
+          ...(primaryMember === undefined ? [] : [primaryMember]),
+          ...slot.members.filter((member) => member !== primaryMember),
+        ].map((member) => ({
+          repositoryId: member.repositoryId,
+          worktreePath: path.join(slot.path, member.relativePath),
+        }));
+        if (primaryMember === undefined || primaryMember.currentBranch === null) {
+          return yield* new SlotServiceError({
+            operation: "claim:lineBranch",
+            cause: new Error(`Project slot ${slot.slotId} has no primary line branch`),
+          });
+        }
+        const branch = primaryMember.currentBranch;
+        const primaryWorktreePath = path.join(slot.path, primaryMember.relativePath);
+
+        const existingProject = yield* projections.getActiveProjectByWorkspaceRoot(
+          primaryRepository.path,
+        );
         const projectId = Option.isSome(existingProject)
           ? existingProject.value.id
           : ProjectId.make(yield* uuid);
@@ -352,8 +328,8 @@ export const make = Effect.gen(function* () {
             type: "project.create",
             commandId: yield* commandId("project-create"),
             projectId,
-            title: repository.name,
-            workspaceRoot: repository.path,
+            title: primaryRepository.name,
+            workspaceRoot: primaryRepository.path,
             defaultModelSelection: input.modelSelection,
             createdAt,
           });
@@ -374,40 +350,32 @@ export const make = Effect.gen(function* () {
         });
         threadCreated = true;
 
-        const slot = yield* slotService.claim({
-          projectId: detail.plan.projectId,
-          lineRootCommitId,
-          holder,
-        });
-        slotId = slot.slotId;
-        const claimedMember = slot.members.find(
-          (member) => member.repositoryId === input.repositoryId,
-        );
-        worktreePath = slotMemberWorktreePath(path, slot, input.repositoryId) ?? undefined;
-        if (
-          worktreePath === undefined ||
-          claimedMember?.currentBranch === null ||
-          claimedMember === undefined
-        ) {
-          return yield* Effect.die(
-            new Error(`Project slot ${slot.slotId} is missing repository ${input.repositoryId}`),
-          );
-        }
-        const claimedBranch = claimedMember.currentBranch;
         yield* orchestration.dispatch({
           type: "thread.meta.update",
           commandId: yield* commandId("thread-meta"),
           threadId,
-          branch: claimedBranch,
-          worktreePath,
+          branch,
+          worktreePath: primaryWorktreePath,
+          workspaceMembers,
         });
-        yield* vcsStatus
-          .refreshStatus(worktreePath)
-          .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach);
-
-        for (const script of repository.scripts) {
-          if (script.isSetup) {
-            yield* launchSetupScript(threadId, repository.path, worktreePath, script);
+        for (const member of workspaceMembers) {
+          yield* vcsStatus
+            .refreshStatus(member.worktreePath)
+            .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach);
+          const repository = linkedRepositories.find(
+            (candidate) => candidate.repositoryId === member.repositoryId,
+          );
+          if (repository === undefined) continue;
+          for (const script of repository.scripts) {
+            if (script.isSetup) {
+              yield* launchSetupScript(
+                threadId,
+                String(repository.repositoryId),
+                repository.path,
+                member.worktreePath,
+                script,
+              );
+            }
           }
         }
 
@@ -425,12 +393,12 @@ export const make = Effect.gen(function* () {
         const leaf = yield* planning.appendCodingSession({
           planId: input.planId,
           parentCommitId: CommitId.make(input.parentCommitId),
-          repositoryId: input.repositoryId,
-          repositoryName: repository.name,
           threadId,
-          branch: claimedBranch,
-          worktreePath,
-          baseRef: input.baseRef,
+          branch,
+          worktreePath: primaryWorktreePath,
+          homeRepositoryId: primaryRepository.repositoryId,
+          repositoryIds: linkedRepositories.map((repository) => repository.repositoryId),
+          unreachableRepositories,
           startedAt,
         });
         return { commitId: MercurianCommitId.make(leaf.commitId), threadId };

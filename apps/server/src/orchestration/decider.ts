@@ -377,6 +377,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           interactionMode: command.interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
+          ...(command.workspaceMembers === undefined
+            ? {}
+            : { workspaceMembers: command.workspaceMembers }),
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -847,6 +850,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           ...(branch !== undefined ? { branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
+          ...(command.workspaceMembers !== undefined
+            ? { workspaceMembers: command.workspaceMembers }
+            : {}),
           ...(command.linkedPullRequest !== undefined
             ? { linkedPullRequest: command.linkedPullRequest }
             : {}),
@@ -1320,6 +1326,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           checkpointRef: command.checkpointRef,
           status: command.status,
           files: command.files,
+          ...(command.repositories === undefined ? {} : { repositories: command.repositories }),
           assistantMessageId: command.assistantMessageId ?? null,
           completedAt: command.completedAt,
           ...(command.partial === undefined ? {} : { partial: command.partial }),

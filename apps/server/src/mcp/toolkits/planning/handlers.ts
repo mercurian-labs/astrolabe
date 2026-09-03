@@ -32,18 +32,6 @@ const handlers = {
       });
       return { saved: true as const };
     }),
-  save_implement_proposal: (input) =>
-    Effect.gen(function* () {
-      const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* PlanningAssistant;
-      yield* assistant.saveImplementProposalFromThread({
-        threadId: invocation.threadId,
-        repositories: input.repositories,
-        ...(input.rationale === undefined ? {} : { rationale: input.rationale }),
-        ...(input.splits === undefined ? {} : { splits: input.splits }),
-      });
-      return { saved: true as const };
-    }),
   propose_memory_amendment: (input) =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;

@@ -1,12 +1,9 @@
 import {
   PlanCodingSessionRecord,
   PlanDetail,
-  PlanImplementProposal,
-  PlanImplementVerdict,
   PlanQuestion,
   PlanShell,
   PlanSpecAt,
-  PlanSplitProposal,
   PlanTimelineItem,
   PlanTreeRow,
   SpecDocument,
@@ -17,13 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { condensePlanGraph } from "../../components/mercurian/PlanCheckpoints.logic";
 import { buildPlanGraph } from "../../components/mercurian/PlanGraph.logic";
 import { planDetail, planShell, planTreeRow } from "./plan";
-import {
-  planCodingSessionRecord,
-  planImplementProposal,
-  planImplementVerdict,
-  planQuestion,
-  planSplitProposal,
-} from "./sessionsAndSplits";
+import { planCodingSessionRecord, planQuestion } from "./sessionsAndSplits";
 import { planSpecAt, specDocument } from "./spec";
 import { at, codingSessionLeaf, message, planRevision, specRevision, timeline } from "./timeline";
 
@@ -40,9 +31,6 @@ describe("planning fixture builders", () => {
       [SpecDocument, specDocument("spec")],
       [PlanSpecAt, planSpecAt("spec")],
       [PlanCodingSessionRecord, planCodingSessionRecord("session")],
-      [PlanSplitProposal, planSplitProposal("server")],
-      [PlanImplementVerdict, planImplementVerdict("server")],
-      [PlanImplementProposal, planImplementProposal("proposal")],
       [PlanQuestion, planQuestion("question")],
     ] as const;
 

@@ -357,7 +357,7 @@ export function useCheckpointDiff(
     target.fromTurnCount !== null &&
     target.toTurnCount !== null;
   const fullThreadTarget =
-    enabled && target.fromTurnCount === 0
+    enabled && target.fromTurnCount === 0 && target.repositoryId == null
       ? {
           environmentId: target.environmentId!,
           input: {
@@ -368,7 +368,7 @@ export function useCheckpointDiff(
         }
       : null;
   const turnTarget =
-    enabled && target.fromTurnCount !== 0
+    enabled && (target.fromTurnCount !== 0 || target.repositoryId != null)
       ? {
           environmentId: target.environmentId!,
           input: {
@@ -376,6 +376,7 @@ export function useCheckpointDiff(
             fromTurnCount: target.fromTurnCount!,
             toTurnCount: target.toTurnCount!,
             ignoreWhitespace: target.ignoreWhitespace,
+            ...(target.repositoryId == null ? {} : { repositoryId: target.repositoryId }),
           },
         }
       : null;

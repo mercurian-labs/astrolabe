@@ -37,13 +37,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 
 import {
   ApprovalRequestId,
-  ImplementBlockedError,
   MercurianCommitId,
   type MercurianProjectId,
   type MemoryAmendmentProposal,
@@ -51,17 +49,12 @@ import {
   type PlanGroundingItem,
   type PlanGroundingScope,
   type PlanId,
-  type PlanImplementProposal,
-  type PlanImplementReady,
-  type PlanImplementVerdict,
-  type PlanInFlightImplement,
   type PlanInFlightTurn,
   type PlanQuestion,
   type PlanReconstructionMeasure,
   type PlanStreamItem,
   planningModelSelectionsEqual,
   type PlanningModelSelection,
-  PlanTurnActiveError,
   PlanTurnId,
   type PlanTurnRefusalReason,
   type ProviderInstanceId,
@@ -76,11 +69,9 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
 
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
-import type { ProviderServiceError } from "../../provider/Errors.ts";
 import type {
   ReadPlanTool,
   ReadSpecTool,
-  SaveImplementProposalTool,
   ProposeMemoryAmendmentTool,
   SavePlanRevisionTool,
   SaveSpecRevisionTool,
@@ -92,22 +83,17 @@ import {
   PlanningStore,
   PlanRevisionCommitPayload,
   SpecRevisionCommitPayload,
-  type StoredPlanImplementVerdict,
   type PlanningStoreError,
 } from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as MemoryIndex from "../memory/MemoryIndex.ts";
-import {
-  WorkspaceSettingsStore,
-  type WorkspaceSettingsStoreError,
-} from "../workspace/WorkspaceSettingsStore.ts";
+import { WorkspaceSettingsStore } from "../workspace/WorkspaceSettingsStore.ts";
 import { foldGroundingEvent } from "./GroundingFold.ts";
 import {
   composeFirstTurnInput,
   appendMemoryMentionStanza,
-  implementTurnInput,
   measureTranscript,
   memoryMentionResolutionStanza,
   planningSystemAppendix,
@@ -133,27 +119,6 @@ export interface StartTurnInput {
   readonly ranUnder?: PlanningModelSelection;
 }
 
-export interface TryImplementInput {
-  readonly planId: PlanId;
-  readonly parentCommitId?: CommitId;
-}
-
-export type TryImplementError =
-  | PlanningStoreError
-  | RepositoryStore.RepositoryStoreError
-  | WorkspaceSettingsStoreError
-  | CommitStore.CommitStoreError
-  | ProviderServiceError
-  | Schema.SchemaError
-  | PlatformError.PlatformError
-  | ImplementBlockedError;
-
-export interface PendingImplementProposal {
-  readonly repositories: ReadonlyArray<string>;
-  readonly rationale?: string;
-  readonly splits?: ReadonlyArray<{ readonly repository: string; readonly text: string }>;
-}
-
 export interface AnswerQuestionInput {
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
@@ -177,8 +142,6 @@ interface PlanSession {
 
 /** The conversational state of one running turn. Mutated in place; single process. */
 interface TurnRuntime {
-  /** Keeps tool permissions explicit as additional one-shot turn shapes are introduced. */
-  readonly flavor: "reply" | "implement";
   readonly planId: PlanId;
   readonly turnId: PlanTurnId;
   /** Mutable: a continuation whose session turned out dead moves threads. */
@@ -199,10 +162,7 @@ interface TurnRuntime {
   answers: Record<string, unknown> | undefined;
   /** Guards double settles: a stop racing the provider's own completion. */
   settling: boolean;
-  /** Distinguishes a requested implement stop from an abnormal abort. */
   stopRequested: boolean;
-  /** The implement MCP door's last complete proposal. */
-  pendingProposal?: PendingImplementProposal;
   pendingMemoryAmendment?: MemoryIndex.PendingMemoryAmendment;
   /** Project identity used to resolve proposal repository names at settle. */
   readonly projectId?: MercurianProjectId;
@@ -218,20 +178,17 @@ const MAX_GROUNDING_ITEMS = 200;
 type PlanningMcpToolName =
   | typeof SavePlanRevisionTool.name
   | typeof SaveSpecRevisionTool.name
-  | typeof SaveImplementProposalTool.name
   | typeof ProposeMemoryAmendmentTool.name
   | typeof ReadPlanTool.name
   | typeof ReadSpecTool.name;
 const APPROVED_PLANNING_MCP_TOOLS = [
   "save_plan_revision",
   "save_spec_revision",
-  "save_implement_proposal",
   "propose_memory_amendment",
   "read_plan",
   "read_spec",
 ] as const satisfies ReadonlyArray<PlanningMcpToolName>;
 const PLANNING_MCP_TOOL_PREFIXES = ["mcp__t3-code__", "t3-code_"] as const;
-const decodePlanRevisionPayload = Schema.decodeUnknownEffect(PlanRevisionCommitPayload);
 
 const normalizePlanningMcpToolName = (toolName: string): string | undefined => {
   const prefix = PLANNING_MCP_TOOL_PREFIXES.find((candidate) => toolName.startsWith(candidate));
@@ -267,8 +224,6 @@ export class PlanningAssistant extends Context.Service<
       | RepositoryStore.RepositoryStoreError
       | Schema.SchemaError
     >;
-    /** Analyze implementation coverage and publish a transient proposal. */
-    readonly tryImplement: (input: TryImplementInput) => Effect.Effect<void, TryImplementError>;
     /**
      * Stop one streaming reply; the partial lands as a commit marked
      * interrupted. Idempotent when that turn is not streaming, and turns on
@@ -289,25 +244,11 @@ export class PlanningAssistant extends Context.Service<
     readonly frames: (planId: PlanId) => Stream.Stream<PlanStreamItem>;
     /** The partial turns for snapshot composition — join-mid-turn's source, one per streaming branch. */
     readonly inFlightTurns: (planId: PlanId) => Effect.Effect<ReadonlyArray<PlanInFlightTurn>>;
-    readonly inFlightImplement: (
-      planId: PlanId,
-    ) => Effect.Effect<PlanInFlightImplement | undefined>;
-    readonly implementProposal: (
-      planId: PlanId,
-    ) => Effect.Effect<PlanImplementProposal | undefined>;
-    readonly cancelImplementProposal: (planId: PlanId) => Effect.Effect<void>;
     readonly memoryAmendmentProposal: (
       planId: PlanId,
     ) => Effect.Effect<MemoryAmendmentProposal | undefined>;
     readonly cancelMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
     readonly clearMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
-    /** Clear a landed proposal after its split commits have become the stream signal. */
-    readonly clearImplementProposal: (planId: PlanId) => Effect.Effect<void>;
-    /** Publish a ready verdict that the store has already made durable. */
-    readonly publishImplementReady: (input: {
-      readonly planId: PlanId;
-      readonly ready: PlanImplementReady;
-    }) => Effect.Effect<void>;
     /** The tree's two status inputs, for every plan with a live turn. */
     readonly status: Effect.Effect<ReadonlyMap<PlanId, PlanTurnStatus>>;
     /** Fires when any turn starts, pauses on a question, or settles. */
@@ -334,12 +275,6 @@ export class PlanningAssistant extends Context.Service<
     readonly saveSpecRevisionFromThread: (input: {
       readonly threadId: ThreadId;
       readonly document: SpecDocument;
-    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
-    readonly saveImplementProposalFromThread: (input: {
-      readonly threadId: ThreadId;
-      readonly repositories: ReadonlyArray<string>;
-      readonly rationale?: string;
-      readonly splits?: ReadonlyArray<{ readonly repository: string; readonly text: string }>;
     }) => Effect.Effect<void, PlanningTurnNotFoundError>;
     readonly proposeMemoryAmendmentFromThread: (input: {
       readonly threadId: ThreadId;
@@ -502,7 +437,6 @@ export const make = Effect.gen(function* () {
   // and sessions by their thread, one live session per branch being worked.
   const turns = new Map<PlanTurnId, TurnRuntime>();
   const sessions = new Map<ThreadId, PlanSession>();
-  const proposals = new Map<PlanId, PlanImplementProposal>();
   const memoryAmendmentProposals = new Map<PlanId, MemoryAmendmentProposal>();
 
   const turnsOfPlan = (planId: PlanId): Array<TurnRuntime> => {
@@ -536,21 +470,6 @@ export const make = Effect.gen(function* () {
   const mintThreadId = crypto.randomUUIDv4.pipe(
     Effect.map((uuid) => ThreadId.make(`mercurian-plan-${uuid}`)),
   );
-
-  const publishShortCircuit = Effect.fn("PlanningAssistant.publishShortCircuit")(function* (input: {
-    readonly planId: PlanId;
-    readonly parentCommitId: CommitId;
-    readonly verdict: PlanImplementVerdict;
-  }) {
-    const proposal = {
-      turnId: yield* mintTurnId,
-      parentCommitId: MercurianCommitId.make(input.parentCommitId),
-      verdict: input.verdict,
-    } satisfies PlanImplementProposal;
-    proposals.set(input.planId, proposal);
-    yield* publishFrame(input.planId, { kind: "implement-analyzed", proposal });
-    yield* announceChange;
-  });
 
   /**
    * Land the turn's one message commit and release everything the turn
@@ -618,7 +537,7 @@ export const make = Effect.gen(function* () {
   const settleMemoryAmendment = Effect.fn("PlanningAssistant.settleMemoryAmendment")(function* (
     turn: TurnRuntime,
   ) {
-    if (turn.flavor !== "reply" || turn.pendingMemoryAmendment === undefined) return;
+    if (turn.pendingMemoryAmendment === undefined) return;
     const amendment = turn.pendingMemoryAmendment;
     delete turn.pendingMemoryAmendment;
     if (turn.projectId === undefined) return;
@@ -645,185 +564,6 @@ export const make = Effect.gen(function* () {
         proposal: prepared.success,
       });
     }
-    yield* announceChange;
-  });
-
-  /**
-   * Validate and publish an implement result. A node exists only when its
-   * content differs from its parent, so a ready answer records the side-fact
-   * and never copies the plan into a new revision.
-   */
-  const settleImplement = Effect.fn("PlanningAssistant.settleImplement")(function* (
-    turn: TurnRuntime,
-    outcome: "completed" | "stopped" | "provider-error",
-  ) {
-    if (turn.flavor !== "implement" || turn.settling) return;
-    turn.settling = true;
-    const planId = turn.planId;
-
-    let failureReason:
-      | "no-proposal"
-      | "invalid-proposal"
-      | "stopped"
-      | "provider-error"
-      | undefined;
-    let proposal: PlanImplementProposal | undefined;
-    if (outcome === "stopped") {
-      failureReason = "stopped";
-    } else if (outcome === "provider-error" || turn.projectId === undefined) {
-      failureReason = "provider-error";
-    } else if (turn.pendingProposal === undefined) {
-      failureReason = "no-proposal";
-    } else {
-      const repositorySnapshot = yield* repositoryStore.getSnapshot.pipe(Effect.result);
-      if (Result.isFailure(repositorySnapshot)) {
-        failureReason = "provider-error";
-      } else {
-        const linkedIds = new Set(
-          repositorySnapshot.success.projectRepositories
-            .filter((link) => link.projectId === turn.projectId)
-            .map((link) => link.repositoryId),
-        );
-        const linkedRepositories = repositorySnapshot.success.repositories.filter((repository) =>
-          linkedIds.has(repository.repositoryId),
-        );
-        const coverageNames = [...turn.pendingProposal.repositories];
-        const uniqueCoverage = new Set(coverageNames);
-        const resolvedCoverage = coverageNames.map((name) =>
-          linkedRepositories.filter((repository) => repository.name === name),
-        );
-        if (
-          coverageNames.length === 0 ||
-          uniqueCoverage.size !== coverageNames.length ||
-          resolvedCoverage.some((matches) => matches.length !== 1)
-        ) {
-          failureReason = "invalid-proposal";
-        } else if (coverageNames.length === 1) {
-          if ((turn.pendingProposal.splits?.length ?? 0) !== 0) {
-            failureReason = "invalid-proposal";
-          } else {
-            const repository = resolvedCoverage[0]![0]!;
-            proposal = {
-              turnId: turn.turnId,
-              parentCommitId: MercurianCommitId.make(turn.parentCommitId),
-              verdict: {
-                kind: "atomic",
-                repositoryId: repository.repositoryId,
-                repositoryName: repository.name,
-              },
-            };
-          }
-        } else {
-          const splits = turn.pendingProposal.splits;
-          const splitNames = splits?.map((split) => split.repository) ?? [];
-          const splitNameSet = new Set(splitNames);
-          if (
-            splits === undefined ||
-            splits.length !== coverageNames.length ||
-            splitNameSet.size !== splits.length ||
-            coverageNames.some((name) => !splitNameSet.has(name))
-          ) {
-            failureReason = "invalid-proposal";
-          } else {
-            const projected = splits.map((split) => {
-              const repository = linkedRepositories.find(
-                (candidate) => candidate.name === split.repository,
-              )!;
-              return {
-                repositoryId: repository.repositoryId,
-                repositoryName: repository.name,
-                text: split.text,
-              };
-            });
-            const first = projected[0]!;
-            proposal = {
-              turnId: turn.turnId,
-              parentCommitId: MercurianCommitId.make(turn.parentCommitId),
-              verdict: {
-                kind: "needs-split",
-                ...(turn.pendingProposal.rationale === undefined
-                  ? {}
-                  : { rationale: turn.pendingProposal.rationale }),
-                splits: [first, ...projected.slice(1)],
-              },
-            };
-          }
-        }
-      }
-    }
-
-    let ready: PlanImplementReady | undefined;
-    if (proposal !== undefined && proposal.verdict.kind !== "already-covered") {
-      const verdict: StoredPlanImplementVerdict =
-        proposal.verdict.kind === "atomic"
-          ? {
-              kind: "ready",
-              payload: {
-                repositoryId: proposal.verdict.repositoryId,
-                repositoryName: proposal.verdict.repositoryName,
-              },
-            }
-          : {
-              kind: "needs-split",
-              payload: {
-                repositories: [
-                  {
-                    repositoryId: proposal.verdict.splits[0].repositoryId,
-                    repositoryName: proposal.verdict.splits[0].repositoryName,
-                  },
-                  ...proposal.verdict.splits.slice(1).map((split) => ({
-                    repositoryId: split.repositoryId,
-                    repositoryName: split.repositoryName,
-                  })),
-                ],
-                ...(proposal.verdict.rationale === undefined
-                  ? {}
-                  : { rationale: proposal.verdict.rationale }),
-              },
-            };
-      const recordedAt = yield* DateTime.now;
-      const recorded = yield* planningStore
-        .recordImplementVerdict({
-          planId,
-          commitId: turn.parentCommitId,
-          verdict,
-          recordedAt,
-        })
-        .pipe(Effect.result);
-      if (Result.isFailure(recorded)) {
-        yield* Effect.logError("implement verdict failed to record", {
-          planId,
-          cause: recorded.failure,
-        });
-        proposal = undefined;
-        failureReason = "provider-error";
-      } else if (verdict.kind === "ready") {
-        ready = {
-          commitId: MercurianCommitId.make(turn.parentCommitId),
-          ...verdict.payload,
-        };
-      }
-    }
-
-    turns.delete(turn.turnId);
-    yield* registry.close(planId, turn.turnId);
-    if (proposal === undefined) {
-      proposals.delete(planId);
-      yield* publishFrame(planId, {
-        kind: "implement-failed",
-        turnId: turn.turnId,
-        reason: failureReason ?? "provider-error",
-      });
-    } else {
-      proposals.set(planId, proposal);
-      yield* publishFrame(planId, { kind: "implement-analyzed", proposal });
-      if (ready !== undefined) {
-        yield* publishFrame(planId, { kind: "implement-ready", ready });
-      }
-    }
-    yield* providerService
-      .stopSession({ threadId: turn.threadId })
-      .pipe(Effect.catch(() => Effect.void));
     yield* announceChange;
   });
 
@@ -905,7 +645,6 @@ export const make = Effect.gen(function* () {
 
     switch (event.type) {
       case "content.delta": {
-        if (turn.flavor === "implement") return;
         if (event.payload.streamKind !== "assistant_text") return;
         // The offset is what lets a joiner fold this idempotently against
         // its snapshot's partial text.
@@ -920,18 +659,6 @@ export const make = Effect.gen(function* () {
         return;
       }
       case "user-input.requested": {
-        if (turn.flavor === "implement") {
-          if (event.requestId !== undefined) {
-            yield* providerService
-              .respondToUserInput({
-                threadId: turn.threadId,
-                requestId: ApprovalRequestId.make(String(event.requestId)),
-                answers: {},
-              })
-              .pipe(Effect.catch(() => Effect.void));
-          }
-          return;
-        }
         const questions = event.payload.questions.map(toPlanQuestion);
         turn.pendingQuestions = questions;
         turn.pendingRequestId =
@@ -967,34 +694,19 @@ export const make = Effect.gen(function* () {
         return;
       }
       case "turn.completed": {
-        if (turn.flavor === "implement") {
-          yield* settleImplement(
-            turn,
-            event.payload.state === "completed" ? "completed" : "provider-error",
-          );
-        } else {
-          if (event.payload.state === "completed") yield* settleMemoryAmendment(turn);
-          yield* settleTurn(turn, { interrupted: event.payload.state !== "completed" });
-        }
+        if (event.payload.state === "completed") yield* settleMemoryAmendment(turn);
+        yield* settleTurn(turn, { interrupted: event.payload.state !== "completed" });
         return;
       }
       case "turn.aborted": {
-        if (turn.flavor === "implement") {
-          yield* settleImplement(turn, turn.stopRequested ? "stopped" : "provider-error");
-        } else {
-          yield* settleTurn(turn, { interrupted: true });
-        }
+        yield* settleTurn(turn, { interrupted: true });
         return;
       }
       case "session.exited": {
         // The session died under a live turn: the partial reply is what
         // there was, and the record says it was cut short.
         sessions.delete(turn.threadId);
-        if (turn.flavor === "implement") {
-          yield* settleImplement(turn, turn.stopRequested ? "stopped" : "provider-error");
-        } else {
-          yield* settleTurn(turn, { interrupted: true });
-        }
+        yield* settleTurn(turn, { interrupted: true });
         return;
       }
       default: {
@@ -1227,7 +939,6 @@ export const make = Effect.gen(function* () {
 
   const startTurn: PlanningAssistant["Service"]["startTurn"] = (input) =>
     Effect.gen(function* () {
-      proposals.delete(input.planId);
       const effectiveSelection =
         input.ranUnder ?? (yield* workspaceSettings.getSnapshot).planningModel;
       const providers = yield* providerRegistry.getProviders;
@@ -1289,7 +1000,6 @@ export const make = Effect.gen(function* () {
       // turn — a tool call racing the first delta cannot slip past.
       const claim = yield* registry
         .open({
-          flavor: "reply",
           planId: input.planId,
           turnId,
           threadId,
@@ -1302,7 +1012,6 @@ export const make = Effect.gen(function* () {
       }
 
       const turn: TurnRuntime = {
-        flavor: "reply",
         planId: input.planId,
         turnId,
         threadId,
@@ -1416,201 +1125,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const tryImplement: PlanningAssistant["Service"]["tryImplement"] = (input) =>
-    Effect.gen(function* () {
-      proposals.delete(input.planId);
-      const context = yield* planningStore.getImplementContext({
-        planId: input.planId,
-        ...(input.parentCommitId === undefined ? {} : { atCommitId: input.parentCommitId }),
-      });
-      const verdicts = yield* planningStore.listImplementVerdicts({ planId: input.planId });
-      const recorded = verdicts.find((verdict) => verdict.commitId === context.atCommitId);
-      if (recorded?.verdict.kind === "ready") {
-        if (yield* registry.activeChainMember(input.planId, context.atCommitId)) {
-          return yield* new PlanTurnActiveError({ planId: input.planId });
-        }
-        yield* publishShortCircuit({
-          planId: input.planId,
-          parentCommitId: context.atCommitId,
-          verdict: {
-            kind: "atomic",
-            ...recorded.verdict.payload,
-          },
-        });
-        return;
-      }
-      if (recorded?.verdict.kind === "needs-split") {
-        const children = yield* commits.children({
-          commitId: context.atCommitId,
-          visibility: "all",
-        });
-        const coveredRepositoryIds = new Set<string>();
-        for (const child of children) {
-          if (child.kind !== "plan-revision") continue;
-          const payload = yield* decodePlanRevisionPayload(child.payload);
-          if (payload.split !== undefined) {
-            coveredRepositoryIds.add(payload.split.repositoryId);
-          }
-        }
-        if (
-          recorded.verdict.payload.repositories.every((repository) =>
-            coveredRepositoryIds.has(repository.repositoryId),
-          )
-        ) {
-          if (yield* registry.activeChainMember(input.planId, context.atCommitId)) {
-            return yield* new PlanTurnActiveError({ planId: input.planId });
-          }
-          yield* publishShortCircuit({
-            planId: input.planId,
-            parentCommitId: context.atCommitId,
-            verdict: {
-              kind: "already-covered",
-              repositories: recorded.verdict.payload.repositories,
-            },
-          });
-          return;
-        }
-      }
-
-      if (context.planText.trim().length === 0) {
-        return yield* new ImplementBlockedError({ reason: "plan-empty" });
-      }
-
-      const snapshot = yield* planningStore.getPlanSnapshot({ planId: input.planId });
-      const standing = yield* planningStore.standingModelChoice({
-        planId: input.planId,
-        commitId: context.atCommitId,
-      });
-      const effectiveSelection = standing ?? (yield* workspaceSettings.getSnapshot).planningModel;
-      const providers = yield* providerRegistry.getProviders;
-      const resolution = resolvePlanningModel(effectiveSelection, providers);
-      if (resolution._tag === "unset") {
-        return yield* new ImplementBlockedError({ reason: "model-unset" });
-      }
-      if (resolution._tag === "unresolved") {
-        return yield* new ImplementBlockedError({ reason: resolution.reason });
-      }
-      const resolvedSelection = {
-        provider: resolution.provider,
-        model: resolution.model,
-        ...(effectiveSelection?.options === undefined
-          ? {}
-          : { options: effectiveSelection.options }),
-      } satisfies PlanningModelSelection;
-
-      // The standing proposal is singular per plan, so its analysis is too:
-      // a second implement anywhere in the plan waits for the first, while
-      // replies on other branches run beside it under the chain rule.
-      if (turnsOfPlan(input.planId).some((live) => live.flavor === "implement")) {
-        return yield* new PlanTurnActiveError({ planId: input.planId });
-      }
-
-      const materials = yield* buildRebuildMaterials({
-        planId: input.planId,
-        parentCommitId: context.atCommitId,
-        text: "",
-        planTitle: snapshot.plan.title,
-        projectId: snapshot.plan.projectId,
-        instanceId: resolution.instanceId,
-        model: resolution.model,
-      });
-      const turnId = yield* mintTurnId;
-      yield* registry.open({
-        flavor: "implement",
-        planId: input.planId,
-        turnId,
-        threadId: materials.threadId,
-        parentCommitId: context.atCommitId,
-        tipCommitId: context.atCommitId,
-      });
-
-      const turn: TurnRuntime = {
-        flavor: "implement",
-        planId: input.planId,
-        turnId,
-        threadId: materials.threadId,
-        parentCommitId: context.atCommitId,
-        modelSelection: resolvedSelection,
-        text: "",
-        grounding: [],
-        groundingKeys: new Set(),
-        groundingScope: materials.groundingScope,
-        pendingQuestions: undefined,
-        pendingRequestId: undefined,
-        askedQuestions: [],
-        answers: undefined,
-        settling: false,
-        stopRequested: false,
-        projectId: snapshot.plan.projectId,
-      };
-      turns.set(turnId, turn);
-
-      // Implement analyses are deliberately one-shot. An idle conversational
-      // session parked on this branch must not survive beside the fresh
-      // analysis; sessions on other branches are none of its business.
-      const branchSession = sessionsOfPlan(input.planId).find(
-        (session) => session.tipCommitId === context.atCommitId,
-      );
-      if (branchSession !== undefined) {
-        sessions.delete(branchSession.threadId);
-        yield* providerService
-          .stopSession({ threadId: branchSession.threadId })
-          .pipe(Effect.catch(() => Effect.void));
-      }
-
-      yield* publishFrame(input.planId, {
-        kind: "implement-started",
-        implement: {
-          turnId,
-          parentCommitId: MercurianCommitId.make(context.atCommitId),
-          grounding: [],
-          ...(materials.groundingScope === undefined
-            ? {}
-            : { groundingScope: materials.groundingScope }),
-        },
-      });
-      yield* announceChange;
-
-      const opened = yield* Effect.gen(function* () {
-        yield* providerService.startSession(materials.threadId, {
-          threadId: materials.threadId,
-          providerInstanceId: resolution.instanceId,
-          ...(materials.cwd === undefined ? {} : { cwd: materials.cwd }),
-          ...(materials.additionalDirectories.length === 0
-            ? {}
-            : { additionalDirectories: materials.additionalDirectories }),
-          modelSelection: {
-            instanceId: resolution.instanceId,
-            model: resolution.model,
-            ...(resolvedSelection.options === undefined
-              ? {}
-              : { options: resolvedSelection.options }),
-          },
-          isolateProviderSettings: true,
-          // The read-only sandbox constrains writes and network. "untrusted"
-          // only produced command approvals that the planning approver declines,
-          // so skip those round-trips while retaining the sandbox boundary.
-          approvalPolicy: "never",
-          runtimeMode: "approval-required",
-        });
-        yield* providerService.sendTurn({
-          threadId: materials.threadId,
-          input: implementTurnInput({
-            repositories: materials.repositories.map((repository) => repository.name),
-            planText: context.planText,
-          }),
-        });
-      }).pipe(Effect.result);
-
-      if (Result.isFailure(opened)) {
-        yield* Effect.logError("implement analysis failed to start", {
-          planId: input.planId,
-          cause: opened.failure,
-        });
-        yield* settleImplement(turn, "provider-error");
-      }
-    });
-
   const stopTurn: PlanningAssistant["Service"]["stopTurn"] = ({ planId, turnId }) =>
     Effect.gen(function* () {
       const turn = turns.get(turnId);
@@ -1628,11 +1142,7 @@ export const make = Effect.gen(function* () {
           planId,
           cause: interrupted.failure,
         });
-        if (turn.flavor === "implement") {
-          yield* settleImplement(turn, "stopped");
-        } else {
-          yield* settleTurn(turn, { interrupted: true });
-        }
+        yield* settleTurn(turn, { interrupted: true });
         return;
       }
       // On success the adapter normally emits turn.aborted (or turn.completed
@@ -1651,11 +1161,7 @@ export const make = Effect.gen(function* () {
             yield* Effect.logWarning("planning turn abort unanswered; settling directly", {
               planId,
             });
-            if (current.flavor === "implement") {
-              yield* settleImplement(current, "stopped");
-            } else {
-              yield* settleTurn(current, { interrupted: true });
-            }
+            yield* settleTurn(current, { interrupted: true });
           }),
         ),
         Effect.forkDetach,
@@ -1708,7 +1214,7 @@ export const make = Effect.gen(function* () {
   const inFlightTurns: PlanningAssistant["Service"]["inFlightTurns"] = (planId) =>
     Effect.sync(() =>
       turnsOfPlan(planId)
-        .filter((turn) => turn.flavor === "reply" && !turn.settling)
+        .filter((turn) => !turn.settling)
         .map(
           (turn) =>
             ({
@@ -1721,40 +1227,6 @@ export const make = Effect.gen(function* () {
             }) satisfies PlanInFlightTurn,
         ),
     );
-
-  const inFlightImplement: PlanningAssistant["Service"]["inFlightImplement"] = (planId) =>
-    Effect.sync(() => {
-      const turn = turnsOfPlan(planId).find(
-        (candidate) => candidate.flavor === "implement" && !candidate.settling,
-      );
-      if (turn === undefined) return undefined;
-      return {
-        turnId: turn.turnId,
-        parentCommitId: MercurianCommitId.make(turn.parentCommitId),
-        grounding: [...turn.grounding],
-        ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
-      } satisfies PlanInFlightImplement;
-    });
-
-  const implementProposal: PlanningAssistant["Service"]["implementProposal"] = (planId) =>
-    Effect.sync(() => proposals.get(planId));
-
-  const cancelImplementProposal: PlanningAssistant["Service"]["cancelImplementProposal"] = (
-    planId,
-  ) =>
-    Effect.gen(function* () {
-      const proposal = proposals.get(planId);
-      if (proposal === undefined) return;
-      proposals.delete(planId);
-      yield* publishFrame(planId, {
-        kind: "implement-cancelled",
-        turnId: proposal.turnId,
-      });
-      yield* announceChange;
-    });
-
-  const clearImplementProposal: PlanningAssistant["Service"]["clearImplementProposal"] = (planId) =>
-    Effect.sync(() => void proposals.delete(planId));
 
   const memoryAmendmentProposal: PlanningAssistant["Service"]["memoryAmendmentProposal"] = (
     planId,
@@ -1775,16 +1247,13 @@ export const make = Effect.gen(function* () {
   const clearMemoryAmendment: PlanningAssistant["Service"]["clearMemoryAmendment"] = (planId) =>
     Effect.sync(() => void memoryAmendmentProposals.delete(planId));
 
-  const publishImplementReady: PlanningAssistant["Service"]["publishImplementReady"] = (input) =>
-    publishFrame(input.planId, { kind: "implement-ready", ready: input.ready });
-
   const status: PlanningAssistant["Service"]["status"] = Effect.sync(() => {
     // One row per plan, aggregated across its concurrent turns: working while
     // any turn streams, awaiting input while any turn has a question up.
     const result = new Map<PlanId, PlanTurnStatus>();
     for (const turn of turns.values()) {
       if (turn.settling) continue;
-      const waiting = turn.flavor === "reply" && turn.pendingQuestions !== undefined;
+      const waiting = turn.pendingQuestions !== undefined;
       const existing = result.get(turn.planId) ?? { isWorking: false, hasPendingInput: false };
       result.set(turn.planId, {
         isWorking: existing.isWorking || !waiting,
@@ -1796,13 +1265,10 @@ export const make = Effect.gen(function* () {
 
   const teardownPlan: PlanningAssistant["Service"]["teardownPlan"] = (input) =>
     Effect.gen(function* () {
-      proposals.delete(input.planId);
       memoryAmendmentProposals.delete(input.planId);
       for (const turn of turnsOfPlan(input.planId)) {
         if (turn.settling) continue;
-        if (turn.flavor === "implement") {
-          yield* settleImplement(turn, "stopped");
-        } else if (input.commitPartial) {
+        if (input.commitPartial) {
           yield* settleTurn(turn, { interrupted: true });
         } else {
           turns.delete(turn.turnId);
@@ -1822,7 +1288,7 @@ export const make = Effect.gen(function* () {
   const saveRevisionFromThread: PlanningAssistant["Service"]["saveRevisionFromThread"] = (input) =>
     Effect.gen(function* () {
       const claimed = yield* registry.getByThread(input.threadId);
-      if (Option.isNone(claimed) || claimed.value.flavor !== "reply") {
+      if (Option.isNone(claimed)) {
         return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
       }
       const turn = claimed.value;
@@ -1851,7 +1317,7 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const claimed = yield* registry.getByThread(input.threadId);
-      if (Option.isNone(claimed) || claimed.value.flavor !== "reply") {
+      if (Option.isNone(claimed)) {
         return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
       }
       const turn = claimed.value;
@@ -1874,39 +1340,12 @@ export const make = Effect.gen(function* () {
       yield* registry.advanceTip(turn.planId, turn.turnId, revision.commitId);
     });
 
-  const saveImplementProposalFromThread: PlanningAssistant["Service"]["saveImplementProposalFromThread"] =
-    (input) =>
-      Effect.gen(function* () {
-        const claimed = yield* registry.getByThread(input.threadId);
-        const runtime = findTurnByThread(input.threadId);
-        if (
-          Option.isNone(claimed) ||
-          claimed.value.flavor !== "implement" ||
-          runtime === undefined ||
-          runtime.flavor !== "implement" ||
-          runtime.settling
-        ) {
-          return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
-        }
-        runtime.pendingProposal = {
-          repositories: [...input.repositories],
-          ...(input.rationale === undefined ? {} : { rationale: input.rationale }),
-          ...(input.splits === undefined ? {} : { splits: [...input.splits] }),
-        };
-      });
-
   const proposeMemoryAmendmentFromThread: PlanningAssistant["Service"]["proposeMemoryAmendmentFromThread"] =
     (input) =>
       Effect.gen(function* () {
         const claimed = yield* registry.getByThread(input.threadId);
         const runtime = findTurnByThread(input.threadId);
-        if (
-          Option.isNone(claimed) ||
-          claimed.value.flavor !== "reply" ||
-          runtime === undefined ||
-          runtime.flavor !== "reply" ||
-          runtime.settling
-        ) {
+        if (Option.isNone(claimed) || runtime === undefined || runtime.settling) {
           return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
         }
         memoryAmendmentProposals.delete(runtime.planId);
@@ -1957,24 +1396,17 @@ export const make = Effect.gen(function* () {
   return {
     startTurn,
     measureReconstruction,
-    tryImplement,
     stopTurn,
     answerQuestion,
     frames,
     inFlightTurns,
-    inFlightImplement,
-    implementProposal,
-    cancelImplementProposal,
-    clearImplementProposal,
     memoryAmendmentProposal,
     cancelMemoryAmendment,
     clearMemoryAmendment,
-    publishImplementReady,
     status,
     teardownPlan,
     saveRevisionFromThread,
     saveSpecRevisionFromThread,
-    saveImplementProposalFromThread,
     proposeMemoryAmendmentFromThread,
     readPlanFromThread,
     readSpecFromThread,
