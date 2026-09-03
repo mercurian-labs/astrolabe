@@ -77,7 +77,13 @@ describe("diffPanelStore", () => {
 
     expect(
       selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
-    ).toEqual({ kind: "turn", turnId, filePath: "src/app.ts", revealRequestId: 2 });
+    ).toEqual({
+      kind: "turn",
+      turnId,
+      filePath: "src/app.ts",
+      repositoryId: null,
+      revealRequestId: 2,
+    });
   });
 
   it("restores the selected branch base after visiting another scope", () => {
@@ -141,6 +147,7 @@ describe("diffPanelStore", () => {
       kind: "turn",
       turnId: latestTurnId,
       filePath: "src/app.ts",
+      repositoryId: null,
       revealRequestId: 1,
     });
   });

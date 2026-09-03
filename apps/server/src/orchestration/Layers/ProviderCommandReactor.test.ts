@@ -603,7 +603,7 @@ describe("ProviderCommandReactor", () => {
         worktreePath: "/tmp/project/web",
       },
     ]);
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-multi-root"),
@@ -640,7 +640,7 @@ describe("ProviderCommandReactor", () => {
         },
       ],
     });
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-cwd-only"),
