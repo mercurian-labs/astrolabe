@@ -43,6 +43,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "The header coordinates router links, repository state, thread commands, source control, previews, and scripts.",
   },
+  "src/components/mercurian/LineBranchMissingBanner.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Reads the session record's missing-branch fact and recreates the branch through the environment's RPC.",
+  },
   "src/components/mercurian/ConnectTrackerDialog.tsx": {
     category: "requires-live-workspace",
     reason:
