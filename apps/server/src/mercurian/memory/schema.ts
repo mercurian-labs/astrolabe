@@ -16,3 +16,12 @@ export interface ResolvedMemorySource extends MemorySource {
   readonly repositoryPath: string;
   readonly rootPath: string;
 }
+
+export type MemoryTreeSource =
+  | { readonly kind: "worktree"; readonly rootPath: string }
+  | {
+      readonly kind: "ref";
+      readonly repositoryPath: string;
+      readonly ref: string;
+      readonly subpath: string;
+    };

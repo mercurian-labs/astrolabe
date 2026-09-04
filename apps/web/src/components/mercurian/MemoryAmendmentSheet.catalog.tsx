@@ -1,7 +1,5 @@
-import { PlanTurnId, type MemoryAmendmentProposal } from "@t3tools/contracts";
-
 import type { CatalogAxeException, CatalogEntry } from "../../design-system/catalog";
-import { MemoryAmendmentSheetPanel } from "./MemoryAmendmentSheet";
+import { MemoryDiffViewer } from "./MemoryAmendmentSheet";
 
 /** Only the embedded Pierre diff surface inherits these two ADR 004 fences. */
 const inheritedPierreDiffA11y: ReadonlyArray<CatalogAxeException> = [
@@ -38,50 +36,21 @@ index eee462d..9109c99 100644
  ---
  Start at Planning and follow contains edges toward the surface you need.`;
 
-const proposal: MemoryAmendmentProposal = {
-  turnId: PlanTurnId.make("catalog-memory-amendment"),
-  title: "Surface open decisions beside the composer",
-  changes: [
-    { path: "Composer.md", before: "# Composer\n\nSuggestions are deferred.\n", after: "" },
-    { path: "Product.skillmap.md", before: "edges: []\n", after: "" },
-  ],
-  patch,
-  placements: [{ map: "Product", parent: "Planning", note: "Composer" }],
-};
-
-const renderPanel = (blockedReason: "memory-changed" | null) => (
+const renderPanel = () => (
   <div className="mx-auto max-h-[42rem] max-w-3xl overflow-hidden rounded-xl border border-border bg-background shadow-lg">
-    <MemoryAmendmentSheetPanel
-      blockedReason={blockedReason}
-      confirmDisabled={false}
-      proposal={proposal}
-      onConfirm={() => {}}
-      onDecline={() => {}}
-    />
+    <MemoryDiffViewer id="catalog-memory-amendment" patch={patch} />
   </div>
 );
 
 export const MEMORY_AMENDMENT_SHEET_CATALOG_ENTRIES = [
   {
-    id: "memory-amendment-sheet-proposal",
+    id: "memory-amendment-diff-viewer",
     section: "mercurian-grammar",
     group: "MemoryAmendmentSheet",
-    title: "Memory amendment proposal",
-    description: "A multi-file memory diff with the map placement that confirmation will land.",
+    title: "Memory change diff",
+    description: "The shared multi-file diff viewer used by the memory tab.",
     sourcePath: "src/components/mercurian/MemoryAmendmentSheet.tsx",
-    render: () => renderPanel(null),
-    layout: "preview",
-    preferredCanvas: "wide",
-    axeExceptions: inheritedPierreDiffA11y,
-  },
-  {
-    id: "memory-amendment-sheet-blocked",
-    section: "mercurian-grammar",
-    group: "MemoryAmendmentSheet",
-    title: "Memory amendment blocked",
-    description: "A proposal kept open after project memory changed on disk.",
-    sourcePath: "src/components/mercurian/MemoryAmendmentSheet.tsx",
-    render: () => renderPanel("memory-changed"),
+    render: renderPanel,
     layout: "preview",
     preferredCanvas: "wide",
     axeExceptions: inheritedPierreDiffA11y,

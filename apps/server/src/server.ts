@@ -333,12 +333,7 @@ const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   // Repository facts and memory discovery both probe git rather than storing
   // derived state, so they share the process-runner boundary.
   Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(ProcessRunner.layer))),
-  Layer.provideMerge(
-    MemoryIndex.layer.pipe(
-      Layer.provideMerge(MemorySourceStore.layer),
-      Layer.provide(ProcessRunner.layer),
-    ),
-  ),
+  Layer.provideMerge(MemorySourceStore.layer.pipe(Layer.provide(GitVcsDriver.layer))),
   Layer.provideMerge(
     MockPlanningModelSeed.layer.pipe(Layer.provideMerge(WorkspaceSettingsStore.layer)),
   ),
@@ -505,7 +500,6 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
 );
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
-  Layer.provideMerge(PlanningAssistant.layer),
   Layer.provideMerge(AntigravityInstallationRefreshLive),
   Layer.provideMerge(ProviderAuthServiceLive),
   // Core Services
@@ -587,8 +581,18 @@ const MercurianRuntimeCoreDependenciesLive = OrchestrationReactorLive.pipe(
   Layer.provideMerge(CheckpointReactorDependenciesLive),
 );
 
+const MemoryIndexLayerLive = MemoryIndex.layer.pipe(
+  Layer.provide(ProcessRunner.layer),
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
+);
+
 const SlotServiceLayerLive = SlotService.layer.pipe(
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
+);
+
+const PlanningAssistantLayerLive = PlanningAssistant.layer.pipe(
+  Layer.provideMerge(MemoryIndexLayerLive),
+  Layer.provideMerge(SlotServiceLayerLive),
 );
 
 const CodingSessionServiceLayerLive = CodingSessionService.layer.pipe(
@@ -604,6 +608,8 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 );
 
 const RuntimeDependenciesLive = Layer.empty.pipe(
+  Layer.provideMerge(PlanningAssistantLayerLive),
+  Layer.provideMerge(MemoryIndexLayerLive),
   Layer.provideMerge(CodingSessionServiceLayerLive),
   Layer.provideMerge(CodingSessionRecordReactorLayerLive),
   Layer.provideMerge(LineBranchReactorLayerLive),

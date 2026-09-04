@@ -15,6 +15,8 @@ import {
   type PlanTimelineItem,
 } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
+import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
+import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
 import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
 import { LineBranchStore } from "./LineBranchStore.ts";
@@ -116,6 +118,7 @@ export const make = Effect.gen(function* () {
   const slots = yield* SlotStore;
   const git = yield* GitVcsDriver;
   const settings = yield* ServerSettingsService;
+  const memorySources = yield* MemorySourceStore;
 
   const repositoryDefaultOid = Effect.fn("LineBranchReactor.repositoryDefaultOid")(function* (
     path: string,
@@ -139,23 +142,24 @@ export const make = Effect.gen(function* () {
   });
 
   const reconcile = Effect.fn("LineBranchReactor.reconcile")(function* () {
-    const [tree, repositorySnapshot, allSlots] = yield* Effect.all([
+    const [tree, repositorySnapshot, allSlots, sourceSnapshot] = yield* Effect.all([
       planning.getTreeSnapshot,
       repositories.getSnapshot,
       slots.listAll,
+      memorySources.getSnapshot,
     ]);
     for (const plan of tree.plans) {
       const detail = yield* planning.getPlanSnapshot({ planId: plan.planId });
-      const linkedRepositoryIds = repositorySnapshot.projectRepositories
-        .filter((link) => link.projectId === plan.projectId)
-        .map((link) => link.repositoryId);
+      const workingRepositories = projectWorkingRepositories(
+        repositorySnapshot,
+        plan.projectId,
+        sourceSnapshot.find((source) => source.projectId === plan.projectId) ?? null,
+      );
       for (const root of lineRoots(detail)) {
-        for (const repositoryId of linkedRepositoryIds) {
+        for (const repository of workingRepositories) {
           yield* Effect.gen(function* () {
-            const repository = repositorySnapshot.repositories.find(
-              (candidate) => candidate.repositoryId === repositoryId,
-            );
-            if (repository === undefined || !repository.hasGit) return;
+            const repositoryId = repository.repositoryId;
+            if (!repository.hasGit) return;
             const inherited = inheritedCommitOid(detail, String(root.commitId), repositoryId);
             const inheritedSnapshot = inheritedSnapshotOid(
               detail,
@@ -243,7 +247,7 @@ export const make = Effect.gen(function* () {
                 : Effect.logWarning("line-branch reconciliation entry failed", {
                     planId: plan.planId,
                     lineRootCommitId: root.commitId,
-                    repositoryId,
+                    repositoryId: repository.repositoryId,
                     cause: Cause.pretty(cause),
                   }),
             ),

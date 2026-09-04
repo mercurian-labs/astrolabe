@@ -2592,7 +2592,7 @@ layer("PlanningStore", (it) => {
     }),
   );
 
-  it.effect("appends a stamped human memory amendment without opening a turn", () =>
+  it.effect("appends a stamped assistant memory amendment inside an active turn", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
       const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
@@ -2606,35 +2606,24 @@ layer("PlanningStore", (it) => {
         parentCommitId: parent,
         tipCommitId: parent,
       });
-      const refused = yield* Effect.flip(
-        store.appendMemoryAmendment({
-          planId: created.plan.planId,
-          parentCommitId: parent,
-          title: "Record the memory boundary",
-          memoryCommitSha: "abc123",
-          notes: ["Memory", "Composer"],
-          createdAt: at("2026-08-09T03:01:00.000Z"),
-        }),
-      );
-      assert.strictEqual(refused._tag, "PlanTurnActiveError");
-      yield* registry.close(created.plan.planId, turnId);
-
       const landed = yield* store.appendMemoryAmendment({
         planId: created.plan.planId,
         parentCommitId: parent,
         title: "Record the memory boundary",
         memoryCommitSha: "abc123",
+        branch: "mercurian/memory",
         notes: ["Memory", "Composer"],
-        createdAt: at("2026-08-09T03:02:00.000Z"),
+        createdAt: at("2026-08-09T03:01:00.000Z"),
       });
-      assert.strictEqual(landed.authorKind, "human");
+      assert.strictEqual(landed.authorKind, "assistant");
       assert.strictEqual(landed.text, "Record the memory boundary");
       assert.deepStrictEqual(landed.memoryAmendment, {
         title: "Record the memory boundary",
         memoryCommitSha: "abc123",
+        branch: "mercurian/memory",
         notes: ["Memory", "Composer"],
       });
-      assert.deepStrictEqual(yield* registry.getTurns(created.plan.planId), []);
+      assert.strictEqual((yield* registry.getTurns(created.plan.planId)).length, 1);
     }),
   );
 });

@@ -1,5 +1,4 @@
 import {
-  MercurianRepositoryId,
   ProviderDriverKind,
   type PlanCodingSessionRecord,
   type PlanningModelSelection,
@@ -224,6 +223,7 @@ describe("derivePlanNodePopover", () => {
         memoryAmendment: {
           title: "Surface open decisions",
           memoryCommitSha: "abc123",
+          branch: "mercurian/memory",
           notes: ["Composer"],
         },
       }),

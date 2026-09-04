@@ -4,7 +4,6 @@ import type {
   PlanDetail,
   PlanGroundingItem,
   PlanInFlightTurn,
-  MemoryAmendmentProposal,
   PlanCodingSessionRecord,
   PlanStreamItem,
   PlanTurnRefusalReason,
@@ -92,18 +91,6 @@ function turnSettledByCommit(
   return undefined;
 }
 
-function withMemoryAmendmentProposal(
-  state: PlanSubscriptionState,
-  proposal: MemoryAmendmentProposal | undefined,
-): PlanSubscriptionState {
-  if (state.detail === null) return state;
-  const { memoryAmendmentProposal: _previous, ...rest } = state.detail;
-  return {
-    ...state,
-    detail: { ...rest, ...(proposal === undefined ? {} : { memoryAmendmentProposal: proposal }) },
-  };
-}
-
 /**
  * Fold one plan stream item into the local planning space. Pure, so web and
  * mobile share it and it can be tested without a socket.
@@ -163,17 +150,11 @@ export function applyPlanStreamItem(
         settled === undefined
           ? detail.inFlightTurns
           : detail.inFlightTurns.filter((turn) => turn.turnId !== settled.turnId);
-      const closesMemoryAmendment =
-        item.item._tag === "message" && item.item.memoryAmendment !== undefined;
-      const { memoryAmendmentProposal, ...rest } = detail;
       return {
         ...state,
         detail: {
-          ...rest,
+          ...detail,
           inFlightTurns,
-          ...(closesMemoryAmendment || memoryAmendmentProposal === undefined
-            ? {}
-            : { memoryAmendmentProposal }),
           // Text arrives only on commits that changed the artifact; a message
           // leaves the plan exactly as it was.
           planText: item.planText ?? detail.planText,
@@ -184,10 +165,9 @@ export function applyPlanStreamItem(
       };
     }
     case "turn-started": {
-      const cleared = withMemoryAmendmentProposal(state, undefined);
-      const existing = cleared.detail?.inFlightTurns ?? [];
+      const existing = state.detail?.inFlightTurns ?? [];
       return {
-        ...withInFlightTurns(cleared, [
+        ...withInFlightTurns(state, [
           ...existing.filter((turn) => turn.turnId !== item.turnId),
           {
             turnId: item.turnId,
@@ -236,30 +216,12 @@ export function applyPlanStreamItem(
       return updateInFlightTurn(state, item.turnId, () => undefined);
     case "turn-refused":
       return { ...state, turnRefusal: item.reason };
-    case "memory-amendment-proposed": {
-      const relevant = state.detail?.inFlightTurns.some(
-        (turn) => turn.turnId === item.proposal.turnId,
-      );
-      if (relevant !== true) return state;
-      return {
-        ...withMemoryAmendmentProposal(state, item.proposal),
-        memoryAmendmentFailure: null,
-      };
-    }
     case "memory-amendment-failed": {
       const relevant = state.detail?.inFlightTurns.some((turn) => turn.turnId === item.turnId);
       if (relevant !== true) return state;
       return {
-        ...withMemoryAmendmentProposal(state, undefined),
+        ...state,
         memoryAmendmentFailure: item,
-      };
-    }
-    case "memory-amendment-cancelled": {
-      const proposal = state.detail?.memoryAmendmentProposal;
-      if (proposal === undefined || proposal.turnId !== item.turnId) return state;
-      return {
-        ...withMemoryAmendmentProposal(state, undefined),
-        memoryAmendmentFailure: null,
       };
     }
     default:

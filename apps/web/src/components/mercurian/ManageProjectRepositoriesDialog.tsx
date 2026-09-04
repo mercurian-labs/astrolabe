@@ -217,7 +217,9 @@ export function ManageProjectRepositoriesDialog({
             <div>
               <h3 className="text-sm font-medium text-foreground">Memory</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Designate one repository or folder as this project&rsquo;s durable design memory.
+                Designate a whole registered repository, or a folder inside that same repository, as
+                this project&rsquo;s durable design memory. A nested Git repository cannot be used
+                as a subpath.
               </p>
             </div>
             {memorySource === null ? (
@@ -328,6 +330,8 @@ function memoryRefusalMessage(error: unknown): string {
         return "That memory folder does not exist.";
       case "not-a-directory":
         return "The memory subpath must point to a directory.";
+      case "nested-repository":
+        return "Choose the whole registered repository or a folder inside its Git worktree, not a nested repository.";
     }
   }
   if ("_tag" in error && error._tag === "ProductMapAlreadyExistsError") {

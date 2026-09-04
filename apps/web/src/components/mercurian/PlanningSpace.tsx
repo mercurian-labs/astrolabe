@@ -3,6 +3,7 @@ import {
   type EnvironmentId,
   MercurianCommitId,
   type MercurianProjectId,
+  type MemoryLineRef,
   type MemoryNote,
   type PlanId,
   type PlanInFlightTurn,
@@ -15,6 +16,7 @@ import * as Schema from "effect/Schema";
 import {
   ChevronDownIcon,
   CircleDotIcon,
+  BookOpenIcon,
   ClockIcon,
   FileTextIcon,
   SquareTerminalIcon,
@@ -108,7 +110,7 @@ import {
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
 import { MemoryNoteReader } from "./MemoryNoteReader";
-import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
+import { MemoryTab } from "./MemoryTab";
 import { SpecArtifact } from "./SpecArtifact";
 import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
 import { CodingSessionDraftSheet } from "./CodingSessionDraftSheet";
@@ -124,10 +126,10 @@ const RIGHT_PANE_MAX_WIDTH = 900;
 const RIGHT_PANE_THREAD_MAX_WIDTH = 560;
 const CONVERSATION_MIN_WIDTH = 480;
 
-const RIGHT_PANE_STORAGE_KEY = "mercurian:plan-right-pane:v2";
+const RIGHT_PANE_STORAGE_KEY = "mercurian:plan-right-pane:v3";
 const RightPaneState = Schema.Struct({
   open: Schema.Boolean,
-  view: Schema.Literals(["artifact", "explorer"]),
+  view: Schema.Literals(["artifact", "explorer", "memory"]),
   artifact: Schema.Literals(["plan", "spec"]),
 });
 type RightPaneState = typeof RightPaneState.Type;
@@ -176,7 +178,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const visitPlan = useVisitPlan();
   const stopTurn = useStopPlanningTurn();
   const answerQuestion = useAnswerPlanningQuestion();
-  const [memoryAmendmentSheetOpen, setMemoryAmendmentSheetOpen] = useState(false);
   const [dismissedMemoryAmendmentFailure, setDismissedMemoryAmendmentFailure] = useState<
     string | null
   >(null);
@@ -234,7 +235,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const explorerGraph = useMemo(() => condensePlanGraph(graph), [graph]);
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
-  const memoryAmendmentProposal = detail?.memoryAmendmentProposal;
   const effectiveExplorerView = effectivePlanExplorerView(
     explorerGraph,
     explorerView,
@@ -284,6 +284,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   }, []);
 
   const [position, setPosition] = useState<PlanPosition>(LATEST);
+  const head = resolveHead(graph, position);
+  const actingHead = resolveActingHead(graph, head);
+  const memoryLine = useMemo<MemoryLineRef | undefined>(
+    () =>
+      actingHead === null ? undefined : { planId, commitId: MercurianCommitId.make(actingHead) },
+    [actingHead, planId],
+  );
   const [pathText, setPathText] = useState<string | null>(null);
   const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
   const [reconstructionMeasure, setReconstructionMeasure] =
@@ -297,7 +304,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const adoptLegacyDraft = usePlanComposerStore((state) => state.adoptLegacyDraft);
   // The plan's project is what says which code this space can mention. With no
   // repository set, there is nothing to offer and the menu stays closed.
-  const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
+  const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null, memoryLine);
   const readMemoryNote = useReadMemoryNote();
   const [memoryReader, setMemoryReader] = useState<{ readonly stack: string[] }>({ stack: [] });
   const [memoryNote, setMemoryNote] = useState<MemoryNote | null>(null);
@@ -310,21 +317,30 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
 
   useEffect(() => {
     const projectId = detail?.plan.projectId;
-    if (currentMemoryNoteName === null || projectId === undefined) return;
+    if (currentMemoryNoteName === null || projectId === undefined || memoryLine === undefined)
+      return;
     let active = true;
     setMemoryNoteLoading(true);
     setMemoryNoteError(null);
     setMemoryNote(null);
-    void readMemoryNote({ projectId, name: currentMemoryNoteName }).then((result) => {
-      if (!active) return;
-      if (result.ok) setMemoryNote(result.value);
-      else setMemoryNoteError(memoryReadError(result.error));
-      setMemoryNoteLoading(false);
-    });
+    void readMemoryNote({ projectId, name: currentMemoryNoteName, line: memoryLine }).then(
+      (result) => {
+        if (!active) return;
+        if (result.ok) setMemoryNote(result.value);
+        else setMemoryNoteError(memoryReadError(result.error));
+        setMemoryNoteLoading(false);
+      },
+    );
     return () => {
       active = false;
     };
-  }, [currentMemoryNoteName, detail?.plan.projectId, memoryReader.stack.length, readMemoryNote]);
+  }, [
+    currentMemoryNoteName,
+    detail?.plan.projectId,
+    memoryReader.stack.length,
+    memoryLine,
+    readMemoryNote,
+  ]);
 
   useEffect(() => {
     if (currentMemoryNoteName === null) return;
@@ -343,7 +359,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setPosition(LATEST);
     setPendingEditAndBranch(null);
     setMemoryReader({ stack: [] });
-    setMemoryAmendmentSheetOpen(false);
     setDismissedMemoryAmendmentFailure(null);
   }, [planId]);
 
@@ -386,8 +401,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     });
   }, [followDraftGrowth, graph, planId]);
 
-  const head = resolveHead(graph, position);
-  const actingHead = resolveActingHead(graph, head);
   const viewingSessionLeaf = actingHead !== head;
   const draft = usePlanComposerStore((state) =>
     actingHead === null
@@ -470,10 +483,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     const closure = ancestorClosure(graph, head);
     return inFlightTurns.find((turn) => closure.has(turn.parentCommitId));
   }, [graph, head, inFlightTurns]);
-
-  useEffect(() => {
-    if (memoryAmendmentProposal !== undefined) setMemoryAmendmentSheetOpen(true);
-  }, [memoryAmendmentProposal]);
 
   const gateNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
 
@@ -669,6 +678,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             {...(providerStatus === undefined ? {} : { skills: providerStatus.skills })}
             timeline={visibleTimeline}
             onOpenNote={openMemoryNote}
+            onOpenMemoryChanges={() => setPane({ ...pane, open: true, view: "memory" })}
             onAnswerQuestion={(answers) => {
               if (visibleInFlight !== undefined) {
                 void answerQuestion(planId, visibleInFlight.turnId, answers);
@@ -838,7 +848,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                 } as CSSProperties
               }
             >
-              {pane.view === "explorer" ? (
+              {pane.view === "memory" ? (
+                memoryLine === undefined ? null : (
+                  <MemoryTab cornerControl={paneCornerControl} line={memoryLine} />
+                )
+              ) : pane.view === "explorer" ? (
                 // The highlight is wherever the composer acts from, so
                 // following a branch shows in the explorer as it happens.
                 <DagExplorer
@@ -968,16 +982,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
           </div>
         )}
       </div>
-      {memoryAmendmentProposal === undefined ? null : (
-        <MemoryAmendmentSheet
-          onOpenChange={setMemoryAmendmentSheetOpen}
-          open={memoryAmendmentSheetOpen}
-          parentCommitId={actingHead}
-          planId={planId}
-          proposal={memoryAmendmentProposal}
-          turnActive={visibleInFlight !== undefined}
-        />
-      )}
       <CodingSessionDraftSheet
         draftId={sessionDraftId}
         open={sessionDraftId !== null}
@@ -1074,7 +1078,7 @@ export function PlanPaneToggle({
           onChange({ ...state, open: false });
           return;
         }
-        if (chosen === "artifact" || chosen === "explorer") {
+        if (chosen === "artifact" || chosen === "explorer" || chosen === "memory") {
           onChange({ ...state, open: true, view: chosen });
         }
       }}
@@ -1084,6 +1088,12 @@ export function PlanPaneToggle({
           <FileTextIcon className="size-3.5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">Plan</TooltipPopup>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger render={<Toggle aria-label="Memory changes" value="memory" />}>
+          <BookOpenIcon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">Memory changes</TooltipPopup>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger render={<Toggle aria-label="Checkpoint Graph" value="explorer" />}>

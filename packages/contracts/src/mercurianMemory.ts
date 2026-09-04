@@ -1,8 +1,8 @@
 /** Project-memory designation and the fresh, disk-derived read model. */
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { MercurianProjectId } from "./mercurian.ts";
+import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { MercurianCommitId, MercurianProjectId, PlanId } from "./mercurian.ts";
 import { MercurianRepositoryId } from "./mercurianRepositories.ts";
 
 export const MERCURIAN_MEMORY_WS_METHODS = {
@@ -11,6 +11,7 @@ export const MERCURIAN_MEMORY_WS_METHODS = {
   removeMemorySource: "mercurian.removeMemorySource",
   readMemoryIndex: "mercurian.readMemoryIndex",
   readMemoryNote: "mercurian.readMemoryNote",
+  readLineMemoryChanges: "mercurian.readLineMemoryChanges",
   generateProductMap: "mercurian.generateProductMap",
 } as const;
 
@@ -80,6 +81,12 @@ export const MemoryNote = Schema.Struct({
 });
 export type MemoryNote = typeof MemoryNote.Type;
 
+export const MemoryLineRef = Schema.Union([
+  Schema.Struct({ threadId: ThreadId }),
+  Schema.Struct({ planId: PlanId, commitId: MercurianCommitId }),
+]);
+export type MemoryLineRef = typeof MemoryLineRef.Type;
+
 export const MercurianSubscribeMemorySourcesInput = Schema.Struct({});
 export type MercurianSubscribeMemorySourcesInput = typeof MercurianSubscribeMemorySourcesInput.Type;
 export const MercurianDesignateMemorySourceInput = Schema.Struct({
@@ -90,13 +97,42 @@ export const MercurianDesignateMemorySourceInput = Schema.Struct({
 export type MercurianDesignateMemorySourceInput = typeof MercurianDesignateMemorySourceInput.Type;
 export const MercurianRemoveMemorySourceInput = Schema.Struct({ projectId: MercurianProjectId });
 export type MercurianRemoveMemorySourceInput = typeof MercurianRemoveMemorySourceInput.Type;
-export const MercurianReadMemoryIndexInput = Schema.Struct({ projectId: MercurianProjectId });
+export const MercurianReadMemoryIndexInput = Schema.Struct({
+  projectId: MercurianProjectId,
+  line: Schema.optional(MemoryLineRef),
+});
 export type MercurianReadMemoryIndexInput = typeof MercurianReadMemoryIndexInput.Type;
 export const MercurianReadMemoryNoteInput = Schema.Struct({
   projectId: MercurianProjectId,
   name: TrimmedNonEmptyString,
+  line: Schema.optional(MemoryLineRef),
 });
 export type MercurianReadMemoryNoteInput = typeof MercurianReadMemoryNoteInput.Type;
+export const MemoryLineChange = Schema.Struct({
+  oid: TrimmedNonEmptyString,
+  title: Schema.String,
+  turnId: Schema.NullOr(Schema.String),
+  authoredAt: IsoDateTime,
+  diff: Schema.String,
+});
+export type MemoryLineChange = typeof MemoryLineChange.Type;
+export const MercurianLineMemoryChanges = Schema.Struct({
+  marked: Schema.Array(MemoryLineChange),
+  hand: Schema.Array(
+    Schema.Struct({
+      oid: TrimmedNonEmptyString,
+      title: Schema.String,
+      authoredAt: IsoDateTime,
+      diff: Schema.String,
+    }),
+  ),
+  unmarked: Schema.NullOr(Schema.Struct({ diff: Schema.String })),
+});
+export type MercurianLineMemoryChanges = typeof MercurianLineMemoryChanges.Type;
+export const MercurianReadLineMemoryChangesInput = Schema.Struct({
+  line: MemoryLineRef,
+});
+export type MercurianReadLineMemoryChangesInput = typeof MercurianReadLineMemoryChangesInput.Type;
 export const MercurianGenerateProductMapInput = Schema.Struct({ projectId: MercurianProjectId });
 export type MercurianGenerateProductMapInput = typeof MercurianGenerateProductMapInput.Type;
 
@@ -114,7 +150,12 @@ export class MemorySourceInvalidError extends Schema.TaggedErrorClass<MemorySour
   {
     repositoryId: MercurianRepositoryId,
     subpath: Schema.optional(Schema.String),
-    reason: Schema.Literals(["repository-not-found", "missing", "not-a-directory"]),
+    reason: Schema.Literals([
+      "repository-not-found",
+      "missing",
+      "not-a-directory",
+      "nested-repository",
+    ]),
   },
 ) {
   override get message(): string {
@@ -154,9 +195,11 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
       "removeMemorySource",
       "readMemoryIndex",
       "readMemoryNote",
+      "readLineMemoryChanges",
       "generateProductMap",
       "prepareMemoryAmendment",
       "applyMemoryAmendment",
+      "landMemoryAmendment",
     ]),
     cause: Schema.optional(Schema.Defect()),
   },

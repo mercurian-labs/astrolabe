@@ -99,6 +99,7 @@ export const MessageCommitPayload = Schema.Struct({
     Schema.Struct({
       title: TrimmedNonEmptyString,
       memoryCommitSha: Schema.NullOr(Schema.String),
+      branch: TrimmedNonEmptyString,
       notes: Schema.Array(TrimmedNonEmptyString),
     }),
   ),
@@ -422,6 +423,7 @@ export const AppendMemoryAmendmentInput = Schema.Struct({
   parentCommitId: CommitId,
   title: TrimmedNonEmptyString,
   memoryCommitSha: Schema.NullOr(Schema.String),
+  branch: TrimmedNonEmptyString,
   notes: Schema.Array(TrimmedNonEmptyString),
   createdAt: Schema.DateTimeUtcFromString,
 });
@@ -1744,34 +1746,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const appendMemoryAmendment: PlanningStore["Service"]["appendMemoryAmendment"] = (input) =>
-    Effect.gen(function* () {
-      const plan = yield* requirePlan(input.planId);
-      const commitId = yield* mintId(CommitId);
-      const memoryAmendment = {
-        title: input.title,
-        memoryCommitSha: input.memoryCommitSha,
-        notes: input.notes,
-      };
-      const appended = yield* appendAt({
-        plan,
-        parentCommitId: input.parentCommitId,
-        commitId,
-        kind: "message",
-        payload: { text: input.title, memoryAmendment } satisfies MessageCommitPayload,
-        createdAt: input.createdAt,
-      });
-      yield* announceChange;
-      return yield* toPlanMessage(appended);
-    }).pipe(
-      Effect.mapError(
-        toPlanningStoreError(
-          "PlanningStore.appendMemoryAmendment:query",
-          "PlanningStore.appendMemoryAmendment:encodeRequest",
-        ),
-      ),
-    );
-
   const assertNoActiveTurn: PlanningStore["Service"]["assertNoActiveTurn"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
@@ -1934,7 +1908,7 @@ export const make = Effect.gen(function* () {
             visibility: "all",
           });
           const nearestRevision = [...ancestry, parent]
-            .reverse()
+            .toReversed()
             .find((commit) => commit.kind === "plan-revision");
           if (nearestRevision === undefined) {
             return yield* new CommitStore.CommitNotFoundError({ commitId: parent.commitId });
@@ -2023,6 +1997,35 @@ export const make = Effect.gen(function* () {
       }),
     );
   });
+
+  const appendMemoryAmendment: PlanningStore["Service"]["appendMemoryAmendment"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const memoryAmendment = {
+        title: input.title,
+        memoryCommitSha: input.memoryCommitSha,
+        branch: input.branch,
+        notes: input.notes,
+      };
+      const appended = yield* appendAssistantAt({
+        plan,
+        parentCommitId: input.parentCommitId,
+        commitId,
+        kind: "message",
+        payload: { text: input.title, memoryAmendment } satisfies MessageCommitPayload,
+        createdAt: input.createdAt,
+      });
+      yield* announceChange;
+      return yield* toPlanMessage(appended);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.appendMemoryAmendment:query",
+          "PlanningStore.appendMemoryAmendment:encodeRequest",
+        ),
+      ),
+    );
 
   const appendAssistantMessage: PlanningStore["Service"]["appendAssistantMessage"] = (input) =>
     Effect.gen(function* () {

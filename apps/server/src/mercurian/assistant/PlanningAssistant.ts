@@ -37,14 +37,15 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 
 import {
   ApprovalRequestId,
   MercurianCommitId,
+  type MemoryLineRef,
   type MercurianProjectId,
-  type MemoryAmendmentProposal,
   NoPendingQuestionError,
   type PlanGroundingItem,
   type PlanGroundingScope,
@@ -89,6 +90,9 @@ import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as MemoryIndex from "../memory/MemoryIndex.ts";
+import { SlotService } from "../worktreeSlots/SlotService.ts";
+import type { WorktreeSlotId } from "../worktreeSlots/schema.ts";
+import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
 import { WorkspaceSettingsStore } from "../workspace/WorkspaceSettingsStore.ts";
 import { foldGroundingEvent } from "./GroundingFold.ts";
 import {
@@ -163,8 +167,8 @@ interface TurnRuntime {
   /** Guards double settles: a stop racing the provider's own completion. */
   settling: boolean;
   stopRequested: boolean;
-  pendingMemoryAmendment?: MemoryIndex.PendingMemoryAmendment;
-  /** Project identity used to resolve proposal repository names at settle. */
+  slotId: WorktreeSlotId | undefined;
+  /** Project identity used by in-turn memory writes. */
   readonly projectId?: MercurianProjectId;
 }
 
@@ -244,11 +248,6 @@ export class PlanningAssistant extends Context.Service<
     readonly frames: (planId: PlanId) => Stream.Stream<PlanStreamItem>;
     /** The partial turns for snapshot composition — join-mid-turn's source, one per streaming branch. */
     readonly inFlightTurns: (planId: PlanId) => Effect.Effect<ReadonlyArray<PlanInFlightTurn>>;
-    readonly memoryAmendmentProposal: (
-      planId: PlanId,
-    ) => Effect.Effect<MemoryAmendmentProposal | undefined>;
-    readonly cancelMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
-    readonly clearMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
     /** The tree's two status inputs, for every plan with a live turn. */
     readonly status: Effect.Effect<ReadonlyMap<PlanId, PlanTurnStatus>>;
     /** Fires when any turn starts, pauses on a question, or settles. */
@@ -286,7 +285,10 @@ export class PlanningAssistant extends Context.Service<
         readonly note: string;
         readonly type?: string | undefined;
       }>;
-    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
+    }) => Effect.Effect<
+      void,
+      PlanningTurnNotFoundError | MemoryIndex.MemoryAmendmentValidationError
+    >;
     /** The MCP read door: the artifact's text at the calling turn's tip. */
     readonly readPlanFromThread: (input: {
       readonly threadId: ThreadId;
@@ -421,9 +423,11 @@ export const make = Effect.gen(function* () {
   const repositoryStore = yield* RepositoryStore.RepositoryStore;
   const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
   const memoryIndex = yield* MemoryIndex.MemoryIndex;
+  const slotService = yield* SlotService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerService = yield* ProviderService.ProviderService;
   const crypto = yield* Crypto.Crypto;
+  const path = yield* Path.Path;
 
   const framesPubSub = yield* PubSub.unbounded<{
     readonly planId: PlanId;
@@ -437,7 +441,6 @@ export const make = Effect.gen(function* () {
   // and sessions by their thread, one live session per branch being worked.
   const turns = new Map<PlanTurnId, TurnRuntime>();
   const sessions = new Map<ThreadId, PlanSession>();
-  const memoryAmendmentProposals = new Map<PlanId, MemoryAmendmentProposal>();
 
   const turnsOfPlan = (planId: PlanId): Array<TurnRuntime> => {
     const result: Array<TurnRuntime> = [];
@@ -514,6 +517,11 @@ export const make = Effect.gen(function* () {
 
     turns.delete(turn.turnId);
     yield* registry.close(planId, turn.turnId);
+    if (turn.slotId !== undefined) {
+      yield* slotService
+        .release(turn.slotId, { kind: "turn", threadId: turn.threadId })
+        .pipe(Effect.ignoreCause({ log: true }));
+    }
 
     if (Result.isSuccess(appended)) {
       const session = sessions.get(turn.threadId);
@@ -531,39 +539,6 @@ export const make = Effect.gen(function* () {
     }
 
     yield* publishFrame(planId, { kind: "turn-settled", turnId: turn.turnId });
-    yield* announceChange;
-  });
-
-  const settleMemoryAmendment = Effect.fn("PlanningAssistant.settleMemoryAmendment")(function* (
-    turn: TurnRuntime,
-  ) {
-    if (turn.pendingMemoryAmendment === undefined) return;
-    const amendment = turn.pendingMemoryAmendment;
-    delete turn.pendingMemoryAmendment;
-    if (turn.projectId === undefined) return;
-    const prepared = yield* memoryIndex
-      .prepareAmendment({ projectId: turn.projectId, turnId: turn.turnId, amendment })
-      .pipe(Effect.result);
-    if (Result.isFailure(prepared)) {
-      const reason =
-        prepared.failure._tag === "MemoryAmendmentValidationError"
-          ? prepared.failure.reason
-          : prepared.failure._tag === "MemoryNotDesignatedError"
-            ? "This project has no designated memory."
-            : "Project memory could not be prepared for review.";
-      memoryAmendmentProposals.delete(turn.planId);
-      yield* publishFrame(turn.planId, {
-        kind: "memory-amendment-failed",
-        turnId: turn.turnId,
-        reason,
-      });
-    } else {
-      memoryAmendmentProposals.set(turn.planId, prepared.success);
-      yield* publishFrame(turn.planId, {
-        kind: "memory-amendment-proposed",
-        proposal: prepared.success,
-      });
-    }
     yield* announceChange;
   });
 
@@ -694,7 +669,6 @@ export const make = Effect.gen(function* () {
         return;
       }
       case "turn.completed": {
-        if (event.payload.state === "completed") yield* settleMemoryAmendment(turn);
         yield* settleTurn(turn, { interrupted: event.payload.state !== "completed" });
         return;
       }
@@ -775,7 +749,7 @@ export const make = Effect.gen(function* () {
     memorySourceStore.getResolvedSource(projectId).pipe(Effect.orElseSucceed(() => Option.none()));
 
   const resolveMemoryMentionStanza = Effect.fn("PlanningAssistant.resolveMemoryMentionStanza")(
-    function* (projectId: MercurianProjectId, text: string) {
+    function* (projectId: MercurianProjectId, text: string, line?: MemoryLineRef) {
       const names = [
         ...new Set(
           collectComposerInlineTokens(text, { includeNotes: true })
@@ -787,7 +761,7 @@ export const make = Effect.gen(function* () {
 
       const resolutions = [];
       for (const name of names) {
-        const result = yield* memoryIndex.readNote(projectId, name).pipe(Effect.option);
+        const result = yield* memoryIndex.readNote(projectId, name, line).pipe(Effect.option);
         if (Option.isNone(result)) continue;
         const note = result.value;
         if (note.exists && note.path !== undefined) {
@@ -815,21 +789,79 @@ export const make = Effect.gen(function* () {
       readonly instanceId: ProviderInstanceId;
       readonly model: string;
     }) {
-      const repositories = yield* repositoriesForProject(input.projectId);
-
+      const linkedRepositories = yield* repositoriesForProject(input.projectId);
       const memorySource = yield* resolvedMemorySource(input.projectId);
       const capabilities = yield* providerService.getCapabilities(input.instanceId);
+      const threadId = yield* mintThreadId;
+      const repositorySnapshot = yield* repositoryStore.getSnapshot;
+      const ancestors = yield* commits.ancestors({
+        commitId: input.parentCommitId,
+        visibility: "all",
+      });
+      const transcript = yield* projectTranscript(ancestors);
+      const memoryMentionStanza = yield* resolveMemoryMentionStanza(input.projectId, input.text, {
+        planId: input.planId,
+        commitId: MercurianCommitId.make(input.parentCommitId),
+      });
+      const lineRootCommitId = lineRootCommitIdFor(
+        yield* planningStore.getPlanSnapshot({ planId: input.planId }),
+        input.parentCommitId,
+      );
+      // Claim last: everything below this point is pure assembly, so no
+      // failure can strand the lease before the turn runtime owns it.
+      const slot = yield* slotService.claim({
+        projectId: input.projectId,
+        lineRootCommitId,
+        holder: { kind: "turn", threadId },
+      });
+      const linkedIds = repositorySnapshot.projectRepositories
+        .filter((link) => link.projectId === input.projectId)
+        .map((link) => link.repositoryId);
+      const primaryRepositoryId = linkedIds[0];
+      const primaryMember = slot.members.find(
+        (member) => member.repositoryId === primaryRepositoryId,
+      );
+      const orderedMembers = [
+        ...(primaryMember === undefined ? [] : [primaryMember]),
+        ...slot.members.filter((member) => member !== primaryMember),
+      ];
+      const memberRoots = orderedMembers.map((member) => ({
+        repositoryId: member.repositoryId,
+        name:
+          repositorySnapshot.repositories.find(
+            (repository) => repository.repositoryId === member.repositoryId,
+          )?.name ?? member.repositoryId,
+        path: path.join(slot.path, member.relativePath),
+      }));
+      const memoryMember = Option.isNone(memorySource)
+        ? undefined
+        : memberRoots.find((member) => member.repositoryId === memorySource.value.repositoryId);
       // Narrowed, and visibly so: a cwd-only provider grounds the first
       // repository alone, and the turn carries which ones were out of reach —
       // silent narrowing is exactly what "grounding is visible" forbids.
       const groundingRoots = [
-        ...repositories.map((repository) => ({ ...repository, kind: "repository" as const })),
+        ...linkedRepositories.map((repository) => {
+          const registered = repositorySnapshot.repositories.find(
+            (candidate) => candidate.path === repository.path,
+          );
+          const member = memberRoots.find(
+            (candidate) => candidate.repositoryId === registered?.repositoryId,
+          );
+          return {
+            ...repository,
+            path: member?.path ?? repository.path,
+            kind: "repository" as const,
+          };
+        }),
         ...(Option.isNone(memorySource)
           ? []
           : [
               {
                 name: memorySource.value.repositoryName,
-                path: memorySource.value.rootPath,
+                path:
+                  memoryMember === undefined
+                    ? memorySource.value.rootPath
+                    : path.join(memoryMember.path, memorySource.value.subpath ?? ""),
                 kind: "memory" as const,
               },
             ]),
@@ -843,12 +875,6 @@ export const make = Effect.gen(function* () {
       const groundingScope: PlanGroundingScope | undefined =
         unreachable.length === 0 ? undefined : { unreachableRepositories: unreachable };
 
-      const ancestors = yield* commits.ancestors({
-        commitId: input.parentCommitId,
-        visibility: "all",
-      });
-      const transcript = yield* projectTranscript(ancestors);
-
       const appendix = planningSystemAppendix({
         planTitle: input.planTitle,
         repositories: reachable.filter((root) => root.kind === "repository"),
@@ -856,7 +882,6 @@ export const make = Effect.gen(function* () {
         memoryRoot: reachable.find((root) => root.kind === "memory") ?? null,
         memoryAmendmentsAvailable: Option.isSome(memorySource),
       });
-      const memoryMentionStanza = yield* resolveMemoryMentionStanza(input.projectId, input.text);
       const preamble =
         transcript.entries.length === 0
           ? null
@@ -868,13 +893,18 @@ export const make = Effect.gen(function* () {
                 appendix.length + input.text.length + (memoryMentionStanza?.length ?? 0),
             });
 
-      const threadId = yield* mintThreadId;
       return {
         threadId,
+        slotId: slot.slotId,
         groundingScope,
-        repositories,
-        cwd: reachable[0]?.path,
-        additionalDirectories: reachable.slice(1).map((root) => root.path),
+        repositories: linkedRepositories,
+        cwd:
+          primaryMember === undefined
+            ? undefined
+            : path.join(slot.path, primaryMember.relativePath),
+        additionalDirectories: memberRoots
+          .filter((member) => member.repositoryId !== primaryRepositoryId)
+          .map((member) => member.path),
         firstTurnInput: composeFirstTurnInput({
           appendix,
           preamble,
@@ -887,6 +917,7 @@ export const make = Effect.gen(function* () {
 
   interface RebuildMaterials {
     readonly threadId: ThreadId;
+    readonly slotId: WorktreeSlotId;
     readonly groundingScope: PlanGroundingScope | undefined;
     readonly repositories: ReadonlyArray<{ readonly name: string; readonly path: string }>;
     readonly cwd: string | undefined;
@@ -981,8 +1012,8 @@ export const make = Effect.gen(function* () {
           : undefined;
       const canContinue = existing !== undefined;
 
-      const materials = canContinue
-        ? null
+      const builtMaterials = canContinue
+        ? Result.succeed(null)
         : yield* buildRebuildMaterials({
             planId: input.planId,
             parentCommitId: input.parentCommitId,
@@ -991,9 +1022,44 @@ export const make = Effect.gen(function* () {
             projectId: snapshot.plan.projectId,
             instanceId: resolution.instanceId,
             model: resolution.model,
-          });
+          }).pipe(Effect.result);
+      if (Result.isFailure(builtMaterials)) {
+        if (builtMaterials.failure._tag === "SlotPoolAtCapacityError") {
+          return yield* refuse(input.planId, "pool-at-capacity");
+        }
+        if (builtMaterials.failure._tag === "LineBranchMissingError") {
+          return yield* refuse(input.planId, "line-branch-missing");
+        }
+        return yield* Effect.logError("planning turn could not claim its line", {
+          planId: input.planId,
+          cause: builtMaterials.failure,
+        });
+      }
+      const materials = builtMaterials.success;
 
       const threadId = materials === null ? existing!.threadId : materials.threadId;
+      const continuedSlot =
+        materials === null
+          ? yield* slotService
+              .claim({
+                projectId: snapshot.plan.projectId,
+                lineRootCommitId: lineRootCommitIdFor(snapshot, input.parentCommitId),
+                holder: { kind: "turn", threadId },
+              })
+              .pipe(Effect.result)
+          : null;
+      if (continuedSlot !== null && Result.isFailure(continuedSlot)) {
+        if (continuedSlot.failure._tag === "SlotPoolAtCapacityError") {
+          return yield* refuse(input.planId, "pool-at-capacity");
+        }
+        if (continuedSlot.failure._tag === "LineBranchMissingError") {
+          return yield* refuse(input.planId, "line-branch-missing");
+        }
+        return yield* Effect.logError("planning continuation could not claim its line", {
+          planId: input.planId,
+          cause: continuedSlot.failure,
+        });
+      }
 
       // Claim the plan before anything reaches the provider: from here on,
       // human writes refuse and the MCP door resolves this thread to this
@@ -1008,6 +1074,15 @@ export const make = Effect.gen(function* () {
         })
         .pipe(Effect.result);
       if (Result.isFailure(claim)) {
+        const claimedSlotId =
+          materials === null && Result.isSuccess(continuedSlot!)
+            ? continuedSlot.success.slotId
+            : materials?.slotId;
+        if (claimedSlotId !== undefined) {
+          yield* slotService
+            .release(claimedSlotId, { kind: "turn", threadId })
+            .pipe(Effect.ignoreCause({ log: true }));
+        }
         return yield* refuse(input.planId, "turn-active");
       }
 
@@ -1027,6 +1102,12 @@ export const make = Effect.gen(function* () {
         answers: undefined,
         settling: false,
         stopRequested: false,
+        slotId:
+          materials === null
+            ? Result.isSuccess(continuedSlot!)
+              ? continuedSlot.success.slotId
+              : undefined
+            : materials.slotId,
         projectId: snapshot.plan.projectId,
       };
       turns.set(turnId, turn);
@@ -1065,6 +1146,10 @@ export const make = Effect.gen(function* () {
         const memoryMentionStanza = yield* resolveMemoryMentionStanza(
           snapshot.plan.projectId,
           input.text,
+          {
+            planId: input.planId,
+            commitId: MercurianCommitId.make(input.parentCommitId),
+          },
         );
         const continued = yield* providerService
           .sendTurn({
@@ -1080,6 +1165,12 @@ export const make = Effect.gen(function* () {
           planId: input.planId,
           cause: continued.failure,
         });
+        if (turn.slotId !== undefined) {
+          yield* slotService
+            .release(turn.slotId, { kind: "turn", threadId })
+            .pipe(Effect.ignoreCause({ log: true }));
+          turn.slotId = undefined;
+        }
         const fallback = yield* buildRebuildMaterials({
           planId: input.planId,
           parentCommitId: input.parentCommitId,
@@ -1092,6 +1183,7 @@ export const make = Effect.gen(function* () {
         // Move the turn to the new thread before the old session is torn
         // down, so its exit event no longer matches this turn.
         turn.threadId = fallback.threadId;
+        turn.slotId = fallback.slotId;
         turn.groundingScope = fallback.groundingScope;
         yield* registry.reassignThread(input.planId, turnId, fallback.threadId);
         sessions.delete(threadId);
@@ -1115,8 +1207,20 @@ export const make = Effect.gen(function* () {
         });
         turns.delete(turnId);
         yield* registry.close(input.planId, turnId);
+        if (turn.slotId !== undefined) {
+          yield* slotService
+            .release(turn.slotId, { kind: "turn", threadId: turn.threadId })
+            .pipe(Effect.ignoreCause({ log: true }));
+        }
         yield* publishFrame(input.planId, { kind: "turn-settled", turnId });
-        yield* refuse(input.planId, "no-instance");
+        yield* refuse(
+          input.planId,
+          opened.failure._tag === "SlotPoolAtCapacityError"
+            ? "pool-at-capacity"
+            : opened.failure._tag === "LineBranchMissingError"
+              ? "line-branch-missing"
+              : "no-instance",
+        );
         yield* announceChange;
       }
     }).pipe(
@@ -1228,25 +1332,6 @@ export const make = Effect.gen(function* () {
         ),
     );
 
-  const memoryAmendmentProposal: PlanningAssistant["Service"]["memoryAmendmentProposal"] = (
-    planId,
-  ) => Effect.sync(() => memoryAmendmentProposals.get(planId));
-
-  const cancelMemoryAmendment: PlanningAssistant["Service"]["cancelMemoryAmendment"] = (planId) =>
-    Effect.gen(function* () {
-      const proposal = memoryAmendmentProposals.get(planId);
-      if (proposal === undefined) return;
-      memoryAmendmentProposals.delete(planId);
-      yield* publishFrame(planId, {
-        kind: "memory-amendment-cancelled",
-        turnId: PlanTurnId.make(proposal.turnId),
-      });
-      yield* announceChange;
-    });
-
-  const clearMemoryAmendment: PlanningAssistant["Service"]["clearMemoryAmendment"] = (planId) =>
-    Effect.sync(() => void memoryAmendmentProposals.delete(planId));
-
   const status: PlanningAssistant["Service"]["status"] = Effect.sync(() => {
     // One row per plan, aggregated across its concurrent turns: working while
     // any turn streams, awaiting input while any turn has a question up.
@@ -1265,7 +1350,6 @@ export const make = Effect.gen(function* () {
 
   const teardownPlan: PlanningAssistant["Service"]["teardownPlan"] = (input) =>
     Effect.gen(function* () {
-      memoryAmendmentProposals.delete(input.planId);
       for (const turn of turnsOfPlan(input.planId)) {
         if (turn.settling) continue;
         if (input.commitPartial) {
@@ -1273,6 +1357,11 @@ export const make = Effect.gen(function* () {
         } else {
           turns.delete(turn.turnId);
           yield* registry.close(input.planId, turn.turnId);
+          if (turn.slotId !== undefined) {
+            yield* slotService
+              .release(turn.slotId, { kind: "turn", threadId: turn.threadId })
+              .pipe(Effect.ignoreCause({ log: true }));
+          }
           yield* publishFrame(input.planId, { kind: "turn-settled", turnId: turn.turnId });
           yield* announceChange;
         }
@@ -1348,12 +1437,35 @@ export const make = Effect.gen(function* () {
         if (Option.isNone(claimed) || runtime === undefined || runtime.settling) {
           return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
         }
-        memoryAmendmentProposals.delete(runtime.planId);
-        runtime.pendingMemoryAmendment = {
-          title: input.title,
-          notes: input.notes.map((note) => ({ ...note })),
-          placements: input.placements.map((placement) => ({ ...placement })),
-        };
+        const landed = yield* memoryIndex
+          .landAmendment({
+            projectId: runtime.projectId!,
+            threadId: input.threadId,
+            turnId: runtime.turnId,
+            amendment: {
+              title: input.title,
+              notes: input.notes.map((note) => ({ ...note })),
+              placements: input.placements.map((placement) => ({ ...placement })),
+            },
+          })
+          .pipe(Effect.result);
+        if (Result.isFailure(landed)) {
+          if (
+            typeof landed.failure === "object" &&
+            landed.failure !== null &&
+            "_tag" in landed.failure &&
+            landed.failure._tag === "MemoryAmendmentValidationError"
+          ) {
+            return yield* landed.failure as MemoryIndex.MemoryAmendmentValidationError;
+          }
+          yield* Effect.logError("memory amendment failed to land", {
+            planId: runtime.planId,
+            cause: landed.failure,
+          });
+          return yield* new MemoryIndex.MemoryAmendmentValidationError({
+            reason: "Project memory could not be amended.",
+          });
+        }
       });
 
   const readPlanFromThread: PlanningAssistant["Service"]["readPlanFromThread"] = (input) =>
@@ -1400,9 +1512,6 @@ export const make = Effect.gen(function* () {
     answerQuestion,
     frames,
     inFlightTurns,
-    memoryAmendmentProposal,
-    cancelMemoryAmendment,
-    clearMemoryAmendment,
     status,
     teardownPlan,
     saveRevisionFromThread,

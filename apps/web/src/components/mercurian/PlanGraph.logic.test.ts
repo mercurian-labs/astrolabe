@@ -287,6 +287,7 @@ describe("planCommitSummary", () => {
       memoryAmendment: {
         title: "Surface open decisions",
         memoryCommitSha: "abc123",
+        branch: "mercurian/memory",
         notes: ["Composer"],
       },
     });

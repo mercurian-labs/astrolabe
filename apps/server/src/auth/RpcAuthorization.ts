@@ -54,8 +54,6 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.saveSpecRevision]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.refreshSpec]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.confirmMemoryAmendment]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.cancelMemoryAmendment]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.startCodingSession]: AuthOrchestrationOperateScope,
   // A plan's disappearance, reversible or not.
   [MERCURIAN_WS_METHODS.archivePlan]: AuthOrchestrationOperateScope,
@@ -79,6 +77,7 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_MEMORY_WS_METHODS.removeMemorySource]: AuthOrchestrationOperateScope,
   [MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex]: AuthOrchestrationReadScope,
   [MERCURIAN_MEMORY_WS_METHODS.readMemoryNote]: AuthOrchestrationReadScope,
+  [MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges]: AuthOrchestrationReadScope,
   [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: AuthOrchestrationOperateScope,
   // Tracker connections likewise: connecting and disconnecting are operations;
   // seeing where a connection stands, and reading the issues it reaches, are

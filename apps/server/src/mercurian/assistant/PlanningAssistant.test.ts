@@ -30,16 +30,31 @@ import {
 
 import * as Config from "../../config.ts";
 import * as ProcessRunner from "../../processRunner.ts";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import * as GitVcsDriverModule from "../../vcs/GitVcsDriver.ts";
+import * as VcsProcess from "../../vcs/VcsProcess.ts";
+import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
 import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
+import { ProviderValidationError } from "../../provider/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
+import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
+import * as SlotStore from "../worktreeSlots/SlotStore.ts";
+import * as SlotRegistry from "../worktreeSlots/SlotRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as MemoryIndex from "../memory/MemoryIndex.ts";
+import {
+  SlotPoolAtCapacityError,
+  SlotService,
+  type ClaimSlotInput,
+} from "../worktreeSlots/SlotService.ts";
+import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
+import { WorktreeSlotId, type SlotLeaseHolder } from "../worktreeSlots/schema.ts";
 import * as WorkspaceSettingsStore from "../workspace/WorkspaceSettingsStore.ts";
 import * as PlanningAssistant from "./PlanningAssistant.ts";
 import {
@@ -107,6 +122,11 @@ interface ProviderHarnessShape {
     readonly answers: Record<string, unknown>;
   }>;
   readonly stops: Queue.Queue<ThreadId>;
+  readonly slotClaims: Queue.Queue<ClaimSlotInput>;
+  readonly slotReleases: Queue.Queue<{
+    readonly slotId: WorktreeSlotId;
+    readonly holder: SlotLeaseHolder;
+  }>;
   readonly emit: (event: ProviderRuntimeEvent) => Effect.Effect<void>;
   /** Grounding capability the fake adapter declares; mutable per test. */
   readonly setGroundingRoots: (roots: "multi" | "cwd-only") => Effect.Effect<void>;
@@ -116,78 +136,93 @@ class ProviderHarness extends Context.Service<ProviderHarness, ProviderHarnessSh
   "t3/mercurian/assistant/PlanningAssistant.test/ProviderHarness",
 ) {}
 
-const makeHarness = Effect.gen(function* () {
-  const events = yield* PubSub.unbounded<ProviderRuntimeEvent>();
-  const startSessions = yield* Queue.unbounded<ProviderSessionStartInput>();
-  const sendTurns = yield* Queue.unbounded<ProviderSendTurnInput>();
-  const interrupts = yield* Queue.unbounded<ThreadId>();
-  const approvals = yield* Queue.unbounded<{ requestId: string; decision: string }>();
-  const userInputs = yield* Queue.unbounded<{
-    requestId: string;
-    answers: Record<string, unknown>;
-  }>();
-  const stops = yield* Queue.unbounded<ThreadId>();
-  let groundingRoots: "multi" | "cwd-only" = "multi";
+const makeHarness = (providerStartFailure = false) =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const startSessions = yield* Queue.unbounded<ProviderSessionStartInput>();
+    const sendTurns = yield* Queue.unbounded<ProviderSendTurnInput>();
+    const interrupts = yield* Queue.unbounded<ThreadId>();
+    const approvals = yield* Queue.unbounded<{ requestId: string; decision: string }>();
+    const userInputs = yield* Queue.unbounded<{
+      requestId: string;
+      answers: Record<string, unknown>;
+    }>();
+    const stops = yield* Queue.unbounded<ThreadId>();
+    const slotClaims = yield* Queue.unbounded<ClaimSlotInput>();
+    const slotReleases = yield* Queue.unbounded<{
+      slotId: WorktreeSlotId;
+      holder: SlotLeaseHolder;
+    }>();
+    let groundingRoots: "multi" | "cwd-only" = "multi";
 
-  const toSession = (input: ProviderSessionStartInput): ProviderSession => ({
-    provider: claude,
-    providerInstanceId: claudeInstance,
-    status: "running",
-    runtimeMode: input.runtimeMode,
-    threadId: input.threadId,
-    createdAt: "2026-08-08T00:00:00.000Z",
-    updatedAt: "2026-08-08T00:00:00.000Z",
+    const toSession = (input: ProviderSessionStartInput): ProviderSession => ({
+      provider: claude,
+      providerInstanceId: claudeInstance,
+      status: "running",
+      runtimeMode: input.runtimeMode,
+      threadId: input.threadId,
+      createdAt: "2026-08-08T00:00:00.000Z",
+      updatedAt: "2026-08-08T00:00:00.000Z",
+    });
+
+    const service: ProviderService.ProviderService["Service"] = {
+      startSession: (threadId, input) =>
+        providerStartFailure
+          ? Effect.fail(
+              new ProviderValidationError({
+                operation: "startSession",
+                issue: "test provider start failure",
+              }),
+            )
+          : Queue.offer(startSessions, { ...input, threadId }).pipe(
+              Effect.as(toSession({ ...input, threadId })),
+            ),
+      sendTurn: (input) =>
+        Queue.offer(sendTurns, input).pipe(
+          Effect.as({ threadId: input.threadId, turnId: TurnId.make("provider-turn") }),
+        ),
+      interruptTurn: (input) => Queue.offer(interrupts, input.threadId).pipe(Effect.asVoid),
+      respondToRequest: (input) =>
+        Queue.offer(approvals, {
+          requestId: String(input.requestId),
+          decision: input.decision,
+        }).pipe(Effect.asVoid),
+      respondToUserInput: (input) =>
+        Queue.offer(userInputs, {
+          requestId: String(input.requestId),
+          answers: { ...input.answers },
+        }).pipe(Effect.asVoid),
+      stopSession: (input) => Queue.offer(stops, input.threadId).pipe(Effect.asVoid),
+      listSessions: () => Effect.succeed([]),
+      getCapabilities: () =>
+        Effect.sync(() => ({ sessionModelSwitch: "in-session" as const, groundingRoots })),
+      assertConversationRollbackSupported: () => Effect.die("unused in planning tests"),
+      getInstanceInfo: () => Effect.die("unused in planning tests"),
+      rollbackConversation: () => Effect.die("unused in planning tests"),
+      uploadFeedback: () => Effect.die("unused in planning tests"),
+      get streamEvents() {
+        return Stream.fromPubSub(events);
+      },
+    };
+
+    const harness: ProviderHarnessShape = {
+      startSessions,
+      sendTurns,
+      interrupts,
+      approvals,
+      userInputs,
+      stops,
+      slotClaims,
+      slotReleases,
+      emit: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
+      setGroundingRoots: (roots) =>
+        Effect.sync(() => {
+          groundingRoots = roots;
+        }),
+    };
+
+    return { harness, service };
   });
-
-  const service: ProviderService.ProviderService["Service"] = {
-    startSession: (threadId, input) =>
-      Queue.offer(startSessions, { ...input, threadId }).pipe(
-        Effect.as(toSession({ ...input, threadId })),
-      ),
-    sendTurn: (input) =>
-      Queue.offer(sendTurns, input).pipe(
-        Effect.as({ threadId: input.threadId, turnId: TurnId.make("provider-turn") }),
-      ),
-    interruptTurn: (input) => Queue.offer(interrupts, input.threadId).pipe(Effect.asVoid),
-    respondToRequest: (input) =>
-      Queue.offer(approvals, {
-        requestId: String(input.requestId),
-        decision: input.decision,
-      }).pipe(Effect.asVoid),
-    respondToUserInput: (input) =>
-      Queue.offer(userInputs, {
-        requestId: String(input.requestId),
-        answers: { ...input.answers },
-      }).pipe(Effect.asVoid),
-    stopSession: (input) => Queue.offer(stops, input.threadId).pipe(Effect.asVoid),
-    listSessions: () => Effect.succeed([]),
-    getCapabilities: () =>
-      Effect.sync(() => ({ sessionModelSwitch: "in-session" as const, groundingRoots })),
-    assertConversationRollbackSupported: () => Effect.die("unused in planning tests"),
-    getInstanceInfo: () => Effect.die("unused in planning tests"),
-    rollbackConversation: () => Effect.die("unused in planning tests"),
-    uploadFeedback: () => Effect.die("unused in planning tests"),
-    get streamEvents() {
-      return Stream.fromPubSub(events);
-    },
-  };
-
-  const harness: ProviderHarnessShape = {
-    startSessions,
-    sendTurns,
-    interrupts,
-    approvals,
-    userInputs,
-    stops,
-    emit: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
-    setGroundingRoots: (roots) =>
-      Effect.sync(() => {
-        groundingRoots = roots;
-      }),
-  };
-
-  return { harness, service };
-});
 
 // Grounding needs no live git here: every path is "not a repository", which
 // is a legal grounding root by design.
@@ -208,37 +243,145 @@ const stubProcessRunner = Layer.succeed(
   }),
 );
 
+const stubGit = Layer.mock(GitVcsDriver)({
+  execute: () =>
+    Effect.succeed({
+      exitCode: 128 as never,
+      stdout: "",
+      stderr: "fatal: not a git repository",
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    }),
+});
+
+const liveGit = GitVcsDriverModule.layer.pipe(
+  Layer.provide(Config.layerTest(process.cwd(), { prefix: "planning-assistant-git-" })),
+  Layer.provideMerge(VcsProcess.layer),
+  Layer.provideMerge(NodeServicesLayer),
+);
+
+const memoryRepositories = new Map<string, import("@t3tools/contracts").MercurianRepositoryId>();
+
 /**
  * One whole world per test — assistant, stores, harness, in-memory database —
  * because the harness's call queues are receipts, and receipts shared between
  * concurrently running tests would answer the wrong caller.
  */
-const testLayer = (providers: ReadonlyArray<ServerProvider> = [providerSnapshot]) => {
+const testLayer = (
+  providers: ReadonlyArray<ServerProvider> = [providerSnapshot],
+  lineMemory = false,
+  providerStartFailure = false,
+  slotFailure: "pool-at-capacity" | null = null,
+) => {
   const harnessContext = Layer.unwrap(
-    Effect.map(makeHarness, ({ harness, service }) =>
+    Effect.map(makeHarness(providerStartFailure), ({ harness, service }) =>
       Layer.mergeAll(
         Layer.succeed(ProviderHarness)(harness),
         Layer.succeed(ProviderService.ProviderService)(service),
       ),
     ),
   );
+  const repositoryStoreLayer = RepositoryStore.layer.pipe(Layer.provide(stubProcessRunner));
+  const codingSessionStoreLayer = CodingSessionStore.layer;
+  const planTurnRegistryLayer = PlanTurnRegistry.layer;
+  const planningStoreLayer = PlanningStore.layer.pipe(
+    Layer.provideMerge(codingSessionStoreLayer),
+    Layer.provideMerge(repositoryStoreLayer),
+    Layer.provideMerge(planTurnRegistryLayer),
+  );
+  const lineBranchStoreLayer = Layer.mock(LineBranchStore.LineBranchStore)({
+    get: ({ lineRootCommitId, repositoryId }) =>
+      Effect.succeed(
+        lineMemory
+          ? Option.some({
+              lineRootCommitId,
+              repositoryId,
+              branch: "mercurian/test",
+              baseOid: "base",
+              built: true,
+              repointHold: null,
+              createdAt: at("2026-08-08T00:00:00.000Z"),
+            })
+          : Option.none(),
+      ),
+  });
+  const slotStoreLayer = Layer.mock(SlotStore.SlotStore)({
+    list: () => Effect.succeed([]),
+  });
+  const slotRegistryLayer = SlotRegistry.layer;
+  const checkpointStoreLayer = Layer.mock(CheckpointStore.CheckpointStore)({
+    diffCheckpoints: () => Effect.succeed(""),
+  });
+  const memoryRuntimeLayer = Layer.mergeAll(
+    planningStoreLayer,
+    lineBranchStoreLayer,
+    slotStoreLayer,
+    slotRegistryLayer,
+    checkpointStoreLayer,
+  );
+  const memoryIndexLayer = MemoryIndex.layer.pipe(
+    Layer.provideMerge(MemorySourceStore.layer.pipe(Layer.provide(lineMemory ? liveGit : stubGit))),
+    Layer.provideMerge(memoryRuntimeLayer),
+    Layer.provideMerge(lineMemory ? liveGit : stubGit),
+    Layer.provide(stubProcessRunner),
+  );
+  const slotLayer = Layer.effect(
+    SlotService,
+    Effect.gen(function* () {
+      const repositories = yield* RepositoryStore.RepositoryStore;
+      const harness = yield* ProviderHarness;
+      return SlotService.of({
+        claim: (input) =>
+          Effect.gen(function* () {
+            yield* Queue.offer(harness.slotClaims, input);
+            if (slotFailure === "pool-at-capacity") {
+              return yield* new SlotPoolAtCapacityError({
+                projectId: input.projectId,
+                poolSize: 1,
+              });
+            }
+            const snapshot = yield* repositories.getSnapshot.pipe(Effect.orDie);
+            const memoryRepositoryId = memoryRepositories.get(input.projectId);
+            const memorySource =
+              memoryRepositoryId === undefined
+                ? null
+                : {
+                    projectId: input.projectId,
+                    repositoryId: memoryRepositoryId,
+                    subpath: null,
+                    createdAt: at("2026-08-08T00:00:00.000Z"),
+                    updatedAt: at("2026-08-08T00:00:00.000Z"),
+                  };
+            return {
+              slotId: WorktreeSlotId.make("planning-test-slot"),
+              projectId: input.projectId,
+              path: "/",
+              currentLineRootCommitId: input.lineRootCommitId,
+              members: projectWorkingRepositories(snapshot, input.projectId, memorySource).map(
+                (repository) => ({
+                  repositoryId: repository.repositoryId,
+                  relativePath: repository.path.replace(/^\//u, "") || "repository",
+                  currentBranch: "mercurian/test",
+                }),
+              ),
+              createdAt: at("2026-08-08T00:00:00.000Z"),
+              lastUsedAt: at("2026-08-08T00:00:00.000Z"),
+            };
+          }),
+        release: (slotId, holder) =>
+          Queue.offer(harness.slotReleases, { slotId, holder }).pipe(Effect.as(true)),
+        retain: () => Effect.void,
+      });
+    }),
+  );
   return PlanningAssistant.layer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(
-        PlanningStore.layer.pipe(
-          Layer.provideMerge(CodingSessionStore.layer),
-          Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(stubProcessRunner))),
-        ),
-        WorkspaceSettingsStore.layer,
-        MemoryIndex.layer.pipe(
-          Layer.provideMerge(MemorySourceStore.layer),
-          Layer.provide(stubProcessRunner),
-        ),
-      ),
+      Layer.mergeAll(planningStoreLayer, WorkspaceSettingsStore.layer, memoryIndexLayer),
     ),
-    Layer.provideMerge(PlanTurnRegistry.layer),
+    Layer.provideMerge(slotLayer.pipe(Layer.provideMerge(repositoryStoreLayer))),
     Layer.provideMerge(CommitStore.layer),
     Layer.provideMerge(harnessContext),
+    Layer.provideMerge(lineMemory ? liveGit : Layer.empty),
     Layer.provideMerge(
       Layer.mock(ProviderRegistry.ProviderRegistry)({
         getProviders: Effect.succeed(providers),
@@ -330,12 +473,15 @@ const seedTwoRepositories = Effect.fn("seedTwoRepositories")(function* (created:
 const seedMemory = Effect.fn("seedMemory")(function* (
   projectId: import("@t3tools/contracts").MercurianProjectId,
   notes: Readonly<Record<string, string>>,
+  subpath?: string,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const root = yield* fs.makeTempDirectoryScoped({ prefix: "planning-memory-" });
+  const memoryRoot = subpath === undefined ? root : path.join(root, subpath);
+  yield* fs.makeDirectory(memoryRoot, { recursive: true });
   for (const [name, markdown] of Object.entries(notes)) {
-    yield* fs.writeFileString(path.join(root, `${name}.md`), markdown);
+    yield* fs.writeFileString(path.join(memoryRoot, `${name}.md`), markdown);
   }
   const repositories = yield* RepositoryStore.RepositoryStore;
   const source = yield* repositories.addRepository({
@@ -347,9 +493,22 @@ const seedMemory = Effect.fn("seedMemory")(function* (
   yield* memorySources.designate({
     projectId,
     repositoryId: source.repositoryId,
+    ...(subpath === undefined ? {} : { subpath }),
     now: at("2026-08-08T00:00:00.000Z"),
   });
-  return yield* fs.realPath(root);
+  const git = yield* GitVcsDriver;
+  for (const args of [
+    ["init"],
+    ["config", "user.name", "Planning Test"],
+    ["config", "user.email", "planning@example.com"],
+    ["add", "."],
+    ["commit", "--allow-empty", "-m", "Seed memory"],
+    ["branch", "mercurian/test"],
+  ]) {
+    yield* git.execute({ operation: "PlanningAssistant.test.seedMemory", cwd: root, args });
+  }
+  memoryRepositories.set(projectId, source.repositoryId);
+  return yield* fs.realPath(memoryRoot);
 });
 
 describe("PlanningAssistant", () => {
@@ -372,6 +531,11 @@ describe("PlanningAssistant", () => {
         parentCommitId: root.commitId,
         text: "Reshape the sidebar",
       });
+
+      const slotClaim = yield* Queue.take(harness.slotClaims);
+      assert.strictEqual(slotClaim.projectId, created.plan.projectId);
+      assert.strictEqual(String(slotClaim.lineRootCommitId), String(root.commitId));
+      assert.strictEqual(slotClaim.holder.kind, "turn");
 
       // The session opened read-only under the resolved planning model, and
       // the first turn carried the appendix.
@@ -428,6 +592,8 @@ describe("PlanningAssistant", () => {
       );
       const settled = yield* Queue.take(frames);
       assert.strictEqual(settled.kind, "turn-settled");
+      const slotRelease = yield* Queue.take(harness.slotReleases);
+      assert.deepStrictEqual(slotRelease.holder, slotClaim.holder);
 
       const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
       const reply = snapshot.timeline.at(-1);
@@ -491,6 +657,55 @@ describe("PlanningAssistant", () => {
       // Stopping again is a no-op, not an error.
       yield* assistant.stopTurn({ planId: created.plan.planId, turnId: startedForStop.turnId });
     }).pipe(Effect.scoped, Effect.provide(testLayer())),
+  );
+
+  it.effect("releases the claimed slot when provider start fails", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Reshape the sidebar",
+      });
+
+      const claim = yield* Queue.take(harness.slotClaims);
+      const started = yield* Queue.take(frames);
+      assert.strictEqual(started.kind, "turn-started");
+      const settled = yield* Queue.take(frames);
+      assert.strictEqual(settled.kind, "turn-settled");
+      const refused = yield* Queue.take(frames);
+      assert.ok(refused.kind === "turn-refused" && refused.reason === "no-instance");
+      const release = yield* Queue.take(harness.slotReleases);
+      assert.deepStrictEqual(release.holder, claim.holder);
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot], false, true))),
+  );
+
+  it.effect("refuses at capacity before starting a planning turn", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Reshape the sidebar",
+      });
+
+      const claim = yield* Queue.take(harness.slotClaims);
+      assert.deepStrictEqual(claim.holder.kind, "turn");
+      const refused = yield* Queue.take(frames);
+      assert.ok(refused.kind === "turn-refused" && refused.reason === "pool-at-capacity");
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(testLayer([providerSnapshot], false, false, "pool-at-capacity")),
+    ),
   );
 
   it.effect("a stop the adapter never answers settles after the grace window", () =>
@@ -805,12 +1020,17 @@ describe("PlanningAssistant", () => {
     Effect.gen(function* () {
       const assistant = yield* PlanningAssistant.PlanningAssistant;
       const harness = yield* ProviderHarness;
+      const path = yield* Path.Path;
       const { created, root } = yield* seedPlan();
       const { first, second } = yield* seedTwoRepositories(created);
-      const memoryRoot = yield* seedMemory(created.plan.projectId, {
-        Composer: "The composer design.",
-        Plans: "The frontier includes [[Future]].",
-      });
+      const memoryRoot = yield* seedMemory(
+        created.plan.projectId,
+        {
+          Composer: "The composer design.",
+          Plans: "The frontier includes [[Future]].",
+        },
+        "notes",
+      );
 
       yield* assistant.startTurn({
         planId: created.plan.planId,
@@ -819,14 +1039,17 @@ describe("PlanningAssistant", () => {
       });
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.cwd, first.path);
-      assert.deepStrictEqual(session.additionalDirectories, [second.path, memoryRoot]);
+      assert.deepStrictEqual(session.additionalDirectories, [
+        second.path,
+        path.dirname(memoryRoot),
+      ]);
       const sent = yield* Queue.take(harness.sendTurns);
       const sentInput = sent.input ?? "";
       assert.ok(sentInput.includes(`Project memory (durable design truth`));
       assert.ok(sentInput.includes(`- ${memoryRoot}`));
       assert.ok(sentInput.includes(`- Composer: ${memoryRoot}/Composer.md`));
       assert.ok(sentInput.includes("- Future: not yet written — linked from Plans"));
-    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot], true))),
   );
 
   it.effect("resolves note mentions when continuing a live session", () =>
@@ -885,7 +1108,7 @@ describe("PlanningAssistant", () => {
         continued.input,
         `Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: ${memoryRoot}/Composer.md`,
       );
-    }).pipe(Effect.scoped, Effect.provide(testLayer())),
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot], true))),
   );
 
   it.effect("narrows visibly for a cwd-only provider", () =>
@@ -895,7 +1118,7 @@ describe("PlanningAssistant", () => {
       const { created, root } = yield* seedPlan();
       yield* harness.setGroundingRoots("cwd-only");
       const { first, second } = yield* seedTwoRepositories(created);
-      yield* seedMemory(created.plan.projectId, {});
+      const memoryRoot = yield* seedMemory(created.plan.projectId, {});
 
       const frames = yield* subscribeFrames(created.plan.planId);
       yield* assistant.startTurn({
@@ -908,7 +1131,7 @@ describe("PlanningAssistant", () => {
       // which ones were out of reach, on the frame and in the prompt.
       const session = yield* Queue.take(harness.startSessions);
       assert.strictEqual(session.cwd, first.path);
-      assert.strictEqual(session.additionalDirectories, undefined);
+      assert.deepStrictEqual(session.additionalDirectories, [second.path, memoryRoot]);
       const startedFrame = yield* Queue.take(frames);
       assert.ok(startedFrame.kind === "turn-started");
       assert.deepStrictEqual(startedFrame.groundingScope?.unreachableRepositories, [

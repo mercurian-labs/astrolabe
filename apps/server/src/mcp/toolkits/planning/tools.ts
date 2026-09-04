@@ -14,6 +14,7 @@ import {
   PlanningAssistant,
   PlanningTurnNotFoundError,
 } from "../../../mercurian/assistant/PlanningAssistant.ts";
+import { MemoryAmendmentValidationError } from "../../../mercurian/memory/MemoryIndex.ts";
 import { SpecDocument } from "@t3tools/contracts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
@@ -100,13 +101,13 @@ export const ReadPlanTool = Tool.make("read_plan", {
 
 export const ProposeMemoryAmendmentTool = Tool.make("propose_memory_amendment", {
   description:
-    "Propose a reviewed amendment to project memory. Supply every changed note as its complete markdown and optional typed-edge placements in named maps. This does not write files; the person must confirm the proposal. Calling again replaces the pending proposal.",
+    "Land an amendment on this line's memory branch. Supply every changed note as its complete markdown and optional typed-edge placements in named maps. One call creates one memory-only commit.",
   parameters: ProposeMemoryAmendmentInput,
   success: ProposeMemoryAmendmentResult,
-  failure: PlanningTurnNotFoundError,
+  failure: Schema.Union([PlanningTurnNotFoundError, MemoryAmendmentValidationError]),
   dependencies,
 })
-  .annotate(Tool.Title, "Propose memory amendment")
+  .annotate(Tool.Title, "Land memory amendment")
   .annotate(Tool.Destructive, false)
   .annotate(Tool.OpenWorld, false);
 

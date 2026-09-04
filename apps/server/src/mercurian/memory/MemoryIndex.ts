@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -8,21 +9,35 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
 import {
+  CheckpointRef,
   MemoryNotDesignatedError,
-  type MemoryAmendmentProposal,
   type MemoryMapPlacement,
+  type MemoryLineRef,
   type MemoryIndex as MemoryIndexValue,
   type MemoryNote,
+  type MercurianLineMemoryChanges,
   MercurianMemoryError,
   type MercurianProjectId,
+  type PlanId,
   type PlanTurnId,
+  type ThreadId,
   ProductMapAlreadyExistsError,
   ProductMapCycleError,
-  ConfirmMemoryAmendmentBlockedError,
   isProductMapCycleError,
 } from "@t3tools/contracts";
 
 import * as ProcessRunner from "../../processRunner.ts";
+import { CheckpointStore } from "../../checkpointing/CheckpointStore.ts";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import { CodingSessionStore } from "../codingSessions/CodingSessionStore.ts";
+import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
+import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { PlanningStore } from "../planning/PlanningStore.ts";
+import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
+import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
+import { SlotStore } from "../worktreeSlots/SlotStore.ts";
+import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
+import { slotMemberWorktreePath } from "../worktreeSlots/SlotService.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
 import {
   buildMemoryGraph,
@@ -35,7 +50,7 @@ import {
   serializeSkillMap,
   type MemoryGraph,
 } from "./memoryModel.ts";
-import type { ResolvedMemorySource } from "./schema.ts";
+import type { MemoryTreeSource, ResolvedMemorySource } from "./schema.ts";
 
 export type MemoryIndexError =
   | MemorySourceStore.MemorySourceStoreError
@@ -64,15 +79,29 @@ interface CachedRoot {
   readonly index: MemoryIndexValue;
 }
 
+export interface PreparedMemoryAmendment {
+  readonly turnId: PlanTurnId;
+  readonly title: string;
+  readonly changes: ReadonlyArray<{
+    readonly path: string;
+    readonly before: string | null;
+    readonly after: string;
+  }>;
+  readonly patch: string;
+  readonly placements: ReadonlyArray<MemoryMapPlacement>;
+}
+
 export class MemoryIndex extends Context.Service<
   MemoryIndex,
   {
     readonly readIndex: (
       projectId: MercurianProjectId,
+      line?: MemoryLineRef,
     ) => Effect.Effect<MemoryIndexValue, MemoryIndexError>;
     readonly readNote: (
       projectId: MercurianProjectId,
       name: string,
+      line?: MemoryLineRef,
     ) => Effect.Effect<MemoryNote, MemoryIndexError>;
     readonly generateProductMap: (
       projectId: MercurianProjectId,
@@ -81,13 +110,24 @@ export class MemoryIndex extends Context.Service<
       readonly projectId: MercurianProjectId;
       readonly turnId: PlanTurnId;
       readonly amendment: PendingMemoryAmendment;
-    }) => Effect.Effect<MemoryAmendmentProposal, MemoryIndexError | MemoryAmendmentValidationError>;
-    readonly applyAmendment: (input: {
+    }) => Effect.Effect<PreparedMemoryAmendment, MemoryIndexError | MemoryAmendmentValidationError>;
+    readonly resolveLineSource: (input: {
       readonly projectId: MercurianProjectId;
-      readonly proposal: MemoryAmendmentProposal;
-      readonly planId: string;
-      readonly planName: string;
-    }) => Effect.Effect<string | null, MemoryIndexError | ConfirmMemoryAmendmentBlockedError>;
+      readonly line: MemoryLineRef;
+    }) => Effect.Effect<MemoryTreeSource, MemoryIndexError>;
+    readonly landAmendment: (input: {
+      readonly projectId: MercurianProjectId;
+      readonly threadId: ThreadId;
+      readonly turnId: PlanTurnId;
+      readonly amendment: PendingMemoryAmendment;
+    }) => Effect.Effect<
+      { readonly memoryCommitSha: string; readonly branch: string },
+      MemoryIndexError | MemoryAmendmentValidationError
+    >;
+    readonly readLineChanges: (input: {
+      readonly projectId: MercurianProjectId;
+      readonly line: MemoryLineRef;
+    }) => Effect.Effect<MercurianLineMemoryChanges, MemoryIndexError>;
   }
 >()("t3/mercurian/memory/MemoryIndex") {}
 
@@ -98,6 +138,38 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const sourceStore = yield* MemorySourceStore.MemorySourceStore;
+  const git = yield* GitVcsDriver;
+  const codingSessions = yield* CodingSessionStore;
+  const planning = yield* PlanningStore;
+  const planTurns = yield* PlanTurnRegistry;
+  const branches = yield* LineBranchStore;
+  const slots = yield* SlotStore;
+  const slotRegistry = yield* SlotRegistry;
+  const checkpoints = yield* CheckpointStore;
+  const normalizeReadError =
+    (operation: "readMemoryIndex" | "readMemoryNote" | "readLineMemoryChanges") =>
+    (cause: unknown) => {
+      if (
+        typeof cause === "object" &&
+        cause !== null &&
+        "_tag" in cause &&
+        (cause._tag === "MemoryNotDesignatedError" || cause._tag === "MemorySourceInvalidError")
+      ) {
+        return cause as MemoryNotDesignatedError | MemorySourceStore.MemorySourceStoreError;
+      }
+      return new MercurianMemoryError({ operation, cause });
+    };
+  const normalizeLandError = (cause: unknown) => {
+    if (
+      typeof cause === "object" &&
+      cause !== null &&
+      "_tag" in cause &&
+      cause._tag === "MemoryAmendmentValidationError"
+    ) {
+      return cause as MemoryAmendmentValidationError;
+    }
+    return new MercurianMemoryError({ operation: "landMemoryAmendment", cause });
+  };
   const cache = new Map<string, CachedRoot>();
 
   const runGit = (cwd: string, args: ReadonlyArray<string>) =>
@@ -119,10 +191,13 @@ export const make = Effect.gen(function* () {
     readonly absolutePaths: ReadonlyArray<string>;
     readonly message: string;
     readonly operation: "generateProductMap" | "applyMemoryAmendment";
+    readonly trailers?: ReadonlyArray<string>;
   }) {
-    const repositoryRoot = yield* gitRoot(input.rootPath);
-    if (repositoryRoot === null) return null;
-    const relativePaths = input.absolutePaths.map((file) => path.relative(repositoryRoot, file));
+    const discoveredRoot = yield* gitRoot(input.rootPath);
+    if (discoveredRoot === null) return null;
+    const repositoryRoot = yield* fs.realPath(discoveredRoot);
+    const canonicalPaths = yield* Effect.forEach(input.absolutePaths, (file) => fs.realPath(file));
+    const relativePaths = canonicalPaths.map((file) => path.relative(repositoryRoot, file));
     const add = yield* runGit(repositoryRoot, ["add", "--", ...relativePaths]);
     const commit =
       add.code === 0
@@ -130,7 +205,11 @@ export const make = Effect.gen(function* () {
             "commit",
             "--only",
             "-m",
-            input.message,
+            `${input.message}${
+              input.trailers === undefined || input.trailers.length === 0
+                ? ""
+                : `\n\n${input.trailers.join("\n")}`
+            }`,
             "--",
             ...relativePaths,
           ])
@@ -286,16 +365,171 @@ export const make = Effect.gen(function* () {
     return next;
   });
 
-  const readIndex: MemoryIndex["Service"]["readIndex"] = (projectId) =>
-    Effect.gen(function* () {
-      const source = yield* requireSource(projectId);
-      return (yield* loadRoot(source)).index;
-    });
+  const refPath = (source: Extract<MemoryTreeSource, { readonly kind: "ref" }>, relative: string) =>
+    posix([source.subpath, relative].filter(Boolean).join("/"));
 
-  const readNote: MemoryIndex["Service"]["readNote"] = (projectId, name) =>
+  const loadRef = Effect.fn("MemoryIndex.loadRef")(function* (
+    source: Extract<MemoryTreeSource, { readonly kind: "ref" }>,
+  ) {
+    const resolved = yield* git.execute({
+      operation: "MemoryIndex.resolveRef",
+      cwd: source.repositoryPath,
+      args: ["rev-parse", "--verify", `${source.ref}^{commit}`],
+    });
+    const oid = resolved.stdout.trim();
+    const cacheKey = `ref:${source.repositoryPath}\0${oid}\0${source.subpath}`;
+    const previous = cache.get(cacheKey);
+    if (previous !== undefined) return previous;
+    const listed = yield* git.execute({
+      operation: "MemoryIndex.listRef",
+      cwd: source.repositoryPath,
+      args: ["ls-tree", "-r", "--name-only", "-z", oid, "--", source.subpath || "."],
+    });
+    const prefix =
+      source.subpath.length === 0 ? "" : `${posix(source.subpath).replace(/\/$/u, "")}/`;
+    const relativeFiles = listed.stdout
+      .split("\0")
+      .filter(Boolean)
+      .map((file) => posix(file))
+      .flatMap((file) =>
+        prefix.length === 0 ? [file] : file.startsWith(prefix) ? [file.slice(prefix.length)] : [],
+      );
+    const rootPath = path.join(source.repositoryPath, source.subpath);
+    const classified = classifyFiles(
+      rootPath,
+      relativeFiles.map((file) => path.join(rootPath, file)),
+    );
+    const readRefFile = (absolute: string) => {
+      const relative = posix(path.relative(rootPath, absolute));
+      return git
+        .execute({
+          operation: "MemoryIndex.readRef",
+          cwd: source.repositoryPath,
+          args: ["show", `${oid}:${refPath(source, relative)}`],
+        })
+        .pipe(Effect.map((result) => result.stdout));
+    };
+    const noteFiles = yield* Effect.forEach(classified.notes, (file) =>
+      readRefFile(file).pipe(
+        Effect.map((markdown) => ({
+          name: path.basename(file, path.extname(file)),
+          path: file,
+          markdown,
+        })),
+      ),
+    );
+    const graph = buildMemoryGraph(noteFiles);
+    const maps = yield* Effect.forEach(classified.maps, (file) =>
+      readRefFile(file).pipe(
+        Effect.map((contents) => {
+          const relative = posix(path.relative(rootPath, file));
+          return relative.endsWith(".skillmap.md")
+            ? parseSkillMap(relative, contents, graph)
+            : legacyMemoryMapRefusal(relative);
+        }),
+      ),
+    );
+    const productExists = relativeFiles.includes("Product.skillmap.md");
+    const index: MemoryIndexValue = {
+      notes: graph.notes.map(({ name, path: notePath }) => ({ name, path: notePath })),
+      maps,
+      unresolved: graph.unresolved,
+      problems: graph.problems,
+      productMapOffer:
+        graph.declarations.length > 0 && !productExists
+          ? { declarationCount: graph.declarations.length }
+          : null,
+    };
+    const next = { fingerprint: oid, graph, maps, index } satisfies CachedRoot;
+    cache.set(cacheKey, next);
+    return next;
+  });
+
+  const lineContext = Effect.fn("MemoryIndex.lineContext")(function* (input: {
+    readonly projectId: MercurianProjectId;
+    readonly line: MemoryLineRef;
+  }) {
+    let planId: PlanId;
+    let commitId: string;
+    if ("threadId" in input.line) {
+      const coding = yield* codingSessions.getByThreadId(input.line.threadId);
+      if (Option.isSome(coding)) {
+        planId = coding.value.planId;
+        commitId = coding.value.commitId;
+      } else {
+        const active = yield* planTurns.getByThread(input.line.threadId);
+        if (Option.isNone(active)) {
+          return yield* new MercurianMemoryError({
+            operation: "readLineMemoryChanges",
+            cause: new Error(`Memory line thread ${input.line.threadId} is missing`),
+          });
+        }
+        planId = active.value.planId;
+        commitId = active.value.tipCommitId;
+      }
+    } else {
+      planId = input.line.planId;
+      commitId = input.line.commitId;
+    }
+    const detail = yield* planning.getPlanSnapshot({ planId });
+    if (detail.plan.projectId !== input.projectId) {
+      return yield* new MercurianMemoryError({
+        operation: "readLineMemoryChanges",
+        cause: new Error("The thread is not part of this project"),
+      });
+    }
+    const lineRootCommitId = lineRootCommitIdFor(detail, commitId);
+    const source = yield* requireSource(input.projectId);
+    const branch = yield* branches.get({
+      lineRootCommitId,
+      repositoryId: source.repositoryId,
+    });
+    if (Option.isNone(branch)) {
+      return yield* new MercurianMemoryError({
+        operation: "readLineMemoryChanges",
+        cause: new Error("The memory line branch is missing"),
+      });
+    }
+    return { planId, detail, lineRootCommitId, source, branch: branch.value };
+  });
+
+  const resolveLineSource: MemoryIndex["Service"]["resolveLineSource"] = (input) =>
+    Effect.gen(function* () {
+      const context = yield* lineContext(input);
+      const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
+      const snapshot = yield* git.execute({
+        operation: "MemoryIndex.resolveLineSnapshot",
+        cwd: context.source.repositoryPath,
+        args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      return {
+        kind: "ref",
+        repositoryPath: context.source.repositoryPath,
+        ref: snapshot.exitCode === 0 ? snapshotRef : `refs/heads/${context.branch.branch}`,
+        subpath: context.source.subpath ?? "",
+      } satisfies MemoryTreeSource;
+    }).pipe(Effect.mapError(normalizeReadError("readMemoryIndex")));
+
+  const loadSource = (source: MemoryTreeSource | ResolvedMemorySource) =>
+    "kind" in source && source.kind === "ref"
+      ? loadRef(source)
+      : loadRoot(source as ResolvedMemorySource);
+
+  const readIndex: MemoryIndex["Service"]["readIndex"] = (projectId, line) =>
     Effect.gen(function* () {
       const source = yield* requireSource(projectId);
-      const { graph } = yield* loadRoot(source);
+      const treeSource =
+        line === undefined ? source : yield* resolveLineSource({ projectId, line });
+      return (yield* loadSource(treeSource)).index;
+    }).pipe(Effect.mapError(normalizeReadError("readMemoryIndex")));
+
+  const readNote: MemoryIndex["Service"]["readNote"] = (projectId, name, line) =>
+    Effect.gen(function* () {
+      const source = yield* requireSource(projectId);
+      const treeSource =
+        line === undefined ? source : yield* resolveLineSource({ projectId, line });
+      const { graph } = yield* loadSource(treeSource);
       const selected = graph.noteByName.get(name);
       if (selected === undefined) {
         return {
@@ -316,7 +550,7 @@ export const make = Effect.gen(function* () {
         })),
         backlinks: graph.backlinks.get(name) ?? [],
       } satisfies MemoryNote;
-    });
+    }).pipe(Effect.mapError(normalizeReadError("readMemoryNote")));
 
   const generateProductMap: MemoryIndex["Service"]["generateProductMap"] = (projectId) =>
     Effect.gen(function* () {
@@ -340,7 +574,7 @@ export const make = Effect.gen(function* () {
     });
 
   const makePatch = Effect.fn("MemoryIndex.makePatch")(function* (
-    changes: MemoryAmendmentProposal["changes"],
+    changes: PreparedMemoryAmendment["changes"],
   ) {
     const temporary = yield* fs.makeTempDirectory({ prefix: "t3-memory-amendment-" });
     return yield* Effect.gen(function* () {
@@ -385,131 +619,262 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const prepareAmendment: MemoryIndex["Service"]["prepareAmendment"] = (input) =>
-    Effect.gen(function* () {
-      const source = yield* requireSource(input.projectId);
-      const title = input.amendment.title.trim();
-      if (title.length === 0 || /[\r\n]/u.test(title)) {
+  const prepareAtSource = Effect.fn("MemoryIndex.prepareAtSource")(function* (
+    input: {
+      readonly projectId: MercurianProjectId;
+      readonly turnId: PlanTurnId;
+      readonly amendment: PendingMemoryAmendment;
+    },
+    source: ResolvedMemorySource,
+  ) {
+    const title = input.amendment.title.trim();
+    if (title.length === 0 || /[\r\n]/u.test(title)) {
+      return yield* new MemoryAmendmentValidationError({
+        reason: "Give the amendment a one-line title.",
+      });
+    }
+    const names = input.amendment.notes.map(({ name }) => name);
+    if (names.some((name) => !isValidMemoryNoteName(name))) {
+      return yield* new MemoryAmendmentValidationError({
+        reason: "Every amended note needs a valid note name.",
+      });
+    }
+    if (new Set(names).size !== names.length) {
+      return yield* new MemoryAmendmentValidationError({
+        reason: "An amendment can change each note only once.",
+      });
+    }
+    const loaded = yield* loadRoot(source);
+    const nextFiles = new Map(loaded.graph.notes.map((note) => [note.name, note]));
+    const noteChanges: Array<PreparedMemoryAmendment["changes"][number]> = [];
+    for (const note of input.amendment.notes) {
+      const previous = loaded.graph.noteByName.get(note.name);
+      const relative =
+        previous === undefined
+          ? `${note.name}.md`
+          : posix(path.relative(source.rootPath, previous.path));
+      const before = previous?.markdown ?? null;
+      nextFiles.set(note.name, {
+        name: note.name,
+        path: path.join(source.rootPath, relative),
+        markdown: note.markdown,
+      });
+      if (before !== note.markdown)
+        noteChanges.push({ path: relative, before, after: note.markdown });
+    }
+    const nextGraph = buildMemoryGraph([...nextFiles.values()]);
+    const mapsByName = new Map(
+      loaded.maps.flatMap((map) => ("refusal" in map ? [] : [[map.name, map] as const])),
+    );
+    const mapSources = new Map<string, string>();
+    const changedMaps = new Map<string, { before: string; after: string }>();
+    for (const placement of input.amendment.placements) {
+      const current = mapsByName.get(placement.map);
+      if (current === undefined) {
         return yield* new MemoryAmendmentValidationError({
-          reason: "Give the amendment a one-line title.",
+          reason: `The ${placement.map} map is not available for placement.`,
         });
       }
-      const names = input.amendment.notes.map(({ name }) => name);
-      if (names.some((name) => !isValidMemoryNoteName(name))) {
-        return yield* new MemoryAmendmentValidationError({
-          reason: "Every amended note needs a valid note name.",
-        });
-      }
-      if (new Set(names).size !== names.length) {
-        return yield* new MemoryAmendmentValidationError({
-          reason: "An amendment can change each note only once.",
-        });
-      }
-      const loaded = yield* loadRoot(source);
-      const nextFiles = new Map(loaded.graph.notes.map((note) => [note.name, note]));
-      const noteChanges: Array<MemoryAmendmentProposal["changes"][number]> = [];
-      for (const note of input.amendment.notes) {
-        const previous = loaded.graph.noteByName.get(note.name);
-        const relative =
-          previous === undefined
-            ? `${note.name}.md`
-            : posix(path.relative(source.rootPath, previous.path));
-        const before = previous?.markdown ?? null;
-        nextFiles.set(note.name, {
-          name: note.name,
-          path: path.join(source.rootPath, relative),
-          markdown: note.markdown,
-        });
-        if (before !== note.markdown)
-          noteChanges.push({ path: relative, before, after: note.markdown });
-      }
-      const nextGraph = buildMemoryGraph([...nextFiles.values()]);
-      const mapsByName = new Map(
-        loaded.maps.flatMap((map) => ("refusal" in map ? [] : [[map.name, map] as const])),
+      const before =
+        mapSources.get(current.file) ??
+        (yield* fs.readFileString(path.join(source.rootPath, current.file)));
+      const placed = insertMapPlacement(
+        current,
+        placement.parent,
+        placement.note,
+        nextGraph,
+        placement.type,
       );
-      const mapSources = new Map<string, string>();
-      const changedMaps = new Map<string, { before: string; after: string }>();
-      for (const placement of input.amendment.placements) {
-        const current = mapsByName.get(placement.map);
-        if (current === undefined) {
-          return yield* new MemoryAmendmentValidationError({
-            reason: `The ${placement.map} map is not available for placement.`,
-          });
-        }
-        const before =
-          mapSources.get(current.file) ??
-          (yield* fs.readFileString(path.join(source.rootPath, current.file)));
-        const placed = insertMapPlacement(
-          current,
-          placement.parent,
-          placement.note,
-          nextGraph,
-          placement.type,
-        );
-        if ("refusal" in placed) {
-          return yield* new MemoryAmendmentValidationError({ reason: placed.refusal });
-        }
-        const after = serializeSkillMap(placed);
-        mapsByName.set(placed.name, placed);
-        mapSources.set(current.file, after);
-        changedMaps.set(current.file, {
-          before: changedMaps.get(current.file)?.before ?? before,
-          after,
-        });
+      if ("refusal" in placed) {
+        return yield* new MemoryAmendmentValidationError({ reason: placed.refusal });
       }
-      const changes = [
-        ...noteChanges,
-        ...[...changedMaps.entries()].map(([relative, change]) => ({ path: relative, ...change })),
-      ];
-      if (changes.length === 0) {
-        return yield* new MemoryAmendmentValidationError({
-          reason: "This proposal does not change project memory.",
-        });
-      }
-      return {
-        turnId: input.turnId,
-        title,
-        changes,
-        patch: yield* makePatch(changes),
-        placements: [...input.amendment.placements],
-      } satisfies MemoryAmendmentProposal;
-    });
+      const after = serializeSkillMap(placed);
+      mapsByName.set(placed.name, placed);
+      mapSources.set(current.file, after);
+      changedMaps.set(current.file, {
+        before: changedMaps.get(current.file)?.before ?? before,
+        after,
+      });
+    }
+    const changes = [
+      ...noteChanges,
+      ...[...changedMaps.entries()].map(([relative, change]) => ({ path: relative, ...change })),
+    ];
+    if (changes.length === 0) {
+      return yield* new MemoryAmendmentValidationError({
+        reason: "This amendment does not change project memory.",
+      });
+    }
+    return {
+      turnId: input.turnId,
+      title,
+      changes,
+      patch: yield* makePatch(changes),
+      placements: [...input.amendment.placements],
+    } satisfies PreparedMemoryAmendment;
+  });
 
-  const applyAmendment: MemoryIndex["Service"]["applyAmendment"] = (input) =>
+  const prepareAmendment: MemoryIndex["Service"]["prepareAmendment"] = (input) =>
+    requireSource(input.projectId).pipe(Effect.flatMap((source) => prepareAtSource(input, source)));
+
+  const landAmendment: MemoryIndex["Service"]["landAmendment"] = (input) =>
     Effect.gen(function* () {
-      const resolved = yield* sourceStore.getResolvedSource(input.projectId);
-      if (Option.isNone(resolved)) {
-        return yield* new ConfirmMemoryAmendmentBlockedError({ reason: "not-designated" });
+      const claimedTurn = yield* planTurns.getByThread(input.threadId);
+      if (Option.isNone(claimedTurn) || claimedTurn.value.turnId !== input.turnId) {
+        return yield* new MemoryAmendmentValidationError({
+          reason: "The planning turn no longer holds this memory line.",
+        });
       }
-      const source = resolved.value;
-      for (const change of input.proposal.changes) {
-        const current = yield* readIfExists(path.join(source.rootPath, change.path));
+      const context = yield* lineContext({
+        projectId: input.projectId,
+        line: { threadId: input.threadId },
+      });
+      const holder = { kind: "turn" as const, threadId: input.threadId };
+      const projectSlots = yield* slots.list(input.projectId);
+      let heldSlot = undefined as (typeof projectSlots)[number] | undefined;
+      for (const candidate of projectSlots) {
+        const lease = yield* slotRegistry.lease(candidate.slotId);
+        if (
+          Option.isSome(lease) &&
+          lease.value.holders.some(
+            (candidateHolder) =>
+              candidateHolder.kind === holder.kind && candidateHolder.threadId === holder.threadId,
+          )
+        ) {
+          heldSlot = candidate;
+          break;
+        }
+      }
+      if (heldSlot === undefined) {
+        return yield* new MemoryAmendmentValidationError({
+          reason: "The planning turn no longer holds a worktree slot.",
+        });
+      }
+      const memberRoot = slotMemberWorktreePath(path, heldSlot, context.source.repositoryId);
+      if (memberRoot === null) {
+        return yield* new MemoryAmendmentValidationError({
+          reason: "The worktree slot has no memory member.",
+        });
+      }
+      const rootPath = path.join(memberRoot, context.source.subpath ?? "");
+      const memberSource: ResolvedMemorySource = { ...context.source, rootPath };
+      const prepared = yield* prepareAtSource(input, memberSource);
+      for (const change of prepared.changes) {
+        const current = yield* readIfExists(path.join(rootPath, change.path));
         if (current !== change.before) {
-          return yield* new ConfirmMemoryAmendmentBlockedError({ reason: "memory-changed" });
+          return yield* new MemoryAmendmentValidationError({ reason: "memory-changed" });
         }
       }
       const absolutePaths: Array<string> = [];
-      for (const change of input.proposal.changes) {
-        const absolute = path.join(source.rootPath, change.path);
+      for (const change of prepared.changes) {
+        const absolute = path.join(rootPath, change.path);
         yield* fs.makeDirectory(path.dirname(absolute), { recursive: true });
         yield* fs.writeFileString(absolute, change.after);
         absolutePaths.push(absolute);
       }
-      cache.delete(source.rootPath);
-      return yield* commitPaths({
-        rootPath: source.rootPath,
+      cache.delete(rootPath);
+      const memoryCommitSha = yield* commitPaths({
+        rootPath,
         absolutePaths,
-        message: `${input.proposal.title}\n\nAmended-from-plan: ${input.planName} (${input.planId})`,
+        message: prepared.title,
+        trailers: [
+          `Astrolabe-Amendment: ${input.turnId}`,
+          `Amended-from-plan: ${context.detail.plan.title} (${context.planId})`,
+        ],
         operation: "applyMemoryAmendment",
       });
-    });
+      if (memoryCommitSha === null) {
+        return yield* new MercurianMemoryError({
+          operation: "landMemoryAmendment",
+          cause: new Error("The memory slot member is not a Git repository"),
+        });
+      }
+      const createdAt = yield* DateTime.now;
+      const message = yield* planning.appendMemoryAmendment({
+        planId: context.planId,
+        parentCommitId: claimedTurn.value.tipCommitId,
+        title: prepared.title,
+        memoryCommitSha,
+        branch: context.branch.branch,
+        notes: prepared.changes
+          .filter((change) => change.path.endsWith(".md") && !change.path.endsWith(".skillmap.md"))
+          .map((change) => path.basename(change.path, ".md")),
+        createdAt,
+      });
+      yield* planTurns.advanceTip(context.planId, input.turnId, message.commitId);
+      return { memoryCommitSha, branch: context.branch.branch };
+    }).pipe(Effect.mapError(normalizeLandError));
+
+  const readLineChanges: MemoryIndex["Service"]["readLineChanges"] = (input) =>
+    Effect.gen(function* () {
+      const source = yield* requireSource(input.projectId);
+      const context = yield* lineContext(input);
+      const scope = source.subpath ?? ".";
+      const branchRef = `refs/heads/${context.branch.branch}`;
+      const log = yield* git.execute({
+        operation: "MemoryIndex.readLineChanges.log",
+        cwd: source.repositoryPath,
+        args: [
+          "log",
+          "--first-parent",
+          "--format=%H%x00%s%x00%(trailers:only,unfold)%x00%aI%x00%x1e",
+          `${context.branch.baseOid}..${branchRef}`,
+          "--",
+          scope,
+        ],
+      });
+      const entries = log.stdout
+        .split("\x1e")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => {
+          const [oid = "", title = "", trailers = "", authoredAt = ""] = entry.split("\0");
+          const match = /^Astrolabe-Amendment:\s*(.+)$/imu.exec(trailers);
+          return { oid, title, turnId: match?.[1]?.trim() ?? null, authoredAt };
+        });
+      const withDiff = yield* Effect.forEach(entries, (entry) =>
+        git
+          .execute({
+            operation: "MemoryIndex.readLineChanges.diff",
+            cwd: source.repositoryPath,
+            args: ["show", "--format=", "--patch", entry.oid, "--", scope],
+          })
+          .pipe(Effect.map((result) => ({ ...entry, diff: result.stdout }))),
+      );
+      const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
+      const hasSnapshot = yield* git.execute({
+        operation: "MemoryIndex.readLineChanges.resolveSnapshot",
+        cwd: source.repositoryPath,
+        args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      const unmarkedDiff =
+        hasSnapshot.exitCode === 0
+          ? yield* checkpoints.diffCheckpoints({
+              cwd: source.repositoryPath,
+              fromCheckpointRef: CheckpointRef.make(branchRef),
+              toCheckpointRef: snapshotRef,
+              ignoreWhitespace: false,
+              paths: [scope],
+            })
+          : "";
+      return {
+        marked: withDiff.filter((entry) => entry.turnId !== null),
+        hand: withDiff
+          .filter((entry) => entry.turnId === null)
+          .map(({ turnId: _turnId, ...entry }) => entry),
+        unmarked: unmarkedDiff.trim().length === 0 ? null : { diff: unmarkedDiff },
+      } satisfies MercurianLineMemoryChanges;
+    }).pipe(Effect.mapError(normalizeReadError("readLineMemoryChanges")));
 
   return {
     readIndex,
     readNote,
     generateProductMap,
     prepareAmendment,
-    applyAmendment,
+    resolveLineSource,
+    landAmendment,
+    readLineChanges,
   } satisfies MemoryIndex["Service"];
 });
 

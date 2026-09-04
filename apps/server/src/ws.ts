@@ -51,10 +51,8 @@ import {
   MercurianPlanningError,
   MercurianRepositoryError,
   MercurianMemoryError,
-  ConfirmMemoryAmendmentBlockedError,
   MercurianTrackerError,
   MercurianWorkspaceError,
-  isConfirmMemoryAmendmentBlockedError,
   isCodingSessionBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
@@ -76,7 +74,7 @@ import {
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
-  type PlanId,
+  PlanId,
   type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -136,6 +134,7 @@ import {
   removePlanAttachments,
 } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
+import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
@@ -613,17 +612,6 @@ function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) 
   };
 }
 
-export function memoryAmendmentNoteNames(
-  changes: ReadonlyArray<{ readonly path: string }>,
-): ReadonlyArray<string> {
-  return changes
-    .filter(
-      ({ path }) =>
-        path.endsWith(".md") && !path.endsWith(".skillmap.md") && !path.startsWith("maps/"),
-    )
-    .map(({ path }) => path.slice(0, -3).split("/").at(-1)!);
-}
-
 interface CodingSessionSlotMetadata {
   readonly branch: string;
   readonly worktreePath: string;
@@ -682,6 +670,7 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const planTurnRegistry = yield* PlanTurnRegistry.PlanTurnRegistry;
       const codingSessionStore = yield* CodingSessionStore.CodingSessionStore;
       const lineBranchStore = yield* LineBranchStore.LineBranchStore;
       const slotStore = yield* SlotStore.SlotStore;
@@ -2299,7 +2288,7 @@ const makeWsRpcLayer = (
         [MERCURIAN_WS_METHODS.subscribeWorktreeSlots]: (_input) =>
           observeRpcStreamEffect(
             MERCURIAN_WS_METHODS.subscribeWorktreeSlots,
-            Effect.gen(function* () {
+            Effect.sync(() => {
               const snapshot = Effect.gen(function* () {
                 const rows = yield* slotStore.listAll;
                 const leased = new Set<string>();
@@ -2759,58 +2748,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.confirmMemoryAmendment]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.confirmMemoryAmendment,
-            Effect.gen(function* () {
-              const parentCommitId = CommitId.make(input.parentCommitId);
-              yield* planningStore.assertNoActiveTurn({
-                planId: input.planId,
-                parentCommitId,
-              });
-              const proposal = yield* planningAssistant.memoryAmendmentProposal(input.planId);
-              if (proposal === undefined) {
-                return yield* new ConfirmMemoryAmendmentBlockedError({ reason: "no-proposal" });
-              }
-              const detail = yield* planningStore.getPlanSnapshot({ planId: input.planId });
-              const memoryCommitSha = yield* memoryIndex.applyAmendment({
-                projectId: detail.plan.projectId,
-                proposal,
-                planId: input.planId,
-                planName: detail.plan.title,
-              });
-              const createdAt = yield* DateTime.now;
-              const message = yield* planningStore.appendMemoryAmendment({
-                planId: input.planId,
-                parentCommitId,
-                title: proposal.title,
-                memoryCommitSha,
-                notes: memoryAmendmentNoteNames(proposal.changes),
-                createdAt,
-              });
-              yield* planningAssistant.clearMemoryAmendment(input.planId);
-              return MercurianCommitId.make(message.commitId);
-            }).pipe(
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) ||
-                isPlanTurnActiveError(cause) ||
-                isConfirmMemoryAmendmentBlockedError(cause) ||
-                cause._tag === "MercurianMemoryError"
-                  ? cause
-                  : new MercurianPlanningError({
-                      operation: "confirmMemoryAmendment",
-                      cause,
-                    }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.cancelMemoryAmendment]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.cancelMemoryAmendment,
-            planningAssistant.cancelMemoryAmendment(input.planId).pipe(Effect.as({})),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.startCodingSession]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.startCodingSession,
@@ -3060,13 +2997,8 @@ const makeWsRpcLayer = (
                         // The snapshot carries the partial turn, so a window
                         // opened — or reconnected — mid-turn joins coherently
                         // with no frame replay (ADR 002 §3).
-                        Effect.all({
-                          inFlightTurns: planningAssistant.inFlightTurns(input.planId),
-                          memoryAmendmentProposal: planningAssistant.memoryAmendmentProposal(
-                            input.planId,
-                          ),
-                        }).pipe(
-                          Effect.map(({ inFlightTurns, memoryAmendmentProposal }) => ({
+                        planningAssistant.inFlightTurns(input.planId).pipe(
+                          Effect.map((inFlightTurns) => ({
                             cursor: detail.snapshotSequence,
                             items: [
                               {
@@ -3074,9 +3006,6 @@ const makeWsRpcLayer = (
                                 snapshot: {
                                   ...toWirePlanDetail(detail),
                                   inFlightTurns,
-                                  ...(memoryAmendmentProposal === undefined
-                                    ? {}
-                                    : { memoryAmendmentProposal }),
                                 },
                               },
                             ] satisfies ReadonlyArray<PlanStreamItem>,
@@ -3305,7 +3234,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex,
             memoryIndex
-              .readIndex(input.projectId)
+              .readIndex(input.projectId, input.line)
               .pipe(
                 Effect.mapError((cause) =>
                   isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
@@ -3319,7 +3248,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.readMemoryNote,
             memoryIndex
-              .readNote(input.projectId, input.name)
+              .readNote(input.projectId, input.name, input.line)
               .pipe(
                 Effect.mapError((cause) =>
                   isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
@@ -3327,6 +3256,41 @@ const makeWsRpcLayer = (
                     : new MercurianMemoryError({ operation: "readMemoryNote", cause }),
                 ),
               ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId =
+                "planId" in line
+                  ? line.planId
+                  : yield* Effect.gen(function* () {
+                      const threadId = line.threadId;
+                      const session = yield* codingSessionStore.getByThreadId(threadId);
+                      if (Option.isSome(session)) return session.value.planId;
+                      const turn = yield* planTurnRegistry.getByThread(threadId);
+                      if (Option.isSome(turn)) return turn.value.planId;
+                      return yield* new MercurianMemoryError({
+                        operation: "readLineMemoryChanges",
+                        cause: new Error(`Memory line thread ${threadId} is missing`),
+                      });
+                    });
+              const detail = yield* planningStore.getPlanSnapshot({
+                planId,
+              });
+              return yield* memoryIndex.readLineChanges({
+                projectId: detail.plan.projectId,
+                line,
+              });
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                  ? cause
+                  : new MercurianMemoryError({ operation: "readLineMemoryChanges", cause }),
+              ),
+            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: (input) =>

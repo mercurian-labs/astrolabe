@@ -21,6 +21,7 @@ import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotRegistry from "./SlotRegistry.ts";
 import * as SlotStore from "./SlotStore.ts";
@@ -75,6 +76,7 @@ interface HarnessOptions {
     readonly projectId: MercurianProjectId;
     readonly repositoryId: MercurianRepositoryId;
   }>;
+  readonly standaloneMemory?: boolean;
 }
 
 const makeHarness = (options: HarnessOptions = {}) => {
@@ -180,6 +182,33 @@ const makeHarness = (options: HarnessOptions = {}) => {
         ],
       }),
       changes: Stream.empty,
+    }),
+    Layer.mock(MemorySourceStore.MemorySourceStore)({
+      getSource: () =>
+        Effect.succeed(
+          options.standaloneMemory
+            ? Option.some({
+                projectId,
+                repositoryId: repositoryB,
+                subpath: null,
+                createdAt: now,
+                updatedAt: now,
+              })
+            : Option.none(),
+        ),
+      getSnapshot: Effect.succeed(
+        options.standaloneMemory
+          ? [
+              {
+                projectId,
+                repositoryId: repositoryB,
+                subpath: null,
+                createdAt: now,
+                updatedAt: now,
+              },
+            ]
+          : [],
+      ),
     }),
     Layer.mock(ServerSettings.ServerSettingsService)({
       getSettings: Effect.succeed({ worktreePoolSize: options.poolSize ?? 3 } as never),
@@ -351,6 +380,28 @@ describe("SlotService", () => {
         claimed.members.map((member) => member.relativePath),
         ["a", "b"],
       );
+    }),
+  );
+
+  it.effect("materializes a standalone memory repository as a slot member", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        links: [{ projectId, repositoryId: repositoryA }],
+        standaloneMemory: true,
+      });
+      const claimed = yield* harness.service.claim({
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-memory"),
+      });
+      assert.deepStrictEqual(
+        claimed.members.map((member) => member.repositoryId),
+        [repositoryA, repositoryB],
+      );
+      assert.deepStrictEqual(harness.materializedPaths, [
+        "/worktrees/project-one/slot-1/a",
+        "/worktrees/project-one/slot-1/b",
+      ]);
     }),
   );
 

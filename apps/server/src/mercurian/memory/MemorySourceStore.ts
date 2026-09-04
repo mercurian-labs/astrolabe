@@ -22,6 +22,7 @@ import {
   PersistenceDecodeError,
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import type { MemorySource, ResolvedMemorySource } from "./schema.ts";
 
 export type MemorySourceStoreError =
@@ -85,6 +86,7 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const git = yield* GitVcsDriver;
   const changesPubSub = yield* PubSub.unbounded<void>();
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
 
@@ -142,7 +144,7 @@ export const make = Effect.gen(function* () {
     subpath: string | null,
   ) {
     const candidate = path.resolve(repository.path, subpath ?? ".");
-    const invalid = (reason: "missing" | "not-a-directory") =>
+    const invalid = (reason: "missing" | "not-a-directory" | "nested-repository") =>
       new MemorySourceInvalidError({
         repositoryId: repository.repositoryId,
         ...(subpath === null ? {} : { subpath }),
@@ -161,6 +163,27 @@ export const make = Effect.gen(function* () {
     const info = yield* fs.stat(canonicalCandidate).pipe(Effect.mapError(() => invalid("missing")));
     if (info.type !== "Directory") {
       return yield* invalid("not-a-directory");
+    }
+    const [repositoryTop, candidateTop] = yield* Effect.all([
+      git.execute({
+        operation: "MemorySourceStore.resolveRoot.repositoryTopLevel",
+        cwd: canonicalRepository,
+        args: ["rev-parse", "--show-toplevel"],
+        allowNonZeroExit: true,
+      }),
+      git.execute({
+        operation: "MemorySourceStore.resolveRoot.candidateTopLevel",
+        cwd: canonicalCandidate,
+        args: ["rev-parse", "--show-toplevel"],
+        allowNonZeroExit: true,
+      }),
+    ]);
+    if (repositoryTop.exitCode === 0 && candidateTop.exitCode === 0) {
+      const canonicalRepositoryTop = yield* fs.realPath(repositoryTop.stdout.trim());
+      const canonicalCandidateTop = yield* fs.realPath(candidateTop.stdout.trim());
+      if (canonicalCandidateTop !== canonicalRepositoryTop) {
+        return yield* invalid("nested-repository");
+      }
     }
     return canonicalCandidate;
   });

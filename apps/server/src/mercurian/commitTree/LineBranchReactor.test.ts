@@ -14,6 +14,7 @@ import * as Stream from "effect/Stream";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotStore from "../worktreeSlots/SlotStore.ts";
 import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
@@ -126,6 +127,7 @@ const makeHarness = (
     readonly missingBranches?: ReadonlyArray<string>;
     readonly slotChanges?: Stream.Stream<void>;
     readonly failBranchCwd?: string;
+    readonly standaloneMemory?: boolean;
   } = {},
 ) => {
   const rows = [...initial];
@@ -156,12 +158,29 @@ const makeHarness = (
             hasGit: true,
           },
         ],
-        projectRepositories: [
-          { projectId, repositoryId: repositoryA },
-          { projectId, repositoryId: repositoryB },
-        ],
+        projectRepositories: options.standaloneMemory
+          ? [{ projectId, repositoryId: repositoryA }]
+          : [
+              { projectId, repositoryId: repositoryA },
+              { projectId, repositoryId: repositoryB },
+            ],
       } as never),
       changes: Stream.empty,
+    }),
+    Layer.mock(MemorySourceStore.MemorySourceStore)({
+      getSnapshot: Effect.succeed(
+        options.standaloneMemory
+          ? [
+              {
+                projectId,
+                repositoryId: repositoryB,
+                subpath: null,
+                createdAt,
+                updatedAt: createdAt,
+              },
+            ]
+          : [],
+      ),
     }),
     Layer.mock(LineBranchStore.LineBranchStore)({
       get: (key) =>
@@ -273,6 +292,23 @@ describe("LineBranchReactor", () => {
       );
       assert.strictEqual(harness.gitCalls.filter((call) => call.args[0] === "branch").length, 4);
       assert.ok(!harness.gitCalls.some((call) => call.args.includes("push")));
+    }),
+  );
+
+  it.effect("mints line branches in a standalone memory repository", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([], "base-new", detail, { standaloneMemory: true });
+      yield* harness.reactor.reconcile();
+      assert.deepStrictEqual(
+        new Set(harness.rows.map((row) => row.repositoryId)),
+        new Set([repositoryA, repositoryB]),
+      );
+      assert.strictEqual(
+        harness.gitCalls.filter(
+          (call) => call.cwd === "/repositories/b" && call.args[0] === "branch",
+        ).length,
+        2,
+      );
     }),
   );
 

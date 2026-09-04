@@ -5,8 +5,6 @@ import type {
   MercurianCommitId,
   MercurianCreatePlanInput,
   MercurianImportPlanInput,
-  MercurianCancelMemoryAmendmentInput,
-  MercurianConfirmMemoryAmendmentInput,
   MercurianSavePlanRevisionInput,
   MercurianSaveSpecRevisionInput,
   MercurianRefreshSpecInput,
@@ -186,16 +184,6 @@ export function useSaveSpecRevision() {
 export function useRefreshSpec() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.refreshSpec);
   return useCallback((input: MercurianRefreshSpecInput) => run(input), [run]);
-}
-
-export function useConfirmMemoryAmendment() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.confirmMemoryAmendment);
-  return useCallback((input: MercurianConfirmMemoryAmendmentInput) => run(input), [run]);
-}
-
-export function useCancelMemoryAmendment() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.cancelMemoryAmendment);
-  return useCallback((input: MercurianCancelMemoryAmendmentInput) => run(input), [run]);
 }
 
 export function useStartCodingSession() {

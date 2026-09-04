@@ -297,6 +297,8 @@ describe("turnRefusalNotice", () => {
       "model-unavailable",
       "option-unavailable",
       "turn-active",
+      "pool-at-capacity",
+      "line-branch-missing",
     ] as const) {
       expect(turnRefusalNotice(selection, reason).length).toBeGreaterThan(0);
     }

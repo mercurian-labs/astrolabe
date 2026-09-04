@@ -31,6 +31,15 @@ export interface PlanningIdentityInput {
   readonly memoryAmendmentsAvailable?: boolean | undefined;
 }
 
+export function memoryAppendix(memoryRoot: PlanningRepositoryRoot): string {
+  return [
+    "Project memory (durable design truth — consult it before repository files):",
+    `- ${memoryRoot.path}`,
+    "Notes are markdown with [[wikilinks]]; .skillmap.md files hold arrangement and teaching. Ground design intent in the memory's notes first; consult repository code for what is actually built.",
+    "Use `propose_memory_amendment` when the person asks, or when this conversation resolves something memory records. An amendment lands on this line's memory branch as its own commit. Make one amendment per call and put nothing except memory changes in that commit.",
+  ].join("\n");
+}
+
 /**
  * The planning system appendix: identity, the read-only rule, the one write
  * door, and the grounding roots by name and path. Naming the roots matters
@@ -63,19 +72,7 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
   }
 
   if (input.memoryRoot != null) {
-    lines.push(
-      "",
-      "Project memory (durable design truth — consult it before repository files):",
-      `- ${input.memoryRoot.path}`,
-      "Notes are markdown with [[wikilinks]]; .skillmap.md files hold arrangement and teaching. Ground design intent in the memory's notes first; consult repository code for what is actually built.",
-    );
-  }
-
-  if (input.memoryAmendmentsAvailable === true || input.memoryRoot != null) {
-    lines.push(
-      "",
-      "A memory amendment is a reviewable proposal to update durable project memory. Propose one with `propose_memory_amendment` when the person asks, or when this conversation has just resolved something memory records. The proposal accompanies your reply and never replaces it. Proposing is not writing: only the person's later confirmation changes memory, and the last proposal call in a reply wins.",
-    );
+    lines.push("", memoryAppendix(input.memoryRoot));
   }
 
   if (input.unreachableRepositories.length > 0) {

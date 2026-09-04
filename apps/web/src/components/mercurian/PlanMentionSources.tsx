@@ -1,4 +1,4 @@
-import type { MercurianProjectId } from "@t3tools/contracts";
+import type { MemoryLineRef, MercurianProjectId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
@@ -23,7 +23,10 @@ import {
  * Nothing new crosses the wire for this: it is the app's existing path-search
  * door, pointed at each repository root in turn.
  */
-export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
+export function usePlanMentionCandidates(
+  projectId: MercurianProjectId | null,
+  line?: MemoryLineRef,
+) {
   const environmentId = usePrimaryEnvironmentId();
   const repositories = useProjectRepositories(projectId);
   const memorySource = useMemorySourceForProject(projectId);
@@ -70,7 +73,7 @@ export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
     }
     let active = true;
     const timeout = window.setTimeout(() => {
-      void readMemoryIndex(projectId).then((result) => {
+      void readMemoryIndex(projectId, line).then((result) => {
         if (active) setNoteNames(result.ok ? result.value.notes.map((note) => note.name) : []);
       });
     }, 120);
@@ -78,7 +81,7 @@ export function usePlanMentionCandidates(projectId: MercurianProjectId | null) {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [memorySource, projectId, query, readMemoryIndex]);
+  }, [line, memorySource, projectId, query, readMemoryIndex]);
 
   const onMentionQueryChange = useCallback(
     (nextQuery: string | null, options?: { readonly notesOnly?: boolean }) => {

@@ -47,8 +47,6 @@ export const MERCURIAN_WS_METHODS = {
   savePlanRevision: "mercurian.savePlanRevision",
   saveSpecRevision: "mercurian.saveSpecRevision",
   refreshSpec: "mercurian.refreshSpec",
-  confirmMemoryAmendment: "mercurian.confirmMemoryAmendment",
-  cancelMemoryAmendment: "mercurian.cancelMemoryAmendment",
   startCodingSession: "mercurian.startCodingSession",
   getPlanTextAt: "mercurian.getPlanTextAt",
   measurePlanReconstruction: "mercurian.measurePlanReconstruction",
@@ -356,6 +354,7 @@ export const PlanMessage = Schema.Struct({
     Schema.Struct({
       title: TrimmedNonEmptyString,
       memoryCommitSha: Schema.NullOr(Schema.String),
+      branch: TrimmedNonEmptyString,
       notes: Schema.Array(TrimmedNonEmptyString),
     }),
   ),
@@ -471,13 +470,6 @@ export const PlanInFlightTurn = Schema.Struct({
 });
 export type PlanInFlightTurn = typeof PlanInFlightTurn.Type;
 
-export const MemoryNoteChange = Schema.Struct({
-  path: TrimmedNonEmptyString,
-  before: Schema.NullOr(Schema.String),
-  after: Schema.String,
-});
-export type MemoryNoteChange = typeof MemoryNoteChange.Type;
-
 export const MemoryMapPlacement = Schema.Struct({
   map: TrimmedNonEmptyString,
   parent: TrimmedNonEmptyString,
@@ -485,15 +477,6 @@ export const MemoryMapPlacement = Schema.Struct({
   type: Schema.optional(TrimmedNonEmptyString),
 });
 export type MemoryMapPlacement = typeof MemoryMapPlacement.Type;
-
-export const MemoryAmendmentProposal = Schema.Struct({
-  turnId: PlanTurnId,
-  title: TrimmedNonEmptyString,
-  changes: Schema.Array(MemoryNoteChange),
-  patch: Schema.String,
-  placements: Schema.Array(MemoryMapPlacement),
-});
-export type MemoryAmendmentProposal = typeof MemoryAmendmentProposal.Type;
 
 /**
  * A planning space: the plan artifact beside the history that evolves it.
@@ -516,7 +499,6 @@ export const PlanDetail = Schema.Struct({
   codingSessions: Schema.Array(PlanCodingSessionRecord),
   /** The turns streaming right now — one per branch. Runtime state, never stored. */
   inFlightTurns: Schema.Array(PlanInFlightTurn),
-  memoryAmendmentProposal: Schema.optional(MemoryAmendmentProposal),
 });
 export type PlanDetail = typeof PlanDetail.Type;
 
@@ -533,6 +515,8 @@ export const PlanTurnRefusalReason = Schema.Literals([
   "model-unavailable",
   "option-unavailable",
   "turn-active",
+  "pool-at-capacity",
+  "line-branch-missing",
 ]);
 export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
 
@@ -594,17 +578,9 @@ export const PlanStreamItem = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("turn-settled"), turnId: PlanTurnId }),
   Schema.Struct({ kind: Schema.Literal("turn-refused"), reason: PlanTurnRefusalReason }),
   Schema.Struct({
-    kind: Schema.Literal("memory-amendment-proposed"),
-    proposal: MemoryAmendmentProposal,
-  }),
-  Schema.Struct({
     kind: Schema.Literal("memory-amendment-failed"),
     turnId: PlanTurnId,
     reason: TrimmedNonEmptyString,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("memory-amendment-cancelled"),
-    turnId: PlanTurnId,
   }),
 ]);
 export type PlanStreamItem = typeof PlanStreamItem.Type;
@@ -752,14 +728,6 @@ export const MercurianRefreshSpecResult = Schema.Union([
   }),
 ]);
 export type MercurianRefreshSpecResult = typeof MercurianRefreshSpecResult.Type;
-
-export const MercurianConfirmMemoryAmendmentInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: MercurianCommitId,
-});
-export type MercurianConfirmMemoryAmendmentInput = typeof MercurianConfirmMemoryAmendmentInput.Type;
-export const MercurianCancelMemoryAmendmentInput = Schema.Struct({ planId: PlanId });
-export type MercurianCancelMemoryAmendmentInput = typeof MercurianCancelMemoryAmendmentInput.Type;
 
 export const MercurianStartCodingSessionInput = Schema.Struct({
   planId: PlanId,
@@ -960,27 +928,6 @@ export class SpecRefreshUnavailableError extends Schema.TaggedErrorClass<SpecRef
   }
 }
 
-export const ConfirmMemoryAmendmentBlockedReason = Schema.Literals([
-  "no-proposal",
-  "memory-changed",
-  "not-designated",
-]);
-export class ConfirmMemoryAmendmentBlockedError extends Schema.TaggedErrorClass<ConfirmMemoryAmendmentBlockedError>()(
-  "ConfirmMemoryAmendmentBlockedError",
-  { reason: ConfirmMemoryAmendmentBlockedReason },
-) {
-  override get message(): string {
-    switch (this.reason) {
-      case "no-proposal":
-        return "There is no memory amendment to confirm.";
-      case "memory-changed":
-        return "The project memory changed after this amendment was proposed.";
-      case "not-designated":
-        return "This project has no designated memory.";
-    }
-  }
-}
-
 export const CodingSessionBlockedReason = Schema.Literals([
   "repository-not-git",
   "no-instance",
@@ -1026,7 +973,6 @@ export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
 export const isSpecRevisionOutdatedError = Schema.is(SpecRevisionOutdatedError);
 export const isSpecRefreshUnavailableError = Schema.is(SpecRefreshUnavailableError);
-export const isConfirmMemoryAmendmentBlockedError = Schema.is(ConfirmMemoryAmendmentBlockedError);
 export const isCodingSessionBlockedError = Schema.is(CodingSessionBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
 
@@ -1048,8 +994,6 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "savePlanRevision",
       "saveSpecRevision",
       "refreshSpec",
-      "confirmMemoryAmendment",
-      "cancelMemoryAmendment",
       "startCodingSession",
       "getPlanTextAt",
       "measurePlanReconstruction",

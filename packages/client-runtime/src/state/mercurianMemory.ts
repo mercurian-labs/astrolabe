@@ -38,6 +38,11 @@ export function createMercurianMemoryAtoms<R, E>(
       tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryNote,
       scheduler: writeScheduler,
     }),
+    readLineMemoryChanges: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:read-line-memory-changes",
+      tag: MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges,
+      scheduler: writeScheduler,
+    }),
     generateProductMap: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:generate-product-map",
       tag: MERCURIAN_MEMORY_WS_METHODS.generateProductMap,

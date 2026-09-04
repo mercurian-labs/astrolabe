@@ -36,6 +36,7 @@ import { SPATIAL_MAP_CANVAS_CATALOG_ENTRIES } from "../components/mercurian/Spat
 import { PLAN_ARTIFACT_CATALOG_ENTRIES } from "../components/mercurian/PlanArtifact.catalog";
 import { MEMORY_NOTE_READER_CATALOG_ENTRIES } from "../components/mercurian/MemoryNoteReader.catalog";
 import { MEMORY_AMENDMENT_SHEET_CATALOG_ENTRIES } from "../components/mercurian/MemoryAmendmentSheet.catalog";
+import { MEMORY_TAB_CATALOG_ENTRIES } from "../components/mercurian/MemoryTab.catalog";
 import { PLAN_COMPOSER_CATALOG_ENTRIES } from "../components/mercurian/PlanComposer.catalog";
 import { PLAN_SUGGESTIONS_CATALOG_ENTRIES } from "../components/mercurian/PlanSuggestions.catalog";
 import { PLAN_LIST_SIDEBAR_CATALOG_ENTRIES } from "../components/mercurian/PlanListSidebar.catalog";
@@ -814,6 +815,7 @@ export const CATALOG_ENTRIES: ReadonlyArray<CatalogEntry> = [
   ...PLAN_ARTIFACT_CATALOG_ENTRIES,
   ...MEMORY_NOTE_READER_CATALOG_ENTRIES,
   ...MEMORY_AMENDMENT_SHEET_CATALOG_ENTRIES,
+  ...MEMORY_TAB_CATALOG_ENTRIES,
   ...SPEC_ARTIFACT_CATALOG_ENTRIES,
   ...PLAN_TIMELINE_CATALOG_ENTRIES,
   ...PLAN_NODE_POPOVER_CATALOG_ENTRIES,

@@ -2,9 +2,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianMemoryAtoms } from "@t3tools/client-runtime/state/mercurian-memory";
 import type {
   MemorySourcesSnapshot,
+  MemoryLineRef,
   MercurianDesignateMemorySourceInput,
   MercurianProjectId,
   MercurianReadMemoryNoteInput,
+  MercurianReadLineMemoryChangesInput,
   ProjectMemorySource,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -70,12 +72,21 @@ export function useRemoveMemorySource() {
 
 export function useReadMemoryIndex() {
   const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryIndex);
-  return useCallback((projectId: MercurianProjectId) => run({ projectId }), [run]);
+  return useCallback(
+    (projectId: MercurianProjectId, line?: MemoryLineRef) =>
+      run({ projectId, ...(line === undefined ? {} : { line }) }),
+    [run],
+  );
 }
 
 export function useReadMemoryNote() {
   const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryNote);
   return useCallback((input: MercurianReadMemoryNoteInput) => run(input), [run]);
+}
+
+export function useReadLineMemoryChanges() {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readLineMemoryChanges);
+  return useCallback((input: MercurianReadLineMemoryChangesInput) => run(input), [run]);
 }
 
 export function useGenerateProductMap() {

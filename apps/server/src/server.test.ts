@@ -44,6 +44,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
+  MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
@@ -132,7 +133,6 @@ import * as ProcessRunner from "./processRunner.ts";
 import {
   codingSessionStatusChanges,
   isThreadDetailEvent,
-  memoryAmendmentNoteNames,
   resolveAvailableEditorsForConfig,
   resolveFileManagerRevealKindForConfig,
 } from "./ws.ts";
@@ -563,6 +563,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     planningAssistant?: Partial<PlanningAssistant.PlanningAssistant["Service"]>;
+    memoryIndex?: Partial<MemoryIndex.MemoryIndex["Service"]>;
     trackerConnector?: TrackerConnector<"linear">;
     environmentTheme?: Partial<EnvironmentTheme.EnvironmentThemeService["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
@@ -746,6 +747,7 @@ const buildAppUnderTest = (options?: {
       execute: () => Effect.die("GitVcsDriver.execute not stubbed in this test"),
       ...options?.layers?.gitVcsDriver,
     });
+    const planTurnRegistryLayer = PlanTurnRegistry.layer;
     const gitManagerLayer = Layer.mock(GitManager.GitManager)({
       ...options?.layers?.gitManager,
     });
@@ -1281,9 +1283,6 @@ const buildAppUnderTest = (options?: {
             changes: Stream.empty,
             frames: () => Stream.empty,
             inFlightTurns: () => Effect.succeed([]),
-            memoryAmendmentProposal: () => Effect.succeed(undefined),
-            cancelMemoryAmendment: () => Effect.void,
-            clearMemoryAmendment: () => Effect.void,
             teardownPlan: () => Effect.void,
             ...options?.layers?.planningAssistant,
           }),
@@ -1329,7 +1328,11 @@ const buildAppUnderTest = (options?: {
               Layer.provideMerge(codingSessionStoreLayer),
               Layer.provideMerge(RepositoryStore.layer),
             ),
-            MemoryIndex.layer.pipe(Layer.provideMerge(MemorySourceStore.layer)),
+            MemorySourceStore.layer.pipe(Layer.provide(gitVcsDriverLayer)),
+            Layer.mock(MemoryIndex.MemoryIndex)({
+              readLineChanges: () => Effect.succeed({ marked: [], hand: [], unmarked: null }),
+              ...options?.layers?.memoryIndex,
+            }),
             WorkspaceSettingsStore.layer,
             // Over a connector that reaches no network: the server suite is about
             // the wire, not about Linear.
@@ -1346,14 +1349,14 @@ const buildAppUnderTest = (options?: {
               Layer.provide(ServerSecretStore.layer),
             ),
           ).pipe(
-            Layer.provide(PlanTurnRegistry.layer),
+            Layer.provide(planTurnRegistryLayer),
             Layer.provide(CommitStore.layer),
             Layer.provide(MercurianSqlite.layerMemory),
             Layer.provide(ProcessRunner.layer),
           ),
         ),
       )
-      .pipe(Layer.provide(layerConfig));
+      .pipe(Layer.provideMerge(planTurnRegistryLayer), Layer.provide(layerConfig));
 
     yield* Layer.build(appLayer);
     return config;
@@ -1896,18 +1899,6 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
 );
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
-  it("does not stamp skill-map amendment paths as note names", () => {
-    assert.deepEqual(
-      memoryAmendmentNoteNames([
-        { path: "Composer.md" },
-        { path: "Product.skillmap.md" },
-        { path: "nested/Plans.md" },
-        { path: "maps/legacy.md" },
-      ]),
-      ["Composer", "Plans"],
-    );
-  });
-
   it.effect("parks HTTP ingress until command readiness", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -5152,12 +5143,22 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("routes websocket rpc mercurian planning, and births a plan at its first message", () =>
     Effect.gen(function* () {
       const turnStarts = yield* Queue.unbounded<PlanningAssistant.StartTurnInput>();
+      const memoryLineReads =
+        yield* Queue.unbounded<
+          Parameters<MemoryIndex.MemoryIndex["Service"]["readLineChanges"]>[0]
+        >();
       yield* buildAppUnderTest({
         layers: {
           planningAssistant: {
             startTurn: (input) => Queue.offer(turnStarts, input).pipe(Effect.asVoid),
             measureReconstruction: () =>
               Effect.succeed({ transcriptChars: 321, entryCount: 2, fixedReservedChars: 123 }),
+          },
+          memoryIndex: {
+            readLineChanges: (input) =>
+              Queue.offer(memoryLineReads, input).pipe(
+                Effect.as({ marked: [], hand: [], unmarked: null }),
+              ),
           },
         },
       });
@@ -5183,6 +5184,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               planId: created.plan.planId,
               text: "And the planning space",
             });
+            const memoryLine = {
+              planId: created.plan.planId,
+              commitId: created.timeline[0]!.commitId,
+            };
+            const memoryChanges = yield* client[MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges]({
+              line: memoryLine,
+            });
+            const memoryLineRead = yield* Queue.take(memoryLineReads);
             const starts = [yield* Queue.take(turnStarts), yield* Queue.take(turnStarts)];
             const workspaceSettings = yield* client[
               MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
@@ -5227,6 +5236,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               project,
               created,
               appended,
+              memoryChanges,
+              memoryLine,
+              memoryLineRead,
               starts,
               workspaceSettings,
               items,
@@ -5241,6 +5253,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(result.project.name, "Astrolabe");
       assert.equal(result.created.plan.title, "Reshape the sidebar");
       assert.equal(result.created.planText, "");
+      assert.deepEqual(result.memoryChanges, { marked: [], hand: [], unmarked: null });
+      assert.deepEqual(result.memoryLineRead, {
+        projectId: result.project.projectId,
+        line: result.memoryLine,
+      });
       const root = result.created.timeline[0];
       assert.ok(root?._tag === "message");
       if (root?._tag === "message") {

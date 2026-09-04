@@ -13,11 +13,13 @@ import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryView } from "../repositories/schema.ts";
 import { SlotRegistry } from "./SlotRegistry.ts";
 import { lineExtraSnapshotRef, lineSnapshotRef, SnapshotChain } from "./SnapshotChain.ts";
 import { SlotStore } from "./SlotStore.ts";
+import { projectWorkingRepositories } from "./projectWorkingRepositories.ts";
 import {
   type SlotLeaseHolder,
   type WorktreeSlot,
@@ -157,6 +159,7 @@ export const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver;
   const checkpoints = yield* CheckpointStore;
   const snapshotChain = yield* SnapshotChain;
+  const memorySources = yield* MemorySourceStore;
 
   const memberPath = (slot: WorktreeSlot, member: WorktreeSlotMember) =>
     path.join(slot.path, member.relativePath);
@@ -203,16 +206,18 @@ export const make = Effect.gen(function* () {
         cause: new Error(`Project ${projectId} has no linked repositories`),
       });
     }
-    const linked = linkedIds.map((repositoryId) =>
-      snapshot.repositories.find((candidate) => candidate.repositoryId === repositoryId),
-    );
-    if (linked.some((repository) => repository === undefined || !repository.hasGit)) {
+    const source = (yield* memorySources.getSource(projectId)).pipe(Option.getOrNull);
+    const linked = projectWorkingRepositories(snapshot, projectId, source);
+    if (
+      linked.length < new Set(linkedIds.concat(source?.repositoryId ?? [])).size ||
+      linked.some((repository) => !repository.hasGit)
+    ) {
       return yield* new SlotServiceError({
         operation: "claim:projectRepositories",
         cause: new Error(`Project ${projectId} has a missing or non-git repository`),
       });
     }
-    const layout = layoutProjectRepositories(path, linked as ReadonlyArray<RepositoryView>);
+    const layout = layoutProjectRepositories(path, linked);
     return yield* Effect.forEach(layout, (entry) =>
       Effect.gen(function* () {
         const branch = yield* branches.get({

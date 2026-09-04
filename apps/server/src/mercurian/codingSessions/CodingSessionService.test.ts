@@ -35,6 +35,7 @@ import * as VcsStatusBroadcaster from "../../vcs/VcsStatusBroadcaster.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as SlotService from "../worktreeSlots/SlotService.ts";
 import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 import {
@@ -104,6 +105,7 @@ interface SagaState {
   missingLineBranch: boolean;
   repositoryPresent: boolean;
   secondRepositoryPresent: boolean;
+  memorySourcePresent: boolean;
   groundingRoots: "cwd-only" | "multi";
   appendedUnreachableRepositories: ReadonlyArray<string> | null;
   lineBranchMissing: boolean;
@@ -150,6 +152,7 @@ function sagaState(overrides: Partial<SagaState> = {}): SagaState {
     missingLineBranch: false,
     repositoryPresent: true,
     secondRepositoryPresent: false,
+    memorySourcePresent: false,
     groundingRoots: "multi",
     appendedUnreachableRepositories: null,
     lineBranchMissing: false,
@@ -206,7 +209,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
                 scripts: state.repositoryScripts,
                 hasGit: true,
               },
-              ...(state.secondRepositoryPresent
+              ...(state.secondRepositoryPresent || state.memorySourcePresent
                 ? [
                     {
                       repositoryId: secondRepositoryId,
@@ -240,6 +243,20 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
     Layer.mock(ProviderRegistry.ProviderRegistry)({
       getProviders: Effect.succeed([provider()]),
       streamChanges: Stream.empty,
+    }),
+    Layer.mock(MemorySourceStore.MemorySourceStore)({
+      getSource: () =>
+        Effect.succeed(
+          state.memorySourcePresent
+            ? Option.some({
+                projectId,
+                repositoryId: secondRepositoryId,
+                subpath: "notes",
+                createdAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
+                updatedAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
+              })
+            : Option.none(),
+        ),
     }),
     Layer.mock(ProviderService.ProviderService)({
       getCapabilities: () =>
@@ -370,7 +387,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
                   ? null
                   : "mercurian/coding-session-birth-ready-revi",
               },
-              ...(state.secondRepositoryPresent
+              ...(state.secondRepositoryPresent || state.memorySourcePresent
                 ? [
                     {
                       repositoryId: secondRepositoryId,
@@ -540,6 +557,21 @@ describe("CodingSessionService validation", () => {
             open.cwd === "/worktrees/coding-session/web",
         ),
       );
+    }),
+  );
+
+  it.effect("adds the slot memory root to the first-turn text", () =>
+    Effect.gen(function* () {
+      const state = sagaState({ memorySourcePresent: true });
+      yield* runSaga(state);
+      const turn = state.commands.find((command) => command.type === "thread.turn.start");
+      assert.ok(turn?.type === "thread.turn.start");
+      if (turn?.type === "thread.turn.start") {
+        assert.include(turn.message.text, "# Exact implementation plan\n\nShip this.");
+        assert.include(turn.message.text, "Project memory (durable design truth");
+        assert.include(turn.message.text, "/worktrees/coding-session/web/notes");
+        assert.include(turn.message.text, "lands on this line's memory branch as its own commit");
+      }
     }),
   );
 

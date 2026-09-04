@@ -34,6 +34,8 @@ import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryScript } from "../repositories/schema.ts";
 import { CommitId } from "../commitTree/schema.ts";
+import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
+import { memoryAppendix } from "../assistant/PlanningPrompt.ts";
 import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
 import { SlotService, SlotServiceError } from "../worktreeSlots/SlotService.ts";
 import type { WorktreeSlotId } from "../worktreeSlots/schema.ts";
@@ -107,6 +109,7 @@ export const make = Effect.gen(function* () {
   const planTurns = yield* PlanTurnRegistry;
   const slotService = yield* SlotService;
   const path = yield* Path.Path;
+  const memorySources = yield* MemorySourceStore;
 
   const uuid = crypto.randomUUIDv4;
   const commandId = (tag: string) =>
@@ -325,6 +328,19 @@ export const make = Effect.gen(function* () {
         }
         const branch = primaryMember.currentBranch;
         const primaryWorktreePath = path.join(slot.path, primaryMember.relativePath);
+        const memorySource = yield* memorySources.getSource(detail.plan.projectId);
+        const memoryMember = Option.isNone(memorySource)
+          ? undefined
+          : workspaceMembers.find(
+              (member) => member.repositoryId === memorySource.value.repositoryId,
+            );
+        const firstTurnText =
+          Option.isNone(memorySource) || memoryMember === undefined
+            ? planText
+            : `${planText}\n\n${memoryAppendix({
+                name: "project memory",
+                path: path.join(memoryMember.worktreePath, memorySource.value.subpath ?? ""),
+              })}`;
 
         const existingProject = yield* projections.getActiveProjectByWorkspaceRoot(
           primaryRepository.path,
@@ -392,7 +408,7 @@ export const make = Effect.gen(function* () {
           type: "thread.turn.start",
           commandId: yield* commandId("turn-start"),
           threadId,
-          message: { messageId, role: "user", text: planText, attachments: [] },
+          message: { messageId, role: "user", text: firstTurnText, attachments: [] },
           modelSelection: input.modelSelection,
           runtimeMode: input.runtimeMode,
           interactionMode: "default",
@@ -406,7 +422,7 @@ export const make = Effect.gen(function* () {
           branch,
           worktreePath: primaryWorktreePath,
           homeRepositoryId: primaryRepository.repositoryId,
-          repositoryIds: linkedRepositories.map((repository) => repository.repositoryId),
+          repositoryIds: workspaceMembers.map((member) => member.repositoryId),
           unreachableRepositories,
           startedAt,
         });

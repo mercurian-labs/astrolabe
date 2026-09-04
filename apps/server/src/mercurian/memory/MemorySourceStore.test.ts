@@ -10,18 +10,26 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
-  MemorySourceInvalidError,
   isMemorySourceInvalidError,
   MercurianProjectId,
   MercurianRepositoryId,
 } from "@t3tools/contracts";
 
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
+import { ServerConfig } from "../../config.ts";
+import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
 
+const gitLayer = GitVcsDriver.layer.pipe(
+  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "memory-source-test-" })),
+  Layer.provideMerge(VcsProcess.layer),
+  Layer.provideMerge(NodeServicesLayer),
+);
 const layer = it.layer(
   MemorySourceStore.layer.pipe(
     Layer.provideMerge(MercurianSqlite.layerMemory),
+    Layer.provideMerge(gitLayer),
     Layer.provideMerge(NodeServicesLayer),
   ),
 );
@@ -41,6 +49,11 @@ const addRepository = Effect.fn("test.addRepository")(function* (
 const makeDirectory = Effect.fn("test.makeMemoryDirectory")(function* () {
   const fs = yield* FileSystem.FileSystem;
   return yield* fs.makeTempDirectoryScoped({ prefix: "mercurian-memory-source-" });
+});
+
+const runGit = Effect.fn("test.runGit")(function* (cwd: string, args: ReadonlyArray<string>) {
+  const git = yield* GitVcsDriver.GitVcsDriver;
+  return yield* git.execute({ operation: "MemorySourceStore.test.git", cwd, args });
 });
 
 layer("MemorySourceStore", (it) => {
@@ -134,6 +147,44 @@ layer("MemorySourceStore", (it) => {
       assert.ok(
         !(yield* store.getSnapshot).some(({ projectId }) => projectId === "memory-project-cascade"),
       );
+    }),
+  );
+
+  it.effect("accepts repository roots and subpaths but refuses a nested repository", () =>
+    Effect.gen(function* () {
+      const store = yield* MemorySourceStore.MemorySourceStore;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* makeDirectory();
+      const notes = path.join(root, "notes");
+      const nested = path.join(root, "nested");
+      yield* fs.makeDirectory(notes);
+      yield* fs.makeDirectory(nested);
+      yield* runGit(root, ["init"]);
+      yield* runGit(nested, ["init"]);
+      yield* addRepository("memory-source-git-shapes", root);
+
+      yield* store.designate({
+        projectId: MercurianProjectId.make("memory-project-root"),
+        repositoryId: MercurianRepositoryId.make("memory-source-git-shapes"),
+        now,
+      });
+      yield* store.designate({
+        projectId: MercurianProjectId.make("memory-project-subpath"),
+        repositoryId: MercurianRepositoryId.make("memory-source-git-shapes"),
+        subpath: "notes",
+        now,
+      });
+      const error = yield* Effect.flip(
+        store.designate({
+          projectId: MercurianProjectId.make("memory-project-nested"),
+          repositoryId: MercurianRepositoryId.make("memory-source-git-shapes"),
+          subpath: "nested",
+          now,
+        }),
+      );
+      assert.ok(isMemorySourceInvalidError(error));
+      assert.strictEqual(error.reason, "nested-repository");
     }),
   );
 });

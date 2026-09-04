@@ -17,6 +17,7 @@ import * as CheckpointStore from "../src/checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../src/config.ts";
 import * as GitWorkflowService from "../src/git/GitWorkflowService.ts";
 import * as LineBranchStore from "../src/mercurian/commitTree/LineBranchStore.ts";
+import * as MemorySourceStore from "../src/mercurian/memory/MemorySourceStore.ts";
 import * as RepositoryStore from "../src/mercurian/repositories/RepositoryStore.ts";
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 import { make, slotMemberWorktreePath } from "../src/mercurian/worktreeSlots/SlotService.ts";
@@ -100,6 +101,10 @@ it.effect(
               changes: Stream.empty,
             }),
             SlotRegistry.layer,
+            Layer.mock(MemorySourceStore.MemorySourceStore)({
+              getSnapshot: Effect.succeed([]),
+              getSource: () => Effect.succeed(Option.none()),
+            }),
             Layer.mock(LineBranchStore.LineBranchStore)({
               get: ({ lineRootCommitId, repositoryId }) =>
                 Effect.succeed(

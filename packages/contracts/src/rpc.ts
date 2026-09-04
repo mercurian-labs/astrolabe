@@ -86,13 +86,10 @@ import {
 } from "./orchestration.ts";
 import {
   CodingSessionBlockedError,
-  ConfirmMemoryAmendmentBlockedError,
   MERCURIAN_WS_METHODS,
   MercurianAnswerPlanningQuestionInput,
   MercurianAppendPlanMessageInput,
   MercurianArchivePlanInput,
-  MercurianCancelMemoryAmendmentInput,
-  MercurianConfirmMemoryAmendmentInput,
   MercurianStartCodingSessionInput,
   MercurianStartCodingSessionResult,
   MercurianCreatePlanInput,
@@ -138,7 +135,6 @@ import {
   PlanTextAt,
   PlanReconstructionMeasure,
   PlanTurnActiveError,
-  MercurianCommitId,
 } from "./mercurian.ts";
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
@@ -162,12 +158,14 @@ import {
   MemorySourceInvalidError,
   MemorySourcesStreamItem,
   MemoryIndex,
+  MercurianLineMemoryChanges,
   MemoryNote,
   MercurianDesignateMemorySourceInput,
   MercurianGenerateProductMapInput,
   MercurianMemoryError,
   MercurianReadMemoryIndexInput,
   MercurianReadMemoryNoteInput,
+  MercurianReadLineMemoryChangesInput,
   MercurianRemoveMemorySourceInput,
   MercurianSubscribeMemorySourcesInput,
   ProductMapAlreadyExistsError,
@@ -1376,31 +1374,6 @@ export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSp
   ]),
 });
 
-export const WsMercurianConfirmMemoryAmendmentRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.confirmMemoryAmendment,
-  {
-    payload: MercurianConfirmMemoryAmendmentInput,
-    success: MercurianCommitId,
-    error: Schema.Union([
-      PlanNotFoundError,
-      PlanTurnActiveError,
-      ConfirmMemoryAmendmentBlockedError,
-      MercurianPlanningError,
-      MercurianMemoryError,
-      EnvironmentAuthorizationError,
-    ]),
-  },
-);
-
-export const WsMercurianCancelMemoryAmendmentRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.cancelMemoryAmendment,
-  {
-    payload: MercurianCancelMemoryAmendmentInput,
-    success: MercurianPlanAcknowledged,
-    error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
-  },
-);
-
 export const WsMercurianStartCodingSessionRpc = Rpc.make(MERCURIAN_WS_METHODS.startCodingSession, {
   payload: MercurianStartCodingSessionInput,
   success: MercurianStartCodingSessionResult,
@@ -1642,6 +1615,20 @@ export const WsMercurianReadMemoryNoteRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS
   ]),
 });
 
+export const WsMercurianReadLineMemoryChangesRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges,
+  {
+    payload: MercurianReadLineMemoryChangesInput,
+    success: MercurianLineMemoryChanges,
+    error: Schema.Union([
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 export const WsMercurianGenerateProductMapRpc = Rpc.make(
   MERCURIAN_MEMORY_WS_METHODS.generateProductMap,
   {
@@ -1856,8 +1843,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSaveSpecRevisionRpc,
   WsMercurianRefreshSpecRpc,
-  WsMercurianConfirmMemoryAmendmentRpc,
-  WsMercurianCancelMemoryAmendmentRpc,
   WsMercurianStartCodingSessionRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
@@ -1881,6 +1866,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRemoveMemorySourceRpc,
   WsMercurianReadMemoryIndexRpc,
   WsMercurianReadMemoryNoteRpc,
+  WsMercurianReadLineMemoryChangesRpc,
   WsMercurianGenerateProductMapRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
   WsMercurianSubscribeTrackersRpc,
