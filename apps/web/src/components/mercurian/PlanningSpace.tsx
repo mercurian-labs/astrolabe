@@ -167,15 +167,12 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     explorerView,
     experiments.historyWalkViews,
   );
-  const [columnsWidthCap, setColumnsWidthCap] = useState(0);
   const planningSpaceRef = useRef<HTMLDivElement>(null);
   const [planningSpaceWidth, setPlanningSpaceWidth] = useState<number | null>(null);
   const rightPaneViewCap =
-    pane.view === "artifact" || effectiveExplorerView === "graph"
-      ? RIGHT_PANE_MAX_WIDTH
-      : effectiveExplorerView === "thread"
-        ? RIGHT_PANE_THREAD_MAX_WIDTH
-        : columnsWidthCap;
+    pane.view === "explorer" && effectiveExplorerView === "thread"
+      ? RIGHT_PANE_THREAD_MAX_WIDTH
+      : RIGHT_PANE_MAX_WIDTH;
   const rightPaneMaxWidth = Math.max(
     RIGHT_PANE_MIN_WIDTH,
     Math.min(rightPaneViewCap, planningSpaceWidth ?? rightPaneViewCap),
@@ -621,8 +618,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   providers={planningModel.providers}
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
-                  cornerControl={paneCornerControl}
-                  onColumnsWidthCapChange={setColumnsWidthCap}
                   onEditAndBranch={editAndBranch}
                   onImplementFrom={() => {}}
                   onSelect={select}

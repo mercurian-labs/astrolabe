@@ -1,8 +1,4 @@
-import {
-  MercurianRepositoryId,
-  type MercurianCommitId,
-  type PlanTimelineItem,
-} from "@t3tools/contracts";
+import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -109,7 +105,6 @@ const renderExplorer = (
       graph={buildPlanGraph(items)}
       stalePlanCommitIds={new Set()}
       staleSpecCommitIds={new Set()}
-      onColumnsWidthCapChange={vi.fn()}
       onSelect={vi.fn()}
     />,
   );
@@ -217,7 +212,6 @@ describe("DagExplorer", () => {
           historyWalkViewsEnabled={false}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}
-          onColumnsWidthCapChange={vi.fn()}
           onSelect={vi.fn()}
         />,
       );
@@ -242,7 +236,6 @@ describe("DagExplorer", () => {
         historyWalkViewsEnabled
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -260,7 +253,6 @@ describe("DagExplorer", () => {
         graph={buildPlanGraph(timeline)}
         stalePlanCommitIds={new Set([planStaleTip])}
         staleSpecCommitIds={new Set([specStaleTip])}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -297,7 +289,6 @@ describe("DagExplorer", () => {
         graph={buildPlanGraph([timeline[0]!, session])}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -345,7 +336,6 @@ describe("DagExplorer", () => {
         inFlightAnchorCommitIds={[anchor]}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -418,7 +408,6 @@ describe("DagExplorer", () => {
           graph={buildPlanGraph(checkpointTimeline)}
           stalePlanCommitIds={new Set([response])}
           staleSpecCommitIds={new Set([response])}
-          onColumnsWidthCapChange={vi.fn()}
           onSelect={vi.fn()}
         />,
       );
@@ -474,7 +463,6 @@ describe("DagExplorer", () => {
           inFlightAnchorCommitIds={[anchor]}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}
-          onColumnsWidthCapChange={vi.fn()}
           onSelect={vi.fn()}
         />,
       );

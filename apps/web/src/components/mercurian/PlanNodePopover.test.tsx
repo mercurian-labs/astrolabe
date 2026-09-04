@@ -114,7 +114,7 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Spec stale");
     expect(markup).toContain("Plan may be stale");
     expect(markup).toContain("Continue from here");
-    expect(markup).toContain("Edit and branch");
+    expect(markup).toContain("Fork here");
     expect(markup).toContain("Implement from here");
   });
 
@@ -161,7 +161,7 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Continue from here");
     expect(markup).toContain("Open session");
     expect(markup).toContain('href="/sessions/thread"');
-    expect(markup).not.toContain("Edit and branch");
+    expect(markup).not.toContain("Fork here");
     expect(markup).not.toContain("Implement from here");
   });
 

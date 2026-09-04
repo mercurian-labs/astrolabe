@@ -1,9 +1,10 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
   migratePersistedRightPanelState,
+  PINNED_SURFACE_IDS,
   pullRequestSurfaceId,
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
@@ -20,6 +21,112 @@ beforeEach(() => {
 });
 
 describe("rightPanelStore", () => {
+  it("preserves persisted Spec and Checkpoints surfaces while dropping unknown kinds", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "spec",
+            surfaces: [
+              { id: "spec", kind: "spec" },
+              { id: "checkpoints", kind: "checkpoints" },
+              { id: "future", kind: "future" },
+            ],
+            pinnedSurfaceIds: ["checkpoints", "future"],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "spec",
+          surfaces: [
+            { id: "spec", kind: "spec" },
+            { id: "checkpoints", kind: "checkpoints" },
+          ],
+          pinnedSurfaceIds: ["checkpoints"],
+        },
+      },
+    });
+  });
+
+  it("seeds the Mercurian line panel once without replacing an existing thread entry", () => {
+    useRightPanelStore.getState().seedMercurianLinePanel(refA);
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "plan",
+      surfaces: [
+        { id: "checkpoints", kind: "checkpoints" },
+        { id: "plan", kind: "plan" },
+      ],
+      pinnedSurfaceIds: PINNED_SURFACE_IDS,
+    });
+    const seeded = useRightPanelStore.getState().byThreadKey[scopedThreadKey(refA)];
+    useRightPanelStore.getState().seedMercurianLinePanel(refA);
+    expect(useRightPanelStore.getState().byThreadKey[scopedThreadKey(refA)]).toBe(seeded);
+
+    useRightPanelStore.getState().open(refB, "diff");
+    const existing = useRightPanelStore.getState().byThreadKey[scopedThreadKey(refB)];
+    useRightPanelStore.getState().seedMercurianLinePanel(refB);
+    expect(useRightPanelStore.getState().byThreadKey[scopedThreadKey(refB)]).toBe(existing);
+  });
+
+  it("does not add pinned surfaces to an upstream thread without the marker", () => {
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+
+    useRightPanelStore.getState().open(refA, "plan");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "plan",
+      surfaces: [{ id: "plan", kind: "plan" }],
+    });
+  });
+
+  it("prepends an opted-in pinned surface when persisted state does not contain it", () => {
+    useRightPanelStore.setState({
+      byThreadKey: {
+        [scopedThreadKey(refA)]: {
+          isOpen: true,
+          activeSurfaceId: "plan",
+          surfaces: [{ id: "plan", kind: "plan" }],
+          pinnedSurfaceIds: PINNED_SURFACE_IDS,
+        },
+      },
+    });
+
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toEqual([
+      { id: "checkpoints", kind: "checkpoints" },
+      { id: "plan", kind: "plan" },
+    ]);
+  });
+
+  it.each([
+    ["closeSurface", () => useRightPanelStore.getState().closeSurface(refA, "checkpoints")],
+    ["closeOtherSurfaces", () => useRightPanelStore.getState().closeOtherSurfaces(refA, "plan")],
+    [
+      "closeSurfacesToRight",
+      () => useRightPanelStore.getState().closeSurfacesToRight(refA, "plan"),
+    ],
+    ["closeAllSurfaces", () => useRightPanelStore.getState().closeAllSurfaces(refA)],
+  ] as const)("keeps Checkpoints pinned through %s", (_name, close) => {
+    useRightPanelStore.getState().seedMercurianLinePanel(refA);
+    useRightPanelStore.getState().open(refA, "diff");
+
+    close();
+
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces[0],
+    ).toEqual({ id: "checkpoints", kind: "checkpoints" });
+  });
+
   it("drops the legacy singleton terminal surface during migration", () => {
     expect(
       migratePersistedRightPanelState({

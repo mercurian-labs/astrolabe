@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { PlanId, ThreadId } from "@t3tools/contracts";
+import { MercurianCommitId, PlanId, ThreadId } from "@t3tools/contracts";
 import { DraftId } from "./composerDraftStore";
 
 import {
@@ -54,6 +54,38 @@ describe("threadRoutes", () => {
     expect(navigate).toHaveBeenNthCalledWith(4, {
       to: "/threads/draft/$draftId",
       params: { draftId: "draft-1" },
+    });
+  });
+
+  it("carries a checkpoint position with or without a resolved line", async () => {
+    const navigate = vi.fn(() => Promise.resolve());
+    const router = { navigate } as never;
+    const threadRef = scopeThreadRef("env-1" as never, ThreadId.make("line-thread"));
+    const at = MercurianCommitId.make("checkpoint-1");
+
+    await navigateToThreadRoute(router, {
+      kind: "server",
+      threadRef,
+      planId: PlanId.make("plan-1"),
+      at,
+    });
+    await navigateToThreadRoute(router, {
+      kind: "server",
+      threadRef,
+      planId: PlanId.make("plan-1"),
+      line: null,
+      at,
+    });
+
+    expect(navigate).toHaveBeenNthCalledWith(1, {
+      to: "/threads/$planId",
+      params: { planId: "plan-1" },
+      search: { line: "line-thread", at: "checkpoint-1" },
+    });
+    expect(navigate).toHaveBeenNthCalledWith(2, {
+      to: "/threads/$planId",
+      params: { planId: "plan-1" },
+      search: { at: "checkpoint-1" },
     });
   });
   it("builds canonical thread route params from a scoped ref", () => {

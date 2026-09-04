@@ -75,7 +75,6 @@ import {
   COLUMN_PANE_WIDTH,
   COLUMN_STRIP_WIDTH,
   columnLayout,
-  columnViewWidthCap,
   defaultBranchChoices,
   type Pane,
 } from "./PlanColumns.logic";
@@ -166,9 +165,7 @@ export function DagExplorer({
   codingSessions,
   stalePlanCommitIds,
   staleSpecCommitIds,
-  cornerControl,
   historyWalkViewsEnabled,
-  onColumnsWidthCapChange,
   onEditAndBranch,
   onImplementFrom,
   onSelect,
@@ -182,11 +179,8 @@ export function DagExplorer({
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
-  /** The planning-space pane toggle; omitted in standalone renderings. */
-  readonly cornerControl?: ReactNode;
   /** Explicit override for development catalogs and focused rendering tests. */
   readonly historyWalkViewsEnabled?: boolean;
-  readonly onColumnsWidthCapChange: (width: number) => void;
   readonly onEditAndBranch: (
     query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
   ) => void;
@@ -280,7 +274,6 @@ export function DagExplorer({
             </Tooltip>
           </ToggleGroup>
         ) : null}
-        {cornerControl}
       </div>
       {checkpointGraph.nodes.length === 0 ? (
         <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
@@ -313,7 +306,6 @@ export function DagExplorer({
           onEditAndBranch={onEditAndBranch}
           onImplementFrom={onImplementFrom}
           onSelect={onSelect}
-          onWidthCapChange={onColumnsWidthCapChange}
         />
       ) : (
         <GraphView
@@ -799,7 +791,6 @@ function ColumnsView({
   onEditAndBranch,
   onImplementFrom,
   onSelect,
-  onWidthCapChange,
 }: {
   readonly graph: PlanGraph;
   readonly commitGraph: PlanGraph;
@@ -814,7 +805,6 @@ function ColumnsView({
   ) => void;
   readonly onImplementFrom: (commitId: MercurianCommitId) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
-  readonly onWidthCapChange: (width: number) => void;
 }) {
   const [branchChoices, setBranchChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(() =>
     defaultBranchChoices(graph, currentCommitId),
@@ -848,11 +838,6 @@ function ColumnsView({
   const columnsContainerRef = useRef<HTMLDivElement>(null);
   const [columnsContainerWidth, setColumnsContainerWidth] = useState(0);
   const popover = usePlanNodePopover();
-
-  const widthCap = columnViewWidthCap(layout.panes);
-  useLayoutEffect(() => {
-    onWidthCapChange(widthCap);
-  }, [onWidthCapChange, widthCap]);
 
   useLayoutEffect(() => {
     const element = columnsContainerRef.current;

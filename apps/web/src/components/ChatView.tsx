@@ -1356,8 +1356,11 @@ function ChatViewContent(props: ChatViewProps) {
     headerContent,
     headerBanner,
     planPanel,
+    specPanel,
+    checkpointsPanel,
   } = props;
   const planAvailable = planPanel !== undefined;
+  const specAvailable = specPanel !== undefined;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
@@ -1817,6 +1820,7 @@ function ChatViewContent(props: ChatViewProps) {
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
+  const pinnedSurfaceIds = rightPanelState.pinnedSurfaceIds;
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
@@ -3661,6 +3665,10 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef || !planAvailable) return;
     useRightPanelStore.getState().open(activeThreadRef, "plan");
   }, [activeThreadRef, planAvailable]);
+  const addSpecSurface = useCallback(() => {
+    if (!activeThreadRef || !specAvailable) return;
+    useRightPanelStore.getState().open(activeThreadRef, "spec");
+  }, [activeThreadRef, specAvailable]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -7400,6 +7408,10 @@ function ChatViewContent(props: ChatViewProps) {
       </Suspense>
     ) : renderedRightPanelSurface?.kind === "plan" ? (
       planPanel
+    ) : renderedRightPanelSurface?.kind === "spec" ? (
+      specPanel
+    ) : renderedRightPanelSurface?.kind === "checkpoints" ? (
+      checkpointsPanel
     ) : renderedRightPanelSurface?.kind === "pull-request" && !pullRequestsCapabilityKnown ? (
       <PullRequestDetailGhost />
     ) : renderedRightPanelSurface?.kind === "pull-request" && !supportsPullRequests ? (
@@ -7959,6 +7971,7 @@ function ChatViewContent(props: ChatViewProps) {
           maximized={rightPanelMaximized}
           layoutControls={rightPanelOpen ? inlineRightPanelControls : null}
           surfaces={renderedRightPanelSurfaces}
+          pinnedSurfaceIds={pinnedSurfaceIds}
           environmentId={activeThreadRef.environmentId}
           activeSurfaceId={renderedRightPanelSurface?.id ?? null}
           pendingSurfaceIds={pendingFileSurfaceIds}
@@ -7980,7 +7993,9 @@ function ChatViewContent(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
           onAddPlan={addPlanSurface}
+          onAddSpec={addSpecSurface}
           planAvailable={planAvailable}
+          specAvailable={specAvailable}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
@@ -8011,6 +8026,7 @@ function ChatViewContent(props: ChatViewProps) {
               ) : null
             }
             surfaces={renderedRightPanelSurfaces}
+            pinnedSurfaceIds={pinnedSurfaceIds}
             environmentId={activeThreadRef.environmentId}
             activeSurfaceId={renderedRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
@@ -8032,7 +8048,9 @@ function ChatViewContent(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             onAddPlan={addPlanSurface}
+            onAddSpec={addSpecSurface}
             planAvailable={planAvailable}
+            specAvailable={specAvailable}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
