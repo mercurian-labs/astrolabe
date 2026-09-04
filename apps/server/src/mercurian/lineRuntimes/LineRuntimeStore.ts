@@ -66,9 +66,9 @@ export class LineRuntimeStore extends Context.Service<
       lineRootCommitId: MercurianCommitId,
     ) => Effect.Effect<void, LineRuntimeStoreError>;
     readonly deleteByThread: (threadId: ThreadId) => Effect.Effect<void, LineRuntimeStoreError>;
-    readonly updateBranch: (
+    readonly updateWorkspace: (
       threadId: ThreadId,
-      branch: string,
+      input: { readonly branch: string; readonly worktreePath: string },
     ) => Effect.Effect<void, LineRuntimeStoreError>;
     readonly recordSnapshot: (
       threadId: ThreadId,
@@ -94,7 +94,11 @@ const LineRequest = Schema.Struct({ planId: PlanId, lineRootCommitId: MercurianC
 const PlanRequest = Schema.Struct({ planId: PlanId });
 const ThreadRequest = Schema.Struct({ threadId: ThreadId });
 const BranchLookupRequest = Schema.Struct({ branch: Schema.String });
-const BranchRequest = Schema.Struct({ threadId: ThreadId, branch: Schema.String });
+const WorkspaceRequest = Schema.Struct({
+  threadId: ThreadId,
+  branch: Schema.String,
+  worktreePath: Schema.String,
+});
 const MissingRequest = Schema.Struct({
   threadId: ThreadId,
   oid: Schema.NullOr(TrimmedNonEmptyString),
@@ -181,10 +185,11 @@ export const make = Effect.gen(function* () {
       ORDER BY repository.created_at ASC, repository.repository_id ASC
     `,
   });
-  const updateBranch = SqlSchema.void({
-    Request: BranchRequest,
-    execute: ({ threadId, branch }) => sql`
-      UPDATE line_runtimes SET branch = ${branch}, updated_at = CURRENT_TIMESTAMP
+  const updateWorkspace = SqlSchema.void({
+    Request: WorkspaceRequest,
+    execute: ({ threadId, branch, worktreePath }) => sql`
+      UPDATE line_runtimes SET branch = ${branch}, worktree_path = ${worktreePath},
+        updated_at = CURRENT_TIMESTAMP
       WHERE thread_id = ${threadId}
     `,
   });
@@ -338,10 +343,10 @@ export const make = Effect.gen(function* () {
         ),
         "LineRuntimeStore.deleteByThread",
       ),
-    updateBranch: (threadId, branch) =>
+    updateWorkspace: (threadId, input) =>
       mapError(
-        updateBranch({ threadId, branch }).pipe(Effect.andThen(announceThread(threadId))),
-        "LineRuntimeStore.updateBranch",
+        updateWorkspace({ threadId, ...input }).pipe(Effect.andThen(announceThread(threadId))),
+        "LineRuntimeStore.updateWorkspace",
       ),
     recordSnapshot: (threadId, input) =>
       mapError(

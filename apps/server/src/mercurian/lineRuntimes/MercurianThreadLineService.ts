@@ -27,13 +27,16 @@ export const make = Effect.gen(function* () {
         ),
       ),
     updateBranch: (threadId, branch) =>
-      lineRuntimes
-        .getByThreadId(threadId)
-        .pipe(
-          Effect.flatMap((runtime) =>
-            Option.isSome(runtime) ? lineRuntimes.updateBranch(threadId, branch) : Effect.void,
-          ),
+      lineRuntimes.getByThreadId(threadId).pipe(
+        Effect.flatMap((runtime) =>
+          Option.isSome(runtime)
+            ? lineRuntimes.updateWorkspace(threadId, {
+                branch,
+                worktreePath: runtime.value.worktreePath,
+              })
+            : Effect.void,
         ),
+      ),
     recordSnapshot: (threadId, snapshot) =>
       lineRuntimes
         .getByThreadId(threadId)

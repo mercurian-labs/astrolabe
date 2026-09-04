@@ -317,8 +317,11 @@ export const make = Effect.gen(function* () {
       worktreePath,
       workspaceMembers,
     });
-    if (home.currentBranch !== record.branch) {
-      yield* lineRuntimes.updateBranch(record.threadId, home.currentBranch);
+    if (home.currentBranch !== record.branch || worktreePath !== record.worktreePath) {
+      yield* lineRuntimes.updateWorkspace(record.threadId, {
+        branch: home.currentBranch,
+        worktreePath,
+      });
     }
     return { ...record, branch: home.currentBranch, worktreePath };
   });

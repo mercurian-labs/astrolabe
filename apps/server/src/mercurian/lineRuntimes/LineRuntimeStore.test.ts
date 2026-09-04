@@ -50,7 +50,10 @@ layer("LineRuntimeStore", (it) => {
       assert.strictEqual(byLine.value.threadId, threadId);
       assert.strictEqual((yield* store.listByPlan(planId)).length, 1);
 
-      yield* store.updateBranch(threadId, "mercurian/renamed");
+      yield* store.updateWorkspace(threadId, {
+        branch: "mercurian/renamed",
+        worktreePath: "/tmp/renamed-worktree",
+      });
       yield* store.recordSnapshot(threadId, {
         snapshotOid: "snapshot",
         kind: "settled",
@@ -74,6 +77,7 @@ layer("LineRuntimeStore", (it) => {
 
       const updated = Option.getOrThrow(yield* store.getByThreadId(threadId));
       assert.strictEqual(updated.branch, "mercurian/renamed");
+      assert.strictEqual(updated.worktreePath, "/tmp/renamed-worktree");
       assert.strictEqual(updated.snapshotOid, "snapshot");
       assert.deepStrictEqual(updated.branchMovement, { kind: "added", count: 2 });
       assert.strictEqual(updated.lineBranchMissingOid, "missing-tip");

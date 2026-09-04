@@ -815,7 +815,7 @@ const buildAppUnderTest = (options?: {
           getByThreadId: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
           create: () => Effect.void,
-          updateBranch: () => Effect.void,
+          updateWorkspace: () => Effect.void,
           recordSnapshot: () => Effect.void,
           recordRepositorySnapshot: () => Effect.void,
           recordLineBranchMissing: () => Effect.void,
@@ -5463,11 +5463,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       let planning: PlanningStore.PlanningStore["Service"] | undefined;
       let projectId: MercurianProjectId | undefined;
       let runtime: LineRuntimeRecord | null = null;
+      let ensureSlotCalls = 0;
       const dispatched: Array<OrchestrationCommand> = [];
       const order: Array<string> = [];
       const threadId = ThreadId.make("thread-first-line-send");
       const messageId = MessageId.make("message-first-line-send");
+      const bootstrapThreadId = ThreadId.make("thread-bootstrap-first-line-send");
+      const bootstrapMessageId = MessageId.make("message-bootstrap-first-line-send");
       const homeRepositoryId = MercurianRepositoryId.make("repository-first-line-send");
+      const readRuntime = () => runtime;
 
       yield* buildAppUnderTest({
         onPlanningStoreReady: (store) => void (planning = store),
@@ -5476,6 +5480,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             dispatch: (command) =>
               Effect.sync(() => {
                 dispatched.push(command);
+                if (command.type === "thread.turn.start") order.push("dispatch");
                 return { sequence: dispatched.length };
               }),
             readEvents: () => Stream.empty,
@@ -5558,6 +5563,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           lineRuntimeService: {
             ensureSlot: () =>
               Effect.sync(() => {
+                ensureSlotCalls += 1;
                 if (runtime === null || runtime.lineRootCommitId === null) {
                   throw new Error("slot claim ran before the line was rooted");
                 }
@@ -5610,19 +5616,87 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             });
             if (runtime === null) return yield* Effect.die("line runtime was not recorded");
             const detail = yield* planningStore.getPlanSnapshot({ planId: runtime.planId });
-            return { pending, detail, rootedLineRootCommitId: runtime.lineRootCommitId };
+            const nonBootstrap = {
+              pending,
+              detail,
+              rootedLineRootCommitId: runtime.lineRootCommitId,
+              order: [...order],
+              dispatchedTypes: dispatched.map((command) => command.type),
+              ensureSlotCalls,
+            };
+
+            runtime = null;
+            ensureSlotCalls = 0;
+            dispatched.length = 0;
+            order.length = 0;
+            const bootstrapResponse = yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("command-bootstrap-first-line"),
+              threadId: bootstrapThreadId,
+              message: {
+                messageId: bootstrapMessageId,
+                role: "user",
+                text: "Build the bootstrap line",
+                attachments: [],
+              },
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              bootstrap: {
+                createThread: {
+                  projectId: defaultProjectId,
+                  title: "Bootstrap first line",
+                  modelSelection: defaultModelSelection,
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  branch: null,
+                  worktreePath: null,
+                  createdAt: "2026-01-01T00:00:02.000Z",
+                },
+              },
+              createdAt: "2026-01-01T00:00:02.000Z",
+            });
+            const bootstrapRuntime = readRuntime();
+            if (bootstrapRuntime === null) {
+              return yield* Effect.die("bootstrap line runtime was not recorded");
+            }
+            const bootstrapDetail = yield* planningStore.getPlanSnapshot({
+              planId: bootstrapRuntime.planId,
+            });
+            return {
+              nonBootstrap,
+              bootstrap: {
+                response: bootstrapResponse,
+                detail: bootstrapDetail,
+                rootedLineRootCommitId: bootstrapRuntime.lineRootCommitId,
+                order: [...order],
+                dispatchedTypes: dispatched.map((command) => command.type),
+                ensureSlotCalls,
+              },
+            };
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      assert.equal(result.pending?.lineRootCommitId, null);
-      assert.equal(result.detail.timeline[0]?.commitId, CommitId.make(messageId));
-      assert.equal(result.rootedLineRootCommitId, MercurianCommitId.make(messageId));
-      assert.deepEqual(order, ["record", "slot"]);
-      assert.deepEqual(
-        dispatched.map((command) => command.type),
-        ["thread.create", "thread.turn.start"],
+      assert.equal(result.nonBootstrap.pending?.lineRootCommitId, null);
+      assert.equal(result.nonBootstrap.detail.timeline[0]?.commitId, CommitId.make(messageId));
+      assert.equal(result.nonBootstrap.rootedLineRootCommitId, MercurianCommitId.make(messageId));
+      assert.deepEqual(result.nonBootstrap.order, ["record", "slot", "dispatch"]);
+      assert.equal(result.nonBootstrap.ensureSlotCalls, 1);
+      assert.deepEqual(result.nonBootstrap.dispatchedTypes, ["thread.create", "thread.turn.start"]);
+
+      assert.equal(
+        result.bootstrap.detail.timeline[0]?.commitId,
+        CommitId.make(bootstrapMessageId),
       );
+      assert.equal(
+        result.bootstrap.rootedLineRootCommitId,
+        MercurianCommitId.make(bootstrapMessageId),
+      );
+      assert.deepEqual(result.bootstrap.order, ["record", "slot", "dispatch"]);
+      assert.equal(result.bootstrap.ensureSlotCalls, 1);
+      assert.equal(result.bootstrap.response.sequence, 2);
+      assert.deepEqual(result.bootstrap.dispatchedTypes, ["thread.create", "thread.turn.start"]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

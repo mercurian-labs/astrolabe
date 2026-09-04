@@ -155,9 +155,9 @@ const makeHarness = Effect.gen(function* () {
             updatedAt: input.createdAt,
           };
         }),
-      updateBranch: (_threadId, branch) =>
+      updateWorkspace: (_threadId, workspace) =>
         Effect.sync(() => {
-          if (state.runtime !== null) state.runtime = { ...state.runtime, branch };
+          if (state.runtime !== null) state.runtime = { ...state.runtime, ...workspace };
         }),
       rootPending: (_threadId, root) => rootPending(root),
       deleteByThread: () => Effect.sync(() => void (state.runtime = null)),
@@ -265,8 +265,10 @@ describe("LineRuntimeService", () => {
       harness.state.branchReady = true;
       yield* PubSub.publish(harness.branchChanges, undefined);
       yield* Queue.take(harness.claims);
-      yield* Fiber.join(claimed);
+      const result = yield* Fiber.join(claimed);
       assert.strictEqual(harness.state.claimWait, true);
+      assert.strictEqual(result.record.worktreePath, "/worktrees/line");
+      assert.strictEqual(harness.state.runtime?.worktreePath, "/worktrees/line");
       assert.ok(harness.state.commands.some(({ type }) => type === "thread.meta.update"));
     }),
   );

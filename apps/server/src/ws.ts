@@ -872,6 +872,27 @@ const makeWsRpcLayer = (
         acquireLineSlot(threadId, { kind: "turn", threadId }).pipe(
           Effect.map(Option.map((claimed) => claimed.slotId)),
         );
+      const acquireCodingSessionTurnSlotForDispatch = (threadId: ThreadId) =>
+        acquireCodingSessionTurnSlot(threadId).pipe(
+          Effect.catchTag("LineBranchMissingError", (error) =>
+            lineRuntimeStore.recordLineBranchMissing(threadId, error.commitOid).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new OrchestrationDispatchCommandError({
+                    message: `The line's branch \`${error.branch}\` no longer exists in the repository; recreate it from the session header to continue.`,
+                  }),
+                ),
+              ),
+            ),
+          ),
+          Effect.catchTag("RepositoryNotGitError", () =>
+            Effect.fail(
+              new OrchestrationDispatchCommandError({
+                message: "This Mercurian line needs a linked Git repository before it can run.",
+              }),
+            ),
+          ),
+        );
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
@@ -1511,8 +1532,23 @@ const makeWsRpcLayer = (
             yield* runSetupProgram();
 
             yield* recordLineSend(finalTurnStartCommand);
+            // Mercurian drafts do not set prepareWorktree. If a line bootstrap
+            // ever does, this claim runs after its metadata update so the
+            // line slot's branch and worktree metadata win.
+            const acquiredSlot = yield* acquireCodingSessionTurnSlotForDispatch(command.threadId);
 
-            return yield* dispatchFromClient(finalTurnStartCommand);
+            return yield* dispatchFromClient(finalTurnStartCommand).pipe(
+              Effect.tapError(() =>
+                Option.isSome(acquiredSlot)
+                  ? slotService
+                      .release(acquiredSlot.value, {
+                        kind: "turn",
+                        threadId: command.threadId,
+                      })
+                      .pipe(Effect.ignoreCause({ log: true }))
+                  : Effect.void,
+              ),
+            );
           });
 
           return yield* bootstrapProgram.pipe(
@@ -1552,45 +1588,19 @@ const makeWsRpcLayer = (
         const dispatchEffect =
           normalizedCommand.type === "thread.turn.start"
             ? Effect.gen(function* () {
-                if (!normalizedCommand.bootstrap) {
-                  // As before Phase D, the human message remains recorded if
-                  // slot acquisition or orchestration later refuses the turn.
-                  yield* recordLineSend(normalizedCommand);
+                if (normalizedCommand.bootstrap) {
+                  return yield* dispatchBootstrapTurnStart(normalizedCommand);
                 }
-                const acquiredSlot = normalizedCommand.bootstrap
-                  ? Option.none()
-                  : yield* acquireCodingSessionTurnSlot(normalizedCommand.threadId).pipe(
-                      Effect.catchTag("LineBranchMissingError", (error) =>
-                        lineRuntimeStore
-                          .recordLineBranchMissing(normalizedCommand.threadId, error.commitOid)
-                          .pipe(
-                            Effect.andThen(
-                              Effect.fail(
-                                new OrchestrationDispatchCommandError({
-                                  message: `The line's branch \`${error.branch}\` no longer exists in the repository; recreate it from the session header to continue.`,
-                                }),
-                              ),
-                            ),
-                          ),
-                      ),
-                      Effect.catchTag("RepositoryNotGitError", () =>
-                        Effect.fail(
-                          new OrchestrationDispatchCommandError({
-                            message:
-                              "This Mercurian line needs a linked Git repository before it can run.",
-                          }),
-                        ),
-                      ),
-                    );
-                return yield* (
-                  normalizedCommand.bootstrap
-                    ? dispatchBootstrapTurnStart(normalizedCommand)
-                    : dispatchFromClient(normalizedCommand).pipe(
-                        Effect.mapError((cause) =>
-                          toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                        ),
-                      )
-                ).pipe(
+                // As before Phase D, the human message remains recorded if
+                // slot acquisition or orchestration later refuses the turn.
+                yield* recordLineSend(normalizedCommand);
+                const acquiredSlot = yield* acquireCodingSessionTurnSlotForDispatch(
+                  normalizedCommand.threadId,
+                );
+                return yield* dispatchFromClient(normalizedCommand).pipe(
+                  Effect.mapError((cause) =>
+                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                  ),
                   Effect.tapError(() =>
                     Option.isSome(acquiredSlot)
                       ? slotService
