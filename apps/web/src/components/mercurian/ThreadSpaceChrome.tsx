@@ -19,12 +19,9 @@ import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { memoryAmendmentFailureNotice } from "./PlanComposer.logic";
 import { formatMentionCandidate } from "./planMentions.logic";
-import {
-  resolveForkHereInput,
-  resolveLineInFlightTurn,
-  resolveLineTip,
-} from "./ThreadSpaceChrome.logic";
+import { resolveForkHereInput, resolveLineInFlightTurn } from "./ThreadSpaceChrome.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
+import { resolveLineTip } from "./planLineOwnership.logic";
 import { useForkHere } from "./useForkHere";
 
 export type ThreadSpaceChatViewChrome = Readonly<{
