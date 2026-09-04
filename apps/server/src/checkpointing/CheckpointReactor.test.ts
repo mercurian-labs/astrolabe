@@ -870,7 +870,7 @@ describe("CheckpointReactor", () => {
     ).toBe(true);
   });
 
-  it("replaces a slot-backed placeholder with a settled chained snapshot", async () => {
+  it("leaves a slot-backed placeholder unsettled until the turn completes", async () => {
     const harness = await createHarness({
       seedFilesystemCheckpoints: false,
       slotBackedSession: true,
@@ -878,13 +878,26 @@ describe("CheckpointReactor", () => {
     });
     const threadId = ThreadId.make("thread-1");
     const turnId = asTurnId("turn-placeholder");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-placeholder"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+    });
+    await waitForGitRefExists(harness.cwd, checkpointRefForThreadTurn(threadId, 0));
+    await harness.drain();
     const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    const initialHead = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
     await Effect.runPromise(
-      harness.checkpointStore.captureCheckpoint({ cwd: harness.cwd, checkpointRef: lineRef }),
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: lineRef,
+        parents: [initialHead],
+      }),
     );
     const previousSnapshot = runGit(harness.cwd, ["rev-parse", lineRef]).trim();
-    const head = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
-    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "placeholder work\n", "utf8");
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -903,14 +916,201 @@ describe("CheckpointReactor", () => {
     );
     await harness.drain();
 
+    expect(harness.recordedSnapshots).toEqual([]);
+    let snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ turnId, status: "missing", checkpointTurnCount: 1 }),
+      ]),
+    );
+
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "placeholder work\n", "utf8");
+    runGit(harness.cwd, ["add", "README.md"]);
+    runGit(harness.cwd, ["commit", "-m", "commit after placeholder"]);
+    const postCommitHead = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-placeholder"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
     const turnRef = checkpointRefForThreadTurn(threadId, 1);
-    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^1`]).trim()).toBe(previousSnapshot);
-    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^2`]).trim()).toBe(head);
     expect(harness.recordedSnapshots).toEqual([expect.objectContaining({ kind: "settled" })]);
+    snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.checkpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          turnId,
+          status: "ready",
+          checkpointTurnCount: 1,
+          snapshotKind: "settled",
+          branchMovement: { kind: "added", count: 1 },
+        }),
+      ]),
+    );
+    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^1`]).trim()).toBe(previousSnapshot);
+    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^2`]).trim()).toBe(postCommitHead);
+
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-after-placeholder-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+      threadId,
+      turnId: asTurnId("turn-after-placeholder"),
+    });
+    await harness.drain();
+
+    expect(harness.recordedSnapshots.some((recorded) => recorded.kind === "external")).toBe(false);
+    snapshot = await harness.readModel();
+    expect(
+      snapshot.threads[0]?.activities.some((activity) => activity.kind === "checkpoint.external"),
+    ).toBe(false);
+  });
+
+  it("settles every slot member after a placeholder when the turn completes", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    expect(harness.secondCwd).not.toBeNull();
+    const secondCwd = harness.secondCwd!;
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-placeholder-multi");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-placeholder-multi"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+    });
+    const baselineRef = checkpointRefForThreadTurn(threadId, 0);
+    await waitForGitRefExists(harness.cwd, baselineRef);
+    await waitForGitRefExists(secondCwd, baselineRef);
+    await harness.drain();
+    const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    const primaryInitialHead = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
+    const secondInitialHead = runGit(secondCwd, ["rev-parse", "HEAD"]).trim();
+    await Effect.runPromise(
+      Effect.all([
+        harness.checkpointStore.captureCheckpoint({
+          cwd: harness.cwd,
+          checkpointRef: lineRef,
+          parents: [primaryInitialHead],
+        }),
+        harness.checkpointStore.captureCheckpoint({
+          cwd: secondCwd,
+          checkpointRef: lineRef,
+          parents: [secondInitialHead],
+        }),
+      ]),
+    );
+    const primaryPreviousSnapshot = runGit(harness.cwd, ["rev-parse", lineRef]).trim();
+    const secondPreviousSnapshot = runGit(secondCwd, ["rev-parse", lineRef]).trim();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-placeholder-multi"),
+        threadId,
+        turnId,
+        completedAt: "2026-01-01T00:00:00.000Z",
+        checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+        status: "missing",
+        files: [],
+        assistantMessageId: MessageId.make("assistant-placeholder-multi"),
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+    expect(harness.recordedRepositorySnapshots).toEqual([]);
+
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "primary commit\n", "utf8");
+    runGit(harness.cwd, ["add", "README.md"]);
+    runGit(harness.cwd, ["commit", "-m", "commit primary after placeholder"]);
+    const primaryHead = runGit(harness.cwd, ["rev-parse", "HEAD"]).trim();
+    NodeFS.writeFileSync(NodePath.join(secondCwd, "README.md"), "secondary commit\n", "utf8");
+    runGit(secondCwd, ["add", "README.md"]);
+    runGit(secondCwd, ["commit", "-m", "commit secondary after placeholder"]);
+    const secondHead = runGit(secondCwd, ["rev-parse", "HEAD"]).trim();
+
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-placeholder-multi"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const turnRef = checkpointRefForThreadTurn(threadId, 1);
+    expect(harness.recordedRepositorySnapshots).toHaveLength(2);
+    expect(harness.recordedRepositorySnapshots).toEqual(
+      expect.arrayContaining([
+        { repositoryId: harness.repositoryId, kind: "settled", departedRef: null },
+        { repositoryId: harness.secondRepositoryId, kind: "settled", departedRef: null },
+      ]),
+    );
+    const snapshot = await harness.readModel();
+    const checkpoint = snapshot.threads[0]?.checkpoints.find((entry) => entry.turnId === turnId);
+    expect(checkpoint?.repositories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          repositoryId: harness.repositoryId,
+          branchMovement: expect.objectContaining({ kind: "added" }),
+        }),
+        expect.objectContaining({
+          repositoryId: harness.secondRepositoryId,
+          branchMovement: expect.objectContaining({ kind: "added" }),
+        }),
+      ]),
+    );
+    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^1`]).trim()).toBe(primaryPreviousSnapshot);
+    expect(runGit(secondCwd, ["rev-parse", `${turnRef}^1`]).trim()).toBe(secondPreviousSnapshot);
+    expect(runGit(harness.cwd, ["rev-parse", `${turnRef}^2`]).trim()).toBe(primaryHead);
+    expect(runGit(secondCwd, ["rev-parse", `${turnRef}^2`]).trim()).toBe(secondHead);
+  });
+
+  it("replaces a plain thread placeholder immediately", async () => {
+    const harness = await createHarness({
+      hasSession: false,
+      seedFilesystemCheckpoints: false,
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-placeholder-plain");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-placeholder-plain"),
+        threadId,
+        turnId,
+        completedAt: "2026-01-01T00:00:00.000Z",
+        checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+        status: "missing",
+        files: [],
+        assistantMessageId: MessageId.make("assistant-placeholder-plain"),
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+
     const snapshot = await harness.readModel();
     expect(snapshot.threads[0]?.checkpoints).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ turnId, status: "ready", snapshotKind: "settled" }),
+        expect.objectContaining({ turnId, status: "ready", checkpointTurnCount: 1 }),
       ]),
     );
   });
@@ -952,6 +1152,57 @@ describe("CheckpointReactor", () => {
 
     expect(harness.recordedSnapshots).toHaveLength(1);
     expect(harness.recordedSnapshots[0]).toEqual(expect.objectContaining({ kind: "settled" }));
+  });
+
+  it("keeps a placeholder turn partial when completion is interrupted", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-placeholder-interrupted");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-placeholder-interrupted"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+    });
+    await waitForGitRefExists(harness.cwd, checkpointRefForThreadTurn(threadId, 0));
+    await harness.drain();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-placeholder-interrupted"),
+        threadId,
+        turnId,
+        completedAt: "2026-01-01T00:00:00.000Z",
+        checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+        status: "missing",
+        files: [],
+        assistantMessageId: MessageId.make("assistant-placeholder-interrupted"),
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+    expect(harness.recordedSnapshots).toEqual([]);
+
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-placeholder-interrupted"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId,
+      payload: { state: "interrupted" },
+    });
+    await harness.drain();
+
+    expect(harness.recordedSnapshots).toEqual([expect.objectContaining({ kind: "partial" })]);
   });
 
   it("keeps interrupted slot-backed work as a partial chained snapshot", async () => {

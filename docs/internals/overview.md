@@ -141,6 +141,9 @@ as hidden Git refs through the VCS driver's checkpoint operations; `CheckpointDi
 turn and full-thread diff requests; and `CheckpointReactor` coordinates baseline capture,
 completed-turn capture, and diff projection. The storage contract is `VcsCheckpointOps` in
 [`VcsDriver.ts`](../../apps/server/src/vcs/VcsDriver.ts), implemented for Git in the same directory.
+A provider's mid-turn diff report (such as Codex `turn/diff/updated`) records a placeholder checkpoint
+for the turn; upstream threads replace it immediately, while a coding session takes its settled snapshot
+at turn completion.
 
 Mercurian coding-session checkpoints form a snapshot chain per planning line. Each snapshot records
 the complete working tree, links to the previous line snapshot when one exists, and pins the
