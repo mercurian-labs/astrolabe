@@ -17,7 +17,6 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
   replaceTextRange,
   runtimeModeOptionsFor,
-  shouldSubmitComposerOnEnter,
 } from "./composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 

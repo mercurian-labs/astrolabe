@@ -1,13 +1,5 @@
 import { InfoIcon } from "lucide-react";
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -16,32 +8,6 @@ import { ComposerBanner, type ComposerBannerVariant } from "./ComposerBanner";
 
 // Match the duration-220 exit transition before removing a dismissed notice.
 const DISMISS_TRANSITION_MS = 220;
-const frontExitStyle = {
-  opacity: 0,
-  transform: "translate3d(0, 4rem, 0)",
-} satisfies CSSProperties;
-const stackedExitStyle = {
-  opacity: 0,
-  transform: "translate3d(0, 7rem, 0)",
-} satisfies CSSProperties;
-const restingStyle = {
-  opacity: 1,
-  transform: "none",
-} satisfies CSSProperties;
-const exitTransitionStyle = {
-  transition: `transform ${DISMISS_TRANSITION_MS}ms ease-in, opacity ${DISMISS_TRANSITION_MS}ms ease-in`,
-} satisfies CSSProperties;
-
-// The collapsed cap peeking above the front banner is the only hint that more
-// banners are stacked behind it, so its border must match the severity of the
-// first hidden banner — a neutral banner must not masquerade as a warning.
-const stackCapBorderClass: Record<ComposerBannerStackItem["variant"], string> = {
-  default: "border-[var(--chat-composer-attached-outline)]",
-  error: "border-destructive/24",
-  info: "border-info/24",
-  success: "border-success/24",
-  warning: "border-warning/24",
-};
 
 export interface ComposerBannerStackItem {
   readonly id: string;

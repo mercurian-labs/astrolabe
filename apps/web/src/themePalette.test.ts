@@ -465,10 +465,6 @@ describe("theme files", () => {
 
       for (const mode of ["light", "dark"] as const) {
         const colors = getThemeColorsForMode(theme, mode);
-        // T3 Chat's measured filled controls and subdued secondary labels are
-        // canonical design data; preserve their 3:1 floor instead of
-        // contrast-solving them away from the faithful palette.
-        const supportingContrastFloor = theme === T3_CHAT_THEME ? 3 : 4.5;
         expect(colors).not.toBeNull();
         expect(contrastRatio(colors!.text, colors!.canvas)).toBeGreaterThanOrEqual(4.5);
         expect(contrastRatio(colors!.textMuted, colors!.canvas)).toBeGreaterThanOrEqual(4.5);

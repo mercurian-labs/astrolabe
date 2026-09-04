@@ -74,7 +74,6 @@ import {
   type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
   clearComposerDraftContent,
   flushComposerDrafts,

@@ -240,7 +240,6 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
  * the expanded width without remembered values that could go stale or latch
  * the strip compact. A small hysteresis keeps the boundary from flapping.
  */
-const COMPACT_EXPAND_HYSTERESIS_PX = 16;
 const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
 const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const COMPOSER_CONTEXT_CONTROL_SELECTOR = "[data-composer-context-control]";

@@ -29,10 +29,7 @@ import {
   ProjectionThreadProposedPlanRepository,
 } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
 import { ProjectionThreadSessionRepository } from "../../persistence/Services/ProjectionThreadSessions.ts";
-import {
-  type ProjectionTurn,
-  ProjectionTurnRepository,
-} from "../../persistence/Services/ProjectionTurns.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
@@ -866,7 +863,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
     const applyThreadMessagesProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyThreadMessagesProjection",
-    )(function* (event, attachmentSideEffects) {
+    )(function* (event) {
       switch (event.type) {
         // A draft retry re-creates a soft-deleted thread id. Every projector
         // drops its own rows for the old incarnation here so replay from any

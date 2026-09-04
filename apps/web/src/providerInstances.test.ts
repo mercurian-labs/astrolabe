@@ -159,7 +159,7 @@ describe("applyProviderInstanceSettings", () => {
     expect(entry?.enabled).toBe(false);
   });
 
-  it("treats a removed default instance for a fork driver as disabled", () => {
+  it("does not mistake an inherited property for a legacy settings slot", () => {
     const driver = ProviderDriverKind.make("constructor");
     const entries = deriveProviderInstanceEntries([
       provider({
@@ -173,7 +173,23 @@ describe("applyProviderInstanceSettings", () => {
     });
 
     expect(entry?.isDefault).toBe(true);
-    expect(entry?.enabled).toBe(false);
+    expect(entry?.enabled).toBe(true);
+  });
+
+  it("keeps a default instance of a driver without a legacy settings slot enabled", () => {
+    const entries = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("mock"),
+        instanceId: "mock",
+      }),
+    ]);
+    const [entry] = applyProviderInstanceSettings(entries, {
+      providerInstances: {},
+      providers: { codex: { enabled: false } } as never,
+    });
+
+    expect(entry?.isDefault).toBe(true);
+    expect(entry?.enabled).toBe(true);
   });
 
   it("uses legacy settings for a built-in default instance", () => {

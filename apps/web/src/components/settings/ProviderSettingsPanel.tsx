@@ -69,7 +69,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
-import { DRIVER_OPTIONS, getDriverOption, PROVIDER_CLIENT_DEFINITIONS } from "./providerDriverMeta";
+import { getDriverOption, PROVIDER_CLIENT_DEFINITIONS } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
 import { searchableSetting } from "./settingsSearch";
 import {

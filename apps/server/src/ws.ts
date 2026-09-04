@@ -36,7 +36,6 @@ import {
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
   type ThreadWorkspaceMember,
-  type OrchestrationThreadStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,

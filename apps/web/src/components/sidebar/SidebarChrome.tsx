@@ -12,7 +12,6 @@ import { APP_BASE_NAME } from "../../branding";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
-import { T3Wordmark } from "../T3Wordmark";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -92,7 +91,6 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <T3Wordmark aria-label="T3" className="h-2.5 w-auto shrink-0" />
       <span
         className={cn(
           "-translate-y-px truncate text-sm font-medium tracking-tight",

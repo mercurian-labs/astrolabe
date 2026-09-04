@@ -465,10 +465,6 @@ type OpenCodePermissionRequestType =
   | ReturnType<typeof mapPermissionToRequestType>
   | "dynamic_tool_call";
 
-type NormalizedPermissionRequest = PermissionRequest & {
-  readonly requestType: OpenCodePermissionRequestType;
-};
-
 function normalizePermissionRequest(
   context: OpenCodeSessionContext,
   request: PermissionRequest,

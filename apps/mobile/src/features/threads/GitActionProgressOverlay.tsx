@@ -13,7 +13,6 @@ import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import type { GitActionProgress } from "../../state/use-vcs-action-state";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 
 const OVERLAY_LAYOUT_TRANSITION = LinearTransition.duration(220);
 const OVERLAY_TOP_GAP = 8;

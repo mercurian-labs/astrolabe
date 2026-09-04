@@ -630,6 +630,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           from: "apps/desktop/prod-resources/resource-monitor",
           to: "resource-monitor",
         },
+        {
+          from: "apps/desktop/prod-resources/THIRD-PARTY-NOTICES.md",
+          to: "THIRD-PARTY-NOTICES.md",
+        },
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
         ...WSL_RUNTIME_EXTRA_RESOURCES,
       ]);
@@ -639,6 +643,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         {
           from: "apps/desktop/prod-resources/resource-monitor",
           to: "resource-monitor",
+        },
+        {
+          from: "apps/desktop/prod-resources/THIRD-PARTY-NOTICES.md",
+          to: "THIRD-PARTY-NOTICES.md",
         },
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
       ]);

@@ -12,10 +12,8 @@ import type {
   ScopedThreadRef,
   ServerProvider,
   ThreadId,
-  TurnId,
 } from "@t3tools/contracts";
 import {
-  isProviderSendTurnSupportedImageMimeType,
   ProviderDriverKind,
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -63,7 +61,6 @@ import {
 import {
   composerFloatingLayerProps,
   isInsideCollapsedComposerControls,
-  isInsideComposerFloatingLayer,
   isInsideRestingComposerControlScope,
 } from "./composerEventScope";
 import {
@@ -171,7 +168,6 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import {
-  ComposerControl,
   ComposerControlIcon,
   ComposerControlSeparator,
   ComposerSelectControl,
@@ -762,11 +758,9 @@ import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
-  BotIcon,
   CircleAlertIcon,
   FileIcon,
   PaperclipIcon,
-  PencilRulerIcon,
   PlayIcon,
   type LucideIcon,
   LockIcon,
@@ -1714,7 +1708,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
   const [isTasksDrawerOpen, setIsTasksDrawerOpen] = useState(false);
-  const [dismissedTasksTurnId, setDismissedTasksTurnId] = useState<TurnId | null>(null);
   const [stashPulse, setStashPulse] = useState<{ key: number; active: boolean }>({
     key: 0,
     active: false,

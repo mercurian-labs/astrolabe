@@ -76,7 +76,6 @@ export function ThemeEditorPanel({
     };
     window.addEventListener("resize", clamp);
     return () => window.removeEventListener("resize", clamp);
-    // oxlint-disable-next-line exhaustive-deps -- clampPosition reads live layout only.
   }, [isMinimized]);
 
   const handleDragPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {

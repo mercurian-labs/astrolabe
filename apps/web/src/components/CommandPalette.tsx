@@ -49,7 +49,6 @@ import {
   LinkIcon,
   MessageSquareIcon,
   PaletteIcon,
-  ServerIcon,
   SettingsIcon,
   SquarePenIcon,
   TextSearchIcon,
