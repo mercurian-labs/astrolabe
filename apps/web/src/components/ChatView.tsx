@@ -288,7 +288,11 @@ import {
   useThreadShell,
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
-import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import {
+  ChatComposer,
+  type ChatComposerHandle,
+  type ChatComposerMentionSources,
+} from "./chat/ChatComposer";
 import { createPageScrollController, type PageScrollKey } from "./chat/pageScrollController";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -629,10 +633,13 @@ type ChatViewSlots = {
   headerBanner?: ReactNode;
   headerLeadingActions?: ReactNode;
   workspaceReady?: boolean;
+  workspaceCwdOverride?: string | null;
+  mentionSources?: ChatComposerMentionSources;
   planPanel?: ReactNode;
   specPanel?: ReactNode;
   checkpointsPanel?: ReactNode;
-  onForkHere?: (messageId: MessageId) => void;
+  canForkHere?: (message: ChatMessage) => boolean;
+  onForkHere?: (message: ChatMessage) => void;
 };
 
 type ChatViewProps =
@@ -1355,6 +1362,12 @@ function ChatViewContent(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
     headerContent,
     headerBanner,
+    headerLeadingActions,
+    workspaceReady,
+    workspaceCwdOverride,
+    mentionSources,
+    canForkHere,
+    onForkHere,
     planPanel,
     specPanel,
     checkpointsPanel,
@@ -2927,13 +2940,17 @@ function ChatViewContent(props: ChatViewProps) {
     }
     return byMessageId;
   }, [turnDiffSummaries]);
+  const workspaceWorktreePath =
+    workspaceCwdOverride === undefined
+      ? (activeThread?.worktreePath ?? null)
+      : workspaceCwdOverride;
   const gitCwd = activeProject
     ? projectScriptCwd({
         project: { cwd: activeProject.workspaceRoot },
-        worktreePath: activeThread?.worktreePath ?? null,
+        worktreePath: workspaceWorktreePath,
       })
     : null;
-  const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
+  const gitStatusCwd = workspaceWorktreePath ?? gitCwd;
   const gitStatusQuery = useEnvironmentQuery(
     gitStatusCwd === null
       ? null
@@ -3005,7 +3022,7 @@ function ChatViewContent(props: ChatViewProps) {
     : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
-  const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
+  const activeThreadWorktreePath = workspaceWorktreePath;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
@@ -3356,7 +3373,7 @@ function ChatViewContent(props: ChatViewProps) {
       const isBaseTerminalBusy = runningTerminalIds.includes(baseTerminalId);
       const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
       const shouldCreateNewTerminal = wantsNewTerminal;
-      const targetWorktreePath = options?.worktreePath ?? activeThread.worktreePath ?? null;
+      const targetWorktreePath = options?.worktreePath ?? activeThreadWorktreePath;
 
       setTerminalUiLaunchContext({
         threadId: activeThreadId,
@@ -3437,6 +3454,7 @@ function ChatViewContent(props: ChatViewProps) {
       activeThreadId,
       activeThreadRef,
       gitCwd,
+      activeThreadWorktreePath,
       setTerminalOpen,
       setThreadError,
       storeNewTerminal,
@@ -7535,6 +7553,8 @@ function ChatViewContent(props: ChatViewProps) {
           {!rightPanelControlsInPanel ? panelLayoutControls : null}
           {headerContent ?? (
             <ChatHeader
+              leadingActions={headerLeadingActions}
+              workspaceReady={workspaceReady}
               {...(!supportsPullRequests || activeProjectRepository === null
                 ? {}
                 : { onOpenPullRequest: openProjectPullRequest })}
@@ -7651,6 +7671,8 @@ function ChatViewContent(props: ChatViewProps) {
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
                 loadEarlier={loadEarlierTurns}
+                canForkHere={canForkHere}
+                onForkHere={onForkHere}
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
@@ -7791,6 +7813,7 @@ function ChatViewContent(props: ChatViewProps) {
                             keybindings={keybindings}
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
+                            mentionSources={mentionSources}
                             restingControlsHost={restingComposerControlsHost}
                             restingControlsHaveLeadingContext={
                               isGitRepo || showComposerEnvironmentIndicator

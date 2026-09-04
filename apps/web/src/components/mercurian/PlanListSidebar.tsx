@@ -89,6 +89,7 @@ import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDial
 import { NewProjectDialog } from "./NewProjectDialog";
 import { SettingsNav } from "./SettingsNav";
 import { SidebarPlanHoverCard } from "./SidebarPlanHoverCard";
+import { usePlanDraftMigration } from "./usePlanDraftMigration";
 
 const ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
@@ -160,6 +161,7 @@ export default function PlanListSidebar() {
     [selection, snapshot.plans],
   );
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
+  usePlanDraftMigration(projects);
   const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
   const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
   const [archivedPage, setArchivedPage] = useState(0);
