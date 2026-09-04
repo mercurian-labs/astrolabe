@@ -1,7 +1,7 @@
-# Keeping T3 Code in Sync
+# Keeping Astrolabe in Sync
 
-The T3 Code web or desktop app and the server it connects to work best when they use the same
-version. If they do not match, T3 Code shows a warning with the right update option for that server.
+The Astrolabe web or desktop app and the server it connects to work best when they use the same
+version. If they do not match, Astrolabe shows a warning with the right update option for that server.
 
 ## Where to Find the Update
 
@@ -15,20 +15,24 @@ update the server, and the version difference remains visible in Connections.
 
 ## Before You Update
 
-Let active agent work and terminal commands finish first. Updating restarts the server, so the
-connection will disappear briefly and work that is still running may be interrupted.
+Updating restarts the server, so the connection will disappear briefly. **Settings** → **General**
+has a **Continue threads after server updates** preference. It is off by default. When enabled, the
+update buttons automatically resume supported provider threads after the replacement server is
+ready. Providers with native promptless continuation use it; other providers receive a short
+instruction to continue where they left off. Terminal commands and other running work may still be
+interrupted during the update.
 
 The update does not remove saved threads, settings, or project files.
 
 ## Choose the Action You See
 
-| Action                     | What to do                                                                                                                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update server**          | Available for the T3 Code Linux background service. Select the button and leave T3 Code open while it prepares, tests, restarts, and reconnects.                            |
-| **Update the desktop app** | Open the T3 Code desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                     |
-| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current T3 Code server, and relaunch it with the copied command and any startup options you normally use. |
+| Action                     | What to do                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Update server**          | Available for the Astrolabe Linux background service and for servers run by a current Astrolabe desktop app. Select the button and leave Astrolabe open while it downloads, installs, restarts, and reconnects. For desktop-app servers this closes and relaunches the desktop app on that machine. If installation fails, the desktop app stays open and reconnects to its server. |
+| **Update the desktop app** | Shown for desktop apps that predate remote updates. Open the Astrolabe desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                                                                                                                                                                       |
+| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current Astrolabe server, and relaunch it with the copied command and any startup options you normally use.                                                                                                                                                                                                       |
 
-The available action depends on how that server was started. T3 Code does not update connected
+The available action depends on how that server was started. Astrolabe does not update connected
 servers silently in the background.
 
 An older background-service launcher may ask you to run the exact
@@ -43,7 +47,7 @@ update. A failure remains visible with its error and an option to retry.
 **Copy update command** gives you `npx t3@<client-version>`, which relaunches the server directly
 at the matching version. Add whatever startup options you normally use.
 
-If the server instead runs as the T3 Code background service, update the service on the host and
+If the server instead runs as the Astrolabe background service, update the service on the host and
 pin the same version:
 
 ```sh
@@ -54,8 +58,18 @@ npx t3@<client-version> service update
 only resolves the skew when your client happens to be on the latest release. The exact version from
 the warning always works.
 
-See [Running T3 Code in the Background](./background-service.md) for install, status, and removal
+See [Running Astrolabe in the Background](./background-service.md) for install, status, and removal
 commands.
+
+## Nightly desktop release notes
+
+The desktop app shows a compact release-notes preview when a nightly update is available. Changes
+appear newest first within each release. Each release links to its exact page on GitHub, even when
+all changes fit in the preview.
+
+The preview shows up to eight changes from each of six releases. When it leaves out changes or older
+releases, it shows the exact number and links to the rest. Contributor credits do not count as
+changes.
 
 ## After the Update
 

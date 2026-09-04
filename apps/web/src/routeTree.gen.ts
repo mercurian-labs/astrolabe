@@ -35,6 +35,8 @@ import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-reques
 import { Route as ChatMemoryRouteImport } from './routes/_chat.memory'
 import { Route as ChatSessionsThreadIdRouteImport } from './routes/_chat.sessions.$threadId'
 import { Route as ChatPlansPlanIdRouteImport } from './routes/_chat.plans.$planId'
+import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
+import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 import { Route as ChatPlansDraftDraftIdRouteImport } from './routes/_chat.plans.draft.$draftId'
 
 const UsageRoute = UsageRouteImport.update({
@@ -166,6 +168,17 @@ const ChatPlansPlanIdRoute = ChatPlansPlanIdRouteImport.update({
   path: '/plans/$planId',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
+  id: '/draft/$draftId',
+  path: '/draft/$draftId',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatEnvironmentIdThreadIdRoute =
+  ChatEnvironmentIdThreadIdRouteImport.update({
+    id: '/$environmentId/$threadId',
+    path: '/$environmentId/$threadId',
+    getParentRoute: () => ChatRoute,
+  } as any)
 const ChatPlansDraftDraftIdRoute = ChatPlansDraftDraftIdRouteImport.update({
   id: '/plans/draft/$draftId',
   path: '/plans/draft/$draftId',
@@ -196,6 +209,8 @@ export interface FileRoutesByFullPath {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/trackers': typeof SettingsTrackersRoute
+  '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
+  '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/plans/$planId': typeof ChatPlansPlanIdRoute
   '/sessions/$threadId': typeof ChatSessionsThreadIdRoute
   '/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
@@ -224,6 +239,8 @@ export interface FileRoutesByTo {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/trackers': typeof SettingsTrackersRoute
   '/': typeof ChatIndexRoute
+  '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
+  '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/plans/$planId': typeof ChatPlansPlanIdRoute
   '/sessions/$threadId': typeof ChatSessionsThreadIdRoute
   '/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
@@ -254,6 +271,8 @@ export interface FileRoutesById {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/trackers': typeof SettingsTrackersRoute
   '/_chat/': typeof ChatIndexRoute
+  '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
+  '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/plans/$planId': typeof ChatPlansPlanIdRoute
   '/_chat/sessions/$threadId': typeof ChatSessionsThreadIdRoute
   '/_chat/plans/draft/$draftId': typeof ChatPlansDraftDraftIdRoute
@@ -284,6 +303,8 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/trackers'
+    | '/$environmentId/$threadId'
+    | '/draft/$draftId'
     | '/plans/$planId'
     | '/sessions/$threadId'
     | '/plans/draft/$draftId'
@@ -312,6 +333,8 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/trackers'
     | '/'
+    | '/$environmentId/$threadId'
+    | '/draft/$draftId'
     | '/plans/$planId'
     | '/sessions/$threadId'
     | '/plans/draft/$draftId'
@@ -341,6 +364,8 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/trackers'
     | '/_chat/'
+    | '/_chat/$environmentId/$threadId'
+    | '/_chat/draft/$draftId'
     | '/_chat/plans/$planId'
     | '/_chat/sessions/$threadId'
     | '/_chat/plans/draft/$draftId'
@@ -541,6 +566,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPlansPlanIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/draft/$draftId': {
+      id: '/_chat/draft/$draftId'
+      path: '/draft/$draftId'
+      fullPath: '/draft/$draftId'
+      preLoaderRoute: typeof ChatDraftDraftIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/$environmentId/$threadId': {
+      id: '/_chat/$environmentId/$threadId'
+      path: '/$environmentId/$threadId'
+      fullPath: '/$environmentId/$threadId'
+      preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/plans/draft/$draftId': {
       id: '/_chat/plans/draft/$draftId'
       path: '/plans/draft/$draftId'
@@ -556,6 +595,8 @@ interface ChatRouteChildren {
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatRepositoriesRoute: typeof ChatRepositoriesRoute
   ChatIndexRoute: typeof ChatIndexRoute
+  ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
+  ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
   ChatPlansPlanIdRoute: typeof ChatPlansPlanIdRoute
   ChatSessionsThreadIdRoute: typeof ChatSessionsThreadIdRoute
   ChatPlansDraftDraftIdRoute: typeof ChatPlansDraftDraftIdRoute
@@ -566,6 +607,8 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatRepositoriesRoute: ChatRepositoriesRoute,
   ChatIndexRoute: ChatIndexRoute,
+  ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
+  ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
   ChatPlansPlanIdRoute: ChatPlansPlanIdRoute,
   ChatSessionsThreadIdRoute: ChatSessionsThreadIdRoute,
   ChatPlansDraftDraftIdRoute: ChatPlansDraftDraftIdRoute,

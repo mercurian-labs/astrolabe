@@ -1,6 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useState,
@@ -20,11 +22,14 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
+import { usePanelAnimationSettings } from "../panelAnimations";
 import PlanListSidebar from "./mercurian/PlanListSidebar";
+import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import {
   resolveSidebarStageFocusRingOffsetClass,
   useSidebarStageBackdropVariant,
 } from "./SidebarStageBackdrop";
+import { useProjects } from "../state/entities";
 import {
   resolveInitialThreadSidebarWidth,
   resolveThreadSidebarMaximumWidth,
@@ -43,6 +48,14 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
+
+// The settings nav (and the Clerk profile surfaces behind it) only renders on
+// settings routes; lazy-loading it keeps that subtree out of the startup chunk.
+const SettingsSidebarNav = lazy(() =>
+  import("./settings/SettingsSidebarNav").then((module) => ({
+    default: module.SettingsSidebarNav,
+  })),
+);
 
 function subscribeToViewportWidth(onChange: () => void): () => void {
   window.addEventListener("resize", onChange);
@@ -145,9 +158,21 @@ function SidebarControl() {
   );
 }
 
+// Settings swaps the plan sidebar out of the tree. Keep projects subscribed so
+// returning to a draft does not briefly render an empty project projection.
+function ProjectProjectionRetention() {
+  useProjects();
+  return null;
+}
+
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
+    usePanelAnimationSettings();
+  // Settings routes show the settings nav in place of whichever thread
+  // sidebar is active.
   const pathname = useLocation({ select: (location) => location.pathname });
+  const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const [isSidebarOpen, setIsSidebarOpen] = useState(readInitialSidebarOpen);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
@@ -172,6 +197,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   });
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
+    "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),
@@ -222,10 +248,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider
       className="h-dvh! min-h-0!"
+      data-panel-animations={panelAnimationsActive ? "true" : "false"}
       open={isSidebarOpen}
       onOpenChange={handleSidebarOpenChange}
       style={sidebarProviderStyle}
     >
+      <ProjectProjectionRetention />
       <Sidebar
         side="left"
         collapsible="offcanvas"
@@ -242,7 +270,16 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           onResize: setSidebarWidth,
         }}
       >
-        <PlanListSidebar />
+        {isOnSettings ? (
+          <>
+            <SidebarChromeHeader isElectron={isElectron} />
+            <Suspense fallback={null}>
+              <SettingsSidebarNav pathname={pathname} />
+            </Suspense>
+          </>
+        ) : (
+          <PlanListSidebar />
+        )}
         <SidebarRail onDoubleClick={resetSidebarWidth} />
       </Sidebar>
       {children}

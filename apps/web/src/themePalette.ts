@@ -1,3 +1,4 @@
+import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import "culori/css";
 import { converter, parse } from "culori/fn";
@@ -7,6 +8,8 @@ import {
   GROVE_THEME,
   IRIS_THEME,
   OCEAN_THEME,
+  T3_CHAT_THEME,
+  RESERVED_THEME_IDS,
   THEME_COLOR_ROLES,
   type ThemeAppearance,
   type ThemeColorRole,
@@ -15,7 +18,7 @@ import {
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 
-export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, THEME_COLOR_ROLES };
+export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
 export const T3_CHAT_THEME_ID = "t3-chat" as const;
@@ -55,23 +58,16 @@ export type ThemeFile = Readonly<{
   managed?: boolean;
 }>;
 
-const convertToOklch = converter("oklch");
+// Reserved ids come from shared so the CLI, the server watcher, and this
+// library cannot drift on what a published theme may be called.
 
-const RESERVED_THEME_IDS = new Set([
-  "system",
-  "light",
-  "dark",
-  T3_CHAT_THEME_ID,
-  GROVE_THEME_ID,
-  OCEAN_THEME_ID,
-  EMBER_THEME_ID,
-  IRIS_THEME_ID,
-  LEGACY_T3_CHAT_DARK_THEME_ID,
-  "t3-grove",
-  "t3-ocean",
-  "t3-ember",
-  "t3-iris",
-]);
+/**
+ * The environment's palettes are not saved: they are republished by the
+ * server on every change and would go stale the moment the machine's theme
+ * moved on. They ride the custom-theme listeners so every theme consumer
+ * already re-reads when they change.
+ */
+let environmentThemeDefinitions: ReadonlyArray<ThemeDefinition> = [];
 
 const customThemeListeners = new Set<() => void>();
 type CustomThemeLibrarySnapshot =
@@ -131,21 +127,28 @@ function parseThemeCollection(value: unknown): ThemeCollection | undefined {
     : undefined;
 }
 
-function parseStoredThemeColors(value: unknown, appearance: ThemeAppearance): ThemeColors | null {
-  if (!isRecord(value)) return null;
-
-  const colors: Partial<Record<ThemeColorRole, string>> = {
-    ...getDefaultThemeColors(appearance),
-  };
-  // Tolerate unknown roles and malformed values so themes saved by other
-  // builds (for example one that adds a new role) keep their remaining colors.
+/**
+ * Tolerates unknown roles and malformed values so themes written by other
+ * builds (for example one that adds a new role) keep their remaining colors.
+ * The one canonicalization path for every externally supplied color record:
+ * stored themes, imported files, and environment-published themes.
+ */
+export function lenientThemeColorOverrides(
+  value: Readonly<Record<string, unknown>>,
+): Partial<Record<ThemeColorRole, string>> {
+  const overrides: Partial<Record<ThemeColorRole, string>> = {};
   for (const [role, color] of Object.entries(value)) {
     const normalized = toCanonicalThemeColor(color);
     if (THEME_COLOR_ROLE_SET.has(role) && normalized) {
-      colors[role as ThemeColorRole] = normalized;
+      overrides[role as ThemeColorRole] = normalized;
     }
   }
-  return colors as ThemeColors;
+  return overrides;
+}
+
+function parseStoredThemeColors(value: unknown, appearance: ThemeAppearance): ThemeColors | null {
+  if (!isRecord(value)) return null;
+  return { ...getDefaultThemeColors(appearance), ...lenientThemeColorOverrides(value) };
 }
 
 function parseStoredThemeVariants(
@@ -245,6 +248,27 @@ export function getCustomThemes(): ReadonlyArray<ThemeDefinition> {
   return snapshot.status === "ready" ? snapshot.themes : [];
 }
 
+export function getEnvironmentThemes(): ReadonlyArray<ThemeDefinition> {
+  return environmentThemeDefinitions;
+}
+
+/**
+ * Returns whether anything changed, structurally: config snapshots arrive as
+ * fresh arrays on every reconnect, and a repaint for identical colors is the
+ * kind of wasted work users of this product notice.
+ */
+export function setEnvironmentThemes(themes: ReadonlyArray<ThemeDefinition>): boolean {
+  if (Equal.equals(environmentThemeDefinitions, themes)) return false;
+  environmentThemeDefinitions = themes;
+  notifyCustomThemeListeners();
+  return true;
+}
+
+/** Ids no published theme may occupy: appearance keywords and built-in ids. */
+export function isReservedThemeId(themeId: string): boolean {
+  return RESERVED_THEME_IDS.has(themeId);
+}
+
 export function getStoredCustomThemeCollection(
   collectionId: string,
 ): ReadonlyArray<ThemeDefinition> {
@@ -306,168 +330,7 @@ function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
 }
 
 /**
- * Maintainer palettes use product color roles rather than Tailwind or component
- * names so the same definitions can feed other clients and native surfaces.
- */
-// Measured from the live t3.chat default theme. Translucent chat surfaces are
-// flattened over --chat-background so this opaque palette reproduces the
-// pixels users see after T3 Chat's blur and noise layers are composited.
-const T3_CHAT_LIGHT_COLORS: ThemeColors = {
-  canvas: "#fdf7fd",
-  // Astrolabe's workspace header belongs to the chat panel, so keep it seamless
-  // with the light chat canvas rather than mapping it to T3 Chat's outer shell.
-  chrome: "#fdf7fd",
-  toolbar: "#fdf7fd",
-  toolbarForeground: "#501854",
-  toolbarBorder: "#efbdeb",
-  // T3 Chat's light chrome controls sit on its pale gradient-noise surface,
-  // not the substantially darker solid accent token.
-  toolbarControl: "#f3e6f5",
-  toolbarControlForeground: "#501854",
-  toolbarControlHover: "#eccfe3",
-  surface: "#faf3fb",
-  surfaceRaised: "#fdfafd",
-  surfaceOverlay: "#ffffff",
-  text: "#501854",
-  textMuted: "#ac1668",
-  border: "#eee1ed",
-  input: "#e7c1dc",
-  focus: "#db2777",
-  accent: "#e33f86",
-  accentForeground: "#ffffff",
-  secondary: "#f1c4e6",
-  secondaryForeground: "#77347c",
-  muted: "#eaa7cb",
-  mutedForeground: "#ac1668",
-  placeholder: "#ad83b0",
-  secondaryLabel: "#ac1668",
-  iconMuted: "#ac1668",
-  error: "#f7086c",
-  errorForeground: "#9d174d",
-  errorSurface: "#fde4f1",
-  warning: "#f59e0b",
-  warningForeground: "#b45309",
-  warningSurface: "#fcf0ea",
-  update: "#e33f86",
-  updateForeground: "#ac1668",
-  updateSurface: "#fadfef",
-  accentSurface: "#f3e6f5",
-  accentSurfaceForeground: "#454554",
-  messageSurface: "#f7def2",
-  messageForeground: "#492c61",
-  messageAction: "#e33f86",
-  messageActionForeground: "#ffffff",
-  messageActionHover: "#d56698",
-  // T3 Chat uses a light lavender code surface in light mode. Keeping the
-  // dark plum pair here also leaked the dark palette into Astrolabe's diffs.
-  codeBackground: "#f5ecf9",
-  codeForeground: "#673c8b",
-  // The live sidebar is transparent over T3 Chat's outer shell. Use that
-  // rendered shell color rather than its unused, darker sidebar token.
-  sidebar: "#f2e1f4",
-  sidebarForeground: "#454554",
-  sidebarMutedForeground: "#ac1668",
-  sidebarControlSurface: "#f8f8f7",
-  sidebarRowHover: "#f8f8f7",
-  sidebarRowActive: "#f8f8f7",
-  sidebarRowSelected: "#f8f8f7",
-  sidebarBorder: "#eceae9",
-  terminalBackground: "#fdf7fd",
-  terminalForeground: "#501854",
-  terminalCursor: "#db2777",
-  terminalSelection: "#f1c4e6",
-  terminalScrollbar: "#e7c1dc",
-  terminalScrollbarHover: "#eaa7cb",
-};
-
-const T3_CHAT_DARK_COLORS: ThemeColors = {
-  canvas: "#1f1a24",
-  // Astrolabe's workspace header belongs to the chat panel, so keep it seamless
-  // with the canvas rather than mapping it to T3 Chat's outer shell.
-  chrome: "#1f1a24",
-  toolbar: "#1f1a24",
-  toolbarForeground: "#f9f8fb",
-  toolbarBorder: "#27242c",
-  toolbarControl: "#362d3d",
-  toolbarControlForeground: "#d4c7e1",
-  toolbarControlHover: "#463753",
-  // Cards and panels stay in T3 Chat's plum surface family. Near-black here
-  // made the right-panel surface picker look unrelated to the chat canvas.
-  surface: "#29232d",
-  // Pre-composited for the composer's 80% glass layer; this resolves to the
-  // measured #29232d input fill over the canvas.
-  surfaceRaised: "#2c2631",
-  surfaceOverlay: "#100a0e",
-  text: "#f9f8fb",
-  textMuted: "#e7d0dd",
-  border: "#27242c",
-  input: "#302029",
-  focus: "#db2777",
-  accent: "#a3004c",
-  accentForeground: "#fbd0e8",
-  secondary: "#362d3d",
-  secondaryForeground: "#d4c7e1",
-  muted: "#423a45",
-  mutedForeground: "#e7d0dd",
-  placeholder: "#8f8699",
-  secondaryLabel: "#e7d0dd",
-  iconMuted: "#d4c7e1",
-  error: "#9d174d",
-  errorForeground: "#fbd0e8",
-  errorSurface: "#331a2b",
-  warning: "#f59e0b",
-  warningForeground: "#fbbf24",
-  warningSurface: "#412f20",
-  update: "#a3004c",
-  updateForeground: "#fbd0e8",
-  updateSurface: "#37152b",
-  accentSurface: "#463753",
-  accentSurfaceForeground: "#f8f1f5",
-  messageSurface: "#2b2431",
-  messageForeground: "#f2ebfa",
-  messageAction: "#a3004c",
-  messageActionForeground: "#fbd0e8",
-  messageActionHover: "#a2004c",
-  // Diffs and file previews are full workspace surfaces in Astrolabe. Keep them
-  // continuous with the themed canvas instead of dropping to near-black.
-  codeBackground: "#1f1a24",
-  codeForeground: "#d8c3ef",
-  // The live sidebar starts from #131314, then gains its hue from a pink
-  // gradient/noise stack. This pre-grain base lands on the same #1a131a
-  // visible shell color after our surface-grain layer is composited.
-  sidebar: "#171018",
-  sidebarForeground: "#f4f4f5",
-  sidebarMutedForeground: "#e7d0dd",
-  sidebarControlSurface: "#261922",
-  sidebarRowHover: "#261922",
-  sidebarRowActive: "#261922",
-  sidebarRowSelected: "#261922",
-  // T3 Chat draws the chat panel edge in this muted pink. The resize rail uses
-  // the same role on hover, so it stays pink instead of falling back to black.
-  sidebarBorder: "#322028",
-  terminalBackground: "#1f1a24",
-  terminalForeground: "#f9f8fb",
-  terminalCursor: "#db2777",
-  terminalSelection: "#362d3d",
-  terminalScrollbar: "#302029",
-  terminalScrollbarHover: "#423a45",
-};
-
-const T3_CHAT_MEASURED_THEME: ThemeDefinition = {
-  id: T3_CHAT_THEME_ID,
-  label: T3_CHAT_THEME_LABEL,
-  appearance: "light",
-  colors: T3_CHAT_LIGHT_COLORS,
-  variants: {
-    dark: T3_CHAT_DARK_COLORS,
-  },
-  sidebarArtwork: true,
-};
-
-export const T3_CHAT_THEME: ThemeDefinition = canonicalizeThemeDefinition(T3_CHAT_MEASURED_THEME);
-
-/**
- * The palette Astrolabe wears with no theme installed, captured from the app's
+ * The palette T3 Code wears with no theme installed, captured from the app's
  * stock tokens (index.css) so a draft seeded from the default look paints the
  * pixels the user is already seeing. Alpha-bearing tokens are flattened over
  * their real backdrops (canvas, or the sidebar for its rows) because theme
@@ -539,12 +402,12 @@ const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
   toolbar: "#0a0a0a",
   toolbarForeground: "#f5f5f5",
   toolbarBorder: "#191919",
-  toolbarControl: "#191919",
+  toolbarControl: "#111111",
   toolbarControlForeground: "#f5f5f5",
   toolbarControlHover: "#141414",
   surface: "#111111",
-  surfaceRaised: "#141414",
-  surfaceOverlay: "#191919",
+  surfaceRaised: "#111111",
+  surfaceOverlay: "#111111",
   text: "#f5f5f5",
   textMuted: "#818181",
   border: "#191919",
@@ -552,9 +415,9 @@ const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
   focus: "#346bf1",
   accent: "#346bf1",
   accentForeground: "#ffffff",
-  secondary: "#141414",
+  secondary: "#111111",
   secondaryForeground: "#f5f5f5",
-  muted: "#141414",
+  muted: "#111111",
   mutedForeground: "#818181",
   placeholder: "#818181",
   secondaryLabel: "#818181",
@@ -628,6 +491,8 @@ const THEME_LIGHT_FOREGROUND: ThemeRgbColor = { r: 255, g: 250, b: 255 };
 const THEME_DARK_FOREGROUND: ThemeRgbColor = { r: 36, g: 21, b: 35 };
 const THEME_WHITE_FOREGROUND: ThemeRgbColor = { r: 255, g: 255, b: 255 };
 const THEME_BLACK_FOREGROUND: ThemeRgbColor = { r: 0, g: 0, b: 0 };
+
+const convertToOklch = converter("oklch");
 
 function parseThemeColor(value: unknown): ParsedThemeColor | null {
   if (typeof value !== "string") return null;
@@ -1051,8 +916,8 @@ export function createVividThemeColors(
     themeOklchToThemeColor(
       solveOklchLightness(textBase, surfaceRgb, 4.6, dark ? "lighter" : "darker"),
     );
-  const mutedForeground = foregroundOn(mutedRgb);
-  const placeholder = foregroundOn(surfaceRaisedRgb);
+  const mutedForeground = themeRgbToThemeColor(readableThemeText(mutedRgb, textRgb, 1, 4.6));
+  const placeholder = themeRgbToThemeColor(readableThemeText(surfaceRaisedRgb, textRgb, 1, 4.6));
 
   const actionHover: ThemeOklch = { ...action, L: action.L + (dark ? 0.06 : -0.06) };
 
@@ -1577,15 +1442,16 @@ export function updateThemeColorFamily(
   }
 }
 
-const BUILT_IN_THEME_DEFINITIONS: ReadonlyArray<ThemeDefinition> = BUILT_IN_THEMES.map((theme) =>
-  theme.id === T3_CHAT_THEME_ID ? T3_CHAT_THEME : theme,
-);
+const BUILT_IN_THEME_DEFINITIONS: ReadonlyArray<ThemeDefinition> = BUILT_IN_THEMES;
 
 export function getThemeDefinition(theme: ThemePreference): ThemeDefinition | null {
   const themeId = themeIdFromPreference(theme);
   return (
     BUILT_IN_THEME_DEFINITIONS.find((definition) => definition.id === themeId) ??
     getCustomThemes().find((definition) => definition.id === themeId) ??
+    // Resolved last so a theme the user saved always wins over one the
+    // machine happens to publish under the same id.
+    environmentThemeDefinitions.find((definition) => definition.id === themeId) ??
     null
   );
 }
@@ -1597,6 +1463,17 @@ export function themeAllowsSidebarArtwork(theme: ThemePreference): boolean {
     BUILT_IN_THEME_DEFINITIONS.find((definition) => definition.id === themeId)?.sidebarArtwork ===
     true
   );
+}
+
+/**
+ * Which half a theme can claim, or null when it renders both appearances.
+ * Selecting a single-appearance theme as the base preference would clear the
+ * light/dark mix and leave the appearance tiles disagreeing with what is on
+ * screen, so every path that selects a theme has to make the same call.
+ */
+export function singleAppearanceOf(theme: ThemeDefinition): ThemeAppearance | null {
+  const modes = getThemeModes(theme);
+  return modes.length === 1 ? modes[0]! : null;
 }
 
 export function getThemeColorsForMode(

@@ -119,6 +119,93 @@ describe("applyProviderInstanceSettings", () => {
 
     expect(entry?.enabled).toBe(false);
   });
+
+  it.each(["constructor", "toString"])(
+    "treats a removed custom instance named %s as disabled",
+    (instanceId) => {
+      const entries = deriveProviderInstanceEntries([
+        provider({
+          provider: ProviderDriverKind.make("claudeAgent"),
+          instanceId,
+        }),
+      ]);
+      const [entry] = applyProviderInstanceSettings(entries, {
+        providerInstances: {},
+        providers: {} as never,
+      });
+
+      expect(entry?.enabled).toBe(false);
+    },
+  );
+
+  it("uses settings for a configured custom instance named constructor", () => {
+    const instanceId = ProviderInstanceId.make("constructor");
+    const entries = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("claudeAgent"),
+        instanceId,
+      }),
+    ]);
+    const [entry] = applyProviderInstanceSettings(entries, {
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: false,
+        },
+      },
+      providers: {} as never,
+    });
+
+    expect(entry?.enabled).toBe(false);
+  });
+
+  it("does not mistake an inherited property for a legacy settings slot", () => {
+    const driver = ProviderDriverKind.make("constructor");
+    const entries = deriveProviderInstanceEntries([
+      provider({
+        provider: driver,
+        instanceId: "constructor",
+      }),
+    ]);
+    const [entry] = applyProviderInstanceSettings(entries, {
+      providerInstances: {},
+      providers: {} as never,
+    });
+
+    expect(entry?.isDefault).toBe(true);
+    expect(entry?.enabled).toBe(true);
+  });
+
+  it("keeps a default instance of a driver without a legacy settings slot enabled", () => {
+    const entries = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("mock"),
+        instanceId: "mock",
+      }),
+    ]);
+    const [entry] = applyProviderInstanceSettings(entries, {
+      providerInstances: {},
+      providers: { codex: { enabled: false } } as never,
+    });
+
+    expect(entry?.isDefault).toBe(true);
+    expect(entry?.enabled).toBe(true);
+  });
+
+  it("uses legacy settings for a built-in default instance", () => {
+    const entries = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("codex"),
+        instanceId: "codex",
+      }),
+    ]);
+    const [entry] = applyProviderInstanceSettings(entries, {
+      providerInstances: {},
+      providers: { codex: { enabled: false } } as never,
+    });
+
+    expect(entry?.enabled).toBe(false);
+  });
 });
 
 describe("deriveProviderInstanceEntries", () => {

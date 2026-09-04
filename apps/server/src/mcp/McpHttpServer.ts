@@ -71,52 +71,51 @@ export const normalizeMcpHttpResponse = (
 };
 
 const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
-  Effect.map(
-    (registry): McpAuthMiddleware =>
-      Effect.fn("McpHttpServer.authenticateRequest")(function* (httpEffect) {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const authorization = request.headers.authorization;
-        const token =
-          authorization?.startsWith("Bearer ") === true
-            ? authorization.slice("Bearer ".length).trim()
-            : "";
-        const invocation = yield* registry.resolve(token);
-        if (!invocation) {
-          // Without this the only symptom of a dead credential is the agent
-          // quietly losing the whole `t3-code` toolkit for the rest of its
-          // session, with nothing on the server to explain why.
-          yield* Effect.logWarning("rejected MCP request with an unusable credential", {
-            reason: token.length === 0 ? "missing_bearer_token" : "unknown_or_expired_token",
-          });
-          return unauthorized;
-        }
-        const sessionId = request.headers["mcp-session-id"];
-        const protocolVersion = request.headers["mcp-protocol-version"];
-        const injectedDefaultProtocolVersion =
-          request.method === "POST" && sessionId !== undefined && protocolVersion === undefined;
-        const downstreamRequest = injectedDefaultProtocolVersion
-          ? request.modify({
-              headers: {
-                ...request.headers,
-                "mcp-protocol-version": MCP_PROTOCOL.protocolVersion,
-              },
-            })
-          : request;
-        const response = yield* httpEffect.pipe(
-          Effect.provideService(HttpServerRequest.HttpServerRequest, downstreamRequest),
-          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
-          Effect.map(normalizeMcpHttpResponse),
-        );
-        if (isRejectedMcpResponse(response.status)) {
-          yield* Effect.logWarning("rejected authenticated MCP request", {
-            status: response.status,
-            hasSessionId: sessionId !== undefined,
-            protocolVersion: protocolVersion ?? "absent",
-            injectedDefaultProtocolVersion,
-          });
-        }
-        return response;
-      }),
+  Effect.map((registry): McpAuthMiddleware =>
+    Effect.fn("McpHttpServer.authenticateRequest")(function* (httpEffect) {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const authorization = request.headers.authorization;
+      const token =
+        authorization?.startsWith("Bearer ") === true
+          ? authorization.slice("Bearer ".length).trim()
+          : "";
+      const invocation = yield* registry.resolve(token);
+      if (!invocation) {
+        // Without this the only symptom of a dead credential is the agent
+        // quietly losing the whole `t3-code` toolkit for the rest of its
+        // session, with nothing on the server to explain why.
+        yield* Effect.logWarning("rejected MCP request with an unusable credential", {
+          reason: token.length === 0 ? "missing_bearer_token" : "unknown_or_expired_token",
+        });
+        return unauthorized;
+      }
+      const sessionId = request.headers["mcp-session-id"];
+      const protocolVersion = request.headers["mcp-protocol-version"];
+      const injectedDefaultProtocolVersion =
+        request.method === "POST" && sessionId !== undefined && protocolVersion === undefined;
+      const downstreamRequest = injectedDefaultProtocolVersion
+        ? request.modify({
+            headers: {
+              ...request.headers,
+              "mcp-protocol-version": MCP_PROTOCOL.protocolVersion,
+            },
+          })
+        : request;
+      const response = yield* httpEffect.pipe(
+        Effect.provideService(HttpServerRequest.HttpServerRequest, downstreamRequest),
+        Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+        Effect.map(normalizeMcpHttpResponse),
+      );
+      if (isRejectedMcpResponse(response.status)) {
+        yield* Effect.logWarning("rejected authenticated MCP request", {
+          status: response.status,
+          hasSessionId: sessionId !== undefined,
+          protocolVersion: protocolVersion ?? "absent",
+          injectedDefaultProtocolVersion,
+        });
+      }
+      return response;
+    }),
   ),
   Effect.withSpan("McpHttpServer.makeAuthMiddleware"),
 );

@@ -226,7 +226,7 @@ const make = Effect.gen(function* () {
 
   const resolveThreadDetail = Effect.fn("resolveThreadDetail")(function* (threadId: ThreadId) {
     return yield* projectionSnapshotQuery
-      .getThreadDetailById(threadId)
+      .getThreadDetailById(threadId, { activityKinds: [] })
       .pipe(Effect.map(Option.getOrUndefined));
   });
 
@@ -305,9 +305,10 @@ const make = Effect.gen(function* () {
       members.findIndex((member) => member.cwd === homeCwd),
       0,
     ].find((index) => index >= 0)!;
-    return members.map(
-      (member, index): SessionMember => ({ ...member, home: index === homeIndex }),
-    );
+    return members.map((member, index): SessionMember => ({
+      ...member,
+      home: index === homeIndex,
+    }));
   });
 
   // One member's snapshot: adopt a rename, capture on the chain, read where the
@@ -1181,7 +1182,6 @@ const make = Effect.gen(function* () {
       yield* ensurePreTurnBaselineFromTurnStart(event);
       return;
     }
-
     if (event.type === "turn.completed") {
       const turnId = toTurnId(event.turnId);
       yield* refreshLocalGitStatusFromTurnCompletion(event);

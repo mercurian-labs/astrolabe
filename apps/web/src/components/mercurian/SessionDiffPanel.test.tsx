@@ -48,6 +48,8 @@ vi.mock("~/lib/checkpointDiffState", () => ({
 }));
 vi.mock("../../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 vi.mock("../../lib/diffRendering", () => ({
+  buildFileDiffContentVersion: () => "snapshot-version",
+  buildFileDiffIdentityKey: () => "src/snapshot.ts",
   buildFileDiffRenderKey: () => "src/snapshot.ts",
   getDiffCollapseIconClassName: () => "",
   getDiffLineStat: () => ({ additions: 0, deletions: 0 }),
@@ -79,6 +81,7 @@ vi.mock("../../hooks/useSettings", () => ({
     diffIgnoreWhitespace: false,
     timestampFormat: "24-hour",
   }),
+  useUpdateClientSettings: () => vi.fn(),
 }));
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: (query: unknown) => ({

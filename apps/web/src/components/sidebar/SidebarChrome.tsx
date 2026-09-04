@@ -30,6 +30,7 @@ import {
   useSidebar,
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 
@@ -68,7 +69,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       <SidebarBrand onBackdrop={backdropVariant !== null} />
       {pillLabel ? (
         <Badge
-          className="relative z-10 ml-1 rounded-full px-1.5 text-muted-foreground"
+          className="relative z-10 ml-1 hidden rounded-full px-1.5 text-muted-foreground @[15rem]/sidebar-header:inline-flex"
           data-environment-identification="pill"
           size="sm"
           variant="secondary"
@@ -135,11 +136,13 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     select: (location) =>
       /^\/settings(?:\/|$)/.test(location.pathname)
         ? "settings"
-        : location.pathname === "/usage"
-          ? "usage"
-          : location.pathname === "/pull-requests"
-            ? "pull-requests"
-            : null,
+        : /^\/projects\/[^/]+\/?$/.test(location.pathname)
+          ? "project-settings"
+          : location.pathname === "/usage"
+            ? "usage"
+            : location.pathname === "/pull-requests"
+              ? "pull-requests"
+              : null,
   });
   const { environments } = useEnvironments();
   // The page reads every connected server, so one of them offering pull requests is enough for
@@ -154,7 +157,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   }, [isMobile, setOpenMobile]);
   const handlePullRequestsClick = useCallback(() => {
     closeMobileSidebar();
-    void navigate({ to: "/pull-requests", search: { involvement: "all", state: "open" } });
+    void navigate({
+      to: "/pull-requests",
+      search: readPullRequestListPreferences(),
+    });
   }, [closeMobileSidebar, navigate]);
   const handleSettingsClick = useCallback(() => {
     closeMobileSidebar();
@@ -212,7 +218,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   );
 });
 
-/** Shared update chrome plus the navigation rows each sidebar opts into. */
+/** The plan sidebar supplies its own utility rows; the upstream thread sidebars use icon chrome. */
 export const SidebarChromeFooter = memo(function SidebarChromeFooter({
   extraRows,
   showSettingsRow = true,
@@ -224,39 +230,46 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
 }) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
+  const usesCustomRows = extraRows !== undefined || !showSettingsRow || !showUsageRow;
+  const closeMobileSidebar = useCallback(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [isMobile, setOpenMobile]);
   const handleSettingsClick = useCallback(() => {
-    if (isMobile) setOpenMobile(false);
+    closeMobileSidebar();
     void navigate({ to: "/settings" });
-  }, [isMobile, navigate, setOpenMobile]);
+  }, [closeMobileSidebar, navigate]);
   const handleUsageClick = useCallback(() => {
-    if (isMobile) setOpenMobile(false);
+    closeMobileSidebar();
     void navigate({ to: "/usage" });
-  }, [isMobile, navigate, setOpenMobile]);
+  }, [closeMobileSidebar, navigate]);
 
   return (
     <SidebarFooter className="p-[var(--sidebar-content-inset)]">
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
-      <SidebarUpdatePill />
-      <SidebarMenu>
-        {showUsageRow ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={handleUsageClick}>
-              <ChartNoAxesColumnIcon />
-              <span>Usage</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : null}
-        {extraRows}
-        {showSettingsRow ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={handleSettingsClick}>
-              <SettingsIcon />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : null}
-      </SidebarMenu>
+      {usesCustomRows ? (
+        <SidebarMenu>
+          {showUsageRow ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={handleUsageClick}>
+                <ChartNoAxesColumnIcon />
+                <span>Usage</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
+          {extraRows}
+          {showSettingsRow ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={handleSettingsClick}>
+                <SettingsIcon />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
+        </SidebarMenu>
+      ) : (
+        <SidebarUtilityMenu />
+      )}
     </SidebarFooter>
   );
 });

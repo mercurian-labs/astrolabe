@@ -23,7 +23,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { runMigrations } from "./Migrations.ts";
 import { ServerConfig } from "../../config.ts";
-import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 export const MERCURIAN_DB_FILENAME = "mercurian.sqlite";
 
@@ -38,7 +38,7 @@ type Loader = {
 
 const defaultSqliteClientLoaders = {
   bun: () => import("@effect/sql-sqlite-bun/SqliteClient"),
-  node: () => import("../../persistence/NodeSqliteClient.ts"),
+  node: () => import("@t3tools/shared/nodeSqliteClient"),
 } satisfies Record<string, () => Promise<Loader>>;
 
 const makeRuntimeSqliteLayer = Effect.fn("mercurian.makeRuntimeSqliteLayer")(function* (

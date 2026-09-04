@@ -45,6 +45,11 @@ export interface ProviderAdapterCapabilities {
    * declare `"multi"`.
    */
   readonly groundingRoots: ProviderGroundingRoots;
+  /** Starts a resumed turn with no synthetic user prompt. Omitted means the
+      adapter needs an explicit continuation instruction. */
+  readonly promptlessTurnContinuation?: boolean;
+  /** False when native conversation history cannot be rewound. */
+  readonly supportsConversationRollback?: boolean;
 }
 
 export interface ProviderThreadTurnSnapshot {

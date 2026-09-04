@@ -163,6 +163,7 @@ const makeHarness = Effect.gen(function* () {
     listSessions: () => Effect.succeed([]),
     getCapabilities: () =>
       Effect.sync(() => ({ sessionModelSwitch: "in-session" as const, groundingRoots })),
+    assertConversationRollbackSupported: () => Effect.die("unused in planning tests"),
     getInstanceInfo: () => Effect.die("unused in planning tests"),
     rollbackConversation: () => Effect.die("unused in planning tests"),
     uploadFeedback: () => Effect.die("unused in planning tests"),
@@ -320,9 +321,8 @@ const seedTwoRepositories = Effect.fn("seedTwoRepositories")(function* (created:
   const snapshot = yield* repositories.getSnapshot;
   const ordered = snapshot.projectRepositories
     .filter((link) => link.projectId === created.plan.projectId)
-    .map(
-      (link) =>
-        snapshot.repositories.find((repository) => repository.repositoryId === link.repositoryId)!,
+    .map((link) =>
+      snapshot.repositories.find((repository) => repository.repositoryId === link.repositoryId)!,
     );
   return { first: ordered[0]!, second: ordered[1]! };
 });

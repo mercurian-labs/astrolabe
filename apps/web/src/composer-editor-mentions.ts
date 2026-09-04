@@ -1,3 +1,5 @@
+import type { AssistantCitation } from "@t3tools/contracts";
+import { collectAssistantCitations } from "@t3tools/shared/assistantCitations";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -24,6 +26,11 @@ export type ComposerPromptSegment =
   | {
       type: "note";
       name: string;
+    }
+  | {
+      type: "citation";
+      citation: AssistantCitation;
+      source: string;
     }
   | {
       type: "terminal-context";
@@ -116,7 +123,7 @@ function forEachMentionMatch(
   ) => boolean | void,
 ): boolean {
   return forEachPromptTextSlice(prompt, (text, promptOffset) => {
-    for (const match of collectComposerInlineTokens(text)) {
+    for (const match of collectComposerPromptInlineTokens(text)) {
       if (match.type !== "mention") {
         continue;
       }
@@ -128,6 +135,24 @@ function forEachMentionMatch(
   });
 }
 
+export function collectComposerPromptInlineTokens(
+  text: string,
+  options: { readonly includeNotes?: boolean } = {},
+) {
+  const tokens = collectComposerInlineTokens(text, options);
+  const citations = collectAssistantCitations(text);
+  if (citations.length === 0) return tokens;
+
+  // An unfinished @ mention can otherwise consume the start of a citation's label.
+  return [
+    ...tokens.filter(
+      (token) =>
+        !citations.some((citation) => token.start < citation.end && token.end > citation.start),
+    ),
+    ...citations.map((match) => ({ ...match, type: "citation" as const })),
+  ].sort((left, right) => left.start - right.start);
+}
+
 function splitPromptTextIntoComposerSegments(
   text: string,
   options: { readonly includeNotes?: boolean },
@@ -137,7 +162,7 @@ function splitPromptTextIntoComposerSegments(
     return segments;
   }
 
-  const tokenMatches = collectComposerInlineTokens(text, options);
+  const tokenMatches = collectComposerPromptInlineTokens(text, options);
   let cursor = 0;
   for (const match of tokenMatches) {
     if (match.start < cursor) {
@@ -148,7 +173,9 @@ function splitPromptTextIntoComposerSegments(
       pushTextSegment(segments, text.slice(cursor, match.start));
     }
 
-    if (match.type === "mention") {
+    if (match.type === "citation") {
+      segments.push({ type: "citation", citation: match.citation, source: match.source });
+    } else if (match.type === "mention") {
       segments.push({
         type: "mention",
         path: match.value,

@@ -68,6 +68,6 @@ describe("SidebarStageBackdrop", () => {
     const markup = renderToStaticMarkup(<StageBackdropButtonArt variant={variant} />);
 
     expect(markup).toContain(`viewBox="${viewBox}"`);
-    expect(markup).toContain(`stage-${variant === "dev" ? "blueprint" : "nightly"}`);
+    expect(markup).toContain(variant === "dev" ? "stage-art" : "stage-nightly");
   });
 });

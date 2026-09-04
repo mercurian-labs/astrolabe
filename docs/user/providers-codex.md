@@ -1,7 +1,7 @@
 # Codex
 
-This guide is for people who want to use more than one Codex account in T3 Code. For Claude, see
-[Claude](./providers-claude.md). For first-time setup, see [Install T3 Code](./install.md).
+This guide is for people who want to use more than one Codex account in Astrolabe. For Claude, see
+[Claude](./providers-claude.md). For first-time setup, see [Install Astrolabe](./install.md).
 
 Common reasons:
 
@@ -31,12 +31,38 @@ codex login
 ## Send feedback to OpenAI
 
 In an existing Codex thread, send `/feedback` or `/feedback` followed by a description of the
-issue. T3 Code uploads the thread and Codex logs to OpenAI and shows a thread ID that you can copy
+issue. Astrolabe uploads the thread and Codex logs to OpenAI and shows a thread ID that you can copy
 and share with OpenAI employees.
+
+## Answer questions while Codex works
+
+Codex can ask questions without stopping its work. Choose a suggested answer or enter your own
+in the question panel. Questions without suggested answers accept text.
+
+Your answers are sent as a new message. They reach the current turn while Codex is working, or
+start a new turn if it has finished. Unanswered questions stay available after you reconnect.
+This works in the web, desktop, and mobile apps. Codex must support async questions.
+
+## Sub-agent models
+
+The web and desktop Agents panel shows each sub-agent's model and reasoning effort when Codex
+reports them. If Codex does not report either value, Astrolabe leaves it out instead of using the
+parent agent's settings.
+
+## Browser and computer activity
+
+Browser and Computer Use calls show their user-facing task title when Codex provides one. Expanded
+activity groups show an icon for every call. Website calls use the active page's favicon when it is
+available, and desktop app calls use the app's native icon on macOS when available. Other hosts use
+a generic fallback glyph.
+
+Collapsed activity groups are summarized by source, such as `Used Chrome integration`, instead of
+showing the underlying tool name. Website favicons and native app icons keep their original colors;
+integrations that provide separate light and dark logos use the logo for the current appearance.
 
 ## Approve access to other apps
 
-When a Codex tool needs access to an app such as Safari, T3 Code shows the app name and asks for
+When a Codex tool needs access to an app such as Safari, Astrolabe shows the app name and asks for
 approval. You can approve, decline, or cancel the request from the desktop app, web app, or mobile
 app. Some tools also offer approval for the current session or permanent approval.
 
@@ -67,7 +93,7 @@ codex login
 
 This is the account used by `~/.codex`.
 
-In T3 Code Settings, name it something obvious:
+In Astrolabe Settings, name it something obvious:
 
 ```text
 Display name: Codex Work
@@ -84,7 +110,7 @@ mkdir -p ~/.codex_p
 CODEX_HOME=~/.codex_p codex login
 ```
 
-In T3 Code Settings, add another Codex provider:
+In Astrolabe Settings, add another Codex provider:
 
 ```text
 Display name: Codex Personal
@@ -99,7 +125,7 @@ has a `Shadow home path`.
 
 Open Settings and look at the provider row.
 
-T3 Code shows the authenticated email for providers that report one. Emails are blurred by default;
+Astrolabe shows the authenticated email for providers that report one. Emails are blurred by default;
 click the blurred email to reveal it.
 
 Use display names and accent colors to make accounts easy to tell apart in the model picker.
@@ -126,7 +152,7 @@ Codex Personal  CODEX_HOME path: ~/.codex, Shadow home path: ~/.codex_p
 Those two providers are considered compatible for continuation, so the locked model picker can show
 both.
 
-If you add a third Codex provider with a completely different `CODEX_HOME path`, T3 Code treats it
+If you add a third Codex provider with a completely different `CODEX_HOME path`, Astrolabe treats it
 as a different workspace. It will not be offered for existing threads created under `~/.codex`.
 
 ## If Both Accounts Look The Same
