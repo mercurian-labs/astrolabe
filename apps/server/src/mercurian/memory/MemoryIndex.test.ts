@@ -619,7 +619,15 @@ layer("MemoryIndex", (it) => {
       assert.include(changed.unmarked?.diff ?? "", "Snapshot-only");
       assert.strictEqual(changed.unreviewedCount, 2);
 
-      yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), branchTip]);
+      const cleanSnapshot = yield* runGit(fixture.root, [
+        "commit-tree",
+        `${branchTip}^{tree}`,
+        "-p",
+        branchTip,
+        "-m",
+        "Clean snapshot",
+      ]);
+      yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), cleanSnapshot]);
       const clean = yield* index.readLineChanges({ projectId: fixture.projectId, line: lineRef });
       assert.strictEqual(clean.unmarked, null);
       assert.strictEqual(clean.unreviewedCount, 1);
@@ -828,6 +836,73 @@ layer("MemoryIndex", (it) => {
       assert.strictEqual(error._tag, "MemoryReviewBlockedError");
       if (error._tag === "MemoryReviewBlockedError")
         assert.strictEqual(error.reason, "turn-active");
+    }),
+  );
+
+  it.effect("ignores a line commit made after a clean snapshot when merging home", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("merge-home-post-snapshot", { git: true });
+      const notePath = path.join(fixture.root, "Plans.md");
+      yield* fs.writeFileString(notePath, "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const mainBefore = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["checkout", "-b", "memory-line"]);
+      const snapshotOid = yield* runGit(fixture.root, [
+        "commit-tree",
+        `${mainBefore}^{tree}`,
+        "-p",
+        mainBefore,
+        "-m",
+        "Clean snapshot",
+      ]);
+      yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), snapshotOid]);
+      yield* fs.writeFileString(notePath, "Post-snapshot amendment\n");
+      yield* runGit(fixture.root, [
+        "commit",
+        "-am",
+        `Post-snapshot memory\n\nAstrolabe-Amendment: ${lineTurn}`,
+      ]);
+      const lineTip = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      yield* runGit(fixture.root, ["checkout", "main"]);
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid: mainBefore,
+      });
+
+      const changes = yield* index.readLineChanges({
+        projectId: fixture.projectId,
+        line: lineRef,
+      });
+      assert.strictEqual(changes.unmarked, null);
+
+      yield* index.revertChange({
+        projectId: fixture.projectId,
+        line: lineRef,
+        target: { kind: "unmarked" },
+      });
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["rev-parse", String(lineSnapshotRef(lineRoot))]),
+        snapshotOid,
+      );
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "memory-line"]), lineTip);
+
+      const result = yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef });
+      assert.strictEqual(result.kind, "merged");
+      if (result.kind !== "merged") return;
+      assert.deepStrictEqual(
+        (yield* runGit(fixture.root, ["show", "-s", "--format=%P", result.commitOid])).split(" "),
+        [mainBefore, lineTip],
+      );
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "memory-line"]), lineTip);
+      assert.notStrictEqual(
+        yield* runGit(fixture.root, ["show", "-s", "--format=%s", lineTip]),
+        "Unmarked memory changes",
+      );
+      assert.strictEqual(yield* fs.readFileString(notePath), "Post-snapshot amendment\n");
     }),
   );
 

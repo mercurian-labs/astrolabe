@@ -21,6 +21,7 @@ import {
   type MemoryNote,
   type MercurianLineMemoryChanges,
   type MercurianMergeMemoryHomeResult,
+  type MercurianCommitId,
   MercurianMemoryError,
   type MercurianProjectId,
   type PlanId,
@@ -886,6 +887,61 @@ export const make = Effect.gen(function* () {
       return { memoryCommitSha, branch: context.branch.branch };
     }).pipe(Effect.mapError(normalizeLandError));
 
+  const readUnmarkedSnapshot = Effect.fn("MemoryIndex.readUnmarkedSnapshot")(function* (input: {
+    readonly cwd: string;
+    readonly lineRootCommitId: MercurianCommitId;
+    readonly scope: string;
+  }) {
+    const snapshotRef = lineSnapshotRef(input.lineRootCommitId);
+    const resolvedSnapshot = yield* git.execute({
+      operation: "MemoryIndex.readUnmarkedSnapshot.resolveSnapshot",
+      cwd: input.cwd,
+      args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
+      allowNonZeroExit: true,
+    });
+    if (resolvedSnapshot.exitCode !== 0) return null;
+    const chainHead = resolvedSnapshot.stdout.trim();
+    const secondParent = yield* git.execute({
+      operation: "MemoryIndex.readUnmarkedSnapshot.secondParent",
+      cwd: input.cwd,
+      args: ["rev-parse", "--verify", "--quiet", `${chainHead}^2`],
+      allowNonZeroExit: true,
+    });
+    const recordedHead =
+      secondParent.exitCode === 0
+        ? secondParent.stdout.trim()
+        : (yield* git.execute({
+            operation: "MemoryIndex.readUnmarkedSnapshot.firstParent",
+            cwd: input.cwd,
+            args: ["rev-parse", "--verify", `${chainHead}^1`],
+          })).stdout.trim();
+    const diff = yield* checkpoints.diffCheckpoints({
+      cwd: input.cwd,
+      fromCheckpointRef: CheckpointRef.make(recordedHead),
+      toCheckpointRef: CheckpointRef.make(chainHead),
+      ignoreWhitespace: false,
+      paths: [input.scope],
+    });
+    if (diff.trim().length === 0) return null;
+    const paths = (yield* git.execute({
+      operation: "MemoryIndex.readUnmarkedSnapshot.paths",
+      cwd: input.cwd,
+      args: [
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        recordedHead,
+        chainHead,
+        "--",
+        input.scope,
+      ],
+    })).stdout
+      .split("\0")
+      .filter(Boolean);
+    return { chainHead, recordedHead, diff, paths };
+  });
+
   const readLineChanges: MemoryIndex["Service"]["readLineChanges"] = (input) =>
     Effect.gen(function* () {
       const context = yield* lineIdentity(input);
@@ -930,23 +986,11 @@ export const make = Effect.gen(function* () {
           repositoryId: context.source.repositoryId,
         })).map(({ commitOid }) => commitOid),
       );
-      const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
-      const hasSnapshot = yield* git.execute({
-        operation: "MemoryIndex.readLineChanges.resolveSnapshot",
+      const unmarked = yield* readUnmarkedSnapshot({
         cwd: context.source.repositoryPath,
-        args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
-        allowNonZeroExit: true,
+        lineRootCommitId: context.lineRootCommitId,
+        scope,
       });
-      const unmarkedDiff =
-        hasSnapshot.exitCode === 0
-          ? yield* checkpoints.diffCheckpoints({
-              cwd: context.source.repositoryPath,
-              fromCheckpointRef: CheckpointRef.make(branchRef),
-              toCheckpointRef: snapshotRef,
-              ignoreWhitespace: false,
-              paths: [scope],
-            })
-          : "";
       return {
         marked: withDiff
           .filter((entry) => entry.turnId !== null)
@@ -957,10 +1001,9 @@ export const make = Effect.gen(function* () {
             ...entry,
             reviewed: reviewed.has(entry.oid),
           })),
-        unmarked: unmarkedDiff.trim().length === 0 ? null : { diff: unmarkedDiff },
+        unmarked: unmarked === null ? null : { diff: unmarked.diff },
         unreviewedCount:
-          withDiff.filter((entry) => !reviewed.has(entry.oid)).length +
-          (unmarkedDiff.trim().length === 0 ? 0 : 1),
+          withDiff.filter((entry) => !reviewed.has(entry.oid)).length + (unmarked === null ? 0 : 1),
       } satisfies MercurianLineMemoryChanges;
     }).pipe(Effect.mapError(normalizeReadError("readLineMemoryChanges")));
 
@@ -1019,6 +1062,15 @@ export const make = Effect.gen(function* () {
           return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
         }
       }
+      const unmarked =
+        input.target.kind === "unmarked"
+          ? yield* readUnmarkedSnapshot({
+              cwd: context.source.repositoryPath,
+              lineRootCommitId: context.lineRootCommitId,
+              scope,
+            })
+          : null;
+      if (input.target.kind === "unmarked" && unmarked === null) return;
       const commonDir = (yield* git.execute({
         operation: "MemoryIndex.revertChange.commonDir",
         cwd: context.source.repositoryPath,
@@ -1138,12 +1190,7 @@ export const make = Effect.gen(function* () {
           );
           return;
         }
-        const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
-        const chainHead = (yield* git.execute({
-          operation: "MemoryIndex.revertChange.chainHead",
-          cwd: context.source.repositoryPath,
-          args: ["rev-parse", `${snapshotRef}^{commit}`],
-        })).stdout.trim();
+        const chainHead = unmarked!.chainHead;
         yield* git.execute({
           operation: "MemoryIndex.revertChange.readChain",
           cwd: context.source.repositoryPath,
@@ -1232,15 +1279,13 @@ export const make = Effect.gen(function* () {
         cwd: context.source.repositoryPath,
         args: ["rev-parse", `${branchRef}^{commit}`],
       })).stdout.trim();
-      const changes = yield* readLineChanges(input);
+      const unmarked = yield* readUnmarkedSnapshot({
+        cwd: context.source.repositoryPath,
+        lineRootCommitId: context.lineRootCommitId,
+        scope,
+      });
 
-      if (changes.unmarked !== null) {
-        const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
-        const chainHead = (yield* git.execute({
-          operation: "MemoryIndex.mergeHome.chainHead",
-          cwd: context.source.repositoryPath,
-          args: ["rev-parse", `${snapshotRef}^{commit}`],
-        })).stdout.trim();
+      if (unmarked !== null) {
         const commonDir = (yield* git.execute({
           operation: "MemoryIndex.mergeHome.commonDir",
           cwd: context.source.repositoryPath,
@@ -1261,46 +1306,25 @@ export const make = Effect.gen(function* () {
             args: ["read-tree", lineTip],
             env,
           });
-          if (context.source.subpath === null) {
+          yield* git.execute({
+            operation: "MemoryIndex.mergeHome.removeChangedMemory",
+            cwd: context.source.repositoryPath,
+            args: ["update-index", "--force-remove", "--", ...unmarked.paths],
+            env,
+          });
+          const chainEntries = yield* git.execute({
+            operation: "MemoryIndex.mergeHome.readChangedMemory",
+            cwd: context.source.repositoryPath,
+            args: ["ls-tree", "-r", "-z", unmarked.chainHead, "--", ...unmarked.paths],
+          });
+          if (chainEntries.stdout.length > 0) {
             yield* git.execute({
-              operation: "MemoryIndex.mergeHome.readChain",
+              operation: "MemoryIndex.mergeHome.restoreChangedMemory",
               cwd: context.source.repositoryPath,
-              args: ["read-tree", chainHead],
+              args: ["update-index", "-z", "--index-info"],
+              stdin: chainEntries.stdout,
               env,
             });
-          } else {
-            yield* git.execute({
-              operation: "MemoryIndex.mergeHome.removeMemory",
-              cwd: context.source.repositoryPath,
-              args: [
-                "rm",
-                "--cached",
-                "-r",
-                "-f",
-                "--ignore-unmatch",
-                "--",
-                context.source.subpath,
-              ],
-              env,
-            });
-            const chainMemory = yield* git.execute({
-              operation: "MemoryIndex.mergeHome.resolveChainMemory",
-              cwd: context.source.repositoryPath,
-              args: ["cat-file", "-e", `${chainHead}:${context.source.subpath}`],
-              allowNonZeroExit: true,
-            });
-            if (chainMemory.exitCode === 0) {
-              yield* git.execute({
-                operation: "MemoryIndex.mergeHome.restoreMemory",
-                cwd: context.source.repositoryPath,
-                args: [
-                  "read-tree",
-                  `--prefix=${context.source.subpath}/`,
-                  `${chainHead}:${context.source.subpath}`,
-                ],
-                env,
-              });
-            }
           }
           const tree = (yield* git.execute({
             operation: "MemoryIndex.mergeHome.writeUnmarkedTree",

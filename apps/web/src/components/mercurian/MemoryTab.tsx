@@ -253,7 +253,16 @@ export function MemoryTabView({
               id={`memory-merge:${currentWalkRow.id}`}
               patch={currentWalkRow.diff}
             />
-            <div className="mt-2 flex justify-end">
+            <div className="mt-2 flex justify-end gap-2">
+              <Button
+                disabled={mergeBusy}
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={() => setWalk(null)}
+              >
+                Not now
+              </Button>
               <Button
                 disabled={mergeBusy}
                 size="sm"
