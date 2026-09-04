@@ -185,3 +185,9 @@ _Reviewed 2026-09-02 in `decision-review-m-194-memory-branches.md`; resolved 202
 8. **Review state is a small table** keyed by line, repository, and commit. Kept.
 9. **An unmarked change is reverted by a `curated` snapshot on the chain.** Kept.
 10. **Phase 1 carries the read-only list.** Changed from the plan's original phasing so nothing lands unseen from the first day the confirmation gate is gone.
+
+_Walk-found, 2026-09-04 — recorded from the live walk of phases 1–3 on a scratch home with a standalone memory repository._
+
+11. **A slot claim mints the line branches it needs.** The first planning turn on a fresh line claimed its slot before the reactor's debounced mint had run and died silently. One shared helper (`commitTree/ensureLineBranch.ts`) now mints idempotently for the claim path, the reactor, and session start; any other claim failure is a `slot-unavailable` refusal.
+12. **The unmarked delta is read against the snapshot's own recorded head**, never the current branch tip. An amendment landed after the last snapshot otherwise shows reversed as a bogus unmarked entry, and merge home would land a commit undoing it.
+13. **Not live-walkable and left to tests**: the agent-driven write path (the mock provider fakes tool calls; the Claude CLI was signed out), fork inheritance of an amended note, the merge-home suggestion (needs a merged pull request or an archived plan), the git floor, and the subpath-memory deferral.
