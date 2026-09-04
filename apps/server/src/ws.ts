@@ -5,7 +5,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -127,22 +126,19 @@ import {
 } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
+import * as LineTurnReactor from "./mercurian/assistant/LineTurnReactor.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
 import { lineRootCommitIdFor } from "./mercurian/commitTree/LineBranchReactor.ts";
-import {
-  normalizePlanAttachments,
-  removePlanAttachments,
-} from "./mercurian/planning/attachments.ts";
+import { removePlanAttachments } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
 import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
+import * as LineRuntimeService from "./mercurian/lineRuntimes/LineRuntimeService.ts";
 import { resolveThreadLine } from "./mercurian/lineRuntimes/resolveThreadLine.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
-import type { WorktreeSlot } from "./mercurian/worktreeSlots/schema.ts";
 import { lineSnapshotRef } from "./mercurian/worktreeSlots/SnapshotChain.ts";
 import { toWireSlotSnapshot } from "./mercurian/worktreeSlots/wire.ts";
 import {
@@ -154,7 +150,6 @@ import {
   composePlanRowStatus,
   toWirePlanDetail,
   toWirePlanImport,
-  toWirePlanMessage,
   toWirePlanRevision,
   toWirePlanSpecRevision,
   toWirePlanTextAt,
@@ -696,7 +691,8 @@ const makeWsRpcLayer = (
       const slotStore = yield* SlotStore.SlotStore;
       const slotRegistry = yield* SlotRegistry.SlotRegistry;
       const slotService = yield* SlotService.SlotService;
-      const planningAssistant = yield* PlanningAssistant.PlanningAssistant;
+      const lineTurnReactor = yield* LineTurnReactor.LineTurnReactor;
+      const lineRuntimeService = yield* LineRuntimeService.LineRuntimeService;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
@@ -744,7 +740,6 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
-      const path = yield* Path.Path;
 
       const slotForCodingSessionThread = Effect.fn("ws.slotForCodingSessionThread")(function* (
         threadId: ThreadId,
@@ -824,134 +819,54 @@ const makeWsRpcLayer = (
         }
       });
 
-      const updateCodingSessionSlotMetadata = Effect.fn("ws.updateCodingSessionSlotMetadata")(
-        function* (threadId: ThreadId, desired: CodingSessionSlotMetadata, commandTag: string) {
-          const current = Option.getOrUndefined(
-            yield* projectionSnapshotQuery.getThreadShellById(threadId),
-          );
-          yield* updateCodingSessionSlotMetadataIfChanged(
-            current,
-            desired,
-            Effect.gen(function* () {
-              yield* dispatchFromClient({
-                type: "thread.meta.update",
-                commandId: yield* serverCommandId(commandTag),
-                threadId,
-                ...desired,
-              });
-            }),
-          );
-        },
-      );
-
       const acquireLineSlot = Effect.fn("ws.acquireLineSlot")(function* (
         threadId: ThreadId,
         holder: SlotService.ClaimSlotInput["holder"],
       ) {
         const session = yield* resolveThreadLine(lineRuntimeStore, legacySessionStore, threadId);
         if (Option.isNone(session)) return Option.none();
-        const primaryRepositoryId = session.value.homeRepositoryId;
-        if (primaryRepositoryId == null) return Option.none();
-        const workspaceMembersOf = (slot: WorktreeSlot) =>
-          [...slot.members]
-            .sort((left, right) =>
-              left.repositoryId === primaryRepositoryId
-                ? -1
-                : right.repositoryId === primaryRepositoryId
-                  ? 1
-                  : 0,
-            )
-            .map((member) => ({
-              repositoryId: member.repositoryId,
-              worktreePath: path.join(slot.path, member.relativePath),
-            }));
-        const lineBranch = (yield* lineBranchStore.listAll).find(
-          (candidate) =>
-            candidate.repositoryId === primaryRepositoryId &&
-            candidate.branch === session.value.branch,
-        );
-        if (lineBranch === undefined) return Option.none();
-        const detail = yield* planningStore.getPlanSnapshot({ planId: session.value.planId });
-
-        const assignedSlot = (yield* slotStore.listAll).find(
-          (candidate) =>
-            candidate.projectId === detail.plan.projectId &&
-            candidate.currentLineRootCommitId === lineBranch.lineRootCommitId,
-        );
-        if (assignedSlot !== undefined) {
-          const lease = yield* slotRegistry.lease(assignedSlot.slotId);
-          if (
-            Option.isSome(lease) &&
-            lease.value.holders.every((candidate) => candidate.threadId === threadId)
-          ) {
-            yield* slotService.retain(assignedSlot.slotId, holder);
-            const workspaceMembers = workspaceMembersOf(assignedSlot);
-            const worktreePath = workspaceMembers.find(
-              (member) => member.repositoryId === primaryRepositoryId,
-            )?.worktreePath;
-            if (worktreePath === undefined) return Option.none();
-            yield* updateCodingSessionSlotMetadata(
-              threadId,
-              {
-                branch: session.value.branch,
-                worktreePath,
-                workspaceMembers,
-              },
-              "coding-session-slot-retained",
-            );
-            return Option.some({ slotId: assignedSlot.slotId, worktreePath });
-          }
-        }
-
-        const claimed = yield* slotService.claim({
-          projectId: detail.plan.projectId,
-          lineRootCommitId: lineBranch.lineRootCommitId,
-          holder,
-        });
-        const workspaceMembers = workspaceMembersOf(claimed);
-        const claimedMember = claimed.members.find(
-          (member) => member.repositoryId === primaryRepositoryId,
-        );
-        const claimedMemberPath = workspaceMembers.find(
-          (member) => member.repositoryId === primaryRepositoryId,
-        )?.worktreePath;
-        if (
-          claimedMemberPath === undefined ||
-          claimedMember?.currentBranch === null ||
-          claimedMember === undefined
-        ) {
-          return Option.none();
-        }
-        const branchRenamed = claimedMember.currentBranch !== session.value.branch;
-        yield* updateCodingSessionSlotMetadata(
-          threadId,
-          {
-            branch: claimedMember.currentBranch,
-            worktreePath: claimedMemberPath,
-            workspaceMembers,
-          },
-          "coding-session-slot-reclaimed",
-        );
-        if (branchRenamed) {
-          yield* lineRuntimeStore.updateBranch(threadId, claimedMember.currentBranch);
-          const createdAt = DateTime.formatIso(yield* DateTime.now);
-          yield* dispatchFromClient({
-            type: "thread.activity.append",
-            commandId: yield* serverCommandId("line-branch-renamed-activity"),
-            threadId,
-            activity: {
-              id: yield* serverEventId,
-              tone: "info",
-              kind: "line.branch-renamed",
-              summary: `Branch renamed to \`${claimedMember.currentBranch}\` by hand`,
-              payload: {},
-              turnId: null,
-              createdAt,
-            },
-            createdAt,
+        const runtime = yield* lineRuntimeStore.getByThreadId(threadId);
+        if (Option.isNone(runtime)) {
+          return yield* new OrchestrationDispatchCommandError({
+            message:
+              "This coding session predates threads. Open its line from the plan's checkpoints to continue.",
           });
         }
-        return Option.some({ slotId: claimed.slotId, worktreePath: claimedMemberPath });
+        const serviceHolder =
+          holder.kind === "turn"
+            ? ({ kind: "turn" } as const)
+            : holder.kind === "terminal"
+              ? ({ kind: "terminal", terminalId: holder.terminalId } as const)
+              : ({ kind: "preview", previewId: holder.previewId } as const);
+        const ensured = yield* lineRuntimeService.ensureSlot({ threadId, holder: serviceHolder });
+        return Option.some({ slotId: ensured.slotId, worktreePath: ensured.record.worktreePath });
+      });
+      const recordLineSend = Effect.fn("ws.recordLineSend")(function* (
+        command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
+      ) {
+        const line = yield* resolveThreadLine(
+          lineRuntimeStore,
+          legacySessionStore,
+          command.threadId,
+        );
+        if (Option.isNone(line)) return;
+        const runtime = yield* lineRuntimeStore.getByThreadId(command.threadId);
+        if (Option.isNone(runtime)) {
+          return yield* new OrchestrationDispatchCommandError({
+            message:
+              "This coding session predates threads. Open its line from the plan's checkpoints to continue.",
+          });
+        }
+        yield* lineTurnReactor.recordSend({
+          threadId: command.threadId,
+          messageId: command.message.messageId,
+          text: command.message.text,
+          attachments: command.message.attachments,
+          ...(command.modelSelection === undefined
+            ? {}
+            : { modelSelection: command.modelSelection }),
+          createdAt: command.createdAt,
+        });
       });
       const acquireCodingSessionTurnSlot = (threadId: ThreadId) =>
         acquireLineSlot(threadId, { kind: "turn", threadId }).pipe(
@@ -1542,6 +1457,7 @@ const makeWsRpcLayer = (
               // Drain through that event before setup or turn start can own
               // terminals and provider sessions under the reused thread id.
               yield* threadDeletionReactor.drainThrough(created.sequence);
+              yield* lineTurnReactor.drainThrough(created.sequence);
               createdThread = true;
             }
 
@@ -1594,6 +1510,8 @@ const makeWsRpcLayer = (
 
             yield* runSetupProgram();
 
+            yield* recordLineSend(finalTurnStartCommand);
+
             return yield* dispatchFromClient(finalTurnStartCommand);
           });
 
@@ -1634,6 +1552,11 @@ const makeWsRpcLayer = (
         const dispatchEffect =
           normalizedCommand.type === "thread.turn.start"
             ? Effect.gen(function* () {
+                if (!normalizedCommand.bootstrap) {
+                  // As before Phase D, the human message remains recorded if
+                  // slot acquisition or orchestration later refuses the turn.
+                  yield* recordLineSend(normalizedCommand);
+                }
                 const acquiredSlot = normalizedCommand.bootstrap
                   ? Option.none()
                   : yield* acquireCodingSessionTurnSlot(normalizedCommand.threadId).pipe(
@@ -1649,6 +1572,14 @@ const makeWsRpcLayer = (
                               ),
                             ),
                           ),
+                      ),
+                      Effect.catchTag("RepositoryNotGitError", () =>
+                        Effect.fail(
+                          new OrchestrationDispatchCommandError({
+                            message:
+                              "This Mercurian line needs a linked Git repository before it can run.",
+                          }),
+                        ),
                       ),
                     );
                 return yield* (
@@ -1682,7 +1613,10 @@ const makeWsRpcLayer = (
             : dispatchFromClient(normalizedCommand).pipe(
                 Effect.tap(({ sequence }) =>
                   normalizedCommand.type === "thread.create"
-                    ? threadDeletionReactor.drainThrough(sequence)
+                    ? Effect.all([
+                        threadDeletionReactor.drainThrough(sequence),
+                        lineTurnReactor.drainThrough(sequence),
+                      ]).pipe(Effect.asVoid)
                     : Effect.void,
                 ),
                 Effect.mapError((cause) =>
@@ -1764,7 +1698,7 @@ const makeWsRpcLayer = (
       const loadPlanningTreeSnapshot = Effect.gen(function* () {
         const [snapshot, status] = yield* Effect.all([
           planningStore.getTreeSnapshot,
-          planningAssistant.status,
+          lineTurnReactor.status,
         ]);
         const lineRuntimes = (yield* Effect.forEach(snapshot.plans, (plan) =>
           lineRuntimeStore.listByPlan(plan.planId),
@@ -1811,15 +1745,6 @@ const makeWsRpcLayer = (
           (cause) => new MercurianPlanningError({ operation: "subscribeTree", cause }),
         ),
       );
-
-      /**
-       * A human message landed; the assistant replies. Forked and detached
-       * on purpose: the append's success was never conditional on the reply
-       * starting, and anything that prevents one arrives as a
-       * `turn-refused` frame on the plan's own stream.
-       */
-      const kickOffPlanningTurn = (input: PlanningAssistant.StartTurnInput) =>
-        planningAssistant.startTurn(input).pipe(Effect.forkDetach, Effect.asVoid);
 
       const loadTrackersSnapshot = trackerStore.getSnapshot.pipe(
         Effect.map(toWireTrackersSnapshot),
@@ -2278,7 +2203,7 @@ const makeWsRpcLayer = (
               yield* Effect.forkScoped(
                 Stream.merge(
                   Stream.merge(
-                    Stream.merge(planningStore.changes, planningAssistant.changes),
+                    Stream.merge(planningStore.changes, lineTurnReactor.changes),
                     lineRuntimeStore.changes,
                   ),
                   sessionStatusChanges,
@@ -2472,58 +2397,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.createPlan]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.createPlan,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                Effect.gen(function* () {
-                  // The bytes land before the history does: a commit records
-                  // what a file already is, never a promise of one. A plan
-                  // being born has no id yet, so its project names the files.
-                  const attachments = yield* normalizePlanAttachments({
-                    owner: input.projectId,
-                    uploads: input.attachments,
-                  });
-                  const lastUsed = (yield* workspaceSettingsStore.getSnapshot).planningModel;
-                  const created = yield* planningStore.createPlan({
-                    projectId: input.projectId,
-                    message: input.message,
-                    attachments,
-                    ...(input.modelChoice === undefined ? {} : { modelChoice: input.modelChoice }),
-                    lastUsed,
-                    createdAt,
-                  });
-                  // The birth message is a message: the assistant replies to
-                  // it like any other.
-                  const root = created.timeline[0];
-                  if (root?._tag === "message") {
-                    if (root.ranUnder !== undefined) {
-                      yield* workspaceSettingsStore.recordLastUsedPlanningModel(root.ranUnder);
-                    }
-                    yield* kickOffPlanningTurn({
-                      planId: created.plan.planId,
-                      parentCommitId: root.commitId,
-                      text: input.message,
-                      ...(root.attachments === undefined ? {} : { attachments: root.attachments }),
-                      ...(input.runtimeMode === undefined
-                        ? {}
-                        : { runtimeMode: input.runtimeMode }),
-                      ...(root.ranUnder === undefined ? {} : { ranUnder: root.ranUnder }),
-                    });
-                  }
-                  return created;
-                }),
-              ),
-              Effect.map(toWirePlanDetail),
-              Effect.mapError((cause) =>
-                isMercurianProjectNotFoundError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "createPlan", cause }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.importPlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.importPlan,
@@ -2551,53 +2424,36 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.appendPlanMessage]: (input) =>
+        [MERCURIAN_WS_METHODS.forkLine]: (input) =>
           observeRpcEffect(
-            MERCURIAN_WS_METHODS.appendPlanMessage,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                Effect.gen(function* () {
-                  const attachments = yield* normalizePlanAttachments({
-                    owner: input.planId,
-                    uploads: input.attachments,
-                  });
-                  const lastUsed = (yield* workspaceSettingsStore.getSnapshot).planningModel;
-                  const appended = yield* planningStore.appendMessage({
-                    planId: input.planId,
-                    text: input.text,
-                    // Where the sender stood. A commit that already has a
-                    // child is a legal parent — that append is the fork.
-                    ...(input.parentCommitId === undefined
-                      ? {}
-                      : { parentCommitId: CommitId.make(input.parentCommitId) }),
-                    attachments,
-                    ...(input.modelChoice === undefined ? {} : { modelChoice: input.modelChoice }),
-                    lastUsed,
-                    createdAt,
-                  });
-                  if (appended.ranUnder !== undefined) {
-                    yield* workspaceSettingsStore.recordLastUsedPlanningModel(appended.ranUnder);
-                  }
-                  yield* kickOffPlanningTurn({
-                    planId: input.planId,
-                    parentCommitId: appended.commitId,
-                    text: input.text,
-                    ...(appended.attachments === undefined
-                      ? {}
-                      : { attachments: appended.attachments }),
-                    ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
-                    ...(appended.ranUnder === undefined ? {} : { ranUnder: appended.ranUnder }),
-                  });
-                  return appended;
-                }),
+            MERCURIAN_WS_METHODS.forkLine,
+            lineRuntimeService
+              .ensureThread({
+                planId: input.planId,
+                forkParentCommitId: input.parentCommitId,
+              })
+              .pipe(
+                Effect.map(({ threadId }) => ({ threadId })),
+                Effect.mapError(
+                  (cause) => new MercurianPlanningError({ operation: "forkLine", cause }),
+                ),
               ),
-              Effect.map(toWirePlanMessage),
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) || isPlanTurnActiveError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "appendPlanMessage", cause }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.openLine]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.openLine,
+            lineRuntimeService
+              .ensureThread({
+                planId: input.planId,
+                lineRootCommitId: input.lineRootCommitId,
+              })
+              .pipe(
+                Effect.map(({ threadId }) => ({ threadId })),
+                Effect.mapError(
+                  (cause) => new MercurianPlanningError({ operation: "openLine", cause }),
+                ),
               ),
-            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.savePlanRevision]: (input) =>
@@ -2784,7 +2640,7 @@ const makeWsRpcLayer = (
                 planId: input.planId,
                 parentCommitId,
               });
-              const proposal = yield* planningAssistant.memoryAmendmentProposal(input.planId);
+              const proposal = yield* lineTurnReactor.memoryAmendmentProposal(input.planId);
               if (proposal === undefined) {
                 return yield* new ConfirmMemoryAmendmentBlockedError({ reason: "no-proposal" });
               }
@@ -2804,7 +2660,7 @@ const makeWsRpcLayer = (
                 notes: memoryAmendmentNoteNames(proposal.changes),
                 createdAt,
               });
-              yield* planningAssistant.clearMemoryAmendment(input.planId);
+              yield* lineTurnReactor.clearMemoryAmendment(input.planId);
               return MercurianCommitId.make(message.commitId);
             }).pipe(
               Effect.mapError((cause) =>
@@ -2824,7 +2680,7 @@ const makeWsRpcLayer = (
         [MERCURIAN_WS_METHODS.cancelMemoryAmendment]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.cancelMemoryAmendment,
-            planningAssistant.cancelMemoryAmendment(input.planId).pipe(Effect.as({})),
+            lineTurnReactor.cancelMemoryAmendment(input.planId).pipe(Effect.as({})),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
@@ -2834,7 +2690,11 @@ const makeWsRpcLayer = (
               // The act names the plan; the moment is ours. A client clock
               // could otherwise put a visit in the future and silence a row.
               Effect.flatMap((visitedAt) =>
-                planningStore.recordPlanVisit({ planId: input.planId, visitedAt }),
+                planningStore.recordPlanVisit({
+                  planId: input.planId,
+                  ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                  visitedAt,
+                }),
               ),
               Effect.as({}),
               Effect.mapError((cause) =>
@@ -2858,29 +2718,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.stopPlanningTurn]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.stopPlanningTurn,
-            // Idempotent by design: stopping a plan with nothing streaming is
-            // not an error a person caused. The interrupted settle arrives on
-            // the plan's own stream, not in this answer.
-            planningAssistant
-              .stopTurn({ planId: input.planId, turnId: input.turnId })
-              .pipe(Effect.as({})),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.answerPlanningQuestion]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.answerPlanningQuestion,
-            planningAssistant
-              .answerQuestion({
-                planId: input.planId,
-                turnId: input.turnId,
-                answers: input.answers,
-              })
-              .pipe(Effect.as({})),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.archivePlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.archivePlan,
@@ -2892,7 +2729,7 @@ const makeWsRpcLayer = (
               // Archiving mid-reply keeps the record: the partial lands as an
               // interrupted commit, then the plan's session stops.
               Effect.tap(() =>
-                planningAssistant.teardownPlan({ planId: input.planId, commitPartial: true }),
+                lineTurnReactor.teardownPlan({ planId: input.planId, commitPartial: true }),
               ),
               Effect.as({}),
               Effect.mapError((cause) =>
@@ -2927,7 +2764,7 @@ const makeWsRpcLayer = (
               yield* removePlanAttachments(deletion);
               // The history is gone; a partial reply has nothing to land in.
               // Discard the turn and delete every captured line thread.
-              yield* planningAssistant.teardownPlan({
+              yield* lineTurnReactor.teardownPlan({
                 planId: input.planId,
                 commitPartial: false,
                 lineRuntimes,
@@ -2958,26 +2795,6 @@ const makeWsRpcLayer = (
                   isPlanNotFoundError(cause)
                     ? cause
                     : new MercurianPlanningError({ operation: "getPlanTextAt", cause }),
-                ),
-              ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.measurePlanReconstruction]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.measurePlanReconstruction,
-            planningAssistant
-              .measureReconstruction({
-                planId: input.planId,
-                parentCommitId: CommitId.make(input.commitId),
-              })
-              .pipe(
-                Effect.mapError((cause) =>
-                  isPlanNotFoundError(cause)
-                    ? cause
-                    : new MercurianPlanningError({
-                        operation: "measurePlanReconstruction",
-                        cause,
-                      }),
                 ),
               ),
             { "rpc.aggregate": "mercurian" },
@@ -3034,7 +2851,7 @@ const makeWsRpcLayer = (
               // an offset below the snapshot's text and folds away.
               const turnFrames = yield* Queue.unbounded<PlanStreamItem>();
               yield* Effect.forkScoped(
-                planningAssistant
+                lineTurnReactor
                   .frames(input.planId)
                   .pipe(Stream.runForEach((frame) => Queue.offer(turnFrames, frame))),
                 { startImmediately: true },
@@ -3065,8 +2882,8 @@ const makeWsRpcLayer = (
                         // opened — or reconnected — mid-turn joins coherently
                         // with no frame replay (ADR 002 §3).
                         Effect.all({
-                          inFlightTurns: planningAssistant.inFlightTurns(input.planId),
-                          memoryAmendmentProposal: planningAssistant.memoryAmendmentProposal(
+                          inFlightTurns: lineTurnReactor.inFlightTurns(input.planId),
+                          memoryAmendmentProposal: lineTurnReactor.memoryAmendmentProposal(
                             input.planId,
                           ),
                         }).pipe(

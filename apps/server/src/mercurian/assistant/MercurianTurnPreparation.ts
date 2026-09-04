@@ -59,17 +59,22 @@ export const make = Effect.gen(function* () {
       if (Option.isNone(runtime)) return { text: input.message.text, session: {} };
       const detail = yield* planning.getPlanSnapshot({ planId: runtime.value.planId });
       const mention = yield* resolveMemoryMentionStanza(detail.plan.projectId, input.message.text);
-      if (!input.sessionIsFresh) {
+      const isFirstLineTurn = input.sessionIsFresh && input.thread.messages.length === 1;
+      if (!isFirstLineTurn) {
         return {
           text: appendMemoryMentionStanza(input.message.text, mention),
-          session: { skipResume: true },
+          session: {},
         };
       }
       const messageCommit = yield* commits.getCommit({
         commitId: CommitId.make(input.message.id),
         visibility: "all",
       });
-      const parentCommitId = Option.getOrUndefined(messageCommit)?.parents[0];
+      const parentCommitId =
+        Option.getOrUndefined(messageCommit)?.parents[0] ??
+        (runtime.value.forkParentCommitId === undefined
+          ? undefined
+          : CommitId.make(runtime.value.forkParentCommitId));
       const ancestors =
         parentCommitId === undefined
           ? []
@@ -139,7 +144,7 @@ export const make = Effect.gen(function* () {
           message: input.message.text,
           memoryMentionStanza: mention,
         }),
-        session: { skipResume: true },
+        session: parentCommitId === undefined ? {} : { skipResume: true },
       };
     }),
   });

@@ -1,9 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
-  MercurianAppendPlanMessageInput,
   MercurianCommitId,
-  MercurianCreatePlanInput,
   MercurianImportPlanInput,
   MercurianCancelMemoryAmendmentInput,
   MercurianConfirmMemoryAmendmentInput,
@@ -13,7 +11,6 @@ import type {
   MercurianRecreateLineBranchInput,
   PlanDetail,
   PlanId,
-  PlanTurnId,
   PlanningTreeSnapshot,
   PlanTurnRefusalReason,
   PlanStreamItem,
@@ -140,11 +137,6 @@ export function useCreateMercurianProject() {
  * this is the only way to make one — and that first message composes with the
  * same powers as every later one, images included.
  */
-export function useCreatePlan() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.createPlan);
-  return useCallback((input: MercurianCreatePlanInput) => run(input), [run]);
-}
-
 /**
  * Say something in a plan, from wherever you are standing. `parentCommitId` is
  * that place: naming a commit that already has a child lands a fork whose
@@ -159,11 +151,6 @@ export function useCreatePlan() {
 export function useImportPlan() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.importPlan);
   return useCallback((input: MercurianImportPlanInput) => run(input), [run]);
-}
-
-export function useAppendPlanMessage() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.appendPlanMessage);
-  return useCallback((input: MercurianAppendPlanMessageInput) => run(input), [run]);
 }
 
 /**
@@ -229,21 +216,6 @@ export function useMarkPlanUnread() {
  * The partial lands as a commit marked interrupted, arriving on the same
  * subscription as everything else.
  */
-export function useStopPlanningTurn() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.stopPlanningTurn);
-  return useCallback((planId: PlanId, turnId: PlanTurnId) => run({ planId, turnId }), [run]);
-}
-
-/** Answer the structured question one turn is waiting on, keyed by question id. */
-export function useAnswerPlanningQuestion() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.answerPlanningQuestion);
-  return useCallback(
-    (planId: PlanId, turnId: PlanTurnId, answers: Readonly<Record<string, unknown>>) =>
-      run({ planId, turnId, answers: answers as Record<string, unknown> }),
-    [run],
-  );
-}
-
 /**
  * The plan as it read at an earlier commit. The timeline's revisions travel
  * without their text — re-sending every historical snapshot would grow the
@@ -259,14 +231,6 @@ export function useGetPlanTextAt() {
 }
 
 /** Exact prompt reconstruction sizes at an immutable plan position. */
-export function useMeasurePlanReconstruction() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.measurePlanReconstruction);
-  return useCallback(
-    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
-    [run],
-  );
-}
-
 export function useGetSpecAt() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.getSpecAt);
   return useCallback(

@@ -134,7 +134,11 @@ export function applyPlanStreamItem(
           item.snapshot.codingSessions.map((session) => [session.commitId, session]),
         ),
         lineRuntimes: new Map(
-          item.snapshot.lineRuntimes.map((runtime) => [runtime.lineRootCommitId, runtime]),
+          item.snapshot.lineRuntimes.flatMap((runtime) =>
+            runtime.lineRootCommitId === null
+              ? []
+              : ([[runtime.lineRootCommitId, runtime]] as const),
+          ),
         ),
         synchronized: state.synchronized,
         turnRefusal: null,
@@ -154,7 +158,9 @@ export function applyPlanStreamItem(
     }
     case "line-runtimes": {
       const lineRuntimes = new Map(
-        item.lineRuntimes.map((runtime) => [runtime.lineRootCommitId, runtime]),
+        item.lineRuntimes.flatMap((runtime) =>
+          runtime.lineRootCommitId === null ? [] : ([[runtime.lineRootCommitId, runtime]] as const),
+        ),
       );
       return {
         ...state,

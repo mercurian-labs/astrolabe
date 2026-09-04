@@ -14,7 +14,8 @@ import { CodingSessionRepositoryRecord } from "./LegacySessionSchema.ts";
 
 export const LineRuntimeRecord = Schema.Struct({
   planId: PlanId,
-  lineRootCommitId: MercurianCommitId,
+  lineRootCommitId: Schema.NullOr(MercurianCommitId),
+  forkParentCommitId: Schema.optional(MercurianCommitId),
   threadId: ThreadId,
   homeRepositoryId: MercurianRepositoryId,
   branch: TrimmedNonEmptyString,
@@ -33,7 +34,8 @@ export type LineRuntimeRecord = typeof LineRuntimeRecord.Type;
 
 export const CreateLineRuntimeInput = Schema.Struct({
   planId: PlanId,
-  lineRootCommitId: MercurianCommitId,
+  lineRootCommitId: Schema.NullOr(MercurianCommitId),
+  forkParentCommitId: Schema.optional(MercurianCommitId),
   threadId: ThreadId,
   homeRepositoryId: MercurianRepositoryId,
   branch: TrimmedNonEmptyString,

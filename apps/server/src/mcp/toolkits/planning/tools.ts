@@ -11,13 +11,13 @@ import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/unstable/ai";
 
 import {
-  PlanningAssistant,
+  LineTurnReactor,
   PlanningTurnNotFoundError,
-} from "../../../mercurian/assistant/PlanningAssistant.ts";
+} from "../../../mercurian/assistant/LineTurnReactor.ts";
 import { SpecDocument } from "@t3tools/contracts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
-const dependencies = [McpInvocationContext.McpInvocationContext, PlanningAssistant];
+const dependencies = [McpInvocationContext.McpInvocationContext, LineTurnReactor];
 
 export const SavePlanRevisionInput = Schema.Struct({
   /** The plan document's whole text after the edit — a snapshot, not a diff. */

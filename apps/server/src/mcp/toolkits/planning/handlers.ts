@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 
-import { PlanningAssistant } from "../../../mercurian/assistant/PlanningAssistant.ts";
+import { LineTurnReactor } from "../../../mercurian/assistant/LineTurnReactor.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { PlanningToolkit } from "./tools.ts";
 
@@ -15,7 +15,7 @@ const handlers = {
   save_plan_revision: (input) =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* PlanningAssistant;
+      const assistant = yield* LineTurnReactor;
       yield* assistant.saveRevisionFromThread({
         threadId: invocation.threadId,
         text: input.text,
@@ -25,7 +25,7 @@ const handlers = {
   save_spec_revision: (input) =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* PlanningAssistant;
+      const assistant = yield* LineTurnReactor;
       yield* assistant.saveSpecRevisionFromThread({
         threadId: invocation.threadId,
         document: input.document,
@@ -35,26 +35,31 @@ const handlers = {
   propose_memory_amendment: (input) =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* PlanningAssistant;
+      const assistant = yield* LineTurnReactor;
       yield* assistant.proposeMemoryAmendmentFromThread({
         threadId: invocation.threadId,
         title: input.title,
         notes: input.notes,
-        placements: input.placements ?? [],
+        placements: (input.placements ?? []).map((placement) => ({
+          map: placement.map,
+          parent: placement.parent,
+          note: placement.note,
+          ...(placement.type === undefined ? {} : { type: placement.type }),
+        })),
       });
       return { saved: true as const };
     }),
   read_plan: () =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* PlanningAssistant;
+      const assistant = yield* LineTurnReactor;
       const text = yield* assistant.readPlanFromThread({ threadId: invocation.threadId });
       return { text };
     }),
   read_spec: () =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* PlanningAssistant;
+      const assistant = yield* LineTurnReactor;
       const spec = yield* assistant.readSpecFromThread({ threadId: invocation.threadId });
       return { spec };
     }),

@@ -32,6 +32,7 @@ const iso = (value: DateTime.Utc) => DateTime.formatIso(value);
 
 export const toWireProject = (project: MercurianProject): Contracts.MercurianProject => ({
   projectId: project.projectId,
+  orchestrationProjectId: project.orchestrationProjectId,
   name: project.name,
   createdAt: iso(project.createdAt),
   updatedAt: iso(project.updatedAt),
@@ -137,6 +138,9 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => {
     snapshotSequence: detail.snapshotSequence,
     codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
     lineRuntimes: detail.lineRuntimes.map(toWireLineRuntimeRecord),
+    ...(detail.lastVisitedThreadId === undefined
+      ? {}
+      : { lastVisitedThreadId: detail.lastVisitedThreadId }),
     // The store's detail knows nothing live; the subscribe path overlays the
     // assistant's actual in-flight turns onto this.
     inFlightTurns: [],

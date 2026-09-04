@@ -41,13 +41,14 @@ const message = {
 };
 const thread = {
   id: threadId,
+  messages: [message],
   workspaceMembers: [
     { repositoryId: MercurianRepositoryId.make("repository"), worktreePath: "/tmp/repository" },
   ],
 } as never;
 
 interface PreparationOptions {
-  readonly parentCommitId: CommitId;
+  readonly parentCommitId?: CommitId;
   readonly timeline: ReadonlyArray<Record<string, unknown>>;
   readonly ancestors: ReadonlyArray<Record<string, unknown>>;
   readonly planText?: string;
@@ -124,7 +125,12 @@ const preparationDependencies = (options: PreparationOptions) => {
         Effect.succeed(options.spec == null ? null : ({ document: options.spec } as never)),
     }),
     Layer.mock(CommitStore.CommitStore)({
-      getCommit: () => Effect.succeed(Option.some({ parents: [options.parentCommitId] } as never)),
+      getCommit: () =>
+        Effect.succeed(
+          Option.some({
+            parents: options.parentCommitId === undefined ? [] : [options.parentCommitId],
+          } as never),
+        ),
       ancestors: () => Effect.succeed(options.ancestors as never),
     }),
     Layer.mock(MemorySourceStore.MemorySourceStore)({
@@ -167,96 +173,114 @@ it.effect("keeps the default turn preparation byte-identical", () =>
   }).pipe(Effect.provide(TurnPreparationDefault)),
 );
 
-it.effect("adds the appendix and transcript only to a fresh line-runtime session", () => {
-  let transcriptHead: CommitId | undefined;
-  const dependencies = Layer.mergeAll(
-    Layer.mock(LineRuntimeStore.LineRuntimeStore)({
-      getByThreadId: () =>
-        Effect.succeed(
-          Option.some({
-            planId,
-            lineRootCommitId: MercurianCommitId.make("line-root"),
-            threadId,
-            homeRepositoryId: MercurianRepositoryId.make("repository"),
-            branch: "mercurian/line",
-            worktreePath: "/tmp/repository",
-            unreachableRepositories: [],
-            snapshotOid: null,
-            snapshotKind: null,
-            departedRef: null,
-            branchMovement: null,
-            lineBranchMissingOid: null,
-            createdAt: now,
-            updatedAt: now,
-            repositories: [
+it.effect(
+  "adds the appendix and ancestor transcript with skipResume on the first line turn",
+  () => {
+    let transcriptHead: CommitId | undefined;
+    const dependencies = Layer.mergeAll(
+      Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+        getByThreadId: () =>
+          Effect.succeed(
+            Option.some({
+              planId,
+              lineRootCommitId: MercurianCommitId.make("line-root"),
+              threadId,
+              homeRepositoryId: MercurianRepositoryId.make("repository"),
+              branch: "mercurian/line",
+              worktreePath: "/tmp/repository",
+              unreachableRepositories: [],
+              snapshotOid: null,
+              snapshotKind: null,
+              departedRef: null,
+              branchMovement: null,
+              lineBranchMissingOid: null,
+              createdAt: now,
+              updatedAt: now,
+              repositories: [
+                {
+                  repositoryId: MercurianRepositoryId.make("repository"),
+                  repositoryName: "server",
+                  snapshotOid: null,
+                  snapshotKind: null,
+                  branchTipOid: null,
+                  departedRef: null,
+                  branchMovement: null,
+                  prUrl: null,
+                },
+              ],
+            }),
+          ),
+      }),
+      Layer.mock(PlanningStore.PlanningStore)({
+        getPlanSnapshot: () =>
+          Effect.succeed({
+            plan: { planId, projectId: MercurianProjectId.make("project"), title: "Ship runtime" },
+            timeline: [
               {
-                repositoryId: MercurianRepositoryId.make("repository"),
-                repositoryName: "server",
-                snapshotOid: null,
-                snapshotKind: null,
-                branchTipOid: null,
-                departedRef: null,
-                branchMovement: null,
-                prUrl: null,
+                _tag: "message",
+                commitId: MercurianCommitId.make(parentId),
+                parents: [],
+                sequence: 1,
+                authorKind: "human",
+                text: "Earlier request",
+                createdAt: now,
               },
             ],
+          } as never),
+        getPlanTextAt: () => Effect.succeed("# Current plan"),
+        getSpecAt: () => Effect.succeed(null),
+      }),
+      Layer.mock(CommitStore.CommitStore)({
+        getCommit: () => Effect.succeed(Option.some({ parents: [parentId] } as never)),
+        ancestors: ({ commitId }) =>
+          Effect.sync(() => {
+            transcriptHead = commitId;
+            return [
+              {
+                commitId: parentId,
+                historyId: HistoryId.make("history"),
+                sequence: 1,
+                kind: "message" as const,
+                authorKind: "human" as const,
+                parents: [],
+                published: true,
+                createdAt: now,
+                payload: {},
+              },
+            ];
           }),
-        ),
-    }),
-    Layer.mock(PlanningStore.PlanningStore)({
-      getPlanSnapshot: () =>
-        Effect.succeed({
-          plan: { planId, projectId: MercurianProjectId.make("project"), title: "Ship runtime" },
-          timeline: [
-            {
-              _tag: "message",
-              commitId: MercurianCommitId.make(parentId),
-              parents: [],
-              sequence: 1,
-              authorKind: "human",
-              text: "Earlier request",
-              createdAt: now,
-            },
-          ],
-        } as never),
-      getPlanTextAt: () => Effect.succeed("# Current plan"),
-      getSpecAt: () => Effect.succeed(null),
-    }),
-    Layer.mock(CommitStore.CommitStore)({
-      getCommit: () => Effect.succeed(Option.some({ parents: [parentId] } as never)),
-      ancestors: ({ commitId }) =>
-        Effect.sync(() => {
-          transcriptHead = commitId;
-          return [
-            {
-              commitId: parentId,
-              historyId: HistoryId.make("history"),
-              sequence: 1,
-              kind: "message" as const,
-              authorKind: "human" as const,
-              parents: [],
-              published: true,
-              createdAt: now,
-              payload: {},
-            },
-          ];
-        }),
-    }),
-    Layer.mock(MemorySourceStore.MemorySourceStore)({
-      getResolvedSource: () => Effect.succeed(Option.none()),
-    }),
-    Layer.mock(MemoryIndex.MemoryIndex)({}),
-  );
+      }),
+      Layer.mock(MemorySourceStore.MemorySourceStore)({
+        getResolvedSource: () => Effect.succeed(Option.none()),
+      }),
+      Layer.mock(MemoryIndex.MemoryIndex)({}),
+    );
+    return Effect.gen(function* () {
+      const preparation = yield* TurnPreparation;
+      const fresh = yield* preparation.prepare({ thread, message, sessionIsFresh: true });
+      const continued = yield* preparation.prepare({ thread, message, sessionIsFresh: false });
+      assert.ok(fresh.text.includes("planning assistant"));
+      assert.ok(fresh.text.includes("Earlier request"));
+      assert.ok(fresh.text.includes("Build it"));
+      assert.strictEqual(transcriptHead, parentId);
+      assert.deepStrictEqual(fresh.session, { skipResume: true });
+      assert.deepStrictEqual(continued, { text: "Build it", session: {} });
+    }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
+  },
+);
+
+it.effect("adds only the appendix to a brand-new line's first turn", () => {
+  const dependencies = preparationDependencies({
+    timeline: [],
+    ancestors: [],
+  });
   return Effect.gen(function* () {
     const preparation = yield* TurnPreparation;
-    const fresh = yield* preparation.prepare({ thread, message, sessionIsFresh: true });
-    const continued = yield* preparation.prepare({ thread, message, sessionIsFresh: false });
-    assert.ok(fresh.text.includes("planning assistant"));
-    assert.ok(fresh.text.includes("Earlier request"));
-    assert.ok(fresh.text.includes("Build it"));
-    assert.strictEqual(transcriptHead, parentId);
-    assert.deepStrictEqual(fresh.session, { skipResume: true });
-    assert.deepStrictEqual(continued, { text: "Build it", session: { skipResume: true } });
+    const prepared = yield* preparation.prepare({ thread, message, sessionIsFresh: true });
+    assert.ok(prepared.text.includes("planning assistant"));
+    assert.ok(prepared.text.includes("Reply to this message:\nBuild it"));
+    assert.ok(!prepared.text.includes("Earlier conversation"));
+    assert.deepStrictEqual(prepared.session, {});
   }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
 });
 
@@ -355,7 +379,7 @@ it.effect("includes a standalone human spec revision in the next turn input", ()
   }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
 });
 
-it.effect("resolves note mentions when continuing a live session", () => {
+it.effect("keeps the next line turn resumable while resolving note mentions", () => {
   const dependencies = preparationDependencies({
     parentCommitId: CommitId.make("root"),
     timeline: [],
@@ -377,7 +401,7 @@ it.effect("resolves note mentions when continuing a live session", () => {
       prepared.text,
       "Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: /memory/Composer.md",
     );
-    assert.deepStrictEqual(prepared.session, { skipResume: true });
+    assert.deepStrictEqual(prepared.session, {});
   }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
 });
 

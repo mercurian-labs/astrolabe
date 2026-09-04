@@ -48,11 +48,6 @@ export function createMercurianPlanningAtoms<R, E>(
       tag: MERCURIAN_WS_METHODS.createProject,
       scheduler: writeScheduler,
     }),
-    createPlan: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:create-plan",
-      tag: MERCURIAN_WS_METHODS.createPlan,
-      scheduler: writeScheduler,
-    }),
     /**
      * Import an issue as a plan. On the write scheduler with no concurrency key
      * of its own: it names no plan yet, and the server's origin uniqueness — not
@@ -63,11 +58,16 @@ export function createMercurianPlanningAtoms<R, E>(
       tag: MERCURIAN_WS_METHODS.importPlan,
       scheduler: writeScheduler,
     }),
-    appendPlanMessage: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:append-plan-message",
-      tag: MERCURIAN_WS_METHODS.appendPlanMessage,
+    forkLine: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:fork-line",
+      tag: MERCURIAN_WS_METHODS.forkLine,
       scheduler: writeScheduler,
-      // Different plans do not wait on each other.
+      concurrency: serialPerPlan,
+    }),
+    openLine: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:open-line",
+      tag: MERCURIAN_WS_METHODS.openLine,
+      scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
     savePlanRevision: createEnvironmentRpcCommand(runtime, {
@@ -106,22 +106,6 @@ export function createMercurianPlanningAtoms<R, E>(
       label: "environment-data:mercurian:recreate-line-branch",
       tag: MERCURIAN_WS_METHODS.recreateLineBranch,
       scheduler: writeScheduler,
-    }),
-    /**
-     * The planning turn's two verbs. Same per-plan key as the writes: a stop
-     * pressed right after a send must land after it, not race it.
-     */
-    stopPlanningTurn: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:stop-planning-turn",
-      tag: MERCURIAN_WS_METHODS.stopPlanningTurn,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
-    answerPlanningQuestion: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:answer-planning-question",
-      tag: MERCURIAN_WS_METHODS.answerPlanningQuestion,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
     }),
     /**
      * You opened a plan. A write: what it changes is read by every window off
@@ -171,11 +155,6 @@ export function createMercurianPlanningAtoms<R, E>(
     getPlanTextAt: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:get-plan-text-at",
       tag: MERCURIAN_WS_METHODS.getPlanTextAt,
-      scheduler: writeScheduler,
-    }),
-    measurePlanReconstruction: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:measure-plan-reconstruction",
-      tag: MERCURIAN_WS_METHODS.measurePlanReconstruction,
       scheduler: writeScheduler,
     }),
     getSpecAt: createEnvironmentRpcCommand(runtime, {

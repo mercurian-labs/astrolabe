@@ -43,14 +43,13 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.recreateLineBranch]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
-  [MERCURIAN_WS_METHODS.measurePlanReconstruction]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.getSpecAt]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.createPlan]: AuthOrchestrationOperateScope,
   // Importing an issue creates a plan, so it is an operation on the same
   // footing as creating one from a blank draft.
   [MERCURIAN_WS_METHODS.importPlan]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.appendPlanMessage]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.forkLine]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.openLine]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.saveSpecRevision]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.refreshSpec]: AuthOrchestrationOperateScope,
@@ -63,8 +62,6 @@ export const RPC_REQUIRED_SCOPES = {
   // Attention is state every window reads, so recording it is a write.
   [MERCURIAN_WS_METHODS.visitPlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.markPlanUnread]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.stopPlanningTurn]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.answerPlanningQuestion]: AuthOrchestrationOperateScope,
   // The registry is the same trust domain by the same reasoning: reading what
   // code the app can reach, and changing it, are workspace orchestration.
   [MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories]: AuthOrchestrationReadScope,

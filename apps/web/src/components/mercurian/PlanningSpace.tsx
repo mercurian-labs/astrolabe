@@ -8,19 +8,10 @@ import {
   type PlanInFlightTurn,
   type PlanSpecAt,
   type PlanTimelineItem,
-  type PlanReconstructionMeasure,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import {
-  ChevronDownIcon,
-  CircleDotIcon,
-  ClockIcon,
-  FileTextIcon,
-  SquareTerminalIcon,
-  WaypointsIcon,
-  XIcon,
-} from "lucide-react";
+import { ChevronDownIcon, CircleDotIcon, FileTextIcon, WaypointsIcon, XIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -46,15 +37,10 @@ import {
 import { usePlanDraftStore } from "../../planDraftStore";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import {
-  useAnswerPlanningQuestion,
-  useAppendPlanMessage,
-  useCreatePlan,
   useGetPlanTextAt,
   useGetSpecAt,
-  useMeasurePlanReconstruction,
   usePlanDetail,
   useRecreateLineBranch,
-  useStopPlanningTurn,
   useVisitPlan,
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
@@ -76,23 +62,12 @@ import {
 import { ImportIssueDialog } from "./ImportIssueDialog";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
-import {
-  PlanComposer,
-  toPlanComposerAttachment,
-  type PlanComposerSubmission,
-} from "./PlanComposer";
-import {
-  memoryAmendmentFailureNotice,
-  planningModelGateNotice,
-  turnRefusalNotice,
-} from "./PlanComposer.logic";
+import { toPlanComposerAttachment } from "./PlanComposer";
+import { memoryAmendmentFailureNotice } from "./PlanComposer.logic";
 import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
-import { PlanModelPicker } from "./PlanModelPicker";
-import { PlanReconstructionMeter } from "./PlanReconstructionMeter";
-import { PlanTraitsPicker } from "./PlanTraitsPicker";
 import {
   advance,
   isViewingPast,
@@ -150,14 +125,10 @@ interface PendingEditAndBranch {
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error, turnRefusal, memoryAmendmentFailure } = usePlanDetail(planId);
-  const appendMessage = useAppendPlanMessage();
+  const { detail, isPending, error, memoryAmendmentFailure } = usePlanDetail(planId);
   const getPlanTextAt = useGetPlanTextAt();
   const getSpecAt = useGetSpecAt();
-  const measurePlanReconstruction = useMeasurePlanReconstruction();
   const visitPlan = useVisitPlan();
-  const stopTurn = useStopPlanningTurn();
-  const answerQuestion = useAnswerPlanningQuestion();
   const [memoryAmendmentSheetOpen, setMemoryAmendmentSheetOpen] = useState(false);
   const [dismissedMemoryAmendmentFailure, setDismissedMemoryAmendmentFailure] = useState<
     string | null
@@ -242,13 +213,8 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const [position, setPosition] = useState<PlanPosition>(LATEST);
   const [pathText, setPathText] = useState<string | null>(null);
   const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
-  const [reconstructionMeasure, setReconstructionMeasure] =
-    useState<PlanReconstructionMeasure | null>(null);
   const setDraftText = usePlanComposerStore((state) => state.setDraftText);
   const addDraftAttachments = usePlanComposerStore((state) => state.addAttachments);
-  const removeDraftAttachment = usePlanComposerStore((state) => state.removeAttachment);
-  const clearDraft = usePlanComposerStore((state) => state.clearDraft);
-  const setDraftModelChoice = usePlanComposerStore((state) => state.setModelChoice);
   const followDraftGrowth = usePlanComposerStore((state) => state.followGrowth);
   const adoptLegacyDraft = usePlanComposerStore((state) => state.adoptLegacyDraft);
   // The plan's project is what says which code this space can mention. With no
@@ -355,7 +321,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
    * live at a tip: yes. Looking back at an interior commit — or continuing
    * from a session leaf's parent — the draft waits at the fork it would open.
    */
-  const draftLive = !viewingSessionLeaf && (position._tag === "latest" || position.live);
   // A draft from before drafts were branch-scoped meets its first known head.
   useEffect(() => {
     if (actingHead !== null) adoptLegacyDraft(planId, actingHead);
@@ -371,20 +336,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const modelChoice = draft.modelChoice ?? standingChoice ?? planningModel.setting;
   const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
 
-  useEffect(() => {
-    if (actingHead === null) {
-      setReconstructionMeasure(null);
-      return;
-    }
-    let cancelled = false;
-    setReconstructionMeasure(null);
-    void measurePlanReconstruction(planId, actingHead).then((result) => {
-      if (!cancelled) setReconstructionMeasure(result);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [actingHead, measurePlanReconstruction, planId]);
   const providerStatus =
     effectiveModelResolution._tag === "resolved"
       ? planningModel.providers.find(
@@ -431,8 +382,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     if (memoryAmendmentProposal !== undefined) setMemoryAmendmentSheetOpen(true);
   }, [memoryAmendmentProposal]);
 
-  const gateNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
-
   /**
    * The artifact's text along *this* path is the one fact the client cannot
    * derive: revisions travel without their bodies. The snapshot's `planText`
@@ -472,34 +421,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       cancelled = true;
     };
   }, [getSpecAt, head, needsPathSpec, planId]);
-
-  /**
-   * Sending says where it stands. From a branch tip that continues the
-   * conversation; from a commit that already led somewhere it opens a fork,
-   * and this message is the fork's first commit — which is the only way one
-   * is made.
-   *
-   * The surface then stands live on what it just wrote, so the window follows
-   * the line it extended rather than whichever branch is newest.
-   */
-  const send = useCallback(
-    async ({ text, attachments }: PlanComposerSubmission) => {
-      const sent = await appendMessage({
-        planId,
-        text,
-        ...(actingHead === null ? {} : { parentCommitId: actingHead }),
-        ...(attachments.length === 0 ? {} : { attachments }),
-        ...(modelChoice === null ? {} : { modelChoice }),
-      });
-      if (sent === null) return false;
-      // The stream delivers the message back; there is nothing to refresh.
-      setPosition({ _tag: "at", commitId: sent.commitId, live: true });
-      // Only the sending branch's draft leaves; every other branch keeps its own.
-      if (actingHead !== null) clearDraft(planId, actingHead);
-      return true;
-    },
-    [actingHead, appendMessage, clearDraft, modelChoice, planId],
-  );
 
   const select = useCallback(
     (commitId: MercurianCommitId) => setPosition(positionAfterPick(graph, commitId)),
@@ -609,11 +530,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             {...(providerStatus === undefined ? {} : { skills: providerStatus.skills })}
             timeline={visibleTimeline}
             onOpenNote={openMemoryNote}
-            onAnswerQuestion={(answers) => {
-              if (visibleInFlight !== undefined) {
-                void answerQuestion(planId, visibleInFlight.turnId, answers);
-              }
-            }}
           />
           {/* One live search per repository in the project's set. Renders
               nothing; it is what makes `@` reach real files. */}
@@ -664,88 +580,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               </div>
             </div>
           )}
-          <PlanComposer
-            attachments={draft.attachments}
-            {...(providerStatus === undefined
-              ? {}
-              : {
-                  provider: providerStatus.driver,
-                  slashCommands: providerStatus.slashCommands,
-                  skills: providerStatus.skills,
-                })}
-            // Standing at an earlier point does not take the composer away —
-            // it changes what sending means, and the banner says so.
-            banner={
-              viewingSessionLeaf ? (
-                <SessionLeafBanner />
-              ) : viewingPast ? (
-                <ViewingEarlierBanner onBack={backToNow} />
-              ) : null
-            }
-            gateNotice={gateNotice}
-            mentionCandidates={mentions.candidates}
-            meter={
-              <PlanReconstructionMeter
-                draftChars={draft.text.length}
-                measure={reconstructionMeasure}
-                providers={planningModel.providers}
-                resolution={effectiveModelResolution}
-                selection={modelChoice}
-              />
-            }
-            modelPicker={
-              <>
-                <PlanModelPicker
-                  disabled={visibleInFlight !== undefined}
-                  providers={planningModel.providers}
-                  selection={modelChoice}
-                  onChange={(selection) => {
-                    if (actingHead !== null) {
-                      setDraftModelChoice(planId, actingHead, selection, draftLive);
-                    }
-                  }}
-                />
-                <PlanTraitsPicker
-                  disabled={visibleInFlight !== undefined}
-                  prompt={draft.text}
-                  providers={planningModel.providers}
-                  resolution={effectiveModelResolution}
-                  selection={modelChoice}
-                  onChange={(selection) => {
-                    if (actingHead !== null) {
-                      setDraftModelChoice(planId, actingHead, selection, draftLive);
-                    }
-                  }}
-                  onPromptChange={(text) => {
-                    if (actingHead !== null) {
-                      setDraftText(planId, actingHead, text, draftLive);
-                    }
-                  }}
-                />
-              </>
-            }
-            notice={turnRefusal === null ? null : turnRefusalNotice(modelChoice, turnRefusal)}
-            placeholder="Message this plan"
-            text={draft.text}
-            // One turn at a time per branch: Stop wears the send button only
-            // while this branch's own reply streams. A reply on another
-            // branch never gates sending here.
-            turnActive={visibleInFlight !== undefined}
-            onAddAttachments={(added) => {
-              if (actingHead !== null) addDraftAttachments(planId, actingHead, added, draftLive);
-            }}
-            onChangeText={(text) => {
-              if (actingHead !== null) setDraftText(planId, actingHead, text, draftLive);
-            }}
-            onMentionQueryChange={mentions.onMentionQueryChange}
-            onRemoveAttachment={(localId) => {
-              if (actingHead !== null) removeDraftAttachment(planId, actingHead, localId);
-            }}
-            onSend={send}
-            onStop={() => {
-              if (visibleInFlight !== undefined) void stopTurn(planId, visibleInFlight.turnId);
-            }}
-          />
         </div>
         {detail === null || !pane.open ? null : (
           <>
@@ -1059,48 +893,6 @@ function ArtifactPicker({
 }
 
 /**
- * What the composer says while you are standing at an earlier point.
- *
- * The composer still acts — that is the whole point of standing somewhere —
- * but what it does from here is open a branch rather than continue this
- * conversation, so the surface says that before you press send, and keeps the
- * way back beside it.
- */
-// The t3code composer-notification treatment: a muted card capping the
-// composer bubble, so standing on a session leaf reads as a state the
-// composer is in rather than a stray line of text.
-function SessionLeafBanner() {
-  return (
-    <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
-      <div className="px-4 py-3.5 sm:px-5 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <SquareTerminalIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-            New planning continues from the checkpoint before this coding session.
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ViewingEarlierBanner({ onBack }: { readonly onBack: () => void }) {
-  return (
-    <div className="flex items-center gap-2 border-b border-border/65 bg-muted/20 px-3 py-2">
-      <ClockIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
-      {/* Wraps rather than truncates: what sending does from here is the one
-          thing that must not get cut off in a narrow window. */}
-      <span className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
-        Viewing an earlier point — sending starts a new branch from here
-      </span>
-      <Button className="shrink-0" size="xs" variant="outline" onClick={onBack}>
-        Back to now
-      </Button>
-    </div>
-  );
-}
-
-/**
  * The draft variant: the creator's open composer and nothing else. No row
  * exists in the tree yet, because no plan exists yet — the first message is
  * the plan's birth, and only then does it appear.
@@ -1108,60 +900,7 @@ function ViewingEarlierBanner({ onBack }: { readonly onBack: () => void }) {
 export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
   const navigate = useNavigate();
   const draft = usePlanDraftStore((state) => state.draftsById[draftId]);
-  const setDraftText = usePlanDraftStore((state) => state.setDraftText);
-  const setDraftModelChoice = usePlanDraftStore((state) => state.setModelChoice);
-  const discardDraft = usePlanDraftStore((state) => state.discardDraft);
-  const createPlan = useCreatePlan();
-  // The birth message starts a reply like any other, so the gate is the
-  // same here: the plan can still be born, but the composer says up front
-  // that no assistant will answer on this machine.
-  const planningModel = usePlanningModel();
-  const modelChoice = draft?.modelChoice ?? planningModel.setting;
-  const effectiveModelResolution = resolvePlanningModel(modelChoice, planningModel.providers);
-  const providerStatus =
-    effectiveModelResolution._tag === "resolved"
-      ? planningModel.providers.find(
-          (provider) => provider.instanceId === effectiveModelResolution.instanceId,
-        )
-      : undefined;
-  const draftPlanningModelNotice = planningModelGateNotice(modelChoice, effectiveModelResolution);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  /**
-   * The unborn plan's images. Held here rather than in `planDraftStore`
-   * because there is no plan to key them by yet and the draft they belong to
-   * lives exactly as long as this view does — the text is what survives
-   * leaving, and it already did before this issue.
-   */
-  const [attachments, setAttachments] = useState<ReadonlyArray<PlanComposerAttachment>>([]);
-  // The birth message composes with the same powers as every later one, and
-  // the project it is being born into is already what says which code it can
-  // reach.
-  const mentions = usePlanMentionCandidates(
-    draft === undefined ? null : (draft.projectId as MercurianProjectId),
-  );
-
-  const send = useCallback(
-    async ({ text, attachments: uploads }: PlanComposerSubmission) => {
-      if (draft === undefined) return false;
-      const created = await createPlan({
-        projectId: draft.projectId as MercurianProjectId,
-        message: text,
-        ...(uploads.length === 0 ? {} : { attachments: uploads }),
-        ...(modelChoice === null ? {} : { modelChoice }),
-      });
-      if (created === null) {
-        return false;
-      }
-      discardDraft(draftId);
-      void navigate({
-        to: "/plans/$planId",
-        params: { planId: created.plan.planId },
-        replace: true,
-      });
-      return true;
-    },
-    [createPlan, discardDraft, draft, draftId, modelChoice, navigate],
-  );
 
   if (draft === undefined) {
     return (
@@ -1205,49 +944,6 @@ export function PlanningSpaceDraft({ draftId }: { readonly draftId: string }) {
         // by one either: it stays in the one-draft-per-project store for the
         // next plan born blank.
         onImported={(planId) => void navigate({ to: "/plans/$planId", params: { planId } })}
-      />
-      {mentions.sources}
-      <PlanComposer
-        attachments={attachments}
-        {...(providerStatus === undefined
-          ? {}
-          : {
-              provider: providerStatus.driver,
-              slashCommands: providerStatus.slashCommands,
-              skills: providerStatus.skills,
-            })}
-        mentionCandidates={mentions.candidates}
-        menuGateNotice={draftPlanningModelNotice}
-        modelPicker={
-          <>
-            <PlanModelPicker
-              providers={planningModel.providers}
-              selection={modelChoice}
-              onChange={(selection) => setDraftModelChoice(draftId, selection)}
-            />
-            <PlanTraitsPicker
-              prompt={draft.text}
-              providers={planningModel.providers}
-              resolution={effectiveModelResolution}
-              selection={modelChoice}
-              onChange={(selection) => setDraftModelChoice(draftId, selection)}
-              onPromptChange={(text) => setDraftText(draftId, text)}
-            />
-          </>
-        }
-        // Informational, not blocking: a plan is born with its first message
-        // whether or not an assistant can reply, so the draft composer says
-        // what will happen rather than refusing to create the plan.
-        notice={draftPlanningModelNotice}
-        placeholder="Describe the work"
-        text={draft.text}
-        onAddAttachments={(added) => setAttachments((current) => [...current, ...added])}
-        onChangeText={(text) => setDraftText(draftId, text)}
-        onMentionQueryChange={mentions.onMentionQueryChange}
-        onRemoveAttachment={(localId) =>
-          setAttachments((current) => current.filter((one) => one.localId !== localId))
-        }
-        onSend={send}
       />
     </PlanningSurface>
   );

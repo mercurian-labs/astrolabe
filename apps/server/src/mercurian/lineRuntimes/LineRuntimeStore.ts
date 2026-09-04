@@ -61,6 +61,11 @@ export class LineRuntimeStore extends Context.Service<
       branch: string,
     ) => Effect.Effect<Option.Option<LineRuntimeRecord>, LineRuntimeStoreError>;
     readonly create: (input: CreateLineRuntimeInput) => Effect.Effect<void, LineRuntimeStoreError>;
+    readonly rootPending: (
+      threadId: ThreadId,
+      lineRootCommitId: MercurianCommitId,
+    ) => Effect.Effect<void, LineRuntimeStoreError>;
+    readonly deleteByThread: (threadId: ThreadId) => Effect.Effect<void, LineRuntimeStoreError>;
     readonly updateBranch: (
       threadId: ThreadId,
       branch: string,
@@ -102,6 +107,7 @@ const RepositorySnapshotRequest = Schema.Struct({
 });
 const LineRuntimeRow = Schema.Struct({
   ...LineRuntimeRecord.fields,
+  forkParentCommitId: Schema.NullOr(MercurianCommitId),
   branchMovement: Schema.NullOr(Schema.fromJsonString(BranchMovement)),
 });
 const RepositoryRow = Schema.Struct({
@@ -126,7 +132,8 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const changesPubSub = yield* PubSub.unbounded<PlanId>();
   const columns = sql`
-    plan_id AS "planId", line_root_commit_id AS "lineRootCommitId", thread_id AS "threadId",
+    plan_id AS "planId", line_root_commit_id AS "lineRootCommitId",
+    fork_parent_commit_id AS "forkParentCommitId", thread_id AS "threadId",
     home_repository_id AS "homeRepositoryId", branch AS "branch", worktree_path AS "worktreePath",
     unreachable_repositories_json AS "unreachableRepositories", snapshot_oid AS "snapshotOid",
     snapshot_kind AS "snapshotKind", departed_ref AS "departedRef",
@@ -181,6 +188,24 @@ export const make = Effect.gen(function* () {
       WHERE thread_id = ${threadId}
     `,
   });
+  const rootPending = SqlSchema.void({
+    Request: Schema.Struct({ threadId: ThreadId, lineRootCommitId: MercurianCommitId }),
+    execute: ({ threadId, lineRootCommitId }) => sql`
+      UPDATE line_runtimes
+      SET line_root_commit_id = ${lineRootCommitId}, fork_parent_commit_id = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE thread_id = ${threadId} AND line_root_commit_id IS NULL
+    `,
+  });
+  const deleteRepositoriesByThread = SqlSchema.void({
+    Request: ThreadRequest,
+    execute: ({ threadId }) =>
+      sql`DELETE FROM line_runtime_repositories WHERE thread_id = ${threadId}`,
+  });
+  const deleteRuntimeByThread = SqlSchema.void({
+    Request: ThreadRequest,
+    execute: ({ threadId }) => sql`DELETE FROM line_runtimes WHERE thread_id = ${threadId}`,
+  });
   const snapshot = SqlSchema.void({
     Request: SnapshotRequest,
     execute: ({ threadId, snapshotOid, kind, departedRef, branchMovement }) => sql`
@@ -226,14 +251,23 @@ export const make = Effect.gen(function* () {
   });
   const mapError = <A, E, R>(effect: Effect.Effect<A, E, R>, operation: string) =>
     effect.pipe(Effect.mapError(toStoreError(operation)));
-  const hydrate = (record: LineRuntimeRecord) =>
-    mapError(listRepositories({ threadId: record.threadId }), "LineRuntimeStore.repositories").pipe(
+  const hydrate = (row: typeof LineRuntimeRow.Type) => {
+    const { forkParentCommitId, ...record } = row;
+    const normalized: LineRuntimeRecord = {
+      ...record,
+      ...(forkParentCommitId === null ? {} : { forkParentCommitId }),
+    };
+    return mapError(
+      listRepositories({ threadId: record.threadId }),
+      "LineRuntimeStore.repositories",
+    ).pipe(
       Effect.map((repositories) => ({
-        ...record,
+        ...normalized,
         ...(repositories.length === 0 ? {} : { repositories }),
       })),
     );
-  const hydrateOption = (record: Option.Option<LineRuntimeRecord>) =>
+  };
+  const hydrateOption = (record: Option.Option<typeof LineRuntimeRow.Type>) =>
     Option.isNone(record)
       ? Effect.succeed(Option.none<LineRuntimeRecord>())
       : hydrate(record.value).pipe(Effect.map(Option.some));
@@ -269,9 +303,11 @@ export const make = Effect.gen(function* () {
               const createdAt = DateTime.formatIso(input.createdAt);
               yield* sql`
               INSERT INTO line_runtimes (
-                plan_id, line_root_commit_id, thread_id, home_repository_id, branch, worktree_path,
+                plan_id, line_root_commit_id, fork_parent_commit_id, thread_id,
+                home_repository_id, branch, worktree_path,
                 unreachable_repositories_json, created_at, updated_at
-              ) VALUES (${input.planId}, ${input.lineRootCommitId}, ${input.threadId},
+              ) VALUES (${input.planId}, ${input.lineRootCommitId}, ${input.forkParentCommitId ?? null},
+                ${input.threadId},
                 ${input.homeRepositoryId}, ${input.branch}, ${input.worktreePath},
                 ${encodeUnreachableRepositories(input.unreachableRepositories)}, ${createdAt}, ${createdAt})
             `;
@@ -287,6 +323,20 @@ export const make = Effect.gen(function* () {
           )
           .pipe(Effect.andThen(PubSub.publish(changesPubSub, input.planId)), Effect.asVoid),
         "LineRuntimeStore.create",
+      ),
+    rootPending: (threadId, lineRootCommitId) =>
+      mapError(
+        rootPending({ threadId, lineRootCommitId }).pipe(Effect.andThen(announceThread(threadId))),
+        "LineRuntimeStore.rootPending",
+      ),
+    deleteByThread: (threadId) =>
+      mapError(
+        sql.withTransaction(
+          deleteRepositoriesByThread({ threadId }).pipe(
+            Effect.andThen(deleteRuntimeByThread({ threadId })),
+          ),
+        ),
+        "LineRuntimeStore.deleteByThread",
       ),
     updateBranch: (threadId, branch) =>
       mapError(

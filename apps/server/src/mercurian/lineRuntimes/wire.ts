@@ -34,6 +34,9 @@ export const toWireCodingSessionRecord = (
 export const toWireLineRuntimeRecord = (record: LineRuntimeRecord): PlanLineRuntimeRecord => ({
   planId: record.planId,
   lineRootCommitId: record.lineRootCommitId,
+  ...(record.forkParentCommitId === undefined
+    ? {}
+    : { forkParentCommitId: record.forkParentCommitId }),
   threadId: record.threadId,
   homeRepositoryId: record.homeRepositoryId,
   branch: record.branch,

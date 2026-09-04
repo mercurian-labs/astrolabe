@@ -3,6 +3,7 @@ import {
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
   AuthRelayWriteScope,
+  MERCURIAN_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -38,6 +39,15 @@ describe("RPC authorization scopes", () => {
   });
 
   it("requires operate access to start a coding session", () => {});
+
+  it("requires operate access to fork and open Mercurian lines", () => {
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.forkLine)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.openLine)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
 
   it("requires permission to operate on a thread before uploading feedback", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.providerUploadFeedback)).toBe(

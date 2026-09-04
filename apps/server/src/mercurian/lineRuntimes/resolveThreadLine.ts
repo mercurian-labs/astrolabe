@@ -8,7 +8,7 @@ import type { LineRuntimeStore } from "./LineRuntimeStore.ts";
 
 export interface ResolvedThreadLine {
   readonly planId: import("@t3tools/contracts").PlanId;
-  readonly lineRootCommitId: MercurianCommitId;
+  readonly lineRootCommitId: MercurianCommitId | null;
   readonly homeRepositoryId: MercurianRepositoryId;
   readonly repositories: ReadonlyArray<
     import("./LegacySessionSchema.ts").CodingSessionRepositoryRecord

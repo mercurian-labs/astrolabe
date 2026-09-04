@@ -14,12 +14,16 @@ export const make = Effect.gen(function* () {
     resolve: (threadId) =>
       resolveThreadLine(lineRuntimes, legacySessions, threadId).pipe(
         Effect.map(
-          Option.map((line) => ({
-            lineRootCommitId: line.lineRootCommitId,
-            homeRepositoryId: line.homeRepositoryId,
-            repositories: line.repositories,
-            branch: line.branch,
-          })),
+          Option.flatMap((line) =>
+            line.lineRootCommitId === null
+              ? Option.none()
+              : Option.some({
+                  lineRootCommitId: line.lineRootCommitId,
+                  homeRepositoryId: line.homeRepositoryId,
+                  repositories: line.repositories,
+                  branch: line.branch,
+                }),
+          ),
         ),
       ),
     updateBranch: (threadId, branch) =>

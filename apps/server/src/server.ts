@@ -32,7 +32,7 @@ import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import { LineBranchReactorLive } from "./mercurian/commitTree/LineBranchReactor.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
-import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
+import * as LineTurnReactor from "./mercurian/assistant/LineTurnReactor.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
 import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
 import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
@@ -602,7 +602,7 @@ const LineRuntimeServiceLayerLive = LineRuntimeService.layer.pipe(
   Layer.provideMerge(SlotServiceLayerLive),
 );
 
-const PlanningAssistantLayerLive = PlanningAssistant.layer.pipe(
+const LineTurnReactorLayerLive = LineTurnReactor.layer.pipe(
   Layer.provideMerge(LineRuntimeServiceLayerLive),
   Layer.provideMerge(SlotServiceLayerLive),
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
@@ -617,7 +617,7 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 );
 
 const RuntimeDependenciesLive = Layer.empty.pipe(
-  Layer.provideMerge(PlanningAssistantLayerLive),
+  Layer.provideMerge(LineTurnReactorLayerLive),
   Layer.provideMerge(LineRuntimeServiceLayerLive),
   Layer.provideMerge(LineRuntimeRecordReactorLayerLive),
   Layer.provideMerge(LineBranchReactorLayerLive),

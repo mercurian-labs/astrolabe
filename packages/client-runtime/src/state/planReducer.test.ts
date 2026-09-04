@@ -247,14 +247,14 @@ describe("applyPlanStreamItem", () => {
     const fromSnapshot = fold([
       { kind: "snapshot", snapshot: { ...snapshot, lineRuntimes: [lineRuntime] } },
     ]);
-    expect(fromSnapshot.lineRuntimes.get(lineRuntime.lineRootCommitId)).toEqual(lineRuntime);
+    expect(fromSnapshot.lineRuntimes.get(lineRuntime.lineRootCommitId!)).toEqual(lineRuntime);
 
     const renamed = { ...lineRuntime, branch: "mercurian/renamed" };
     const replaced = applyPlanStreamItem(fromSnapshot, {
       kind: "line-runtimes",
       lineRuntimes: [renamed],
     });
-    expect(replaced.lineRuntimes.get(lineRuntime.lineRootCommitId)).toEqual(renamed);
+    expect(replaced.lineRuntimes.get(lineRuntime.lineRootCommitId!)).toEqual(renamed);
     expect(replaced.detail?.lineRuntimes).toEqual([renamed]);
   });
 });

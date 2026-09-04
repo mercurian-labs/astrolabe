@@ -1,11 +1,10 @@
 import {
   CommandId,
+  DEFAULT_RUNTIME_MODE,
   EventId,
   type MercurianCommitId,
   type MercurianRepositoryId,
-  type ModelSelection,
   ProjectId,
-  type RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
 import { projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
@@ -24,16 +23,19 @@ import { OrchestrationEngineService } from "../../orchestration/Services/Orchest
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "../../orchestration/Services/ThreadDeletionReactor.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { getAutoBootstrapThreadModelSelection } from "../../serverRuntimeStartup.ts";
 import { TerminalManager } from "../../terminal/Manager.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
+import type { MercurianProject } from "../planning/schema.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryScript } from "../repositories/schema.ts";
 import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
-import { SlotService } from "../worktreeSlots/SlotService.ts";
+import * as SlotService from "../worktreeSlots/SlotService.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
 import type { SlotLeaseHolder, WorktreeSlot, WorktreeSlotId } from "../worktreeSlots/schema.ts";
+import { buildLineBranchName } from "./branch.ts";
 import { LineRuntimeStore } from "./LineRuntimeStore.ts";
 import type { LineRuntimeRecord } from "./schema.ts";
 
@@ -49,13 +51,25 @@ export class LineRuntimeServiceError extends Schema.TaggedErrorClass<LineRuntime
 
 export const isRepositoryNotGitError = Schema.is(RepositoryNotGitError);
 export const isLineRuntimeServiceError = Schema.is(LineRuntimeServiceError);
+const isLineBranchMissingError = Schema.is(SlotService.LineBranchMissingError);
+const isSlotPoolAtCapacityError = Schema.is(SlotService.SlotPoolAtCapacityError);
+const isSlotServiceError = Schema.is(SlotService.SlotServiceError);
 
-export interface EnsureLineRuntimeInput {
+export type EnsureThreadInput = {
   readonly planId: import("@t3tools/contracts").PlanId;
-  readonly lineRootCommitId: MercurianCommitId;
-  readonly runtimeMode: RuntimeMode;
-  readonly modelSelection: ModelSelection;
-  readonly holder: { readonly kind: "turn" };
+} & (
+  | { readonly lineRootCommitId: MercurianCommitId; readonly forkParentCommitId?: never }
+  | { readonly lineRootCommitId?: never; readonly forkParentCommitId: MercurianCommitId }
+);
+
+export type EnsureSlotHolder =
+  | { readonly kind: "turn" }
+  | { readonly kind: "terminal"; readonly terminalId: string }
+  | { readonly kind: "preview"; readonly previewId: string };
+
+export interface EnsureSlotInput {
+  readonly threadId: ThreadId;
+  readonly holder: EnsureSlotHolder;
 }
 
 export interface EnsuredLineRuntime {
@@ -63,10 +77,23 @@ export interface EnsuredLineRuntime {
   readonly slotId: WorktreeSlotId;
 }
 
+export type EnsureThreadError = RepositoryNotGitError | LineRuntimeServiceError;
+export type EnsureSlotError =
+  | RepositoryNotGitError
+  | LineRuntimeServiceError
+  | SlotService.LineBranchMissingError
+  | SlotService.SlotPoolAtCapacityError
+  | SlotService.SlotServiceError;
+
 export class LineRuntimeService extends Context.Service<
   LineRuntimeService,
   {
-    readonly ensure: (input: EnsureLineRuntimeInput) => Effect.Effect<EnsuredLineRuntime, object>;
+    readonly ensureThread: (
+      input: EnsureThreadInput,
+    ) => Effect.Effect<LineRuntimeRecord, EnsureThreadError>;
+    readonly ensureSlot: (
+      input: EnsureSlotInput,
+    ) => Effect.Effect<EnsuredLineRuntime, EnsureSlotError>;
   }
 >()("t3/mercurian/lineRuntimes/LineRuntimeService") {}
 
@@ -110,22 +137,31 @@ export const make = Effect.gen(function* () {
   const vcsStatus = yield* VcsStatusBroadcaster;
   const terminals = yield* TerminalManager;
   const deletionReactor = yield* ThreadDeletionReactor;
-  const slotService = yield* SlotService;
+  const slotService = yield* SlotService.SlotService;
   const slotStore = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
   const lineRuntimes = yield* LineRuntimeStore;
   const branches = yield* LineBranchStore;
   const path = yield* Path.Path;
 
-  /**
-   * A line's branches are minted eagerly by the line-branch reactor, which
-   * runs off the planning store's change signal — so a turn started the
-   * instant its root commit lands can reach the slot claim before the rows
-   * exist. Wait on the store's own signal, subscribed before the first check
-   * so a reconcile landing in between is never missed; the claim then reads
-   * rows that are there. Bounded, because a line whose branches never appear
-   * is a bug to surface, not a turn to hang.
-   */
+  const uuid = crypto.randomUUIDv4;
+  const commandId = (tag: string) =>
+    uuid.pipe(Effect.map((id) => CommandId.make(`server:line-runtime-${tag}:${id}`)));
+
+  const linkedRepositoriesFor = Effect.fn("LineRuntimeService.linkedRepositoriesFor")(function* (
+    projectId: import("@t3tools/contracts").MercurianProjectId,
+  ) {
+    const snapshot = yield* repositories.getSnapshot;
+    return snapshot.projectRepositories
+      .filter((link) => link.projectId === projectId)
+      .flatMap((link) => {
+        const repository = snapshot.repositories.find(
+          (candidate) => candidate.repositoryId === link.repositoryId,
+        );
+        return repository === undefined ? [] : [repository];
+      });
+  });
+
   const awaitLineBranches = Effect.fn("LineRuntimeService.awaitLineBranches")(function* (
     lineRootCommitId: MercurianCommitId,
     repositoryIds: ReadonlyArray<MercurianRepositoryId>,
@@ -143,17 +179,13 @@ export const make = Effect.gen(function* () {
         orElse: () =>
           Effect.fail(
             new LineRuntimeServiceError({
-              operation: "ensure:lineBranches",
+              operation: "ensureSlot:lineBranches",
               cause: new Error(`Line ${lineRootCommitId} never received its branches`),
             }),
           ),
       }),
     );
   });
-
-  const uuid = crypto.randomUUIDv4;
-  const commandId = (tag: string) =>
-    uuid.pipe(Effect.map((id) => CommandId.make(`server:line-runtime-${tag}:${id}`)));
 
   const appendSetupActivity = Effect.fn("LineRuntimeService.appendSetupActivity")(function* (
     threadId: ThreadId,
@@ -287,218 +319,267 @@ export const make = Effect.gen(function* () {
     return { ...record, branch: home.currentBranch, worktreePath };
   });
 
-  const ensure: LineRuntimeService["Service"]["ensure"] = Effect.fn("LineRuntimeService.ensure")(
-    function* (input) {
-      const detail = yield* planning.getPlanSnapshot({ planId: input.planId });
-      const existing = yield* lineRuntimes.getOrNone(input.planId, input.lineRootCommitId);
-      if (Option.isSome(existing)) {
-        const record = existing.value;
-        const assigned = (yield* slotStore.listAll).find(
-          (slot) =>
-            slot.projectId === detail.plan.projectId &&
-            slot.currentLineRootCommitId === input.lineRootCommitId,
-        );
-        if (assigned !== undefined) {
-          const lease = yield* slotRegistry.lease(assigned.slotId);
-          if (
-            Option.isSome(lease) &&
-            lease.value.holders.every((holder) => holder.threadId === record.threadId)
-          ) {
-            yield* slotService.retain(assigned.slotId, {
-              ...input.holder,
-              threadId: record.threadId,
-            });
-            return { record: yield* updateMetadata(record, assigned), slotId: assigned.slotId };
-          }
-        }
-        const claimed = yield* slotService.claim({
-          projectId: detail.plan.projectId,
-          lineRootCommitId: input.lineRootCommitId,
-          holder: { ...input.holder, threadId: record.threadId },
-          wait: true,
+  const ensureOrchestrationProject = Effect.fn("LineRuntimeService.ensureOrchestrationProject")(
+    function* (
+      project: MercurianProject,
+      primaryRepository: { readonly name: string; readonly path: string },
+    ) {
+      if (project.orchestrationProjectId !== null) return project.orchestrationProjectId;
+      const existing = yield* projections.getActiveProjectByWorkspaceRoot(primaryRepository.path);
+      const projectId = Option.isSome(existing) ? existing.value.id : ProjectId.make(yield* uuid);
+      if (Option.isNone(existing)) {
+        yield* orchestration.dispatch({
+          type: "project.create",
+          commandId: yield* commandId("project-create"),
+          projectId,
+          title: primaryRepository.name,
+          workspaceRoot: primaryRepository.path,
+          defaultModelSelection: getAutoBootstrapThreadModelSelection(),
+          createdAt: DateTime.formatIso(yield* DateTime.now),
         });
-        return { record: yield* updateMetadata(record, claimed), slotId: claimed.slotId };
       }
-
-      const repositorySnapshot = yield* repositories.getSnapshot;
-      const linkedRepositories = repositorySnapshot.projectRepositories
-        .filter((link) => link.projectId === detail.plan.projectId)
-        .flatMap((link) => {
-          const repository = repositorySnapshot.repositories.find(
-            (candidate) => candidate.repositoryId === link.repositoryId,
-          );
-          return repository === undefined ? [] : [repository];
-        });
-      const primaryRepository = linkedRepositories[0];
-      if (
-        primaryRepository === undefined ||
-        linkedRepositories.some((repository) => !repository.hasGit)
-      ) {
-        return yield* new RepositoryNotGitError();
-      }
-      const capabilities = yield* providerService.getCapabilities(input.modelSelection.instanceId);
-      const unreachableRepositories =
-        capabilities.groundingRoots === "multi"
-          ? []
-          : linkedRepositories.slice(1).map((repository) => repository.name);
-      const createdAt = yield* DateTime.now;
-      const createdAtIso = DateTime.formatIso(createdAt);
-      const threadId = ThreadId.make(yield* uuid);
-      const holder = { ...input.holder, threadId } as SlotLeaseHolder;
-      let threadCreated = false;
-      let slotId: WorktreeSlotId | undefined;
-      const cleanup = Effect.gen(function* () {
-        if (threadCreated) {
-          const deleted = yield* Effect.exit(
-            orchestration.dispatch({
-              type: "thread.delete",
-              commandId: yield* commandId("cleanup-thread"),
-              threadId,
-            }),
-          );
-          if (Exit.isSuccess(deleted)) {
-            yield* deletionReactor
-              .drainThrough(deleted.value.sequence)
-              .pipe(Effect.ignoreCause({ log: true }));
-          } else {
-            yield* Effect.logWarning("Could not delete failed line-runtime thread.", {
-              threadId,
-              cause: deleted.cause,
-            });
-          }
-        }
-        if (slotId !== undefined) {
-          yield* slotService.release(slotId, holder).pipe(Effect.ignoreCause({ log: true }));
-        }
-      });
-      return yield* withLineRuntimeBirthCompensation(
-        Effect.gen(function* () {
-          yield* awaitLineBranches(
-            input.lineRootCommitId,
-            linkedRepositories.map((repository) => repository.repositoryId),
-          );
-          const slot = yield* slotService.claim({
-            projectId: detail.plan.projectId,
-            lineRootCommitId: input.lineRootCommitId,
-            holder,
-            wait: true,
-          });
-          slotId = slot.slotId;
-          const primaryMember = slot.members.find(
-            (member) => member.repositoryId === primaryRepository.repositoryId,
-          );
-          if (primaryMember === undefined || primaryMember.currentBranch === null) {
-            return yield* new LineRuntimeServiceError({
-              operation: "ensure:homeLineBranch",
-              cause: new Error(`Project slot ${slot.slotId} has no primary line branch`),
-            });
-          }
-          const workspaceMembers = workspaceMembersOf(slot, primaryRepository.repositoryId);
-          const worktreePath = workspaceMembers.find(
-            (member) => member.repositoryId === primaryRepository.repositoryId,
-          )!.worktreePath;
-          const project = yield* projections.getActiveProjectByWorkspaceRoot(
-            primaryRepository.path,
-          );
-          const projectId = Option.isSome(project) ? project.value.id : ProjectId.make(yield* uuid);
-          if (Option.isNone(project)) {
-            yield* orchestration.dispatch({
-              type: "project.create",
-              commandId: yield* commandId("project-create"),
-              projectId,
-              title: primaryRepository.name,
-              workspaceRoot: primaryRepository.path,
-              defaultModelSelection: input.modelSelection,
-              createdAt: createdAtIso,
-            });
-          }
-          yield* orchestration.dispatch({
-            type: "thread.create",
-            commandId: yield* commandId("thread-create"),
-            threadId,
-            projectId,
-            title: detail.plan.title,
-            modelSelection: input.modelSelection,
-            runtimeMode: input.runtimeMode,
-            interactionMode: "default",
-            branch: primaryMember.currentBranch,
-            worktreePath: null,
-            createdAt: createdAtIso,
-          });
-          threadCreated = true;
-          yield* orchestration.dispatch({
-            type: "thread.meta.update",
-            commandId: yield* commandId("thread-meta"),
-            threadId,
-            branch: primaryMember.currentBranch,
-            worktreePath,
-            workspaceMembers,
-          });
-          for (const member of workspaceMembers) {
-            yield* vcsStatus
-              .refreshStatus(member.worktreePath)
-              .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach);
-            const repository = linkedRepositories.find(
-              (candidate) => candidate.repositoryId === member.repositoryId,
-            );
-            if (repository === undefined) continue;
-            for (const script of repository.scripts) {
-              if (script.isSetup) {
-                yield* launchSetupScript(
-                  threadId,
-                  String(repository.repositoryId),
-                  repository.path,
-                  member.worktreePath,
-                  script,
-                );
-              }
-            }
-          }
-          yield* lineRuntimes.create({
-            planId: input.planId,
-            lineRootCommitId: input.lineRootCommitId,
-            threadId,
-            homeRepositoryId: primaryRepository.repositoryId,
-            branch: primaryMember.currentBranch,
-            worktreePath,
-            unreachableRepositories,
-            repositoryIds: linkedRepositories.map((repository) => repository.repositoryId),
-            createdAt,
-          });
-          const record: LineRuntimeRecord = {
-            planId: input.planId,
-            lineRootCommitId: input.lineRootCommitId,
-            threadId,
-            homeRepositoryId: primaryRepository.repositoryId,
-            branch: primaryMember.currentBranch,
-            worktreePath,
-            unreachableRepositories,
-            snapshotOid: null,
-            snapshotKind: null,
-            departedRef: null,
-            branchMovement: null,
-            lineBranchMissingOid: null,
-            createdAt,
-            updatedAt: createdAt,
-            repositories: linkedRepositories.map((repository) => ({
-              repositoryId: repository.repositoryId,
-              repositoryName: repository.name,
-              snapshotOid: null,
-              snapshotKind: null,
-              branchTipOid: null,
-              departedRef: null,
-              branchMovement: null,
-              prUrl: null,
-            })),
-          };
-          return { record, slotId: slot.slotId };
-        }),
-        cleanup,
-      );
+      yield* planning.setOrchestrationProjectId(project.projectId, projectId);
+      return projectId;
     },
   );
 
-  return LineRuntimeService.of({ ensure });
+  const ensureThread = Effect.fn("LineRuntimeService.ensureThread")(function* (
+    input: EnsureThreadInput,
+  ) {
+    if (input.lineRootCommitId !== undefined) {
+      const existing = yield* lineRuntimes.getOrNone(input.planId, input.lineRootCommitId);
+      if (Option.isSome(existing)) return existing.value;
+    } else {
+      const existing = (yield* lineRuntimes.listByPlan(input.planId)).find(
+        (runtime) =>
+          runtime.lineRootCommitId === null &&
+          runtime.forkParentCommitId === input.forkParentCommitId,
+      );
+      if (existing !== undefined) return existing;
+    }
+
+    const detail = yield* planning.getPlanSnapshot({ planId: input.planId });
+    const project = yield* planning.getProject(detail.plan.projectId);
+    const linkedRepositories = yield* linkedRepositoriesFor(detail.plan.projectId);
+    const primaryRepository = linkedRepositories[0];
+    if (
+      primaryRepository === undefined ||
+      linkedRepositories.some((repository) => !repository.hasGit)
+    ) {
+      return yield* new RepositoryNotGitError();
+    }
+    const orchestrationProjectId = yield* ensureOrchestrationProject(project, primaryRepository);
+    const shell = yield* projections.getShellSnapshot();
+    const lastThread = shell.threads
+      .filter((thread) => thread.projectId === orchestrationProjectId)
+      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const projectShell = shell.projects.find(
+      (candidate) => candidate.id === orchestrationProjectId,
+    );
+    const modelSelection =
+      lastThread?.modelSelection ??
+      projectShell?.defaultModelSelection ??
+      getAutoBootstrapThreadModelSelection();
+    const runtimeMode = lastThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+    const capabilities = yield* providerService.getCapabilities(modelSelection.instanceId);
+    const unreachableRepositories =
+      capabilities.groundingRoots === "multi"
+        ? []
+        : linkedRepositories.slice(1).map((repository) => repository.name);
+    const createdAt = yield* DateTime.now;
+    const createdAtIso = DateTime.formatIso(createdAt);
+    const threadId = ThreadId.make(yield* uuid);
+    const provisionalKey = input.lineRootCommitId ?? input.forkParentCommitId ?? threadId;
+    const provisionalBranch = buildLineBranchName(detail.plan.title, String(provisionalKey));
+    let threadCreated = false;
+    let runtimeCreated = false;
+    const cleanup = Effect.gen(function* () {
+      if (threadCreated) {
+        const deleted = yield* Effect.exit(
+          orchestration.dispatch({
+            type: "thread.delete",
+            commandId: yield* commandId("cleanup-thread"),
+            threadId,
+          }),
+        );
+        if (Exit.isSuccess(deleted)) {
+          yield* deletionReactor.drainThrough(deleted.value.sequence).pipe(Effect.ignoreCause());
+        }
+      }
+      if (runtimeCreated) yield* lineRuntimes.deleteByThread(threadId).pipe(Effect.ignoreCause());
+    });
+    return yield* withLineRuntimeBirthCompensation(
+      Effect.gen(function* () {
+        yield* lineRuntimes.create({
+          planId: input.planId,
+          lineRootCommitId: input.lineRootCommitId ?? null,
+          ...(input.forkParentCommitId === undefined
+            ? {}
+            : { forkParentCommitId: input.forkParentCommitId }),
+          threadId,
+          homeRepositoryId: primaryRepository.repositoryId,
+          branch: provisionalBranch,
+          worktreePath: primaryRepository.path,
+          unreachableRepositories,
+          repositoryIds: linkedRepositories.map((repository) => repository.repositoryId),
+          createdAt,
+        });
+        runtimeCreated = true;
+        yield* orchestration.dispatch({
+          type: "thread.create",
+          commandId: yield* commandId("thread-create"),
+          threadId,
+          projectId: orchestrationProjectId,
+          title: detail.plan.title,
+          modelSelection,
+          runtimeMode,
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: createdAtIso,
+        });
+        threadCreated = true;
+        const record: LineRuntimeRecord = {
+          planId: input.planId,
+          lineRootCommitId: input.lineRootCommitId ?? null,
+          ...(input.forkParentCommitId === undefined
+            ? {}
+            : { forkParentCommitId: input.forkParentCommitId }),
+          threadId,
+          homeRepositoryId: primaryRepository.repositoryId,
+          branch: provisionalBranch,
+          worktreePath: primaryRepository.path,
+          unreachableRepositories,
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
+          lineBranchMissingOid: null,
+          createdAt,
+          updatedAt: createdAt,
+          repositories: linkedRepositories.map((repository) => ({
+            repositoryId: repository.repositoryId,
+            repositoryName: repository.name,
+            snapshotOid: null,
+            snapshotKind: null,
+            branchTipOid: null,
+            departedRef: null,
+            branchMovement: null,
+            prUrl: null,
+          })),
+        };
+        if (record.lineRootCommitId !== null) {
+          const assigned = (yield* slotStore.listAll).find(
+            (slot) =>
+              slot.projectId === detail.plan.projectId &&
+              slot.currentLineRootCommitId === record.lineRootCommitId,
+          );
+          if (assigned !== undefined) return yield* updateMetadata(record, assigned);
+        }
+        return record;
+      }),
+      cleanup,
+    );
+  });
+
+  const ensureSlot = Effect.fn("LineRuntimeService.ensureSlot")(function* ({
+    threadId,
+    holder,
+  }: EnsureSlotInput) {
+    const runtime = yield* lineRuntimes.getByThreadId(threadId);
+    if (Option.isNone(runtime)) {
+      return yield* new LineRuntimeServiceError({
+        operation: "ensureSlot:runtime",
+        cause: new Error(`Thread ${threadId} has no line runtime`),
+      });
+    }
+    const record = runtime.value;
+    if (record.lineRootCommitId === null) {
+      // The websocket send hook roots a line before asking for its slot. Keep
+      // this guard for direct/internal callers that violate that ordering.
+      return yield* new LineRuntimeServiceError({
+        operation: "ensureSlot:pendingLine",
+        cause: new Error(`Thread ${threadId} has not received its first message`),
+      });
+    }
+    const detail = yield* planning.getPlanSnapshot({ planId: record.planId });
+    const linkedRepositories = yield* linkedRepositoriesFor(detail.plan.projectId);
+    if (
+      linkedRepositories.length === 0 ||
+      linkedRepositories.some((repository) => !repository.hasGit)
+    ) {
+      return yield* new RepositoryNotGitError();
+    }
+    yield* awaitLineBranches(
+      record.lineRootCommitId,
+      linkedRepositories.map((repository) => repository.repositoryId),
+    );
+    const leaseHolder = { ...holder, threadId } as SlotLeaseHolder;
+    const assigned = (yield* slotStore.listAll).find(
+      (slot) =>
+        slot.projectId === detail.plan.projectId &&
+        slot.currentLineRootCommitId === record.lineRootCommitId,
+    );
+    if (assigned !== undefined) {
+      const lease = yield* slotRegistry.lease(assigned.slotId);
+      if (
+        Option.isSome(lease) &&
+        lease.value.holders.every((candidate) => candidate.threadId === threadId)
+      ) {
+        yield* slotService.retain(assigned.slotId, leaseHolder);
+        return { record: yield* updateMetadata(record, assigned), slotId: assigned.slotId };
+      }
+    }
+    const claimed = yield* slotService.claim({
+      projectId: detail.plan.projectId,
+      lineRootCommitId: record.lineRootCommitId,
+      holder: leaseHolder,
+      wait: true,
+    });
+    const updated = yield* updateMetadata(record, claimed);
+    for (const member of workspaceMembersOf(claimed, record.homeRepositoryId)) {
+      yield* vcsStatus
+        .refreshStatus(member.worktreePath)
+        .pipe(Effect.ignoreCause(), Effect.forkDetach);
+      const repository = linkedRepositories.find(
+        (candidate) => candidate.repositoryId === member.repositoryId,
+      );
+      if (repository === undefined) continue;
+      for (const script of repository.scripts) {
+        if (script.isSetup) {
+          yield* launchSetupScript(
+            threadId,
+            String(repository.repositoryId),
+            repository.path,
+            member.worktreePath,
+            script,
+          );
+        }
+      }
+    }
+    return { record: updated, slotId: claimed.slotId };
+  });
+
+  const preserveSlotError = (cause: unknown): EnsureSlotError =>
+    isRepositoryNotGitError(cause) ||
+    isLineRuntimeServiceError(cause) ||
+    isLineBranchMissingError(cause) ||
+    isSlotPoolAtCapacityError(cause) ||
+    isSlotServiceError(cause)
+      ? cause
+      : new LineRuntimeServiceError({ operation: "ensureSlot", cause });
+
+  return LineRuntimeService.of({
+    ensureThread: (input) =>
+      ensureThread(input).pipe(
+        Effect.mapError((cause): EnsureThreadError =>
+          isRepositoryNotGitError(cause) || isLineRuntimeServiceError(cause)
+            ? cause
+            : new LineRuntimeServiceError({ operation: "ensureThread", cause }),
+        ),
+      ),
+    ensureSlot: (input) => ensureSlot(input).pipe(Effect.mapError(preserveSlotError)),
+  });
 });
 
 export const layer = Layer.effect(LineRuntimeService, make);
