@@ -2,6 +2,8 @@
 
 _Where the plan's contestable choices are shown, one at a time, so they can be decided at leisure. The durable record is the plan's Decision Log. Grounded 2026-09-02 against the M-206 branch after its rebase onto main (`3fe37864c`), which is the tree M-194 will build on._
 
+**Resolved 2026-09-03: every recommendation applied, no overrides given; the plan's Decision Log records each. The plan was re-grounded on main (M-196, M-206 build 2) in the same pass.**
+
 **How to read this.** Ten decisions. The first seven shape structure or are hard to reverse; the last three are local and cheap to change later. Each opens with a picture of the problem, lists the real alternatives fairly, names the honest cost of the recommendation, and ends with _Keep or change?_ Decisions 3 and 4 are coupled: the answer to 3 decides 4. Reply with one line, for example: "keep 1–2, change 3 to B and 4 with it, keep the rest."
 
 **Filtered out as settled or noise.** The commit trailer as the amendment mark (the repo already marks memory commits with an `Amended-from-plan` trailer, so a second trailer is the precedent, not a choice). Where the shared membership helper lives (beside the slot service, as M-206's chain helper is). Extracting the memory prompt appendix into one function (a refactor, not a design). The shape of the optional `threadId` on the read contracts (M-206 set the "optional field, absent means the old behavior" pattern). The nested-repository refusal (the vault settled it 2026-09-01).
@@ -16,6 +18,8 @@ _Where the plan's contestable choices are shown, one at a time, so they can be d
 ---
 
 ## 1 (architectural) — How the memory repository joins the slot
+
+_Resolved 2026-09-03: keep._
 
 Picture a project's slot as a shelf holding one working copy of every repository the project links, arranged as they sit on disk. Today the memory repository is not on that shelf unless someone happened to link it as a code repository, so it gets no line branch, no snapshot, and no place in the pool.
 
@@ -35,6 +39,8 @@ _Keep or change?_
 
 ## 2 (architectural) — How the product reads a line's memory
 
+_Resolved 2026-09-03: keep._
+
 Picture a note open in the transient reader inside a thread. Which version should it show, and where should the product go to get it, given that the line's slot may currently be lent to another line?
 
 **The plan chose** tree reads from refs for every product read: list and read files from the line's chain head when it has one, else its branch tip, restricted to the memory root, never from a directory (plan: "Reads: a `MemoryTreeSource`").
@@ -52,6 +58,8 @@ Picture a note open in the transient reader inside a thread. Which version shoul
 _Keep or change?_
 
 ## 3 (architectural) — Where a planning turn's memory files come from
+
+_Resolved 2026-09-03: change to B — planning turns claim the slot._
 
 Picture the assistant answering a planning message. It needs the memory as this line sees it, as real files on disk, because providers read paths. Today planning turns run read-only in the project's primary checkouts, outside the slot pool, and the memory root they get is the designated folder on main.
 
@@ -71,6 +79,8 @@ _Keep or change?_
 
 ## 4 (architectural, follows 3) — How an amendment commit is made
 
+_Resolved 2026-09-03: follows 3 — reuse the existing commit path._
+
 Picture the propose tool landing a note. Somewhere a commit has to be created on the line's branch of the memory repository, and the files a running turn is reading must agree with it afterwards.
 
 **The plan chose** git plumbing: build the tree from the branch tip with the changed blobs swapped in, commit it, move the branch ref with a compare-and-swap, then refresh only the amended paths in any slot member that has the branch checked out (plan: "Writes").
@@ -87,6 +97,8 @@ Picture the propose tool landing a note. Somewhere a commit has to be created on
 _Keep or change?_
 
 ## 5 (architectural) — How a standalone memory merges home
+
+_Resolved 2026-09-03: keep, with the git-version floor._
 
 Picture a design vault that is its own repository, checked out in the person's own folder on `main`, and a line's branch of it ready to come home. The product has to produce a merge commit on `main` without wrecking the person's folder.
 
@@ -106,6 +118,8 @@ _Keep or change?_
 
 ## 6 (architectural) — Where the memory tab lives
 
+_Resolved 2026-09-03: keep as interim, vault note owed._
+
 Picture the right side of a thread. The vault says the pane "carries the thread's three standing views," artifact, Checkpoint Graph, and code. Today the built pane has two, artifact and graph. Where does the list of a line's memory changes go?
 
 **The plan chose** a third corner toggle in the planning space's right pane, a `memory` view beside artifact and graph (plan: "The memory tab", Web).
@@ -123,6 +137,8 @@ Picture the right side of a thread. The vault says the pane "carries the thread'
 _Keep or change?_
 
 ## 7 (architectural) — What "the work shipped" means
+
+_Resolved 2026-09-03: keep, refresh PR status on tab open._
 
 Picture the moment the product should suggest merging a line's memory home. The vault says "when the work ships, the code merged, the thread published." Neither exists as a fact the product records today.
 
@@ -142,6 +158,8 @@ _Keep or change?_
 
 ## 8 (local) — Where review state is kept
 
+_Resolved 2026-09-03: keep._
+
 Picture the unreviewed count on the tab. Something has to remember which memory commits a person has looked at.
 
 **The plan chose** a small table, one row per reviewed commit keyed by line and repository, with migration 015 (plan: "The memory tab", Server).
@@ -160,6 +178,8 @@ _Keep or change?_
 
 ## 9 (local) — How an unmarked change is reverted without a slot
 
+_Resolved 2026-09-03: keep._
+
 Picture a note the agent edited by hand. It is in the line's snapshot but not on its branch, the line's slot may be lent out, and the person wants it gone.
 
 **The plan chose** a new snapshot on the chain whose tree is the chain head with the memory paths restored from the branch tip, with a fifth kind, `curated`, so the next claim lays it over the branch (plan: "Revert").
@@ -177,6 +197,8 @@ Picture a note the agent edited by hand. It is in the line's snapshot but not on
 _Keep or change?_
 
 ## 10 (local) — What ships first
+
+_Resolved 2026-09-03: change — phase 1 carries the read-only list._
 
 Picture phase 1 landing on its own: the propose tool commits amendments on the line's branch with no confirmation, and the tab that shows them does not exist until phase 2. For that window an amendment is invisible in the product.
 
