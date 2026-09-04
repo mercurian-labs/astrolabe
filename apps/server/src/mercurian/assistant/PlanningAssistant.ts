@@ -698,7 +698,7 @@ export const make = Effect.gen(function* () {
         Effect.logError("planning assistant runtime event failed", { cause }),
       ),
     ),
-  ).pipe(Effect.forkScoped);
+  ).pipe(Effect.forkScoped({ startImmediately: true }));
 
   const refuse = (planId: PlanId, reason: PlanTurnRefusalReason) =>
     publishFrame(planId, { kind: "turn-refused", reason });
