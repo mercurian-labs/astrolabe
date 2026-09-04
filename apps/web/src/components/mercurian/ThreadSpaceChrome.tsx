@@ -13,6 +13,7 @@ import type { ThreadSyncPhase } from "../../threadSync";
 import type { ChatMessage } from "../../types";
 import ChatView from "../ChatView";
 import type { ChatComposerMentionSources } from "../chat/ChatComposer";
+import type { ThreadActionMenuId } from "../threadActionMenu.logic";
 import { Button } from "../ui/button";
 import { LineBranchMissingBanner } from "./LineBranchMissingBanner";
 import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
@@ -35,12 +36,25 @@ export type ThreadSpaceChatViewChrome = Readonly<{
   headerLeadingActions?: ReactNode;
   headerBanner?: ReactNode;
   headerProjectName?: string;
+  hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId>;
   workspaceReady?: boolean;
   workspaceCwdOverride?: string | null;
   mentionSources?: ChatComposerMentionSources;
   canForkHere?: (message: ChatMessage) => boolean;
   onForkHere?: (message: ChatMessage) => void;
 }>;
+
+const MERCURIAN_HIDDEN_THREAD_MENU_ACTIONS: ReadonlySet<ThreadActionMenuId> = new Set([
+  "new-thread-on-branch",
+  "pin",
+  "unpin",
+  "settle",
+  "unsettle",
+  "snooze",
+  "unsnooze",
+  "archive",
+  "delete",
+]);
 
 export type ThreadSpaceChrome = Readonly<{
   chatView: ThreadSpaceChatViewChrome;
@@ -200,6 +214,7 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
             ),
           }),
       ...(headerProjectName === undefined ? {} : { headerProjectName }),
+      hiddenThreadMenuActions: MERCURIAN_HIDDEN_THREAD_MENU_ACTIONS,
       workspaceReady,
       ...(workspaceCwdOverride === undefined ? {} : { workspaceCwdOverride }),
       mentionSources,

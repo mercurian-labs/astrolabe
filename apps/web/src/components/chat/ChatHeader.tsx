@@ -46,9 +46,11 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
+import type { ThreadActionMenuId } from "../threadActionMenu.logic";
 
 interface ChatHeaderProps {
   leadingActions?: ReactNode | undefined;
+  hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId> | undefined;
   workspaceReady?: boolean | undefined;
   activeThreadEnvironmentId: EnvironmentId;
   activeThreadId: ThreadId;
@@ -123,6 +125,7 @@ export function shouldShowOpenInPicker(input: {
 
 export const ChatHeader = memo(function ChatHeader({
   leadingActions,
+  hiddenThreadMenuActions,
   workspaceReady = true,
   activeThreadEnvironmentId,
   activeThreadId,
@@ -223,6 +226,7 @@ export const ChatHeader = memo(function ChatHeader({
     threadRef: isServerThread ? activeThreadRef : null,
     projectCwd: activeProjectCwd,
     onStartRename: startRename,
+    hiddenActions: hiddenThreadMenuActions,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleMenuTimerRef = useRef<number | null>(null);

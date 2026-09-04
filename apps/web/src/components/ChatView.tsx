@@ -172,6 +172,7 @@ import { PullRequestDetailPanel } from "./pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs, type PullRequestTabStatus } from "./RightPanelTabs";
+import type { ThreadActionMenuId } from "./threadActionMenu.logic";
 import { AgentsPanel } from "./AgentsPanel";
 import {
   deriveAgentPanelModel,
@@ -633,6 +634,7 @@ type ChatViewSlots = {
   headerBanner?: ReactNode;
   headerLeadingActions?: ReactNode;
   headerProjectName?: string;
+  hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId>;
   workspaceReady?: boolean;
   workspaceCwdOverride?: string | null;
   mentionSources?: ChatComposerMentionSources;
@@ -1365,6 +1367,7 @@ function ChatViewContent(props: ChatViewProps) {
     headerBanner,
     headerLeadingActions,
     headerProjectName,
+    hiddenThreadMenuActions,
     workspaceReady,
     workspaceCwdOverride,
     mentionSources,
@@ -7559,6 +7562,7 @@ function ChatViewContent(props: ChatViewProps) {
           {headerContent ?? (
             <ChatHeader
               leadingActions={headerLeadingActions}
+              hiddenThreadMenuActions={hiddenThreadMenuActions}
               workspaceReady={workspaceReady}
               {...(!supportsPullRequests || activeProjectRepository === null
                 ? {}

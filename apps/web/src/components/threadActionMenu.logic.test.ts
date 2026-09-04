@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./threadActionMenu.logic";
+import {
+  buildThreadActionMenuItems,
+  filterThreadActionMenuItems,
+  type ThreadActionMenuId,
+  type ThreadActionMenuState,
+} from "./threadActionMenu.logic";
 
 const baseState: ThreadActionMenuState = {
   branch: null,
@@ -105,5 +110,50 @@ describe("buildThreadActionMenuItems", () => {
       (item) => item.id === "archive",
     );
     expect(archiveItem?.disabled).toBe(true);
+  });
+
+  it("filters hidden lifecycle actions, their snooze presets, and orphaned separators", () => {
+    const hidden = new Set<ThreadActionMenuId>([
+      "new-thread-on-branch",
+      "pin",
+      "unpin",
+      "settle",
+      "unsettle",
+      "snooze",
+      "unsnooze",
+      "archive",
+      "delete",
+    ]);
+    const items = filterThreadActionMenuItems(
+      buildThreadActionMenuItems({ ...baseState, branch: "main" }),
+      hidden,
+    );
+    const flatten = (nested: typeof items): string[] =>
+      nested.flatMap((item) => [item.id, ...(item.children ? flatten(item.children) : [])]);
+
+    expect(flatten(items)).toEqual([
+      "rename",
+      "regenerate-title",
+      "mark-unread",
+      "copy",
+      "copy-path",
+      "copy-branch",
+      "copy-thread-id",
+      "project-settings",
+    ]);
+    expect(items[0]?.separatorBefore).toBeUndefined();
+    expect(items.at(-1)?.separatorBefore).toBeUndefined();
+
+    const inverseStateItems = filterThreadActionMenuItems(
+      buildThreadActionMenuItems({
+        ...baseState,
+        branch: "main",
+        isPinned: true,
+        isSettled: true,
+        isSnoozed: true,
+      }),
+      hidden,
+    );
+    expect(flatten(inverseStateItems)).toEqual(flatten(items));
   });
 });
