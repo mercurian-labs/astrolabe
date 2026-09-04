@@ -6,6 +6,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
@@ -25,6 +26,7 @@ import { mergeGitStatusParts } from "@t3tools/shared/git";
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { CodingSessionStore } from "../mercurian/codingSessions/CodingSessionStore.ts";
 
 const DEFAULT_VCS_STATUS_REFRESH_INTERVAL = Duration.seconds(30);
 const VCS_STATUS_REFRESH_FAILURE_BASE_DELAY = Duration.seconds(30);
@@ -205,6 +207,7 @@ export const make = Effect.gen(function* () {
   const autoPullPolicy = yield* VcsAutoPullPolicy;
   const workflow = yield* GitWorkflowService.GitWorkflowService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
+  const codingSessions = yield* CodingSessionStore;
   const fs = yield* FileSystem.FileSystem;
   const changesPubSub = yield* Effect.acquireRelease(
     PubSub.unbounded<VcsStatusChange>(),
@@ -414,6 +417,26 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const recordPullRequestState = Effect.fn("VcsStatusBroadcaster.recordPullRequestState")(
+    function* (remote: VcsStatusRemoteResult | null) {
+      if (remote?.pr === null || remote?.pr === undefined) return;
+      const pullRequest = remote.pr;
+      yield* Effect.gen(function* () {
+        const session = yield* codingSessions.getByBranch(pullRequest.headRef);
+        if (Option.isSome(session)) {
+          yield* codingSessions.recordPullRequestState(session.value.threadId, pullRequest.state);
+        }
+      }).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("failed to record coding session pull request state", {
+            branch: pullRequest.headRef,
+            cause,
+          }),
+        ),
+      );
+    },
+  );
+
   const refreshRemoteStatus = Effect.fn("VcsStatusBroadcaster.refreshRemoteStatus")(function* (
     cwd: string,
     options?: {
@@ -426,8 +449,12 @@ export const make = Effect.gen(function* () {
     }
     const remote = yield* workflow.remoteStatus({ cwd }, options);
     const pulled = yield* maybeAutoPull(cwd, remote, options?.policyCwds ?? [cwd]);
-    if (pulled !== null) return pulled.remote;
-    return yield* updateCachedRemoteStatus(cwd, remote, { publish: true });
+    const refreshedRemote =
+      pulled !== null
+        ? pulled.remote
+        : yield* updateCachedRemoteStatus(cwd, remote, { publish: true });
+    yield* recordPullRequestState(refreshedRemote);
+    return refreshedRemote;
   });
 
   const refreshStatus: VcsStatusBroadcaster["Service"]["refreshStatus"] = Effect.fn(
@@ -442,8 +469,12 @@ export const make = Effect.gen(function* () {
       { concurrency: "unbounded" },
     );
     const pulled = yield* maybeAutoPull(cwd, remote, [rawCwd]);
-    if (pulled !== null) return mergeGitStatusParts(pulled.local, pulled.remote);
-    return yield* updateCachedStatus(cwd, local, remote, { publish: true });
+    const status =
+      pulled !== null
+        ? mergeGitStatusParts(pulled.local, pulled.remote)
+        : yield* updateCachedStatus(cwd, local, remote, { publish: true });
+    yield* recordPullRequestState(status);
+    return status;
   });
 
   const makeRemoteRefreshLoop = (

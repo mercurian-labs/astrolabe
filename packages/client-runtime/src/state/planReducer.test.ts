@@ -528,4 +528,18 @@ describe("applyPlanStreamItem memory amendments", () => {
       "mercurian/composer",
     );
   });
+
+  it("stores a merge-home conflict and clears it when a turn starts", () => {
+    const conflicted = applyPlanStreamItem(fold([{ kind: "snapshot", snapshot }]), {
+      kind: "memory-merge-home-conflict",
+      conflicts: [{ path: "Memory.md" }],
+    });
+    expect(conflicted.memoryMergeHomeConflict?.conflicts).toEqual([{ path: "Memory.md" }]);
+    const cleared = applyPlanStreamItem(conflicted, {
+      kind: "turn-started",
+      turnId: PlanTurnId.make("turn-conflict"),
+      parentCommitId: MercurianCommitId.make("commit-1"),
+    });
+    expect(cleared.memoryMergeHomeConflict).toBeNull();
+  });
 });

@@ -33,6 +33,7 @@ const PLAN_STREAM_KINDS = [
   "turn-settled",
   "turn-refused",
   "memory-amendment-failed",
+  "memory-merge-home-conflict",
 ] as const;
 
 type _PlanTimelineTagsAreExact = Assert<
@@ -90,6 +91,7 @@ describe("coding-session contracts", () => {
       "turn-settled",
       "turn-refused",
       "memory-amendment-failed",
+      "memory-merge-home-conflict",
     ]);
   });
 

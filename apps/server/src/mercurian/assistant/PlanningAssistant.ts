@@ -246,6 +246,8 @@ export class PlanningAssistant extends Context.Service<
      * access; frames are transport, never resumable (ADR 002 §3).
      */
     readonly frames: (planId: PlanId) => Stream.Stream<PlanStreamItem>;
+    /** Publish a transient product-owned frame into a plan subscription. */
+    readonly publishFrame: (planId: PlanId, frame: PlanStreamItem) => Effect.Effect<void>;
     /** The partial turns for snapshot composition — join-mid-turn's source, one per streaming branch. */
     readonly inFlightTurns: (planId: PlanId) => Effect.Effect<ReadonlyArray<PlanInFlightTurn>>;
     /** The tree's two status inputs, for every plan with a live turn. */
@@ -1511,6 +1513,7 @@ export const make = Effect.gen(function* () {
     stopTurn,
     answerQuestion,
     frames,
+    publishFrame,
     inFlightTurns,
     status,
     teardownPlan,

@@ -30,6 +30,7 @@ import {
 
 import * as Config from "../../config.ts";
 import * as ProcessRunner from "../../processRunner.ts";
+import * as ServerSettings from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import * as GitVcsDriverModule from "../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
@@ -326,6 +327,9 @@ const testLayer = (
     }),
     Layer.mock(SnapshotChain.SnapshotChain)({
       captureTree: () => Effect.die("not used"),
+    }),
+    Layer.mock(ServerSettings.ServerSettingsService)({
+      getSettings: Effect.succeed({ newWorktreesStartFromOrigin: false } as never),
     }),
   );
   const memoryIndexLayer = MemoryIndex.layer.pipe(

@@ -56,6 +56,10 @@ const EMPTY_PLAN_ATOM = Atom.make(
         PlanStreamItem,
         { readonly kind: "memory-amendment-failed" }
       > | null;
+      readonly memoryMergeHomeConflict: Extract<
+        PlanStreamItem,
+        { readonly kind: "memory-merge-home-conflict" }
+      > | null;
     },
     never
   >(false),
@@ -99,6 +103,10 @@ export interface PlanDetailState {
     PlanStreamItem,
     { readonly kind: "memory-amendment-failed" }
   > | null;
+  readonly memoryMergeHomeConflict: Extract<
+    PlanStreamItem,
+    { readonly kind: "memory-merge-home-conflict" }
+  > | null;
 }
 
 /**
@@ -122,6 +130,7 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,
     memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,
+    memoryMergeHomeConflict: state?.memoryMergeHomeConflict ?? null,
   };
 }
 

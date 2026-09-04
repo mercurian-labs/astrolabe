@@ -876,6 +876,28 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }),
     );
 
+  const gitVersion = yield* Effect.cached(
+    execute({
+      operation: "GitVcsDriver.gitVersion",
+      cwd: process.cwd(),
+      args: ["--version"],
+    }).pipe(
+      Effect.flatMap((result) => {
+        const match = /git version (\d+)\.(\d+)/u.exec(result.stdout);
+        return match === null
+          ? Effect.fail(
+              new GitCommandError({
+                operation: "GitVcsDriver.gitVersion",
+                command: "git --version",
+                cwd: process.cwd(),
+                detail: "Git returned an unrecognized version string.",
+              }),
+            )
+          : Effect.succeed({ major: Number(match[1]), minor: Number(match[2]) });
+      }),
+    ),
+  );
+
   const executeGit = (
     operation: string,
     cwd: string,
@@ -3297,6 +3319,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   return GitVcsDriver.GitVcsDriver.of({
     execute,
+    gitVersion,
     status,
     statusDetails,
     statusDetailsLocal,

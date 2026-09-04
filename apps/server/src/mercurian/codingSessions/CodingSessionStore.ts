@@ -48,6 +48,9 @@ export const AttachPullRequestInput = Schema.Struct({
 });
 export type AttachPullRequestInput = typeof AttachPullRequestInput.Type;
 
+export const PullRequestState = Schema.Literals(["open", "closed", "merged"]);
+export type PullRequestState = typeof PullRequestState.Type;
+
 export const RecordSnapshotInput = Schema.Struct({
   snapshotOid: TrimmedNonEmptyString,
   kind: SnapshotKind,
@@ -107,6 +110,14 @@ export class CodingSessionStore extends Context.Service<
     readonly attachPullRequest: (
       input: AttachPullRequestInput,
     ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly recordPullRequestState: (
+      threadId: ThreadId,
+      state: PullRequestState | null,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
+    readonly recordMemoryMergedHome: (
+      threadId: ThreadId,
+      at: DateTime.Utc,
+    ) => Effect.Effect<void, CodingSessionStoreError>;
     readonly listRepositories: (
       threadId: ThreadId,
     ) => Effect.Effect<
@@ -132,11 +143,19 @@ const LineBranchMissingRequest = Schema.Struct({
   threadId: ThreadId,
   oid: Schema.NullOr(TrimmedNonEmptyString),
 });
+const PullRequestStateRequest = Schema.Struct({
+  threadId: ThreadId,
+  state: Schema.NullOr(PullRequestState),
+});
+const MemoryMergedHomeRequest = Schema.Struct({
+  threadId: ThreadId,
+  at: Schema.DateTimeUtcFromString,
+});
 const NoRequest = Schema.Struct({});
 
 const CodingSessionRow = Schema.Struct({
   ...CodingSessionRecord.fields,
-  prState: Schema.NullOr(Schema.String),
+  prState: Schema.NullOr(PullRequestState),
   memoryMergedHomeAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   branchMovement: Schema.NullOr(Schema.fromJsonString(BranchMovement)),
 });
@@ -294,6 +313,18 @@ export const make = Effect.gen(function* () {
       DO UPDATE SET pr_url = excluded.pr_url
     `,
   });
+  const recordPullRequestStateRow = SqlSchema.void({
+    Request: PullRequestStateRequest,
+    execute: ({ threadId, state }) => sql`
+      UPDATE coding_sessions SET pr_state = ${state} WHERE thread_id = ${threadId}
+    `,
+  });
+  const recordMemoryMergedHomeRow = SqlSchema.void({
+    Request: MemoryMergedHomeRequest,
+    execute: ({ threadId, at }) => sql`
+      UPDATE coding_sessions SET memory_merged_home_at = ${at} WHERE thread_id = ${threadId}
+    `,
+  });
   const listRepositoryRows = SqlSchema.findAll({
     Request: ThreadRequest,
     Result: CodingSessionRepositoryRow,
@@ -402,6 +433,18 @@ export const make = Effect.gen(function* () {
       mapError(
         attachPrRow(input).pipe(Effect.andThen(announceThread(input.threadId))),
         "CodingSessionStore.attachPullRequest",
+      ),
+    recordPullRequestState: (threadId, state) =>
+      mapError(
+        recordPullRequestStateRow({ threadId, state }).pipe(
+          Effect.andThen(announceThread(threadId)),
+        ),
+        "CodingSessionStore.recordPullRequestState",
+      ),
+    recordMemoryMergedHome: (threadId, at) =>
+      mapError(
+        recordMemoryMergedHomeRow({ threadId, at }).pipe(Effect.andThen(announceThread(threadId))),
+        "CodingSessionStore.recordMemoryMergedHome",
       ),
     listRepositories: (threadId) =>
       mapError(listRepositoryRows({ threadId }), "CodingSessionStore.listRepositories"),

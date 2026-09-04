@@ -28,6 +28,8 @@ import * as MemorySourceStore from "./MemorySourceStore.ts";
 import * as MemoryReviewStore from "./MemoryReviewStore.ts";
 import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
+import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import * as ServerSettings from "../../serverSettings.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
 import { CommitId } from "../commitTree/schema.ts";
@@ -67,6 +69,12 @@ const defaultLineServices = Layer.mergeAll(
     markReviewed: () => Effect.void,
   }),
   Layer.mock(SnapshotChain)({ captureTree: () => Effect.die("not used") }),
+  Layer.mock(RepositoryStore.RepositoryStore)({
+    getSnapshot: Effect.succeed({ repositories: [], projectRepositories: [] }),
+  }),
+  Layer.mock(ServerSettings.ServerSettingsService)({
+    getSettings: Effect.succeed({ newWorktreesStartFromOrigin: false } as never),
+  }),
 );
 const layer = it.layer(
   MemoryIndex.layer.pipe(
@@ -114,7 +122,31 @@ const lineRoot = MercurianCommitId.make("memory-line-root");
 const linePlan = PlanId.make("memory-line-plan");
 const lineThread = ThreadId.make("memory-line-thread");
 const lineTurn = PlanTurnId.make("memory-line-turn");
+const lineSessionCommit = MercurianCommitId.make("memory-line-session");
+const lineSessionThread = ThreadId.make("memory-line-session-thread");
 const lineRef = { planId: linePlan, commitId: lineRoot } as const;
+
+const mergeTimeline = (createdAt: DateTime.Utc) =>
+  [
+    {
+      _tag: "plan-revision",
+      commitId: lineRoot,
+      parents: [],
+      sequence: 1,
+      createdAt,
+      authorKind: "human",
+      text: "",
+    },
+    {
+      _tag: "coding-session",
+      commitId: lineSessionCommit,
+      parents: [lineRoot],
+      sequence: 2,
+      createdAt,
+      authorKind: "human",
+      planRevisionCommitId: lineRoot,
+    },
+  ] as const;
 
 function lineServices(
   fixture: {
@@ -133,6 +165,14 @@ function lineServices(
     readonly leases?: SlotRegistry.SlotRegistry["Service"];
     readonly reviewed?: Set<string>;
     readonly captureTree?: SnapshotChain["Service"]["captureTree"];
+    readonly sessions?: ReadonlyArray<{
+      readonly commitId: MercurianCommitId;
+      readonly threadId: ThreadId;
+    }>;
+    readonly recordedMergedHome?: Array<ThreadId>;
+    readonly memoryRepositoryLinked?: boolean;
+    readonly gitVersion?: { readonly major: number; readonly minor: number };
+    readonly startFromOrigin?: boolean;
   },
 ) {
   const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
@@ -165,6 +205,8 @@ function lineServices(
       : Layer.succeed(SlotRegistry.SlotRegistry, input.leases),
     Layer.mock(CodingSessionStore.CodingSessionStore)({
       getByThreadId: () => Effect.succeed(Option.none()),
+      recordMemoryMergedHome: (threadId) =>
+        Effect.sync(() => input.recordedMergedHome?.push(threadId)),
     }),
     Layer.mock(PlanningStore.PlanningStore)({
       getPlanSnapshot: () =>
@@ -184,7 +226,7 @@ function lineServices(
             },
           ],
           snapshotSequence: 1,
-          codingSessions: [],
+          codingSessions: input.sessions ?? [],
         } as never),
       appendMemoryAmendment: (appendInput) =>
         Effect.sync(() => {
@@ -247,6 +289,20 @@ function lineServices(
     Layer.mock(SnapshotChain)({
       captureTree: input.captureTree ?? (() => Effect.die("not used")),
     }),
+    Layer.mock(RepositoryStore.RepositoryStore)({
+      getSnapshot: Effect.succeed({
+        repositories: [],
+        projectRepositories:
+          input.memoryRepositoryLinked === true
+            ? [{ projectId: fixture.projectId, repositoryId: fixture.repositoryId }]
+            : [],
+      }),
+    }),
+    Layer.mock(ServerSettings.ServerSettingsService)({
+      getSettings: Effect.succeed({
+        newWorktreesStartFromOrigin: input.startFromOrigin ?? false,
+      } as never),
+    }),
   );
 }
 
@@ -260,6 +316,13 @@ const makeLineIndex = Effect.fn("test.makeLineMemoryIndex")(function* (
   const runner = yield* ProcessRunner.ProcessRunner;
   const sourceStore = yield* MemorySourceStore.MemorySourceStore;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const effectiveGit =
+    input.gitVersion === undefined
+      ? git
+      : GitVcsDriver.GitVcsDriver.of({
+          ...git,
+          gitVersion: Effect.succeed(input.gitVersion),
+        });
   const turns = yield* PlanTurnRegistry.make;
   const leases = yield* SlotRegistry.make;
   const configured = { ...input, turns, leases };
@@ -269,7 +332,7 @@ const makeLineIndex = Effect.fn("test.makeLineMemoryIndex")(function* (
     Effect.provideService(Path.Path, path),
     Effect.provideService(ProcessRunner.ProcessRunner, runner),
     Effect.provideService(MemorySourceStore.MemorySourceStore, sourceStore),
-    Effect.provideService(GitVcsDriver.GitVcsDriver, git),
+    Effect.provideService(GitVcsDriver.GitVcsDriver, effectiveGit),
   );
   return { index, turns, leases };
 });
@@ -737,6 +800,244 @@ layer("MemoryIndex", (it) => {
       assert.strictEqual(error._tag, "MemoryReviewBlockedError");
       if (error._tag === "MemoryReviewBlockedError")
         assert.strictEqual(error.reason, "turn-active");
+    }),
+  );
+
+  it.effect("lands unmarked memory, merges it home, and refreshes the clean checkout", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("merge-home-clean", { git: true });
+      const notePath = path.join(fixture.root, "Plans.md");
+      yield* fs.writeFileString(notePath, "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const mainBefore = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["checkout", "-b", "memory-line"]);
+      yield* fs.writeFileString(notePath, "Marked\n");
+      yield* runGit(fixture.root, [
+        "commit",
+        "-am",
+        `Marked memory\n\nAstrolabe-Amendment: ${lineTurn}`,
+      ]);
+      const markedTip = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      yield* fs.writeFileString(notePath, "Snapshot only\n");
+      yield* runGit(fixture.root, ["commit", "-am", "Snapshot state"]);
+      const snapshotOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      yield* runGit(fixture.root, ["reset", "--hard", markedTip]);
+      yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), snapshotOid]);
+      yield* runGit(fixture.root, ["checkout", "main"]);
+      const reviewed = new Set<string>();
+      const recordedMergedHome: Array<ThreadId> = [];
+      const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid: mainBefore,
+        reviewed,
+        recordedMergedHome,
+        sessions: [{ commitId: lineSessionCommit, threadId: lineSessionThread }],
+        timeline: mergeTimeline(createdAt),
+      });
+
+      const result = yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef });
+      assert.strictEqual(result.kind, "merged");
+      if (result.kind !== "merged") return;
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "main"]), result.commitOid);
+      assert.deepStrictEqual(
+        (yield* runGit(fixture.root, ["show", "-s", "--format=%P", result.commitOid])).split(" "),
+        [mainBefore, yield* runGit(fixture.root, ["rev-parse", "memory-line"])],
+      );
+      const landed = yield* runGit(fixture.root, ["rev-parse", "memory-line"]);
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["show", "-s", "--format=%s", landed]),
+        "Unmarked memory changes",
+      );
+      assert.include(
+        yield* runGit(fixture.root, ["show", "-s", "--format=%B", landed]),
+        "Astrolabe-Amendment: unmarked",
+      );
+      assert.isTrue(reviewed.has(landed));
+      assert.strictEqual(yield* fs.readFileString(notePath), "Snapshot only\n");
+      assert.deepStrictEqual(recordedMergedHome, [lineSessionThread]);
+    }),
+  );
+
+  it.effect("refuses a dirty designated checkout before moving main", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("merge-home-dirty", { git: true });
+      const notePath = path.join(fixture.root, "Plans.md");
+      yield* fs.writeFileString(notePath, "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const mainBefore = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["branch", "memory-line"]);
+      yield* fs.writeFileString(notePath, "Dirty\n");
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid: mainBefore,
+      });
+
+      const error = yield* Effect.flip(
+        index.mergeHome({ projectId: fixture.projectId, line: lineRef }),
+      );
+      assert.strictEqual(error._tag, "MergeMemoryHomeBlockedError");
+      if (error._tag === "MergeMemoryHomeBlockedError") {
+        assert.strictEqual(error.reason, "checkout-dirty");
+      }
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "main"]), mainBefore);
+    }),
+  );
+
+  it.effect("merges onto local main when it is ahead of origin", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("merge-home-local-main", { git: true });
+      const remote = yield* fs.makeTempDirectoryScoped({ prefix: "memory-index-origin-" });
+      const notePath = path.join(fixture.root, "Plans.md");
+      yield* fs.writeFileString(notePath, "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      yield* runGit(remote, ["init", "--bare"]);
+      yield* runGit(remote, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+      yield* runGit(fixture.root, ["remote", "add", "origin", remote]);
+      yield* runGit(fixture.root, ["push", "-u", "origin", "main"]);
+      yield* runGit(fixture.root, ["remote", "set-head", "origin", "main"]);
+      const originMain = yield* runGit(fixture.root, ["rev-parse", "origin/main"]);
+
+      yield* fs.writeFileString(path.join(fixture.root, "Local.md"), "Local main\n");
+      yield* runGit(fixture.root, ["add", "Local.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Local main"]);
+      const localMain = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["checkout", "-b", "memory-line", "origin/main"]);
+      yield* fs.writeFileString(notePath, "Line memory\n");
+      yield* runGit(fixture.root, ["commit", "-am", "Line memory"]);
+      const lineTip = yield* runGit(fixture.root, ["rev-parse", "memory-line"]);
+      yield* runGit(fixture.root, ["checkout", "main"]);
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid: originMain,
+        startFromOrigin: true,
+      });
+
+      const result = yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef });
+      assert.strictEqual(result.kind, "merged");
+      if (result.kind !== "merged") return;
+      assert.deepStrictEqual(
+        (yield* runGit(fixture.root, ["show", "-s", "--format=%P", result.commitOid])).split(" "),
+        [localMain, lineTip],
+      );
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "origin/main"]), originMain);
+    }),
+  );
+
+  it.effect("returns conflicting memory paths without moving main", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("merge-home-conflict", { git: true });
+      const notePath = path.join(fixture.root, "Plans.md");
+      yield* fs.writeFileString(notePath, "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["checkout", "-b", "memory-line"]);
+      yield* fs.writeFileString(notePath, "Line\n");
+      yield* runGit(fixture.root, ["commit", "-am", "Line memory"]);
+      yield* runGit(fixture.root, ["checkout", "main"]);
+      yield* fs.writeFileString(notePath, "Main\n");
+      yield* runGit(fixture.root, ["commit", "-am", "Main memory"]);
+      const mainBefore = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      const { index } = yield* makeLineIndex(fixture, { branch: "memory-line", baseOid });
+
+      const result = yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef });
+      assert.deepStrictEqual(result, { kind: "conflict", conflicts: [{ path: "Plans.md" }] });
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "main"]), mainBefore);
+    }),
+  );
+
+  it.effect("defers subpath memory to the pull request and records the line's sessions", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("merge-home-subpath", { git: true });
+      yield* fs.makeDirectory(path.join(fixture.root, "memory"));
+      yield* fs.writeFileString(path.join(fixture.root, "memory", "Plans.md"), "Base\n");
+      const sourceStore = yield* MemorySourceStore.MemorySourceStore;
+      yield* sourceStore.designate({
+        projectId: fixture.projectId,
+        repositoryId: fixture.repositoryId,
+        subpath: "memory",
+        now,
+      });
+      yield* runGit(fixture.root, ["add", "."]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const mainBefore = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["branch", "memory-line"]);
+      const recordedMergedHome: Array<ThreadId> = [];
+      const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid: mainBefore,
+        recordedMergedHome,
+        sessions: [{ commitId: lineSessionCommit, threadId: lineSessionThread }],
+        timeline: mergeTimeline(createdAt),
+      });
+
+      assert.deepStrictEqual(
+        yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef }),
+        { kind: "deferred-to-push" },
+      );
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "main"]), mainBefore);
+      assert.deepStrictEqual(recordedMergedHome, [lineSessionThread]);
+    }),
+  );
+
+  it.effect("refuses Git below 2.38 and a line with an active turn", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture("merge-home-refusals", { git: true });
+      yield* runGit(fixture.root, ["commit", "--allow-empty", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      yield* runGit(fixture.root, ["branch", "memory-line"]);
+      const old = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        gitVersion: { major: 2, minor: 37 },
+      });
+      const oldError = yield* Effect.flip(
+        old.index.mergeHome({ projectId: fixture.projectId, line: lineRef }),
+      );
+      assert.strictEqual(oldError._tag, "MergeMemoryHomeBlockedError");
+      if (oldError._tag === "MergeMemoryHomeBlockedError") {
+        assert.strictEqual(oldError.reason, "git-too-old");
+      }
+
+      const active = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        slotPath: fixture.root,
+      });
+      yield* active.leases.acquire(
+        WorktreeSlotId.make("memory-slot"),
+        { kind: "turn", threadId: lineThread },
+        "2026-09-04T00:00:00.000Z",
+      );
+      const activeError = yield* Effect.flip(
+        active.index.mergeHome({ projectId: fixture.projectId, line: lineRef }),
+      );
+      assert.strictEqual(activeError._tag, "MemoryReviewBlockedError");
+      if (activeError._tag === "MemoryReviewBlockedError") {
+        assert.strictEqual(activeError.reason, "turn-active");
+      }
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "main"]), baseOid);
     }),
   );
   it.effect("uses git discovery so the memory's gitignore governs", () =>

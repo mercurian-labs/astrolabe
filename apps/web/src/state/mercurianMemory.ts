@@ -9,6 +9,7 @@ import type {
   MercurianReadLineMemoryChangesInput,
   MercurianMarkMemoryChangeReviewedInput,
   MercurianRevertMemoryChangeInput,
+  MercurianMergeMemoryHomeInput,
   ProjectMemorySource,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -99,6 +100,11 @@ export function useMarkMemoryChangeReviewed() {
 export function useRevertMemoryChange() {
   const run = useEnvironmentBoundCommandResult(mercurianMemory.revertMemoryChange);
   return useCallback((input: MercurianRevertMemoryChangeInput) => run(input), [run]);
+}
+
+export function useMergeMemoryHome() {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.mergeMemoryHome);
+  return useCallback((input: MercurianMergeMemoryHomeInput) => run(input), [run]);
 }
 
 export function useGenerateProductMap() {

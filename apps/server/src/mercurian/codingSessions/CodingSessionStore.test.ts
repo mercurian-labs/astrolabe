@@ -101,6 +101,16 @@ layer("CodingSessionStore", (it) => {
       assert.strictEqual(missing.value.lineBranchMissingOid, "missing-tip");
       yield* store.recordLineBranchMissing(record.threadId, null);
 
+      yield* store.recordPullRequestState(record.threadId, "merged");
+      yield* store.recordMemoryMergedHome(record.threadId, at("2026-08-14T12:30:00.000Z"));
+      const shipped = yield* store.getByThreadId(record.threadId);
+      assert.ok(Option.isSome(shipped));
+      assert.strictEqual(shipped.value.prState, "merged");
+      assert.strictEqual(
+        DateTime.formatIso(shipped.value.memoryMergedHomeAt!),
+        "2026-08-14T12:30:00.000Z",
+      );
+
       yield* store.updateBranch(record.threadId, "renamed/session");
       const change = yield* store.changes.pipe(
         Stream.runHead,

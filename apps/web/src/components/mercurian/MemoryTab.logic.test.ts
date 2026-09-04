@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { memoryTabRevertTarget, memoryTabRows, memoryTabUnreviewedCount } from "./MemoryTab.logic";
+import {
+  memoryMergeHomeOutcomeCopy,
+  memoryMergeHomeRefusalCopy,
+  memoryMergeHomeWalk,
+  memoryTabRevertTarget,
+  memoryTabRows,
+  memoryTabUnreviewedCount,
+} from "./MemoryTab.logic";
 
 describe("memoryTabRows", () => {
   it("orders marked, hand, and unmarked changes with their attribution", () => {
@@ -40,5 +47,64 @@ describe("memoryTabRows", () => {
       { kind: "commit", commitOid: "b" },
       { kind: "unmarked" },
     ]);
+  });
+
+  it("walks unreviewed commits oldest-first and leaves unmarked last", () => {
+    const walk = memoryMergeHomeWalk({
+      marked: [
+        {
+          oid: "new",
+          title: "New",
+          turnId: "turn-2",
+          authoredAt: "2026-09-04T12:00:00.000Z",
+          diff: "new",
+          reviewed: false,
+        },
+        {
+          oid: "reviewed",
+          title: "Reviewed",
+          turnId: "turn-1",
+          authoredAt: "2026-09-04T09:00:00.000Z",
+          diff: "reviewed",
+          reviewed: true,
+        },
+      ],
+      hand: [
+        {
+          oid: "old",
+          title: "Old",
+          authoredAt: "2026-09-04T10:00:00.000Z",
+          diff: "old",
+          reviewed: false,
+        },
+      ],
+      unmarked: { diff: "tail" },
+      unreviewedCount: 3,
+    });
+    expect(walk.map(({ id }) => id)).toEqual(["old", "new", "unmarked"]);
+  });
+
+  it("states merge outcomes and typed refusals", () => {
+    expect(memoryMergeHomeOutcomeCopy({ kind: "merged", commitOid: "1234567890" })).toContain(
+      "12345678",
+    );
+    expect(memoryMergeHomeOutcomeCopy({ kind: "deferred-to-push" })).toContain(
+      "ships with the pull request",
+    );
+    expect(
+      memoryMergeHomeOutcomeCopy({ kind: "conflict", conflicts: [{ path: "Memory.md" }] }),
+    ).toContain("Memory.md");
+    expect(
+      memoryMergeHomeRefusalCopy({ _tag: "MemoryReviewBlockedError", reason: "turn-active" }),
+    ).toContain("active turn");
+    expect(
+      memoryMergeHomeRefusalCopy({ _tag: "MergeMemoryHomeBlockedError", reason: "git-too-old" }),
+    ).toContain("Git 2.38");
+    expect(
+      memoryMergeHomeRefusalCopy({ _tag: "MergeMemoryHomeBlockedError", reason: "checkout-dirty" }),
+    ).toContain("Commit or stash");
+    expect(
+      memoryMergeHomeRefusalCopy({ _tag: "MergeMemoryHomeBlockedError", reason: "main-missing" }),
+    ).toContain("local memory home branch");
   });
 });

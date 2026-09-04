@@ -821,6 +821,8 @@ const buildAppUnderTest = (options?: {
           recordLineBranchMissing: () => Effect.void,
           end: () => Effect.void,
           attachPullRequest: () => Effect.void,
+          recordPullRequestState: () => Effect.void,
+          recordMemoryMergedHome: () => Effect.void,
           changes: Stream.empty,
           ...options.layers.codingSessionStore,
         })
@@ -1282,6 +1284,7 @@ const buildAppUnderTest = (options?: {
             status: Effect.succeed(new Map()),
             changes: Stream.empty,
             frames: () => Stream.empty,
+            publishFrame: () => Effect.void,
             inFlightTurns: () => Effect.succeed([]),
             teardownPlan: () => Effect.void,
             ...options?.layers?.planningAssistant,
@@ -1334,6 +1337,7 @@ const buildAppUnderTest = (options?: {
                 Effect.succeed({ marked: [], hand: [], unmarked: null, unreviewedCount: 0 }),
               markChangeReviewed: () => Effect.void,
               revertChange: () => Effect.void,
+              mergeHome: () => Effect.succeed({ kind: "deferred-to-push" as const }),
               ...options?.layers?.memoryIndex,
             }),
             WorkspaceSettingsStore.layer,
@@ -5156,6 +5160,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         >();
       const memoryReverts =
         yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["revertChange"]>[0]>();
+      const memoryMerges =
+        yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["mergeHome"]>[0]>();
+      let memoryMergeCall = 0;
+      const memoryMergeResults = [
+        { kind: "deferred-to-push" as const },
+        { kind: "merged" as const, commitOid: "merge-oid" },
+        { kind: "conflict" as const, conflicts: [{ path: "Plans.md" }] },
+      ];
       yield* buildAppUnderTest({
         layers: {
           planningAssistant: {
@@ -5171,6 +5183,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             markChangeReviewed: (input) =>
               Queue.offer(memoryReviewMarks, input).pipe(Effect.asVoid),
             revertChange: (input) => Queue.offer(memoryReverts, input).pipe(Effect.asVoid),
+            mergeHome: (input) =>
+              Queue.offer(memoryMerges, input).pipe(
+                Effect.as(memoryMergeResults[memoryMergeCall++]!),
+              ),
           },
         },
       });
@@ -5214,6 +5230,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               target: { kind: "commit", commitOid: "reverted-oid" },
             });
             const memoryRevert = yield* Queue.take(memoryReverts);
+            const memoryMergeOutcomes = yield* Effect.forEach(memoryMergeResults, () =>
+              client[MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome]({ line: memoryLine }),
+            );
+            const memoryMergeInputs = yield* Effect.forEach(memoryMergeResults, () =>
+              Queue.take(memoryMerges),
+            );
             const starts = [yield* Queue.take(turnStarts), yield* Queue.take(turnStarts)];
             const workspaceSettings = yield* client[
               MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
@@ -5263,6 +5285,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               memoryLineRead,
               memoryReviewMark,
               memoryRevert,
+              memoryMergeOutcomes,
+              memoryMergeInputs,
               starts,
               workspaceSettings,
               items,
@@ -5297,6 +5321,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         line: result.memoryLine,
         target: { kind: "commit", commitOid: "reverted-oid" },
       });
+      assert.deepEqual(result.memoryMergeOutcomes, memoryMergeResults);
+      assert.deepEqual(
+        result.memoryMergeInputs,
+        memoryMergeResults.map(() => ({
+          projectId: result.project.projectId,
+          line: result.memoryLine,
+        })),
+      );
       const root = result.created.timeline[0];
       assert.ok(root?._tag === "message");
       if (root?._tag === "message") {

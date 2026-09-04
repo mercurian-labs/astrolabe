@@ -5,6 +5,7 @@ import {
   type MercurianProjectId,
   type MemoryLineRef,
   type MemoryNote,
+  type MercurianLineMemoryChanges,
   type PlanId,
   type PlanInFlightTurn,
   type PlanSpecAt,
@@ -93,7 +94,12 @@ import {
 } from "./PlanComposer.logic";
 import { condensePlanGraph } from "./PlanCheckpoints.logic";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
-import { ancestorClosure, buildPlanGraph, effectivePlanExplorerView } from "./PlanGraph.logic";
+import {
+  ancestorClosure,
+  buildPlanGraph,
+  effectivePlanExplorerView,
+  type PlanGraph,
+} from "./PlanGraph.logic";
 import { standingModelChoice } from "./PlanModelChoice.logic";
 import { PlanModelPicker } from "./PlanModelPicker";
 import { PlanReconstructionMeter } from "./PlanReconstructionMeter";
@@ -109,6 +115,8 @@ import {
   type PlanPosition,
 } from "./PlanPosition.logic";
 import { PlanTimeline } from "./PlanTimeline";
+import { PlanSuggestionsRow } from "./PlanSuggestions";
+import { memoryMergeHomeSuggestion, suggestionsAfterDismiss } from "./planSuggestions.logic";
 import { MemoryNoteReader } from "./MemoryNoteReader";
 import { MemoryTab } from "./MemoryTab";
 import { SpecArtifact } from "./SpecArtifact";
@@ -146,6 +154,26 @@ const EMPTY_TIMELINE: ReadonlyArray<PlanTimelineItem> = [];
 const EMPTY_IN_FLIGHT_TURNS: ReadonlyArray<PlanInFlightTurn> = [];
 type PlanHumanMessage = Extract<PlanTimelineItem, { readonly _tag: "message" }>;
 
+function planLineRoot(graph: PlanGraph, commitId: MercurianCommitId): string {
+  const planningNodes = graph.nodes.filter((node) => node.item._tag !== "coding-session");
+  const roots = new Set<string>(
+    planningNodes.filter((node) => node.parents.length === 0).map((node) => node.commitId),
+  );
+  for (const node of planningNodes) {
+    const planningChildren = node.childrenIds.filter(
+      (childId) => graph.byId.get(childId)?.item._tag !== "coding-session",
+    );
+    for (const forkRoot of planningChildren.slice(1)) roots.add(forkRoot);
+  }
+  let cursor = String(commitId);
+  while (!roots.has(cursor)) {
+    const parent = graph.byId.get(cursor)?.parents[0];
+    if (parent === undefined) break;
+    cursor = String(parent);
+  }
+  return cursor;
+}
+
 function implementDisabledReason(input: {
   readonly turnActive: boolean;
   readonly planTextEmpty: boolean;
@@ -170,7 +198,8 @@ interface PendingEditAndBranch {
  * a commit landing anywhere shows up in all three at once.
  */
 export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
-  const { detail, isPending, error, turnRefusal, memoryAmendmentFailure } = usePlanDetail(planId);
+  const { detail, isPending, error, turnRefusal, memoryAmendmentFailure, memoryMergeHomeConflict } =
+    usePlanDetail(planId);
   const appendMessage = useAppendPlanMessage();
   const getPlanTextAt = useGetPlanTextAt();
   const getSpecAt = useGetSpecAt();
@@ -292,17 +321,35 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     [actingHead, planId],
   );
   const [memoryUnreviewedCount, setMemoryUnreviewedCount] = useState(0);
+  const memoryLineKey =
+    memoryLine === undefined
+      ? null
+      : "planId" in memoryLine
+        ? `${String(memoryLine.planId)}:${String(memoryLine.commitId)}`
+        : `thread:${String(memoryLine.threadId)}`;
+  const [memoryLineChangesAt, setMemoryLineChangesAt] = useState<{
+    readonly lineKey: string;
+    readonly changes: MercurianLineMemoryChanges;
+  } | null>(null);
   const readLineMemoryChanges = useReadLineMemoryChanges();
   useEffect(() => {
-    if (memoryLine === undefined) return;
+    if (memoryLine === undefined || memoryLineKey === null) return;
     let active = true;
     void readLineMemoryChanges({ line: memoryLine }).then((result) => {
-      if (active && result.ok) setMemoryUnreviewedCount(result.value.unreviewedCount);
+      if (active && result.ok) {
+        setMemoryUnreviewedCount(result.value.unreviewedCount);
+        setMemoryLineChangesAt({ lineKey: memoryLineKey, changes: result.value });
+      }
     });
     return () => {
       active = false;
     };
-  }, [memoryLine, readLineMemoryChanges]);
+  }, [memoryLine, memoryLineKey, readLineMemoryChanges]);
+  const memoryLineChanges =
+    memoryLineChangesAt?.lineKey === memoryLineKey ? memoryLineChangesAt.changes : null;
+  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [pathText, setPathText] = useState<string | null>(null);
   const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
   const [reconstructionMeasure, setReconstructionMeasure] =
@@ -372,6 +419,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     setPendingEditAndBranch(null);
     setMemoryReader({ stack: [] });
     setDismissedMemoryAmendmentFailure(null);
+    setDismissedSuggestionIds(new Set());
   }, [planId]);
 
   /**
@@ -481,6 +529,13 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
     const closure = ancestorClosure(graph, head);
     return timeline.filter((item) => closure.has(item.commitId));
   }, [graph, head, timeline]);
+  const memoryWorktreePath = useMemo(() => {
+    if (actingHead === null) return undefined;
+    const lineRoot = planLineRoot(graph, actingHead);
+    return detail?.codingSessions.findLast(
+      (session) => planLineRoot(graph, session.commitId) === lineRoot,
+    )?.worktreePath;
+  }, [actingHead, detail?.codingSessions, graph]);
 
   /**
    * Each streaming reply belongs to one path: the one its human message is
@@ -564,6 +619,14 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       return true;
     },
     [actingHead, appendMessage, clearDraft, modelChoice, planId],
+  );
+  const mergeHomeSuggestion =
+    detail === null || memoryLineChanges === null
+      ? null
+      : memoryMergeHomeSuggestion(detail, memoryLineChanges);
+  const planSuggestions = suggestionsAfterDismiss(
+    mergeHomeSuggestion === null ? [] : [mergeHomeSuggestion],
+    dismissedSuggestionIds,
   );
 
   const select = useCallback(
@@ -758,6 +821,16 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
               </div>
             </div>
           )}
+          <PlanSuggestionsRow
+            disabled={visibleInFlight !== undefined}
+            suggestions={planSuggestions}
+            onDismiss={() =>
+              setDismissedSuggestionIds(new Set(planSuggestions.map(({ id }) => id)))
+            }
+            onSelect={(suggestion) => {
+              void send({ text: suggestion.message, attachments: [] });
+            }}
+          />
           <PlanComposer
             attachments={draft.attachments}
             {...(providerStatus === undefined
@@ -877,7 +950,14 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   <MemoryTab
                     cornerControl={paneCornerControl}
                     line={memoryLine}
+                    mergeHomeConflict={memoryMergeHomeConflict?.conflicts ?? null}
+                    worktreePath={memoryWorktreePath ?? null}
                     onUnreviewedCountChange={setMemoryUnreviewedCount}
+                    onReconcile={(message) => {
+                      if (actingHead !== null) {
+                        setDraftText(planId, actingHead, message, draftLive);
+                      }
+                    }}
                   />
                 )
               ) : pane.view === "explorer" ? (

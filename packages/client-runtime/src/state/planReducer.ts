@@ -28,6 +28,10 @@ export interface PlanSubscriptionState {
     PlanStreamItem,
     { readonly kind: "memory-amendment-failed" }
   > | null;
+  readonly memoryMergeHomeConflict: Extract<
+    PlanStreamItem,
+    { readonly kind: "memory-merge-home-conflict" }
+  > | null;
 }
 
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
@@ -36,6 +40,7 @@ export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   synchronized: false,
   turnRefusal: null,
   memoryAmendmentFailure: null,
+  memoryMergeHomeConflict: null,
 };
 
 const sameGroundingItem = (left: PlanGroundingItem, right: PlanGroundingItem): boolean =>
@@ -120,6 +125,7 @@ export function applyPlanStreamItem(
         synchronized: state.synchronized,
         turnRefusal: null,
         memoryAmendmentFailure: null,
+        memoryMergeHomeConflict: null,
       };
     case "synchronized":
       return { ...state, synchronized: true };
@@ -179,6 +185,7 @@ export function applyPlanStreamItem(
         ]),
         turnRefusal: null,
         memoryAmendmentFailure: null,
+        memoryMergeHomeConflict: null,
       };
     }
     case "turn-delta":
@@ -224,6 +231,8 @@ export function applyPlanStreamItem(
         memoryAmendmentFailure: item,
       };
     }
+    case "memory-merge-home-conflict":
+      return { ...state, memoryMergeHomeConflict: item };
     default:
       return state;
   }

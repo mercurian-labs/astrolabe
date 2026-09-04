@@ -170,7 +170,7 @@ export const PlanCodingSessionRecord = Schema.Struct({
   endedAt: Schema.NullOr(IsoDateTime),
   outcome: Schema.NullOr(Schema.Literals(["completed", "stopped", "failed"])),
   prUrl: Schema.NullOr(Schema.String),
-  prState: Schema.optional(Schema.NullOr(Schema.String)),
+  prState: Schema.optional(Schema.NullOr(Schema.Literals(["open", "closed", "merged"]))),
   memoryMergedHomeAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   settledCommitOid: Schema.NullOr(TrimmedNonEmptyString),
   partial: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -265,6 +265,7 @@ export const PlanShell = Schema.Struct({
   title: TrimmedNonEmptyString,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  archivedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 export type PlanShell = typeof PlanShell.Type;
 
@@ -583,6 +584,10 @@ export const PlanStreamItem = Schema.Union([
     kind: Schema.Literal("memory-amendment-failed"),
     turnId: PlanTurnId,
     reason: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("memory-merge-home-conflict"),
+    conflicts: Schema.Array(Schema.Struct({ path: TrimmedNonEmptyString })),
   }),
 ]);
 export type PlanStreamItem = typeof PlanStreamItem.Type;

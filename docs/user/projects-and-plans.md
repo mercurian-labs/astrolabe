@@ -338,6 +338,21 @@ Drag the sidebar's right edge to resize it, or collapse it entirely with the tog
 (**Toggle main sidebar**, bound to a shortcut you can change under **Settings** → **Keybindings**).
 Both the width and whether the sidebar is collapsed are remembered the next time you open the app.
 
+## A line's memory changes
+
+Open **Memory changes** in a planning space to see what the current line changed in project memory.
+The list separates amendments landed by the assistant, commits made by hand, and changes held only
+in the line's latest snapshot. Expand an entry to read its diff, mark committed entries reviewed,
+or revert an entry without affecting another line.
+
+**Merge home** walks through every unreviewed entry before asking whether to continue. If memory
+lives inside a code repository, the reviewed changes ship with that repository's pull request. If
+memory is its own repository, Astrolabe merges the line into the repository's main branch and
+refreshes the clean checkout. A conflict is never resolved automatically: send the offered
+reconciliation message in the conversation, land the result as another amendment, and try again.
+The standalone merge requires Git 2.38 or newer, and a checkout with uncommitted memory changes must
+be committed or stashed first. Choosing **Not now** changes nothing.
+
 ## Coding sessions
 
 **Start a coding session** opens a local draft. Review the linked repositories, then choose the

@@ -53,6 +53,11 @@ export function createMercurianMemoryAtoms<R, E>(
       tag: MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
       scheduler: writeScheduler,
     }),
+    mergeMemoryHome: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:merge-memory-home",
+      tag: MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome,
+      scheduler: writeScheduler,
+    }),
     generateProductMap: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:generate-product-map",
       tag: MERCURIAN_MEMORY_WS_METHODS.generateProductMap,

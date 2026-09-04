@@ -3364,6 +3364,51 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId =
+                "planId" in line
+                  ? line.planId
+                  : yield* Effect.gen(function* () {
+                      const session = yield* codingSessionStore.getByThreadId(line.threadId);
+                      if (Option.isSome(session)) return session.value.planId;
+                      const turn = yield* planTurnRegistry.getByThread(line.threadId);
+                      if (Option.isSome(turn)) return turn.value.planId;
+                      return yield* new MercurianMemoryError({
+                        operation: "mergeMemoryHome",
+                        cause: new Error(`Memory line thread ${line.threadId} is missing`),
+                      });
+                    });
+              const detail = yield* planningStore.getPlanSnapshot({ planId });
+              const result = yield* memoryIndex.mergeHome({
+                projectId: detail.plan.projectId,
+                line,
+              });
+              if (result.kind === "conflict") {
+                yield* planningAssistant.publishFrame(planId, {
+                  kind: "memory-merge-home-conflict",
+                  conflicts: result.conflicts,
+                });
+              }
+              return result;
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                (typeof cause === "object" &&
+                  cause !== null &&
+                  "_tag" in cause &&
+                  (cause._tag === "MemoryReviewBlockedError" ||
+                    cause._tag === "MergeMemoryHomeBlockedError"))
+                  ? cause
+                  : new MercurianMemoryError({ operation: "mergeMemoryHome", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: (input) =>
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.generateProductMap,

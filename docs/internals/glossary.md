@@ -226,14 +226,42 @@ The single registered repository, optionally narrowed to a repository-relative s
 the project's code-repository set. Removing a repository also removes designations that point to
 it; it never deletes memory files.
 
+#### Memory branch
+
+The line-specific branch of the memory repository. A line reads memory from its latest snapshot
+chain head, falling back to this branch tip, so an amendment belongs to the line that made it and
+does not change the memory repository's main line. Standalone memory repositories participate in
+the same line-branch and worktree-slot model as linked code repositories.
+
+#### Marked and unmarked memory
+
+A **marked** memory change is a commit on the line's memory branch carrying an
+`Astrolabe-Amendment` trailer; a commit without that trailer is shown as a hand-made change. An
+**unmarked** change is the memory-path delta held by the line's latest snapshot beyond its branch
+tip. Merge home first turns that delta into a marked, reviewed commit, so uncommitted state never
+crosses into shared truth.
+
+#### Memory list
+
+The planning space's line-scoped view of every marked amendment, hand-made memory commit, and
+unmarked snapshot delta since the line's base. It renders the exact diffs, preserves per-commit
+review state, and offers review and revert acts without changing what the main memory browser
+reads.
+
+#### Merge home
+
+The explicit human act that carries a line's reviewed memory into shared truth. For memory inside a
+code repository, the pull request performs the merge and the act records that the review is ready
+to ship. For a standalone memory repository, Astrolabe creates a two-parent merge commit on its
+main branch when Git can merge cleanly; conflicts return to the planning conversation for a new
+amendment. An amendment you never merged home never happened to shared truth.
+
 #### Amendment
 
-A human-reviewed change proposed from a planning turn and applied to [memory](#memory) only after
-explicit confirmation. The proposal is transient and carries the exact unified patch and map
-placements; confirming applies the guarded note snapshots, records a commit in the memory's own
-Git history when available, and appends a stamped human `message` commit to the plan without
-starting another turn. Preparation and application live in [MemoryIndex.ts][37], while the review
-surface is [MemoryAmendmentSheet.tsx][38].
+A focused change a planning turn lands on its line's [memory branch](#memory-branch), as one commit
+carrying the turn's mark and a link back to the plan. The write is guarded against memory that
+changed since the assistant read it. The [memory list](#memory-list) is where a person reviews its
+exact diff, and [merge home](#merge-home) is the separate act that can carry it into shared truth.
 
 #### Note
 

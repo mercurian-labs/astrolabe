@@ -14,6 +14,7 @@ export const MERCURIAN_MEMORY_WS_METHODS = {
   readLineMemoryChanges: "mercurian.readLineMemoryChanges",
   markMemoryChangeReviewed: "mercurian.markMemoryChangeReviewed",
   revertMemoryChange: "mercurian.revertMemoryChange",
+  mergeMemoryHome: "mercurian.mergeMemoryHome",
   generateProductMap: "mercurian.generateProductMap",
 } as const;
 
@@ -152,6 +153,19 @@ export const MercurianRevertMemoryChangeInput = Schema.Struct({
   ]),
 });
 export type MercurianRevertMemoryChangeInput = typeof MercurianRevertMemoryChangeInput.Type;
+export const MercurianMergeMemoryHomeInput = Schema.Struct({ line: MemoryLineRef });
+export type MercurianMergeMemoryHomeInput = typeof MercurianMergeMemoryHomeInput.Type;
+export const MemoryMergeHomeConflict = Schema.Struct({ path: TrimmedNonEmptyString });
+export type MemoryMergeHomeConflict = typeof MemoryMergeHomeConflict.Type;
+export const MercurianMergeMemoryHomeResult = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("merged"), commitOid: TrimmedNonEmptyString }),
+  Schema.Struct({ kind: Schema.Literal("deferred-to-push") }),
+  Schema.Struct({
+    kind: Schema.Literal("conflict"),
+    conflicts: Schema.Array(MemoryMergeHomeConflict),
+  }),
+]);
+export type MercurianMergeMemoryHomeResult = typeof MercurianMergeMemoryHomeResult.Type;
 export const MercurianGenerateProductMapInput = Schema.Struct({ projectId: MercurianProjectId });
 export type MercurianGenerateProductMapInput = typeof MercurianGenerateProductMapInput.Type;
 
@@ -217,6 +231,7 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
       "readLineMemoryChanges",
       "markMemoryChangeReviewed",
       "revertMemoryChange",
+      "mergeMemoryHome",
       "generateProductMap",
       "prepareMemoryAmendment",
       "applyMemoryAmendment",
@@ -238,5 +253,19 @@ export class MemoryReviewBlockedError extends Schema.TaggedErrorClass<MemoryRevi
     return this.reason === "turn-active"
       ? "Memory changes cannot be reverted while a turn is active on this line"
       : "The selected commit is not part of this line's memory changes";
+  }
+}
+
+export class MergeMemoryHomeBlockedError extends Schema.TaggedErrorClass<MergeMemoryHomeBlockedError>()(
+  "MergeMemoryHomeBlockedError",
+  { reason: Schema.Literals(["git-too-old", "checkout-dirty", "main-missing"]) },
+) {
+  override get message(): string {
+    if (this.reason === "git-too-old") {
+      return "Merging a standalone memory home requires Git 2.38 or newer";
+    }
+    return this.reason === "checkout-dirty"
+      ? "The memory checkout has uncommitted changes"
+      : "The local memory home branch does not exist";
   }
 }

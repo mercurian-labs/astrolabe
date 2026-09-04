@@ -43,6 +43,7 @@ export const toWirePlanShell = (plan: Plan): Contracts.PlanShell => ({
   title: plan.title,
   createdAt: iso(plan.createdAt),
   updatedAt: iso(plan.updatedAt),
+  ...(plan.archivedAt === null ? {} : { archivedAt: iso(plan.archivedAt) }),
 });
 
 const toWirePlanCommitFields = (

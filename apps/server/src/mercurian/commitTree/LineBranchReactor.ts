@@ -20,6 +20,7 @@ import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepos
 import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
 import { LineBranchStore } from "./LineBranchStore.ts";
+import { resolveRepositoryDefault } from "./repositoryDefault.ts";
 
 const planningItems = (detail: PlanDetail) =>
   detail.timeline.filter((item) => item._tag !== "coding-session");
@@ -124,21 +125,7 @@ export const make = Effect.gen(function* () {
     path: string,
   ) {
     const startFromOrigin = (yield* settings.getSettings).newWorktreesStartFromOrigin;
-    const remoteHead = startFromOrigin
-      ? yield* git.execute({
-          operation: "LineBranchReactor.defaultRemote",
-          cwd: path,
-          args: ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-          allowNonZeroExit: true,
-        })
-      : undefined;
-    const ref = remoteHead?.exitCode === 0 ? remoteHead.stdout.trim() : "HEAD";
-    const resolved = yield* git.execute({
-      operation: "LineBranchReactor.resolveBase",
-      cwd: path,
-      args: ["rev-parse", "--verify", `${ref}^{commit}`],
-    });
-    return resolved.stdout.trim();
+    return (yield* resolveRepositoryDefault({ git, path, startFromOrigin })).oid;
   });
 
   const reconcile = Effect.fn("LineBranchReactor.reconcile")(function* () {
