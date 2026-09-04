@@ -498,7 +498,7 @@ export const make = Effect.gen(function* () {
     return next;
   });
 
-  const lineContext = Effect.fn("MemoryIndex.lineContext")(function* (input: {
+  const lineIdentity = Effect.fn("MemoryIndex.lineIdentity")(function* (input: {
     readonly projectId: MercurianProjectId;
     readonly line: MemoryLineRef;
   }) {
@@ -537,18 +537,46 @@ export const make = Effect.gen(function* () {
       lineRootCommitId,
       repositoryId: source.repositoryId,
     });
-    if (Option.isNone(branch)) {
+    return {
+      planId,
+      detail,
+      lineRootCommitId,
+      source,
+      branch: Option.getOrNull(branch),
+    };
+  });
+
+  const lineContext = Effect.fn("MemoryIndex.lineContext")(function* (input: {
+    readonly projectId: MercurianProjectId;
+    readonly line: MemoryLineRef;
+  }) {
+    const context = yield* lineIdentity(input);
+    if (context.branch === null) {
       return yield* new MercurianMemoryError({
         operation: "readLineMemoryChanges",
         cause: new Error("The memory line branch is missing"),
       });
     }
-    return { planId, detail, lineRootCommitId, source, branch: branch.value };
+    return { ...context, branch: context.branch };
   });
 
   const resolveLineSource: MemoryIndex["Service"]["resolveLineSource"] = (input) =>
     Effect.gen(function* () {
-      const context = yield* lineContext(input);
+      const context = yield* lineIdentity(input);
+      if (context.branch === null) {
+        const startFromOrigin = (yield* settings.getSettings).newWorktreesStartFromOrigin;
+        const repositoryDefault = yield* resolveRepositoryDefault({
+          git,
+          path: context.source.repositoryPath,
+          startFromOrigin,
+        });
+        return {
+          kind: "ref",
+          repositoryPath: context.source.repositoryPath,
+          ref: repositoryDefault.ref,
+          subpath: context.source.subpath ?? "",
+        } satisfies MemoryTreeSource;
+      }
       const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
       const snapshot = yield* git.execute({
         operation: "MemoryIndex.resolveLineSnapshot",
@@ -860,13 +888,15 @@ export const make = Effect.gen(function* () {
 
   const readLineChanges: MemoryIndex["Service"]["readLineChanges"] = (input) =>
     Effect.gen(function* () {
-      const source = yield* requireSource(input.projectId);
-      const context = yield* lineContext(input);
-      const scope = source.subpath ?? ".";
+      const context = yield* lineIdentity(input);
+      if (context.branch === null) {
+        return { marked: [], hand: [], unmarked: null, unreviewedCount: 0 };
+      }
+      const scope = context.source.subpath ?? ".";
       const branchRef = `refs/heads/${context.branch.branch}`;
       const log = yield* git.execute({
         operation: "MemoryIndex.readLineChanges.log",
-        cwd: source.repositoryPath,
+        cwd: context.source.repositoryPath,
         args: [
           "log",
           "--first-parent",
@@ -889,7 +919,7 @@ export const make = Effect.gen(function* () {
         git
           .execute({
             operation: "MemoryIndex.readLineChanges.diff",
-            cwd: source.repositoryPath,
+            cwd: context.source.repositoryPath,
             args: ["show", "--format=", "--patch", entry.oid, "--", scope],
           })
           .pipe(Effect.map((result) => ({ ...entry, diff: result.stdout }))),
@@ -897,20 +927,20 @@ export const make = Effect.gen(function* () {
       const reviewed = new Set(
         (yield* reviews.listReviewed({
           lineRootCommitId: context.lineRootCommitId,
-          repositoryId: source.repositoryId,
+          repositoryId: context.source.repositoryId,
         })).map(({ commitOid }) => commitOid),
       );
       const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
       const hasSnapshot = yield* git.execute({
         operation: "MemoryIndex.readLineChanges.resolveSnapshot",
-        cwd: source.repositoryPath,
+        cwd: context.source.repositoryPath,
         args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
         allowNonZeroExit: true,
       });
       const unmarkedDiff =
         hasSnapshot.exitCode === 0
           ? yield* checkpoints.diffCheckpoints({
-              cwd: source.repositoryPath,
+              cwd: context.source.repositoryPath,
               fromCheckpointRef: CheckpointRef.make(branchRef),
               toCheckpointRef: snapshotRef,
               ignoreWhitespace: false,

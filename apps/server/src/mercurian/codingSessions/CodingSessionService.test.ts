@@ -32,10 +32,13 @@ import * as ProviderRegistry from "../../provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "../../provider/Services/ProviderService.ts";
 import * as TerminalManager from "../../terminal/Manager.ts";
 import * as VcsStatusBroadcaster from "../../vcs/VcsStatusBroadcaster.ts";
+import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as ServerSettings from "../../serverSettings.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
+import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
 import * as SlotService from "../worktreeSlots/SlotService.ts";
 import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 import {
@@ -257,6 +260,26 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
               })
             : Option.none(),
         ),
+    }),
+    Layer.mock(LineBranchStore.LineBranchStore)({
+      get: ({ lineRootCommitId, repositoryId }) =>
+        Effect.succeed(
+          Option.some({
+            lineRootCommitId,
+            repositoryId,
+            branch: "mercurian/coding-session-birth-ready-revi",
+            baseOid: "base-oid",
+            built: false,
+            repointHold: null,
+            createdAt: DateTime.makeUnsafe("2026-08-14T00:00:00.000Z"),
+          }),
+        ),
+    }),
+    Layer.mock(GitVcsDriver.GitVcsDriver)({
+      execute: () => Effect.die("existing coding-session line branches should not be minted"),
+    }),
+    Layer.mock(ServerSettings.ServerSettingsService)({
+      getSettings: Effect.succeed({ newWorktreesStartFromOrigin: false } as never),
     }),
     Layer.mock(ProviderService.ProviderService)({
       getCapabilities: () =>

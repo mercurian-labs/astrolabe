@@ -54,6 +54,7 @@ import * as SnapshotChain from "../worktreeSlots/SnapshotChain.ts";
 import {
   SlotPoolAtCapacityError,
   SlotService,
+  SlotServiceError,
   type ClaimSlotInput,
 } from "../worktreeSlots/SlotService.ts";
 import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
@@ -274,7 +275,7 @@ const testLayer = (
   providers: ReadonlyArray<ServerProvider> = [providerSnapshot],
   lineMemory = false,
   providerStartFailure = false,
-  slotFailure: "pool-at-capacity" | null = null,
+  slotFailure: "pool-at-capacity" | "generic" | null = null,
 ) => {
   const harnessContext = Layer.unwrap(
     Effect.map(makeHarness(providerStartFailure), ({ harness, service }) =>
@@ -351,6 +352,12 @@ const testLayer = (
               return yield* new SlotPoolAtCapacityError({
                 projectId: input.projectId,
                 poolSize: 1,
+              });
+            }
+            if (slotFailure === "generic") {
+              return yield* new SlotServiceError({
+                operation: "claim:test",
+                cause: new Error("slot preparation failed"),
               });
             }
             const snapshot = yield* repositories.getSnapshot.pipe(Effect.orDie);
@@ -719,6 +726,25 @@ describe("PlanningAssistant", () => {
       Effect.scoped,
       Effect.provide(testLayer([providerSnapshot], false, false, "pool-at-capacity")),
     ),
+  );
+
+  it.effect("surfaces an unexpected slot claim failure", () =>
+    Effect.gen(function* () {
+      const assistant = yield* PlanningAssistant.PlanningAssistant;
+      const harness = yield* ProviderHarness;
+      const { created, root } = yield* seedPlan();
+      const frames = yield* subscribeFrames(created.plan.planId);
+
+      yield* assistant.startTurn({
+        planId: created.plan.planId,
+        parentCommitId: root.commitId,
+        text: "Reshape the sidebar",
+      });
+
+      const refused = yield* Queue.take(frames);
+      assert.ok(refused.kind === "turn-refused" && refused.reason === "slot-unavailable");
+      assert.strictEqual(yield* Queue.size(harness.startSessions), 0);
+    }).pipe(Effect.scoped, Effect.provide(testLayer([providerSnapshot], false, false, "generic"))),
   );
 
   it.effect("a stop the adapter never answers settles after the grace window", () =>

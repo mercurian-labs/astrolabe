@@ -173,6 +173,7 @@ function lineServices(
     readonly memoryRepositoryLinked?: boolean;
     readonly gitVersion?: { readonly major: number; readonly minor: number };
     readonly startFromOrigin?: boolean;
+    readonly missingBranch?: boolean;
   },
 ) {
   const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
@@ -241,15 +242,17 @@ function lineServices(
       get: ({ lineRootCommitId }) =>
         Effect.sync(() => {
           input.requestedLineRoots?.push(lineRootCommitId);
-          return Option.some({
-            lineRootCommitId,
-            repositoryId: fixture.repositoryId,
-            branch: input.branch,
-            baseOid: input.baseOid,
-            built: true,
-            repointHold: null,
-            createdAt,
-          });
+          return input.missingBranch === true
+            ? Option.none()
+            : Option.some({
+                lineRootCommitId,
+                repositoryId: fixture.repositoryId,
+                branch: input.branch,
+                baseOid: input.baseOid,
+                built: true,
+                repointHold: null,
+                createdAt,
+              });
         }),
     }),
     Layer.mock(SlotStore.SlotStore)({
@@ -420,6 +423,31 @@ layer("MemoryIndex", (it) => {
       yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), baseOid]);
       const chain = yield* index.readNote(fixture.projectId, "Plans", lineRef);
       assert.strictEqual(chain.markdown, "Main\n");
+    }),
+  );
+
+  it.effect("reads an unminted line as the repository default with no changes", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("unminted-line-read", { git: true });
+      yield* fs.writeFileString(path.join(fixture.root, "Plans.md"), "Main\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      yield* runGit(fixture.root, ["branch", "-M", "main"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "main"]);
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        missingBranch: true,
+      });
+
+      assert.deepStrictEqual(
+        yield* index.readLineChanges({ projectId: fixture.projectId, line: lineRef }),
+        { marked: [], hand: [], unmarked: null, unreviewedCount: 0 },
+      );
+      const note = yield* index.readNote(fixture.projectId, "Plans", lineRef);
+      assert.strictEqual(note.markdown, "Main\n");
     }),
   );
 

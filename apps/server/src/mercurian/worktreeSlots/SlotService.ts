@@ -12,8 +12,9 @@ import { ServerConfig } from "../../config.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
-import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { makeLineBranchEnsurer } from "../commitTree/ensureLineBranch.ts";
 import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
+import { PlanningStore, type PlanDetail } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryView } from "../repositories/schema.ts";
 import { SlotRegistry } from "./SlotRegistry.ts";
@@ -150,8 +151,8 @@ export class SlotService extends Context.Service<
 export const make = Effect.gen(function* () {
   const slots = yield* SlotStore;
   const registry = yield* SlotRegistry;
-  const branches = yield* LineBranchStore;
   const repositories = yield* RepositoryStore;
+  const planning = yield* PlanningStore;
   const settings = yield* ServerSettingsService;
   const config = yield* ServerConfig;
   const path = yield* Path.Path;
@@ -160,6 +161,7 @@ export const make = Effect.gen(function* () {
   const checkpoints = yield* CheckpointStore;
   const snapshotChain = yield* SnapshotChain;
   const memorySources = yield* MemorySourceStore;
+  const lineBranchEnsurer = yield* makeLineBranchEnsurer;
 
   const memberPath = (slot: WorktreeSlot, member: WorktreeSlotMember) =>
     path.join(slot.path, member.relativePath);
@@ -217,25 +219,33 @@ export const make = Effect.gen(function* () {
         cause: new Error(`Project ${projectId} has a missing or non-git repository`),
       });
     }
+    const tree = yield* planning.getTreeSnapshot;
+    let detail: PlanDetail | undefined;
+    for (const plan of tree.plans.filter((candidate) => candidate.projectId === projectId)) {
+      const candidate = yield* planning.getPlanSnapshot({ planId: plan.planId });
+      if (candidate.timeline.some((item) => String(item.commitId) === String(lineRootCommitId))) {
+        detail = candidate;
+        break;
+      }
+    }
+    if (detail === undefined) {
+      return yield* new SlotServiceError({
+        operation: "claim:lineBranch",
+        cause: new Error(`Line ${lineRootCommitId} is not part of project ${projectId}`),
+      });
+    }
     const layout = layoutProjectRepositories(path, linked);
     return yield* Effect.forEach(layout, (entry) =>
       Effect.gen(function* () {
-        const branch = yield* branches.get({
+        const branch = yield* lineBranchEnsurer.ensureLineBranch({
+          detail,
           lineRootCommitId,
-          repositoryId: entry.repository.repositoryId,
+          repository: entry.repository,
         });
-        if (Option.isNone(branch)) {
-          return yield* new SlotServiceError({
-            operation: "claim:lineBranch",
-            cause: new Error(
-              `Line branch ${lineRootCommitId} is missing for ${entry.repository.repositoryId}`,
-            ),
-          });
-        }
         const namedRef = yield* gitDriver.execute({
           operation: "SlotService.projectMembers.verifyBranch",
           cwd: entry.repository.path,
-          args: ["rev-parse", "--verify", "--quiet", `refs/heads/${branch.value.branch}`],
+          args: ["rev-parse", "--verify", "--quiet", `refs/heads/${branch.branch}`],
           allowNonZeroExit: true,
         });
         if (namedRef.exitCode !== 0) {
@@ -243,16 +253,16 @@ export const make = Effect.gen(function* () {
             cwd: entry.repository.path,
             lineRootCommitId,
             repositoryId: entry.repository.repositoryId,
-            lineBranch: branch.value.branch,
+            lineBranch: branch.branch,
           });
           return yield* new LineBranchMissingError({
             lineRootCommitId,
             repositoryId: entry.repository.repositoryId,
-            branch: branch.value.branch,
+            branch: branch.branch,
             commitOid,
           });
         }
-        return { ...entry, branch: branch.value.branch };
+        return { ...entry, branch: branch.branch };
       }),
     );
   });

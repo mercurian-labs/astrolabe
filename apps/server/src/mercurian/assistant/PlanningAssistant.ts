@@ -1032,10 +1032,11 @@ export const make = Effect.gen(function* () {
         if (builtMaterials.failure._tag === "LineBranchMissingError") {
           return yield* refuse(input.planId, "line-branch-missing");
         }
-        return yield* Effect.logError("planning turn could not claim its line", {
+        yield* Effect.logError("planning turn could not claim its line", {
           planId: input.planId,
           cause: builtMaterials.failure,
         });
+        return yield* refuse(input.planId, "slot-unavailable");
       }
       const materials = builtMaterials.success;
 
@@ -1057,10 +1058,11 @@ export const make = Effect.gen(function* () {
         if (continuedSlot.failure._tag === "LineBranchMissingError") {
           return yield* refuse(input.planId, "line-branch-missing");
         }
-        return yield* Effect.logError("planning continuation could not claim its line", {
+        yield* Effect.logError("planning continuation could not claim its line", {
           planId: input.planId,
           cause: continuedSlot.failure,
         });
+        return yield* refuse(input.planId, "slot-unavailable");
       }
 
       // Claim the plan before anything reaches the provider: from here on,

@@ -37,7 +37,9 @@ import { CommitId } from "../commitTree/schema.ts";
 import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
 import { memoryAppendix } from "../assistant/PlanningPrompt.ts";
 import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
+import { makeLineBranchEnsurer } from "../commitTree/ensureLineBranch.ts";
 import { SlotService, SlotServiceError } from "../worktreeSlots/SlotService.ts";
+import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
 import type { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 
 export class CodingSessionService extends Context.Service<
@@ -110,6 +112,7 @@ export const make = Effect.gen(function* () {
   const slotService = yield* SlotService;
   const path = yield* Path.Path;
   const memorySources = yield* MemorySourceStore;
+  const lineBranchEnsurer = yield* makeLineBranchEnsurer;
 
   const uuid = crypto.randomUUIDv4;
   const commandId = (tag: string) =>
@@ -270,6 +273,17 @@ export const make = Effect.gen(function* () {
       const createdAt = DateTime.formatIso(yield* DateTime.now);
       const startedAt = yield* DateTime.now;
       const lineRootCommitId = lineRootCommitIdFor(detail, input.parentCommitId);
+      const memorySource = yield* memorySources.getSource(detail.plan.projectId);
+      yield* Effect.forEach(
+        projectWorkingRepositories(
+          repositorySnapshot,
+          detail.plan.projectId,
+          Option.getOrNull(memorySource),
+        ),
+        (repository) =>
+          lineBranchEnsurer.ensureLineBranch({ detail, lineRootCommitId, repository }),
+        { discard: true },
+      );
       const threadId = ThreadId.make(yield* uuid);
       const messageId = MessageId.make(yield* uuid);
       const holder = { kind: "turn" as const, threadId };
@@ -328,7 +342,6 @@ export const make = Effect.gen(function* () {
         }
         const branch = primaryMember.currentBranch;
         const primaryWorktreePath = path.join(slot.path, primaryMember.relativePath);
-        const memorySource = yield* memorySources.getSource(detail.plan.projectId);
         const memoryMember = Option.isNone(memorySource)
           ? undefined
           : workspaceMembers.find(

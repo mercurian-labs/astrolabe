@@ -299,9 +299,16 @@ describe("turnRefusalNotice", () => {
       "turn-active",
       "pool-at-capacity",
       "line-branch-missing",
+      "slot-unavailable",
     ] as const) {
       expect(turnRefusalNotice(selection, reason).length).toBeGreaterThan(0);
     }
+  });
+
+  it("explains an unexpected slot preparation failure", () => {
+    expect(turnRefusalNotice(selection, "slot-unavailable")).toBe(
+      "This line's working state could not be prepared; try again.",
+    );
   });
 
   it("names the signed-out provider after a message lands", () => {

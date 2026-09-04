@@ -520,6 +520,7 @@ export const PlanTurnRefusalReason = Schema.Literals([
   "turn-active",
   "pool-at-capacity",
   "line-branch-missing",
+  "slot-unavailable",
 ]);
 export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
 

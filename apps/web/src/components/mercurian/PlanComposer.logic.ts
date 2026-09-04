@@ -291,6 +291,8 @@ export function turnRefusalNotice(
       return "The message was sent, but every worktree slot is in use. Finish another turn and try again.";
     case "line-branch-missing":
       return "The message was sent, but this line's branch is missing. Use Implement to recreate it, then try again.";
+    case "slot-unavailable":
+      return "This line's working state could not be prepared; try again.";
     default:
       return "The message was sent, but the assistant could not reply.";
   }
