@@ -13,7 +13,7 @@ import {
 } from "./planMentions.logic";
 
 /**
- * What `@` can reach in a planning space: the files of the repositories the
+ * What `@` can reach in a thread: the files of the repositories the
  * plan's project is working in.
  *
  * The fan-out is one mounted searcher per repository, because a hook cannot be

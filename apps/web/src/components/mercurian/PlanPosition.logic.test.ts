@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { PlanTimelineItem } from "@t3tools/contracts";
 
-import { codingSessionLeaf, commitId as id, message } from "../../test/fixtures/timeline";
+import { commitId as id, message } from "../../test/fixtures/timeline";
 
 import { buildPlanGraph } from "./PlanGraph.logic";
 import {
@@ -10,7 +10,6 @@ import {
   isViewingPast,
   LATEST,
   positionAfterPick,
-  resolveActingHead,
   resolveHead,
 } from "./PlanPosition.logic";
 
@@ -61,23 +60,6 @@ describe("resolveHead", () => {
     // The gap between switching plans and the first snapshot: the wrong branch
     // beats no answer.
     expect(resolveHead(chain, { _tag: "at", commitId: id("elsewhere"), live: true })).toBe(id("c"));
-  });
-});
-
-describe("resolveActingHead", () => {
-  it("keeps a viewed coding-session leaf visible but acts from its parent", () => {
-    const session = codingSessionLeaf("session", {
-      sequence: 4,
-      parents: ["c"],
-      createdAt: "2026-08-03T00:00:00.000Z",
-      repositoryId: "repo",
-      repositoryName: "server",
-      planRevisionCommitId: "b",
-    });
-    const graph = buildPlanGraph([...chain.nodes.map(({ item }) => item), session]);
-    expect(resolveHead(graph, positionAfterPick(graph, session.commitId))).toBe(id("session"));
-    expect(resolveActingHead(graph, session.commitId)).toBe(id("c"));
-    expect(resolveActingHead(graph, id("c"))).toBe(id("c"));
   });
 });
 

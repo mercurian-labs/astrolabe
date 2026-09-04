@@ -9,6 +9,7 @@ import type {
   MercurianCommitId,
   PlanCodingSessionRecord,
   PlanTimelineItem,
+  PlanningModelSelection,
   ServerProvider,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
@@ -27,13 +28,13 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup } from "../ui/popover";
 import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
+import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
 import type { PlanGraph, PlanGraphNode } from "./PlanGraph.logic";
 import {
   derivePlanNodePopover,
   repositoryFactsLabel,
   type PlanNodePopoverAct,
 } from "./PlanNodePopover.logic";
-import { ModelAttribution } from "./PlanTimeline";
 
 export const NODE_POPOVER_HOVER_DELAY = 500;
 const NODE_POPOVER_CLOSE_DELAY = 160;
@@ -364,7 +365,7 @@ export function PlanNodePopoverContent({
                 variant="outline"
                 onClick={onClose}
               >
-                Open session
+                Open line
               </Button>
             ) : (
               <Button
@@ -410,6 +411,27 @@ function MessageIdentity({
         <MessageSquareIcon aria-hidden className="size-3.5 shrink-0 -scale-x-100" />
       ) : null}
     </div>
+  );
+}
+
+/** The provider/model that produced a settled reply, quiet but always visible. */
+function ModelAttribution({
+  selection,
+  providers,
+}: {
+  readonly selection: PlanningModelSelection;
+  readonly providers: ReadonlyArray<ServerProvider>;
+}) {
+  const modelLabel =
+    providers
+      .flatMap((provider) => (provider.driver === selection.provider ? provider.models : []))
+      .find((model) => model.slug === selection.model)?.name ?? selection.model;
+  const optionLabels = planningModelOptionLabels(selection, providers);
+  return (
+    <span className="text-[11px] text-muted-foreground/65">
+      {providerLabel(selection.provider)} · {modelLabel}
+      {optionLabels.length === 0 ? "" : ` · ${optionLabels.join(" · ")}`}
+    </span>
   );
 }
 
@@ -472,7 +494,7 @@ function Warning({
 
 function actLabel(act: PlanNodePopoverAct): string {
   if (act === "edit-and-branch") return "Fork here";
-  return "Open session";
+  return "Open line";
 }
 
 function nodeAccessibleName(node: PlanGraphNode): string {

@@ -27,7 +27,7 @@ import { repositoryIdsForProject, sortRepositoriesForPage } from "./Repositories
  *
  * The set is context and never a stamp: nothing else moves when it changes —
  * no grouping in the tree, no badge on a plan, nothing filed under a
- * repository. What it does is tell the planning space which code to reach for
+ * repository. What it does is tell the thread which code to reach for
  * when someone mentions a file.
  */
 export function ManageProjectRepositoriesDialog({

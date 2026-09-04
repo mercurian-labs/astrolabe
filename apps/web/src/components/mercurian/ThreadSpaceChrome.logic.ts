@@ -4,6 +4,7 @@ import type {
   PlanDetail,
   PlanInFlightTurn,
   PlanLineRuntimeRecord,
+  PlanStreamItem,
 } from "@t3tools/contracts";
 
 import type { ChatMessage } from "../../types";
@@ -23,6 +24,12 @@ export function resolveForkHereInput(
   const node = graph.byId.get(message.id);
   const parentCommitId = node?.parents[0];
   return parentCommitId === undefined ? null : { parentCommitId, seedText: message.text };
+}
+
+export function memoryAmendmentFailureNotice(
+  failure: Extract<PlanStreamItem, { readonly kind: "memory-amendment-failed" }>,
+): string {
+  return `The assistant couldn't produce a usable memory amendment; nothing landed. ${failure.reason}`;
 }
 
 export function resolveLineInFlightTurn(

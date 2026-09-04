@@ -104,12 +104,12 @@ export function describeImportOutcome(
       return null;
     case "existing":
       return {
-        title: "This issue already has a plan",
+        title: "This issue already has a thread",
         description: "Opened it instead of importing a second copy.",
       };
     case "resurfaced":
       return {
-        title: "This issue's plan was restored",
+        title: "This issue's thread was restored",
         description: "It had been archived, so importing brought it back.",
       };
   }

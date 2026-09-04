@@ -1,158 +1,24 @@
-import type { MercurianCommitId, PlanId, PlanTimelineItem } from "@t3tools/contracts";
-import { PencilIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "../../lib/utils";
-import { useSavePlanRevision } from "../../state/mercurian";
-import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
-import { Button } from "../ui/button";
-import { lastPlanRevision, saveRefusalNotice } from "./PlanArtifact.logic";
 
-/**
- * The plan artifact: the standing object the planning space orbits.
- *
- * Its text is never held anywhere but the history — what renders here is the
- * fold of the plan's revisions, and saving an edit lands another commit rather
- * than writing a document somewhere else.
- */
+/** The plan artifact shown in the thread's read-only surface. */
 export function PlanArtifact({
-  planId,
   planText,
-  parentCommitId,
-  timeline,
-  readOnly = false,
-  turnActive = false,
   readOnlyAction,
-  titleControl,
-  cornerControl,
-  hideTitleBar = false,
 }: {
-  readonly planId: PlanId;
   readonly planText: string;
-  /**
-   * Where the surface is standing. An edit is a commit like any other, so it
-   * hangs from the branch its author was on — not from whichever branch last
-   * received one.
-   */
-  readonly parentCommitId?: MercurianCommitId;
-  readonly timeline: ReadonlyArray<PlanTimelineItem>;
-  /**
-   * Set while the surface is looking at an earlier commit. Editing there is
-   * not a smaller version of editing — it is a fork — so the affordance goes
-   * away rather than quietly appending at the tip.
-   */
-  readonly readOnly?: boolean;
-  /**
-   * Set while a reply streams on this branch. A human revision would fork the
-   * assistant's own chain, so the edit affordance steps aside and a line says
-   * why — the same fact the composer's Stop face states.
-   */
-  readonly turnActive?: boolean;
-  /** What takes Edit's place while read-only: the way back to now. */
   readonly readOnlyAction?: ReactNode;
-  /** The planning-space artifact picker; omitted in standalone renderings. */
-  readonly titleControl?: ReactNode;
-  /** The planning-space pane toggle; omitted in standalone renderings. */
-  readonly cornerControl?: ReactNode;
-  /** Temporary: the bar goes away with PlanningSpace in phase 5. */
-  readonly hideTitleBar?: boolean;
 }) {
-  const savePlanRevision = useSavePlanRevision();
-  const [draft, setDraft] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const editable = !readOnly && !turnActive;
-
-  const save = useCallback(async () => {
-    if (draft === null || isSaving) return;
-    setIsSaving(true);
-    setNotice(null);
-    const saved = await savePlanRevision({
-      planId,
-      text: draft,
-      ...(parentCommitId === undefined ? {} : { parentCommitId }),
-    });
-    setIsSaving(false);
-    if (saved.ok) {
-      // The stream delivers the new text; the buffer's job is done.
-      setDraft(null);
-      return;
-    }
-    // The editor keeps the text either way; the pane says why nothing landed
-    // instead of leaving a refusal to the console.
-    setNotice(saveRefusalNotice(saved.error));
-  }, [draft, isSaving, parentCommitId, planId, savePlanRevision]);
-
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {hideTitleBar ? (
-        readOnlyAction === undefined ? null : (
-          <div className="flex justify-end px-3 py-1.5 sm:px-4">{readOnlyAction}</div>
-        )
-      ) : (
-        <div
-          className={cn(
-            WORKSPACE_PANE_TITLE_BAR_CLASS,
-            "gap-2 border-b border-border px-3 sm:px-4",
-          )}
-        >
-          {titleControl ?? <h2 className="text-sm font-medium text-foreground">Plan</h2>}
-          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
-            {lastRevisionLabel(timeline)}
-          </span>
-          {readOnly ? (
-            readOnlyAction
-          ) : draft === null ? (
-            editable ? (
-              <Button size="sm" variant="ghost" onClick={() => setDraft(planText)}>
-                <PencilIcon className="size-3.5" />
-                Edit
-              </Button>
-            ) : null
-          ) : (
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setDraft(null);
-                  setNotice(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                // A no-op edit should not mint a no-op revision.
-                disabled={isSaving || draft === planText}
-                onClick={() => void save()}
-              >
-                Save
-              </Button>
-            </div>
-          )}
-          {cornerControl}
-        </div>
+      {readOnlyAction === undefined ? null : (
+        <div className="flex justify-end px-3 py-1.5 sm:px-4">{readOnlyAction}</div>
       )}
-      {notice === null ? null : (
-        <p className="border-b border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:px-4">
-          {notice}
-        </p>
-      )}
-      {turnActive && !readOnly ? (
-        <p className="border-b border-border/60 px-3 py-2 text-xs text-muted-foreground sm:px-4">
-          The assistant is replying. Stop it before editing the plan.
-        </p>
-      ) : null}
-      {draft === null || readOnly ? (
-        <PlanArtifactBody planText={planText} />
-      ) : (
-        <PlanArtifactEditor value={draft} onChange={setDraft} onSave={() => void save()} />
-      )}
+      <PlanArtifactBody planText={planText} />
     </section>
   );
 }
@@ -162,13 +28,13 @@ export function PlanArtifact({
  *
  * Deliberately not `ChatMarkdown`: that renderer is entangled with the thread
  * surface — scoped thread refs, the right panel, workspace file links — and
- * mounting it here would drag that machinery into the planning space.
+ * mounting it here would drag that machinery into the artifact.
  */
 export function PlanArtifactBody({ planText }: { readonly planText: string }) {
   if (planText.length === 0) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-6 sm:px-4">
-        <p className="text-sm text-muted-foreground/70">No plan yet — edit to start one.</p>
+        <p className="text-sm text-muted-foreground/70">No plan yet.</p>
       </div>
     );
   }
@@ -192,49 +58,4 @@ export function PlanArtifactBody({ planText }: { readonly planText: string }) {
       </ReactMarkdown>
     </div>
   );
-}
-
-/**
- * The edit buffer is ephemeral on purpose: an unsaved edit is not a commit,
- * and it is not the per-plan composer draft either. It works on what it was
- * seeded with until it is saved or cancelled.
- */
-function PlanArtifactEditor({
-  value,
-  onChange,
-  onSave,
-}: {
-  readonly value: string;
-  readonly onChange: (next: string) => void;
-  readonly onSave: () => void;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
-
-  return (
-    <textarea
-      ref={textareaRef}
-      aria-label="Plan"
-      className="min-h-0 flex-1 resize-none bg-background px-3 py-4 font-mono text-sm text-foreground outline-hidden sm:px-4"
-      placeholder="Write the plan"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          onSave();
-        }
-      }}
-    />
-  );
-}
-
-function lastRevisionLabel(timeline: ReadonlyArray<PlanTimelineItem>): string {
-  const revision = lastPlanRevision(timeline);
-  if (revision === null) return "Not edited yet";
-  const who = revision.authorKind === "human" ? "you" : "the assistant";
-  return `Edited by ${who} · ${formatRelativeTimeLabel(revision.createdAt)}`;
 }

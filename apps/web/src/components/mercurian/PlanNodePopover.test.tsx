@@ -154,7 +154,7 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Departed to");
     expect(markup).toContain("feature/detour");
     expect(markup).toContain("Pull request");
-    expect(markup).toContain("Open session");
+    expect(markup).toContain("Open line");
     expect(markup).toContain('href="/sessions/thread"');
     expect(markup).not.toContain("Fork here");
   });

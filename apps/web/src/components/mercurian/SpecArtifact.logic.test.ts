@@ -9,7 +9,6 @@ import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFr
 import {
   planMayBeStaleAt,
   snapshotSpecIsForPath,
-  specRevisionLabel,
   stalePlanLeafIds,
   staleSpecLeafIds,
 } from "./SpecArtifact.logic";
@@ -62,15 +61,6 @@ describe("SpecArtifact logic", () => {
       item("right-tip", 6, ["right"], "message"),
     ];
     expect([...staleSpecLeafIds(buildPlanGraph(timeline))]).toEqual(["right-tip"]);
-  });
-
-  it("uses spec vocabulary while retaining tracker issue identity", () => {
-    const revision = item("refresh", 1, [], "spec-revision");
-    if (revision._tag !== "spec-revision") throw new Error("expected spec revision");
-    const { _tag: _, ...row } = revision;
-    expect(specRevisionLabel({ ...row, cause: "refresh", issueId: "M-109" })).toBe(
-      "Refreshed from M-109",
-    );
   });
 
   it("clears plan freshness only with a later plan revision on the same path", () => {

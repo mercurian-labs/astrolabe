@@ -33,11 +33,6 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Its empty and grouped archive states come from the live Mercurian tree and invoke restore or delete commands.",
   },
-  "src/components/mercurian/CodingSessionHeader.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "The header coordinates router links, repository state, thread commands, source control, previews, and scripts.",
-  },
   "src/components/mercurian/NarrowedGroundingNotice.tsx": {
     category: "deferred",
     reason:
@@ -98,21 +93,6 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "This nonvisual search fan-out reads project repositories and performs environment-scoped path searches.",
   },
-  "src/components/mercurian/PlanModelPicker.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "Available planning models and provider resolution come from the primary environment's settings.",
-  },
-  "src/components/mercurian/PlanTraitsPicker.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "The depth levels it offers come from the resolved provider instance's live model descriptors.",
-  },
-  "src/components/mercurian/PlanningSpace.tsx": {
-    category: "composition-shell",
-    reason:
-      "This route-level workspace composes the catalogued timeline, graph, composer, and artifact surfaces rather than owning one isolated state.",
-  },
   "src/components/mercurian/PreferencesSettings.tsx": {
     category: "requires-live-workspace",
     reason:
@@ -138,20 +118,9 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Search results and actions combine router state, the live Mercurian tree, keybindings, and project creation.",
   },
-  "src/components/mercurian/SessionPlanPanel.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "Loading, empty, and plan-body states are resolved from live plan detail and checkpoint text queries.",
-  },
-  "src/components/mercurian/SessionPreviewOffer.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "The offer depends on ports discovered for a real thread and opens them through the active preview environment.",
-  },
-  "src/components/mercurian/SessionScriptsControl.tsx": {
-    category: "requires-live-workspace",
-    reason:
-      "Script availability and actions coordinate the live terminal, preview environment, and right-panel state.",
+  "src/components/mercurian/RepositorySwitcher.tsx": {
+    category: "composition-shell",
+    reason: "The thread header supplies repository members and owns the selected member state.",
   },
   "src/components/mercurian/SettingsEmptyPage.tsx": {
     category: "deferred",

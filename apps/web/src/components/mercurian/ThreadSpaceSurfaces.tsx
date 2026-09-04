@@ -13,7 +13,7 @@ import { DagExplorer } from "./DagExplorer";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { ancestorClosure } from "./PlanGraph.logic";
-import { LATEST, positionAfterPick, resolveActingHead, resolveHead } from "./PlanPosition.logic";
+import { LATEST, positionAfterPick, resolveHead } from "./PlanPosition.logic";
 import { SpecArtifact } from "./SpecArtifact";
 import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
@@ -68,7 +68,6 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     [graph, lineTip, search.at],
   );
   const head = resolveHead(graph, position);
-  const actingHead = resolveActingHead(graph, head);
   const viewingPast = search.at !== undefined && head !== lineTip;
   const visibleTimeline = useMemo(() => {
     if (head === null) return timeline;
@@ -174,12 +173,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         </HistoricalArtifactPlaceholder>
       ) : (
         <PlanArtifact
-          hideTitleBar
-          planId={planId}
           planText={artifactText}
-          readOnly
-          timeline={visibleTimeline}
-          {...(actingHead === null ? {} : { parentCommitId: actingHead })}
           {...(readOnlyAction === undefined ? {} : { readOnlyAction })}
         />
       ),
@@ -190,12 +184,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         </HistoricalArtifactPlaceholder>
       ) : (
         <SpecArtifact
-          hideTitleBar
-          planId={planId}
-          readOnly
           spec={artifactSpec}
-          timeline={visibleTimeline}
-          {...(actingHead === null ? {} : { parentCommitId: actingHead })}
           {...(detail?.origin === undefined ? {} : { origin: detail.origin })}
           {...(readOnlyAction === undefined ? {} : { readOnlyAction })}
         />
@@ -205,7 +194,6 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         anchoredCommitId={head}
         codingSessions={codingSessions}
         graph={graph}
-        hideTitleBar
         inFlightAnchorCommitIds={inFlightTurns.map((turn) => turn.parentCommitId)}
         providers={planningModel.providers}
         stalePlanCommitIds={stalePlanLeaves}

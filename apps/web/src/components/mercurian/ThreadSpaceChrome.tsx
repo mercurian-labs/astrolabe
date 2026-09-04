@@ -11,15 +11,18 @@ import { useRepositories } from "../../state/mercurianRepositories";
 import type { ChatMessage } from "../../types";
 import type { ChatComposerMentionSources } from "../chat/ChatComposer";
 import { Button } from "../ui/button";
-import { CodingSessionRepositorySwitcher, resolveCodingSessionMember } from "./CodingSessionHeader";
 import { LineBranchMissingBanner } from "./LineBranchMissingBanner";
 import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
 import { MemoryNoteReader } from "./MemoryNoteReader";
 import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
-import { memoryAmendmentFailureNotice } from "./PlanComposer.logic";
 import { formatMentionCandidate } from "./planMentions.logic";
-import { resolveForkHereInput, resolveLineInFlightTurn } from "./ThreadSpaceChrome.logic";
+import { CodingSessionRepositorySwitcher, resolveCodingSessionMember } from "./RepositorySwitcher";
+import {
+  memoryAmendmentFailureNotice,
+  resolveForkHereInput,
+  resolveLineInFlightTurn,
+} from "./ThreadSpaceChrome.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
 import { resolveLineTip } from "./planLineOwnership.logic";
 import { useForkHere } from "./useForkHere";

@@ -1,13 +1,17 @@
-import { PlanId } from "@t3tools/contracts";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 
-import { PlanningSpace } from "../components/mercurian/PlanningSpace";
-
-function PlanRouteView() {
+function PlanRouteRedirect() {
+  const navigate = useNavigate();
   const { planId } = Route.useParams();
-  return <PlanningSpace planId={PlanId.make(planId)} />;
+
+  useEffect(() => {
+    void navigate({ to: "/threads/$planId", params: { planId }, search: true, replace: true });
+  }, [navigate, planId]);
+
+  return null;
 }
 
 export const Route = createFileRoute("/_chat/plans/$planId")({
-  component: PlanRouteView,
+  component: PlanRouteRedirect,
 });

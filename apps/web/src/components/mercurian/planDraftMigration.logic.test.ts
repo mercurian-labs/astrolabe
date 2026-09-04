@@ -6,10 +6,15 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PlanDraft } from "../../planDraftStore";
-import { resolvePlanDraftMigrations } from "./planDraftMigration.logic";
+import {
+  LEGACY_PLAN_DRAFTS_STORAGE_KEY,
+  type LegacyPlanDraft,
+  readLegacyPlanDrafts,
+  removeMigratedLegacyPlanDrafts,
+  resolvePlanDraftMigrations,
+} from "./planDraftMigration.logic";
 
-const draft = (draftId: string, projectId: string): PlanDraft => ({
+const draft = (draftId: string, projectId: string): LegacyPlanDraft => ({
   draftId,
   projectId,
   text: `${draftId} text`,
@@ -63,5 +68,35 @@ describe("resolvePlanDraftMigrations", () => {
     });
 
     expect(migrations[0]?.modelSelection).toEqual({ instanceId: "codex", model: "gpt-5" });
+  });
+
+  it("validates the legacy payload and removes only drafts that migrated", () => {
+    const values = new Map<string, string>([
+      [
+        LEGACY_PLAN_DRAFTS_STORAGE_KEY,
+        JSON.stringify({
+          draftsById: {
+            ready: draft("ready", "mercurian-ready"),
+            pending: draft("pending", "mercurian-pending"),
+            invalid: { draftId: "invalid", projectId: "project", text: 42 },
+          },
+        }),
+      ],
+    ]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    };
+
+    expect(Object.keys(readLegacyPlanDrafts(storage))).toEqual(["ready", "pending"]);
+    expect(removeMigratedLegacyPlanDrafts(storage, new Set(["ready"]))).toEqual({
+      pending: draft("pending", "mercurian-pending"),
+    });
+    expect(Object.keys(readLegacyPlanDrafts(storage))).toEqual(["pending"]);
+
+    removeMigratedLegacyPlanDrafts(storage, new Set(["pending"]));
+    removeMigratedLegacyPlanDrafts(storage, new Set(["pending"]));
+    expect(storage.getItem(LEGACY_PLAN_DRAFTS_STORAGE_KEY)).toBeNull();
   });
 });

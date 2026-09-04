@@ -1,9 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { MercurianProject, PlanTreeRow } from "@t3tools/contracts";
+import { MercurianProjectId, type MercurianProject, type PlanTreeRow } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   BookOpenIcon,
+  CircleDotIcon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -16,13 +17,18 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "rea
 import type { KeyboardEvent } from "react";
 
 import { onOpenCommandPalette } from "../../commandPaletteBus";
+import {
+  composerDraftHasUserContent,
+  DraftId,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
 import { useDesignLabOverridesStore } from "../../designLabOverrides";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../../keybindings";
 import { isTerminalFocused } from "../../lib/terminalFocus";
-import { usePlanDraftStore } from "../../planDraftStore";
 import { useNewMercurianThreadHandler } from "../../hooks/useHandleNewMercurianThread";
 import { useProjectScopeStore } from "../../projectScopeStore";
 import { useMercurianTree } from "../../state/mercurian";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useMemorySourceForProject, useReadMemoryIndex } from "../../state/mercurianMemory";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -37,6 +43,7 @@ import {
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
+import { ImportIssueDialog } from "./ImportIssueDialog";
 import { NewProjectDialog } from "./NewProjectDialog";
 import { PlanStatusDot } from "./PlanStatusDot";
 import {
@@ -58,36 +65,97 @@ import {
   type SearchPaletteResult,
 } from "./SearchPalette.logic";
 
-type PaletteResult = SearchPaletteResult<PlanTreeRow, MercurianProject, { readonly name: string }>;
+interface PaletteDraft {
+  readonly draftId: DraftId;
+  readonly projectId: string;
+  readonly prompt: string;
+  readonly createdAt: string;
+}
+
+type PaletteResult =
+  | SearchPaletteResult<PlanTreeRow, MercurianProject, { readonly name: string }>
+  | { readonly kind: "draft"; readonly draft: PaletteDraft };
 
 /**
  * The Search Palette: one chord, from anywhere, over everything you can go to
- * and the three things you can start.
+ * and what you can start.
  *
  * It is an overlay rather than a panel, which is the whole reason it works with
  * the sidebar collapsed — nothing about it lives in the tree except the search
- * row that opens it. Picking always lands on work: a project resolves to a plan
+ * row that opens it. Picking always lands on work: a project resolves to a thread
  * before it navigates, never to a container.
  */
 export function SearchPalette() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  // The chord and the bus both mean "start a plan, ask me where" when there is
+  // The chord and the bus both mean "start a thread, ask me where" when there is
   // no project to assume. The palette opens straight into the picker.
   const [openInProjectPicker, setOpenInProjectPicker] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [importDialog, setImportDialog] = useState<{
+    readonly projectId: MercurianProjectId | null;
+    readonly open: boolean;
+  }>({ projectId: null, open: false });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const pathname = useLocation({ select: (location) => location.pathname });
   const { snapshot } = useMercurianTree();
-  const draftsById = usePlanDraftStore((state) => state.draftsById);
+  const environmentId = usePrimaryEnvironmentId();
+  const draftThreadsByThreadKey = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
+  const draftsByThreadKey = useComposerDraftStore((state) => state.draftsByThreadKey);
   const newMercurianThread = useNewMercurianThreadHandler();
 
   const activePlans = useMemo(
     () => partitionPlansByLifecycle(snapshot.plans).active,
     [snapshot.plans],
   );
+  const mercurianProjectIdByOrchestrationProjectId = useMemo(
+    () =>
+      new Map(
+        snapshot.projects.flatMap((project) =>
+          project.orchestrationProjectId == null
+            ? []
+            : [[String(project.orchestrationProjectId), String(project.projectId)] as const],
+        ),
+      ),
+    [snapshot.projects],
+  );
+  const drafts = useMemo<PaletteDraft[]>(
+    () =>
+      Object.entries(draftThreadsByThreadKey).flatMap(([draftId, session]) => {
+        if (session.promotedTo != null || session.environmentId !== environmentId) return [];
+        const projectId = mercurianProjectIdByOrchestrationProjectId.get(session.projectId);
+        const composer = draftsByThreadKey[draftId];
+        if (projectId === undefined || !composerDraftHasUserContent(composer)) return [];
+        return [
+          {
+            draftId: DraftId.make(draftId),
+            projectId,
+            prompt: composer?.prompt ?? "",
+            createdAt: session.createdAt,
+          },
+        ];
+      }),
+    [
+      draftThreadsByThreadKey,
+      draftsByThreadKey,
+      environmentId,
+      mercurianProjectIdByOrchestrationProjectId,
+    ],
+  );
+  const draftProjectIdById = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(draftThreadsByThreadKey).flatMap(([draftId, session]) => {
+          if (session.promotedTo != null || session.environmentId !== environmentId) return [];
+          const projectId = mercurianProjectIdByOrchestrationProjectId.get(session.projectId);
+          return projectId === undefined ? [] : [[draftId, projectId]];
+        }),
+      ),
+    [draftThreadsByThreadKey, environmentId, mercurianProjectIdByOrchestrationProjectId],
+  );
   const currentProjectId = useMemo(
-    () => resolveCurrentProjectId({ pathname, plans: activePlans, draftsById }),
-    [activePlans, draftsById, pathname],
+    () => resolveCurrentProjectId({ pathname, plans: activePlans, draftProjectIdById }),
+    [activePlans, draftProjectIdById, pathname],
   );
 
   const startPlanInProject = useCallback(
@@ -107,6 +175,10 @@ export function SearchPalette() {
     setOpenInProjectPicker(true);
     setOpen(true);
   }, [currentProjectId, startPlanInProject]);
+
+  const openImportDialog = useCallback((projectId: string) => {
+    setImportDialog({ projectId: MercurianProjectId.make(projectId), open: true });
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -154,15 +226,27 @@ export function SearchPalette() {
             <SearchPaletteDialog
               openInProjectPicker={openInProjectPicker}
               plans={activePlans}
+              drafts={drafts}
               projects={snapshot.projects}
               currentProjectId={currentProjectId}
               setOpen={setOpen}
               startPlanInProject={startPlanInProject}
+              openImportDialog={openImportDialog}
               openNewProjectDialog={() => setIsNewProjectOpen(true)}
             />
           </CommandDialogPopup>
         ) : null}
       </CommandDialog>
+      {importDialog.projectId === null ? null : (
+        <ImportIssueDialog
+          open={importDialog.open}
+          projectId={importDialog.projectId}
+          onOpenChange={(open) => setImportDialog((current) => ({ ...current, open }))}
+          onImported={(planId) => {
+            void navigate({ to: "/threads/$planId", params: { planId } });
+          }}
+        />
+      )}
       <NewProjectDialog open={isNewProjectOpen} onOpenChange={setIsNewProjectOpen} />
     </>
   );
@@ -171,10 +255,12 @@ export function SearchPalette() {
 function SearchPaletteDialog(props: {
   readonly openInProjectPicker: boolean;
   readonly plans: ReadonlyArray<PlanTreeRow>;
+  readonly drafts: ReadonlyArray<PaletteDraft>;
   readonly projects: ReadonlyArray<MercurianProject>;
   readonly currentProjectId: string | null;
   readonly setOpen: (open: boolean) => void;
   readonly startPlanInProject: (projectId: string) => void;
+  readonly openImportDialog: (projectId: string) => void;
   readonly openNewProjectDialog: () => void;
 }) {
   const { openNewProjectDialog, setOpen, startPlanInProject } = props;
@@ -183,8 +269,9 @@ function SearchPaletteDialog(props: {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
-  // One level deep is all this palette needs: the project picker behind "New
-  // plan". The stack shape is the fork's so a second view costs nothing.
+  // One level deep is all this palette needs: the project pickers behind the
+  // creation and import actions. The stack shape is the fork's so a second view
+  // costs nothing.
   const [pickerGroups, setPickerGroups] = useState<ReadonlyArray<CommandPaletteGroup> | null>(null);
   const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
   const scopedProject =
@@ -230,6 +317,12 @@ function SearchPaletteDialog(props: {
   const runResult = useCallback(
     (result: PaletteResult): void => {
       switch (result.kind) {
+        case "draft":
+          void navigate({
+            to: "/threads/draft/$draftId",
+            params: { draftId: result.draft.draftId },
+          });
+          return;
         case "plan":
           void navigate({ to: "/threads/$planId", params: { planId: result.plan.planId } });
           return;
@@ -264,7 +357,7 @@ function SearchPaletteDialog(props: {
             void navigate({ to: "/settings" });
             return;
           }
-          // "New plan" with a project in hand never asks; without one it does,
+          // "New thread" with a project in hand never asks; without one it does,
           // which is the picker below rather than a run.
           if (props.currentProjectId !== null) {
             startPlanInProject(props.currentProjectId);
@@ -291,8 +384,26 @@ function SearchPaletteDialog(props: {
   );
 
   const projectPickerGroups = useMemo<ReadonlyArray<CommandPaletteGroup>>(
-    () => [{ value: "projects", label: "New plan in", items: projectPickerItems }],
+    () => [{ value: "projects", label: "New thread in", items: projectPickerItems }],
     [projectPickerItems],
+  );
+
+  const importProjectPickerGroups = useMemo<ReadonlyArray<CommandPaletteGroup>>(
+    () => [
+      {
+        value: "projects",
+        label: "Import into",
+        items: sortProjectsForTree(props.projects).map((project) => ({
+          kind: "action",
+          value: `import-issue-into:${project.projectId}`,
+          searchTerms: [project.name],
+          title: project.name,
+          icon: <FolderIcon className={ITEM_ICON_CLASS} />,
+          run: async () => props.openImportDialog(project.projectId),
+        })),
+      },
+    ],
+    [props.openImportDialog, props.projects],
   );
 
   const actionItems = useMemo<
@@ -300,8 +411,8 @@ function SearchPaletteDialog(props: {
   >(() => {
     const newPlanBase = {
       value: "action:new-plan",
-      searchTerms: ["New plan", "create plan", "start"],
-      title: "New plan",
+      searchTerms: ["New thread", "create thread", "start"],
+      title: "New thread",
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
     } as const;
 
@@ -318,12 +429,37 @@ function SearchPaletteDialog(props: {
             kind: "submenu",
             addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
             groups: projectPickerGroups,
-            // Nowhere to put a plan yet: "New project" sits right beneath.
+            // Nowhere to put a thread yet: "New project" sits right beneath.
+            ...(props.projects.length === 0 ? { disabled: true } : {}),
+          };
+
+    const importIssueBase = {
+      value: "action:import-issue",
+      searchTerms: ["Import from a tracker", "import issue", "tracker"],
+      title: "Import from a tracker",
+      icon: <CircleDotIcon className={ITEM_ICON_CLASS} />,
+    } as const;
+
+    const importProjectId = props.currentProjectId;
+    const importIssue: CommandPaletteActionItem | CommandPaletteSubmenuItem =
+      importProjectId !== null
+        ? {
+            ...importIssueBase,
+            kind: "action",
+            description: projectNameById.get(importProjectId),
+            run: async () => props.openImportDialog(importProjectId),
+          }
+        : {
+            ...importIssueBase,
+            kind: "submenu",
+            addonIcon: <CircleDotIcon className={ADDON_ICON_CLASS} />,
+            groups: importProjectPickerGroups,
             ...(props.projects.length === 0 ? { disabled: true } : {}),
           };
 
     return [
       newPlan,
+      importIssue,
       {
         kind: "action",
         value: "action:new-project",
@@ -359,9 +495,11 @@ function SearchPaletteDialog(props: {
         : []),
     ];
   }, [
+    importProjectPickerGroups,
     projectNameById,
     projectPickerGroups,
     props.currentProjectId,
+    props.openImportDialog,
     props.projects.length,
     navigate,
     runResult,
@@ -391,6 +529,27 @@ function SearchPaletteDialog(props: {
       };
     });
   }, [projectNameById, props.plans, query, runResult]);
+
+  const draftItems = useMemo<CommandPaletteActionItem[]>(
+    () =>
+      props.drafts
+        .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map((draft) => {
+          const projectName = projectNameById.get(draft.projectId) ?? "";
+          const firstLine = draft.prompt.trim().split("\n", 1)[0] ?? "";
+          return {
+            kind: "action",
+            value: `draft:${draft.draftId}`,
+            searchTerms: [firstLine, projectName, "draft"],
+            title: firstLine.length > 0 ? firstLine : "Draft with attachments",
+            description: projectName,
+            timestamp: formatRelativeTimeLabel(draft.createdAt),
+            icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
+            run: async () => runResult({ kind: "draft", draft }),
+          };
+        }),
+    [projectNameById, props.drafts, runResult],
+  );
 
   const projectItems = useMemo<CommandPaletteActionItem[]>(
     () =>
@@ -443,8 +602,14 @@ function SearchPaletteDialog(props: {
 
   const rootGroups = useMemo(
     () =>
-      buildSearchPaletteGroups({ actionItems, planItems, projectItems, noteItems, sectionItems }),
-    [actionItems, noteItems, planItems, projectItems, sectionItems],
+      buildSearchPaletteGroups({
+        actionItems,
+        planItems: [...draftItems, ...planItems],
+        projectItems,
+        noteItems,
+        sectionItems,
+      }),
+    [actionItems, draftItems, noteItems, planItems, projectItems, sectionItems],
   );
 
   const activeGroups = pickerGroups ?? rootGroups;
@@ -472,7 +637,7 @@ function SearchPaletteDialog(props: {
     setQuery("");
   }, [projectPickerGroups]);
 
-  // The chord that means "new plan" with no project in hand opens straight into
+  // The chord that means "new thread" with no project in hand opens straight into
   // the picker; the palette is the question.
   useEffect(() => {
     if (!props.openInProjectPicker || props.projects.length === 0) return;
@@ -523,7 +688,7 @@ function SearchPaletteDialog(props: {
       inputProps={{
         placeholder: isInPicker
           ? "Which project?"
-          : "Search plans, projects, and actions...  (> for actions)",
+          : "Search threads, projects, and actions...  (> for actions)",
         ...(isInPicker
           ? {
               wrapperClassName: "[&_[data-slot=autocomplete-start-addon]]:pointer-events-auto",

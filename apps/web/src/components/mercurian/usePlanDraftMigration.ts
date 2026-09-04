@@ -8,18 +8,21 @@ import {
   useComposerDraftStore,
 } from "../../composerDraftStore";
 import { hasExplicitComposerModelSelection } from "../../lib/chatThreadActions";
-import { usePlanDraftStore } from "../../planDraftStore";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
-import { resolvePlanDraftMigrations } from "./planDraftMigration.logic";
+import {
+  readLegacyPlanDrafts,
+  removeMigratedLegacyPlanDrafts,
+  resolvePlanDraftMigrations,
+} from "./planDraftMigration.logic";
 
 export function usePlanDraftMigration(projects: ReadonlyArray<MercurianProject>): void {
   const environmentId = usePrimaryEnvironmentId();
-  const draftsById = usePlanDraftStore((state) => state.draftsById);
   const providers = usePlanningModel().providers;
 
   useEffect(() => {
     if (environmentId === null) return;
+    const draftsById = readLegacyPlanDrafts(window.localStorage);
     const migrations = resolvePlanDraftMigrations({ draftsById, projects, providers });
     for (const migration of migrations) {
       const draftId = DraftId.make(migration.draft.draftId);
@@ -39,7 +42,9 @@ export function usePlanDraftMigration(projects: ReadonlyArray<MercurianProject>)
           replaceOptions: true,
         });
       }
-      usePlanDraftStore.getState().discardDraft(migration.draft.draftId);
     }
-  }, [draftsById, environmentId, projects, providers]);
+    if (migrations.length === 0) return;
+    const migratedDraftIds = new Set(migrations.map(({ draft }) => draft.draftId));
+    removeMigratedLegacyPlanDrafts(window.localStorage, migratedDraftIds);
+  }, [environmentId, projects, providers]);
 }

@@ -8,9 +8,7 @@ import {
   ArrowDownIcon,
   CheckIcon,
   CircleDotIcon,
-  Columns3Icon,
   FileTextIcon,
-  GitCommitVerticalIcon,
   GitForkIcon,
   GitMergeIcon,
   LocateFixedIcon,
@@ -19,8 +17,6 @@ import {
   MessagesSquareIcon,
   Settings2Icon,
   SquareTerminalIcon,
-  TriangleAlertIcon,
-  WaypointsIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
@@ -40,12 +36,10 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useExperiments } from "../../lib/experiments";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack } from "../ui/slider";
-import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   cameraTween,
@@ -92,7 +86,6 @@ import {
   dagLayout,
   descendantClosure,
   effectivePlanExplorerView,
-  hasFork,
   planCommitSummary,
   type PlanGraph,
   type PlanGraphNode,
@@ -139,7 +132,7 @@ type DisplaySettingsUpdater = (
  *
  * Two parked development readings remain available behind an experiment. The
  * **Thread** is the checked-out root-to-tip path through where the planning
- * surface stands. Rows make that line easy to read and move through, while
+ * thread stands. Rows make that line easy to read and move through, while
  * always-visible switches reveal its sibling branches and merge parents. The
  * **Columns** hold those same branch decisions open as standing segments, so
  * changing a line replaces only the panes beyond its fork. The
@@ -152,7 +145,7 @@ type DisplaySettingsUpdater = (
  * row's switch.
  *
  * The explorer carries no subscription of its own. Every commit it draws comes
- * from the timeline the planning space already holds, which is why a commit
+ * from the timeline the thread already holds, which is why a commit
  * landing in another window shows up here, in the conversation, and in the
  * artifact at the same moment.
  */
@@ -165,7 +158,6 @@ export function DagExplorer({
   stalePlanCommitIds,
   staleSpecCommitIds,
   historyWalkViewsEnabled,
-  hideTitleBar = false,
   onEditAndBranch,
   onSelect,
 }: {
@@ -180,14 +172,12 @@ export function DagExplorer({
   readonly staleSpecCommitIds: ReadonlySet<string>;
   /** Explicit override for development catalogs and focused rendering tests. */
   readonly historyWalkViewsEnabled?: boolean;
-  /** Temporary: the bar goes away with PlanningSpace in phase 5. */
-  readonly hideTitleBar?: boolean;
   readonly onEditAndBranch: (
     query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
   ) => void;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
-  const [storedView, setView] = useLocalStorage(
+  const [storedView] = useLocalStorage(
     EXPLORER_VIEW_STORAGE_KEY,
     DEFAULT_EXPLORER_VIEW,
     ExplorerView,
@@ -195,7 +185,6 @@ export function DagExplorer({
   const [experiments] = useExperiments();
   const walkViewsEnabled = historyWalkViewsEnabled ?? experiments.historyWalkViews;
   const checkpointGraph = useMemo(() => condensePlanGraph(graph), [graph]);
-  const columnsAvailable = walkViewsEnabled && hasFork(checkpointGraph);
   const view = effectivePlanExplorerView(checkpointGraph, storedView, walkViewsEnabled);
   // Standing at the tip is standing at the latest commit; an anchor is what
   // moves the highlight anywhere else.
@@ -225,61 +214,6 @@ export function DagExplorer({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {hideTitleBar ? null : (
-        <div
-          className={cn(
-            WORKSPACE_PANE_TITLE_BAR_CLASS,
-            "gap-2 border-b border-border px-3 sm:px-4",
-          )}
-        >
-          <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
-          {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
-            <GraphWarningsPopover
-              stalePlanCount={stalePlanNodes.size}
-              staleSpecCount={staleSpecNodes.size}
-            />
-          )}
-          <span className="min-w-0 flex-1" />
-          {walkViewsEnabled ? (
-            <ToggleGroup
-              className="shrink-0"
-              role="toolbar"
-              size="xs"
-              value={[view]}
-              variant="outline"
-              onValueChange={(next) => {
-                const chosen = next[0];
-                // The switch is a choice between three views, never a way to have
-                // neither: re-pressing the active one leaves it pressed.
-                if (chosen === "thread" || chosen === "columns" || chosen === "graph") {
-                  setView(chosen);
-                }
-              }}
-            >
-              <Tooltip>
-                <TooltipTrigger render={<Toggle aria-label="Thread" value="thread" />}>
-                  <GitCommitVerticalIcon className="size-3.5" />
-                </TooltipTrigger>
-                <TooltipPopup side="bottom">Thread</TooltipPopup>
-              </Tooltip>
-              {columnsAvailable ? (
-                <Tooltip>
-                  <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
-                    <Columns3Icon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="bottom">Columns</TooltipPopup>
-                </Tooltip>
-              ) : null}
-              <Tooltip>
-                <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
-                  <WaypointsIcon className="size-3.5" />
-                </TooltipTrigger>
-                <TooltipPopup side="bottom">Graph</TooltipPopup>
-              </Tooltip>
-            </ToggleGroup>
-          ) : null}
-        </div>
-      )}
       {checkpointGraph.nodes.length === 0 ? (
         <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
           <p className="text-sm text-muted-foreground/70">Nothing has happened here yet.</p>
@@ -417,68 +351,6 @@ function DisplaySettingsPopover({
         />
       </PopoverPopup>
     </Popover>
-  );
-}
-
-function GraphWarningsPopover({
-  stalePlanCount,
-  staleSpecCount,
-}: {
-  readonly stalePlanCount: number;
-  readonly staleSpecCount: number;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            aria-label="Checkpoint Graph warnings"
-            className="text-amber-600 hover:text-amber-700 dark:text-amber-400"
-            size="icon-xs"
-            type="button"
-            variant="ghost"
-          />
-        }
-      >
-        <TriangleAlertIcon />
-      </PopoverTrigger>
-      <PopoverPopup align="start" className="w-72">
-        <DagExplorerWarningsContent
-          stalePlanCount={stalePlanCount}
-          staleSpecCount={staleSpecCount}
-        />
-      </PopoverPopup>
-    </Popover>
-  );
-}
-
-/** The compact warning reading opened from the graph header. */
-export function DagExplorerWarningsContent({
-  stalePlanCount,
-  staleSpecCount,
-}: {
-  readonly stalePlanCount: number;
-  readonly staleSpecCount: number;
-}) {
-  return (
-    <div className="flex flex-col gap-3 text-xs">
-      {staleSpecCount === 0 ? null : (
-        <p>
-          <span className="font-medium text-foreground">
-            {staleSpecCount} stale spec {staleSpecCount === 1 ? "branch" : "branches"}
-          </span>
-          <span className="text-muted-foreground">{" — spec changed since the branch's base"}</span>
-        </p>
-      )}
-      {stalePlanCount === 0 ? null : (
-        <p>
-          <span className="font-medium text-foreground">
-            {stalePlanCount === 1 ? "1 plan may be stale" : `${stalePlanCount} plans may be stale`}
-          </span>
-          <span className="text-muted-foreground"> — {PLAN_MAY_BE_STALE_DESCRIPTION}</span>
-        </p>
-      )}
-    </div>
   );
 }
 
