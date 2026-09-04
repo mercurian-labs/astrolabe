@@ -4,11 +4,11 @@ import type { CatalogEntry } from "../../design-system/catalog";
 import { MemoryNoteReader } from "./MemoryNoteReader";
 
 const writtenNote: MemoryNote = {
-  name: "Planning Space",
+  name: "Thread",
   exists: true,
-  path: "Planning Space.md",
+  path: "Thread.md",
   markdown:
-    "# Planning Space\n\nThe composer consults [[Project Memory|memory]] before [[Unwritten Boundary]].\n\n`[[Code stays code]]`.",
+    "# Thread\n\nThe composer consults [[Project Memory|memory]] before [[Unwritten Boundary]].\n\n`[[Code stays code]]`.",
   links: [
     { name: "Project Memory", exists: true },
     { name: "Unwritten Boundary", exists: false },
@@ -20,7 +20,7 @@ const unwrittenNote: MemoryNote = {
   name: "Unwritten Boundary",
   exists: false,
   links: [],
-  backlinks: ["Planning Space", "Product"],
+  backlinks: ["Thread", "Product"],
 };
 
 export const MEMORY_NOTE_READER_CATALOG_ENTRIES = [

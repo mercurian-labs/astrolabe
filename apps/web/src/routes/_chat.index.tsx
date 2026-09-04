@@ -21,7 +21,7 @@ function ChatIndexRouteView() {
 }
 
 /**
- * A quiet placeholder, not a landing page. Work starts from a plan in the
+ * A quiet placeholder, not a landing page. Work starts from a thread in the
  * tree; the index exists so the app has an address, not so it has a dashboard.
  */
 function IndexPlaceholder() {
@@ -32,7 +32,7 @@ function IndexPlaceholder() {
           <EmptyHeader className="max-w-md">
             <EmptyTitle className="text-foreground text-xl">Nothing open</EmptyTitle>
             <EmptyDescription className="mt-2 text-sm text-muted-foreground/78">
-              Pick a plan from the sidebar, or start a new one from its project.
+              Pick a thread from the sidebar, or start a new one from its project.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

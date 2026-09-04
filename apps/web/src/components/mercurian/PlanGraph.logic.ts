@@ -1,9 +1,9 @@
 /**
- * The planning history as a graph, derived from the timeline the planning
- * space already holds.
+ * The thread history as a graph, derived from the timeline the thread view
+ * already holds.
  *
  * There is no second read behind this: `parents` and `published` ride on every
- * timeline item, so the DAG explorer is a second *rendering* of the plan
+ * timeline item, so the DAG explorer is a second *rendering* of the thread
  * subscription rather than a second stream. Everything here is pure — the
  * shapes it has to handle (forks, n-ary merges) are representable long before
  * anything can create them, and that is exactly what the tests pin.
@@ -62,7 +62,7 @@ export function hasFork(graph: PlanGraph): boolean {
   return graph.nodes.some((node) => node.isBranchPoint);
 }
 
-/** A stored columns preference becomes active again if this plan later grows a fork. */
+/** A stored columns preference becomes active again if this thread later grows a fork. */
 export function effectivePlanExplorerView(
   graph: PlanGraph,
   storedView: PlanExplorerView,

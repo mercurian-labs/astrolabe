@@ -205,6 +205,12 @@ describe("environment entity projections", () => {
       title: "Cached thread",
       branch: "stale-branch",
       worktreePath: "/repo/stale-worktree",
+      workspaceMembers: [
+        {
+          repositoryId: "stale-repository",
+          worktreePath: "/repo/stale-worktree",
+        },
+      ],
       deletedAt: null,
       messages,
       proposedPlans: [],
@@ -217,6 +223,12 @@ describe("environment entity projections", () => {
       title: "Current thread",
       branch: "current-branch",
       worktreePath: "/repo/current-worktree",
+      workspaceMembers: [
+        {
+          repositoryId: "current-repository",
+          worktreePath: "/repo/current-worktree",
+        },
+      ],
     };
 
     const merged = mergeEnvironmentThread(detail, shell);
@@ -225,6 +237,12 @@ describe("environment entity projections", () => {
       title: "Current thread",
       branch: "current-branch",
       worktreePath: "/repo/current-worktree",
+      workspaceMembers: [
+        {
+          repositoryId: "current-repository",
+          worktreePath: "/repo/current-worktree",
+        },
+      ],
     });
     expect(merged?.messages).toBe(messages);
   });

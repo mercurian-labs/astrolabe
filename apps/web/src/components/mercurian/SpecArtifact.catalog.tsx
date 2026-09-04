@@ -1,21 +1,8 @@
-import { PlanId, TrackerConnectionId } from "@t3tools/contracts";
+import { TrackerConnectionId } from "@t3tools/contracts";
 
 import type { CatalogEntry } from "../../design-system/catalog";
 import { planSpecAt } from "../../test/fixtures/spec";
-import { commitId, specRevision, timeline } from "../../test/fixtures/timeline";
 import { SpecArtifact } from "./SpecArtifact";
-
-const importedRevision = specRevision("imported-spec", {
-  published: true,
-  cause: "import",
-  issueId: "M-143",
-});
-
-const baseProps = {
-  planId: PlanId.make("identity-catalog"),
-  parentCommitId: commitId("imported-spec"),
-  timeline: timeline(importedRevision),
-} as const;
 
 export const SPEC_ARTIFACT_CATALOG_ENTRIES = [
   {
@@ -27,7 +14,6 @@ export const SPEC_ARTIFACT_CATALOG_ENTRIES = [
     sourcePath: "src/components/mercurian/SpecArtifact.tsx",
     render: () => (
       <SpecArtifact
-        {...baseProps}
         origin={{
           connectionId: TrackerConnectionId.make("linear"),
           issueId: "M-143",
@@ -46,7 +32,7 @@ export const SPEC_ARTIFACT_CATALOG_ENTRIES = [
     title: "No spec yet",
     description: "An empty spec artifact before its first revision exists.",
     sourcePath: "src/components/mercurian/SpecArtifact.tsx",
-    render: () => <SpecArtifact {...baseProps} spec={null} timeline={[]} />,
+    render: () => <SpecArtifact spec={null} />,
     layout: "document",
     preferredCanvas: "wide",
   },

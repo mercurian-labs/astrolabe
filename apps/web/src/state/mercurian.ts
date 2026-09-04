@@ -9,9 +9,6 @@ import type {
   MercurianOpenLineInput,
   MercurianCancelMemoryAmendmentInput,
   MercurianConfirmMemoryAmendmentInput,
-  MercurianSavePlanRevisionInput,
-  MercurianSaveSpecRevisionInput,
-  MercurianRefreshSpecInput,
   MercurianRecreateLineBranchInput,
   PlanDetail,
   PlanId,
@@ -147,7 +144,7 @@ export interface PlanDetailState {
 }
 
 /**
- * The planning space, live. There is no refresh: the artifact and the history
+ * The thread, live. There is no refresh: the artifact and the history
  * are one subscription over the plan's commits, so an edit or a message —
  * from this window or another — arrives as it lands. The streaming turn rides
  * the same subscription as `detail.inFlightTurns`.
@@ -166,7 +163,7 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
     isPending:
       planId !== null &&
       resolveMercurianQueryPending(environmentId, detail === null && result._tag !== "Failure"),
-    error: errorMessage(result, "Could not load this plan."),
+    error: errorMessage(result, "Could not load this thread."),
     turnRefusal: state?.turnRefusal ?? null,
     memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,
   };
@@ -211,31 +208,6 @@ export function useForkLine() {
 export function useImportPlan() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.importPlan);
   return useCallback((input: MercurianImportPlanInput) => run(input), [run]);
-}
-
-/**
- * A direct edit of the plan. The text is the artifact's whole new body — a
- * revision is a snapshot, and an empty one is a legal edit. It lands on the
- * branch its author was standing on, for the same reason a message does.
- *
- * Bound through the result variant: a refusal — a reply streaming on the
- * edit's own branch — is something the artifact pane has to say in place,
- * not a console line the editor swallows.
- */
-export function useSavePlanRevision() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.savePlanRevision);
-  return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
-}
-
-/** The spec's edit, with the same in-place refusals as the plan's. */
-export function useSaveSpecRevision() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.saveSpecRevision);
-  return useCallback((input: MercurianSaveSpecRevisionInput) => run(input), [run]);
-}
-
-export function useRefreshSpec() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.refreshSpec);
-  return useCallback((input: MercurianRefreshSpecInput) => run(input), [run]);
 }
 
 export function useConfirmMemoryAmendment() {

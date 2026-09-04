@@ -194,11 +194,6 @@ export const ELEVATION_GLASS_TOKENS: ReadonlyArray<FoundationToken> = [
 
 export const UNMANAGED_ELEVATIONS = [
   {
-    owner: "PlanComposer",
-    sourcePath: "src/components/mercurian/PlanComposer.tsx",
-    value: "Colored and inset action-button shadows",
-  },
-  {
     owner: "SidebarPlanHoverCard",
     sourcePath: "src/components/mercurian/SidebarPlanHoverCard.tsx",
     value: "Extra-large black overlay shadow at 25% opacity",

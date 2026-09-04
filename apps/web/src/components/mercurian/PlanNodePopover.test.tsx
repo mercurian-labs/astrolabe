@@ -58,8 +58,6 @@ const renderContent = ({
       suppressUnanswered={false}
       onClose={vi.fn()}
       onEditAndBranch={vi.fn()}
-      onImplementFrom={vi.fn()}
-      onSelect={vi.fn()}
     />,
   );
 };
@@ -113,9 +111,7 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Plan updated");
     expect(markup).toContain("Spec stale");
     expect(markup).toContain("Plan may be stale");
-    expect(markup).toContain("Continue from here");
     expect(markup).toContain("Fork here");
-    expect(markup).toContain("Implement from here");
   });
 
   it("renders coding-session facts and links the recorded session", () => {
@@ -158,11 +154,9 @@ describe("PlanNodePopoverContent", () => {
     expect(markup).toContain("Departed to");
     expect(markup).toContain("feature/detour");
     expect(markup).toContain("Pull request");
-    expect(markup).toContain("Continue from here");
-    expect(markup).toContain("Open session");
+    expect(markup).toContain("Open line");
     expect(markup).toContain('href="/sessions/thread"');
     expect(markup).not.toContain("Fork here");
-    expect(markup).not.toContain("Implement from here");
   });
 
   it("renders every repository and pull request for a project-scoped session", () => {

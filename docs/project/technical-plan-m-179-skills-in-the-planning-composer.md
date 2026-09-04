@@ -91,7 +91,7 @@ Changed:
 - `apps/web/src/components/mercurian/PlanTimeline.tsx` — `skills` on both `ChatMarkdown` call sites.
 - `apps/web/src/components/mercurian/PlanComposer.catalog.tsx` (or the existing composer catalog entry) — menu-open and gated-row states.
 - `apps/server/src/mercurian/assistant/PlanningPrompt.ts` + `PlanningPrompt.test.ts` — invocation-leading composition.
-- `docs/user/projects-and-plans.md` — a "Commands and skills" paragraph; `docs/internals/glossary.md` — composer entry updated.
+- `docs/user/projects-and-threads.md` — a "Commands and skills" paragraph; `docs/internals/glossary.md` — composer entry updated.
 
 New files: none beyond what the catalog check may require. No migrations, no contract edits, no `ws.ts` edits.
 
@@ -103,7 +103,7 @@ New files: none beyond what the catalog check may require. No migrations, no con
 - [ ] `PlanningPrompt.ts`: leading-invocation detection (line-start `/name` or `$name`) and the message-first composition variant; tests pinning both orders, the detection rule, and that continuation input is untouched.
 - [ ] `PlanTimeline.tsx`: `skills` prop on both `ChatMarkdown` sites.
 - [ ] Catalog entry for the menu-open and gated states; confirm `coverage.test.ts` stays green.
-- [ ] Docs: `docs/user/projects-and-plans.md` and the glossary composer entry.
+- [ ] Docs: `docs/user/projects-and-threads.md` and the glossary composer entry.
 - [ ] Do not import `BUILT_IN_COMPOSER_SLASH_COMMANDS` into planning; do not consume ACP `available_commands_update`; do not touch contracts, `ws.ts`, or migrations.
 
 ## Test Plan

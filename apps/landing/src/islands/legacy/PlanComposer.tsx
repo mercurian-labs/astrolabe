@@ -5,8 +5,14 @@ import {
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
   type UploadChatAttachment,
-} from "@t3tools/contracts";
-import { BookOpenIcon, CircleAlertIcon, FileIcon, ImageIcon, XIcon } from "lucide-react";
+} from "~/../../../packages/contracts/src/index";
+import {
+  BookOpenIcon,
+  CircleAlertIcon,
+  FileIcon,
+  ImageIcon,
+  XIcon,
+} from "~/../node_modules/lucide-react";
 import {
   useCallback,
   useEffect,
@@ -18,19 +24,22 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { collapseExpandedComposerCursor, replaceTextRange } from "../../composer-logic";
-import { compressImageForStash } from "../../lib/imageCompression";
-import type { TerminalContextDraft } from "../../lib/terminalContext";
-import { cn } from "../../lib/utils";
-import type { PlanComposerAttachment } from "../../planComposerStore";
-import { useTheme } from "../../hooks/useTheme";
-import { ComposerCommandMenu } from "../chat/ComposerCommandMenu";
-import { ComposerControl, ComposerControlIcon } from "../chat/ComposerControl";
-import { resolveComposerMenuActiveItemId } from "../chat/composerMenuHighlight";
-import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
-import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { collapseExpandedComposerCursor, replaceTextRange } from "~/composer-logic";
+import { compressImageForStash } from "~/lib/imageCompression";
+import type { TerminalContextDraft } from "~/lib/terminalContext";
+import { cn } from "~/lib/utils";
+import { useTheme } from "~/hooks/useTheme";
+import { ComposerCommandMenu } from "~/components/chat/ComposerCommandMenu";
+import { ComposerControl, ComposerControlIcon } from "~/components/chat/ComposerControl";
+import { resolveComposerMenuActiveItemId } from "~/components/chat/composerMenuHighlight";
+import {
+  ComposerPromptEditor,
+  type ComposerPromptEditorHandle,
+} from "~/components/ComposerPromptEditor";
+import { Button } from "~/components/ui/button";
+import { Spinner } from "~/components/ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import type { PlanComposerAttachment } from "./planComposerStore";
 import {
   isPlanComposerSelectableMenuItem,
   detectPlanComposerTrigger,
@@ -45,7 +54,7 @@ import {
   formatMentionCandidate,
   moveMentionHighlight,
   type MentionCandidate,
-} from "./planMentions.logic";
+} from "~/components/mercurian/planMentions.logic";
 
 /**
  * The planning space's one place to act.

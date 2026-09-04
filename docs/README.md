@@ -3,7 +3,7 @@
 ## Using Astrolabe
 
 - [Install and first run](./user/install.md)
-- [Projects and plans](./user/projects-and-plans.md)
+- [Projects and threads](./user/projects-and-threads.md)
 - [Repositories](./user/repositories.md)
 - [Settings](./user/settings.md)
 - [Trackers](./user/trackers.md)

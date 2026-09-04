@@ -8,12 +8,12 @@ import {
   type PlanningModelSelection,
   type ServerProvider,
   type UnifiedSettings,
-} from "@t3tools/contracts";
+} from "~/../../../packages/contracts/src/index";
 
-import { getAppModelOptionsForInstance } from "../../modelSelection";
-import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../../providerInstances";
-import type { ModelEsque } from "../chat/providerIconUtils";
-import { describePlanningModel } from "./PlanningModel.logic";
+import { getAppModelOptionsForInstance } from "~/modelSelection";
+import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "~/providerInstances";
+import type { ModelEsque } from "~/components/chat/providerIconUtils";
+import { describePlanningModel } from "~/components/mercurian/PlanningModel.logic";
 
 export const NO_PLANNING_MODEL_INSTANCE = ProviderInstanceId.make("t3code_no_planning_model");
 

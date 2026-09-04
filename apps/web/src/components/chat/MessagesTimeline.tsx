@@ -89,6 +89,7 @@ import {
   PaintbrushIcon,
   SearchIcon,
   SquarePenIcon,
+  GitForkIcon,
   TerminalIcon,
   WrenchIcon,
   XIcon,
@@ -203,6 +204,8 @@ interface TimelineRowSharedState {
   workGroupViewState: WorkGroupViewState;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
+  canForkHere: (message: ChatMessage) => boolean;
+  onForkHere: (message: ChatMessage) => void;
 }
 
 interface TimelineRowActivityState {
@@ -263,6 +266,8 @@ function TimelineListFooter({ composerInset }: { readonly composerInset: number 
   );
 }
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+const NOOP_FORK_HERE = (_message: ChatMessage) => {};
+const CANNOT_FORK_HERE = (_message: ChatMessage) => false;
 const TIMELINE_MAINTAIN_SCROLL_AT_END = {
   animated: false,
   on: {
@@ -325,6 +330,8 @@ interface MessagesTimelineProps {
   topFadeEnabled?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: CitationHistoryPage | null;
+  canForkHere?: ((message: ChatMessage) => boolean) | undefined;
+  onForkHere?: ((message: ChatMessage) => void) | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +373,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   hideEmptyPlaceholder = false,
   topFadeEnabled = false,
   loadEarlier = null,
+  canForkHere = CANNOT_FORK_HERE,
+  onForkHere = NOOP_FORK_HERE,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const citationThreadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
@@ -644,6 +653,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workGroupViewState,
       agentPanelModel,
       onOpenAgents,
+      canForkHere,
+      onForkHere,
     }),
     [
       readyCitationRequest,
@@ -667,6 +678,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workGroupViewState,
       agentPanelModel,
       onOpenAgents,
+      canForkHere,
+      onForkHere,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1361,6 +1374,25 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             </TooltipPopup>
           </Tooltip>
           <div className="flex items-center gap-0.5">
+            {ctx.canForkHere(row.message) ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label="Fork here"
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => ctx.onForkHere(row.message)}
+                    />
+                  }
+                >
+                  <GitForkIcon aria-hidden className="size-3" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">Fork here</TooltipPopup>
+              </Tooltip>
+            ) : null}
             {displayedUserMessage.copyText && (
               <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
             )}

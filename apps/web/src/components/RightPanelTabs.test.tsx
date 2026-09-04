@@ -118,14 +118,23 @@ function renderTabs(
   first: DesktopPreviewFavicon | null,
   second?: DesktopPreviewFavicon,
   audio?: { audible?: boolean; audioMuted?: boolean },
-  previewRuntimeTabId: ((tabId: string) => string) | null = (tabId) => `runtime:${tabId}`,
+  options: {
+    readonly draftWorkspace?: boolean;
+    readonly previewRuntimeTabId?: ((tabId: string) => string) | null;
+  } = {},
 ) {
+  const previewRuntimeTabId =
+    options.previewRuntimeTabId === undefined
+      ? (tabId: string) => `runtime:${tabId}`
+      : options.previewRuntimeTabId;
   return renderToStaticMarkup(
     <RightPanelTabs
       mode="inline"
-      surfaces={second ? [previewSurface, secondSurface] : [previewSurface]}
+      surfaces={
+        options.draftWorkspace ? [] : second ? [previewSurface, secondSurface] : [previewSurface]
+      }
       environmentId={null}
-      activeSurfaceId={previewSurface.id}
+      activeSurfaceId={options.draftWorkspace ? null : previewSurface.id}
       pendingSurfaceIds={new Set()}
       previewSessions={sessions}
       desktopByTabId={{
@@ -148,7 +157,8 @@ function renderTabs(
       onAddFiles={() => undefined}
       onAddAgents={() => undefined}
       liveAgentCount={0}
-      browserAvailable
+      {...(options.draftWorkspace ? { workspaceReady: false } : {})}
+      browserAvailable={!options.draftWorkspace}
       terminalAvailable={false}
       diffAvailable={false}
       filesAvailable={false}
@@ -180,6 +190,14 @@ describe("RightPanelTabs preview favicon", () => {
   it("hides a capture while the server session still describes another origin", () => {
     const html = renderTabs(favicon("data:image/png;base64,AAAA", "https://example.com/"));
     expect(html).not.toContain("data:image/png;base64,AAAA");
+  });
+});
+
+describe("draft workspace surfaces", () => {
+  it("states why working surfaces are unavailable before the first turn", () => {
+    const html = renderTabs(null, undefined, undefined, { draftWorkspace: true });
+
+    expect(html).toContain("Available after the first turn starts.");
   });
 });
 
@@ -261,15 +279,22 @@ describe("RightPanelTabs audio indicator", () => {
     // Session ids are only unique per server process; sending one to the
     // Electron manager raises PreviewTabNotFoundError and silently no-ops.
     const seen: string[] = [];
-    renderTabs(null, undefined, { audible: true }, (tabId) => {
-      seen.push(tabId);
-      return `runtime:${tabId}`;
-    });
+    renderTabs(
+      null,
+      undefined,
+      { audible: true },
+      {
+        previewRuntimeTabId: (tabId) => {
+          seen.push(tabId);
+          return `runtime:${tabId}`;
+        },
+      },
+    );
     expect(seen).toContain("tab-1");
   });
 
   it("hides the toggle when no runtime tab id can be resolved", () => {
-    const html = renderTabs(null, undefined, { audible: true }, null);
+    const html = renderTabs(null, undefined, { audible: true }, { previewRuntimeTabId: null });
     expect(html).not.toContain("Mute Local site");
   });
 });

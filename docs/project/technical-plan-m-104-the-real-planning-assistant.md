@@ -108,7 +108,7 @@ New methods on `MERCURIAN_WS_METHODS`: `stopPlanningTurn` and `answerPlanningQue
 
 ### 11. Docs
 
-- `docs/user/projects-and-plans.md`: "The assistant" section — streaming and stop, the interrupted mark, the grounding fold, structured questions, the assistant's plan edits, the gate.
+- `docs/user/projects-and-threads.md`: "The assistant" section — streaming and stop, the interrupted mark, the grounding fold, structured questions, the assistant's plan edits, the gate.
 - `docs/internals/glossary.md`: **Planning turn** and **Grounding** join the Projects-and-plans section; the planning-space, composer, and issue-status entries updated to the now-real producers.
 - `docs/internals/overview.md`: the Mercurian section gains the assistant paragraph.
 - ADR 002's Open questions: the two this plan closes are struck through with their resolutions (frame shapes — §8; reconnect-mid-turn buffer — resolved as _not built_).

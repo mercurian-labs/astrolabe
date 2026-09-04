@@ -37,15 +37,15 @@ import { trackerName } from "./TrackersSettings.logic";
 const SEARCH_DEBOUNCE_MS = 250;
 
 /**
- * Browsing the connected trackers and importing an issue as a plan.
+ * Browsing the connected trackers and importing an issue as a thread.
  *
  * Nothing here is stored. The issues live in this component's state for exactly
  * as long as the dialog is open and are read live from the tracker each time —
- * the tracker keeps the backlog, and Mercurian keeps the plans that people
+ * the tracker keeps the backlog, and Mercurian keeps the threads that people
  * chose to start.
  *
  * Importing is idempotent by origin, so all three outcomes end the same way:
- * you land in the plan. The two that were not a creation say so on the way.
+ * you land in the thread. The two that were not a creation say so on the way.
  */
 export function ImportIssueDialog({
   open,
@@ -56,7 +56,7 @@ export function ImportIssueDialog({
   readonly open: boolean;
   readonly projectId: MercurianProjectId;
   readonly onOpenChange: (open: boolean) => void;
-  /** Where the caller goes once an issue has a plan. */
+  /** Where the caller goes once an issue has a thread. */
   readonly onImported: (planId: PlanId) => void;
 }) {
   const { connections, isPending: connectionsPending, error: connectionsError } = useTrackers();
@@ -161,7 +161,7 @@ export function ImportIssueDialog({
         <DialogHeader>
           <DialogTitle>Import an issue</DialogTitle>
           <DialogDescription>
-            Issues are read from the tracker as you browse. Importing one starts a plan from it —
+            Issues are read from the tracker as you browse. Importing one starts a thread from it —
             nothing else is stored, and nothing is written back.
           </DialogDescription>
         </DialogHeader>
@@ -260,7 +260,7 @@ function NoConnections({ onNavigate }: { readonly onNavigate: () => void }) {
     <div className="space-y-2 py-2">
       <p className="text-[13px] leading-[1.45] text-muted-foreground/85">
         No trackers are connected yet. Connect one and its issues can become the starting points of
-        plans.
+        threads.
       </p>
       <Button
         render={<Link to="/settings/trackers" />}

@@ -1,13 +1,6 @@
 /** Owned by the panel lane of M-197 (plan §6). Fills the right-panel surface slots of ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type {
-  MercurianCommitId,
-  PlanDetail,
-  PlanId,
-  PlanSpecAt,
-  PlanningTreeSnapshot,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { MercurianCommitId, PlanDetail, PlanSpecAt } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -19,18 +12,13 @@ import { Button } from "../ui/button";
 import { DagExplorer } from "./DagExplorer";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
-import { ancestorClosure, type PlanGraph } from "./PlanGraph.logic";
-import {
-  isViewingPast,
-  LATEST,
-  positionAfterPick,
-  resolveActingHead,
-  resolveHead,
-} from "./PlanPosition.logic";
+import { ancestorClosure } from "./PlanGraph.logic";
+import { LATEST, positionAfterPick, resolveHead } from "./PlanPosition.logic";
 import { SpecArtifact } from "./SpecArtifact";
 import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
-import { useForkHere } from "./useForkHere";
 import { useThreadSpace } from "./ThreadSpaceContext";
+import { lineThreadIdForCommit, resolveLineTip } from "./planLineOwnership.logic";
+import { useForkHere } from "./useForkHere";
 
 export type ThreadSpaceSurfaces = Readonly<{
   planPanel?: ReactNode;
@@ -41,35 +29,6 @@ export type ThreadSpaceSurfaces = Readonly<{
 const EMPTY_IN_FLIGHT_TURNS: PlanDetail["inFlightTurns"] = [];
 const EMPTY_CODING_SESSIONS: PlanDetail["codingSessions"] = [];
 const EMPTY_TIMELINE: PlanDetail["timeline"] = [];
-
-function lineThreadIdForCommit(input: {
-  planId: PlanId;
-  commitId: MercurianCommitId;
-  detail: PlanDetail;
-  graph: PlanGraph;
-  tree: PlanningTreeSnapshot;
-}): ThreadId | null {
-  const ancestry = ancestorClosure(input.graph, input.commitId);
-  const candidates = [
-    ...input.detail.lineRuntimes.flatMap((runtime) =>
-      runtime.lineRootCommitId === null
-        ? []
-        : [{ lineRootCommitId: runtime.lineRootCommitId, threadId: runtime.threadId }],
-    ),
-    ...input.tree.threadPlanLinks.flatMap((link) =>
-      link.planId !== input.planId || link.lineRootCommitId == null
-        ? []
-        : [{ lineRootCommitId: link.lineRootCommitId, threadId: link.threadId }],
-    ),
-  ].filter((candidate) => ancestry.has(candidate.lineRootCommitId));
-
-  candidates.sort(
-    (left, right) =>
-      (input.graph.byId.get(right.lineRootCommitId)?.item.sequence ?? -1) -
-      (input.graph.byId.get(left.lineRootCommitId)?.item.sequence ?? -1),
-  );
-  return candidates[0]?.threadId ?? null;
-}
 
 function HistoricalArtifactPlaceholder({ children }: { readonly children: ReactNode }) {
   return (
@@ -97,13 +56,19 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   }, [threadRef]);
 
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
+  const runtime = detail?.lineRuntimes.find((candidate) => candidate.threadId === threadId) ?? null;
+  const lineTip = resolveLineTip(detail, graph, runtime, tree.threadPlanLinks);
   const position = useMemo(
-    () => (search.at === undefined ? LATEST : positionAfterPick(graph, search.at)),
-    [graph, search.at],
+    () =>
+      search.at !== undefined
+        ? positionAfterPick(graph, search.at)
+        : lineTip !== null
+          ? positionAfterPick(graph, lineTip)
+          : LATEST,
+    [graph, lineTip, search.at],
   );
   const head = resolveHead(graph, position);
-  const actingHead = resolveActingHead(graph, head);
-  const viewingPast = isViewingPast(graph, position);
+  const viewingPast = search.at !== undefined && head !== lineTip;
   const visibleTimeline = useMemo(() => {
     if (head === null) return timeline;
     const ancestry = ancestorClosure(graph, head);
@@ -123,7 +88,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   } | null>(null);
 
   useEffect(() => {
-    if (!needsPathText || head === null) return;
+    if (planId === null || !needsPathText || head === null) return;
     let cancelled = false;
     void getPlanTextAt(planId, head).then((result) => {
       if (!cancelled && result !== null) {
@@ -136,7 +101,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   }, [getPlanTextAt, head, needsPathText, planId]);
 
   useEffect(() => {
-    if (!needsPathSpec || head === null) return;
+    if (planId === null || !needsPathSpec || head === null) return;
     let cancelled = false;
     void getSpecAt(planId, head).then((result) => {
       if (!cancelled && result !== null) {
@@ -149,12 +114,21 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   }, [getSpecAt, head, needsPathSpec, planId]);
 
   const backToNow = useCallback(() => {
+    if (planId === null) return;
     void navigateToThreadRoute(router, { kind: "server", threadRef, planId });
   }, [planId, router, threadRef]);
   const selectCheckpoint = useCallback(
     (commitId: MercurianCommitId) => {
+      if (planId === null) return;
       const lineThreadId =
-        detail === null ? null : lineThreadIdForCommit({ planId, commitId, detail, graph, tree });
+        detail === null
+          ? null
+          : lineThreadIdForCommit({
+              commitId,
+              detail,
+              graph,
+              threadPlanLinks: tree.threadPlanLinks,
+            });
       const targetRef = scopeThreadRef(environmentId, lineThreadId ?? threadId);
       void navigateToThreadRoute(router, {
         kind: "server",
@@ -164,7 +138,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         at: commitId,
       });
     },
-    [detail, environmentId, graph, planId, router, threadId, tree],
+    [detail, environmentId, graph, planId, router, threadId, tree.threadPlanLinks],
   );
   const editAndBranch = useCallback(
     (query: Extract<PlanDetail["timeline"][number], { readonly _tag: "message" }>) => {
@@ -175,16 +149,22 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     [forkHere, graph.byId],
   );
 
-  const artifactText = needsPathText
-    ? pathText?.commitId === head
-      ? pathText.value
-      : null
-    : (detail?.planText ?? null);
-  const artifactSpec = needsPathSpec
-    ? pathSpec?.commitId === head
-      ? pathSpec.value
-      : undefined
-    : detail?.spec;
+  const artifactText =
+    planId === null
+      ? ""
+      : needsPathText
+        ? pathText?.commitId === head
+          ? pathText.value
+          : null
+        : (detail?.planText ?? null);
+  const artifactSpec =
+    planId === null
+      ? null
+      : needsPathSpec
+        ? pathSpec?.commitId === head
+          ? pathSpec.value
+          : undefined
+        : detail?.spec;
   const readOnlyAction = viewingPast ? (
     <Button size="sm" variant="ghost" onClick={backToNow}>
       Back to now
@@ -201,11 +181,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         </HistoricalArtifactPlaceholder>
       ) : (
         <PlanArtifact
-          planId={planId}
           planText={artifactText}
-          readOnly
-          timeline={visibleTimeline}
-          {...(actingHead === null ? {} : { parentCommitId: actingHead })}
           {...(readOnlyAction === undefined ? {} : { readOnlyAction })}
         />
       ),
@@ -216,11 +192,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         </HistoricalArtifactPlaceholder>
       ) : (
         <SpecArtifact
-          planId={planId}
-          readOnly
           spec={artifactSpec}
-          timeline={visibleTimeline}
-          {...(actingHead === null ? {} : { parentCommitId: actingHead })}
           {...(detail?.origin === undefined ? {} : { origin: detail.origin })}
           {...(readOnlyAction === undefined ? {} : { readOnlyAction })}
         />
@@ -235,7 +207,6 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         stalePlanCommitIds={stalePlanLeaves}
         staleSpecCommitIds={staleSpecLeaves}
         onEditAndBranch={editAndBranch}
-        onImplementFrom={() => undefined}
         onSelect={selectCheckpoint}
       />
     ),

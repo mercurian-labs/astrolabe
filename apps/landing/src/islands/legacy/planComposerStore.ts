@@ -1,6 +1,6 @@
-import type { PlanningModelSelection } from "@t3tools/contracts";
-import { Debouncer } from "@tanstack/react-pacer";
-import { create } from "zustand";
+import type { PlanningModelSelection } from "~/../../../packages/contracts/src/index";
+import { Debouncer } from "~/../node_modules/@tanstack/react-pacer";
+import { create } from "~/../node_modules/zustand";
 
 /**
  * What a plan's composer is holding but has not sent — per branch position.

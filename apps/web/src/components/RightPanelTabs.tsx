@@ -111,6 +111,7 @@ interface RightPanelTabsProps {
   onAddAgents: () => void;
   onAddPlan?: (() => void) | undefined;
   onAddSpec?: (() => void) | undefined;
+  workspaceReady?: boolean | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -171,6 +172,8 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   agents: "Available from a thread.",
 } as const;
+
+const DRAFT_WORKSPACE_UNAVAILABLE_REASON = "Available after the first turn starts.";
 
 type TabContextMenuAction =
   | "copy-path"
@@ -391,6 +394,7 @@ function RightPanelEmptyState(props: {
   specAvailable: boolean;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
+  workspaceUnavailableReason: string | null;
   liveAgentCount: number;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
@@ -403,7 +407,7 @@ function RightPanelEmptyState(props: {
       icon: Globe2,
       shortcut: "B",
       available: props.browserAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.browser,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.browser,
       onClick: props.onAddBrowser,
       badgeCount: 0,
     },
@@ -413,7 +417,7 @@ function RightPanelEmptyState(props: {
       icon: TerminalSquare,
       shortcut: "T",
       available: props.terminalAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.terminal,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.terminal,
       onClick: props.onAddTerminal,
       badgeCount: 0,
     },
@@ -423,7 +427,7 @@ function RightPanelEmptyState(props: {
       icon: Files,
       shortcut: "F",
       available: props.filesAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.files,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.files,
       onClick: props.onAddFiles,
       badgeCount: 0,
     },
@@ -433,7 +437,7 @@ function RightPanelEmptyState(props: {
       icon: FileDiff,
       shortcut: "D",
       available: props.diffAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.diff,
       onClick: props.onAddDiff,
       badgeCount: 0,
     },
@@ -449,7 +453,7 @@ function RightPanelEmptyState(props: {
       icon: GitPullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequest,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.pullRequest,
       onClick: props.onAddPullRequest,
       badgeCount: 0,
     },
@@ -459,7 +463,7 @@ function RightPanelEmptyState(props: {
       icon: Bot,
       shortcut: "A",
       available: props.agentsAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.agents,
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
     },
@@ -836,6 +840,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const onAddPlan = props.onAddPlan ?? (() => undefined);
   const specAvailable = (props.specAvailable ?? false) && props.onAddSpec !== undefined;
   const onAddSpec = props.onAddSpec ?? (() => undefined);
+  const workspaceUnavailableReason =
+    props.workspaceReady === false ? DRAFT_WORKSPACE_UNAVAILABLE_REASON : null;
   const [tabScrollState, setTabScrollState] = useState({
     hasOverflow: false,
     canScrollLeft: false,
@@ -879,7 +885,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: Globe2,
       shortcut: "B",
       available: props.browserAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.browser,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.browser,
       onClick: props.onAddBrowser,
     },
     {
@@ -887,7 +893,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: TerminalSquare,
       shortcut: "T",
       available: props.terminalAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.terminal,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.terminal,
       onClick: props.onAddTerminal,
     },
     {
@@ -895,7 +901,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: Files,
       shortcut: "F",
       available: props.filesAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.files,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.files,
       onClick: props.onAddFiles,
     },
     {
@@ -903,7 +909,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: FileDiff,
       shortcut: "D",
       available: props.diffAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.diff,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.diff,
       onClick: props.onAddDiff,
     },
     ...artifactSurfaceMenuActions({
@@ -917,7 +923,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: GitPullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.pullRequest,
       onClick: props.onAddPullRequest,
     },
     {
@@ -925,7 +931,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: Bot,
       shortcut: "A",
       available: props.agentsAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.agents,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.agents,
       onClick: props.onAddAgents,
     },
   ] as const;
@@ -1385,6 +1391,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             specAvailable={specAvailable}
             pullRequestAvailable={props.pullRequestAvailable}
             agentsAvailable={props.agentsAvailable}
+            workspaceUnavailableReason={workspaceUnavailableReason}
             liveAgentCount={props.liveAgentCount}
           />
         ) : (

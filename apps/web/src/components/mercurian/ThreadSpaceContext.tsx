@@ -1,4 +1,10 @@
-import type { EnvironmentId, PlanDetail, PlanId, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  MercurianProjectId,
+  PlanDetail,
+  PlanId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { buildPlanGraph, type PlanGraph } from "./PlanGraph.logic";
@@ -7,7 +13,8 @@ import type { ThreadSpaceRouteSearch } from "./threadSpaceSearch";
 const EMPTY_TIMELINE = [] as const;
 
 export type ThreadSpaceValue = Readonly<{
-  planId: PlanId;
+  planId: PlanId | null;
+  projectId: MercurianProjectId | null;
   threadId: ThreadId;
   environmentId: EnvironmentId;
   detail: PlanDetail | null;
@@ -23,12 +30,12 @@ type ThreadSpaceProviderProps = Readonly<{
 const ThreadSpaceContext = createContext<ThreadSpaceValue | null>(null);
 
 export function ThreadSpaceProvider({ value, children }: ThreadSpaceProviderProps) {
-  const { planId, threadId, environmentId, detail, search } = value;
+  const { planId, projectId, threadId, environmentId, detail, search } = value;
   const timeline = detail?.timeline ?? EMPTY_TIMELINE;
   const graph = useMemo(() => buildPlanGraph(timeline), [timeline]);
   const contextValue = useMemo<ThreadSpaceValue>(
-    () => ({ planId, threadId, environmentId, detail, graph, search }),
-    [detail, environmentId, graph, planId, search, threadId],
+    () => ({ planId, projectId, threadId, environmentId, detail, graph, search }),
+    [detail, environmentId, graph, planId, projectId, search, threadId],
   );
 
   return <ThreadSpaceContext.Provider value={contextValue}>{children}</ThreadSpaceContext.Provider>;

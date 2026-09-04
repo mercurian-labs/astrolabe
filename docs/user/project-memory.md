@@ -28,7 +28,7 @@ arranged note to open it. A refused map remains visible with the
 reason it could not be read, and index problems are called out above the list. Legacy tree-YAML
 files under `maps/` remain visible as refusals until rewritten as skill maps.
 
-Map graphs pan, zoom, and carry a minimap like the checkpoint graph.
+Map graphs pan, zoom, and carry a minimap like the Checkpoints history map.
 
 Notes show their Markdown body and backlinks. Wikilinks open other notes. A dashed red link means
 the target is referenced but has not been written yet; opening it shows which existing notes point
@@ -43,19 +43,19 @@ use any editor on the memory's own files; the change appears on the next read. F
 reference, **Write this note** starts that path for you: it opens a new draft seeded with a message
 asking for the note, and the note is written only when you confirm the proposed amendment.
 
-## Mention notes in a plan
+## Mention notes in a thread
 
-In a planning composer, type **@** to search memory notes alongside repository files, or type
+In a thread line's composer, type **@** to search memory notes alongside repository files, or type
 **[[** to search notes only. Picking a note inserts a note chip into the message. Sent note chips
-open a transient reader over the planning space, where wikilinks and backlinks stay navigable.
-Closing the reader returns to the plan exactly as it was.
+open a transient reader over the thread space, where wikilinks and backlinks stay navigable.
+Closing the reader returns to the line exactly as it was.
 
-Mentioning a note also tells the planning assistant which memory note to consult. Memory is durable
+Mentioning a note also tells the assistant which memory note to consult. Memory is durable
 design truth; repository files still describe what is actually built.
 
 ## Review memory amendments
 
-The planning assistant can propose an amendment when a conversation earns a durable memory
+The assistant can propose an amendment when a conversation earns a durable memory
 change. The proposal writes nothing by itself: you review the exact note and map diff, then choose
 **Amend memory** or **Not now**. Confirming lands the change in the memory&rsquo;s history and adds a
-muted amendment marker to the plan&rsquo;s history.
+muted amendment marker to the thread&rsquo;s history.

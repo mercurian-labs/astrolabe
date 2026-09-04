@@ -44,6 +44,7 @@ import { isCommandPaletteOpen, openCommandPalette } from "../../commandPaletteBu
 import { isElectron } from "../../env";
 import { usePlanLifecycleActions } from "../../hooks/usePlanLifecycleActions";
 import { useNewMercurianThreadHandler } from "../../hooks/useHandleNewMercurianThread";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -53,7 +54,13 @@ import {
 } from "../../keybindings";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
-import { usePlanDraftStore, type PlanDraft } from "../../planDraftStore";
+import { releaseComposerDraftUploads } from "../../lib/composerDraftUploads";
+import {
+  composerDraftHasUserContent,
+  DraftId,
+  type ComposerThreadDraftState,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
 import { useProjectScopeStore } from "../../projectScopeStore";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { useMarkPlanUnread, useMercurianTree } from "../../state/mercurian";
@@ -89,6 +96,7 @@ import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDial
 import { NewProjectDialog } from "./NewProjectDialog";
 import { SettingsNav } from "./SettingsNav";
 import { SidebarPlanHoverCard } from "./SidebarPlanHoverCard";
+import { usePlanDraftMigration } from "./usePlanDraftMigration";
 
 const ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
@@ -150,7 +158,7 @@ function SidebarPlanTooltipRow(props: { readonly icon: ReactNode; readonly child
   );
 }
 
-/** Mercurian's flat plan list, scoped across projects rather than nested under them. */
+/** Mercurian's flat thread list, scoped across projects rather than nested under them. */
 export default function PlanListSidebar() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const selection = useMemo(() => resolveSidebarSelection(pathname), [pathname]);
@@ -160,6 +168,8 @@ export default function PlanListSidebar() {
     [selection, snapshot.plans],
   );
   const projects = useMemo(() => sortProjectsForTree(snapshot.projects), [snapshot.projects]);
+  usePlanDraftMigration(projects);
+  const environmentId = usePrimaryEnvironmentId();
   const projectScopeId = useProjectScopeStore((state) => state.projectScopeId);
   const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
   const [archivedPage, setArchivedPage] = useState(0);
@@ -180,10 +190,33 @@ export default function PlanListSidebar() {
     [projects],
   );
   // Count-only selection: typing inside an existing invested draft updates its
-  // row, without repainting every plan card around it.
-  const investedDraftCount = usePlanDraftStore(
-    (state) => resolveDraftRows(state.draftsById, projectScopeId).length,
+  // row, without repainting every thread card around it.
+  const mercurianProjectIdByOrchestrationProjectId = useMemo(
+    () =>
+      new Map(
+        projects.flatMap((project) =>
+          project.orchestrationProjectId == null
+            ? []
+            : [[String(project.orchestrationProjectId), String(project.projectId)] as const],
+        ),
+      ),
+    [projects],
   );
+  const investedDraftCount = useComposerDraftStore((state) => {
+    let count = 0;
+    for (const [draftId, session] of Object.entries(state.draftThreadsByThreadKey)) {
+      if (session.promotedTo != null || session.environmentId !== environmentId) continue;
+      const mercurianProjectId = mercurianProjectIdByOrchestrationProjectId.get(session.projectId);
+      if (
+        mercurianProjectId !== undefined &&
+        (projectScopeId === null || projectScopeId === mercurianProjectId) &&
+        composerDraftHasUserContent(state.draftsByThreadKey[draftId])
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  });
   const jumpTargets = useMemo(() => listJumpTargets(active), [active]);
   useTreeJumpShortcuts({ jumpTargets, activePlanId });
   const jumpLabelByPlanId = useJumpHintLabels(jumpTargets);
@@ -238,7 +271,9 @@ export default function PlanListSidebar() {
               <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
                 <PlanDraftBlock
                   activeDraftId={selection.activeDraftId}
+                  environmentId={environmentId}
                   projectNameById={projectNameById}
+                  projects={projects}
                   projectScopeId={projectScopeId}
                 />
                 {active.map((plan) => (
@@ -285,8 +320,8 @@ export default function PlanListSidebar() {
                 ) : investedDraftCount + active.length + archived.length === 0 ? (
                   <SidebarEmptyState>
                     {scopedProject === null
-                      ? "No plans yet"
-                      : `No plans in ${scopedProject.name} yet`}
+                      ? "No threads yet"
+                      : `No threads in ${scopedProject.name} yet`}
                   </SidebarEmptyState>
                 ) : null}
               </ul>
@@ -329,7 +364,7 @@ function PlanListHeader(props: {
   const newMercurianThread = useNewMercurianThreadHandler();
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
   const searchShortcutLabel = shortcutLabelForCommand(keybindings, "commandPalette.toggle");
-  const newPlanShortcutLabel = shortcutLabelForCommand(keybindings, "plan.new");
+  const newThreadShortcutLabel = shortcutLabelForCommand(keybindings, "plan.new");
 
   const startPlanInProject = useCallback(
     (projectId: string) => {
@@ -377,7 +412,7 @@ function PlanListHeader(props: {
                   className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                   onClick={handleNewPlan}
                   disabled={props.projects.length === 0}
-                  aria-label="New plan"
+                  aria-label="New thread"
                 />
               }
             >
@@ -388,7 +423,7 @@ function PlanListHeader(props: {
               />
             </TooltipTrigger>
             <TooltipPopup side="right">
-              {newPlanShortcutLabel ? `New plan (${newPlanShortcutLabel})` : "New plan"}
+              {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
             </TooltipPopup>
           </Tooltip>
         </div>
@@ -399,7 +434,7 @@ function PlanListHeader(props: {
             <MenuTrigger
               render={
                 <SidebarMenuButton
-                  aria-label="Filter plans by project"
+                  aria-label="Filter threads by project"
                   className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                 />
               }
@@ -488,14 +523,61 @@ function PlanListHeader(props: {
 
 const PlanDraftBlock = memo(function PlanDraftBlock(props: {
   readonly activeDraftId: string | null;
+  readonly environmentId: string | null;
   readonly projectNameById: ReadonlyMap<string, string>;
+  readonly projects: ReadonlyArray<MercurianProject>;
   readonly projectScopeId: string | null;
 }) {
-  const draftsById = usePlanDraftStore((state) => state.draftsById);
-  const discardDraft = usePlanDraftStore((state) => state.discardDraft);
-  const drafts = useMemo(
-    () => resolveDraftRows(draftsById, props.projectScopeId),
-    [draftsById, props.projectScopeId],
+  const draftThreadsByThreadKey = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
+  const draftsByThreadKey = useComposerDraftStore((state) => state.draftsByThreadKey);
+  const clearDraftThread = useComposerDraftStore((state) => state.clearDraftThread);
+  const mercurianProjectIdByOrchestrationProjectId = useMemo(
+    () =>
+      new Map(
+        props.projects.flatMap((project) =>
+          project.orchestrationProjectId == null
+            ? []
+            : [[String(project.orchestrationProjectId), String(project.projectId)] as const],
+        ),
+      ),
+    [props.projects],
+  );
+  const drafts = useMemo(() => {
+    const rows = Object.fromEntries(
+      Object.entries(draftThreadsByThreadKey).flatMap(([draftId, session]) => {
+        if (session.promotedTo != null || session.environmentId !== props.environmentId) return [];
+        const projectId = mercurianProjectIdByOrchestrationProjectId.get(session.projectId);
+        if (projectId === undefined) return [];
+        const composer = draftsByThreadKey[draftId];
+        return [
+          [
+            draftId,
+            {
+              draftId,
+              projectId,
+              createdAt: session.createdAt,
+              invested: composerDraftHasUserContent(composer),
+              preview: composer === undefined ? "" : composerDraftPreview(composer),
+            },
+          ] as const,
+        ];
+      }),
+    );
+    return resolveDraftRows(rows, props.projectScopeId);
+  }, [
+    draftThreadsByThreadKey,
+    draftsByThreadKey,
+    mercurianProjectIdByOrchestrationProjectId,
+    props.environmentId,
+    props.projectScopeId,
+  ]);
+  const discardDraft = useCallback(
+    (draftId: string) => {
+      const brandedDraftId = DraftId.make(draftId);
+      releaseComposerDraftUploads(brandedDraftId);
+      clearDraftThread(brandedDraftId);
+    },
+    [clearDraftThread],
   );
 
   if (drafts.length === 0) return null;
@@ -520,16 +602,21 @@ const PlanDraftBlock = memo(function PlanDraftBlock(props: {
 });
 
 const PlanDraftRow = memo(function PlanDraftRow(props: {
-  readonly draft: PlanDraft;
+  readonly draft: {
+    readonly draftId: string;
+    readonly projectId: string;
+    readonly preview: string;
+    readonly createdAt: string;
+  };
   readonly projectName: string;
   readonly isActive: boolean;
   readonly onDiscard: (draftId: string) => void;
 }) {
   const navigate = useNavigate();
-  const preview = props.draft.text.trim().split("\n", 1)[0] ?? "";
+  const preview = props.draft.preview;
   const activate = useCallback(() => {
     void navigate({
-      to: "/plans/draft/$draftId",
+      to: "/threads/draft/$draftId",
       params: { draftId: props.draft.draftId },
     });
   }, [navigate, props.draft.draftId]);
@@ -597,6 +684,19 @@ const PlanDraftRow = memo(function PlanDraftRow(props: {
     </li>
   );
 });
+
+function composerDraftPreview(composer: ComposerThreadDraftState): string {
+  const promptPreview = composer.prompt.trim().split("\n", 1)[0] ?? "";
+  if (promptPreview.length > 0) return promptPreview;
+  const attachmentCount =
+    Math.max(composer.images.length, composer.persistedAttachments.length) +
+    composer.files.length +
+    composer.terminalContexts.length +
+    composer.elementContexts.length +
+    composer.previewAnnotations.length +
+    composer.reviewComments.length;
+  return `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
+}
 
 const PlanCard = memo(function PlanCard(props: {
   readonly plan: PlanTreeRow;

@@ -148,7 +148,7 @@ Sidebar footer gains `MemoryFooterRow` beside the repositories row (`extraRows`,
 
 ### 8. Docs and catalog
 
-- `docs/user/`: a memory section (designating, browsing, mentioning notes, the product-map offer) in shipped-product voice — likely a new `docs/user/project-memory.md` linked from `projects-and-plans.md`.
+- `docs/user/`: a memory section (designating, browsing, mentioning notes, the product-map offer) in shipped-product voice — likely a new `docs/user/project-memory.md` linked from `projects-and-threads.md`.
 - `docs/internals/glossary.md`: **memory**, **note**, **map**, **memory source**, **unresolved reference**.
 - Catalog: `MemoryNoteReader.catalog.tsx` entries (note with resolved + red links; not-yet-written state) — plus the four-place registration (import/spread in `catalog.tsx`, order-sensitive `MIGRATED_STORY_TITLES` + length in `catalog.test.ts`, module + catalogued counts in `coverage.test.ts`). `MemoryPage` gets a `coverage.ts` classification (`requires-live-workspace`) unless a catalog state is cheap.
 
@@ -177,7 +177,7 @@ New files:
 | `apps/web/src/routes/_chat.memory.tsx`                                                | route                                                                                                                          |
 | `docs/user/project-memory.md`                                                         | user docs                                                                                                                      |
 
-Modified: `packages/contracts/src/index.ts`, `rpc.ts`; `packages/shared/src/composerInlineTokens.ts`; `apps/server/src/mercurian/persistence/Migrations.ts`, `auth/RpcAuthorization.ts`, `ws.ts`, `mercurian/assistant/PlanningAssistant.ts`, `PlanningPrompt.ts`; `apps/web/src/components/mercurian/ManageProjectRepositoriesDialog.tsx`, `PlanMentionSources.tsx`, `planMentions.logic.ts` (+ test), `PlanComposer.tsx`/`.logic.ts` (+ tests, `[[` trigger + note menu), `ComposerPromptEditor.tsx`, `composer-editor-mentions.ts`, `PlanTimeline.tsx` (+ test, note chips + `onOpenNote`), `PlanningSpace.tsx` (reader state), `PlanListSidebar.tsx` (+ `.logic.ts`), `SearchPalette.tsx`/`.logic.ts` (+ test); `apps/web/src/design-system/catalog.tsx`, `catalog.test.ts`, `coverage.ts`/`coverage.test.ts`; `docs/user/projects-and-plans.md`, `docs/internals/glossary.md`.
+Modified: `packages/contracts/src/index.ts`, `rpc.ts`; `packages/shared/src/composerInlineTokens.ts`; `apps/server/src/mercurian/persistence/Migrations.ts`, `auth/RpcAuthorization.ts`, `ws.ts`, `mercurian/assistant/PlanningAssistant.ts`, `PlanningPrompt.ts`; `apps/web/src/components/mercurian/ManageProjectRepositoriesDialog.tsx`, `PlanMentionSources.tsx`, `planMentions.logic.ts` (+ test), `PlanComposer.tsx`/`.logic.ts` (+ tests, `[[` trigger + note menu), `ComposerPromptEditor.tsx`, `composer-editor-mentions.ts`, `PlanTimeline.tsx` (+ test, note chips + `onOpenNote`), `PlanningSpace.tsx` (reader state), `PlanListSidebar.tsx` (+ `.logic.ts`), `SearchPalette.tsx`/`.logic.ts` (+ test); `apps/web/src/design-system/catalog.tsx`, `catalog.test.ts`, `coverage.ts`/`coverage.test.ts`; `docs/user/projects-and-threads.md`, `docs/internals/glossary.md`.
 
 ## Implementation checklist
 

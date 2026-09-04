@@ -1,5 +1,4 @@
 import {
-  MercurianRepositoryId,
   ProviderDriverKind,
   type PlanCodingSessionRecord,
   type PlanningModelSelection,
@@ -27,7 +26,6 @@ import {
   modelSwitchFor,
   offeredActs,
   planMovedPastSplit,
-  resolveImplementFrom,
 } from "./PlanNodePopover.logic";
 
 const model = (provider: string, name: string): PlanningModelSelection => ({
@@ -183,7 +181,7 @@ describe("derivePlanNodePopover", () => {
       modelSwitch: model("claude", "sonnet"),
       stalePlan: true,
       staleSpec: true,
-      acts: ["continue", "edit-and-branch", "implement"],
+      acts: ["edit-and-branch"],
     });
     expect(reading.query?.ranUnder).toEqual(model("codex", "gpt-5"));
     expect(reading.response?.generatedBy).toEqual(model("codex", "gpt-5"));
@@ -298,21 +296,17 @@ describe("offeredActs", () => {
     ]);
     const condensed = condensePlanGraph(graph);
 
-    expect(offeredActs(condensed.byId.get("root")!, graph)).toEqual(["continue", "implement"]);
-    expect(offeredActs(condensed.byId.get("response")!, graph)).toEqual([
-      "continue",
-      "edit-and-branch",
-      "implement",
-    ]);
-    expect(offeredActs(condensed.byId.get("standalone")!, graph)).toEqual([
-      "continue",
-      "implement",
-    ]);
-    expect(offeredActs(condensed.byId.get("session")!, graph)).toEqual(["continue"]);
-    expect(offeredActs(condensed.byId.get("session")!, graph, true)).toEqual([
-      "continue",
-      "open-session",
-    ]);
+    const cases = [
+      offeredActs(condensed.byId.get("root")!, graph),
+      offeredActs(condensed.byId.get("response")!, graph),
+      offeredActs(condensed.byId.get("standalone")!, graph),
+      offeredActs(condensed.byId.get("session")!, graph),
+      offeredActs(condensed.byId.get("session")!, graph, true),
+    ];
+
+    expect(cases).toEqual([[], ["edit-and-branch"], [], [], ["open-session"]]);
+    expect(cases.flat()).not.toContain("continue");
+    expect(cases.flat()).not.toContain("implement");
   });
 });
 
@@ -377,8 +371,8 @@ describe("coding-session facts", () => {
       repositoryName: "web",
       planRevisionCommitId: "plan",
     });
-    expect(withRecord.acts).toEqual(["continue", "open-session"]);
-    expect(withoutRecord.acts).toEqual(["continue"]);
+    expect(withRecord.acts).toEqual(["open-session"]);
+    expect(withoutRecord.acts).toEqual([]);
   });
 
   it("reads every branch movement and includes departure only when recorded", () => {
@@ -428,11 +422,5 @@ describe("coding-session facts", () => {
     expect(withoutDeparture.session?.commits).toBe("history rewritten");
     expect(withoutDeparture.session).not.toHaveProperty("departedRef");
     expect(withoutDeparture.effects).not.toContain("Departed");
-  });
-
-  it("resolves implementation from a session leaf through its parent line", () => {
-    const graph = buildPlanGraph([revision("plan", 1, []), leaf]);
-    expect(resolveImplementFrom(graph, id("plan"))).toBe("plan");
-    expect(resolveImplementFrom(graph, id("session"))).toBe("plan");
   });
 });

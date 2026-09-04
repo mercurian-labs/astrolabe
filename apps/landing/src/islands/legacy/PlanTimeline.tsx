@@ -10,9 +10,9 @@ import type {
   PlanningModelSelection,
   ServerProvider,
   ServerProviderSkill,
-} from "@t3tools/contracts";
-import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
-import { Link } from "@tanstack/react-router";
+} from "~/../../../packages/contracts/src/index";
+import { collectComposerInlineTokens } from "~/../../../packages/shared/src/composerInlineTokens";
+import { Link } from "~/../node_modules/@tanstack/react-router";
 import {
   ChevronRightIcon,
   BookOpenIcon,
@@ -24,31 +24,34 @@ import {
   SearchIcon,
   WrenchIcon,
   GitBranchIcon,
-} from "lucide-react";
+} from "~/../node_modules/lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { useAssetUrl } from "../../assets/assetUrls";
-import { useClientSettings } from "../../hooks/useSettings";
-import { cn } from "../../lib/utils";
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import { useAssetUrl } from "~/assets/assetUrls";
+import { useClientSettings } from "~/hooks/useSettings";
+import { cn } from "~/lib/utils";
+import { usePrimaryEnvironmentId } from "~/state/environments";
 import {
   formatChatTimestampTooltip,
   formatRelativeTimeLabel,
   formatShortTimestamp,
-} from "../../timestampFormat";
-import ChatMarkdown from "../ChatMarkdown";
-import { MessageCopyButton } from "../chat/MessageCopyButton";
-import { SkillInlineText } from "../chat/SkillInlineText";
-import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
+} from "~/timestampFormat";
+import ChatMarkdown from "~/components/ChatMarkdown";
+import { MessageCopyButton } from "~/components/chat/MessageCopyButton";
+import { SkillInlineText } from "~/components/chat/SkillInlineText";
+import { Button } from "~/components/ui/button";
+import { Spinner } from "~/components/ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import {
+  planningModelOptionLabels,
+  providerLabel,
+} from "~/components/mercurian/PlanningModel.logic";
 import {
   codingSessionRecordFor,
   codingSessionStatus,
   repositoryFactsLabel,
-} from "./PlanNodePopover.logic";
-import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
+} from "~/components/mercurian/PlanNodePopover.logic";
+import { NarrowedGroundingNotice } from "~/components/mercurian/NarrowedGroundingNotice";
 
 /**
  * The planning space's history: messages, plan revisions and an imported issue

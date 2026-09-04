@@ -31,6 +31,7 @@ const baseThread: OrchestrationThread = {
   interactionMode: "default",
   branch: null,
   worktreePath: null,
+  workspaceMembers: null,
   latestTurn: null,
   createdAt: "2026-04-01T00:00:00.000Z",
   updatedAt: "2026-04-01T00:00:00.000Z",
@@ -89,6 +90,16 @@ describe("applyThreadDetailEvent", () => {
           interactionMode: "default",
           branch: "main",
           worktreePath: null,
+          workspaceMembers: [
+            {
+              repositoryId: "repo-primary",
+              worktreePath: "/repo-primary",
+            },
+            {
+              repositoryId: "repo-secondary",
+              worktreePath: "/repo-secondary",
+            },
+          ],
           createdAt: "2026-04-01T01:00:00.000Z",
           updatedAt: "2026-04-01T01:00:00.000Z",
         },
@@ -99,6 +110,16 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.id).toBe("thread-2");
         expect(result.thread.title).toBe("New Thread");
         expect(result.thread.branch).toBe("main");
+        expect(result.thread.workspaceMembers).toEqual([
+          {
+            repositoryId: "repo-primary",
+            worktreePath: "/repo-primary",
+          },
+          {
+            repositoryId: "repo-secondary",
+            worktreePath: "/repo-secondary",
+          },
+        ]);
         expect(result.thread.messages).toEqual([]);
         expect(result.thread.session).toBeNull();
       }
@@ -303,6 +324,76 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.branch).toBe("feature/demo");
         // Model selection should be unchanged since it wasn't in the payload
         expect(result.thread.modelSelection).toEqual(baseThread.modelSelection);
+      }
+    });
+
+    it("updates workspace members only when supplied", () => {
+      const workspaceMembers = [
+        {
+          repositoryId: "repo-primary",
+          worktreePath: "/repo-primary",
+        },
+      ];
+      const initial = { ...baseThread, workspaceMembers };
+      const omitted = applyThreadDetailEvent(initial, {
+        ...baseEventFields,
+        sequence: 5,
+        occurredAt: "2026-04-01T05:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          title: "Updated Title",
+          updatedAt: "2026-04-01T05:00:00.000Z",
+        },
+      });
+
+      expect(omitted.kind).toBe("updated");
+      if (omitted.kind !== "updated") return;
+      expect(omitted.thread.workspaceMembers).toBe(workspaceMembers);
+
+      const replacement = [
+        {
+          repositoryId: "repo-secondary",
+          worktreePath: "/repo-secondary",
+        },
+      ];
+      const updated = applyThreadDetailEvent(omitted.thread, {
+        ...baseEventFields,
+        sequence: 6,
+        occurredAt: "2026-04-01T06:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          workspaceMembers: replacement,
+          updatedAt: "2026-04-01T06:00:00.000Z",
+        },
+      });
+
+      expect(updated.kind).toBe("updated");
+      if (updated.kind !== "updated") return;
+      expect(updated.thread.workspaceMembers).toEqual(replacement);
+
+      const cleared = applyThreadDetailEvent(updated.thread, {
+        ...baseEventFields,
+        sequence: 7,
+        occurredAt: "2026-04-01T07:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          workspaceMembers: null,
+          updatedAt: "2026-04-01T07:00:00.000Z",
+        },
+      });
+
+      expect(cleared.kind).toBe("updated");
+      if (cleared.kind === "updated") {
+        expect(cleared.thread.workspaceMembers).toBeNull();
       }
     });
 

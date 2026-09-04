@@ -74,7 +74,7 @@ The composer's chips, pickers, and send/stop control (AC 5) and the timeline beh
 
 ### 5. Documentation and surface accounting
 
-- `docs/user/projects-and-plans.md`: the session screen — opening it from the plan card's popover, the Checkpoint Graph leaf's popover, or the timeline card; how the timeline reads (folded work log, turn folds, changed-files card); revert-to-this-message with its confirm and interrupt-first rule; the leaf staying put in plan history after a revert.
+- `docs/user/projects-and-threads.md`: the session screen — opening it from the plan card's popover, the Checkpoint Graph leaf's popover, or the timeline card; how the timeline reads (folded work log, turn folds, changed-files card); revert-to-this-message with its confirm and interrupt-first rule; the leaf staying put in plan history after a revert.
 - `docs/internals/glossary.md`: Coding Session View (the screen), and cross-link checkpoint/turn diff/revert to the session vocabulary.
 - `docs/architecture/fork-baseline.md`: the §2 disposition amendment (Section 1).
 - Web and desktop apply identically (same served origin); mobile stays parked and untouched; the entry points and header are provider-agnostic.

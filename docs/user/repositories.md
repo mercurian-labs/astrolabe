@@ -36,8 +36,8 @@ the folder path.
 ## Git is expected, not required
 
 A directory that is not a git repository can be added. Its files are readable, so it works as
-grounding for plans. What is absent is everything working-tree-shaped: worktrees, diffs, and
-coding sessions. The row says so.
+grounding for threads. What is absent is everything working-tree-shaped: worktrees, diffs, and a
+working line. The row says so.
 
 Nothing has to be rescanned if that changes. Run `git init` in the directory and the row picks it
 up on its own.
@@ -68,11 +68,11 @@ something, and can be flagged as a **setup** script.
 They belong to this machine and to this app. Nothing is written into the repository itself, so
 adding a repository never changes a file in it and nothing has to be committed for a teammate.
 
-Running them arrives with coding sessions.
+You can run them from a thread after its line has a working slot.
 
 ## Repositories in a project
 
-A project's repositories are the context its plans ground in — a default, not a boundary. No plan
+A project's repositories are the context its threads ground in — a default, not a boundary. No thread
 is ever filed under a repository.
 
 Set them from either side:
@@ -84,14 +84,14 @@ Set them from either side:
 Both dialogs carry a **Manage Repos** button that brings you to this page — adding a repository
 always happens here.
 
-Once a project has repositories, typing `@` in that project's plan composer lists files from them.
+Once a project has repositories, typing `@` in a thread line's composer lists files from them.
 With more than one repository the list says which one each file came from. With none, `@` has
 nothing to offer and stays quiet.
 
 ## Removing a repository
 
 **Remove…** disconnects the repository. Its scripts and its project memberships go with it. The
-files on disk are untouched, and anything already written into a plan's history stays there as
+files on disk are untouched, and anything already written into a thread's history stays there as
 record — those are things somebody wrote, not links that can break.
 
 Removal is refused while the app is holding live worktrees on the repository. There is no override:

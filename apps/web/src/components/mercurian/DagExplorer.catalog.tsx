@@ -80,7 +80,6 @@ const baseProps = {
   stalePlanCommitIds: new Set<string>(),
   staleSpecCommitIds: new Set<string>(),
   onEditAndBranch: () => undefined,
-  onImplementFrom: () => undefined,
   onSelect: () => undefined,
 } as const;
 

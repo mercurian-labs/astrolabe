@@ -1,36 +1,15 @@
-import { PlanId, TrackerConnectionId } from "@t3tools/contracts";
+import { MercurianCommitId, TrackerConnectionId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
-import { commitId as id, specRevision } from "../../test/fixtures/timeline";
-
-import { SpecArtifact, SpecEditor } from "./SpecArtifact";
-
-vi.mock("../../state/mercurian", () => ({
-  useSaveSpecRevision: () => vi.fn().mockResolvedValue({ ok: true, value: {} }),
-  useRefreshSpec: () => vi.fn(),
-}));
-
-const revision = specRevision("spec-1", {
-  published: true,
-  createdAt: "2026-08-13T00:00:00.000Z",
-  cause: "import",
-  issueId: "M-109",
-});
+import { Button } from "../ui/button";
+import { SpecArtifact } from "./SpecArtifact";
 
 describe("SpecArtifact", () => {
-  it("offers the same draft path when a blank plan has no spec", () => {
-    const markup = renderToStaticMarkup(
-      <SpecArtifact
-        parentCommitId={id("message-1")}
-        planId={PlanId.make("plan-1")}
-        spec={null}
-        timeline={[]}
-      />,
-    );
-    expect(markup).toContain("No spec yet — draft the contract");
-    expect(markup).toContain(">Edit</button>");
-    expect(markup).not.toContain("Draft spec");
+  it("renders an empty spec without an edit door", () => {
+    const markup = renderToStaticMarkup(<SpecArtifact spec={null} />);
+    expect(markup).toContain("No spec yet.");
+    expect(markup).not.toMatch(/Edit|Save|Refresh/);
   });
 
   it("renders the current path contract and keeps issue language at the origin", () => {
@@ -41,53 +20,46 @@ describe("SpecArtifact", () => {
           issueId: "M-109",
           issueUrl: "https://linear.app/mercurian/issue/M-109/specs",
         }}
-        parentCommitId={id("spec-1")}
-        planId={PlanId.make("plan-1")}
         spec={{
-          revisionCommitId: id("spec-1"),
+          revisionCommitId: MercurianCommitId.make("spec-1"),
           document: {
             goal: "People can plan from an explicit contract.",
             acceptanceCriteria: "The contract is **first class**.",
           },
         }}
-        timeline={[revision]}
       />,
     );
-    expect(markup).toContain("Imported from M-109");
     expect(markup).toContain("From issue M-109");
-    expect(markup).toContain("Refresh from issue");
+    expect(markup).toContain("Open issue");
     expect(markup).toContain("The contract is <strong>first class</strong>.");
   });
 
-  it("makes human editing unavailable while the assistant owns the path", () => {
+  it("always renders a populated contract read-only", () => {
     const markup = renderToStaticMarkup(
       <SpecArtifact
-        parentCommitId={id("spec-1")}
-        planId={PlanId.make("plan-1")}
         spec={{
-          revisionCommitId: id("spec-1"),
+          revisionCommitId: MercurianCommitId.make("spec-1"),
           document: { goal: "Behavior", acceptanceCriteria: "Contract" },
         }}
-        timeline={[revision]}
-        turnActive
       />,
     );
-    expect(markup).toContain("The assistant is replying. Stop it before editing the spec.");
-    expect(markup).toContain("disabled");
+    expect(markup).toContain("Behavior");
+    expect(markup).toContain("Contract");
+    expect(markup).not.toMatch(/Edit|Save|Cancel|Refresh/);
   });
 
-  it("gives the goal a multiline writing surface instead of a title input", () => {
+  it("keeps the slim Back to now row for historical reading", () => {
     const markup = renderToStaticMarkup(
-      <SpecEditor
-        document={{ goal: "User story", acceptanceCriteria: "- [ ] It works" }}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
+      <SpecArtifact
+        readOnlyAction={
+          <Button size="sm" variant="ghost">
+            Back to now
+          </Button>
+        }
+        spec={null}
       />,
     );
-    expect(markup).toContain('aria-label="Goal or user story"');
-    expect(markup).toContain('rows="6"');
-    expect(markup).toContain('aria-label="Acceptance criteria"');
-    expect(markup.match(/<textarea/g)).toHaveLength(2);
-    expect(markup).not.toContain("<input");
+    expect(markup).toContain("Back to now");
+    expect(markup).not.toContain("<textarea");
   });
 });

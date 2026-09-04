@@ -7,15 +7,15 @@ import type {
   ProviderDriverKind,
   ServerProviderSkill,
   ServerProviderSlashCommand,
-} from "@t3tools/contracts";
-import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
+} from "~/../../../packages/contracts/src/index";
+import { formatProviderSkillDisplayName } from "~/../../../packages/client-runtime/src/providerSkills";
 
-import { detectComposerTrigger, type ComposerTrigger } from "../../composer-logic";
-import type { ComposerCommandItem } from "../chat/ComposerCommandMenu";
-import { resolveComposerMenuActiveItemId } from "../chat/composerMenuHighlight";
-import { searchSlashCommandItems } from "../chat/composerSlashCommandSearch";
-import { searchProviderSkills } from "../../providerSkillSearch";
-import { providerLabel } from "./PlanningModel.logic";
+import { detectComposerTrigger, type ComposerTrigger } from "~/composer-logic";
+import type { ComposerCommandItem } from "~/components/chat/ComposerCommandMenu";
+import { resolveComposerMenuActiveItemId } from "~/components/chat/composerMenuHighlight";
+import { searchSlashCommandItems } from "~/components/chat/composerSlashCommandSearch";
+import { searchProviderSkills } from "~/providerSkillSearch";
+import { providerLabel } from "~/components/mercurian/PlanningModel.logic";
 
 /**
  * The send↔stop↔gate state machine, kept pure so the composer component

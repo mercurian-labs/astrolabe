@@ -233,7 +233,7 @@ The current flat sidebar must stay dense. `PlanListSidebar.tsx` does not gain ne
 
 ### 8. Documentation and surface accounting
 
-- `docs/user/projects-and-plans.md`: add the draft choices, local-vs-origin base, first-turn birth, isolated worktree/branch, retry behavior, and parent continuation.
+- `docs/user/projects-and-threads.md`: add the draft choices, local-vs-origin base, first-turn birth, isolated worktree/branch, retry behavior, and parent continuation.
 - `docs/internals/glossary.md`: add coding session, coding-session leaf, session branch, and the t3code-thread link; update repository live-worktree wording.
 - `docs/internals/overview.md`: document the immutable payload/keyed-record split and the saga across the two databases plus git.
 - Web and desktop apply: desktop wraps web and shares the server. Local and remotely paired web clients use the same RPC and server-side path; no origin is baked into the bundle. Mobile is parked by ADR 004 and remains untouched. Provider behavior is uniform because all providers enter through the existing exact-instance orchestration model.

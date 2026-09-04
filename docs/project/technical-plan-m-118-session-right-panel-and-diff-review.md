@@ -98,7 +98,7 @@ Either condition sets `movedPast`; the notice reuses the M-133 copy family — "
 ### 7. Documentation and surface accounting
 
 - `docs/architecture/fork-baseline.md` §2: amend the disposition table — t3code's plan-mode proposals surface (already removed upstream at right-panel storage v9; mode stripped at M-114) is **replaced on the session screen by the session's standing Plan tab** at M-118: "the difference between a plan as a turn's output and a plan as the reason the session exists."
-- `docs/user/projects-and-plans.md`: the session screen's right panel — the five tabs, diff scopes and toggles, commenting on diff lines and how chips travel with the next message, the plan tab and its moved-past notice, the preview offer and the web client's disabled tab.
+- `docs/user/projects-and-threads.md`: the session screen's right panel — the five tabs, diff scopes and toggles, commenting on diff lines and how chips travel with the next message, the plan tab and its moved-past notice, the preview offer and the web client's disabled tab.
 - `docs/internals/glossary.md`: review comment, whole-session diff, session plan tab.
 - Web and desktop apply identically (same served origin); the desktop-only preview gate is runtime-detected, not built here; mobile stays parked and untouched.
 

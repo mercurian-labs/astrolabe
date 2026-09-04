@@ -1,8 +1,11 @@
-import type { PlanningModelSelection, ServerProvider } from "@t3tools/contracts";
+import type {
+  PlanningModelSelection,
+  ServerProvider,
+} from "~/../../../packages/contracts/src/index";
 import { useMemo } from "react";
 
-import { usePrimarySettings } from "../../hooks/useSettings";
-import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { usePrimarySettings } from "~/hooks/useSettings";
+import { ProviderModelPicker } from "~/components/chat/ProviderModelPicker";
 import {
   derivePlanModelPickerState,
   planningModelDisabledReason,

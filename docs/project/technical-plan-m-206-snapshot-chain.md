@@ -131,7 +131,7 @@ The offer to commit first is the existing `GitActionsControl` (`commit_push` qui
 | `packages/client-runtime/src/state/{threadReducer,planReducer}.ts`                                                      | Conditional spreads for the new fields.                                                                                                                  |
 | `apps/web/src/components/mercurian/{PlanGraph.logic,PlanCheckpoints.logic,PlanNodePopover.logic,PlanTimeline}.ts(x)`    | `departed` effect + badge; popover branch and departed lines.                                                                                            |
 | `apps/web/src/components/DiffPanel.tsx`, `apps/web/src/diffPanelStore.ts`                                               | **Uncommitted** scope for Mercurian sessions.                                                                                                            |
-| `docs/internals/glossary.md`, `docs/internals/overview.md`, `docs/user/projects-and-plans.md`                           | Checkpoint/baseline/revert entries and the session worktree paragraph rewritten for the chain; the stale "Revert to this message" line removed.          |
+| `docs/internals/glossary.md`, `docs/internals/overview.md`, `docs/user/projects-and-threads.md`                         | Checkpoint/baseline/revert entries and the session worktree paragraph rewritten for the chain; the stale "Revert to this message" line removed.          |
 
 ## Implementation Checklist
 
@@ -235,7 +235,7 @@ Otherwise re-point as today and clear the hold. The record: **`line_branches.rep
 | `packages/contracts/src/mercurian.ts`                                                           | `line-branch-missing` reason + message; `lineBranchMissingOid` on `PlanCodingSessionRecord`; `recreateLineBranch` method, input union, result.                  |
 | `packages/client-runtime/src/state/{planReducer,mercurianPlanning}.ts`                          | Spread the new record field; the RPC command.                                                                                                                   |
 | `apps/web/src/components/mercurian/{CodingSessionHeader,PlanningSpace}.tsx` (+ logic tests)     | Missing-branch notice with **Recreate** on the header and the Implement door.                                                                                   |
-| `docs/internals/glossary.md`, `docs/user/projects-and-plans.md`                                 | "Built" and the rename/missing rules under the line-branch entries; a user paragraph on renaming or deleting the branch by hand.                                |
+| `docs/internals/glossary.md`, `docs/user/projects-and-threads.md`                               | "Built" and the rename/missing rules under the line-branch entries; a user paragraph on renaming or deleting the branch by hand.                                |
 
 ### Implementation checklist (build 2)
 
