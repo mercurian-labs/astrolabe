@@ -48,6 +48,8 @@ import * as SlotRegistry from "../worktreeSlots/SlotRegistry.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as MemoryIndex from "../memory/MemoryIndex.ts";
+import * as MemoryReviewStore from "../memory/MemoryReviewStore.ts";
+import * as SnapshotChain from "../worktreeSlots/SnapshotChain.ts";
 import {
   SlotPoolAtCapacityError,
   SlotService,
@@ -318,6 +320,13 @@ const testLayer = (
     slotStoreLayer,
     slotRegistryLayer,
     checkpointStoreLayer,
+    Layer.mock(MemoryReviewStore.MemoryReviewStore)({
+      listReviewed: () => Effect.succeed([]),
+      markReviewed: () => Effect.void,
+    }),
+    Layer.mock(SnapshotChain.SnapshotChain)({
+      captureTree: () => Effect.die("not used"),
+    }),
   );
   const memoryIndexLayer = MemoryIndex.layer.pipe(
     Layer.provideMerge(MemorySourceStore.layer.pipe(Layer.provide(lineMemory ? liveGit : stubGit))),

@@ -8,6 +8,7 @@ export interface MemoryTabRow {
   readonly turnId: string | null;
   readonly authoredAt: string | null;
   readonly diff: string;
+  readonly reviewed: boolean;
 }
 
 export function memoryTabRows(changes: MercurianLineMemoryChanges): ReadonlyArray<MemoryTabRow> {
@@ -20,6 +21,7 @@ export function memoryTabRows(changes: MercurianLineMemoryChanges): ReadonlyArra
       turnId: entry.turnId,
       authoredAt: entry.authoredAt,
       diff: entry.diff,
+      reviewed: entry.reviewed,
     })),
     ...changes.hand.map((entry) => ({
       id: entry.oid,
@@ -29,6 +31,7 @@ export function memoryTabRows(changes: MercurianLineMemoryChanges): ReadonlyArra
       turnId: null,
       authoredAt: entry.authoredAt,
       diff: entry.diff,
+      reviewed: entry.reviewed,
     })),
     ...(changes.unmarked === null
       ? []
@@ -41,7 +44,16 @@ export function memoryTabRows(changes: MercurianLineMemoryChanges): ReadonlyArra
             turnId: null,
             authoredAt: null,
             diff: changes.unmarked.diff,
+            reviewed: false,
           },
         ]),
   ];
 }
+
+export const memoryTabUnreviewedCount = (changes: MercurianLineMemoryChanges) =>
+  changes.unreviewedCount;
+
+export const memoryTabRevertTarget = (
+  row: MemoryTabRow,
+): { readonly kind: "commit"; readonly commitOid: string } | { readonly kind: "unmarked" } =>
+  row.kind === "unmarked" ? { kind: "unmarked" } : { kind: "commit", commitOid: row.id };

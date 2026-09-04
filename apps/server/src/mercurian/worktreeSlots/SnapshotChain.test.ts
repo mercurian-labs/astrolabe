@@ -226,9 +226,24 @@ it.effect("captures a parented snapshot chain and derives branch state", () =>
         assert.deepStrictEqual(builtMarks, [repositoryId]);
         assert.strictEqual(runGit(cwd, ["rev-parse", `${secondRef}^1`]), moved.oid);
         assert.strictEqual(runGit(cwd, ["rev-parse", `${secondRef}^2`]), movedHead);
+        runGit(cwd, ["add", "-A", "--", "."]);
+        const curatedTree = runGit(cwd, ["write-tree"]);
+        runGit(cwd, ["reset", "--mixed", "HEAD"]);
+        const curated = yield* chain.captureTree({
+          cwd,
+          lineRootCommitId,
+          repositoryId,
+          lineBranch: "mercurian/line",
+          kind: "curated",
+          treeOid: curatedTree,
+        });
+        assert.strictEqual(runGit(cwd, ["rev-parse", `${curated.oid}^1`]), second.oid);
+        assert.strictEqual(runGit(cwd, ["rev-parse", `${curated.oid}^2`]), movedHead);
+        assert.strictEqual(runGit(cwd, ["rev-parse", `${curated.oid}^{tree}`]), curatedTree);
+        assert.strictEqual(curated.built, true);
         assert.strictEqual(
           runGit(cwd, ["rev-parse", lineSnapshotRef(lineRootCommitId)]),
-          second.oid,
+          curated.oid,
         );
         assert.deepStrictEqual(
           yield* chain.branchMovement({

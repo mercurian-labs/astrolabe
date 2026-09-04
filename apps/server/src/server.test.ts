@@ -1330,7 +1330,10 @@ const buildAppUnderTest = (options?: {
             ),
             MemorySourceStore.layer.pipe(Layer.provide(gitVcsDriverLayer)),
             Layer.mock(MemoryIndex.MemoryIndex)({
-              readLineChanges: () => Effect.succeed({ marked: [], hand: [], unmarked: null }),
+              readLineChanges: () =>
+                Effect.succeed({ marked: [], hand: [], unmarked: null, unreviewedCount: 0 }),
+              markChangeReviewed: () => Effect.void,
+              revertChange: () => Effect.void,
               ...options?.layers?.memoryIndex,
             }),
             WorkspaceSettingsStore.layer,
@@ -5147,6 +5150,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         yield* Queue.unbounded<
           Parameters<MemoryIndex.MemoryIndex["Service"]["readLineChanges"]>[0]
         >();
+      const memoryReviewMarks =
+        yield* Queue.unbounded<
+          Parameters<MemoryIndex.MemoryIndex["Service"]["markChangeReviewed"]>[0]
+        >();
+      const memoryReverts =
+        yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["revertChange"]>[0]>();
       yield* buildAppUnderTest({
         layers: {
           planningAssistant: {
@@ -5157,8 +5166,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           memoryIndex: {
             readLineChanges: (input) =>
               Queue.offer(memoryLineReads, input).pipe(
-                Effect.as({ marked: [], hand: [], unmarked: null }),
+                Effect.as({ marked: [], hand: [], unmarked: null, unreviewedCount: 0 }),
               ),
+            markChangeReviewed: (input) =>
+              Queue.offer(memoryReviewMarks, input).pipe(Effect.asVoid),
+            revertChange: (input) => Queue.offer(memoryReverts, input).pipe(Effect.asVoid),
           },
         },
       });
@@ -5192,6 +5204,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               line: memoryLine,
             });
             const memoryLineRead = yield* Queue.take(memoryLineReads);
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]({
+              line: memoryLine,
+              commitOid: "reviewed-oid",
+            });
+            const memoryReviewMark = yield* Queue.take(memoryReviewMarks);
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]({
+              line: memoryLine,
+              target: { kind: "commit", commitOid: "reverted-oid" },
+            });
+            const memoryRevert = yield* Queue.take(memoryReverts);
             const starts = [yield* Queue.take(turnStarts), yield* Queue.take(turnStarts)];
             const workspaceSettings = yield* client[
               MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
@@ -5239,6 +5261,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               memoryChanges,
               memoryLine,
               memoryLineRead,
+              memoryReviewMark,
+              memoryRevert,
               starts,
               workspaceSettings,
               items,
@@ -5253,10 +5277,25 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(result.project.name, "Astrolabe");
       assert.equal(result.created.plan.title, "Reshape the sidebar");
       assert.equal(result.created.planText, "");
-      assert.deepEqual(result.memoryChanges, { marked: [], hand: [], unmarked: null });
+      assert.deepEqual(result.memoryChanges, {
+        marked: [],
+        hand: [],
+        unmarked: null,
+        unreviewedCount: 0,
+      });
       assert.deepEqual(result.memoryLineRead, {
         projectId: result.project.projectId,
         line: result.memoryLine,
+      });
+      assert.deepEqual(result.memoryReviewMark, {
+        projectId: result.project.projectId,
+        line: result.memoryLine,
+        commitOid: "reviewed-oid",
+      });
+      assert.deepEqual(result.memoryRevert, {
+        projectId: result.project.projectId,
+        line: result.memoryLine,
+        target: { kind: "commit", commitOid: "reverted-oid" },
       });
       const root = result.created.timeline[0];
       assert.ok(root?._tag === "message");

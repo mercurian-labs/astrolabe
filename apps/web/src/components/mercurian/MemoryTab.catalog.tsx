@@ -20,6 +20,7 @@ export const MEMORY_TAB_CATALOG_ENTRIES = [
                 turnId: "turn-42",
                 authoredAt: "2026-09-04T14:30:00.000Z",
                 diff: "diff --git a/Composer.md b/Composer.md\n+The composer owns drafts.\n",
+                reviewed: true,
               },
             ],
             hand: [
@@ -28,11 +29,13 @@ export const MEMORY_TAB_CATALOG_ENTRIES = [
                 title: "Clarify project vocabulary",
                 authoredAt: "2026-09-04T15:00:00.000Z",
                 diff: "diff --git a/Glossary.md b/Glossary.md\n+Define a line.\n",
+                reviewed: false,
               },
             ],
             unmarked: {
               diff: "diff --git a/Plans.md b/Plans.md\n+An uncommitted line decision.\n",
             },
+            unreviewedCount: 2,
           }}
         />
       </div>

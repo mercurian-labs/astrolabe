@@ -136,6 +136,8 @@ const NoRequest = Schema.Struct({});
 
 const CodingSessionRow = Schema.Struct({
   ...CodingSessionRecord.fields,
+  prState: Schema.NullOr(Schema.String),
+  memoryMergedHomeAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   branchMovement: Schema.NullOr(Schema.fromJsonString(BranchMovement)),
 });
 const CodingSessionRepositoryRow = Schema.Struct({
@@ -159,7 +161,8 @@ export const make = Effect.gen(function* () {
     commit_id AS "commitId", plan_id AS "planId", repository_id AS "repositoryId",
     thread_id AS "threadId", branch AS "branch", worktree_path AS "worktreePath",
     base_ref AS "baseRef", started_at AS "startedAt", ended_at AS "endedAt",
-    outcome AS "outcome", pr_url AS "prUrl", settled_commit_oid AS "settledCommitOid",
+    outcome AS "outcome", pr_url AS "prUrl", pr_state AS "prState",
+    memory_merged_home_at AS "memoryMergedHomeAt", settled_commit_oid AS "settledCommitOid",
     partial AS "partial", snapshot_oid AS "snapshotOid", snapshot_kind AS "snapshotKind",
     departed_ref AS "departedRef", branch_movement AS "branchMovement",
     line_branch_missing_oid AS "lineBranchMissingOid",
@@ -169,14 +172,17 @@ export const make = Effect.gen(function* () {
   const insert = (row: RecordCodingSessionInput) => sql`
       INSERT INTO coding_sessions (
         commit_id, plan_id, repository_id, thread_id, branch, worktree_path,
-        base_ref, started_at, ended_at, outcome, pr_url, settled_commit_oid, partial,
+        base_ref, started_at, ended_at, outcome, pr_url, pr_state, memory_merged_home_at,
+        settled_commit_oid, partial,
         snapshot_oid, snapshot_kind, departed_ref, branch_movement, line_branch_missing_oid,
         unreachable_repositories_json
       ) VALUES (
         ${row.commitId}, ${row.planId}, ${row.repositoryId ?? null}, ${row.threadId}, ${row.branch},
         ${row.worktreePath}, ${row.baseRef}, ${DateTime.formatIso(row.startedAt)},
         ${row.endedAt === null ? null : DateTime.formatIso(row.endedAt)}, ${row.outcome},
-        ${row.prUrl}, ${row.settledCommitOid}, ${row.partial ? 1 : 0}, ${row.snapshotOid},
+        ${row.prUrl}, ${row.prState ?? null},
+        ${row.memoryMergedHomeAt == null ? null : DateTime.formatIso(row.memoryMergedHomeAt)},
+        ${row.settledCommitOid}, ${row.partial ? 1 : 0}, ${row.snapshotOid},
         ${row.snapshotKind}, ${row.departedRef},
         ${row.branchMovement === null ? null : JSON.stringify(row.branchMovement)},
         ${row.lineBranchMissingOid}, ${JSON.stringify(row.unreachableRepositories)}

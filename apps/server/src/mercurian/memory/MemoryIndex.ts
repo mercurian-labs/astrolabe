@@ -1,3 +1,5 @@
+import * as NodeCrypto from "node:crypto";
+
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -11,6 +13,7 @@ import * as Schema from "effect/Schema";
 import {
   CheckpointRef,
   MemoryNotDesignatedError,
+  MemoryReviewBlockedError,
   type MemoryMapPlacement,
   type MemoryLineRef,
   type MemoryIndex as MemoryIndexValue,
@@ -36,9 +39,10 @@ import { PlanningStore } from "../planning/PlanningStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
-import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
+import { lineSnapshotRef, SnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
 import { slotMemberWorktreePath } from "../worktreeSlots/SlotService.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
+import { MemoryReviewStore } from "./MemoryReviewStore.ts";
 import {
   buildMemoryGraph,
   compileProductMap,
@@ -128,6 +132,18 @@ export class MemoryIndex extends Context.Service<
       readonly projectId: MercurianProjectId;
       readonly line: MemoryLineRef;
     }) => Effect.Effect<MercurianLineMemoryChanges, MemoryIndexError>;
+    readonly markChangeReviewed: (input: {
+      readonly projectId: MercurianProjectId;
+      readonly line: MemoryLineRef;
+      readonly commitOid: string;
+    }) => Effect.Effect<void, MemoryIndexError>;
+    readonly revertChange: (input: {
+      readonly projectId: MercurianProjectId;
+      readonly line: MemoryLineRef;
+      readonly target:
+        | { readonly kind: "commit"; readonly commitOid: string }
+        | { readonly kind: "unmarked" };
+    }) => Effect.Effect<void, MemoryIndexError | MemoryReviewBlockedError>;
   }
 >()("t3/mercurian/memory/MemoryIndex") {}
 
@@ -146,6 +162,8 @@ export const make = Effect.gen(function* () {
   const slots = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
   const checkpoints = yield* CheckpointStore;
+  const reviews = yield* MemoryReviewStore;
+  const snapshots = yield* SnapshotChain;
   const normalizeReadError =
     (operation: "readMemoryIndex" | "readMemoryNote" | "readLineMemoryChanges") =>
     (cause: unknown) => {
@@ -170,6 +188,13 @@ export const make = Effect.gen(function* () {
     }
     return new MercurianMemoryError({ operation: "landMemoryAmendment", cause });
   };
+  const normalizeReviewError = (cause: unknown) =>
+    typeof cause === "object" &&
+    cause !== null &&
+    "_tag" in cause &&
+    cause._tag === "MemoryReviewBlockedError"
+      ? (cause as MemoryReviewBlockedError)
+      : new MercurianMemoryError({ operation: "revertMemoryChange", cause });
   const cache = new Map<string, CachedRoot>();
 
   const runGit = (cwd: string, args: ReadonlyArray<string>) =>
@@ -841,6 +866,12 @@ export const make = Effect.gen(function* () {
           })
           .pipe(Effect.map((result) => ({ ...entry, diff: result.stdout }))),
       );
+      const reviewed = new Set(
+        (yield* reviews.listReviewed({
+          lineRootCommitId: context.lineRootCommitId,
+          repositoryId: source.repositoryId,
+        })).map(({ commitOid }) => commitOid),
+      );
       const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
       const hasSnapshot = yield* git.execute({
         operation: "MemoryIndex.readLineChanges.resolveSnapshot",
@@ -859,13 +890,271 @@ export const make = Effect.gen(function* () {
             })
           : "";
       return {
-        marked: withDiff.filter((entry) => entry.turnId !== null),
+        marked: withDiff
+          .filter((entry) => entry.turnId !== null)
+          .map((entry) => ({ ...entry, reviewed: reviewed.has(entry.oid) })),
         hand: withDiff
           .filter((entry) => entry.turnId === null)
-          .map(({ turnId: _turnId, ...entry }) => entry),
+          .map(({ turnId: _turnId, ...entry }) => ({
+            ...entry,
+            reviewed: reviewed.has(entry.oid),
+          })),
         unmarked: unmarkedDiff.trim().length === 0 ? null : { diff: unmarkedDiff },
+        unreviewedCount:
+          withDiff.filter((entry) => !reviewed.has(entry.oid)).length +
+          (unmarkedDiff.trim().length === 0 ? 0 : 1),
       } satisfies MercurianLineMemoryChanges;
     }).pipe(Effect.mapError(normalizeReadError("readLineMemoryChanges")));
+
+  const markChangeReviewed: MemoryIndex["Service"]["markChangeReviewed"] = (input) =>
+    Effect.gen(function* () {
+      const context = yield* lineContext(input);
+      yield* reviews.markReviewed({
+        lineRootCommitId: context.lineRootCommitId,
+        repositoryId: context.source.repositoryId,
+        commitOid: input.commitOid,
+        reviewedAt: yield* DateTime.now,
+      });
+    }).pipe(Effect.mapError(normalizeReadError("readLineMemoryChanges")));
+
+  const revertChange: MemoryIndex["Service"]["revertChange"] = (input) =>
+    Effect.gen(function* () {
+      const context = yield* lineContext(input);
+      const allSlots = yield* slots.listAll;
+      for (const slot of allSlots.filter(
+        (candidate) => candidate.currentLineRootCommitId === context.lineRootCommitId,
+      )) {
+        const lease = yield* slotRegistry.lease(slot.slotId);
+        if (Option.isSome(lease) && lease.value.holders.some(({ kind }) => kind === "turn")) {
+          return yield* new MemoryReviewBlockedError({ reason: "turn-active" });
+        }
+      }
+      const scope = context.source.subpath ?? ".";
+      const branchRef = `refs/heads/${context.branch.branch}`;
+      const tip = (yield* git.execute({
+        operation: "MemoryIndex.revertChange.tip",
+        cwd: context.source.repositoryPath,
+        args: ["rev-parse", `${branchRef}^{commit}`],
+      })).stdout.trim();
+      if (input.target.kind === "commit") {
+        const commit = input.target.commitOid;
+        const onLine = yield* git.execute({
+          operation: "MemoryIndex.revertChange.commitOnLine",
+          cwd: context.source.repositoryPath,
+          args: ["merge-base", "--is-ancestor", commit, tip],
+          allowNonZeroExit: true,
+        });
+        const atOrBeforeBase = yield* git.execute({
+          operation: "MemoryIndex.revertChange.commitAfterBase",
+          cwd: context.source.repositoryPath,
+          args: ["merge-base", "--is-ancestor", commit, context.branch.baseOid],
+          allowNonZeroExit: true,
+        });
+        if (onLine.exitCode !== 0 || atOrBeforeBase.exitCode === 0) {
+          return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
+        }
+      }
+      const commonDir = (yield* git.execute({
+        operation: "MemoryIndex.revertChange.commonDir",
+        cwd: context.source.repositoryPath,
+        args: ["rev-parse", "--git-common-dir"],
+      })).stdout.trim();
+      const resolvedCommonDir = path.isAbsolute(commonDir)
+        ? commonDir
+        : path.resolve(context.source.repositoryPath, commonDir);
+      const tempIndex = path.join(
+        resolvedCommonDir,
+        `t3-memory-revert-index-${NodeCrypto.randomUUID()}`,
+      );
+      const env: NodeJS.ProcessEnv = { ...process.env, GIT_INDEX_FILE: tempIndex };
+      const cleanup = fs.remove(tempIndex, { force: true }).pipe(Effect.ignore);
+      yield* Effect.gen(function* () {
+        if (input.target.kind === "commit") {
+          const commit = input.target.commitOid;
+          const metadata = (yield* git.execute({
+            operation: "MemoryIndex.revertChange.metadata",
+            cwd: context.source.repositoryPath,
+            args: ["show", "-s", "--format=%s", commit],
+          })).stdout.trim();
+          const touched = (yield* git.execute({
+            operation: "MemoryIndex.revertChange.paths",
+            cwd: context.source.repositoryPath,
+            args: ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit, "--", scope],
+          })).stdout
+            .split("\0")
+            .filter(Boolean);
+          yield* git.execute({
+            operation: "MemoryIndex.revertChange.readTip",
+            cwd: context.source.repositoryPath,
+            args: ["read-tree", tip],
+            env,
+          });
+          const checkoutPaths: Array<string> = [];
+          const removedPaths: Array<string> = [];
+          for (const touchedPath of touched) {
+            const parentEntry = yield* git.execute({
+              operation: "MemoryIndex.revertChange.parentEntry",
+              cwd: context.source.repositoryPath,
+              args: ["ls-tree", `${commit}^`, "--", touchedPath],
+              allowNonZeroExit: true,
+            });
+            const match = /^(\d+)\s+\w+\s+([0-9a-f]+)\t/u.exec(parentEntry.stdout);
+            if (match === null) removedPaths.push(touchedPath);
+            else checkoutPaths.push(touchedPath);
+            yield* git.execute({
+              operation: "MemoryIndex.revertChange.updateIndex",
+              cwd: context.source.repositoryPath,
+              args:
+                match === null
+                  ? ["update-index", "--force-remove", "--", touchedPath]
+                  : [
+                      "update-index",
+                      "--add",
+                      "--cacheinfo",
+                      `${match[1]},${match[2]},${touchedPath}`,
+                    ],
+              env,
+            });
+          }
+          const tree = (yield* git.execute({
+            operation: "MemoryIndex.revertChange.writeTree",
+            cwd: context.source.repositoryPath,
+            args: ["write-tree"],
+            env,
+          })).stdout.trim();
+          const message = `Reverted: ${metadata}\n\nAstrolabe-Amendment: revert:${commit}\nAmended-from-plan: ${context.detail.plan.title} (${context.planId})`;
+          const reverted = (yield* git.execute({
+            operation: "MemoryIndex.revertChange.commit",
+            cwd: context.source.repositoryPath,
+            args: ["commit-tree", tree, "-p", tip, "-m", message],
+          })).stdout.trim();
+          yield* git.execute({
+            operation: "MemoryIndex.revertChange.moveBranch",
+            cwd: context.source.repositoryPath,
+            args: ["update-ref", branchRef, reverted, tip],
+          });
+          yield* reviews.markReviewed({
+            lineRootCommitId: context.lineRootCommitId,
+            repositoryId: context.source.repositoryId,
+            commitOid: reverted,
+            reviewedAt: yield* DateTime.now,
+          });
+          yield* Effect.forEach(
+            allSlots.flatMap((slot) => {
+              const member = slot.members.find(
+                (candidate) =>
+                  candidate.repositoryId === context.source.repositoryId &&
+                  candidate.currentBranch === context.branch.branch,
+              );
+              const cwd =
+                member === undefined
+                  ? null
+                  : slotMemberWorktreePath(path, slot, context.source.repositoryId);
+              return cwd === null ? [] : [cwd];
+            }),
+            (cwd) =>
+              Effect.gen(function* () {
+                if (removedPaths.length > 0) {
+                  yield* git.execute({
+                    operation: "MemoryIndex.revertChange.removeFromMember",
+                    cwd,
+                    args: ["rm", "-f", "--ignore-unmatch", "--", ...removedPaths],
+                  });
+                }
+                if (checkoutPaths.length > 0) {
+                  yield* git.execute({
+                    operation: "MemoryIndex.revertChange.refreshCommit",
+                    cwd,
+                    args: ["checkout", context.branch.branch, "--", ...checkoutPaths],
+                  });
+                }
+              }),
+            { discard: true },
+          );
+          return;
+        }
+        const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
+        const chainHead = (yield* git.execute({
+          operation: "MemoryIndex.revertChange.chainHead",
+          cwd: context.source.repositoryPath,
+          args: ["rev-parse", `${snapshotRef}^{commit}`],
+        })).stdout.trim();
+        yield* git.execute({
+          operation: "MemoryIndex.revertChange.readChain",
+          cwd: context.source.repositoryPath,
+          args: ["read-tree", chainHead],
+          env,
+        });
+        if (context.source.subpath === null) {
+          yield* git.execute({
+            operation: "MemoryIndex.revertChange.readBranch",
+            cwd: context.source.repositoryPath,
+            args: ["read-tree", tip],
+            env,
+          });
+        } else {
+          yield* git.execute({
+            operation: "MemoryIndex.revertChange.removeMemory",
+            cwd: context.source.repositoryPath,
+            args: ["rm", "--cached", "-r", "-f", "--ignore-unmatch", "--", context.source.subpath],
+            env,
+          });
+          const branchMemory = yield* git.execute({
+            operation: "MemoryIndex.revertChange.resolveBranchMemory",
+            cwd: context.source.repositoryPath,
+            args: ["cat-file", "-e", `${tip}:${context.source.subpath}`],
+            allowNonZeroExit: true,
+          });
+          if (branchMemory.exitCode === 0) {
+            yield* git.execute({
+              operation: "MemoryIndex.revertChange.restoreMemory",
+              cwd: context.source.repositoryPath,
+              args: [
+                "read-tree",
+                `--prefix=${context.source.subpath}/`,
+                `${tip}:${context.source.subpath}`,
+              ],
+              env,
+            });
+          }
+        }
+        const treeOid = (yield* git.execute({
+          operation: "MemoryIndex.revertChange.writeSnapshotTree",
+          cwd: context.source.repositoryPath,
+          args: ["write-tree"],
+          env,
+        })).stdout.trim();
+        const snapshot = yield* snapshots.captureTree({
+          cwd: context.source.repositoryPath,
+          lineRootCommitId: context.lineRootCommitId,
+          repositoryId: context.source.repositoryId,
+          lineBranch: context.branch.branch,
+          kind: "curated",
+          treeOid,
+        });
+        yield* Effect.forEach(
+          allSlots.flatMap((slot) => {
+            const member = slot.members.find(
+              (candidate) =>
+                candidate.repositoryId === context.source.repositoryId &&
+                candidate.currentBranch === context.branch.branch,
+            );
+            const cwd =
+              member === undefined
+                ? null
+                : slotMemberWorktreePath(path, slot, context.source.repositoryId);
+            return cwd === null ? [] : [cwd];
+          }),
+          (cwd) =>
+            git.execute({
+              operation: "MemoryIndex.revertChange.refreshUnmarked",
+              cwd,
+              args: ["checkout", snapshot.oid, "--", scope],
+            }),
+          { discard: true },
+        );
+      }).pipe(Effect.ensuring(cleanup));
+    }).pipe(Effect.mapError(normalizeReviewError));
 
   return {
     readIndex,
@@ -875,6 +1164,8 @@ export const make = Effect.gen(function* () {
     resolveLineSource,
     landAmendment,
     readLineChanges,
+    markChangeReviewed,
+    revertChange,
   } satisfies MemoryIndex["Service"];
 });
 

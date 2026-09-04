@@ -25,6 +25,7 @@ import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as MemoryIndex from "./MemoryIndex.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
+import * as MemoryReviewStore from "./MemoryReviewStore.ts";
 import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
@@ -33,7 +34,11 @@ import { CommitId } from "../commitTree/schema.ts";
 import * as SlotStore from "../worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../worktreeSlots/SlotRegistry.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
-import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
+import {
+  lineSnapshotRef,
+  make as makeSnapshotChain,
+  SnapshotChain,
+} from "../worktreeSlots/SnapshotChain.ts";
 import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
 
 const gitLayer = GitVcsDriver.layer.pipe(
@@ -57,6 +62,11 @@ const defaultLineServices = Layer.mergeAll(
   Layer.mock(CheckpointStore.CheckpointStore)({
     diffCheckpoints: () => Effect.succeed(""),
   }),
+  Layer.mock(MemoryReviewStore.MemoryReviewStore)({
+    listReviewed: () => Effect.succeed([]),
+    markReviewed: () => Effect.void,
+  }),
+  Layer.mock(SnapshotChain)({ captureTree: () => Effect.die("not used") }),
 );
 const layer = it.layer(
   MemoryIndex.layer.pipe(
@@ -121,9 +131,31 @@ function lineServices(
     readonly requestedLineRoots?: Array<MercurianCommitId>;
     readonly turns?: PlanTurnRegistry.PlanTurnRegistry["Service"];
     readonly leases?: SlotRegistry.SlotRegistry["Service"];
+    readonly reviewed?: Set<string>;
+    readonly captureTree?: SnapshotChain["Service"]["captureTree"];
   },
 ) {
   const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
+  const configuredSlots =
+    input.slotPath === undefined
+      ? []
+      : [
+          {
+            slotId: WorktreeSlotId.make("memory-slot"),
+            projectId: fixture.projectId,
+            path: input.slotPath,
+            currentLineRootCommitId: lineRoot,
+            members: [
+              {
+                repositoryId: fixture.repositoryId,
+                relativePath: ".",
+                currentBranch: input.branch,
+              },
+            ],
+            createdAt,
+            lastUsedAt: createdAt,
+          },
+        ];
   return Layer.mergeAll(
     input.turns === undefined
       ? PlanTurnRegistry.layer
@@ -179,28 +211,8 @@ function lineServices(
         }),
     }),
     Layer.mock(SlotStore.SlotStore)({
-      list: () =>
-        Effect.succeed(
-          input.slotPath === undefined
-            ? []
-            : [
-                {
-                  slotId: WorktreeSlotId.make("memory-slot"),
-                  projectId: fixture.projectId,
-                  path: input.slotPath,
-                  currentLineRootCommitId: lineRoot,
-                  members: [
-                    {
-                      repositoryId: fixture.repositoryId,
-                      relativePath: ".",
-                      currentBranch: input.branch,
-                    },
-                  ],
-                  createdAt,
-                  lastUsedAt: createdAt,
-                },
-              ],
-        ),
+      list: () => Effect.succeed(configuredSlots),
+      listAll: Effect.succeed(configuredSlots),
     }),
     Layer.mock(CheckpointStore.CheckpointStore)({
       diffCheckpoints: (diffInput) =>
@@ -219,6 +231,21 @@ function lineServices(
           });
           return result.stdout;
         }) as never,
+    }),
+    Layer.mock(MemoryReviewStore.MemoryReviewStore)({
+      listReviewed: () =>
+        Effect.succeed(
+          [...(input.reviewed ?? [])].map((commitOid) => ({
+            lineRootCommitId: lineRoot,
+            repositoryId: fixture.repositoryId,
+            commitOid,
+            reviewedAt: createdAt,
+          })),
+        ),
+      markReviewed: ({ commitOid }) => Effect.sync(() => input.reviewed?.add(commitOid)),
+    }),
+    Layer.mock(SnapshotChain)({
+      captureTree: input.captureTree ?? (() => Effect.die("not used")),
     }),
   );
 }
@@ -475,6 +502,7 @@ layer("MemoryIndex", (it) => {
         "-am",
         `Marked truth\n\nAstrolabe-Amendment: ${lineTurn}`,
       ]);
+      const markedOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
       yield* fs.writeFileString(notePath, "Hand\n");
       yield* runGit(fixture.root, ["commit", "-am", "Hand edit"]);
       const branchTip = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
@@ -483,18 +511,232 @@ layer("MemoryIndex", (it) => {
       const snapshotOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
       yield* runGit(fixture.root, ["reset", "--hard", branchTip]);
       yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), snapshotOid]);
-      const { index } = yield* makeLineIndex(fixture, { branch: "memory-line", baseOid });
+      const reviewed = new Set([markedOid]);
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        reviewed,
+      });
       const changed = yield* index.readLineChanges({ projectId: fixture.projectId, line: lineRef });
       assert.strictEqual(changed.marked.length, 1);
       assert.strictEqual(changed.marked[0]?.turnId, lineTurn);
+      assert.isTrue(changed.marked[0]?.reviewed);
       assert.include(changed.marked[0]?.diff ?? "", "Plans.md");
       assert.strictEqual(changed.hand.length, 1);
       assert.strictEqual(changed.hand[0]?.title, "Hand edit");
+      assert.isFalse(changed.hand[0]?.reviewed);
       assert.include(changed.unmarked?.diff ?? "", "Snapshot-only");
+      assert.strictEqual(changed.unreviewedCount, 2);
 
       yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), branchTip]);
       const clean = yield* index.readLineChanges({ projectId: fixture.projectId, line: lineRef });
       assert.strictEqual(clean.unmarked, null);
+      assert.strictEqual(clean.unreviewedCount, 1);
+    }),
+  );
+
+  it.effect("reverts a marked commit on the line and refreshes its member", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("revert-marked", { git: true });
+      yield* fs.writeFileString(path.join(fixture.root, "Plans.md"), "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      const slotPath = yield* fs.makeTempDirectoryScoped({ prefix: "memory-revert-slot-" });
+      yield* fs.remove(slotPath, { recursive: true });
+      yield* runGit(fixture.root, ["worktree", "add", "-b", "memory-line", slotPath, "HEAD"]);
+      yield* fs.writeFileString(path.join(slotPath, "Plans.md"), "Changed\n");
+      yield* fs.writeFileString(path.join(slotPath, "Added.md"), "Added\n");
+      yield* runGit(slotPath, ["add", "Plans.md", "Added.md"]);
+      yield* runGit(slotPath, [
+        "commit",
+        "-m",
+        `Change memory\n\nAstrolabe-Amendment: ${lineTurn}`,
+      ]);
+      const changedOid = yield* runGit(slotPath, ["rev-parse", "HEAD"]);
+      const reviewed = new Set<string>();
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        slotPath,
+        reviewed,
+      });
+
+      yield* index.revertChange({
+        projectId: fixture.projectId,
+        line: lineRef,
+        target: { kind: "commit", commitOid: changedOid },
+      });
+
+      const revertedOid = yield* runGit(fixture.root, ["rev-parse", "refs/heads/memory-line"]);
+      assert.notStrictEqual(revertedOid, changedOid);
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["rev-parse", `${revertedOid}^1`]),
+        changedOid,
+      );
+      assert.include(
+        yield* runGit(fixture.root, ["show", "-s", "--format=%B", revertedOid]),
+        `Astrolabe-Amendment: revert:${changedOid}`,
+      );
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["show", "-s", "--format=%s", revertedOid]),
+        "Reverted: Change memory",
+      );
+      assert.strictEqual(yield* fs.readFileString(path.join(slotPath, "Plans.md")), "Base\n");
+      assert.isFalse(yield* fs.exists(path.join(slotPath, "Added.md")));
+      assert.strictEqual(yield* runGit(slotPath, ["status", "--porcelain"]), "");
+      assert.strictEqual(yield* fs.readFileString(path.join(fixture.root, "Plans.md")), "Base\n");
+      assert.isTrue(reviewed.has(revertedOid));
+    }),
+  );
+
+  it.effect("refuses a commit outside the line's post-base range", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("revert-outside-line", { git: true });
+      yield* fs.writeFileString(path.join(fixture.root, "Plans.md"), "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      yield* runGit(fixture.root, ["branch", "memory-line"]);
+      yield* fs.writeFileString(path.join(fixture.root, "Plans.md"), "Main only\n");
+      yield* runGit(fixture.root, ["commit", "-am", "Main-only change"]);
+      const unrelatedOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+      });
+
+      for (const commitOid of [baseOid, unrelatedOid]) {
+        const error = yield* Effect.flip(
+          index.revertChange({
+            projectId: fixture.projectId,
+            line: lineRef,
+            target: { kind: "commit", commitOid },
+          }),
+        );
+        assert.strictEqual(error._tag, "MemoryReviewBlockedError");
+        if (error._tag === "MemoryReviewBlockedError") {
+          assert.strictEqual(error.reason, "not-on-line");
+        }
+      }
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["rev-parse", "refs/heads/memory-line"]),
+        baseOid,
+      );
+    }),
+  );
+
+  it.effect("reverts unmarked memory with a curated snapshot", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const git = yield* GitVcsDriver.GitVcsDriver;
+      const fixture = yield* makeFixture("revert-unmarked", { git: true });
+      yield* fs.makeDirectory(path.join(fixture.root, "memory"));
+      yield* fs.writeFileString(path.join(fixture.root, "memory", "Plans.md"), "Branch\n");
+      yield* fs.writeFileString(path.join(fixture.root, "Outside.txt"), "Outside base\n");
+      const sourceStore = yield* MemorySourceStore.MemorySourceStore;
+      yield* sourceStore.designate({
+        projectId: fixture.projectId,
+        repositoryId: fixture.repositoryId,
+        subpath: "memory",
+        now,
+      });
+      yield* runGit(fixture.root, ["add", "memory/Plans.md", "Outside.txt"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      const slotPath = yield* fs.makeTempDirectoryScoped({ prefix: "memory-curated-slot-" });
+      yield* fs.remove(slotPath, { recursive: true });
+      yield* runGit(fixture.root, ["worktree", "add", "-b", "memory-line", slotPath, "HEAD"]);
+      yield* fs.writeFileString(path.join(slotPath, "memory", "Plans.md"), "Snapshot only\n");
+      yield* fs.writeFileString(path.join(slotPath, "Outside.txt"), "Outside snapshot\n");
+      yield* runGit(slotPath, ["commit", "-am", "Snapshot only"]);
+      const previousSnapshot = yield* runGit(slotPath, ["rev-parse", "HEAD"]);
+      yield* runGit(slotPath, ["reset", "--hard", baseOid]);
+      yield* runGit(fixture.root, [
+        "update-ref",
+        String(lineSnapshotRef(lineRoot)),
+        previousSnapshot,
+      ]);
+      const services = lineServices(fixture, { branch: "memory-line", baseOid, slotPath });
+      const chain = yield* makeSnapshotChain.pipe(
+        Effect.provide(services),
+        Effect.provideService(GitVcsDriver.GitVcsDriver, git),
+      );
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        slotPath,
+        captureTree: chain.captureTree,
+      });
+
+      yield* index.revertChange({
+        projectId: fixture.projectId,
+        line: lineRef,
+        target: { kind: "unmarked" },
+      });
+
+      const curated = yield* runGit(fixture.root, ["rev-parse", String(lineSnapshotRef(lineRoot))]);
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["rev-parse", `${curated}^1`]),
+        previousSnapshot,
+      );
+      assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", `${curated}^2`]), baseOid);
+      assert.include(
+        yield* runGit(fixture.root, ["show", "-s", "--format=%s", curated]),
+        "kind=curated",
+      );
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["show", `${curated}:memory/Plans.md`]),
+        "Branch",
+      );
+      assert.strictEqual(
+        yield* runGit(fixture.root, ["show", `${curated}:Outside.txt`]),
+        "Outside snapshot",
+      );
+      assert.strictEqual(
+        yield* fs.readFileString(path.join(slotPath, "memory", "Plans.md")),
+        "Branch\n",
+      );
+      const changes = yield* index.readLineChanges({ projectId: fixture.projectId, line: lineRef });
+      assert.strictEqual(changes.unmarked, null);
+    }),
+  );
+
+  it.effect("refuses revert while a turn holds the line's slot", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixture = yield* makeFixture("revert-active", { git: true });
+      yield* fs.writeFileString(path.join(fixture.root, "Plans.md"), "Base\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      const { index, leases } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        slotPath: fixture.root,
+      });
+      yield* runGit(fixture.root, ["branch", "memory-line"]);
+      yield* leases.acquire(
+        WorktreeSlotId.make("memory-slot"),
+        { kind: "turn", threadId: lineThread },
+        "2026-09-04T00:00:00.000Z",
+      );
+      const error = yield* Effect.flip(
+        index.revertChange({
+          projectId: fixture.projectId,
+          line: lineRef,
+          target: { kind: "unmarked" },
+        }),
+      );
+      assert.strictEqual(error._tag, "MemoryReviewBlockedError");
+      if (error._tag === "MemoryReviewBlockedError")
+        assert.strictEqual(error.reason, "turn-active");
     }),
   );
   it.effect("uses git discovery so the memory's gitignore governs", () =>

@@ -45,6 +45,7 @@ import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryReviewStore from "./mercurian/memory/MemoryReviewStore.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
@@ -325,6 +326,7 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   Layer.provideMerge(CodingSessionStore.layer),
   Layer.provideMerge(LineBranchStore.layer),
+  Layer.provideMerge(MemoryReviewStore.layer),
   Layer.provideMerge(SlotStore.layer),
   // The turn registry is runtime state shared by the store (the active-turn
   // refusal on human writes) and the assistant runtime (which opens and
@@ -583,6 +585,7 @@ const MercurianRuntimeCoreDependenciesLive = OrchestrationReactorLive.pipe(
 
 const MemoryIndexLayerLive = MemoryIndex.layer.pipe(
   Layer.provide(ProcessRunner.layer),
+  Layer.provideMerge(SnapshotChainDependenciesLive),
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 

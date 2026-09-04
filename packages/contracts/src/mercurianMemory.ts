@@ -12,6 +12,8 @@ export const MERCURIAN_MEMORY_WS_METHODS = {
   readMemoryIndex: "mercurian.readMemoryIndex",
   readMemoryNote: "mercurian.readMemoryNote",
   readLineMemoryChanges: "mercurian.readLineMemoryChanges",
+  markMemoryChangeReviewed: "mercurian.markMemoryChangeReviewed",
+  revertMemoryChange: "mercurian.revertMemoryChange",
   generateProductMap: "mercurian.generateProductMap",
 } as const;
 
@@ -114,6 +116,7 @@ export const MemoryLineChange = Schema.Struct({
   turnId: Schema.NullOr(Schema.String),
   authoredAt: IsoDateTime,
   diff: Schema.String,
+  reviewed: Schema.Boolean,
 });
 export type MemoryLineChange = typeof MemoryLineChange.Type;
 export const MercurianLineMemoryChanges = Schema.Struct({
@@ -124,15 +127,31 @@ export const MercurianLineMemoryChanges = Schema.Struct({
       title: Schema.String,
       authoredAt: IsoDateTime,
       diff: Schema.String,
+      reviewed: Schema.Boolean,
     }),
   ),
   unmarked: Schema.NullOr(Schema.Struct({ diff: Schema.String })),
+  unreviewedCount: Schema.Number,
 });
 export type MercurianLineMemoryChanges = typeof MercurianLineMemoryChanges.Type;
 export const MercurianReadLineMemoryChangesInput = Schema.Struct({
   line: MemoryLineRef,
 });
 export type MercurianReadLineMemoryChangesInput = typeof MercurianReadLineMemoryChangesInput.Type;
+export const MercurianMarkMemoryChangeReviewedInput = Schema.Struct({
+  line: MemoryLineRef,
+  commitOid: TrimmedNonEmptyString,
+});
+export type MercurianMarkMemoryChangeReviewedInput =
+  typeof MercurianMarkMemoryChangeReviewedInput.Type;
+export const MercurianRevertMemoryChangeInput = Schema.Struct({
+  line: MemoryLineRef,
+  target: Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("commit"), commitOid: TrimmedNonEmptyString }),
+    Schema.Struct({ kind: Schema.Literal("unmarked") }),
+  ]),
+});
+export type MercurianRevertMemoryChangeInput = typeof MercurianRevertMemoryChangeInput.Type;
 export const MercurianGenerateProductMapInput = Schema.Struct({ projectId: MercurianProjectId });
 export type MercurianGenerateProductMapInput = typeof MercurianGenerateProductMapInput.Type;
 
@@ -196,6 +215,8 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
       "readMemoryIndex",
       "readMemoryNote",
       "readLineMemoryChanges",
+      "markMemoryChangeReviewed",
+      "revertMemoryChange",
       "generateProductMap",
       "prepareMemoryAmendment",
       "applyMemoryAmendment",
@@ -206,5 +227,16 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
 ) {
   override get message(): string {
     return `Mercurian memory operation ${this.operation} failed`;
+  }
+}
+
+export class MemoryReviewBlockedError extends Schema.TaggedErrorClass<MemoryReviewBlockedError>()(
+  "MemoryReviewBlockedError",
+  { reason: Schema.Literals(["turn-active", "not-on-line"]) },
+) {
+  override get message(): string {
+    return this.reason === "turn-active"
+      ? "Memory changes cannot be reverted while a turn is active on this line"
+      : "The selected commit is not part of this line's memory changes";
   }
 }

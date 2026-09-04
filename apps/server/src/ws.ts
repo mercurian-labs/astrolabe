@@ -3293,6 +3293,77 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId =
+                "planId" in line
+                  ? line.planId
+                  : yield* Effect.gen(function* () {
+                      const session = yield* codingSessionStore.getByThreadId(line.threadId);
+                      if (Option.isSome(session)) return session.value.planId;
+                      const turn = yield* planTurnRegistry.getByThread(line.threadId);
+                      if (Option.isSome(turn)) return turn.value.planId;
+                      return yield* new MercurianMemoryError({
+                        operation: "markMemoryChangeReviewed",
+                        cause: new Error(`Memory line thread ${line.threadId} is missing`),
+                      });
+                    });
+              const detail = yield* planningStore.getPlanSnapshot({ planId });
+              yield* memoryIndex.markChangeReviewed({
+                projectId: detail.plan.projectId,
+                line,
+                commitOid: input.commitOid,
+              });
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                  ? cause
+                  : new MercurianMemoryError({ operation: "markMemoryChangeReviewed", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId =
+                "planId" in line
+                  ? line.planId
+                  : yield* Effect.gen(function* () {
+                      const session = yield* codingSessionStore.getByThreadId(line.threadId);
+                      if (Option.isSome(session)) return session.value.planId;
+                      const turn = yield* planTurnRegistry.getByThread(line.threadId);
+                      if (Option.isSome(turn)) return turn.value.planId;
+                      return yield* new MercurianMemoryError({
+                        operation: "revertMemoryChange",
+                        cause: new Error(`Memory line thread ${line.threadId} is missing`),
+                      });
+                    });
+              const detail = yield* planningStore.getPlanSnapshot({ planId });
+              yield* memoryIndex.revertChange({
+                projectId: detail.plan.projectId,
+                line,
+                target: input.target,
+              });
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                (typeof cause === "object" &&
+                  cause !== null &&
+                  "_tag" in cause &&
+                  cause._tag === "MemoryReviewBlockedError")
+                  ? cause
+                  : new MercurianMemoryError({ operation: "revertMemoryChange", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: (input) =>
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.generateProductMap,

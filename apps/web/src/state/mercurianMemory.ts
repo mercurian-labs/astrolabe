@@ -7,6 +7,8 @@ import type {
   MercurianProjectId,
   MercurianReadMemoryNoteInput,
   MercurianReadLineMemoryChangesInput,
+  MercurianMarkMemoryChangeReviewedInput,
+  MercurianRevertMemoryChangeInput,
   ProjectMemorySource,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -87,6 +89,16 @@ export function useReadMemoryNote() {
 export function useReadLineMemoryChanges() {
   const run = useEnvironmentBoundCommandResult(mercurianMemory.readLineMemoryChanges);
   return useCallback((input: MercurianReadLineMemoryChangesInput) => run(input), [run]);
+}
+
+export function useMarkMemoryChangeReviewed() {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.markMemoryChangeReviewed);
+  return useCallback((input: MercurianMarkMemoryChangeReviewedInput) => run(input), [run]);
+}
+
+export function useRevertMemoryChange() {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.revertMemoryChange);
+  return useCallback((input: MercurianRevertMemoryChangeInput) => run(input), [run]);
 }
 
 export function useGenerateProductMap() {

@@ -424,7 +424,13 @@ export type ThreadWorkspaceMember = typeof ThreadWorkspaceMember.Type;
 export const OrchestrationCheckpointStatus = Schema.Literals(["ready", "missing", "error"]);
 export type OrchestrationCheckpointStatus = typeof OrchestrationCheckpointStatus.Type;
 
-export const SnapshotKind = Schema.Literals(["settled", "partial", "recovery", "external"]);
+export const SnapshotKind = Schema.Literals([
+  "settled",
+  "partial",
+  "recovery",
+  "external",
+  "curated",
+]);
 export type SnapshotKind = typeof SnapshotKind.Type;
 
 export const BranchMovement = Schema.Union([

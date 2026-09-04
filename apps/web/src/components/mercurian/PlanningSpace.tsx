@@ -63,7 +63,7 @@ import {
   useVisitPlan,
 } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
-import { useReadMemoryNote } from "../../state/mercurianMemory";
+import { useReadLineMemoryChanges, useReadMemoryNote } from "../../state/mercurianMemory";
 import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
@@ -291,6 +291,18 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       actingHead === null ? undefined : { planId, commitId: MercurianCommitId.make(actingHead) },
     [actingHead, planId],
   );
+  const [memoryUnreviewedCount, setMemoryUnreviewedCount] = useState(0);
+  const readLineMemoryChanges = useReadLineMemoryChanges();
+  useEffect(() => {
+    if (memoryLine === undefined) return;
+    let active = true;
+    void readLineMemoryChanges({ line: memoryLine }).then((result) => {
+      if (active && result.ok) setMemoryUnreviewedCount(result.value.unreviewedCount);
+    });
+    return () => {
+      active = false;
+    };
+  }, [memoryLine, readLineMemoryChanges]);
   const [pathText, setPathText] = useState<string | null>(null);
   const [pathSpec, setPathSpec] = useState<PlanSpecAt | null | undefined>(undefined);
   const [reconstructionMeasure, setReconstructionMeasure] =
@@ -633,7 +645,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       ? null
       : memoryAmendmentFailureNotice(memoryAmendmentFailure);
   const paneCornerControl = usesSideBySideLayout ? (
-    <PlanPaneToggle state={pane} onChange={setPane} />
+    <PlanPaneToggle state={pane} onChange={setPane} memoryUnreviewedCount={memoryUnreviewedCount} />
   ) : null;
 
   return (
@@ -650,7 +662,15 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
       )}
       {usesSideBySideLayout ? null : (
         <PlanningHeader
-          actions={detail === null ? null : <PlanPaneToggle state={pane} onChange={setPane} />}
+          actions={
+            detail === null ? null : (
+              <PlanPaneToggle
+                state={pane}
+                onChange={setPane}
+                memoryUnreviewedCount={memoryUnreviewedCount}
+              />
+            )
+          }
           title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}
         />
       )}
@@ -665,7 +685,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             <PlanningHeader
               actions={
                 detail === null || pane.open ? null : (
-                  <PlanPaneToggle state={pane} onChange={setPane} />
+                  <PlanPaneToggle
+                    state={pane}
+                    onChange={setPane}
+                    memoryUnreviewedCount={memoryUnreviewedCount}
+                  />
                 )
               }
               title={detail?.plan.title ?? (isPending ? "Loading…" : "Plan")}
@@ -850,7 +874,11 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
             >
               {pane.view === "memory" ? (
                 memoryLine === undefined ? null : (
-                  <MemoryTab cornerControl={paneCornerControl} line={memoryLine} />
+                  <MemoryTab
+                    cornerControl={paneCornerControl}
+                    line={memoryLine}
+                    onUnreviewedCountChange={setMemoryUnreviewedCount}
+                  />
                 )
               ) : pane.view === "explorer" ? (
                 // The highlight is wherever the composer acts from, so
@@ -1060,9 +1088,11 @@ function EditAndBranchAttachmentLoader({
 export function PlanPaneToggle({
   state,
   onChange,
+  memoryUnreviewedCount = 0,
 }: {
   readonly state: RightPaneState;
   readonly onChange: (next: RightPaneState) => void;
+  readonly memoryUnreviewedCount?: number;
 }) {
   return (
     <ToggleGroup
@@ -1091,7 +1121,14 @@ export function PlanPaneToggle({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger render={<Toggle aria-label="Memory changes" value="memory" />}>
-          <BookOpenIcon className="size-3.5" />
+          <span className="relative">
+            <BookOpenIcon className="size-3.5" />
+            {memoryUnreviewedCount > 0 ? (
+              <span className="absolute -right-2 -top-2 min-w-3 rounded-full bg-primary px-0.5 text-center text-[8px] leading-3 text-primary-foreground">
+                {memoryUnreviewedCount}
+              </span>
+            ) : null}
+          </span>
         </TooltipTrigger>
         <TooltipPopup side="bottom">Memory changes</TooltipPopup>
       </Tooltip>

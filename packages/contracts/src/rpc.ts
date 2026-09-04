@@ -166,6 +166,9 @@ import {
   MercurianReadMemoryIndexInput,
   MercurianReadMemoryNoteInput,
   MercurianReadLineMemoryChangesInput,
+  MercurianMarkMemoryChangeReviewedInput,
+  MercurianRevertMemoryChangeInput,
+  MemoryReviewBlockedError,
   MercurianRemoveMemorySourceInput,
   MercurianSubscribeMemorySourcesInput,
   ProductMapAlreadyExistsError,
@@ -1629,6 +1632,35 @@ export const WsMercurianReadLineMemoryChangesRpc = Rpc.make(
   },
 );
 
+export const WsMercurianMarkMemoryChangeReviewedRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
+  {
+    payload: MercurianMarkMemoryChangeReviewedInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianRevertMemoryChangeRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
+  {
+    payload: MercurianRevertMemoryChangeInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      MemoryReviewBlockedError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 export const WsMercurianGenerateProductMapRpc = Rpc.make(
   MERCURIAN_MEMORY_WS_METHODS.generateProductMap,
   {
@@ -1867,6 +1899,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianReadMemoryIndexRpc,
   WsMercurianReadMemoryNoteRpc,
   WsMercurianReadLineMemoryChangesRpc,
+  WsMercurianMarkMemoryChangeReviewedRpc,
+  WsMercurianRevertMemoryChangeRpc,
   WsMercurianGenerateProductMapRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
   WsMercurianSubscribeTrackersRpc,
