@@ -632,6 +632,7 @@ type ChatViewSlots = {
   headerContent?: ReactNode;
   headerBanner?: ReactNode;
   headerLeadingActions?: ReactNode;
+  headerProjectName?: string;
   workspaceReady?: boolean;
   workspaceCwdOverride?: string | null;
   mentionSources?: ChatComposerMentionSources;
@@ -1363,6 +1364,7 @@ function ChatViewContent(props: ChatViewProps) {
     headerContent,
     headerBanner,
     headerLeadingActions,
+    headerProjectName,
     workspaceReady,
     workspaceCwdOverride,
     mentionSources,
@@ -7563,7 +7565,7 @@ function ChatViewContent(props: ChatViewProps) {
               {...(routeKind === "draft" && draftId ? { draftId } : {})}
               activeThreadTitle={activeThread.title}
               isServerThread={isServerThread}
-              activeProjectName={activeProject?.title}
+              activeProjectName={headerProjectName ?? activeProject?.title}
               activeProjectCwd={activeProject?.workspaceRoot ?? null}
               activeProjectFaviconPath={activeProject?.faviconPath ?? null}
               activeProjectIcon={activeProject?.projectIcon ?? null}

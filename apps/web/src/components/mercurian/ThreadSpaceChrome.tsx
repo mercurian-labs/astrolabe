@@ -30,6 +30,7 @@ import { useForkHere } from "./useForkHere";
 export type ThreadSpaceChatViewChrome = Readonly<{
   headerLeadingActions?: ReactNode;
   headerBanner?: ReactNode;
+  headerProjectName?: string;
   workspaceReady?: boolean;
   workspaceCwdOverride?: string | null;
   mentionSources?: ChatComposerMentionSources;
@@ -58,6 +59,9 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
   const thread = useThread(scopeThreadRef(environmentId, threadId));
   const { snapshot: repositoriesSnapshot } = useRepositories();
   const { snapshot: treeSnapshot } = useMercurianTree();
+  const headerProjectName = treeSnapshot.projects.find(
+    (project) => project.projectId === detail?.plan.projectId,
+  )?.name;
   const runtime = detail?.lineRuntimes.find((candidate) => candidate.threadId === threadId) ?? null;
   const inFlightTurn = resolveLineInFlightTurn(
     detail,
@@ -150,6 +154,7 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
           )}
         </>
       ),
+      ...(headerProjectName === undefined ? {} : { headerProjectName }),
       workspaceReady,
       ...(workspaceCwdOverride === undefined ? {} : { workspaceCwdOverride }),
       mentionSources,
