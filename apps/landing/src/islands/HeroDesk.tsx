@@ -339,7 +339,6 @@ const graphProps = {
   readyCommits: new Map(),
   stalePlanCommitIds: new Set<string>(),
   staleSpecCommitIds: new Set<string>(),
-  onColumnsWidthCapChange: () => undefined,
   onEditAndBranch: () => undefined,
   onImplementFrom: () => undefined,
 } as const;
@@ -617,7 +616,6 @@ function HeroWindowInterior() {
             {pane.view === "explorer" ? (
               <HeroDagExplorer
                 anchoredCommitId={head}
-                cornerControl={paneCornerControl}
                 graph={graph}
                 inFlightAnchorCommitIds={
                   heroInFlight === undefined ? [] : [heroInFlight.parentCommitId]
@@ -658,13 +656,12 @@ function HeroWindowInterior() {
 
 function HeroDagExplorer({
   anchoredCommitId,
-  cornerControl,
   graph,
   inFlightAnchorCommitIds,
   onSelect,
 }: Pick<
   ComponentProps<typeof DagExplorer>,
-  "anchoredCommitId" | "cornerControl" | "graph" | "inFlightAnchorCommitIds" | "onSelect"
+  "anchoredCommitId" | "graph" | "inFlightAnchorCommitIds" | "onSelect"
 >) {
   const paneRef = useRef<HTMLDivElement>(null);
 
@@ -683,7 +680,6 @@ function HeroDagExplorer({
         {...graphProps}
         graph={graph}
         anchoredCommitId={anchoredCommitId}
-        cornerControl={cornerControl}
         inFlightAnchorCommitIds={inFlightAnchorCommitIds}
         onSelect={onSelect}
       />

@@ -1,5 +1,11 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, PlanId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  MercurianCommitId,
+  PlanId,
+  ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
 import type { AppRouter } from "./router";
 import { planForThread } from "./state/mercurian";
@@ -9,6 +15,9 @@ export type ThreadRouteTarget =
       kind: "server";
       threadRef: ScopedThreadRef;
       planId?: PlanId;
+      /** Override the line search param; null intentionally lets the plan route resolve/open it. */
+      line?: ThreadId | null;
+      at?: MercurianCommitId;
     }
   | {
       kind: "draft";
@@ -74,10 +83,14 @@ export function navigateToThreadRoute(
 
   const planId = target.planId ?? planForThread(target.threadRef.threadId);
   if (planId !== null) {
+    const line = target.line === undefined ? target.threadRef.threadId : target.line;
     return router.navigate({
       to: "/threads/$planId",
       params: { planId },
-      search: { line: target.threadRef.threadId },
+      search: {
+        ...(line === null ? {} : { line }),
+        ...(target.at === undefined ? {} : { at: target.at }),
+      },
       ...historyOptions,
     });
   }

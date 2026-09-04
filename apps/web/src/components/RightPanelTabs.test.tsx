@@ -3,12 +3,39 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  artifactSurfaceMenuActions,
+  isRightPanelSurfacePinned,
   RightPanelTabs,
   shouldOpenDefaultBrowserProfileFromMenuClick,
   surfaceShortcutActionForKey,
   surfaceShortcutTargetsTypingContext,
+  tabCloseContextMenuItems,
   tabMuteMenuItem,
 } from "./RightPanelTabs";
+
+describe("Mercurian panel surfaces", () => {
+  it("keeps pinned tabs out of every close affordance", () => {
+    expect(isRightPanelSurfacePinned("checkpoints", ["checkpoints"])).toBe(true);
+    expect(tabCloseContextMenuItems({ pinned: true, surfaceIndex: 0, surfaceCount: 3 })).toEqual(
+      [],
+    );
+  });
+
+  it("offers Plan and Spec as addable artifacts, but never Checkpoints", () => {
+    const actions = artifactSurfaceMenuActions({
+      planAvailable: true,
+      onAddPlan: () => undefined,
+      specAvailable: true,
+      onAddSpec: () => undefined,
+    });
+
+    expect(actions.map((action) => action.label)).toEqual(["Plan", "Spec"]);
+    expect(actions.map((action) => action.description)).toEqual([
+      "Read the plan this session implements.",
+      "Read the spec this session implements.",
+    ]);
+  });
+});
 
 describe("browser profile submenu", () => {
   it("reserves touch clicks for opening the choices while mouse clicks use the default", () => {

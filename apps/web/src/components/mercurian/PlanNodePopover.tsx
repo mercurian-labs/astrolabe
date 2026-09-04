@@ -484,7 +484,7 @@ function Warning({
 
 function actLabel(act: PlanNodePopoverAct): string {
   if (act === "continue") return "Continue from here";
-  if (act === "edit-and-branch") return "Edit and branch";
+  if (act === "edit-and-branch") return "Fork here";
   if (act === "open-session") return "Open session";
   return "Implement from here";
 }

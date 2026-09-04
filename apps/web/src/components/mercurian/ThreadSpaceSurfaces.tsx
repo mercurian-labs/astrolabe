@@ -1,6 +1,35 @@
 /** Owned by the panel lane of M-197 (plan §6). Fills the right-panel surface slots of ChatView for a plan line. */
-import type { ReactNode } from "react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type {
+  MercurianCommitId,
+  PlanDetail,
+  PlanId,
+  PlanSpecAt,
+  PlanningTreeSnapshot,
+  ThreadId,
+} from "@t3tools/contracts";
+import { useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { useRightPanelStore } from "../../rightPanelStore";
+import { useGetPlanTextAt, useGetSpecAt, useMercurianTree } from "../../state/mercurian";
+import { usePlanningModel } from "../../state/mercurianWorkspace";
+import { navigateToThreadRoute } from "../../threadRoutes";
+import { Button } from "../ui/button";
+import { DagExplorer } from "./DagExplorer";
+import { PlanArtifact } from "./PlanArtifact";
+import { snapshotTextIsForPath } from "./PlanArtifact.logic";
+import { ancestorClosure, type PlanGraph } from "./PlanGraph.logic";
+import {
+  isViewingPast,
+  LATEST,
+  positionAfterPick,
+  resolveActingHead,
+  resolveHead,
+} from "./PlanPosition.logic";
+import { SpecArtifact } from "./SpecArtifact";
+import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
+import { useForkHere } from "./useForkHere";
 import { useThreadSpace } from "./ThreadSpaceContext";
 
 export type ThreadSpaceSurfaces = Readonly<{
@@ -9,9 +38,206 @@ export type ThreadSpaceSurfaces = Readonly<{
   checkpointsPanel?: ReactNode;
 }>;
 
-const EMPTY_SURFACES: ThreadSpaceSurfaces = {};
+const EMPTY_IN_FLIGHT_TURNS: PlanDetail["inFlightTurns"] = [];
+const EMPTY_CODING_SESSIONS: PlanDetail["codingSessions"] = [];
+const EMPTY_TIMELINE: PlanDetail["timeline"] = [];
+
+function lineThreadIdForCommit(input: {
+  planId: PlanId;
+  commitId: MercurianCommitId;
+  detail: PlanDetail;
+  graph: PlanGraph;
+  tree: PlanningTreeSnapshot;
+}): ThreadId | null {
+  const ancestry = ancestorClosure(input.graph, input.commitId);
+  const candidates = [
+    ...input.detail.lineRuntimes.flatMap((runtime) =>
+      runtime.lineRootCommitId === null
+        ? []
+        : [{ lineRootCommitId: runtime.lineRootCommitId, threadId: runtime.threadId }],
+    ),
+    ...input.tree.threadPlanLinks.flatMap((link) =>
+      link.planId !== input.planId || link.lineRootCommitId == null
+        ? []
+        : [{ lineRootCommitId: link.lineRootCommitId, threadId: link.threadId }],
+    ),
+  ].filter((candidate) => ancestry.has(candidate.lineRootCommitId));
+
+  candidates.sort(
+    (left, right) =>
+      (input.graph.byId.get(right.lineRootCommitId)?.item.sequence ?? -1) -
+      (input.graph.byId.get(left.lineRootCommitId)?.item.sequence ?? -1),
+  );
+  return candidates[0]?.threadId ?? null;
+}
+
+function HistoricalArtifactPlaceholder({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
+      <p className="text-sm text-muted-foreground/70">{children}</p>
+    </div>
+  );
+}
 
 export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
-  useThreadSpace();
-  return EMPTY_SURFACES;
+  const { planId, threadId, environmentId, detail, graph, search } = useThreadSpace();
+  const router = useRouter();
+  const getPlanTextAt = useGetPlanTextAt();
+  const getSpecAt = useGetSpecAt();
+  const planningModel = usePlanningModel();
+  const { snapshot: tree } = useMercurianTree();
+  const forkHere = useForkHere();
+  const threadRef = useMemo(
+    () => scopeThreadRef(environmentId, threadId),
+    [environmentId, threadId],
+  );
+
+  useEffect(() => {
+    useRightPanelStore.getState().seedMercurianLinePanel(threadRef);
+  }, [threadRef]);
+
+  const timeline = detail?.timeline ?? EMPTY_TIMELINE;
+  const position = useMemo(
+    () => (search.at === undefined ? LATEST : positionAfterPick(graph, search.at)),
+    [graph, search.at],
+  );
+  const head = resolveHead(graph, position);
+  const actingHead = resolveActingHead(graph, head);
+  const viewingPast = isViewingPast(graph, position);
+  const visibleTimeline = useMemo(() => {
+    if (head === null) return timeline;
+    const ancestry = ancestorClosure(graph, head);
+    return timeline.filter((item) => ancestry.has(item.commitId));
+  }, [graph, head, timeline]);
+  const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
+  const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
+  const needsPathText = head !== null && !snapshotTextIsForPath(timeline, visibleTimeline);
+  const needsPathSpec = head !== null && !snapshotSpecIsForPath(timeline, visibleTimeline);
+  const [pathText, setPathText] = useState<{
+    readonly commitId: MercurianCommitId;
+    readonly value: string;
+  } | null>(null);
+  const [pathSpec, setPathSpec] = useState<{
+    readonly commitId: MercurianCommitId;
+    readonly value: PlanSpecAt | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!needsPathText || head === null) return;
+    let cancelled = false;
+    void getPlanTextAt(planId, head).then((result) => {
+      if (!cancelled && result !== null) {
+        setPathText({ commitId: head, value: result.planText });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getPlanTextAt, head, needsPathText, planId]);
+
+  useEffect(() => {
+    if (!needsPathSpec || head === null) return;
+    let cancelled = false;
+    void getSpecAt(planId, head).then((result) => {
+      if (!cancelled && result !== null) {
+        setPathSpec({ commitId: head, value: result.spec });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSpecAt, head, needsPathSpec, planId]);
+
+  const backToNow = useCallback(() => {
+    void navigateToThreadRoute(router, { kind: "server", threadRef, planId });
+  }, [planId, router, threadRef]);
+  const selectCheckpoint = useCallback(
+    (commitId: MercurianCommitId) => {
+      const lineThreadId =
+        detail === null ? null : lineThreadIdForCommit({ planId, commitId, detail, graph, tree });
+      const targetRef = scopeThreadRef(environmentId, lineThreadId ?? threadId);
+      void navigateToThreadRoute(router, {
+        kind: "server",
+        threadRef: targetRef,
+        planId,
+        ...(lineThreadId === null ? { line: null } : {}),
+        at: commitId,
+      });
+    },
+    [detail, environmentId, graph, planId, router, threadId, tree],
+  );
+  const editAndBranch = useCallback(
+    (query: Extract<PlanDetail["timeline"][number], { readonly _tag: "message" }>) => {
+      const parentCommitId = graph.byId.get(query.commitId)?.parents[0];
+      if (parentCommitId === undefined) return;
+      void forkHere({ parentCommitId, seedText: query.text });
+    },
+    [forkHere, graph.byId],
+  );
+
+  const artifactText = needsPathText
+    ? pathText?.commitId === head
+      ? pathText.value
+      : null
+    : (detail?.planText ?? null);
+  const artifactSpec = needsPathSpec
+    ? pathSpec?.commitId === head
+      ? pathSpec.value
+      : undefined
+    : detail?.spec;
+  const readOnlyAction = viewingPast ? (
+    <Button size="sm" variant="ghost" onClick={backToNow}>
+      Back to now
+    </Button>
+  ) : undefined;
+  const inFlightTurns = detail?.inFlightTurns ?? EMPTY_IN_FLIGHT_TURNS;
+  const codingSessions = detail?.codingSessions ?? EMPTY_CODING_SESSIONS;
+
+  return {
+    planPanel:
+      artifactText === null ? (
+        <HistoricalArtifactPlaceholder>
+          {viewingPast ? "Reading the plan as of then…" : "Reading the plan…"}
+        </HistoricalArtifactPlaceholder>
+      ) : (
+        <PlanArtifact
+          planId={planId}
+          planText={artifactText}
+          readOnly
+          timeline={visibleTimeline}
+          {...(actingHead === null ? {} : { parentCommitId: actingHead })}
+          {...(readOnlyAction === undefined ? {} : { readOnlyAction })}
+        />
+      ),
+    specPanel:
+      artifactSpec === undefined ? (
+        <HistoricalArtifactPlaceholder>
+          {viewingPast ? "Reading the spec as of then…" : "Reading the spec…"}
+        </HistoricalArtifactPlaceholder>
+      ) : (
+        <SpecArtifact
+          planId={planId}
+          readOnly
+          spec={artifactSpec}
+          timeline={visibleTimeline}
+          {...(actingHead === null ? {} : { parentCommitId: actingHead })}
+          {...(detail?.origin === undefined ? {} : { origin: detail.origin })}
+          {...(readOnlyAction === undefined ? {} : { readOnlyAction })}
+        />
+      ),
+    checkpointsPanel: (
+      <DagExplorer
+        anchoredCommitId={head}
+        codingSessions={codingSessions}
+        graph={graph}
+        inFlightAnchorCommitIds={inFlightTurns.map((turn) => turn.parentCommitId)}
+        providers={planningModel.providers}
+        stalePlanCommitIds={stalePlanLeaves}
+        staleSpecCommitIds={staleSpecLeaves}
+        onEditAndBranch={editAndBranch}
+        onImplementFrom={() => undefined}
+        onSelect={selectCheckpoint}
+      />
+    ),
+  };
 }
