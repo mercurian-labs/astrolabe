@@ -338,9 +338,8 @@ describe("index.html boot script", () => {
     expect(boot.backgroundColor).toBe(colors.chrome);
   });
 
-  // Asserting against the real palette definitions (not literals) turns the
-  // boot script's hand-maintained copy into a CI-enforced contract: any
-  // palette change breaks this test until the copy in index.html is updated.
+  // The Astrolabe light splash keeps its branded accent; every other boot
+  // color remains a hand-maintained copy of the runtime palettes.
   it("keeps every built-in boot splash in sync with the real palettes", () => {
     for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
       // The boot script resolves every built-in from a light base appearance.
@@ -359,7 +358,11 @@ describe("index.html boot script", () => {
         expect(boot.isDark).toBe(mode === "dark");
         expect(boot.bootVariables["--boot-background"]).toBe(colors!.canvas);
         expect(boot.bootVariables["--boot-foreground"]).toBe(colors!.text);
-        expect(boot.bootVariables["--boot-accent"]).toBe(colors!.accent);
+        expect(boot.bootVariables["--boot-accent"]).toBe(
+          theme.id === T3_CHAT_THEME.id && mode === "light"
+            ? "oklch(0.627287 0.207248 358.772)"
+            : colors!.accent,
+        );
         expect(boot.backgroundColor).toBe(colors!.chrome);
         expect(boot.metaContent).toBe(colors!.chrome);
       }

@@ -187,13 +187,7 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
 
 export const UI_CLASSIFICATIONS: Readonly<
   Record<string, ModuleClassification<Exclude<UiInventoryCategory, "catalogued" | "unreviewed">>>
-> = {
-  "src/components/ui/form.tsx": {
-    category: "infrastructure-only",
-    reason:
-      "This module is a thin semantic and layout wrapper around the Base UI form root, while visible controls live in their own modules.",
-  },
-};
+> = {};
 
 export function cataloguedMercurianSourcePaths(
   entries: ReadonlyArray<CatalogEntry>,

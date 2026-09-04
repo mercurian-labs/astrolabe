@@ -327,7 +327,7 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
         }),
     }),
     Layer.mock(ThreadDeletionReactor.ThreadDeletionReactor)({
-      drain: Effect.sync(() => {
+      drainThrough: () => Effect.sync(() => {
         state.calls.push("cleanup:drain");
         state.terminal = false;
       }),

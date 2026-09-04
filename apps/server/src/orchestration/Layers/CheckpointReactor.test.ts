@@ -34,6 +34,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import { it as effectIt } from "@effect/vitest";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
@@ -63,6 +64,7 @@ import {
   type ProviderServiceShape,
 } from "../../provider/Services/ProviderService.ts";
 import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
+import { ProviderValidationError } from "../../provider/Errors.ts";
 import { ServerConfig } from "../../config.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
@@ -101,6 +103,9 @@ function createProviderServiceHarness(
   const rollbackConversation = vi.fn(
     (_input: { readonly threadId: ThreadId; readonly numTurns: number }) => Effect.void,
   );
+  const assertConversationRollbackSupported = vi.fn<
+    ProviderServiceShape["assertConversationRollbackSupported"]
+  >(() => Effect.void);
 
   const unsupported = <A>() =>
     Effect.die(new Error("Unsupported provider call in test")) as Effect.Effect<A, never>;
@@ -128,6 +133,7 @@ function createProviderServiceHarness(
     listSessions,
     getCapabilities: () =>
       Effect.succeed({ sessionModelSwitch: "in-session", groundingRoots: "multi" }),
+    assertConversationRollbackSupported,
     getInstanceInfo: (instanceId) =>
       Effect.succeed({
         instanceId,
@@ -152,6 +158,7 @@ function createProviderServiceHarness(
 
   return {
     service,
+    assertConversationRollbackSupported,
     rollbackConversation,
     emit,
   };

@@ -130,6 +130,7 @@ export function filterSearchPaletteGroups(input: {
   if (normalizedQuery.length === 0) {
     return baseGroups;
   }
+  const queryTokens = normalizedQuery.split(/\s+/).filter((token) => token.length > 0);
 
   return baseGroups.flatMap((group) => {
     const items = Arr.filterMap(group.items, (item, index) => {
@@ -140,7 +141,7 @@ export function filterSearchPaletteGroups(input: {
       return Result.succeed({
         item,
         index,
-        rank: rankCommandPaletteItemMatch(item, normalizedQuery),
+        rank: rankCommandPaletteItemMatch(item, normalizedQuery, queryTokens),
       });
     })
       .toSorted((left, right) => right.rank - left.rank || left.index - right.index)

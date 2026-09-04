@@ -15,9 +15,8 @@ describe("ComposerStashBadge", () => {
       />,
     );
 
-    expect(markup).toContain("chat-composer-stash-tab");
-    expect(markup).toContain("rounded-t-xl");
-    expect(markup).toContain("border-b-0");
+    expect(markup).toContain("data-composer-shoulder-tab");
+    expect(markup).toContain('data-composer-banner-surface="attached"');
     expect(markup).toContain("items-center");
     expect(markup).not.toContain("items-start");
     expect(markup).not.toContain("rounded-full");
@@ -55,14 +54,12 @@ describe("ComposerStashBadge", () => {
       />,
     );
 
-    expect(markup).toContain('data-slot="button"');
-    expect(markup).toContain("rounded-sm");
-    expect(markup).toContain("focus-visible:ring-2");
-    expect(markup).toContain("pointer-coarse:after:min-h-11");
+    expect(markup).toContain("<button");
+    expect(markup).toContain('data-prompt-stash-badge="true"');
+    expect(markup).toContain("focus-visible:outline-2");
     expect(markup).toContain("Stashed prompts: 3. Open stash.");
     expect(markup).toContain('aria-expanded="true"');
-    expect(markup).not.toContain("chat-composer-stash-tab");
-    expect(markup).not.toContain("rounded-t-xl");
-    expect(markup).not.toContain(" pointer-events-none ");
+    expect(markup).not.toContain("data-composer-shoulder-tab");
+    expect(markup).toContain("pointer-events-none");
   });
 });

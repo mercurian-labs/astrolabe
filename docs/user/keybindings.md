@@ -4,7 +4,7 @@ Edit keybindings from **Settings** → **Keybindings**. That page lists every co
 shortcut, whether it is a default or your own, and warns about conflicts.
 
 The same configuration lives in `~/.t3/userdata/keybindings.json` on the machine running the
-server, if you prefer editing it directly. T3 Code writes the built-in defaults into that file on
+server, if you prefer editing it directly. Astrolabe writes the built-in defaults into that file on
 first run, and adds any new defaults on later startups unless a rule of yours already claims the
 command or the shortcut.
 
@@ -61,13 +61,25 @@ the numbered keycaps on the rows they would take you to.
 `rightPanel.toggleMaximized` maximizes or restores the open right panel. It has no default shortcut,
 so add one in **Settings** → **Keybindings** if you want to use it.
 
+`rightPanel.close` closes the active right panel tab and defaults to `mod+w`. Press it again to close
+the next tab. With the terminal focused, `mod+w` closes the terminal instead. Browsers reserve
+`mod+w`, so rebind this command in a browser if needed.
+
+`thread.copyReference` copies the active thread's pull request link, or its thread ID when no pull
+request is available. Its default shortcut is `mod+shift+c`.
+
 `thread.settle` settles the active thread or restores it when it is already settled. Its default
 shortcut is `mod+shift+s`, and it does not run while the terminal has focus.
 
-The command palette searches active thread titles, projects, branches, user messages, and final
-agent responses across connected environments. Message matches show one labeled excerpt while
-keeping the thread's project, branch, and machine context visible. Message search begins after two
-characters and uses SQLite's ASCII case-insensitive matching.
+`thread.pin` pins the active thread to the pinned section of the sidebar, or unpins it when it is
+already pinned. Its default shortcut is `mod+shift+p`, and it does not run while the terminal has
+focus. See [Organizing threads](./thread-sidebar.md) for how pinned threads are ordered.
+
+The command palette searches settings, active thread titles, projects, branches, user messages, and
+final agent responses across connected environments. A setting result opens its exact control or
+section. Message matches show one labeled excerpt while keeping the thread's project, branch, and
+machine context visible. Message search begins after two characters and uses SQLite's ASCII
+case-insensitive matching.
 
 The full command list and the current defaults are shown in **Settings** → **Keybindings**, which
 always matches the build you are running. Use that rather than a copied list.
@@ -78,6 +90,10 @@ environment mode always come from your configured defaults, not from the thread 
 at. To keep a worktree, use the explicit "new thread in this worktree" action in the branch
 toolbar. The only difference between the two commands: with the current sidebar and more than one
 project, `chat.new` opens a project chooser first.
+
+Background submission from a new thread is the exception. `mod+enter` starts that thread and opens
+another new thread with the same workspace mode and base branch. **New worktree** remains selected,
+but the new thread does not reuse the worktree created for the thread that just started.
 
 ## `when` Conditions
 

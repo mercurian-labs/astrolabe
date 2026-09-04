@@ -8,10 +8,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isEntrypoint } from "./entrypoint.ts";
 
-// Resolved so the constructed module URLs match what Node reports for a real
-// entrypoint: macOS's default TMPDIR sits behind the /var -> /private/var
-// symlink, and Node resolves import.meta.url through symlinks.
 const makeTempDir = () =>
+  // macOS reports /var through the /private/var symlink; compare canonical paths
+  // so an entrypoint reached through that symlink still matches its module URL.
   NodeFS.realpathSync(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-entrypoint-test-")));
 
 describe("isEntrypoint", () => {

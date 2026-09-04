@@ -163,6 +163,7 @@ const makeHarness = Effect.gen(function* () {
     listSessions: () => Effect.succeed([]),
     getCapabilities: () =>
       Effect.sync(() => ({ sessionModelSwitch: "in-session" as const, groundingRoots })),
+    assertConversationRollbackSupported: () => Effect.die("unused in planning tests"),
     getInstanceInfo: () => Effect.die("unused in planning tests"),
     rollbackConversation: () => Effect.die("unused in planning tests"),
     uploadFeedback: () => Effect.die("unused in planning tests"),

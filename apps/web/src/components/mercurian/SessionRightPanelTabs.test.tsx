@@ -21,6 +21,7 @@ function props(
   return {
     mode: "inline",
     surfaces: [],
+    environmentId: null,
     activeSurfaceId: null,
     pendingSurfaceIds: new Set(),
     previewSessions: {},
@@ -33,6 +34,7 @@ function props(
     onCloseAllSurfaces: noop,
     onCopyFilePath: noop,
     onAddBrowser: noop,
+    onAddBrowserInProfile: noop,
     onAddTerminal: noop,
     onAddDiff: noop,
     onAddFiles: noop,

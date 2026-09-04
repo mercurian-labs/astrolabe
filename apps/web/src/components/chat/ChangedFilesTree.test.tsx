@@ -1,10 +1,23 @@
 import { TurnId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ChangedFilesCard, ChangedFilesTree } from "./ChangedFilesTree";
+import { ChangedFilesCard, ChangedFilesTree, openChangedFileDiff } from "./ChangedFilesTree";
 
 describe("ChangedFilesCard", () => {
+  it("opens a compact-preview file in its repository-scoped diff", () => {
+    const onOpenTurnDiff = vi.fn();
+    const turnId = TurnId.make("turn-1");
+
+    openChangedFileDiff(onOpenTurnDiff, turnId, "apps/web/src/App.tsx", "repository-2");
+
+    expect(onOpenTurnDiff).toHaveBeenCalledWith(
+      turnId,
+      "apps/web/src/App.tsx",
+      "repository-2",
+    );
+  });
+
   it("keeps its compact header sticky while preserving singular labels", () => {
     const markup = renderToStaticMarkup(
       <ChangedFilesCard

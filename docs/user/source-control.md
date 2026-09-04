@@ -1,10 +1,10 @@
 # Source Control Integrations
 
-T3 Code connects to your Git hosting provider so you can create pull requests, review code, and manage repositories without leaving the app.
+Astrolabe connects to your Git hosting provider so you can create pull requests, review code, and manage repositories without leaving the app.
 
 ## Supported Providers
 
-T3 Code works with the platforms your team already uses:
+Astrolabe works with the platforms your team already uses:
 
 - **GitHub** – Pull requests, repository creation, and clone integration
 - **GitLab** – Merge requests, repository publishing, and hosted clones
@@ -32,26 +32,53 @@ T3 Code works with the platforms your team already uses:
 **Create pull requests while you work**
 
 - Push a branch and create a pull request from the Git actions controls in the toolbar
-- T3 Code can suggest titles and descriptions based on your commits
+- Astrolabe can suggest titles and descriptions based on your commits
+- With **Repository conventions** selected, generated source control text follows the project's
+  `AGENTS.md` along with recent commit subjects. Claude writers also follow `CLAUDE.md`
 - Supports GitHub Pull Requests, GitLab Merge Requests, Bitbucket Pull Requests, and Azure DevOps Pull Requests
 
 **Stay on top of open reviews**
 
 - See if your current branch already has an open PR/MR
 - Open several reviews from the **Pull requests** page as tabs in the right panel
+- Your authored reviews stay at the top and use the selected sort within their group. By default,
+  see passing and approved reviews first, passing reviews awaiting approval next, and conflicting
+  reviews last. Smaller changes come first within each readiness group, and finished reviews follow
+  open work when all states are visible.
+- Filter the list by author or labels, rank authors by merges in the loaded results, see label and
+  change-size context on each row, and sort the results currently shown by readiness, update time,
+  creation time, or change size. Your filters, search, scope, and sort are restored when you return.
+- Merge now, or on GitHub, GitLab, and Azure DevOps, leave an auto-merge instruction with a chosen
+  strategy while checks are outstanding; see the completed state in the same control after the
+  pull request merges
+- On GitHub, approve fork workflows that are waiting to run and open a revert pull request for a
+  merged change
+- Timeline line counts stay hidden on merge commits, where GitHub's totals include upstream changes
+  brought in from the base branch
 - While working in a thread, open linked reviews in the same compact right-panel tabs without
   leaving the conversation
+- Show a file tree next to a review's **Code** tab, or a thread's **Diff** panel, to browse the
+  changed files as folders and jump straight to any of them. The toolbar toggle remembers your
+  choice.
+- Enable **Settings → General → Proactive panels** to open a newly linked review automatically and
+  switch to the completed turn's diff when agent work finishes
 - Open the review directly in your browser with one click
-- Command-click (Control-click on Windows and Linux) a pull request number in the sidebar to open it in your browser instead of in T3 Code
+- If Astrolabe cannot load a GitHub pull request, including when GitHub rate limits requests, use
+  **Open on GitHub** in the error view
+- Command-click (Control-click on Windows and Linux) a pull request number in the sidebar to open it in your browser instead of in Astrolabe
 - Check out a teammate's branch to review code locally
 
 **Fix what you wrote, in place**
 
+- Comment while closing an open pull request or reopening a closed one when the host offers that
+  action
 - Rewrite a pull request's title and description from the review itself, in Markdown, with a
   preview before you save
 - Rewrite your own comments the same way, wherever they are shown
 - Works on GitHub, GitLab, and Bitbucket. Azure DevOps takes a new title and description; its
   comments stay read-only here, as they already were
+- On GitHub, put a label on a pull request or take one off from the **Labels** row of the review.
+  Changing labels needs triage access or better on the repository
 
 ### Know Your Setup at a Glance
 
@@ -67,7 +94,7 @@ Run a quick **Rescan** after setting up a new machine or changing credentials.
 
 ### For GitHub (Recommended for most users)
 
-1. Install the GitHub CLI (version 2.81.0 or newer) on the machine running T3 Code:
+1. Install the GitHub CLI (version 2.81.0 or newer) on the machine running Astrolabe:
    ```bash
    brew install gh
    ```
@@ -75,7 +102,7 @@ Run a quick **Rescan** after setting up a new machine or changing credentials.
    ```bash
    gh auth login
    ```
-3. Open **Settings → Source Control** in T3 Code and verify GitHub shows as authenticated
+3. Open **Settings → Source Control** in Astrolabe and verify GitHub shows as authenticated
 
 You can now clone, publish, and create pull requests.
 
@@ -94,7 +121,7 @@ You can now clone, publish, and create pull requests.
 ### For Bitbucket
 
 Bitbucket uses tokens instead of a CLI tool. Two options, both set as environment variables on the
-machine running T3 Code.
+machine running Astrolabe.
 
 Recommended, a Bitbucket access token:
 
@@ -111,7 +138,7 @@ export T3CODE_BITBUCKET_EMAIL="you@example.com"
 export T3CODE_BITBUCKET_API_TOKEN="your-token"
 ```
 
-If both are set, the access token wins. Restart T3 Code and verify the connection in **Source
+If both are set, the access token wins. Restart Astrolabe and verify the connection in **Source
 Control settings**.
 
 ### For Azure DevOps
@@ -133,14 +160,14 @@ Control settings**.
 
 ## Requirements & Troubleshooting
 
-**Git is required** – T3 Code uses Git for all local operations. Ensure `git` is installed on your server.
+**Git is required** – Astrolabe uses Git for all local operations. Ensure `git` is installed on your server.
 
-**Server-side setup** – Authentication happens on the machine running T3 Code (the server), not your local browser. If you're using a hosted or team instance, your administrator may have already configured providers.
+**Server-side setup** – Authentication happens on the machine running Astrolabe (the server), not your local browser. If you're using a hosted or team instance, your administrator may have already configured providers.
 
 **Common issues:**
 
 - **Provider shows "Not authenticated"** – Run the login command for that provider (e.g., `gh auth login`) in a terminal on the server, then rescan in Settings
-- **GitHub says it could not verify sign-in status** – T3 Code needs GitHub CLI 2.81.0 or newer to check sign-in status. Update `gh` (e.g., `brew upgrade gh`), then rescan
+- **GitHub says it could not verify sign-in status** – Astrolabe needs GitHub CLI 2.81.0 or newer to check sign-in status. Update `gh` (e.g., `brew upgrade gh`), then rescan
 - **Bitbucket not connecting** – Double-check your environment variables are set in the correct shell profile and the server was restarted
 - **Can't push to a remote** – Verify your Git remote URL matches the provider you've authenticated with (SSH vs HTTPS remotes may need different credentials)
 

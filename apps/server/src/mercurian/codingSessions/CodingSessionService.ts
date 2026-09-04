@@ -275,14 +275,23 @@ export const make = Effect.gen(function* () {
 
       const cleanup = Effect.gen(function* () {
         if (threadCreated) {
-          yield* orchestration
-            .dispatch({
+          const deleted = yield* Effect.exit(
+            orchestration.dispatch({
               type: "thread.delete",
               commandId: yield* commandId("cleanup-thread"),
               threadId,
-            })
-            .pipe(Effect.ignoreCause({ log: true }));
-          yield* deletionReactor.drain.pipe(Effect.ignoreCause({ log: true }));
+            }),
+          );
+          if (Exit.isSuccess(deleted)) {
+            yield* deletionReactor
+              .drainThrough(deleted.value.sequence)
+              .pipe(Effect.ignoreCause({ log: true }));
+          } else {
+            yield* Effect.logWarning("Could not delete failed coding-session thread.", {
+              threadId,
+              cause: deleted.cause,
+            });
+          }
         }
         if (slotId !== undefined) {
           yield* slotService.release(slotId, holder).pipe(Effect.ignoreCause({ log: true }));

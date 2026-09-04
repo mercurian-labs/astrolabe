@@ -15,6 +15,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Projects and plans](#projects-and-plans)
 - [Trackers](#trackers)
 - [Workspace settings](#workspace-settings)
+- [Appearance](#appearance)
 
 ## Concepts
 
@@ -100,7 +101,7 @@ The live backend agent implementation and its event stream. The main service is 
 
 #### Provider
 
-The backend agent runtime that actually performs work. Five drivers ship built in: Codex, Claude, Cursor, Grok, and OpenCode. See [ProviderService.ts][14], [ProviderAdapter.ts][15], and [CodexAdapter.ts][17] as a representative adapter.
+The backend agent runtime that actually performs work. Six drivers ship built in: Codex, Claude, Cursor, Grok, OpenCode, and Antigravity. See [ProviderService.ts][14], [ProviderAdapter.ts][15], and [CodexAdapter.ts][17] as a representative adapter.
 
 #### Session
 
@@ -382,6 +383,21 @@ An explicit composer choice is stamped as-is. With no explicit choice, the serve
 
 The mapping from the abstract pair to an instance, computed per machine by `resolvePlanningModel` and never stored — it is a fact about a machine at a moment. Candidates are that driver's snapshots which are available, enabled, and installed; among those offering the model the provider's default instance wins, otherwise the first in settings order. No candidate resolves `no-instance`; candidates without the model resolve `model-unavailable`, which is also how capability gating surfaces, since a model the installed agent is too old to run is already absent from the snapshot. Curation is deliberately not consulted by resolution: hiding a model is one client's picker preference. An unresolved recorded pair remains visible and unchanged — the machine never rewrites what history chose.
 
+### Appearance
+
+#### Environment theme
+
+A theme an environment's machine publishes for clients to follow, one file per theme under `themes/` in that environment's state directory; the filename is the theme id. [environmentTheme.ts][42] watches the directory and streams the set over `subscribeServerConfig`; clients render each as a library card, generating a full palette when the file carries seed colors and using the palette directly when it is a standard exported theme file. A desktop that retints its apps when the system theme changes rewrites its file, so Astrolabe follows along without a restart. See [environment-theme.md][43].
+
+#### Default theme
+
+The environment's theme, held in its `settings.json` as `defaultTheme` (with `defaultThemeSetAt`
+as the set-generation) and set with `t3 theme set <id>`. Web and desktop clients apply each set
+once — live when connected, on the next connect otherwise — so setting it switches them, while a
+theme a user picks in Settings afterwards sticks until the next set; mobile keeps its own
+appearance settings. Naming a published [environment theme](#environment-theme) is how a desktop
+ships Astrolabe already matching it.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -438,6 +454,8 @@ The mapping from the abstract pair to an instance, computed per machine by `reso
 [39]: ../../apps/web/src/components/mercurian/PlanSuggestions.tsx
 [40]: ../../apps/server/src/mercurian/worktreeSlots/SnapshotChain.ts
 [41]: ../../apps/server/src/mercurian/worktreeSlots/SlotService.ts
+[42]: ../../apps/server/src/environmentTheme.ts
+[43]: ../user/environment-theme.md
 
 ### Coding session
 
