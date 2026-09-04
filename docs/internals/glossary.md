@@ -291,7 +291,7 @@ A [line](#line) whose thread and runtime record exist but whose first human comm
 
 #### Thread space
 
-The upstream thread view, routed at `/threads/$planId`, with Mercurian's thread-level surfaces and chrome chiseled into its existing slots. `?line=<threadId>` selects the current [line](#line), while `?at=<commitId>` changes the viewing position for Plan, Spec, and Checkpoints without replacing that line's conversation. [ThreadSpaceSurfaces.tsx][48] supplies the read-only Plan and Spec surfaces plus Checkpoints; [ThreadSpaceChrome.tsx][49] supplies the repository switcher, line banners, memory overlays, note mentions, and **Fork here**.
+The upstream thread view, routed at `/threads/$planId`, with Mercurian's thread-level surfaces and chrome chiseled into its existing slots. `?line=<threadId>` selects the current [line](#line), while `?at=<commitId>` changes the viewing position for Plan, Spec, and Checkpoints without replacing that line's conversation. [ThreadSpaceSurfaces.tsx][48] supplies the read-only Plan and Spec surfaces plus Checkpoints; [ThreadSpaceChrome.tsx][49] supplies line banners, memory overlays, note mentions, and **Fork here**.
 
 Its right panel always contains the [pinned surface](#pinned-surface) **Checkpoints** first. Plan is selected when a line's panel is first seeded, and Plan and Spec can be added from the plus menu alongside the upstream working surfaces. Picking a checkpoint navigates to its line and viewing position; **Back to now** clears the historical position. The ordinary upstream composer sends thread turns, and the [line turn reactor](#line-turn-reactor) records the thread history from those turns.
 

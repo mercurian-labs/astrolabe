@@ -324,9 +324,10 @@ first turn. Until that workspace exists, git actions, repository scripts, and
 **Open in** stay hidden. A missing branch, a wait for a slot, or a provider that can reach only some
 of the project's repositories appears as a banner above the conversation.
 
-The header begins with the upstream project crumb. When a line spans several repositories, use the
-repository switcher to choose which one receives git actions, scripts, **Open in**, file browsing,
-and diff actions. The selection changes the working surface, not the line or its history.
+The header begins with the upstream project crumb. When a line spans several repositories, git
+actions, scripts, **Open in**, and file browsing address the line's home repository — the first
+repository the project links. Changed-files cards and the diff still show every repository's
+changes.
 
 The timeline reads turn by turn. Work-log detail stays folded until you expand it, completed turns
 carry their changed-files cards, and the timeline follows new work while you are at the bottom. Use

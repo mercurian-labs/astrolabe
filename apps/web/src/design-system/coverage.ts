@@ -118,10 +118,6 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Search results and actions combine router state, the live Mercurian tree, keybindings, and project creation.",
   },
-  "src/components/mercurian/RepositorySwitcher.tsx": {
-    category: "composition-shell",
-    reason: "The thread header supplies repository members and owns the selected member state.",
-  },
   "src/components/mercurian/SettingsEmptyPage.tsx": {
     category: "deferred",
     reason:

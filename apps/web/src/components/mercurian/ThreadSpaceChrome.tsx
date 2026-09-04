@@ -8,7 +8,6 @@ import type { DraftId } from "../../composerDraftStore";
 import { useThread } from "../../state/entities";
 import { useMercurianTree, usePlanDetail } from "../../state/mercurian";
 import { useReadMemoryNote } from "../../state/mercurianMemory";
-import { useRepositories } from "../../state/mercurianRepositories";
 import type { ThreadSyncPhase } from "../../threadSync";
 import type { ChatMessage } from "../../types";
 import ChatView from "../ChatView";
@@ -21,7 +20,6 @@ import { MemoryNoteReader } from "./MemoryNoteReader";
 import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { formatMentionCandidate } from "./planMentions.logic";
-import { CodingSessionRepositorySwitcher, resolveCodingSessionMember } from "./RepositorySwitcher";
 import {
   memoryAmendmentFailureNotice,
   resolveForkHereInput,
@@ -33,7 +31,6 @@ import { resolveLineTip } from "./planLineOwnership.logic";
 import { useForkHere } from "./useForkHere";
 
 export type ThreadSpaceChatViewChrome = Readonly<{
-  headerLeadingActions?: ReactNode;
   headerBanner?: ReactNode;
   headerProjectName?: string;
   hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId>;
@@ -111,7 +108,6 @@ export function SlotWaitNotice() {
 export function useThreadSpaceChrome(): ThreadSpaceChrome {
   const { detail, environmentId, graph, planId, projectId, threadId } = useThreadSpace();
   const thread = useThread(scopeThreadRef(environmentId, threadId));
-  const { snapshot: repositoriesSnapshot } = useRepositories();
   const { snapshot: treeSnapshot } = useMercurianTree();
   const headerProjectName = treeSnapshot.projects.find(
     (project) => project.projectId === projectId,
@@ -124,19 +120,10 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
     treeSnapshot.threadPlanLinks,
   );
   const lineTip = resolveLineTip(detail, graph, runtime, treeSnapshot.threadPlanLinks);
-  const members = planId === null ? [] : (thread?.workspaceMembers ?? []);
-  const [selectedRepositoryByThread, setSelectedRepositoryByThread] = useState<
-    Readonly<Record<string, string>>
-  >({});
-  const selectedMember = resolveCodingSessionMember(
-    members,
-    selectedRepositoryByThread[threadId] ?? null,
-  );
   const workspaceReady =
     planId !== null &&
     Boolean(thread && (thread.workspaceMembers != null || thread.worktreePath !== null));
-  const workspaceCwdOverride =
-    planId === null ? null : (selectedMember?.worktreePath ?? thread?.worktreePath);
+  const workspaceCwdOverride = planId === null ? null : thread?.worktreePath;
   const forkHere = useForkHere();
   const canForkHere = useCallback(
     (message: ChatMessage) => resolveForkHereInput(graph, message) !== null,
@@ -177,23 +164,6 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
 
   return {
     chatView: {
-      ...(members.length > 1
-        ? {
-            headerLeadingActions: (
-              <CodingSessionRepositorySwitcher
-                members={members}
-                repositories={repositoriesSnapshot.repositories}
-                selectedRepositoryId={selectedMember?.repositoryId ?? null}
-                onSelect={(repositoryId) =>
-                  setSelectedRepositoryByThread((current) => ({
-                    ...current,
-                    [threadId]: repositoryId,
-                  }))
-                }
-              />
-            ),
-          }
-        : {}),
       ...(planId === null
         ? {}
         : {
