@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
+  EnvironmentId,
   MercurianCommitId,
   MercurianEnsureProjectRuntimeInput,
   MercurianImportPlanInput,
@@ -83,6 +84,13 @@ export interface MercurianTreeState {
   readonly error: string | null;
 }
 
+export function resolveMercurianQueryPending(
+  environmentId: EnvironmentId | null,
+  pendingForKnownEnvironment: boolean,
+): boolean {
+  return environmentId === null || pendingForKnownEnvironment;
+}
+
 export function useMercurianTree(): MercurianTreeState {
   const environmentId = usePrimaryEnvironmentId();
   const atom =
@@ -91,7 +99,7 @@ export function useMercurianTree(): MercurianTreeState {
   const item = Option.getOrNull(AsyncResult.value(result));
   return {
     snapshot: item?.snapshot ?? EMPTY_TREE_SNAPSHOT,
-    isPending: item === null && environmentId !== null,
+    isPending: resolveMercurianQueryPending(environmentId, item === null),
     error: errorMessage(result, "Could not load the project tree."),
   };
 }
@@ -155,7 +163,8 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   return {
     detail,
     isPending:
-      detail === null && environmentId !== null && planId !== null && result._tag !== "Failure",
+      planId !== null &&
+      resolveMercurianQueryPending(environmentId, detail === null && result._tag !== "Failure"),
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,
     memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,

@@ -12,6 +12,7 @@ import {
   resolveThreadSpaceRoute,
   resolveThreadSpaceRouteNavigation,
 } from "./threadSpaceRoute.logic";
+import { resolveMercurianQueryPending } from "../../state/mercurian";
 
 const commit = (commitId: string, sequence: number, parents: string[]) => ({
   _tag: "message" as const,
@@ -94,5 +95,16 @@ describe("resolveThreadSpaceRoute", () => {
 
     expect(resolution).toEqual({ kind: "missing" });
     expect(resolveThreadSpaceRouteNavigation(resolution)).toEqual({ to: "/", replace: true });
+  });
+
+  it("does not navigate before the primary environment is known", () => {
+    const resolution = resolveThreadSpaceRoute({
+      detail: null,
+      isPending: resolveMercurianQueryPending(null, false),
+      search: {},
+    });
+
+    expect(resolution).toEqual({ kind: "loading" });
+    expect(resolveThreadSpaceRouteNavigation(resolution)).toBeNull();
   });
 });
