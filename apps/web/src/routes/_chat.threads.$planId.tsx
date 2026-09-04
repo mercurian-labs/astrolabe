@@ -1,14 +1,18 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { MercurianCommitId, PlanId, ThreadId } from "@t3tools/contracts";
+import { PlanId } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
 import ChatView from "../components/ChatView";
 import { threadHasStarted } from "../components/ChatView.logic";
+import { useThreadSpaceChrome } from "../components/mercurian/ThreadSpaceChrome";
+import { ThreadSpaceProvider, useThreadSpace } from "../components/mercurian/ThreadSpaceContext";
+import { useThreadSpaceSurfaces } from "../components/mercurian/ThreadSpaceSurfaces";
 import {
   resolveThreadSpaceRoute,
   resolveThreadSpaceRouteNavigation,
 } from "../components/mercurian/threadSpaceRoute.logic";
+import { validateThreadSpaceSearch } from "../components/mercurian/threadSpaceSearch";
 import { SidebarInset } from "../components/ui/sidebar";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -17,22 +21,30 @@ import { useOpenLine, usePlanDetail, useVisitPlan } from "../state/mercurian";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { resolveThreadRouteRenderState } from "../threadRoutes";
-import { resolveThreadSyncPhase } from "../threadSync";
+import { resolveThreadSyncPhase, type ThreadSyncPhase } from "../threadSync";
 
-export type ThreadSpaceRouteSearch = Readonly<{
-  line?: ThreadId;
-  at?: MercurianCommitId;
+type ThreadSpaceViewProps = Readonly<{
+  threadSyncPhase: ThreadSyncPhase | null;
 }>;
 
-export function validateThreadSpaceSearch(search: Record<string, unknown>): ThreadSpaceRouteSearch {
-  return {
-    ...(typeof search.line === "string" && search.line.trim().length > 0
-      ? { line: ThreadId.make(search.line) }
-      : {}),
-    ...(typeof search.at === "string" && search.at.trim().length > 0
-      ? { at: MercurianCommitId.make(search.at) }
-      : {}),
-  };
+function ThreadSpaceView({ threadSyncPhase }: ThreadSpaceViewProps) {
+  const { environmentId, threadId } = useThreadSpace();
+  const surfaces = useThreadSpaceSurfaces();
+  const chrome = useThreadSpaceChrome();
+
+  return (
+    <>
+      <ChatView
+        environmentId={environmentId}
+        threadId={threadId}
+        routeKind="server"
+        threadSyncPhase={threadSyncPhase}
+        {...surfaces}
+        {...chrome.chatView}
+      />
+      {chrome.overlays}
+    </>
+  );
 }
 
 function MercurianThreadRouteView() {
@@ -107,16 +119,13 @@ function MercurianThreadRouteView() {
   if (threadRef === null) return null;
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-      {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
-        <ChatView
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          routeKind="server"
-          threadSyncPhase={threadSyncPhase}
-        />
-      ) : null}
-    </SidebarInset>
+    <ThreadSpaceProvider value={{ planId, ...threadRef, detail, search }}>
+      <SidebarInset className="relative h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+        {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
+          <ThreadSpaceView threadSyncPhase={threadSyncPhase} />
+        ) : null}
+      </SidebarInset>
+    </ThreadSpaceProvider>
   );
 }
 

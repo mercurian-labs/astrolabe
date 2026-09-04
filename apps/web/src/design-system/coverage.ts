@@ -168,6 +168,20 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "A future entry should show the delayed open hover card and its pointer-safe handoff from trigger to popup.",
   },
+  "src/components/mercurian/ThreadSpaceChrome.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Header actions, line banners, memory overlays, and mention sources depend on the live thread and plan subscriptions.",
+  },
+  "src/components/mercurian/ThreadSpaceContext.tsx": {
+    category: "composition-shell",
+    reason: "This provider joins route state and the derived plan graph for thread-space seams.",
+  },
+  "src/components/mercurian/ThreadSpaceSurfaces.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Plan, spec, and checkpoint surfaces combine live plan reads, routing, model state, and panel state.",
+  },
   "src/components/mercurian/TrackersSettings.tsx": {
     category: "requires-live-workspace",
     reason:

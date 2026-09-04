@@ -623,33 +623,39 @@ function formatOutgoingPrompt(params: {
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
+// The panel lane fills panel slots; the header lane fills header chrome, readiness, and Fork here.
+type ChatViewSlots = {
+  headerContent?: ReactNode;
+  headerBanner?: ReactNode;
+  headerLeadingActions?: ReactNode;
+  workspaceReady?: boolean;
+  planPanel?: ReactNode;
+  specPanel?: ReactNode;
+  checkpointsPanel?: ReactNode;
+  onForkHere?: (messageId: MessageId) => void;
+};
+
 type ChatViewProps =
-  | {
+  | (ChatViewSlots & {
       environmentId: EnvironmentId;
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
-      headerContent?: ReactNode;
-      headerBanner?: ReactNode;
-      planPanel?: ReactNode;
       routeKind: "server";
       draftId?: never;
-    }
-  | {
+    })
+  | (ChatViewSlots & {
       environmentId: EnvironmentId;
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
-      headerContent?: ReactNode;
-      headerBanner?: ReactNode;
-      planPanel?: ReactNode;
       routeKind: "draft";
       draftId: DraftId;
-    };
+    });
 
 interface TerminalLaunchContext {
   threadId: ThreadId;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { ThreadId } from "@t3tools/contracts";
+import { PlanId, ThreadId } from "@t3tools/contracts";
 import { DraftId } from "./composerDraftStore";
 
 import {
@@ -24,10 +24,16 @@ describe("threadRoutes", () => {
     const navigate = vi.fn(() => Promise.resolve());
     const router = { navigate } as never;
     const lineRef = scopeThreadRef("env-1" as never, ThreadId.make("line-thread"));
+    const newLineRef = scopeThreadRef("env-1" as never, ThreadId.make("new-line-thread"));
     const upstreamRef = scopeThreadRef("env-2" as never, ThreadId.make("upstream-thread"));
     planByThread.set(lineRef.threadId, "plan-1");
 
     await navigateToThreadRoute(router, { kind: "server", threadRef: lineRef });
+    await navigateToThreadRoute(router, {
+      kind: "server",
+      threadRef: newLineRef,
+      planId: PlanId.make("plan-1"),
+    });
     await navigateToThreadRoute(router, { kind: "server", threadRef: upstreamRef });
     await navigateToThreadRoute(router, { kind: "draft", draftId: DraftId.make("draft-1") });
 
@@ -37,10 +43,15 @@ describe("threadRoutes", () => {
       search: { line: "line-thread" },
     });
     expect(navigate).toHaveBeenNthCalledWith(2, {
+      to: "/threads/$planId",
+      params: { planId: "plan-1" },
+      search: { line: "new-line-thread" },
+    });
+    expect(navigate).toHaveBeenNthCalledWith(3, {
       to: "/$environmentId/$threadId",
       params: { environmentId: "env-2", threadId: "upstream-thread" },
     });
-    expect(navigate).toHaveBeenNthCalledWith(3, {
+    expect(navigate).toHaveBeenNthCalledWith(4, {
       to: "/threads/draft/$draftId",
       params: { draftId: "draft-1" },
     });

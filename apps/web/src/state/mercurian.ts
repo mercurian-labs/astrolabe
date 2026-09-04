@@ -4,6 +4,7 @@ import type {
   EnvironmentId,
   MercurianCommitId,
   MercurianEnsureProjectRuntimeInput,
+  MercurianForkLineInput,
   MercurianImportPlanInput,
   MercurianOpenLineInput,
   MercurianCancelMemoryAmendmentInput,
@@ -184,6 +185,11 @@ export function useEnsureProjectRuntime() {
 export function useOpenLine() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.openLine);
   return useCallback((input: MercurianOpenLineInput) => run(input), [run]);
+}
+
+export function useForkLine() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.forkLine);
+  return useCallback((input: MercurianForkLineInput) => run(input), [run]);
 }
 
 /**

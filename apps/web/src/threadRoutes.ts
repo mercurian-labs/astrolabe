@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, PlanId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
 import type { AppRouter } from "./router";
 import { planForThread } from "./state/mercurian";
@@ -8,6 +8,7 @@ export type ThreadRouteTarget =
   | {
       kind: "server";
       threadRef: ScopedThreadRef;
+      planId?: PlanId;
     }
   | {
       kind: "draft";
@@ -71,7 +72,7 @@ export function navigateToThreadRoute(
     });
   }
 
-  const planId = planForThread(target.threadRef.threadId);
+  const planId = target.planId ?? planForThread(target.threadRef.threadId);
   if (planId !== null) {
     return router.navigate({
       to: "/threads/$planId",
