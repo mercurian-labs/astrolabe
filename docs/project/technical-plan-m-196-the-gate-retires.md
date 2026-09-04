@@ -89,7 +89,7 @@ Delete `StalePlanWarning.tsx` (+ test, catalog entry, `catalog.test.ts:38` asser
 
 ### 9. Docs
 
-`docs/user/projects-and-plans.md`: the "Implementing a plan" section (:192-212) rewrites — implement opens the session draft directly; the session works across every linked repository; per-repository changed files and git actions; the split/confirmation paragraphs move to past-tense "histories may contain per-repository plans from the former flow"; dots copy at :220-222 loses readiness; :352/:359 lose "ready". `docs/internals/glossary.md`: delete **Atomic plan**, **Readiness verdict**, **Implement gate**; reword **Split** as a historical commit shape (fix the cross-anchors). `docs/internals/overview.md:149-156`: the gate paragraph becomes the direct-draft + multi-repository-session clause.
+`docs/user/projects-and-threads.md`: the "Implementing a plan" section (:192-212) rewrites — implement opens the session draft directly; the session works across every linked repository; per-repository changed files and git actions; the split/confirmation paragraphs move to past-tense "histories may contain per-repository plans from the former flow"; dots copy at :220-222 loses readiness; :352/:359 lose "ready". `docs/internals/glossary.md`: delete **Atomic plan**, **Readiness verdict**, **Implement gate**; reword **Split** as a historical commit shape (fix the cross-anchors). `docs/internals/overview.md:149-156`: the gate paragraph becomes the direct-draft + multi-repository-session clause.
 
 ## Implementation Checklist
 

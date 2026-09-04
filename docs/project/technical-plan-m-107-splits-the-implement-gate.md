@@ -122,7 +122,7 @@ The write is one `sql.withTransaction`: for each split, append kind `"plan-revis
 
 ### 6. Docs (AGENTS.md §Hit every surface)
 
-`docs/user/projects-and-plans.md`: the branch's "Technical plans" section becomes "Implementing a plan" — the implement action, the gate, atomic plans, the split sheet, editing and deleting cards, splits as ordinary plan branches, nothing lands without confirming. `docs/internals/glossary.md`: **Atomic plan**, **Split**, and **Implement gate** entries replace the branch's Technical plan/Derivation entries; the Commit kinds list stays at four. `docs/internals/overview.md`: the derived-layer clause becomes the implement-gate clause.
+`docs/user/projects-and-threads.md`: the branch's "Technical plans" section becomes "Implementing a plan" — the implement action, the gate, atomic plans, the split sheet, editing and deleting cards, splits as ordinary plan branches, nothing lands without confirming. `docs/internals/glossary.md`: **Atomic plan**, **Split**, and **Implement gate** entries replace the branch's Technical plan/Derivation entries; the Commit kinds list stays at four. `docs/internals/overview.md`: the derived-layer clause becomes the implement-gate clause.
 
 ## Addendum (2026-08-12) — readiness, recorded verdicts, no navigation on confirm
 
@@ -228,7 +228,7 @@ Internal vocabulary is untouched: `PlanImplementVerdict.kind: "atomic"`, the `sp
 
 **The zero-to-create defect, folded in:** the confirmation action offered "Land 0 splits" when every repository at that commit was already covered. `confirmPayload` returning `null` (no cards, or a blank card) must mean **no confirmation action rendered at all** — the sheet is a jump list — rather than a disabled button naming a count of zero.
 
-Docs (§6 additions): `docs/user/projects-and-plans.md` loses the words "atomic", "split", "Land N splits" (lines 153 and 159 today) and gains the readiness vocabulary, the badge, and the jump list; `docs/internals/glossary.md` keeps **Split**/**Atomic plan** but marks them internal — never surfaced — and gains **Readiness verdict**; `docs/internals/overview.md`'s implement-gate clause gains the recorded verdict.
+Docs (§6 additions): `docs/user/projects-and-threads.md` loses the words "atomic", "split", "Land N splits" (lines 153 and 159 today) and gains the readiness vocabulary, the badge, and the jump list; `docs/internals/glossary.md` keeps **Split**/**Atomic plan** but marks them internal — never surfaced — and gains **Readiness verdict**; `docs/internals/overview.md`'s implement-gate clause gains the recorded verdict.
 
 ### What this addendum does not change
 

@@ -1,11 +1,11 @@
 # Trackers
 
 If your backlog lives in an external issue tracker, connect it and its issues can become the
-starting points of plans. Connections are made and managed in **Settings → Trackers**; the issues
+starting points of threads. Connections are made and managed in **Settings → Trackers**; the issues
 themselves never arrive through Settings.
 
-Mercurian only reads. Importing and refreshing pull from the tracker, and nothing you do in
-Mercurian is ever written back to it — no status changes, no comments, no new issues.
+Mercurian only reads. Importing pulls from the tracker, and nothing you do in Mercurian is ever
+written back to it — no status changes, no comments, no new issues.
 
 ## Connecting Linear
 
@@ -99,46 +99,43 @@ through the link. Mercurian is where issues get planned; it is not a second copy
 
 ## Importing an issue
 
-Importing happens where plans start, not in Settings. Hover a project in the sidebar, press
-**new plan**, and the empty composer offers **Import from a tracker**.
+Importing starts in the search palette, not in the draft composer or Settings. With nothing typed,
+choose **Import from a tracker** beside **New thread**. Unless you are already inside one of a
+project's threads, the palette first asks which project to **Import into**; inside one, it opens the
+tracker picker for that project immediately.
 
 The dialog browses your connected trackers. Pick a connection if you have more than one, type to
 search, and press **Load more** to page further — the search goes to the tracker, which is the only
 thing that knows how to search its own backlog. Every issue on screen was fetched just now and is
 kept nowhere: close the dialog and it is gone. Nothing is stored until you import.
 
-Select an issue and press **Import**. The plan exists immediately, appears under its project, and
-takes the issue's title. The issue title becomes the spec's **Goal / user story**, and the issue
-description becomes its **Acceptance criteria**. Together they form the plan's root **spec**
-revision: the contract the plan is planned from.
+Select an issue and press **Import**. The thread exists immediately, appears under its project, and
+takes the issue's title. The issue title becomes the Spec's **Goal / user story**, and the issue
+description becomes its **Acceptance criteria**. Together they form the thread's root **Spec**
+revision: the contract the thread is planned from.
 
 Three things follow from importing rather than starting blank:
 
-- **The plan is shared from the start.** The issue having a plan is not a private fact, so the plan
-  and the imported spec are published as soon as they exist. Everything you add afterwards is a
-  private draft until you publish it. Because something is published from birth, an imported plan
+- **The thread is shared from the start.** The issue having a thread is not a private fact, so the
+  thread and the imported Spec are published as soon as they exist. Everything you add afterwards is
+  a private draft until you publish it. Because something is published from birth, an imported thread
   can only be archived, never deleted.
-- **The plan is empty.** The issue is what you plan _from_, not the plan itself, so the plan
-  document starts blank and you fill it in.
-- **The plan has no repositories yet.** Which code the work touches is something planning works
+- **The Plan is empty.** The issue is what the thread is planned _from_, not the Plan itself, so the
+  Plan artifact starts blank and the assistant fills it in.
+- **The thread has no repositories yet.** Which code the work touches is something the thread works
   out, not something importing decides.
 
 ### Importing the same issue twice
 
-You cannot end up with two plans for one issue. Importing an issue you have already imported takes
-you to the plan it already has and says so. If that plan had been archived, importing brings it
+You cannot end up with two threads for one issue. Importing an issue you have already imported takes
+you to its thread and says **This issue already has a thread**. If that thread had been archived, importing brings it
 back out of the archive, in the place in the list it had before.
 
 That link is to a specific connection. If you disconnect a tracker and connect the same workspace
 again, the new connection is a new starting point, and importing an issue through it starts a new
-plan.
+thread.
 
-Issues are not synchronized in the background. In the plan's **Spec** pane, **Refresh from issue**
-performs one explicit live read. If only the issue changed, its new content lands as a spec revision
-on the current path without starting an assistant turn. If the local spec and the issue both
-changed, nothing is overwritten: a reconciliation shows the base, local, and upstream documents.
-Choose local, upstream, or edit a resolution, then confirm to land one reconciliation revision. An
-unchanged issue writes nothing.
+Issues are not synchronized after import — the Spec records the issue as it read when imported.
 
 ## Connection status
 
@@ -155,5 +152,5 @@ tracker as the page reads it, so a key revoked in the tracker shows up here with
 ## Disconnecting
 
 Press **Disconnect** on a connection and confirm. The connection and its API key are removed from
-your workspace. Nothing in the tracker is touched, and plans that started from its issues are
+your workspace. Nothing in the tracker is touched, and threads that started from its issues are
 unaffected — they are yours, and they keep their link back.

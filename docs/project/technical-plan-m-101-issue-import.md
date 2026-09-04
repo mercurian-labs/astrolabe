@@ -106,7 +106,7 @@ Mobile untouched, per every Mercurian issue so far.
 
 ### Docs (AGENTS.md §Hit every surface)
 
-`docs/user/trackers.md` gains the import walk (browse from a project's new plan, what re-import does, born published, the origin link) — or a cross-linked section in `docs/user/projects-and-plans.md` where plan creation is documented; implementation's call on which file leads. `docs/internals/glossary.md`: **Issue import**, **Origin (plan)** entries beside the existing Tracker family. `docs/internals/overview.md`: a sentence for `plan_origins` and the import path.
+`docs/user/trackers.md` gains the import walk (browse from a project's new plan, what re-import does, born published, the origin link) — or a cross-linked section in `docs/user/projects-and-threads.md` where plan creation is documented; implementation's call on which file leads. `docs/internals/glossary.md`: **Issue import**, **Origin (plan)** entries beside the existing Tracker family. `docs/internals/overview.md`: a sentence for `plan_origins` and the import path.
 
 ### Gaps and findings carried out of discovery
 

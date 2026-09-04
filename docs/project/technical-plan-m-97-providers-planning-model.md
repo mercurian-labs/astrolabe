@@ -146,7 +146,7 @@ Exactly the workspace surface introduced above: the contracts file, migration 00
 - [ ] `apps/web/src/components/mercurian/PlanningModelSetting.logic.ts` (+ test) — option derivation (by provider; resolving instance's models; curation applied), resolution display model (resolved label/color; both unresolved messages; upgrade naming from `versionAdvisory`).
 - [ ] `apps/web/src/components/mercurian/PlanningModelSetting.tsx` — the card + picker on `ui/` primitives.
 - [ ] `apps/web/src/components/settings/SettingsPanels.tsx` — one-line mount at the top of `ProviderSettingsPanel`; **the only upstream-owned edit in this plan**.
-- [ ] Docs ride the PR: a short planning-model passage in `docs/user/projects-and-plans.md` (shipped-product voice, no paths), and a **planning model** entry in `docs/internals/glossary.md`.
+- [ ] Docs ride the PR: a short planning-model passage in `docs/user/projects-and-threads.md` (shipped-product voice, no paths), and a **planning model** entry in `docs/internals/glossary.md`.
 - [ ] Do **not** add a dependency, a `ServerSettings` field, an instance reference anywhere workspace-scoped, or any persisted resolution.
 - [ ] Do **not** edit the wizard, instance cards, curation section, driver layers, or maintenance machinery — AC 1–4 ship as verified, byte-identical but for the mount line.
 - [ ] Commits: `feat(contracts): …`, `feat(server): …`, `feat(web): … (M-97)` on branch `venk/m-97-providers-planning-model`.
