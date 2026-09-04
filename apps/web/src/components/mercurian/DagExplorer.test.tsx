@@ -81,7 +81,6 @@ const sharedExplorerProps = {
   historyWalkViewsEnabled: true,
   providers: [],
   onEditAndBranch: vi.fn(),
-  onImplementFrom: vi.fn(),
 } as const;
 
 const popoverController = () =>
@@ -110,21 +109,19 @@ const renderExplorer = (
   );
 
 describe("DagExplorer", () => {
-  it("continues immediately for Graph node click and keyboard activation", () => {
+  it("always selects immediately for Graph node click and keyboard activation", () => {
     const popover = popoverController();
     const calls: Array<string> = [];
     popover.close.mockImplementation(() => calls.push("close"));
     const onSelect = vi.fn(() => calls.push("select"));
     const interaction = graphNodePopoverInteraction({
-      acts: ["continue", "implement"],
       commitId: root,
       popover,
       onSelect,
     });
-    const anchor = {} as Element;
 
-    interaction.activate(anchor);
-    interaction.activate(anchor);
+    interaction.activate();
+    interaction.activate();
 
     expect(popover.open).not.toHaveBeenCalled();
     expect(popover.close).toHaveBeenCalledTimes(2);
@@ -133,28 +130,25 @@ describe("DagExplorer", () => {
     expect(calls).toEqual(["close", "select", "close", "select"]);
   });
 
-  it("opens details when a future Graph node cannot continue", () => {
+  it("selects even when the node popover has no acts", () => {
     const popover = popoverController();
     const onSelect = vi.fn();
     const interaction = graphNodePopoverInteraction({
-      acts: [],
       commitId: root,
       popover,
       onSelect,
     });
-    const anchor = {} as Element;
 
-    interaction.activate(anchor);
+    interaction.activate();
 
-    expect(popover.open).toHaveBeenCalledWith(root, anchor);
-    expect(popover.close).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(popover.open).not.toHaveBeenCalled();
+    expect(popover.close).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith(root);
   });
 
   it("shares linger and delayed close between Graph hover and focus", () => {
     const popover = popoverController();
     const interaction = graphNodePopoverInteraction({
-      acts: ["continue"],
       commitId: root,
       popover,
       onSelect: vi.fn(),

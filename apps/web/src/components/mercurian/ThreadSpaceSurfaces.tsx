@@ -208,7 +208,6 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         stalePlanCommitIds={stalePlanLeaves}
         staleSpecCommitIds={staleSpecLeaves}
         onEditAndBranch={editAndBranch}
-        onImplementFrom={() => undefined}
         onSelect={selectCheckpoint}
       />
     ),

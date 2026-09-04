@@ -619,7 +619,6 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
                   stalePlanCommitIds={stalePlanLeaves}
                   staleSpecCommitIds={staleSpecLeaves}
                   onEditAndBranch={editAndBranch}
-                  onImplementFrom={() => {}}
                   onSelect={select}
                 />
               ) : pane.artifact === "plan" && artifactText === null ? (

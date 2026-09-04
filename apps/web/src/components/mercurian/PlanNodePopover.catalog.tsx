@@ -25,8 +25,6 @@ const popoverArgs = (
     suppressUnanswered: false,
     onClose: () => undefined,
     onEditAndBranch: () => undefined,
-    onImplementFrom: () => undefined,
-    onSelect: () => undefined,
   };
 };
 
