@@ -165,6 +165,7 @@ export function DagExplorer({
   stalePlanCommitIds,
   staleSpecCommitIds,
   historyWalkViewsEnabled,
+  hideTitleBar = false,
   onEditAndBranch,
   onSelect,
 }: {
@@ -179,6 +180,8 @@ export function DagExplorer({
   readonly staleSpecCommitIds: ReadonlySet<string>;
   /** Explicit override for development catalogs and focused rendering tests. */
   readonly historyWalkViewsEnabled?: boolean;
+  /** Temporary: the bar goes away with PlanningSpace in phase 5. */
+  readonly hideTitleBar?: boolean;
   readonly onEditAndBranch: (
     query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
   ) => void;
@@ -222,56 +225,61 @@ export function DagExplorer({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        className={cn(WORKSPACE_PANE_TITLE_BAR_CLASS, "gap-2 border-b border-border px-3 sm:px-4")}
-      >
-        <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
-        {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
-          <GraphWarningsPopover
-            stalePlanCount={stalePlanNodes.size}
-            staleSpecCount={staleSpecNodes.size}
-          />
-        )}
-        <span className="min-w-0 flex-1" />
-        {walkViewsEnabled ? (
-          <ToggleGroup
-            className="shrink-0"
-            role="toolbar"
-            size="xs"
-            value={[view]}
-            variant="outline"
-            onValueChange={(next) => {
-              const chosen = next[0];
-              // The switch is a choice between three views, never a way to have
-              // neither: re-pressing the active one leaves it pressed.
-              if (chosen === "thread" || chosen === "columns" || chosen === "graph") {
-                setView(chosen);
-              }
-            }}
-          >
-            <Tooltip>
-              <TooltipTrigger render={<Toggle aria-label="Thread" value="thread" />}>
-                <GitCommitVerticalIcon className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">Thread</TooltipPopup>
-            </Tooltip>
-            {columnsAvailable ? (
+      {hideTitleBar ? null : (
+        <div
+          className={cn(
+            WORKSPACE_PANE_TITLE_BAR_CLASS,
+            "gap-2 border-b border-border px-3 sm:px-4",
+          )}
+        >
+          <h2 className="text-sm font-medium text-foreground">Checkpoint Graph</h2>
+          {staleSpecNodes.size === 0 && stalePlanNodes.size === 0 ? null : (
+            <GraphWarningsPopover
+              stalePlanCount={stalePlanNodes.size}
+              staleSpecCount={staleSpecNodes.size}
+            />
+          )}
+          <span className="min-w-0 flex-1" />
+          {walkViewsEnabled ? (
+            <ToggleGroup
+              className="shrink-0"
+              role="toolbar"
+              size="xs"
+              value={[view]}
+              variant="outline"
+              onValueChange={(next) => {
+                const chosen = next[0];
+                // The switch is a choice between three views, never a way to have
+                // neither: re-pressing the active one leaves it pressed.
+                if (chosen === "thread" || chosen === "columns" || chosen === "graph") {
+                  setView(chosen);
+                }
+              }}
+            >
               <Tooltip>
-                <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
-                  <Columns3Icon className="size-3.5" />
+                <TooltipTrigger render={<Toggle aria-label="Thread" value="thread" />}>
+                  <GitCommitVerticalIcon className="size-3.5" />
                 </TooltipTrigger>
-                <TooltipPopup side="bottom">Columns</TooltipPopup>
+                <TooltipPopup side="bottom">Thread</TooltipPopup>
               </Tooltip>
-            ) : null}
-            <Tooltip>
-              <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
-                <WaypointsIcon className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">Graph</TooltipPopup>
-            </Tooltip>
-          </ToggleGroup>
-        ) : null}
-      </div>
+              {columnsAvailable ? (
+                <Tooltip>
+                  <TooltipTrigger render={<Toggle aria-label="Columns" value="columns" />}>
+                    <Columns3Icon className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipPopup side="bottom">Columns</TooltipPopup>
+                </Tooltip>
+              ) : null}
+              <Tooltip>
+                <TooltipTrigger render={<Toggle aria-label="Graph" value="graph" />}>
+                  <WaypointsIcon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Graph</TooltipPopup>
+              </Tooltip>
+            </ToggleGroup>
+          ) : null}
+        </div>
+      )}
       {checkpointGraph.nodes.length === 0 ? (
         <div className="min-h-0 flex-1 px-3 py-6 sm:px-4">
           <p className="text-sm text-muted-foreground/70">Nothing has happened here yet.</p>

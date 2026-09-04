@@ -194,6 +194,22 @@ describe("DagExplorer", () => {
     expect(settings).not.toMatch(/Detail|Commits/);
   });
 
+  it("hides the title bar when requested", () => {
+    const markup = renderToStaticMarkup(
+      <DagExplorer
+        {...sharedExplorerProps}
+        anchoredCommitId={null}
+        graph={buildPlanGraph(checkpointTimeline)}
+        hideTitleBar
+        stalePlanCommitIds={new Set()}
+        staleSpecCommitIds={new Set()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(markup).not.toContain("Checkpoint Graph");
+  });
+
   it("renders only Graph without changing a parked stored preference", () => {
     const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
     setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "thread", ExplorerView);

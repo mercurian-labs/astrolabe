@@ -29,6 +29,7 @@ export function PlanArtifact({
   readOnlyAction,
   titleControl,
   cornerControl,
+  hideTitleBar = false,
 }: {
   readonly planId: PlanId;
   readonly planText: string;
@@ -57,6 +58,8 @@ export function PlanArtifact({
   readonly titleControl?: ReactNode;
   /** The planning-space pane toggle; omitted in standalone renderings. */
   readonly cornerControl?: ReactNode;
+  /** Temporary: the bar goes away with PlanningSpace in phase 5. */
+  readonly hideTitleBar?: boolean;
 }) {
   const savePlanRevision = useSavePlanRevision();
   const [draft, setDraft] = useState<string | null>(null);
@@ -86,46 +89,55 @@ export function PlanArtifact({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        className={cn(WORKSPACE_PANE_TITLE_BAR_CLASS, "gap-2 border-b border-border px-3 sm:px-4")}
-      >
-        {titleControl ?? <h2 className="text-sm font-medium text-foreground">Plan</h2>}
-        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
-          {lastRevisionLabel(timeline)}
-        </span>
-        {readOnly ? (
-          readOnlyAction
-        ) : draft === null ? (
-          editable ? (
-            <Button size="sm" variant="ghost" onClick={() => setDraft(planText)}>
-              <PencilIcon className="size-3.5" />
-              Edit
-            </Button>
-          ) : null
-        ) : (
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setDraft(null);
-                setNotice(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              // A no-op edit should not mint a no-op revision.
-              disabled={isSaving || draft === planText}
-              onClick={() => void save()}
-            >
-              Save
-            </Button>
-          </div>
-        )}
-        {cornerControl}
-      </div>
+      {hideTitleBar ? (
+        readOnlyAction === undefined ? null : (
+          <div className="flex justify-end px-3 py-1.5 sm:px-4">{readOnlyAction}</div>
+        )
+      ) : (
+        <div
+          className={cn(
+            WORKSPACE_PANE_TITLE_BAR_CLASS,
+            "gap-2 border-b border-border px-3 sm:px-4",
+          )}
+        >
+          {titleControl ?? <h2 className="text-sm font-medium text-foreground">Plan</h2>}
+          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
+            {lastRevisionLabel(timeline)}
+          </span>
+          {readOnly ? (
+            readOnlyAction
+          ) : draft === null ? (
+            editable ? (
+              <Button size="sm" variant="ghost" onClick={() => setDraft(planText)}>
+                <PencilIcon className="size-3.5" />
+                Edit
+              </Button>
+            ) : null
+          ) : (
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setDraft(null);
+                  setNotice(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                // A no-op edit should not mint a no-op revision.
+                disabled={isSaving || draft === planText}
+                onClick={() => void save()}
+              >
+                Save
+              </Button>
+            </div>
+          )}
+          {cornerControl}
+        </div>
+      )}
       {notice === null ? null : (
         <p className="border-b border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:px-4">
           {notice}

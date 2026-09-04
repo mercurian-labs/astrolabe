@@ -46,6 +46,7 @@ export function SpecArtifact({
   readOnlyAction,
   titleControl,
   cornerControl,
+  hideTitleBar = false,
 }: {
   readonly planId: PlanId;
   readonly spec: PlanSpecAt | null;
@@ -59,6 +60,8 @@ export function SpecArtifact({
   readonly titleControl?: ReactNode;
   /** The planning-space pane toggle; omitted in standalone renderings. */
   readonly cornerControl?: ReactNode;
+  /** Temporary: the bar goes away with PlanningSpace in phase 5. */
+  readonly hideTitleBar?: boolean;
 }) {
   const saveSpecRevision = useSaveSpecRevision();
   const refreshSpec = useRefreshSpec();
@@ -142,60 +145,69 @@ export function SpecArtifact({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        className={cn(WORKSPACE_PANE_TITLE_BAR_CLASS, "gap-2 border-b border-border px-3 sm:px-4")}
-      >
-        {titleControl ?? <h2 className="text-sm font-medium text-foreground">Spec</h2>}
-        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
-          {specRevisionLabel(revision)}
-        </span>
-        {readOnly ? (
-          readOnlyAction
-        ) : draft === null ? (
-          <div className="flex items-center gap-1">
-            {origin === undefined || spec === null ? null : (
+      {hideTitleBar ? (
+        readOnlyAction === undefined ? null : (
+          <div className="flex justify-end px-3 py-1.5 sm:px-4">{readOnlyAction}</div>
+        )
+      ) : (
+        <div
+          className={cn(
+            WORKSPACE_PANE_TITLE_BAR_CLASS,
+            "gap-2 border-b border-border px-3 sm:px-4",
+          )}
+        >
+          {titleControl ?? <h2 className="text-sm font-medium text-foreground">Spec</h2>}
+          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
+            {specRevisionLabel(revision)}
+          </span>
+          {readOnly ? (
+            readOnlyAction
+          ) : draft === null ? (
+            <div className="flex items-center gap-1">
+              {origin === undefined || spec === null ? null : (
+                <Button
+                  disabled={!editable || isRefreshing}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void refresh()}
+                >
+                  <RefreshCwIcon className={cn("size-3.5", isRefreshing && "animate-spin")} />
+                  Refresh from issue
+                </Button>
+              )}
               <Button
-                disabled={!editable || isRefreshing}
+                disabled={!editable}
                 size="sm"
                 variant="ghost"
-                onClick={() => void refresh()}
+                onClick={() => setDraft(spec?.document ?? { goal: "", acceptanceCriteria: "" })}
               >
-                <RefreshCwIcon className={cn("size-3.5", isRefreshing && "animate-spin")} />
-                Refresh from issue
+                <PencilIcon className="size-3.5" />
+                Edit
               </Button>
-            )}
-            <Button
-              disabled={!editable}
-              size="sm"
-              variant="ghost"
-              onClick={() => setDraft(spec?.document ?? { goal: "", acceptanceCriteria: "" })}
-            >
-              <PencilIcon className="size-3.5" />
-              Edit
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                isSaving ||
-                draft.goal.trim().length === 0 ||
-                (spec !== null &&
-                  draft.goal === spec.document.goal &&
-                  draft.acceptanceCriteria === spec.document.acceptanceCriteria)
-              }
-              size="sm"
-              onClick={() => void save()}
-            >
-              Save
-            </Button>
-          </div>
-        )}
-        {cornerControl}
-      </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  isSaving ||
+                  draft.goal.trim().length === 0 ||
+                  (spec !== null &&
+                    draft.goal === spec.document.goal &&
+                    draft.acceptanceCriteria === spec.document.acceptanceCriteria)
+                }
+                size="sm"
+                onClick={() => void save()}
+              >
+                Save
+              </Button>
+            </div>
+          )}
+          {cornerControl}
+        </div>
+      )}
       {origin === undefined ? null : (
         <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground sm:px-4">
           <span>From issue {origin.issueId}</span>

@@ -174,6 +174,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         </HistoricalArtifactPlaceholder>
       ) : (
         <PlanArtifact
+          hideTitleBar
           planId={planId}
           planText={artifactText}
           readOnly
@@ -189,6 +190,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         </HistoricalArtifactPlaceholder>
       ) : (
         <SpecArtifact
+          hideTitleBar
           planId={planId}
           readOnly
           spec={artifactSpec}
@@ -203,6 +205,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
         anchoredCommitId={head}
         codingSessions={codingSessions}
         graph={graph}
+        hideTitleBar
         inFlightAnchorCommitIds={inFlightTurns.map((turn) => turn.parentCommitId)}
         providers={planningModel.providers}
         stalePlanCommitIds={stalePlanLeaves}
