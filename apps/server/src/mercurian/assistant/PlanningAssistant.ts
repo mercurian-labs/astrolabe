@@ -812,6 +812,7 @@ export const make = Effect.gen(function* () {
       // Claim last: everything below this point is pure assembly, so no
       // failure can strand the lease before the turn runtime owns it.
       const slot = yield* slotService.claim({
+        planId: input.planId,
         projectId: input.projectId,
         lineRootCommitId,
         holder: { kind: "turn", threadId },
@@ -1045,6 +1046,7 @@ export const make = Effect.gen(function* () {
         materials === null
           ? yield* slotService
               .claim({
+                planId: input.planId,
                 projectId: snapshot.plan.projectId,
                 lineRootCommitId: lineRootCommitIdFor(snapshot, input.parentCommitId),
                 holder: { kind: "turn", threadId },

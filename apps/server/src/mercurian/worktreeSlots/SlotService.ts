@@ -1,4 +1,9 @@
-import { MercurianCommitId, MercurianProjectId, MercurianRepositoryId } from "@t3tools/contracts";
+import {
+  MercurianCommitId,
+  MercurianProjectId,
+  MercurianRepositoryId,
+  type PlanId,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -14,7 +19,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { makeLineBranchEnsurer } from "../commitTree/ensureLineBranch.ts";
 import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
-import { PlanningStore, type PlanDetail } from "../planning/PlanningStore.ts";
+import { PlanningStore } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryView } from "../repositories/schema.ts";
 import { SlotRegistry } from "./SlotRegistry.ts";
@@ -57,6 +62,7 @@ const isLineBranchMissingError = Schema.is(LineBranchMissingError);
 const isSlotServiceError = Schema.is(SlotServiceError);
 
 export interface ClaimSlotInput {
+  readonly planId: PlanId;
   readonly projectId: MercurianProjectId;
   readonly lineRootCommitId: MercurianCommitId;
   readonly holder: SlotLeaseHolder;
@@ -195,6 +201,7 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.asVoid);
 
   const projectMembers = Effect.fn("SlotService.projectMembers")(function* (
+    planId: PlanId,
     projectId: MercurianProjectId,
     lineRootCommitId: MercurianCommitId,
   ) {
@@ -219,19 +226,14 @@ export const make = Effect.gen(function* () {
         cause: new Error(`Project ${projectId} has a missing or non-git repository`),
       });
     }
-    const tree = yield* planning.getTreeSnapshot;
-    let detail: PlanDetail | undefined;
-    for (const plan of tree.plans.filter((candidate) => candidate.projectId === projectId)) {
-      const candidate = yield* planning.getPlanSnapshot({ planId: plan.planId });
-      if (candidate.timeline.some((item) => String(item.commitId) === String(lineRootCommitId))) {
-        detail = candidate;
-        break;
-      }
-    }
-    if (detail === undefined) {
+    const detail = yield* planning.getPlanSnapshot({ planId });
+    if (
+      detail.plan.projectId !== projectId ||
+      !detail.timeline.some((item) => String(item.commitId) === String(lineRootCommitId))
+    ) {
       return yield* new SlotServiceError({
         operation: "claim:lineBranch",
-        cause: new Error(`Line ${lineRootCommitId} is not part of project ${projectId}`),
+        cause: new Error(`Line ${lineRootCommitId} is not part of plan ${planId}`),
       });
     }
     const layout = layoutProjectRepositories(path, linked);
@@ -519,14 +521,22 @@ export const make = Effect.gen(function* () {
               }
               claimed = { ...reusable, members };
             } else {
-              const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
+              const desired = yield* projectMembers(
+                input.planId,
+                input.projectId,
+                input.lineRootCommitId,
+              );
               claimed = yield* switchSlot(reusable, input.lineRootCommitId, desired, now);
             }
           } else {
             if (existing.length >= poolSize) {
               return yield* new SlotPoolAtCapacityError({ projectId: input.projectId, poolSize });
             }
-            const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
+            const desired = yield* projectMembers(
+              input.planId,
+              input.projectId,
+              input.lineRootCommitId,
+            );
             claimed = yield* materialize(
               input.projectId,
               input.lineRootCommitId,

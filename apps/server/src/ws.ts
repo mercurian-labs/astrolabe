@@ -886,6 +886,7 @@ const makeWsRpcLayer = (
         }
 
         const claimed = yield* slotService.claim({
+          planId: session.value.planId,
           projectId: detail.plan.projectId,
           lineRootCommitId: lineBranch.lineRootCommitId,
           holder,

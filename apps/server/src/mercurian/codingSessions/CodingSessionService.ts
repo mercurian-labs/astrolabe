@@ -317,6 +317,7 @@ export const make = Effect.gen(function* () {
 
       const birth = Effect.gen(function* () {
         const slot = yield* slotService.claim({
+          planId: input.planId,
           projectId: detail.plan.projectId,
           lineRootCommitId,
           holder,

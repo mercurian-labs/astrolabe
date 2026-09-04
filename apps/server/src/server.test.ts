@@ -1306,7 +1306,7 @@ const buildAppUnderTest = (options?: {
             }),
             SlotRegistry.layer,
             Layer.mock(SlotService.SlotService)({
-              claim: () => Effect.die("SlotService.claim not stubbed in this test"),
+              claim: (_input) => Effect.die("SlotService.claim not stubbed in this test"),
               release: () => Effect.succeed(false),
               retain: () => Effect.void,
             }),

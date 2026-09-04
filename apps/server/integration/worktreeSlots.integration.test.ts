@@ -113,9 +113,6 @@ it.effect(
               getSource: () => Effect.succeed(Option.none()),
             }),
             Layer.mock(PlanningStore.PlanningStore)({
-              getTreeSnapshot: Effect.succeed({
-                plans: [{ planId, projectId, title: "Plan" }],
-              } as never),
               getPlanSnapshot: () =>
                 Effect.succeed({
                   plan: { planId, projectId, title: "Plan" },
@@ -242,6 +239,7 @@ it.effect(
           const holder = (threadId: string) => ({ kind: "turn" as const, threadId });
 
           const first = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[0]!,
             holder: holder("thread-a"),
@@ -259,6 +257,7 @@ it.effect(
             0,
           );
           const second = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[1]!,
             holder: holder("thread-b"),
@@ -291,6 +290,7 @@ it.effect(
 
           yield* service.release(first.slotId, holder("thread-a"));
           const third = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[2]!,
             holder: holder("thread-c"),
@@ -325,6 +325,7 @@ it.effect(
           );
           NodeFS.writeFileSync(betweenTurnsPath, "edited between turns\n");
           const affinity = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[2]!,
             holder: holder("thread-c-next"),

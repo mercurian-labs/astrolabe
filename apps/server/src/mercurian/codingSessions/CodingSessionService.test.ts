@@ -90,6 +90,7 @@ type SagaFailurePoint =
 
 interface SagaState {
   readonly calls: string[];
+  readonly slotPlanIds: PlanId[];
   readonly commands: OrchestrationCommand[];
   thread: boolean;
   worktree: boolean;
@@ -120,6 +121,7 @@ interface SagaState {
 function sagaState(overrides: Partial<SagaState> = {}): SagaState {
   return {
     calls: [],
+    slotPlanIds: [],
     commands: [],
     thread: false,
     worktree: false,
@@ -377,9 +379,10 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
       activeChainMember: () => Effect.succeed(false),
     }),
     Layer.mock(SlotService.SlotService)({
-      claim: () =>
+      claim: (claimInput) =>
         Effect.gen(function* () {
           state.calls.push("slot:claim");
+          state.slotPlanIds.push(claimInput.planId);
           if (state.poolAtCapacity) {
             return yield* new SlotService.SlotPoolAtCapacityError({
               projectId,
@@ -469,6 +472,7 @@ describe("CodingSessionService validation", () => {
       assert.strictEqual(state.branch, true);
       assert.strictEqual(state.leaf, true);
       assert.strictEqual(state.session, true);
+      assert.deepStrictEqual(state.slotPlanIds, [planId]);
       const orderedBirthSteps = [
         "slot:claim",
         "dispatch:project.create",

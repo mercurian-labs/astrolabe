@@ -553,6 +553,7 @@ describe("PlanningAssistant", () => {
       });
 
       const slotClaim = yield* Queue.take(harness.slotClaims);
+      assert.strictEqual(slotClaim.planId, created.plan.planId);
       assert.strictEqual(slotClaim.projectId, created.plan.projectId);
       assert.strictEqual(String(slotClaim.lineRootCommitId), String(root.commitId));
       assert.strictEqual(slotClaim.holder.kind, "turn");
