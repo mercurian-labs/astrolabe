@@ -91,6 +91,7 @@ const designSystemTestProject = {
     include: [
       "@base-ui/react/autocomplete",
       "@base-ui/react/combobox",
+      "@base-ui/react/field",
       "@base-ui/react/radio-group",
       "@dnd-kit/sortable",
       "d3-force",
@@ -98,6 +99,7 @@ const designSystemTestProject = {
       "effect/SchemaGetter",
       "jsonc-parser",
       "jszip",
+      "lucide-react/dynamic",
     ],
   },
   test: {
