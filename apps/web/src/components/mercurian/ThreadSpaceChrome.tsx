@@ -1,14 +1,17 @@
 /** Owned by the header lane of M-197 (plan §7). Header actions, banners, and the overlays that wrap ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { MemoryNote } from "@t3tools/contracts";
+import type { MemoryNote, PlanId } from "@t3tools/contracts";
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import type { DraftId } from "../../composerDraftStore";
 import { useThread } from "../../state/entities";
 import { useMercurianTree, usePlanDetail } from "../../state/mercurian";
 import { useReadMemoryNote } from "../../state/mercurianMemory";
 import { useRepositories } from "../../state/mercurianRepositories";
+import type { ThreadSyncPhase } from "../../threadSync";
 import type { ChatMessage } from "../../types";
+import ChatView from "../ChatView";
 import type { ChatComposerMentionSources } from "../chat/ChatComposer";
 import { Button } from "../ui/button";
 import { LineBranchMissingBanner } from "./LineBranchMissingBanner";
@@ -24,6 +27,7 @@ import {
   resolveLineInFlightTurn,
 } from "./ThreadSpaceChrome.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
+import { useThreadSpaceSurfaces } from "./ThreadSpaceSurfaces";
 import { resolveLineTip } from "./planLineOwnership.logic";
 import { useForkHere } from "./useForkHere";
 
@@ -43,6 +47,42 @@ export type ThreadSpaceChrome = Readonly<{
   overlays?: ReactNode;
 }>;
 
+type ThreadSpaceViewProps =
+  | Readonly<{ routeKind: "server"; threadSyncPhase: ThreadSyncPhase | null }>
+  | Readonly<{ routeKind: "draft"; draftId: DraftId }>;
+
+export function ThreadSpaceView(props: ThreadSpaceViewProps) {
+  const { environmentId, threadId } = useThreadSpace();
+  const surfaces = useThreadSpaceSurfaces();
+  const chrome = useThreadSpaceChrome();
+
+  return (
+    <>
+      {props.routeKind === "server" ? (
+        <ChatView
+          environmentId={environmentId}
+          threadId={threadId}
+          routeKind="server"
+          threadSyncPhase={props.threadSyncPhase}
+          {...surfaces}
+          {...chrome.chatView}
+        />
+      ) : (
+        <ChatView
+          draftId={props.draftId}
+          environmentId={environmentId}
+          threadId={threadId}
+          routeKind="draft"
+          forceExpandedMobileComposer
+          {...surfaces}
+          {...chrome.chatView}
+        />
+      )}
+      {chrome.overlays}
+    </>
+  );
+}
+
 export function SlotWaitNotice() {
   return (
     <div
@@ -55,12 +95,12 @@ export function SlotWaitNotice() {
 }
 
 export function useThreadSpaceChrome(): ThreadSpaceChrome {
-  const { detail, environmentId, graph, planId, threadId } = useThreadSpace();
+  const { detail, environmentId, graph, planId, projectId, threadId } = useThreadSpace();
   const thread = useThread(scopeThreadRef(environmentId, threadId));
   const { snapshot: repositoriesSnapshot } = useRepositories();
   const { snapshot: treeSnapshot } = useMercurianTree();
   const headerProjectName = treeSnapshot.projects.find(
-    (project) => project.projectId === detail?.plan.projectId,
+    (project) => project.projectId === projectId,
   )?.name;
   const runtime = detail?.lineRuntimes.find((candidate) => candidate.threadId === threadId) ?? null;
   const inFlightTurn = resolveLineInFlightTurn(
@@ -70,7 +110,7 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
     treeSnapshot.threadPlanLinks,
   );
   const lineTip = resolveLineTip(detail, graph, runtime, treeSnapshot.threadPlanLinks);
-  const members = thread?.workspaceMembers ?? [];
+  const members = planId === null ? [] : (thread?.workspaceMembers ?? []);
   const [selectedRepositoryByThread, setSelectedRepositoryByThread] = useState<
     Readonly<Record<string, string>>
   >({});
@@ -78,10 +118,11 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
     members,
     selectedRepositoryByThread[threadId] ?? null,
   );
-  const workspaceReady = Boolean(
-    thread && (thread.workspaceMembers != null || thread.worktreePath !== null),
-  );
-  const workspaceCwdOverride = selectedMember?.worktreePath ?? thread?.worktreePath;
+  const workspaceReady =
+    planId !== null &&
+    Boolean(thread && (thread.workspaceMembers != null || thread.worktreePath !== null));
+  const workspaceCwdOverride =
+    planId === null ? null : (selectedMember?.worktreePath ?? thread?.worktreePath);
   const forkHere = useForkHere();
   const canForkHere = useCallback(
     (message: ChatMessage) => resolveForkHereInput(graph, message) !== null,
@@ -94,7 +135,7 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
     },
     [forkHere, graph],
   );
-  const mentions = usePlanMentionCandidates(detail?.plan.projectId ?? null);
+  const mentions = usePlanMentionCandidates(projectId);
   const memoryMentionCandidates = mentions.candidates;
   const memoryMentionSources = mentions.sources;
   const onMentionQueryChange = mentions.onMentionQueryChange;
@@ -139,44 +180,53 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
             ),
           }
         : {}),
-      headerBanner: (
-        <>
-          <LineBranchMissingBanner
-            threadId={threadId}
-            branch={runtime?.branch ?? thread?.branch ?? null}
-            lineBranchMissingOid={runtime?.lineBranchMissingOid ?? null}
-          />
-          {inFlightTurn?.phase === "waiting-for-slot" ? <SlotWaitNotice /> : null}
-          {inFlightTurn?.groundingScope === undefined ? null : (
-            <div className="border-b border-border bg-muted/20 px-3 py-1.5">
-              <NarrowedGroundingNotice scope={inFlightTurn.groundingScope} />
-            </div>
-          )}
-        </>
-      ),
+      ...(planId === null
+        ? {}
+        : {
+            headerBanner: (
+              <>
+                <LineBranchMissingBanner
+                  threadId={threadId}
+                  branch={runtime?.branch ?? thread?.branch ?? null}
+                  lineBranchMissingOid={runtime?.lineBranchMissingOid ?? null}
+                />
+                {inFlightTurn?.phase === "waiting-for-slot" ? <SlotWaitNotice /> : null}
+                {inFlightTurn?.groundingScope === undefined ? null : (
+                  <div className="border-b border-border bg-muted/20 px-3 py-1.5">
+                    <NarrowedGroundingNotice scope={inFlightTurn.groundingScope} />
+                  </div>
+                )}
+              </>
+            ),
+          }),
       ...(headerProjectName === undefined ? {} : { headerProjectName }),
       workspaceReady,
       ...(workspaceCwdOverride === undefined ? {} : { workspaceCwdOverride }),
       mentionSources,
-      canForkHere,
-      onForkHere,
+      ...(planId === null ? {} : { canForkHere, onForkHere }),
     },
-    overlays: (
-      <ThreadSpaceMemoryOverlays
-        key={planId}
-        lineTip={lineTip}
-        turnActive={inFlightTurn !== undefined}
-      />
-    ),
+    ...(planId === null
+      ? {}
+      : {
+          overlays: (
+            <ThreadSpaceMemoryOverlays
+              key={planId}
+              lineTip={lineTip}
+              planId={planId}
+              turnActive={inFlightTurn !== undefined}
+            />
+          ),
+        }),
   };
 }
 
 function ThreadSpaceMemoryOverlays(props: {
   readonly lineTip: ReturnType<typeof resolveLineTip>;
+  readonly planId: PlanId;
   readonly turnActive: boolean;
 }) {
-  const { detail, planId } = useThreadSpace();
-  const { memoryAmendmentFailure } = usePlanDetail(planId);
+  const { detail } = useThreadSpace();
+  const { memoryAmendmentFailure } = usePlanDetail(props.planId);
   const readMemoryNote = useReadMemoryNote();
   const [closedMemoryAmendmentTurnId, setClosedMemoryAmendmentTurnId] = useState<string | null>(
     null,
@@ -281,7 +331,7 @@ function ThreadSpaceMemoryOverlays(props: {
           }}
           open={memoryAmendmentSheetOpen}
           parentCommitId={props.lineTip}
-          planId={planId}
+          planId={props.planId}
           proposal={memoryAmendmentProposal}
           turnActive={props.turnActive}
         />

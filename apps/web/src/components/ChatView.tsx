@@ -1376,6 +1376,7 @@ function ChatViewContent(props: ChatViewProps) {
   } = props;
   const planAvailable = planPanel !== undefined;
   const specAvailable = specPanel !== undefined;
+  const workingSurfacesReady = workspaceReady !== false;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
@@ -3025,7 +3026,9 @@ function ChatViewContent(props: ChatViewProps) {
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = workspaceWorktreePath;
-  const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeWorkspaceRoot = workingSurfacesReady
+    ? (activeThreadWorktreePath ?? activeProjectCwd ?? undefined)
+    : undefined;
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
@@ -7331,7 +7334,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   const panelToggleControls = (
     <PanelLayoutControls
-      terminalAvailable={activeProject !== null}
+      terminalAvailable={workingSurfacesReady && activeProject !== null}
       terminalOpen={terminalUiState.terminalOpen}
       terminalShortcutLabel={shortcutLabelForCommand(keybindings, "terminal.toggle")}
       rightPanelAvailable={activeProject !== null}
@@ -7732,6 +7735,7 @@ function ChatViewContent(props: ChatViewProps) {
                           draftId={draftId}
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProject?.title ?? null}
+                          projectNameOverride={headerProjectName}
                         />
                       </div>
                     </div>
@@ -8019,14 +8023,15 @@ function ChatViewContent(props: ChatViewProps) {
           onAddAgents={addAgentsSurface}
           onAddPlan={addPlanSurface}
           onAddSpec={addSpecSurface}
+          workspaceReady={workspaceReady}
           planAvailable={planAvailable}
           specAvailable={specAvailable}
-          browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
-          diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          pullRequestAvailable={pullRequestSurfaceAvailable}
-          agentsAvailable
+          browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
+          terminalAvailable={workingSurfacesReady && activeProject !== null}
+          diffAvailable={workingSurfacesReady && isServerThread && isGitRepo}
+          filesAvailable={workingSurfacesReady && activeProject !== null}
+          pullRequestAvailable={workingSurfacesReady && pullRequestSurfaceAvailable}
+          agentsAvailable={workingSurfacesReady}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -8074,14 +8079,15 @@ function ChatViewContent(props: ChatViewProps) {
             onAddAgents={addAgentsSurface}
             onAddPlan={addPlanSurface}
             onAddSpec={addSpecSurface}
+            workspaceReady={workspaceReady}
             planAvailable={planAvailable}
             specAvailable={specAvailable}
-            browserAvailable={isPreviewSupportedInRuntime()}
-            terminalAvailable={activeProject !== null}
-            diffAvailable={isServerThread && isGitRepo}
-            filesAvailable={activeProject !== null}
-            pullRequestAvailable={pullRequestSurfaceAvailable}
-            agentsAvailable
+            browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
+            terminalAvailable={workingSurfacesReady && activeProject !== null}
+            diffAvailable={workingSurfacesReady && isServerThread && isGitRepo}
+            filesAvailable={workingSurfacesReady && activeProject !== null}
+            pullRequestAvailable={workingSurfacesReady && pullRequestSurfaceAvailable}
+            agentsAvailable={workingSurfacesReady}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

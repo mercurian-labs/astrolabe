@@ -18,6 +18,7 @@ export function useForkHere(): (input: {
 
   return useCallback(
     async (input) => {
+      if (planId === null) return;
       const forked = await forkLine({ planId, parentCommitId: input.parentCommitId });
       if (forked === null) return;
 

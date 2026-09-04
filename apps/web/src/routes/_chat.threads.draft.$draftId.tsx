@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
-import ChatView from "../components/ChatView";
 import { resolveDraftPromotionNavigationTarget } from "../components/ChatView.logic";
 import { waitForDraftHeroTransition } from "../components/chat/draftHeroTransition";
+import { ThreadSpaceView } from "../components/mercurian/ThreadSpaceChrome";
+import { ThreadSpaceProvider } from "../components/mercurian/ThreadSpaceContext";
 import { SidebarInset } from "../components/ui/sidebar";
 import {
   DraftId,
@@ -12,13 +13,21 @@ import {
   useComposerDraftStore,
 } from "../composerDraftStore";
 import { useThread, useThreadRefs } from "../state/entities";
-import { usePlanForThread } from "../state/mercurian";
+import { useMercurianTree, usePlanForThread } from "../state/mercurian";
 
 function DraftMercurianThreadRouteView() {
   const navigate = useNavigate();
   const { draftId: rawDraftId } = Route.useParams();
   const draftId = DraftId.make(rawDraftId);
   const draftSession = useComposerDraftStore((store) => store.getDraftSession(draftId));
+  const { snapshot: treeSnapshot } = useMercurianTree();
+  const mercurianProject = useMemo(
+    () =>
+      treeSnapshot.projects.find(
+        (project) => project.orchestrationProjectId === draftSession?.projectId,
+      ) ?? null,
+    [draftSession?.projectId, treeSnapshot.projects],
+  );
   const threadRefs = useThreadRefs();
   const inferredThreadRef = draftSession
     ? (threadRefs.find(
@@ -69,15 +78,20 @@ function DraftMercurianThreadRouteView() {
   if (!draftSession) return null;
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-      <ChatView
-        draftId={draftId}
-        environmentId={draftSession.environmentId}
-        threadId={draftSession.threadId}
-        routeKind="draft"
-        forceExpandedMobileComposer
-      />
-    </SidebarInset>
+    <ThreadSpaceProvider
+      value={{
+        planId: null,
+        projectId: mercurianProject?.projectId ?? null,
+        threadId: draftSession.threadId,
+        environmentId: draftSession.environmentId,
+        detail: null,
+        search: {},
+      }}
+    >
+      <SidebarInset className="relative h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+        <ThreadSpaceView routeKind="draft" draftId={draftId} />
+      </SidebarInset>
+    </ThreadSpaceProvider>
   );
 }
 

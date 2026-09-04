@@ -88,7 +88,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   } | null>(null);
 
   useEffect(() => {
-    if (!needsPathText || head === null) return;
+    if (planId === null || !needsPathText || head === null) return;
     let cancelled = false;
     void getPlanTextAt(planId, head).then((result) => {
       if (!cancelled && result !== null) {
@@ -101,7 +101,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   }, [getPlanTextAt, head, needsPathText, planId]);
 
   useEffect(() => {
-    if (!needsPathSpec || head === null) return;
+    if (planId === null || !needsPathSpec || head === null) return;
     let cancelled = false;
     void getSpecAt(planId, head).then((result) => {
       if (!cancelled && result !== null) {
@@ -114,10 +114,12 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   }, [getSpecAt, head, needsPathSpec, planId]);
 
   const backToNow = useCallback(() => {
+    if (planId === null) return;
     void navigateToThreadRoute(router, { kind: "server", threadRef, planId });
   }, [planId, router, threadRef]);
   const selectCheckpoint = useCallback(
     (commitId: MercurianCommitId) => {
+      if (planId === null) return;
       const lineThreadId =
         detail === null
           ? null
@@ -147,16 +149,22 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     [forkHere, graph.byId],
   );
 
-  const artifactText = needsPathText
-    ? pathText?.commitId === head
-      ? pathText.value
-      : null
-    : (detail?.planText ?? null);
-  const artifactSpec = needsPathSpec
-    ? pathSpec?.commitId === head
-      ? pathSpec.value
-      : undefined
-    : detail?.spec;
+  const artifactText =
+    planId === null
+      ? ""
+      : needsPathText
+        ? pathText?.commitId === head
+          ? pathText.value
+          : null
+        : (detail?.planText ?? null);
+  const artifactSpec =
+    planId === null
+      ? null
+      : needsPathSpec
+        ? pathSpec?.commitId === head
+          ? pathSpec.value
+          : undefined
+        : detail?.spec;
   const readOnlyAction = viewingPast ? (
     <Button size="sm" variant="ghost" onClick={backToNow}>
       Back to now

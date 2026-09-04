@@ -3,11 +3,9 @@ import { PlanId } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
-import ChatView from "../components/ChatView";
 import { threadHasStarted } from "../components/ChatView.logic";
-import { useThreadSpaceChrome } from "../components/mercurian/ThreadSpaceChrome";
-import { ThreadSpaceProvider, useThreadSpace } from "../components/mercurian/ThreadSpaceContext";
-import { useThreadSpaceSurfaces } from "../components/mercurian/ThreadSpaceSurfaces";
+import { ThreadSpaceView } from "../components/mercurian/ThreadSpaceChrome";
+import { ThreadSpaceProvider } from "../components/mercurian/ThreadSpaceContext";
 import {
   resolveThreadSpaceRoute,
   resolveThreadSpaceRouteNavigation,
@@ -21,31 +19,7 @@ import { useOpenLine, usePlanDetail, useVisitPlan } from "../state/mercurian";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { resolveThreadRouteRenderState } from "../threadRoutes";
-import { resolveThreadSyncPhase, type ThreadSyncPhase } from "../threadSync";
-
-type ThreadSpaceViewProps = Readonly<{
-  threadSyncPhase: ThreadSyncPhase | null;
-}>;
-
-function ThreadSpaceView({ threadSyncPhase }: ThreadSpaceViewProps) {
-  const { environmentId, threadId } = useThreadSpace();
-  const surfaces = useThreadSpaceSurfaces();
-  const chrome = useThreadSpaceChrome();
-
-  return (
-    <>
-      <ChatView
-        environmentId={environmentId}
-        threadId={threadId}
-        routeKind="server"
-        threadSyncPhase={threadSyncPhase}
-        {...surfaces}
-        {...chrome.chatView}
-      />
-      {chrome.overlays}
-    </>
-  );
-}
+import { resolveThreadSyncPhase } from "../threadSync";
 
 function MercurianThreadRouteView() {
   const navigate = useNavigate();
@@ -119,10 +93,12 @@ function MercurianThreadRouteView() {
   if (threadRef === null) return null;
 
   return (
-    <ThreadSpaceProvider value={{ planId, ...threadRef, detail, search }}>
+    <ThreadSpaceProvider
+      value={{ planId, projectId: detail?.plan.projectId ?? null, ...threadRef, detail, search }}
+    >
       <SidebarInset className="relative h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
         {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
-          <ThreadSpaceView threadSyncPhase={threadSyncPhase} />
+          <ThreadSpaceView routeKind="server" threadSyncPhase={threadSyncPhase} />
         ) : null}
       </SidebarInset>
     </ThreadSpaceProvider>
