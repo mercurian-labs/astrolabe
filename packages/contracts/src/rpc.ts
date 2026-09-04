@@ -92,6 +92,8 @@ import {
   MercurianConfirmMemoryAmendmentInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
+  MercurianEnsureProjectRuntimeInput,
+  MercurianEnsureProjectRuntimeResult,
   MercurianGetPlanTextAtInput,
   MercurianForkLineInput,
   MercurianOpenLineInput,
@@ -1306,6 +1308,19 @@ export const WsMercurianImportPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.importPlan
   ]),
 });
 
+export const WsMercurianEnsureProjectRuntimeRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.ensureProjectRuntime,
+  {
+    payload: MercurianEnsureProjectRuntimeInput,
+    success: MercurianEnsureProjectRuntimeResult,
+    error: Schema.Union([
+      MercurianProjectNotFoundError,
+      MercurianPlanningError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 export const WsMercurianForkLineRpc = Rpc.make(MERCURIAN_WS_METHODS.forkLine, {
   payload: MercurianForkLineInput,
   success: MercurianLineResult,
@@ -1787,6 +1802,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianReadLineUncommittedDiffRpc,
   WsMercurianRecreateLineBranchRpc,
   WsMercurianCreateProjectRpc,
+  WsMercurianEnsureProjectRuntimeRpc,
   WsMercurianForkLineRpc,
   WsMercurianOpenLineRpc,
   WsMercurianImportPlanRpc,

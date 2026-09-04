@@ -38,7 +38,7 @@ import {
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
-import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
@@ -111,7 +111,7 @@ import {
   newProjectId,
 } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { navigateToParkedThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
+import { navigateToThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 import {
   applyWslEnvironmentConfiguration,
@@ -572,6 +572,7 @@ function OpenCommandPaletteDialog(props: {
   readonly clearOpenIntent: () => void;
 }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState("");
@@ -1065,7 +1066,7 @@ function OpenCommandPaletteDialog(props: {
             clientSettings.sidebarThreadSortOrder,
           );
       if (latestThread) {
-        await navigateToParkedThreadRoute({
+        await navigateToThreadRoute(router, {
           kind: "server",
           threadRef: scopeThreadRef(latestThread.environmentId, latestThread.id),
         });
@@ -1217,7 +1218,7 @@ function OpenCommandPaletteDialog(props: {
             : undefined;
         },
         runThread: async (thread) => {
-          await navigateToParkedThreadRoute({
+          await navigateToThreadRoute(router, {
             kind: "server",
             threadRef: scopeThreadRef(thread.environmentId, thread.id),
           });
@@ -1863,7 +1864,7 @@ function OpenCommandPaletteDialog(props: {
           clientSettings.sidebarThreadSortOrder,
         );
         if (latestThread) {
-          await navigateToParkedThreadRoute({
+          await navigateToThreadRoute(router, {
             kind: "server",
             threadRef: scopeThreadRef(latestThread.environmentId, latestThread.id),
           });

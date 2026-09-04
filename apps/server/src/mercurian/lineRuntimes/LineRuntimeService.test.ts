@@ -233,6 +233,19 @@ describe("LineRuntimeService", () => {
     }),
   );
 
+  it.effect("ensureProjectRuntime performs the project lookup without birthing a thread", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      harness.state.orchestrationProjectId = null;
+      const service = yield* serviceFor(harness);
+      const resolved = yield* service.ensureProjectRuntime(projectId);
+      assert.strictEqual(resolved, orchestrationProjectId);
+      assert.strictEqual(harness.state.persistedProjectId, orchestrationProjectId);
+      assert.ok(!harness.state.commands.some(({ type }) => type === "thread.create"));
+      assert.strictEqual(harness.state.claimCount, 0);
+    }),
+  );
+
   it.effect("ensureSlot claims a slot for a line rooted by its first send", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;

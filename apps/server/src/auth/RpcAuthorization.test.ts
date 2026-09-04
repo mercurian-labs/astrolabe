@@ -47,6 +47,9 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.openLine)).toBe(
       AuthOrchestrationOperateScope,
     );
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.ensureProjectRuntime)).toBe(
+      AuthOrchestrationOperateScope,
+    );
   });
 
   it("requires permission to operate on a thread before uploading feedback", () => {

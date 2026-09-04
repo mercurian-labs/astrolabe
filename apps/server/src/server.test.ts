@@ -1301,6 +1301,7 @@ const buildAppUnderTest = (options?: {
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(LineRuntimeService.LineRuntimeService)({
+              ensureProjectRuntime: () => Effect.die("LineRuntimeService not stubbed in this test"),
               ensureThread: () => Effect.die("LineRuntimeService not stubbed in this test"),
               ensureSlot: () => Effect.die("LineRuntimeService not stubbed in this test"),
               ...options?.layers?.lineRuntimeService,
@@ -5171,13 +5172,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("routes Mercurian forkLine and openLine through line thread birth", () =>
+  it.effect("routes Mercurian project and line runtime birth", () =>
     Effect.gen(function* () {
       const inputs: LineRuntimeService.EnsureThreadInput[] = [];
+      const ensuredProjects: MercurianProjectId[] = [];
       let sequence = 0;
       yield* buildAppUnderTest({
         layers: {
           lineRuntimeService: {
+            ensureProjectRuntime: (projectId) =>
+              Effect.sync(() => {
+                ensuredProjects.push(projectId);
+                return ProjectId.make("orchestration-project");
+              }),
             ensureThread: (input) =>
               Effect.sync(() => {
                 inputs.push(input);
@@ -5189,12 +5196,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
 
       const planId = PlanId.make("plan-lines-rpc");
+      const projectId = MercurianProjectId.make("project-runtime-rpc");
       const parentCommitId = MercurianCommitId.make("parent");
       const lineRootCommitId = MercurianCommitId.make("line-root");
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.ensureProjectRuntime]({
+              projectId,
+            });
             const forked = yield* client[MERCURIAN_WS_METHODS.forkLine]({
               planId,
               parentCommitId,
@@ -5203,12 +5214,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               planId,
               lineRootCommitId,
             });
-            return { forked, opened };
+            return { project, forked, opened };
           }),
         ),
       );
 
       assert.deepEqual(result, {
+        project: { orchestrationProjectId: ProjectId.make("orchestration-project") },
         forked: { threadId: ThreadId.make("line-thread-1") },
         opened: { threadId: ThreadId.make("line-thread-2") },
       });
@@ -5216,6 +5228,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         { planId, forkParentCommitId: parentCommitId },
         { planId, lineRootCommitId },
       ]);
+      assert.deepEqual(ensuredProjects, [projectId]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5394,7 +5407,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      const rows = Array.from(snapshots).map((item) => item.snapshot.plans[0]);
+      const snapshotItems = Array.from(snapshots);
+      const rows = snapshotItems.map((item) => item.snapshot.plans[0]);
+      assert.equal(snapshotItems[0]?.snapshot.threadPlanLinks[0]?.threadId, liveShell.id);
+      assert.ok(snapshotItems[0]?.snapshot.threadPlanLinks[0]?.lineRootCommitId !== undefined);
       assert.equal(rows[0]?.isWorking, false);
       assert.equal(rows[0]?.hasPendingInput, false);
       assert.equal(rows[1]?.isWorking, true);

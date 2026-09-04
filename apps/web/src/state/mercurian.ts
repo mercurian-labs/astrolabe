@@ -2,7 +2,9 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
   MercurianCommitId,
+  MercurianEnsureProjectRuntimeInput,
   MercurianImportPlanInput,
+  MercurianOpenLineInput,
   MercurianCancelMemoryAmendmentInput,
   MercurianConfirmMemoryAmendmentInput,
   MercurianSavePlanRevisionInput,
@@ -14,14 +16,17 @@ import type {
   PlanningTreeSnapshot,
   PlanTurnRefusalReason,
   PlanStreamItem,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "./environments";
+import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
 import {
   useEnvironmentBoundCommand,
   useEnvironmentBoundCommandResult,
@@ -63,7 +68,7 @@ const EMPTY_PLAN_ATOM = Atom.make(
   >(false),
 );
 
-const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [] };
+const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [], threadPlanLinks: [] };
 
 function errorMessage<A>(result: AsyncResult.AsyncResult<A, unknown>, fallback: string) {
   if (result._tag !== "Failure") return null;
@@ -89,6 +94,35 @@ export function useMercurianTree(): MercurianTreeState {
     isPending: item === null && environmentId !== null,
     error: errorMessage(result, "Could not load the project tree."),
   };
+}
+
+function readMercurianTreeSnapshot(): PlanningTreeSnapshot {
+  const environmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+  if (environmentId === null) return EMPTY_TREE_SNAPSHOT;
+  const result = appAtomRegistry.get(mercurianPlanning.tree({ environmentId, input: {} }));
+  return Option.getOrNull(AsyncResult.value(result))?.snapshot ?? EMPTY_TREE_SNAPSHOT;
+}
+
+export function threadPlanLinkForThread(
+  threadId: ThreadId,
+  snapshot: PlanningTreeSnapshot = readMercurianTreeSnapshot(),
+) {
+  return snapshot.threadPlanLinks.find((link) => link.threadId === threadId) ?? null;
+}
+
+export function planForThread(
+  threadId: ThreadId,
+  snapshot: PlanningTreeSnapshot = readMercurianTreeSnapshot(),
+): PlanId | null {
+  return threadPlanLinkForThread(threadId, snapshot)?.planId ?? null;
+}
+
+export function usePlanForThread(threadId: ThreadId | null): PlanId | null {
+  const { snapshot } = useMercurianTree();
+  return useMemo(
+    () => (threadId === null ? null : planForThread(threadId, snapshot)),
+    [snapshot, threadId],
+  );
 }
 
 export interface PlanDetailState {
@@ -120,7 +154,8 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const detail = state?.detail ?? null;
   return {
     detail,
-    isPending: detail === null && environmentId !== null && planId !== null,
+    isPending:
+      detail === null && environmentId !== null && planId !== null && result._tag !== "Failure",
     error: errorMessage(result, "Could not load this plan."),
     turnRefusal: state?.turnRefusal ?? null,
     memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,
@@ -130,6 +165,16 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
 export function useCreateMercurianProject() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.createProject);
   return useCallback((name: string) => run({ name }), [run]);
+}
+
+export function useEnsureProjectRuntime() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.ensureProjectRuntime);
+  return useCallback((input: MercurianEnsureProjectRuntimeInput) => run(input), [run]);
+}
+
+export function useOpenLine() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.openLine);
+  return useCallback((input: MercurianOpenLineInput) => run(input), [run]);
 }
 
 /**
@@ -199,7 +244,10 @@ export function useRecreateLineBranch() {
  */
 export function useVisitPlan() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.visitPlan);
-  return useCallback((planId: PlanId) => run({ planId }), [run]);
+  return useCallback(
+    (input: import("@t3tools/contracts").MercurianVisitPlanInput) => run(input),
+    [run],
+  );
 }
 
 /**

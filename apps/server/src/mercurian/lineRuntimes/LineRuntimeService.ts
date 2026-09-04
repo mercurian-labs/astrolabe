@@ -78,6 +78,7 @@ export interface EnsuredLineRuntime {
 }
 
 export type EnsureThreadError = RepositoryNotGitError | LineRuntimeServiceError;
+export type EnsureProjectRuntimeError = RepositoryNotGitError | LineRuntimeServiceError;
 export type EnsureSlotError =
   | RepositoryNotGitError
   | LineRuntimeServiceError
@@ -88,6 +89,9 @@ export type EnsureSlotError =
 export class LineRuntimeService extends Context.Service<
   LineRuntimeService,
   {
+    readonly ensureProjectRuntime: (
+      projectId: import("@t3tools/contracts").MercurianProjectId,
+    ) => Effect.Effect<ProjectId, EnsureProjectRuntimeError>;
     readonly ensureThread: (
       input: EnsureThreadInput,
     ) => Effect.Effect<LineRuntimeRecord, EnsureThreadError>;
@@ -343,6 +347,21 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const ensureProjectRuntime = Effect.fn("LineRuntimeService.ensureProjectRuntime")(function* (
+    projectId: import("@t3tools/contracts").MercurianProjectId,
+  ) {
+    const project = yield* planning.getProject(projectId);
+    const linkedRepositories = yield* linkedRepositoriesFor(projectId);
+    const primaryRepository = linkedRepositories[0];
+    if (
+      primaryRepository === undefined ||
+      linkedRepositories.some((repository) => !repository.hasGit)
+    ) {
+      return yield* new RepositoryNotGitError();
+    }
+    return yield* ensureOrchestrationProject(project, primaryRepository);
+  });
+
   const ensureThread = Effect.fn("LineRuntimeService.ensureThread")(function* (
     input: EnsureThreadInput,
   ) {
@@ -570,6 +589,14 @@ export const make = Effect.gen(function* () {
       : new LineRuntimeServiceError({ operation: "ensureSlot", cause });
 
   return LineRuntimeService.of({
+    ensureProjectRuntime: (projectId) =>
+      ensureProjectRuntime(projectId).pipe(
+        Effect.mapError((cause): EnsureProjectRuntimeError =>
+          isRepositoryNotGitError(cause) || isLineRuntimeServiceError(cause)
+            ? cause
+            : new LineRuntimeServiceError({ operation: "ensureProjectRuntime", cause }),
+        ),
+      ),
     ensureThread: (input) =>
       ensureThread(input).pipe(
         Effect.mapError((cause): EnsureThreadError =>

@@ -36,6 +36,7 @@ export const MERCURIAN_WS_METHODS = {
   subscribePlan: "mercurian.subscribePlan",
   createProject: "mercurian.createProject",
   importPlan: "mercurian.importPlan",
+  ensureProjectRuntime: "mercurian.ensureProjectRuntime",
   forkLine: "mercurian.forkLine",
   openLine: "mercurian.openLine",
   savePlanRevision: "mercurian.savePlanRevision",
@@ -318,6 +319,15 @@ export const PlanTreeRow = Schema.Struct({
   hasPublishedCommits: Schema.Boolean,
 });
 export type PlanTreeRow = typeof PlanTreeRow.Type;
+
+/** Compact routing ownership carried by the tree subscription. */
+export const MercurianThreadPlanLink = Schema.Struct({
+  planId: PlanId,
+  threadId: ThreadId,
+  /** Present for current line runtimes; absent for legacy coding sessions. */
+  lineRootCommitId: Schema.optional(Schema.NullOr(MercurianCommitId)),
+});
+export type MercurianThreadPlanLink = typeof MercurianThreadPlanLink.Type;
 
 /**
  * The commit facts every timeline item carries, whatever kind it is: where it
@@ -638,6 +648,9 @@ export type PlanStreamItem = typeof PlanStreamItem.Type;
 export const PlanningTreeSnapshot = Schema.Struct({
   projects: Schema.Array(MercurianProject),
   plans: Schema.Array(PlanTreeRow),
+  threadPlanLinks: Schema.Array(MercurianThreadPlanLink).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 });
 export type PlanningTreeSnapshot = typeof PlanningTreeSnapshot.Type;
 
@@ -713,6 +726,16 @@ export type MercurianOpenLineInput = typeof MercurianOpenLineInput.Type;
 
 export const MercurianLineResult = Schema.Struct({ threadId: ThreadId });
 export type MercurianLineResult = typeof MercurianLineResult.Type;
+
+export const MercurianEnsureProjectRuntimeInput = Schema.Struct({
+  projectId: MercurianProjectId,
+});
+export type MercurianEnsureProjectRuntimeInput = typeof MercurianEnsureProjectRuntimeInput.Type;
+
+export const MercurianEnsureProjectRuntimeResult = Schema.Struct({
+  orchestrationProjectId: ProjectId,
+});
+export type MercurianEnsureProjectRuntimeResult = typeof MercurianEnsureProjectRuntimeResult.Type;
 
 /**
  * The artifact's whole text after the edit — a revision is a snapshot, not a
@@ -990,6 +1013,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "subscribePlan",
       "createProject",
       "importPlan",
+      "ensureProjectRuntime",
       "forkLine",
       "openLine",
       "savePlanRevision",

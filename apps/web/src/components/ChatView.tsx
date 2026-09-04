@@ -70,7 +70,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
@@ -233,7 +233,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
-import { buildThreadRouteParams, navigateToParkedThreadRoute } from "../threadRoutes";
+import { buildThreadRouteParams, navigateToThreadRoute } from "../threadRoutes";
 import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
@@ -1456,6 +1456,7 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
+  const router = useRouter();
   const citationLocation = useLocation({
     select: (location) => ({
       href: location.href,
@@ -2151,7 +2152,7 @@ function ChatViewContent(props: ChatViewProps) {
           },
         );
         if (routeKind !== "draft" || draftId !== storedDraftSession.draftId) {
-          await navigateToParkedThreadRoute({
+          await navigateToThreadRoute(router, {
             kind: "draft",
             draftId: storedDraftSession.draftId,
           });
@@ -2185,7 +2186,7 @@ function ChatViewContent(props: ChatViewProps) {
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
-      await navigateToParkedThreadRoute({ kind: "draft", draftId: nextDraftId });
+      await navigateToThreadRoute(router, { kind: "draft", draftId: nextDraftId });
       return nextThreadId;
     },
     [
@@ -7080,7 +7081,7 @@ function ChatViewContent(props: ChatViewProps) {
 
     if (failure === null) {
       const navigateResult = await settlePromise(() =>
-        navigateToParkedThreadRoute({
+        navigateToThreadRoute(router, {
           kind: "server",
           threadRef: scopeThreadRef(activeThread.environmentId, nextThreadId),
         }),

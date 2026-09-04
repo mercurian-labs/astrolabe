@@ -218,6 +218,9 @@ describe("resolveCurrentProjectId", () => {
     expect(resolveCurrentProjectId({ pathname: "/plans/plan-1", plans, draftsById })).toBe(
       "project-a",
     );
+    expect(resolveCurrentProjectId({ pathname: "/threads/plan-1", plans, draftsById })).toBe(
+      "project-a",
+    );
     expect(resolveCurrentProjectId({ pathname: "/plans/plan-1/timeline", plans, draftsById })).toBe(
       "project-a",
     );

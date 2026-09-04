@@ -35,7 +35,10 @@ export function resolveTreeSelection(pathname: string): TreeSelection {
   const segments = segmentsOf(pathname);
   const [first, second] = segments;
   return {
-    activePlanId: first === "plans" && second !== undefined && second !== "draft" ? second : null,
+    activePlanId:
+      (first === "plans" || first === "threads") && second !== undefined && second !== "draft"
+        ? second
+        : null,
     activeSessionThreadId: first === "sessions" && second !== undefined ? second : null,
     isRepositoriesActive: first === "repositories",
     isSettingsActive: first === "settings",

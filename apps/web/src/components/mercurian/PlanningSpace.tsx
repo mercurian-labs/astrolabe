@@ -281,7 +281,7 @@ export function PlanningSpace({ planId }: { readonly planId: PlanId }) {
   const planUpdatedAt = detail?.plan.updatedAt;
   useEffect(() => {
     if (planUpdatedAt === undefined) return;
-    void visitPlan(planId);
+    void visitPlan({ planId });
   }, [planId, planUpdatedAt, visitPlan]);
 
   /**

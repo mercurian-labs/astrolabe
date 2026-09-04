@@ -1703,6 +1703,9 @@ const makeWsRpcLayer = (
         const lineRuntimes = (yield* Effect.forEach(snapshot.plans, (plan) =>
           lineRuntimeStore.listByPlan(plan.planId),
         )).flat();
+        const legacySessions = (yield* Effect.forEach(snapshot.plans, (plan) =>
+          legacySessionStore.listByPlan(plan.planId),
+        )).flat();
         const runtimesWithLiveStatus = yield* Effect.forEach(lineRuntimes, (runtime) =>
           projectionSnapshotQuery.getThreadShellById(runtime.threadId).pipe(
             Effect.map(
@@ -1736,7 +1739,17 @@ const makeWsRpcLayer = (
             composePlanRowStatus(composedStatus.get(planId), liveStatuses),
           );
         }
-        return toWireTreeSnapshot(snapshot, composedStatus);
+        return toWireTreeSnapshot(snapshot, composedStatus, [
+          ...lineRuntimes.map((runtime) => ({
+            planId: runtime.planId,
+            threadId: runtime.threadId,
+            lineRootCommitId: runtime.lineRootCommitId,
+          })),
+          ...legacySessions.map((session) => ({
+            planId: session.planId,
+            threadId: session.threadId,
+          })),
+        ]);
       }).pipe(
         Effect.tapError((cause) =>
           Effect.logError("mercurian planning tree snapshot load failed", { cause }),
@@ -2420,6 +2433,17 @@ const makeWsRpcLayer = (
                 isMercurianProjectNotFoundError(cause)
                   ? cause
                   : new MercurianPlanningError({ operation: "importPlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.ensureProjectRuntime]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.ensureProjectRuntime,
+            lineRuntimeService.ensureProjectRuntime(input.projectId).pipe(
+              Effect.map((orchestrationProjectId) => ({ orchestrationProjectId })),
+              Effect.mapError(
+                (cause) => new MercurianPlanningError({ operation: "ensureProjectRuntime", cause }),
               ),
             ),
             { "rpc.aggregate": "mercurian" },

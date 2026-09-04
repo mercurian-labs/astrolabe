@@ -98,9 +98,9 @@ export function resolveCurrentProjectId(input: {
 }): string | null {
   const segments = input.pathname.split("/").filter((segment) => segment.length > 0);
   const [first, second, third] = segments;
-  if (first !== "plans" || second === undefined) return null;
+  if ((first !== "plans" && first !== "threads") || second === undefined) return null;
 
-  if (second === "draft") {
+  if (first === "plans" && second === "draft") {
     if (third === undefined) return null;
     return input.draftsById[decodeURIComponent(third)]?.projectId ?? null;
   }

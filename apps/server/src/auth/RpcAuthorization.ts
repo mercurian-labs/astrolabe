@@ -48,6 +48,7 @@ export const RPC_REQUIRED_SCOPES = {
   // Importing an issue creates a plan, so it is an operation on the same
   // footing as creating one from a blank draft.
   [MERCURIAN_WS_METHODS.importPlan]: AuthOrchestrationOperateScope,
+  [MERCURIAN_WS_METHODS.ensureProjectRuntime]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.forkLine]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.openLine]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,

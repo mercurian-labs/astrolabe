@@ -58,6 +58,11 @@ export function createMercurianPlanningAtoms<R, E>(
       tag: MERCURIAN_WS_METHODS.importPlan,
       scheduler: writeScheduler,
     }),
+    ensureProjectRuntime: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:ensure-project-runtime",
+      tag: MERCURIAN_WS_METHODS.ensureProjectRuntime,
+      scheduler: writeScheduler,
+    }),
     forkLine: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:fork-line",
       tag: MERCURIAN_WS_METHODS.forkLine,

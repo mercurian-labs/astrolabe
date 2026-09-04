@@ -222,7 +222,9 @@ export const composePlanRowStatus = (
 export const toWireTreeSnapshot = (
   snapshot: PlanningTreeSnapshot,
   statusByPlan?: ReadonlyMap<string, PlanRowStatus>,
+  threadPlanLinks: Contracts.PlanningTreeSnapshot["threadPlanLinks"] = [],
 ): Contracts.PlanningTreeSnapshot => ({
   projects: snapshot.projects.map(toWireProject),
   plans: snapshot.plans.map((plan) => toWirePlanTreeRow(plan, statusByPlan?.get(plan.planId))),
+  threadPlanLinks,
 });

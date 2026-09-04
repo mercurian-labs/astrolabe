@@ -43,6 +43,7 @@ import {
 import { isCommandPaletteOpen, openCommandPalette } from "../../commandPaletteBus";
 import { isElectron } from "../../env";
 import { usePlanLifecycleActions } from "../../hooks/usePlanLifecycleActions";
+import { useNewMercurianThreadHandler } from "../../hooks/useHandleNewMercurianThread";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -51,7 +52,7 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../../keybindings";
 import { readLocalApi } from "../../localApi";
-import { cn, randomUUID } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import { usePlanDraftStore, type PlanDraft } from "../../planDraftStore";
 import { useProjectScopeStore } from "../../projectScopeStore";
 import { useShortcutModifierState } from "../../shortcutModifierState";
@@ -323,10 +324,9 @@ function PlanListHeader(props: {
   readonly onManageProject: (projectId: MercurianProjectId) => void;
   readonly onNewProject: () => void;
 }) {
-  const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
+  const newMercurianThread = useNewMercurianThreadHandler();
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
   const searchShortcutLabel = shortcutLabelForCommand(keybindings, "commandPalette.toggle");
   const newPlanShortcutLabel = shortcutLabelForCommand(keybindings, "plan.new");
@@ -334,10 +334,10 @@ function PlanListHeader(props: {
   const startPlanInProject = useCallback(
     (projectId: string) => {
       if (isMobile) setOpenMobile(false);
-      const draft = openDraftForProject(projectId, randomUUID(), new Date().toISOString());
-      void navigate({ to: "/plans/draft/$draftId", params: { draftId: draft.draftId } });
+      const project = props.projects.find((candidate) => candidate.projectId === projectId);
+      if (project !== undefined) void newMercurianThread(project);
     },
-    [isMobile, navigate, openDraftForProject, setOpenMobile],
+    [isMobile, newMercurianThread, props.projects, setOpenMobile],
   );
 
   const handleNewPlan = useCallback(() => {
@@ -610,7 +610,7 @@ const PlanCard = memo(function PlanCard(props: {
   const cardStatus = resolvePlanCardStatus(props.plan);
   const items = useMemo(() => buildPlanRowMenuItems(props.plan), [props.plan]);
   const activate = useCallback(() => {
-    void navigate({ to: "/plans/$planId", params: { planId: props.plan.planId } });
+    void navigate({ to: "/threads/$planId", params: { planId: props.plan.planId } });
   }, [navigate, props.plan.planId]);
 
   const runAction = useCallback(
@@ -857,7 +857,7 @@ const ArchivedPlanRow = memo(function ArchivedPlanRow(props: {
     [props.plan],
   );
   const activate = useCallback(() => {
-    void navigate({ to: "/plans/$planId", params: { planId: props.plan.planId } });
+    void navigate({ to: "/threads/$planId", params: { planId: props.plan.planId } });
   }, [navigate, props.plan.planId]);
   const runAction = useCallback(
     async (action: ArchivedPlanRowAction) => {
@@ -1048,7 +1048,7 @@ function useTreeJumpShortcuts(input: {
         if (planId === null) return;
         event.preventDefault();
         event.stopPropagation();
-        void navigate({ to: "/plans/$planId", params: { planId } });
+        void navigate({ to: "/threads/$planId", params: { planId } });
       };
       const direction = threadTraversalDirectionFromCommand(command);
       if (direction !== null) {

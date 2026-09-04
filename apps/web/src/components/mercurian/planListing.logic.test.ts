@@ -19,6 +19,7 @@ describe("resolveTreeSelection", () => {
   it("selects a plan and keeps it selected on its subpages", () => {
     expect(resolveTreeSelection("/plans/plan-1").activePlanId).toBe("plan-1");
     expect(resolveTreeSelection("/plans/plan-1/anything/deeper").activePlanId).toBe("plan-1");
+    expect(resolveTreeSelection("/threads/plan-1").activePlanId).toBe("plan-1");
   });
 
   it("selects nothing for an unsent draft", () => {

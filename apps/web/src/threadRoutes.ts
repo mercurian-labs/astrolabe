@@ -1,6 +1,8 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
+import type { AppRouter } from "./router";
+import { planForThread } from "./state/mercurian";
 
 export type ThreadRouteTarget =
   | {
@@ -55,14 +57,35 @@ export function buildDraftThreadRouteParams(draftId: DraftId): {
   return { draftId };
 }
 
-/**
- * The thread routes left the app with the app-shell reshaping: navigation is
- * the project tree now, and the thread surfaces are parked in place until the
- * coding-session work returns to them. Every parked navigation goes through
- * here, so it is inert and greppable rather than silently broken.
- */
-export function navigateToParkedThreadRoute(_target: ThreadRouteTarget): Promise<void> {
-  return Promise.resolve();
+export function navigateToThreadRoute(
+  router: Pick<AppRouter, "navigate">,
+  target: ThreadRouteTarget,
+  options?: { readonly replace?: boolean },
+): Promise<void> {
+  const historyOptions = options?.replace === undefined ? {} : { replace: options.replace };
+  if (target.kind === "draft") {
+    return router.navigate({
+      to: "/threads/draft/$draftId",
+      params: buildDraftThreadRouteParams(target.draftId),
+      ...historyOptions,
+    });
+  }
+
+  const planId = planForThread(target.threadRef.threadId);
+  if (planId !== null) {
+    return router.navigate({
+      to: "/threads/$planId",
+      params: { planId },
+      search: { line: target.threadRef.threadId },
+      ...historyOptions,
+    });
+  }
+
+  return router.navigate({
+    to: "/$environmentId/$threadId",
+    params: buildThreadRouteParams(target.threadRef),
+    ...historyOptions,
+  });
 }
 
 export function resolveThreadRouteRef(
