@@ -9,7 +9,6 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
   MercurianProjectId,
-  MercurianRepositoryId,
   PlanId,
   PlanTurnId,
   ProviderDriverKind,
@@ -18,7 +17,8 @@ import {
 } from "@t3tools/contracts";
 
 import * as CommitStore from "../commitTree/CommitStore.ts";
-import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
+import * as LegacySessionStore from "../lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "../lineRuntimes/LineRuntimeStore.ts";
 import * as Config from "../../config.ts";
 import * as ProcessRunner from "../../processRunner.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
@@ -29,7 +29,8 @@ import * as PlanTurnRegistry from "./PlanTurnRegistry.ts";
 
 const layer = it.layer(
   PlanningStore.layer.pipe(
-    Layer.provideMerge(CodingSessionStore.layer),
+    Layer.provideMerge(LegacySessionStore.layer),
+    Layer.provideMerge(LineRuntimeStore.layer),
     Layer.provideMerge(RepositoryStore.layer),
     Layer.provideMerge(PlanTurnRegistry.layer),
     Layer.provideMerge(CommitStore.layer),
@@ -2509,86 +2510,6 @@ layer("PlanningStore", (it) => {
       });
       assert.strictEqual(again.outcome, "created");
       assert.notStrictEqual(again.detail.plan.planId, first.detail.plan.planId);
-    }),
-  );
-
-  it.effect("lands coding-session leaves and keyed rows as one guarded transaction", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const sessions = yield* CodingSessionStore.CodingSessionStore;
-      const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
-      const sql = yield* SqlClient.SqlClient;
-      const created = yield* seedPlan("2026-08-09T02:00:00.000Z");
-      const root = created.timeline[0]!.commitId;
-      const revision = yield* store.savePlanRevision({
-        planId: created.plan.planId,
-        parentCommitId: root,
-        text: "# Implement this exact revision",
-        createdAt: at("2026-08-09T02:01:00.000Z"),
-      });
-      const repositoryId = MercurianRepositoryId.make("repository-session");
-
-      const append = (thread: string, minute: string) =>
-        store.appendCodingSession({
-          planId: created.plan.planId,
-          parentCommitId: revision.commitId,
-          threadId: ThreadId.make(thread),
-          branch: `mercurian/session-${thread}`,
-          worktreePath: `/tmp/${thread}`,
-          homeRepositoryId: repositoryId,
-          repositoryIds: [repositoryId],
-          unreachableRepositories: [],
-          startedAt: at(`2026-08-09T02:${minute}:00.000Z`),
-        });
-
-      const first = yield* append("thread-one", "03");
-      const second = yield* append("thread-two", "04");
-      assert.deepStrictEqual(first.parents, [revision.commitId]);
-      assert.deepStrictEqual(second.parents, [revision.commitId]);
-      assert.strictEqual(first.planRevisionCommitId, revision.commitId);
-      assert.strictEqual(first.repositoryId, undefined);
-      assert.strictEqual(first.repositoryName, undefined);
-
-      const snapshot = yield* store.getPlanSnapshot({ planId: created.plan.planId });
-      assert.strictEqual(snapshot.planText, "# Implement this exact revision");
-      assert.strictEqual(snapshot.codingSessions.length, 2);
-      assert.strictEqual(
-        snapshot.timeline.filter((item) => item._tag === "coding-session").length,
-        2,
-      );
-      const events = yield* store.listTimelineSince({
-        planId: created.plan.planId,
-        afterSequence: 0,
-      });
-      assert.ok(
-        events
-          .filter((event) => event.item._tag === "coding-session")
-          .every((event) => event.planText === undefined),
-      );
-
-      const commitsBeforeFailure = yield* sql<{
-        readonly count: number;
-      }>`SELECT COUNT(*) AS count FROM commits`;
-      yield* append("thread-one", "05").pipe(Effect.flip);
-      const commitsAfterFailure = yield* sql<{
-        readonly count: number;
-      }>`SELECT COUNT(*) AS count FROM commits`;
-      assert.strictEqual(commitsAfterFailure[0]?.count, commitsBeforeFailure[0]?.count);
-      assert.strictEqual((yield* sessions.listForPlan(created.plan.planId)).length, 2);
-
-      yield* registry.open({
-        planId: created.plan.planId,
-        turnId: PlanTurnId.make("active-session-refusal"),
-        threadId: ThreadId.make("planning-thread"),
-        parentCommitId: revision.commitId,
-        tipCommitId: revision.commitId,
-      });
-      const refused = yield* append("thread-three", "06").pipe(Effect.flip);
-      assert.strictEqual(refused._tag, "PlanTurnActiveError");
-      yield* registry.close(created.plan.planId, PlanTurnId.make("active-session-refusal"));
-
-      yield* store.deletePlan({ planId: created.plan.planId });
-      assert.deepStrictEqual(yield* sessions.listForPlan(created.plan.planId), []);
     }),
   );
 

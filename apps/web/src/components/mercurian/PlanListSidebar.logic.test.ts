@@ -200,6 +200,10 @@ describe("resolveSidebarSelection", () => {
       activePlanId: "plan-1",
       activeDraftId: null,
     });
+    expect(resolveSidebarSelection("/threads/plan-1")).toMatchObject({
+      activePlanId: "plan-1",
+      activeDraftId: null,
+    });
   });
 
   it("selects draft routes without selecting a plan", () => {

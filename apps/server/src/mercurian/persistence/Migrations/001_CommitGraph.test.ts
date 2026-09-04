@@ -15,7 +15,7 @@ layer("001_CommitGraph", (it) => {
   it.effect("keeps the migration manifest and commit kinds at the pre-derived surface", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.length, 16);
+      assert.strictEqual(migrationEntries.length, 18);
       yield* runMigrations();
 
       const rows = yield* sql<{ readonly sql: string | null }>`

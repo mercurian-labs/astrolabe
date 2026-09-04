@@ -1,13 +1,13 @@
 import { CommandId, EventId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { codingSessionBranchDrift } from "./CodingSessionRecordReactor.ts";
+import { lineRuntimeBranchDrift } from "./LineRuntimeRecordReactor.ts";
 
-describe("CodingSessionRecordReactor", () => {
+describe("LineRuntimeRecordReactor", () => {
   it("projects branch drift from thread metadata events", () => {
     const threadId = ThreadId.make("thread");
     expect(
-      codingSessionBranchDrift({
+      lineRuntimeBranchDrift({
         eventId: EventId.make("event"),
         sequence: 1,
         aggregateKind: "thread",
@@ -23,7 +23,7 @@ describe("CodingSessionRecordReactor", () => {
   it("ignores unrelated events and metadata updates without a branch", () => {
     const projectId = ProjectId.make("project");
     expect(
-      codingSessionBranchDrift({
+      lineRuntimeBranchDrift({
         eventId: EventId.make("event"),
         sequence: 1,
         aggregateKind: "project",

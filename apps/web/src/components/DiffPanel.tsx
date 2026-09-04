@@ -6,7 +6,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import { PlanId, type ScopedThreadRef, type TurnId } from "@t3tools/contracts";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -80,7 +80,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
-import { useMercurianTree } from "../state/mercurian";
+import { usePlanDetail } from "../state/mercurian";
 import { lineUncommittedDiff } from "../state/mercurianDiff";
 import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
@@ -142,12 +142,18 @@ export default function DiffPanel({
   const activeThreadRef = threadRef ?? routeThreadRef;
   const activeThreadId = activeThreadRef?.threadId ?? null;
   const activeThread = useThread(activeThreadRef);
-  const mercurianTree = useMercurianTree();
+  const activePlanId = useParams({
+    strict: false,
+    select: (params) =>
+      "planId" in params && typeof params.planId === "string" ? PlanId.make(params.planId) : null,
+  });
+  const { detail: activePlanDetail } = usePlanDetail(activePlanId);
   const isMercurianCodingSession =
     activeThreadId !== null &&
-    mercurianTree.snapshot.plans.some((plan) =>
-      plan.codingSessions.some((session) => session.threadId === activeThreadId),
-    );
+    (activePlanDetail?.lineRuntimes.some((runtime) => runtime.threadId === activeThreadId) ===
+      true ||
+      activePlanDetail?.codingSessions.some((session) => session.threadId === activeThreadId) ===
+        true);
   const activeProjectId = activeThread?.projectId ?? null;
   const activeProject = useProject(
     activeThread && activeProjectId

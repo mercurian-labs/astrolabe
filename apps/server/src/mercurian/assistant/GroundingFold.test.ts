@@ -88,9 +88,9 @@ describe("foldGroundingEvent", () => {
     expect(folded?.item.label).toBe("src/ws.ts");
   });
 
-  it("drops work-shaped items that cannot occur under the approval policy", () => {
-    expect(foldGroundingEvent(item("command_execution", "npm test"))).toBeNull();
-    expect(foldGroundingEvent(item("file_change", "src/ws.ts"))).toBeNull();
+  it("folds command executions and file changes as work-shaped grounding", () => {
+    expect(foldGroundingEvent(item("command_execution", "npm test"))?.item.kind).toBe("command");
+    expect(foldGroundingEvent(item("file_change", "src/ws.ts"))?.item.kind).toBe("edit");
   });
 
   it("drops non-tool lifecycle items and unrelated events", () => {

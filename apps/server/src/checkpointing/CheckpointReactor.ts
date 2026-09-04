@@ -26,33 +26,28 @@ import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 
-import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
+import { parseTurnDiffFilesFromUnifiedDiff } from "./Diffs.ts";
+import { checkpointRefForThreadTurn, chainParentRef, resolveThreadWorkspaceCwd } from "./Utils.ts";
+import * as CheckpointStore from "./CheckpointStore.ts";
+import { ProviderService } from "../provider/Services/ProviderService.ts";
 import {
-  checkpointRefForThreadTurn,
-  chainParentRef,
-  resolveThreadWorkspaceCwd,
-} from "../../checkpointing/Utils.ts";
-import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
-import { ProviderService } from "../../provider/Services/ProviderService.ts";
-import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
-import { forkParked } from "../../serverActivation.ts";
-import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
-import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
-import { isGitRepository } from "../../git/Utils.ts";
-import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
-import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
-import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
-import { CodingSessionStore } from "../../mercurian/codingSessions/CodingSessionStore.ts";
-import type { CodingSessionRecord } from "../../mercurian/codingSessions/schema.ts";
-import { RepositoryStore } from "../../mercurian/repositories/RepositoryStore.ts";
-import { SlotStore } from "../../mercurian/worktreeSlots/SlotStore.ts";
-import { SlotRegistry } from "../../mercurian/worktreeSlots/SlotRegistry.ts";
-import {
-  lineExtraSnapshotRef,
-  SnapshotChain,
-} from "../../mercurian/worktreeSlots/SnapshotChain.ts";
-import type { WorktreeSlot } from "../../mercurian/worktreeSlots/schema.ts";
+  CheckpointReactor,
+  type CheckpointReactorShape,
+} from "../orchestration/Services/CheckpointReactor.ts";
+import { forkParked } from "../serverActivation.ts";
+import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { RuntimeReceiptBus } from "../orchestration/Services/RuntimeReceiptBus.ts";
+import { isGitRepository } from "../git/Utils.ts";
+import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
+import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
+import { GitVcsDriver } from "../vcs/GitVcsDriver.ts";
+import { ThreadLineService, type ThreadLineRecord } from "./ThreadLineService.ts";
+import { RepositoryStore } from "../mercurian/repositories/RepositoryStore.ts";
+import { SlotStore } from "../mercurian/worktreeSlots/SlotStore.ts";
+import { SlotRegistry } from "../mercurian/worktreeSlots/SlotRegistry.ts";
+import { lineExtraSnapshotRef, SnapshotChain } from "../mercurian/worktreeSlots/SnapshotChain.ts";
+import type { WorktreeSlot } from "../mercurian/worktreeSlots/schema.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -104,7 +99,7 @@ const make = Effect.gen(function* () {
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const gitDriver = yield* GitVcsDriver;
-  const codingSessions = yield* CodingSessionStore;
+  const threadLines = yield* ThreadLineService;
   const repositories = yield* RepositoryStore;
   const slots = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
@@ -136,7 +131,7 @@ const make = Effect.gen(function* () {
       branch: standing.branch,
     });
     if (input.home) {
-      yield* codingSessions.updateBranch(input.threadId, standing.branch);
+      yield* threadLines.updateBranch(input.threadId, standing.branch);
       yield* orchestrationEngine.dispatch({
         type: "thread.meta.update",
         commandId: yield* serverCommandId("line-branch-renamed"),
@@ -234,11 +229,12 @@ const make = Effect.gen(function* () {
   // the slot this thread holds a lease on when several qualify.
   const slotForSession = Effect.fn("CheckpointReactor.slotForSession")(function* (
     threadId: ThreadId,
-    session: CodingSessionRecord,
+    session: ThreadLineRecord,
   ) {
     const repositoryIds = new Set<string>(
-      session.repositories?.map((repository) => repository.repositoryId) ??
-        (session.repositoryId == null ? [] : [session.repositoryId]),
+      session.repositories
+        .map((repository) => repository.repositoryId)
+        .concat(session.homeRepositoryId),
     );
     const candidates = (yield* slots.listAll).filter((candidate) =>
       candidate.members.some(
@@ -261,7 +257,7 @@ const make = Effect.gen(function* () {
   const slotForCodingSession = Effect.fn("CheckpointReactor.slotForCodingSession")(function* (
     threadId: ThreadId,
   ) {
-    const session = yield* codingSessions.getByThreadId(threadId);
+    const session = yield* threadLines.resolve(threadId);
     if (Option.isNone(session)) return Option.none<WorktreeSlot>();
     return yield* slotForSession(threadId, session.value);
   });
@@ -279,11 +275,11 @@ const make = Effect.gen(function* () {
   // session's own rows, falling back to the registry for sessions recorded
   // before they existed.
   const sessionMembers = Effect.fn("CheckpointReactor.sessionMembers")(function* (
-    session: CodingSessionRecord,
+    session: ThreadLineRecord,
     slot: WorktreeSlot,
     homeCwd: string,
   ) {
-    const sessionRepositories = session.repositories ?? [];
+    const sessionRepositories = session.repositories;
     const registered = slot.members.some(
       (member) =>
         !sessionRepositories.some((repository) => repository.repositoryId === member.repositoryId),
@@ -301,7 +297,7 @@ const make = Effect.gen(function* () {
       lineBranch: member.currentBranch ?? session.branch,
     }));
     const homeIndex = [
-      members.findIndex((member) => member.repositoryId === session.repositoryId),
+      members.findIndex((member) => member.repositoryId === session.homeRepositoryId),
       members.findIndex((member) => member.cwd === homeCwd),
       0,
     ].find((index) => index >= 0)!;
@@ -362,7 +358,7 @@ const make = Effect.gen(function* () {
         departedRef: standing.departedRef,
         branchMovement,
       };
-      yield* codingSessions.recordRepositorySnapshot(input.threadId, member.repositoryId, facts);
+      yield* threadLines.recordRepositorySnapshot(input.threadId, member.repositoryId, facts);
       return { member, facts, previousOid: snapshot.previousOid };
     },
   );
@@ -613,7 +609,7 @@ const make = Effect.gen(function* () {
       readonly assistantMessageId: MessageId | undefined;
       readonly createdAt: string;
     }) {
-      const session = yield* codingSessions.getByThreadId(input.threadId);
+      const session = yield* threadLines.resolve(input.threadId);
       const slot = Option.isSome(session)
         ? Option.getOrUndefined(yield* slotForSession(input.threadId, session.value))
         : undefined;
@@ -641,7 +637,7 @@ const make = Effect.gen(function* () {
               const departedRef =
                 results.find((result) => result.facts.departedRef !== null)?.facts.departedRef ??
                 null;
-              yield* codingSessions.recordSnapshot(input.threadId, {
+              yield* threadLines.recordSnapshot(input.threadId, {
                 ...home.facts,
                 departedRef,
               });
@@ -875,7 +871,7 @@ const make = Effect.gen(function* () {
       readonly cwd: string;
       readonly createdAt: string;
     }) {
-      const session = yield* codingSessions.getByThreadId(input.threadId);
+      const session = yield* threadLines.resolve(input.threadId);
       if (Option.isNone(session)) return;
       const slot = Option.getOrUndefined(yield* slotForSession(input.threadId, session.value));
       if (slot?.currentLineRootCommitId === null || slot === undefined) return;
@@ -902,7 +898,7 @@ const make = Effect.gen(function* () {
       );
       const home = results.find((result) => result.member.home);
       if (home !== undefined) {
-        yield* codingSessions.recordSnapshot(input.threadId, {
+        yield* threadLines.recordSnapshot(input.threadId, {
           ...home.facts,
           departedRef:
             results.find((result) => result.facts.departedRef !== null)?.facts.departedRef ?? null,
@@ -1026,7 +1022,7 @@ const make = Effect.gen(function* () {
         }).pipe(Effect.as(null)),
       ),
     );
-    if (local !== null && Option.isNone(yield* codingSessions.getByThreadId(event.threadId))) {
+    if (local !== null && Option.isNone(yield* threadLines.resolve(event.threadId))) {
       yield* followWorktreeBranchDrift({
         threadId: event.threadId,
         cwd: sessionRuntime.value.cwd,

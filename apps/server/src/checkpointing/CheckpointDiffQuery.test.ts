@@ -20,12 +20,16 @@ import { chainParentRef, checkpointRefForThreadTurn } from "./Utils.ts";
 import * as CheckpointDiffQuery from "./CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 import { CheckpointRefUnavailableError, CheckpointThreadNotFoundError } from "./Errors.ts";
-import * as CodingSessionStore from "../mercurian/codingSessions/CodingSessionStore.ts";
+import * as LegacySessionStore from "../mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "../mercurian/lineRuntimes/LineRuntimeStore.ts";
 import * as LineBranchStore from "../mercurian/commitTree/LineBranchStore.ts";
 import * as RepositoryStore from "../mercurian/repositories/RepositoryStore.ts";
 
 const lineDiffDependencies = Layer.mergeAll(
-  Layer.mock(CodingSessionStore.CodingSessionStore)({
+  Layer.mock(LegacySessionStore.LegacySessionStore)({
+    getByThreadId: () => Effect.succeed(Option.none()),
+  }),
+  Layer.mock(LineRuntimeStore.LineRuntimeStore)({
     getByThreadId: () => Effect.succeed(Option.none()),
   }),
   Layer.mock(LineBranchStore.LineBranchStore)({ listAll: Effect.succeed([]) }),
@@ -74,9 +78,14 @@ describe("CheckpointDiffQuery.layer", () => {
         readonly ignoreWhitespace: boolean;
       }> = [];
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(
+          Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+            getByThreadId: () => Effect.succeed(Option.none()),
+          }),
+        ),
         Layer.provideMerge(Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({})),
         Layer.provideMerge(
-          Layer.mock(CodingSessionStore.CodingSessionStore)({
+          Layer.mock(LegacySessionStore.LegacySessionStore)({
             getByThreadId: () =>
               Effect.succeed(
                 Option.some({
@@ -168,9 +177,14 @@ describe("CheckpointDiffQuery.layer", () => {
       const threadId = ThreadId.make("thread-missing-line");
       const repositoryId = MercurianRepositoryId.make("repository-missing-line");
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(
+          Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+            getByThreadId: () => Effect.succeed(Option.none()),
+          }),
+        ),
         Layer.provideMerge(Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({})),
         Layer.provideMerge(
-          Layer.mock(CodingSessionStore.CodingSessionStore)({
+          Layer.mock(LegacySessionStore.LegacySessionStore)({
             getByThreadId: () =>
               Effect.succeed(
                 Option.some({
@@ -258,6 +272,11 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(
+          Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+            getByThreadId: () => Effect.succeed(Option.none()),
+          }),
+        ),
         Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
@@ -457,7 +476,12 @@ describe("CheckpointDiffQuery.layer", () => {
       });
       const layer = CheckpointDiffQuery.layer.pipe(
         Layer.provideMerge(
-          Layer.mock(CodingSessionStore.CodingSessionStore)({
+          Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+            getByThreadId: () => Effect.succeed(Option.none()),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.mock(LegacySessionStore.LegacySessionStore)({
             getByThreadId: () => Effect.succeed(Option.none()),
           }),
         ),

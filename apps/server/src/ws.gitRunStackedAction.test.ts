@@ -7,25 +7,21 @@ import * as Option from "effect/Option";
 import { attachCreatedPullRequestToCodingSession } from "./ws.ts";
 
 const sessionRecord = {
-  commitId: MercurianCommitId.make("session-pr-commit"),
+  lineRootCommitId: MercurianCommitId.make("session-pr-commit"),
   planId: PlanId.make("session-pr-plan"),
-  repositoryId: MercurianRepositoryId.make("session-pr-repository"),
+  homeRepositoryId: MercurianRepositoryId.make("session-pr-repository"),
   threadId: ThreadId.make("thread-session-pr"),
   branch: "feature/session-pr",
   worktreePath: "/tmp/session-pr",
-  baseRef: "main",
-  startedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
-  endedAt: null,
-  outcome: null,
-  prUrl: null,
-  settledCommitOid: null,
-  partial: false,
   snapshotOid: null,
   snapshotKind: null,
   departedRef: null,
   branchMovement: null,
   lineBranchMissingOid: null,
   unreachableRepositories: [],
+  createdAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+  updatedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+  repositories: [],
 } as const;
 
 const createdResult = {
@@ -63,6 +59,7 @@ it.effect("attaches a newly-created PR to the session repository resolved by cwd
         getByBranch: () => Effect.succeed(Option.some(sessionRecord)),
         attachPullRequest: (input) => Effect.sync(() => attached.push(input)),
       },
+      { getByBranch: () => Effect.succeed(Option.none()) },
       createdResult,
       sessionRecord.branch,
       "/tmp/member-b",
@@ -97,6 +94,7 @@ it.effect("leaves an upstream thread with no coding-session row untouched", () =
         getByBranch: () => Effect.succeed(Option.none()),
         attachPullRequest: () => Effect.sync(() => attachCalls++),
       },
+      { getByBranch: () => Effect.succeed(Option.none()) },
       createdResult,
       "feature/upstream",
       "/tmp/upstream",
@@ -104,5 +102,43 @@ it.effect("leaves an upstream thread with no coding-session row untouched", () =
       [],
     );
     assert.strictEqual(attachCalls, 0);
+  }),
+);
+
+it.effect("keeps attaching pull requests for a legacy coding-session thread", () =>
+  Effect.gen(function* () {
+    const attached: Array<{
+      readonly threadId: ThreadId;
+      readonly repositoryId: MercurianRepositoryId;
+      readonly prUrl: string;
+    }> = [];
+    const legacyThreadId = ThreadId.make("legacy-session-thread");
+    yield* attachCreatedPullRequestToCodingSession(
+      {
+        getByBranch: () => Effect.succeed(Option.none()),
+        attachPullRequest: (input) => Effect.sync(() => attached.push(input)),
+      },
+      {
+        getByBranch: () =>
+          Effect.succeed(
+            Option.some({
+              threadId: legacyThreadId,
+              repositoryId: MercurianRepositoryId.make("legacy-repository"),
+            } as never),
+          ),
+      },
+      createdResult,
+      sessionRecord.branch,
+      "/tmp/legacy-session",
+      () => Effect.succeed(Option.none()),
+      [],
+    );
+    assert.deepStrictEqual(attached, [
+      {
+        threadId: legacyThreadId,
+        repositoryId: MercurianRepositoryId.make("legacy-repository"),
+        prUrl: "https://example.com/pr/119",
+      },
+    ]);
   }),
 );

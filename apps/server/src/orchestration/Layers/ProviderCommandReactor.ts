@@ -4,6 +4,7 @@ import {
   EventId,
   type ModelSelection,
   type OrchestrationEvent,
+  type OrchestrationMessage,
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
@@ -38,6 +39,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+import { TurnPreparation, type PreparedTurn } from "../Services/TurnPreparation.ts";
 import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
@@ -311,6 +313,7 @@ const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerAuthService = yield* ProviderAuthService;
   const providerService = yield* ProviderService;
+  const turnPreparation = yield* TurnPreparation;
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -527,6 +530,7 @@ const make = Effect.gen(function* () {
     options?: {
       readonly modelSelection?: ModelSelection;
       readonly pendingTurnStart?: boolean;
+      readonly message?: OrchestrationMessage;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -672,12 +676,21 @@ const make = Effect.gen(function* () {
           .pipe(Effect.forkDetach)
       : Effect.void;
 
+    let preparedTurn: PreparedTurn | undefined;
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
       readonly provider?: ProviderDriverKind;
     }) =>
-      providerService
-        .startSession(threadId, {
+      Effect.gen(function* () {
+        preparedTurn =
+          options?.message === undefined
+            ? undefined
+            : yield* turnPreparation.prepare({
+                thread,
+                message: options.message,
+                sessionIsFresh: true,
+              });
+        return yield* providerService.startSession(threadId, {
           threadId,
           ...(preferredProvider ? { provider: preferredProvider } : {}),
           providerInstanceId: desiredInstanceId,
@@ -685,10 +698,15 @@ const make = Effect.gen(function* () {
           ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
           ...(thread.title ? { title: thread.title } : {}),
           modelSelection: desiredModelSelection,
-          ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+          ...(input?.resumeCursor !== undefined && preparedTurn?.session.skipResume !== true
+            ? { resumeCursor: input.resumeCursor }
+            : {}),
+          ...(preparedTurn?.session.isolateProviderSettings === undefined
+            ? {}
+            : { isolateProviderSettings: preparedTurn.session.isolateProviderSettings }),
           runtimeMode: desiredRuntimeMode,
-        })
-        .pipe(Effect.tap(() => refreshWorkspaceSnapshot));
+        });
+      }).pipe(Effect.tap(() => refreshWorkspaceSnapshot));
 
     const bindSessionToThread = (session: ProviderSession) =>
       Effect.gen(function* () {
@@ -746,7 +764,15 @@ const make = Effect.gen(function* () {
         !shouldRestartForModelSelectionChange
       ) {
         yield* refreshWorkspaceSnapshot;
-        return existingSessionThreadId;
+        preparedTurn =
+          options?.message === undefined
+            ? undefined
+            : yield* turnPreparation.prepare({
+                thread,
+                message: options.message,
+                sessionIsFresh: false,
+              });
+        return { sessionThreadId: existingSessionThreadId, preparedTurn };
       }
 
       const resumeCursor = shouldRestartForModelChange
@@ -783,17 +809,17 @@ const make = Effect.gen(function* () {
         cwd: restartedSession.cwd,
       });
       yield* bindSessionToThread(restartedSession);
-      return restartedSession.threadId;
+      return { sessionThreadId: restartedSession.threadId, preparedTurn };
     }
 
     const startedSession = yield* startProviderSession(undefined);
     yield* bindSessionToThread(startedSession);
-    return startedSession.threadId;
+    return { sessionThreadId: startedSession.threadId, preparedTurn };
   });
 
   const buildSendTurnRequestForThread = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
-    readonly messageText: string;
+    readonly message: OrchestrationMessage;
     readonly attachments?: ReadonlyArray<ChatAttachment>;
     readonly modelSelection?: ModelSelection;
     readonly interactionMode?: "default" | "plan";
@@ -805,14 +831,17 @@ const make = Effect.gen(function* () {
         new Error(`Thread '${input.threadId}' was not found in read model.`),
       );
     }
-    yield* ensureSessionForThread(input.threadId, input.createdAt, {
+    const ensured = yield* ensureSessionForThread(input.threadId, input.createdAt, {
       ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
       pendingTurnStart: true,
+      message: input.message,
     });
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
-    const normalizedInput = toNonEmptyProviderInput(input.messageText);
+    const normalizedInput = toNonEmptyProviderInput(
+      ensured.preparedTurn?.text ?? input.message.text,
+    );
     const normalizedAttachments = input.attachments ?? [];
     const activeSession = yield* providerService
       .listSessions()
@@ -1282,7 +1311,7 @@ const make = Effect.gen(function* () {
 
     const sendTurnRequest = yield* buildSendTurnRequestForThread({
       threadId: event.payload.threadId,
-      messageText: message.text,
+      message,
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
       ...(event.payload.modelSelection !== undefined
         ? { modelSelection: event.payload.modelSelection }

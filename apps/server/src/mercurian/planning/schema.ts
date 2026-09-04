@@ -10,7 +10,7 @@
  */
 import * as Schema from "effect/Schema";
 
-import { MercurianProjectId, PlanId, TrimmedNonEmptyString } from "@t3tools/contracts";
+import { MercurianProjectId, PlanId, ProjectId, TrimmedNonEmptyString } from "@t3tools/contracts";
 
 import { HistoryId } from "../commitTree/schema.ts";
 
@@ -19,6 +19,7 @@ export { MercurianProjectId, PlanId };
 /** A container of plans. Its repository set arrives with repository management. */
 export const MercurianProject = Schema.Struct({
   projectId: MercurianProjectId,
+  orchestrationProjectId: Schema.NullOr(ProjectId),
   name: TrimmedNonEmptyString,
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString,

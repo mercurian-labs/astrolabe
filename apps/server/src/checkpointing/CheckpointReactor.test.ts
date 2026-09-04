@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+/* oxlint-disable t3code/no-manual-effect-runtime-in-tests -- This suite's existing harness owns a managed reactor runtime; phase A only relocated the suite unchanged. */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -18,7 +19,6 @@ import {
   MercurianProjectId,
   MercurianRepositoryId,
   MessageId,
-  PlanId,
   ProjectId,
   ThreadId,
   TurnId,
@@ -36,43 +36,43 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
-import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
-import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
-import * as VcsProcess from "../../vcs/VcsProcess.ts";
-import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
-import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
+import * as CheckpointStore from "./CheckpointStore.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as VcsProcess from "../vcs/VcsProcess.ts";
+import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
-import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
-import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
-import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
-import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
-import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
-import { RuntimeReceiptBusLive } from "./RuntimeReceiptBus.ts";
-import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
-import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
-import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { OrchestrationEngineLive } from "../orchestration/Layers/OrchestrationEngine.ts";
+import { OrchestrationProjectionPipelineLive } from "../orchestration/Layers/ProjectionPipeline.ts";
+import { OrchestrationProjectionSnapshotQueryLive } from "../orchestration/Layers/ProjectionSnapshotQuery.ts";
+import * as ThreadBackgroundLiveness from "../orchestration/ThreadBackgroundLiveness.ts";
+import * as ThreadPlanProgress from "../orchestration/ThreadPlanProgress.ts";
+import { RuntimeReceiptBusLive } from "../orchestration/Layers/RuntimeReceiptBus.ts";
+import { OrchestrationEventStoreLive } from "../persistence/Layers/OrchestrationEventStore.ts";
+import { OrchestrationCommandReceiptRepositoryLive } from "../persistence/Layers/OrchestrationCommandReceipts.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
-} from "../Services/OrchestrationEngine.ts";
-import { CheckpointReactor } from "../Services/CheckpointReactor.ts";
-import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+} from "../orchestration/Services/OrchestrationEngine.ts";
+import { CheckpointReactor } from "../orchestration/Services/CheckpointReactor.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
-} from "../../provider/Services/ProviderService.ts";
-import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
-import { ServerConfig } from "../../config.ts";
-import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
-import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
-import * as CodingSessionStore from "../../mercurian/codingSessions/CodingSessionStore.ts";
-import * as LineBranchStore from "../../mercurian/commitTree/LineBranchStore.ts";
-import * as RepositoryStore from "../../mercurian/repositories/RepositoryStore.ts";
-import * as SlotStore from "../../mercurian/worktreeSlots/SlotStore.ts";
-import * as SlotRegistry from "../../mercurian/worktreeSlots/SlotRegistry.ts";
-import { WorktreeSlotId } from "../../mercurian/worktreeSlots/schema.ts";
-import * as SnapshotChain from "../../mercurian/worktreeSlots/SnapshotChain.ts";
+} from "../provider/Services/ProviderService.ts";
+import { checkpointRefForThreadTurn } from "./Utils.ts";
+import { ServerConfig } from "../config.ts";
+import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as ThreadLineService from "./ThreadLineService.ts";
+import * as LineBranchStore from "../mercurian/commitTree/LineBranchStore.ts";
+import * as RepositoryStore from "../mercurian/repositories/RepositoryStore.ts";
+import * as SlotStore from "../mercurian/worktreeSlots/SlotStore.ts";
+import * as SlotRegistry from "../mercurian/worktreeSlots/SlotRegistry.ts";
+import { WorktreeSlotId } from "../mercurian/worktreeSlots/schema.ts";
+import * as SnapshotChain from "../mercurian/worktreeSlots/SnapshotChain.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
@@ -410,58 +410,29 @@ describe("CheckpointReactor", () => {
       branchMovement: null,
       prUrl: null,
     } as const;
-    const codingSessionStoreLayer = Layer.mock(CodingSessionStore.CodingSessionStore)({
-      record: () => Effect.void,
-      recordInTransaction: () => Effect.void,
-      recordRepositoriesInTransaction: () => Effect.void,
-      announce: () => Effect.void,
-      listForPlan: () => Effect.succeed([]),
-      listAll: Effect.succeed([]),
-      getByThreadId: () =>
+    const threadLineServiceLayer = Layer.mock(ThreadLineService.ThreadLineService)({
+      resolve: () =>
         Effect.succeed(
           options?.slotBackedSession
             ? Option.some({
-                commitId: lineRootCommitId,
-                planId: PlanId.make("plan-1"),
-                repositoryId:
+                lineRootCommitId,
+                homeRepositoryId: repositoryId,
+                branch: lineBranch,
+                repositories:
                   options?.multiRepositorySlot === true &&
                   options.legacySessionWithoutRepositoryRows !== true
-                    ? null
-                    : repositoryId,
-                threadId: ThreadId.make("thread-1"),
-                branch: lineBranch,
-                worktreePath: cwd,
-                baseRef: "main",
-                startedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
-                endedAt: null,
-                outcome: null,
-                prUrl: null,
-                settledCommitOid: null,
-                partial: false,
-                snapshotOid: null,
-                snapshotKind: null,
-                departedRef: null,
-                branchMovement: null,
-                lineBranchMissingOid: null,
-                unreachableRepositories: [],
-                ...(options?.multiRepositorySlot === true &&
-                options.legacySessionWithoutRepositoryRows !== true
-                  ? {
-                      repositories: [
+                    ? [
                         { ...emptyRepositoryFacts, repositoryId, repositoryName: "server" },
                         {
                           ...emptyRepositoryFacts,
                           repositoryId: secondRepositoryId,
                           repositoryName: "web",
                         },
-                      ],
-                    }
-                  : {}),
+                      ]
+                    : [],
               })
             : Option.none(),
         ),
-      getByWorktreePath: () => Effect.succeed(Option.none()),
-      getByBranch: () => Effect.succeed(Option.none()),
       updateBranch: (_threadId, branch) => Effect.sync(() => updatedBranches.push(branch)),
       recordSnapshot: (_threadId, snapshot) =>
         Effect.sync(() => {
@@ -477,11 +448,6 @@ describe("CheckpointReactor", () => {
             departedRef: snapshot.departedRef,
           });
         }),
-      recordLineBranchMissing: () => Effect.void,
-      end: () => Effect.void,
-      attachPullRequest: () => Effect.void,
-      listRepositories: () => Effect.succeed([]),
-      changes: Stream.empty,
     });
     const slotStoreLayer = Layer.mock(SlotStore.SlotStore)({
       list: () => Effect.succeed([]),
@@ -596,7 +562,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
-      Layer.provideMerge(codingSessionStoreLayer),
+      Layer.provideMerge(threadLineServiceLayer),
       Layer.provideMerge(lineBranchStoreLayer),
       Layer.provideMerge(repositoryStoreLayer),
       Layer.provideMerge(slotStoreLayer),

@@ -45,13 +45,14 @@ import {
   PlanNotFoundError,
   PlanQuestionRecord,
   PlanningModelSelection,
+  ProjectId,
   SpecDocument,
   specDocumentFromIssue,
   SpecRevisionOutdatedError,
+  ThreadId,
   PlanTurnActiveError,
   TrackerConnectionId,
   TrimmedNonEmptyString,
-  ThreadId,
 } from "@t3tools/contracts";
 
 import {
@@ -60,8 +61,10 @@ import {
   PersistenceSqlError,
 } from "../../persistence/Errors.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
-import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
-import type { CodingSessionRecord } from "../codingSessions/schema.ts";
+import { LegacySessionStore } from "../lineRuntimes/LegacySessionStore.ts";
+import { LineRuntimeStore } from "../lineRuntimes/LineRuntimeStore.ts";
+import type { CodingSessionRecord } from "../lineRuntimes/LegacySessionSchema.ts";
+import type { LineRuntimeRecord } from "../lineRuntimes/schema.ts";
 import { type Commit, CommitAuthorKind, CommitId, HistoryId } from "../commitTree/schema.ts";
 import { PlanTurnRegistry } from "./PlanTurnRegistry.ts";
 import { MercurianProject, Plan } from "./schema.ts";
@@ -292,6 +295,8 @@ export interface PlanDetail {
   /** The highest commit sequence this snapshot accounts for; `0` for none. */
   readonly snapshotSequence: number;
   readonly codingSessions: ReadonlyArray<CodingSessionRecord>;
+  readonly lineRuntimes: ReadonlyArray<LineRuntimeRecord>;
+  readonly lastVisitedThreadId?: ThreadId;
 }
 
 /**
@@ -369,6 +374,13 @@ export const CreateProjectInput = Schema.Struct({
 });
 export type CreateProjectInput = typeof CreateProjectInput.Type;
 
+export const CreatePlanFromThreadInput = Schema.Struct({
+  projectId: MercurianProjectId,
+  title: TrimmedNonEmptyString,
+  createdAt: Schema.DateTimeUtcFromString,
+});
+export type CreatePlanFromThreadInput = typeof CreatePlanFromThreadInput.Type;
+
 export const CreatePlanInput = Schema.Struct({
   projectId: MercurianProjectId,
   /** The plan's first message. Its arrival *is* the plan's creation. */
@@ -408,10 +420,12 @@ export type ImportPlanInput = typeof ImportPlanInput.Type;
  */
 export const AppendMessageInput = Schema.Struct({
   planId: PlanId,
+  commitId: Schema.optional(CommitId),
   text: Schema.String,
   parentCommitId: Schema.optional(CommitId),
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   modelChoice: Schema.optional(PlanningModelSelection),
+  ranUnder: Schema.optional(PlanningModelSelection),
   lastUsed: Schema.NullOr(PlanningModelSelection),
   createdAt: Schema.DateTimeUtcFromString,
 });
@@ -445,20 +459,6 @@ export const SaveSpecRevisionInput = Schema.Struct({
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type SaveSpecRevisionInput = typeof SaveSpecRevisionInput.Type;
-
-export const AppendCodingSessionInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: CommitId,
-  threadId: ThreadId,
-  branch: TrimmedNonEmptyString,
-  worktreePath: TrimmedNonEmptyString,
-  /** The repository the provider stands in; first of the project's linked repositories. */
-  homeRepositoryId: MercurianRepositoryId,
-  repositoryIds: Schema.Array(MercurianRepositoryId),
-  unreachableRepositories: Schema.Array(TrimmedNonEmptyString),
-  startedAt: Schema.DateTimeUtcFromString,
-});
-export type AppendCodingSessionInput = typeof AppendCodingSessionInput.Type;
 
 /**
  * The assistant's settled reply. The parent is always named — the turn knows
@@ -590,10 +590,18 @@ export type StandingModelChoiceInput = typeof StandingModelChoiceInput.Type;
 
 export const RecordPlanVisitInput = Schema.Struct({
   planId: PlanId,
+  threadId: Schema.optional(ThreadId),
   /** Minted by the caller's clock, never by the client — the server owns time. */
   visitedAt: Schema.DateTimeUtcFromString,
 });
 export type RecordPlanVisitInput = typeof RecordPlanVisitInput.Type;
+
+export const RenamePlanInput = Schema.Struct({
+  planId: PlanId,
+  title: TrimmedNonEmptyString,
+  updatedAt: Schema.DateTimeUtcFromString,
+});
+export type RenamePlanInput = typeof RenamePlanInput.Type;
 
 export const MarkPlanUnreadInput = Schema.Struct({ planId: PlanId });
 export type MarkPlanUnreadInput = typeof MarkPlanUnreadInput.Type;
@@ -608,6 +616,17 @@ export class PlanningStore extends Context.Service<
     readonly createProject: (
       input: CreateProjectInput,
     ) => Effect.Effect<MercurianProject, PlanningStoreError>;
+    readonly getProject: (
+      projectId: MercurianProjectId,
+    ) => Effect.Effect<MercurianProject, PlanningStoreError>;
+    readonly getProjectByOrchestrationProjectId: (
+      projectId: ProjectId,
+    ) => Effect.Effect<Option.Option<MercurianProject>, PlanningStoreError>;
+    readonly setOrchestrationProjectId: (
+      projectId: MercurianProjectId,
+      orchestrationProjectId: ProjectId,
+    ) => Effect.Effect<void, PlanningStoreError>;
+    readonly renamePlan: (input: RenamePlanInput) => Effect.Effect<void, PlanningStoreError>;
     /** Every project and plan the tree renders, in one value. */
     readonly getTreeSnapshot: Effect.Effect<PlanningTreeSnapshot, PlanningStoreError>;
     /**
@@ -615,6 +634,9 @@ export class PlanningStore extends Context.Service<
      * then the plan row naming it.
      */
     readonly createPlan: (input: CreatePlanInput) => Effect.Effect<PlanDetail, PlanningStoreError>;
+    readonly createPlanFromThread: (
+      input: CreatePlanFromThreadInput,
+    ) => Effect.Effect<PlanDetail, PlanningStoreError>;
     /**
      * Create a plan from a tracked issue: a history rooted at the issue's
      * content, published from the start, and an origin row naming where it came
@@ -659,10 +681,6 @@ export class PlanningStore extends Context.Service<
     readonly saveSpecRevision: (
       input: SaveSpecRevisionInput,
     ) => Effect.Effect<PlanSpecRevision, PlanningStoreError>;
-    /** Final durable step of session birth: immutable leaf and keyed row together. */
-    readonly appendCodingSession: (
-      input: AppendCodingSessionInput,
-    ) => Effect.Effect<PlanCodingSession, PlanningStoreError>;
     /**
      * The assistant's settled reply, landed where its turn stands. Passes
      * `authorKind: "assistant"` through to the commit store, whose
@@ -767,6 +785,7 @@ export class PlanningStore extends Context.Service<
 
 const ProjectRow = Schema.Struct({
   projectId: MercurianProjectId,
+  orchestrationProjectId: Schema.NullOr(ProjectId),
   name: Schema.String,
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString,
@@ -828,9 +847,11 @@ const TouchPlanRequest = Schema.Struct({
   planId: PlanId,
   updatedAt: Schema.DateTimeUtcFromString,
 });
+const RenamePlanRequest = RenamePlanInput;
 const VisitPlanRequest = Schema.Struct({
   planId: PlanId,
   visitedAt: Schema.DateTimeUtcFromString,
+  threadId: Schema.optional(ThreadId),
 });
 const NoRequest = Schema.Struct({});
 
@@ -950,7 +971,8 @@ export const make = Effect.gen(function* () {
   const commits = yield* CommitStore.CommitStore;
   const crypto = yield* Crypto.Crypto;
   const turnRegistry = yield* PlanTurnRegistry;
-  const codingSessions = yield* CodingSessionStore.CodingSessionStore;
+  const legacySessions = yield* LegacySessionStore;
+  const lineRuntimes = yield* LineRuntimeStore;
   const changesPubSub = yield* PubSub.unbounded<void>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
@@ -958,21 +980,41 @@ export const make = Effect.gen(function* () {
   const insertProjectRow = SqlSchema.void({
     Request: ProjectRow,
     execute: (row) => sql`
-      INSERT INTO projects (project_id, name, created_at, updated_at)
-      VALUES (${row.projectId}, ${row.name}, ${row.createdAt}, ${row.updatedAt})
+      INSERT INTO projects (project_id, orchestration_project_id, name, created_at, updated_at)
+      VALUES (${row.projectId}, ${row.orchestrationProjectId}, ${row.name}, ${row.createdAt}, ${row.updatedAt})
     `,
   });
+
+  const projectColumns = sql`
+    project_id AS "projectId",
+    orchestration_project_id AS "orchestrationProjectId",
+    name AS "name",
+    created_at AS "createdAt",
+    updated_at AS "updatedAt"
+  `;
 
   const findProjectRow = SqlSchema.findOneOption({
     Request: ProjectIdRequest,
     Result: ProjectRow,
     execute: ({ projectId }) => sql`
-      SELECT
-        project_id AS "projectId",
-        name AS "name",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      FROM projects
+      SELECT ${projectColumns} FROM projects
+      WHERE project_id = ${projectId}
+    `,
+  });
+
+  const findProjectByOrchestrationId = SqlSchema.findOneOption({
+    Request: Schema.Struct({ orchestrationProjectId: ProjectId }),
+    Result: ProjectRow,
+    execute: ({ orchestrationProjectId }) => sql`
+      SELECT ${projectColumns} FROM projects
+      WHERE orchestration_project_id = ${orchestrationProjectId}
+    `,
+  });
+
+  const updateProjectOrchestrationId = SqlSchema.void({
+    Request: Schema.Struct({ projectId: MercurianProjectId, orchestrationProjectId: ProjectId }),
+    execute: ({ projectId, orchestrationProjectId }) => sql`
+      UPDATE projects SET orchestration_project_id = ${orchestrationProjectId}
       WHERE project_id = ${projectId}
     `,
   });
@@ -981,12 +1023,7 @@ export const make = Effect.gen(function* () {
     Request: NoRequest,
     Result: ProjectRow,
     execute: () => sql`
-      SELECT
-        project_id AS "projectId",
-        name AS "name",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      FROM projects
+      SELECT ${projectColumns} FROM projects
       ORDER BY created_at ASC, project_id ASC
     `,
   });
@@ -1085,20 +1122,31 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  const renamePlanRow = SqlSchema.void({
+    Request: RenamePlanRequest,
+    execute: ({ planId, title, updatedAt }) => sql`
+      UPDATE plans SET title = ${title}, updated_at = ${updatedAt} WHERE plan_id = ${planId}
+    `,
+  });
+
   const upsertVisitRow = SqlSchema.void({
     Request: VisitPlanRequest,
-    execute: ({ planId, visitedAt }) => sql`
-      INSERT INTO plan_visits (plan_id, visited_at)
-      VALUES (${planId}, ${visitedAt})
-      ON CONFLICT(plan_id) DO UPDATE SET visited_at = excluded.visited_at
+    execute: ({ planId, visitedAt, threadId }) => sql`
+      INSERT INTO plan_visits (plan_id, visited_at, line_thread_id)
+      VALUES (${planId}, ${visitedAt}, ${threadId ?? null})
+      ON CONFLICT(plan_id) DO UPDATE SET visited_at = excluded.visited_at,
+        line_thread_id = COALESCE(excluded.line_thread_id, plan_visits.line_thread_id)
     `,
   });
 
   const findVisitRow = SqlSchema.findOneOption({
     Request: PlanIdRequest,
-    Result: Schema.Struct({ visitedAt: Schema.DateTimeUtcFromString }),
+    Result: Schema.Struct({
+      visitedAt: Schema.DateTimeUtcFromString,
+      lineThreadId: Schema.NullOr(ThreadId),
+    }),
     execute: ({ planId }) => sql`
-      SELECT visited_at AS "visitedAt"
+      SELECT visited_at AS "visitedAt", line_thread_id AS "lineThreadId"
       FROM plan_visits
       WHERE plan_id = ${planId}
     `,
@@ -1358,6 +1406,7 @@ export const make = Effect.gen(function* () {
       const projectId = yield* mintId(MercurianProjectId);
       const project = {
         projectId,
+        orchestrationProjectId: null,
         name: input.name,
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
@@ -1370,6 +1419,61 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.createProject:query",
           "PlanningStore.createProject:encodeRequest",
+        ),
+      ),
+    );
+
+  const getProject: PlanningStore["Service"]["getProject"] = (projectId) =>
+    Effect.gen(function* () {
+      const project = yield* findProjectRow({ projectId });
+      if (Option.isNone(project)) {
+        return yield* new MercurianProjectNotFoundError({ projectId });
+      }
+      return project.value;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.getProject:query",
+          "PlanningStore.getProject:decodeRow",
+        ),
+      ),
+    );
+
+  const getProjectByOrchestrationProjectId: PlanningStore["Service"]["getProjectByOrchestrationProjectId"] =
+    (orchestrationProjectId) =>
+      findProjectByOrchestrationId({ orchestrationProjectId }).pipe(
+        Effect.mapError(
+          toPlanningStoreError(
+            "PlanningStore.getProjectByOrchestrationProjectId:query",
+            "PlanningStore.getProjectByOrchestrationProjectId:decodeRow",
+          ),
+        ),
+      );
+
+  const setOrchestrationProjectId: PlanningStore["Service"]["setOrchestrationProjectId"] = (
+    projectId,
+    orchestrationProjectId,
+  ) =>
+    updateProjectOrchestrationId({ projectId, orchestrationProjectId }).pipe(
+      Effect.andThen(announceChange),
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.setOrchestrationProjectId:query",
+          "PlanningStore.setOrchestrationProjectId:encodeRequest",
+        ),
+      ),
+    );
+
+  const renamePlan: PlanningStore["Service"]["renamePlan"] = (input) =>
+    Effect.gen(function* () {
+      yield* requirePlan(input.planId);
+      yield* renamePlanRow(input);
+      yield* announceChange;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.renamePlan:query",
+          "PlanningStore.renamePlan:encodeRequest",
         ),
       ),
     );
@@ -1449,12 +1553,58 @@ export const make = Effect.gen(function* () {
         timeline: [{ _tag: "message", ...(yield* toPlanMessage(root)) }],
         snapshotSequence: root.sequence,
         codingSessions: [],
+        lineRuntimes: [],
       } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
         toPlanningStoreError(
           "PlanningStore.createPlan:query",
           "PlanningStore.createPlan:encodeRequest",
+        ),
+      ),
+    );
+
+  const createPlanFromThread: PlanningStore["Service"]["createPlanFromThread"] = (input) =>
+    Effect.gen(function* () {
+      const project = yield* findProjectRow({ projectId: input.projectId });
+      if (Option.isNone(project)) {
+        return yield* new MercurianProjectNotFoundError({ projectId: input.projectId });
+      }
+      const planId = yield* mintId(PlanId);
+      const historyId = yield* mintId(HistoryId);
+      const plan = {
+        planId,
+        projectId: input.projectId,
+        historyId,
+        title: input.title,
+        createdAt: input.createdAt,
+        updatedAt: input.createdAt,
+        archivedAt: null,
+      } satisfies Plan;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`
+            INSERT INTO commit_histories (history_id, created_at)
+            VALUES (${historyId}, ${DateTime.formatIso(input.createdAt)})
+          `;
+          yield* insertPlanRow(plan);
+        }),
+      );
+      yield* announceChange;
+      return {
+        plan,
+        planText: "",
+        spec: null,
+        timeline: [],
+        snapshotSequence: 0,
+        codingSessions: [],
+        lineRuntimes: [],
+      } satisfies PlanDetail;
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.createPlanFromThread:query",
+          "PlanningStore.createPlanFromThread:encodeRequest",
         ),
       ),
     );
@@ -1705,7 +1855,7 @@ export const make = Effect.gen(function* () {
   const appendMessage: PlanningStore["Service"]["appendMessage"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
-      const commitId = yield* mintId(CommitId);
+      const commitId = input.commitId ?? (yield* mintId(CommitId));
       const appended = yield* appendAt({
         plan,
         parentCommitId: input.parentCommitId,
@@ -1720,7 +1870,8 @@ export const make = Effect.gen(function* () {
         resolvePayload: (parent) =>
           standingModelChoiceAt(parent).pipe(
             Effect.map((standing) => {
-              const ranUnder = input.modelChoice ?? standing ?? input.lastUsed ?? undefined;
+              const ranUnder =
+                input.ranUnder ?? input.modelChoice ?? standing ?? input.lastUsed ?? undefined;
               return {
                 text: input.text,
                 ...(input.attachments === undefined || input.attachments.length === 0
@@ -1909,84 +2060,6 @@ export const make = Effect.gen(function* () {
         toPlanningStoreError(
           "PlanningStore.saveTrackerSpecRevision:query",
           "PlanningStore.saveTrackerSpecRevision:encodeRequest",
-        ),
-      ),
-    );
-
-  const appendCodingSession: PlanningStore["Service"]["appendCodingSession"] = (input) =>
-    Effect.gen(function* () {
-      const plan = yield* requirePlan(input.planId);
-      const commitId = yield* mintId(CommitId);
-      const appended = yield* sql.withTransaction(
-        Effect.gen(function* () {
-          const parent = yield* resolveParent(plan, input.parentCommitId);
-          if (parent === undefined) {
-            return yield* new CommitStore.CommitNotFoundError({ commitId: input.parentCommitId });
-          }
-          // Same one-turn-per-branch guard as appendAt: a session leaf on a
-          // streaming turn's own chain would fork the reply; other branches
-          // stay open.
-          if (yield* turnRegistry.activeChainMember(input.planId, parent.commitId)) {
-            return yield* new PlanTurnActiveError({ planId: input.planId });
-          }
-          const ancestry = yield* commits.ancestors({
-            commitId: parent.commitId,
-            visibility: "all",
-          });
-          const nearestRevision = [...ancestry, parent]
-            .reverse()
-            .find((commit) => commit.kind === "plan-revision");
-          if (nearestRevision === undefined) {
-            return yield* new CommitStore.CommitNotFoundError({ commitId: parent.commitId });
-          }
-          const payload = {
-            planRevisionCommitId: nearestRevision.commitId,
-          } satisfies CodingSessionCommitPayload;
-          const commit = yield* commits.append({
-            historyId: plan.historyId,
-            commitId,
-            kind: "coding-session",
-            authorKind: "human",
-            parents: [parent.commitId],
-            createdAt: input.startedAt,
-            payload,
-          });
-          yield* codingSessions.recordInTransaction({
-            commitId: MercurianCommitId.make(commit.commitId),
-            planId: input.planId,
-            repositoryId: input.homeRepositoryId,
-            threadId: input.threadId,
-            branch: input.branch,
-            worktreePath: input.worktreePath,
-            baseRef: input.branch,
-            startedAt: input.startedAt,
-            endedAt: null,
-            outcome: null,
-            prUrl: null,
-            settledCommitOid: null,
-            partial: false,
-            snapshotOid: null,
-            snapshotKind: null,
-            departedRef: null,
-            branchMovement: null,
-            lineBranchMissingOid: null,
-            unreachableRepositories: input.unreachableRepositories,
-          });
-          yield* codingSessions.recordRepositoriesInTransaction(
-            input.threadId,
-            input.repositoryIds,
-          );
-          yield* touchPlanRow({ planId: input.planId, updatedAt: input.startedAt });
-          return { commit, payload } as const;
-        }),
-      );
-      yield* Effect.all([announceChange, codingSessions.announce(input.planId)]);
-      return { ...toPlanCommitFields(appended.commit), ...appended.payload };
-    }).pipe(
-      Effect.mapError(
-        toPlanningStoreError(
-          "PlanningStore.appendCodingSession:query",
-          "PlanningStore.appendCodingSession:decodeRows",
         ),
       ),
     );
@@ -2182,6 +2255,13 @@ export const make = Effect.gen(function* () {
 
           yield* deleteCommitParentRows({ historyId: plan.historyId });
           yield* deleteVisitRow({ planId: input.planId });
+          yield* sql`DELETE FROM line_runtime_repositories WHERE thread_id IN (
+            SELECT thread_id FROM line_runtimes WHERE plan_id = ${input.planId}
+          )`;
+          yield* sql`DELETE FROM line_runtimes WHERE plan_id = ${input.planId}`;
+          yield* sql`DELETE FROM line_runtime_repositories WHERE thread_id IN (
+            SELECT thread_id FROM coding_sessions WHERE plan_id = ${input.planId}
+          )`;
           yield* sql`DELETE FROM coding_sessions WHERE plan_id = ${input.planId}`;
           yield* deleteOriginRow({ planId: input.planId });
           yield* deletePlanRow({ planId: input.planId });
@@ -2207,13 +2287,15 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
       // The author's own workspace sees its drafts, so every commit counts.
-      const { path, originRow, sessionRows } = yield* Effect.all({
+      const { path, originRow, sessionRows, runtimeRows, visitRow } = yield* Effect.all({
         path: commits.listCommits({
           historyId: plan.historyId,
           visibility: "all",
         }),
         originRow: findOriginByPlanRow({ planId: input.planId }),
-        sessionRows: codingSessions.listForPlan(input.planId),
+        sessionRows: legacySessions.listByPlan(input.planId),
+        runtimeRows: lineRuntimes.listByPlan(input.planId),
+        visitRow: findVisitRow({ planId: input.planId }),
       });
       const origin = Option.isNone(originRow)
         ? undefined
@@ -2231,6 +2313,10 @@ export const make = Effect.gen(function* () {
         timeline: events.map((event) => event.item),
         snapshotSequence: path.at(-1)?.sequence ?? 0,
         codingSessions: sessionRows,
+        lineRuntimes: runtimeRows,
+        ...(Option.getOrUndefined(visitRow)?.lineThreadId == null
+          ? {}
+          : { lastVisitedThreadId: Option.getOrUndefined(visitRow)!.lineThreadId! }),
       } satisfies PlanDetail;
     }).pipe(
       Effect.mapError(
@@ -2357,11 +2443,16 @@ export const make = Effect.gen(function* () {
           const existing = yield* findVisitRow({ planId: input.planId });
           if (
             Option.isSome(existing) &&
-            DateTime.isGreaterThanOrEqualTo(existing.value.visitedAt, plan.updatedAt)
+            DateTime.isGreaterThanOrEqualTo(existing.value.visitedAt, plan.updatedAt) &&
+            (input.threadId === undefined || existing.value.lineThreadId === input.threadId)
           ) {
             return false;
           }
-          yield* upsertVisitRow({ planId: input.planId, visitedAt: input.visitedAt });
+          yield* upsertVisitRow({
+            planId: input.planId,
+            visitedAt: input.visitedAt,
+            ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+          });
           return true;
         }),
       );
@@ -2404,8 +2495,13 @@ export const make = Effect.gen(function* () {
 
   return {
     createProject,
+    getProject,
+    getProjectByOrchestrationProjectId,
+    setOrchestrationProjectId,
+    renamePlan,
     getTreeSnapshot,
     createPlan,
+    createPlanFromThread,
     importPlan,
     appendMessage,
     appendMemoryAmendment,
@@ -2413,7 +2509,6 @@ export const make = Effect.gen(function* () {
     savePlanRevision,
     saveSpecRevision,
     saveTrackerSpecRevision,
-    appendCodingSession,
     appendAssistantMessage,
     saveAssistantPlanRevision,
     saveAssistantSpecRevision,

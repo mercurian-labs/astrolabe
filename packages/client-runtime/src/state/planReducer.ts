@@ -6,6 +6,7 @@ import type {
   PlanInFlightTurn,
   MemoryAmendmentProposal,
   PlanCodingSessionRecord,
+  PlanLineRuntimeRecord,
   PlanStreamItem,
   PlanTurnRefusalReason,
 } from "@t3tools/contracts";
@@ -18,6 +19,7 @@ import type {
 export interface PlanSubscriptionState {
   readonly detail: PlanDetail | null;
   readonly codingSessions: ReadonlyMap<MercurianCommitId, PlanCodingSessionRecord>;
+  readonly lineRuntimes: ReadonlyMap<MercurianCommitId, PlanLineRuntimeRecord>;
   readonly synchronized: boolean;
   /**
    * The last `turn-refused` reason, cleared the moment a turn starts or a
@@ -34,6 +36,7 @@ export interface PlanSubscriptionState {
 export const EMPTY_PLAN_STATE: PlanSubscriptionState = {
   detail: null,
   codingSessions: new Map(),
+  lineRuntimes: new Map(),
   synchronized: false,
   turnRefusal: null,
   memoryAmendmentFailure: null,
@@ -130,6 +133,13 @@ export function applyPlanStreamItem(
         codingSessions: new Map(
           item.snapshot.codingSessions.map((session) => [session.commitId, session]),
         ),
+        lineRuntimes: new Map(
+          item.snapshot.lineRuntimes.flatMap((runtime) =>
+            runtime.lineRootCommitId === null
+              ? []
+              : ([[runtime.lineRootCommitId, runtime]] as const),
+          ),
+        ),
         synchronized: state.synchronized,
         turnRefusal: null,
         memoryAmendmentFailure: null,
@@ -144,6 +154,20 @@ export function applyPlanStreamItem(
         ...(state.detail === null
           ? {}
           : { detail: { ...state.detail, codingSessions: item.sessions } }),
+      };
+    }
+    case "line-runtimes": {
+      const lineRuntimes = new Map(
+        item.lineRuntimes.flatMap((runtime) =>
+          runtime.lineRootCommitId === null ? [] : ([[runtime.lineRootCommitId, runtime]] as const),
+        ),
+      );
+      return {
+        ...state,
+        lineRuntimes,
+        ...(state.detail === null
+          ? {}
+          : { detail: { ...state.detail, lineRuntimes: item.lineRuntimes } }),
       };
     }
     case "commit": {
@@ -194,6 +218,7 @@ export function applyPlanStreamItem(
             parentCommitId: item.parentCommitId,
             text: "",
             grounding: [],
+            ...(item.phase === undefined ? {} : { phase: item.phase }),
             ...(item.groundingScope === undefined ? {} : { groundingScope: item.groundingScope }),
           },
         ]),

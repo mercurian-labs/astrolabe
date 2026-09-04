@@ -3,15 +3,11 @@ import * as Schema from "effect/Schema";
 
 import { ThreadId } from "./baseSchemas.ts";
 import {
-  CodingSessionBlockedError,
   MercurianCommitId,
   MercurianProjectId,
   MercurianRepositoryId,
-  MercurianStartCodingSessionInput,
-  PlanId,
   PlanStreamItem,
   type PlanTimelineItem,
-  ProviderInstanceId,
   WorktreeSlotStreamItem,
 } from "./index.ts";
 
@@ -25,6 +21,7 @@ const PLAN_STREAM_KINDS = [
   "commit",
   "synchronized",
   "coding-sessions",
+  "line-runtimes",
   "turn-started",
   "turn-delta",
   "turn-grounding",
@@ -43,6 +40,9 @@ type _PlanTimelineTagsAreExact = Assert<
 type _PlanStreamKindsAreExact = Assert<
   Equal<(typeof PLAN_STREAM_KINDS)[number], (typeof PlanStreamItem.Type)["kind"]>
 >;
+
+const decodeWorktreeSlotStreamItem = Schema.decodeUnknownSync(WorktreeSlotStreamItem);
+const decodePlanStreamItem = Schema.decodeUnknownSync(PlanStreamItem);
 
 describe("coding-session contracts", () => {
   it("round-trips project-scoped slot members", () => {
@@ -69,7 +69,7 @@ describe("coding-session contracts", () => {
         ],
       },
     };
-    expect(Schema.decodeUnknownSync(WorktreeSlotStreamItem)(item)).toEqual(item);
+    expect(decodeWorktreeSlotStreamItem(item)).toEqual(item);
   });
 
   it("pins plan history and stream discriminants without session-activity members", () => {
@@ -84,6 +84,7 @@ describe("coding-session contracts", () => {
       "commit",
       "synchronized",
       "coding-sessions",
+      "line-runtimes",
       "turn-started",
       "turn-delta",
       "turn-grounding",
@@ -95,16 +96,6 @@ describe("coding-session contracts", () => {
       "memory-amendment-failed",
       "memory-amendment-cancelled",
     ]);
-  });
-
-  it("round-trips an exact-instance start payload", () => {
-    const input = {
-      planId: PlanId.make("plan"),
-      parentCommitId: MercurianCommitId.make("ready"),
-      runtimeMode: "full-access" as const,
-      modelSelection: { instanceId: ProviderInstanceId.make("codex-work"), model: "gpt-5.6" },
-    };
-    expect(Schema.decodeUnknownSync(MercurianStartCodingSessionInput)(input)).toEqual(input);
   });
 
   it("round-trips keyed side-fact frames and typed refusals", () => {
@@ -131,20 +122,43 @@ describe("coding-session contracts", () => {
         },
       ],
     };
-    expect(Schema.decodeUnknownSync(PlanStreamItem)(frame)).toEqual(frame);
-    expect(
-      Schema.decodeUnknownSync(CodingSessionBlockedError)(
-        new CodingSessionBlockedError({ reason: "model-unavailable" }),
-      ).reason,
-    ).toBe("model-unavailable");
-    for (const reason of [
-      "repository-not-git",
-      "no-instance",
-      "model-unavailable",
-      "pool-at-capacity",
-      "line-branch-missing",
-    ] as const) {
-      expect(new CodingSessionBlockedError({ reason }).message).not.toContain(reason);
+    expect(decodePlanStreamItem(frame)).toEqual(frame);
+
+    const runtimeFrame = {
+      kind: "line-runtimes" as const,
+      lineRuntimes: [
+        {
+          planId: "plan" as never,
+          lineRootCommitId: MercurianCommitId.make("line"),
+          threadId: ThreadId.make("line-thread"),
+          homeRepositoryId: MercurianRepositoryId.make("repo"),
+          branch: "mercurian/line",
+          worktreePath: "/tmp/line",
+          unreachableRepositories: [],
+          snapshotOid: null,
+          snapshotKind: null,
+          departedRef: null,
+          branchMovement: null,
+        },
+      ],
+    };
+    expect(decodePlanStreamItem(runtimeFrame)).toEqual(runtimeFrame);
+
+    for (const groundingKind of ["command", "edit"] as const) {
+      const groundingFrame = {
+        kind: "turn-grounding" as const,
+        turnId: "turn" as never,
+        item: { kind: groundingKind, label: "action" },
+      };
+      expect(decodePlanStreamItem(groundingFrame)).toEqual(groundingFrame);
     }
+
+    const started = {
+      kind: "turn-started" as const,
+      turnId: "turn" as never,
+      parentCommitId: MercurianCommitId.make("parent"),
+      phase: "waiting-for-slot" as const,
+    };
+    expect(decodePlanStreamItem(started)).toEqual(started);
   });
 });

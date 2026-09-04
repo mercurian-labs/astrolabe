@@ -27,6 +27,10 @@ export class SlotRegistry extends Context.Service<
     readonly release: (slotId: WorktreeSlotId, holder: SlotLeaseHolder) => Effect.Effect<boolean>;
     readonly lease: (slotId: WorktreeSlotId) => Effect.Effect<Option.Option<SlotLease>>;
     readonly changes: Stream.Stream<void>;
+    /** Subscribe before an attempt so a concurrent release cannot be missed. */
+    readonly withReleaseSubscription: <A, E, R>(
+      use: (awaitRelease: Effect.Effect<void>) => Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, R>;
   }
 >()("t3/mercurian/worktreeSlots/SlotRegistry") {}
 
@@ -35,6 +39,7 @@ export const make = Effect.gen(function* () {
   const leases = yield* Ref.make<ReadonlyMap<WorktreeSlotId, SlotLease>>(new Map());
   const locks = yield* Ref.make<ReadonlyMap<string, Semaphore.Semaphore>>(new Map());
   const changes = yield* PubSub.unbounded<void>();
+  const releases = yield* PubSub.unbounded<void>();
   const holderKey = (holder: SlotLeaseHolder) =>
     holder.kind === "turn"
       ? `turn:${holder.threadId}`
@@ -96,7 +101,14 @@ export const make = Effect.gen(function* () {
           ] as const;
         },
       ).pipe(
-        Effect.tap(({ changed }) => (changed ? PubSub.publish(changes, undefined) : Effect.void)),
+        Effect.tap(({ changed }) =>
+          changed
+            ? Effect.all([
+                PubSub.publish(changes, undefined),
+                PubSub.publish(releases, undefined),
+              ]).pipe(Effect.asVoid)
+            : Effect.void,
+        ),
         Effect.map(({ free }) => free),
       ),
     lease: (slotId) =>
@@ -104,6 +116,12 @@ export const make = Effect.gen(function* () {
     get changes() {
       return Stream.fromPubSub(changes);
     },
+    withReleaseSubscription: (use) =>
+      Effect.scoped(
+        PubSub.subscribe(releases).pipe(
+          Effect.flatMap((subscription) => use(PubSub.take(subscription).pipe(Effect.asVoid))),
+        ),
+      ),
   });
 });
 

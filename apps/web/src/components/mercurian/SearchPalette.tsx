@@ -19,8 +19,8 @@ import { onOpenCommandPalette } from "../../commandPaletteBus";
 import { useDesignLabOverridesStore } from "../../designLabOverrides";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../../keybindings";
 import { isTerminalFocused } from "../../lib/terminalFocus";
-import { randomUUID } from "../../lib/utils";
 import { usePlanDraftStore } from "../../planDraftStore";
+import { useNewMercurianThreadHandler } from "../../hooks/useHandleNewMercurianThread";
 import { useProjectScopeStore } from "../../projectScopeStore";
 import { useMercurianTree } from "../../state/mercurian";
 import { useMemorySourceForProject, useReadMemoryIndex } from "../../state/mercurianMemory";
@@ -76,11 +76,10 @@ export function SearchPalette() {
   const [openInProjectPicker, setOpenInProjectPicker] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { snapshot } = useMercurianTree();
   const draftsById = usePlanDraftStore((state) => state.draftsById);
-  const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
+  const newMercurianThread = useNewMercurianThreadHandler();
 
   const activePlans = useMemo(
     () => partitionPlansByLifecycle(snapshot.plans).active,
@@ -93,10 +92,10 @@ export function SearchPalette() {
 
   const startPlanInProject = useCallback(
     (projectId: string) => {
-      const draft = openDraftForProject(projectId, randomUUID(), new Date().toISOString());
-      void navigate({ to: "/plans/draft/$draftId", params: { draftId: draft.draftId } });
+      const project = snapshot.projects.find((candidate) => candidate.projectId === projectId);
+      if (project !== undefined) void newMercurianThread(project);
     },
-    [navigate, openDraftForProject],
+    [newMercurianThread, snapshot.projects],
   );
 
   const startNewPlan = useCallback(() => {
@@ -232,12 +231,12 @@ function SearchPaletteDialog(props: {
     (result: PaletteResult): void => {
       switch (result.kind) {
         case "plan":
-          void navigate({ to: "/plans/$planId", params: { planId: result.plan.planId } });
+          void navigate({ to: "/threads/$planId", params: { planId: result.plan.planId } });
           return;
         case "project": {
           const pick = resolveProjectPick(plansByProject.get(result.project.projectId) ?? []);
           if (pick.kind === "open-plan") {
-            void navigate({ to: "/plans/$planId", params: { planId: pick.planId } });
+            void navigate({ to: "/threads/$planId", params: { planId: pick.planId } });
             return;
           }
           startPlanInProject(result.project.projectId);

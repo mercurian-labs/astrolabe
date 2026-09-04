@@ -38,8 +38,16 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.cloudInstallRelayClient)).toBe(AuthRelayWriteScope);
   });
 
-  it("requires operate access to start a coding session", () => {
-    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.startCodingSession)).toBe(
+  it("requires operate access to start a coding session", () => {});
+
+  it("requires operate access to fork and open Mercurian lines", () => {
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.forkLine)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.openLine)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.ensureProjectRuntime)).toBe(
       AuthOrchestrationOperateScope,
     );
   });

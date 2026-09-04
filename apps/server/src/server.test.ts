@@ -2,8 +2,8 @@
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
+import * as NodeChildProcess from "node:child_process";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 import {
@@ -46,13 +46,11 @@ import {
   MERCURIAN_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
-  MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianCommitId,
   MercurianProjectId,
   MercurianRepositoryId,
   PlanId,
   TrackerConnectionId,
-  type TrackerIssue,
   TrimmedNonEmptyString,
   EditorId,
 } from "@t3tools/contracts";
@@ -67,6 +65,7 @@ import { assert, it } from "@effect/vitest";
 import { assertFailure, assertInclude, assertTrue } from "@effect/vitest/utils";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -109,17 +108,20 @@ const decodeTransferShellSnapshot = Schema.decodeUnknownEffect(
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
-import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
+import * as LineTurnReactor from "./mercurian/assistant/LineTurnReactor.ts";
 import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
+import { CommitId } from "./mercurian/commitTree/schema.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
-import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
-import type { CodingSessionRecord } from "./mercurian/codingSessions/schema.ts";
-import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
+import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
+import * as LineRuntimeService from "./mercurian/lineRuntimes/LineRuntimeService.ts";
+import type { LineRuntimeRecord } from "./mercurian/lineRuntimes/schema.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
+import { WorktreeSlotId } from "./mercurian/worktreeSlots/schema.ts";
 import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
@@ -559,10 +561,11 @@ const makeBrowserOtlpPayload = (spanName: string) =>
 
 const buildAppUnderTest = (options?: {
   onPairingChangesSubscribed?: Effect.Effect<void>;
+  onPlanningStoreReady?: (store: PlanningStore.PlanningStore["Service"]) => void;
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
-    planningAssistant?: Partial<PlanningAssistant.PlanningAssistant["Service"]>;
+    lineTurnReactor?: Partial<LineTurnReactor.LineTurnReactor["Service"]>;
     trackerConnector?: TrackerConnector<"linear">;
     environmentTheme?: Partial<EnvironmentTheme.EnvironmentThemeService["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
@@ -589,7 +592,9 @@ const buildAppUnderTest = (options?: {
     threadDeletionReactor?: Partial<ThreadDeletionReactor["Service"]>;
     analyticsService?: Partial<AnalyticsService.AnalyticsService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
-    codingSessionStore?: Partial<CodingSessionStore.CodingSessionStore["Service"]>;
+    lineRuntimeStore?: Partial<LineRuntimeStore.LineRuntimeStore["Service"]>;
+    legacySessionStore?: Partial<LegacySessionStore.LegacySessionStore["Service"]>;
+    lineRuntimeService?: Partial<LineRuntimeService.LineRuntimeService["Service"]>;
     lineBranchStore?: Partial<LineBranchStore.LineBranchStore["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
@@ -803,26 +808,30 @@ const buildAppUnderTest = (options?: {
     const serviceLauncherClientLayer = ServiceLauncherClient.layer.pipe(
       Layer.provide(Layer.succeed(HostProcessEnvironment, {})),
     );
-    const codingSessionStoreLayer = options?.layers?.codingSessionStore
-      ? Layer.mock(CodingSessionStore.CodingSessionStore)({
-          record: () => Effect.void,
-          recordInTransaction: () => Effect.void,
-          announce: () => Effect.void,
-          listForPlan: () => Effect.succeed([]),
-          listAll: Effect.succeed([]),
+    const lineRuntimeStoreLayer = options?.layers?.lineRuntimeStore
+      ? Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+          getOrNone: () => Effect.succeed(Option.none()),
+          listByPlan: () => Effect.succeed([]),
           getByThreadId: () => Effect.succeed(Option.none()),
-          getByWorktreePath: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
-          updateBranch: () => Effect.void,
+          create: () => Effect.void,
+          updateWorkspace: () => Effect.void,
           recordSnapshot: () => Effect.void,
           recordRepositorySnapshot: () => Effect.void,
           recordLineBranchMissing: () => Effect.void,
-          end: () => Effect.void,
           attachPullRequest: () => Effect.void,
           changes: Stream.empty,
-          ...options.layers.codingSessionStore,
+          ...options.layers.lineRuntimeStore,
         })
-      : CodingSessionStore.layer;
+      : LineRuntimeStore.layer;
+    const legacySessionStoreLayer = options?.layers?.legacySessionStore
+      ? Layer.mock(LegacySessionStore.LegacySessionStore)({
+          listByPlan: () => Effect.succeed([]),
+          getByThreadId: () => Effect.succeed(Option.none()),
+          getByBranch: () => Effect.succeed(Option.none()),
+          ...options.layers.legacySessionStore,
+        })
+      : LegacySessionStore.layer;
 
     const servedRoutesLayer = HttpRouter.serve(
       makeRoutesLayer.pipe(Layer.provide(serviceLauncherClientLayer)),
@@ -1271,27 +1280,31 @@ const buildAppUnderTest = (options?: {
         // The planning runtime, inert: the server suite is about the wire, and
         // no test here streams a turn. The stores below stay real.
         Layer.provide(
-          Layer.mock(PlanningAssistant.PlanningAssistant)({
-            startTurn: () => Effect.void,
-            measureReconstruction: () =>
-              Effect.succeed({ transcriptChars: 0, entryCount: 0, fixedReservedChars: 0 }),
-            stopTurn: () => Effect.void,
-            answerQuestion: () => Effect.void,
+          Layer.mock(LineTurnReactor.LineTurnReactor)({
             status: Effect.succeed(new Map()),
             changes: Stream.empty,
             frames: () => Stream.empty,
+            recordSend: (input) =>
+              Effect.succeed({
+                planId: PlanId.make("server-test-recorded-send"),
+                commitId: CommitId.make(input.messageId),
+              }),
+            drainThrough: () => Effect.void,
             inFlightTurns: () => Effect.succeed([]),
             memoryAmendmentProposal: () => Effect.succeed(undefined),
             cancelMemoryAmendment: () => Effect.void,
             clearMemoryAmendment: () => Effect.void,
             teardownPlan: () => Effect.void,
-            ...options?.layers?.planningAssistant,
+            ...options?.layers?.lineTurnReactor,
           }),
         ),
         Layer.provide(
           Layer.mergeAll(
-            Layer.mock(CodingSessionService.CodingSessionService)({
-              start: () => Effect.die("CodingSessionService not stubbed in this test"),
+            Layer.mock(LineRuntimeService.LineRuntimeService)({
+              ensureProjectRuntime: () => Effect.die("LineRuntimeService not stubbed in this test"),
+              ensureThread: () => Effect.die("LineRuntimeService not stubbed in this test"),
+              ensureSlot: () => Effect.die("LineRuntimeService not stubbed in this test"),
+              ...options?.layers?.lineRuntimeService,
             }),
             Layer.mock(SlotStore.SlotStore)({
               list: () => Effect.succeed([]),
@@ -1326,8 +1339,18 @@ const buildAppUnderTest = (options?: {
         Layer.provide(
           Layer.mergeAll(
             PlanningStore.layer.pipe(
-              Layer.provideMerge(codingSessionStoreLayer),
+              Layer.provideMerge(legacySessionStoreLayer),
+              Layer.provideMerge(lineRuntimeStoreLayer),
               Layer.provideMerge(RepositoryStore.layer),
+              Layer.tap((context) =>
+                options?.onPlanningStoreReady === undefined
+                  ? Effect.void
+                  : Effect.sync(() =>
+                      options.onPlanningStoreReady?.(
+                        Context.get(context, PlanningStore.PlanningStore),
+                      ),
+                    ),
+              ),
             ),
             MemoryIndex.layer.pipe(Layer.provideMerge(MemorySourceStore.layer)),
             WorkspaceSettingsStore.layer,
@@ -5149,163 +5172,85 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("routes websocket rpc mercurian planning, and births a plan at its first message", () =>
+  it.effect("routes Mercurian project and line runtime birth", () =>
     Effect.gen(function* () {
-      const turnStarts = yield* Queue.unbounded<PlanningAssistant.StartTurnInput>();
+      const inputs: LineRuntimeService.EnsureThreadInput[] = [];
+      const ensuredProjects: MercurianProjectId[] = [];
+      let sequence = 0;
       yield* buildAppUnderTest({
         layers: {
-          planningAssistant: {
-            startTurn: (input) => Queue.offer(turnStarts, input).pipe(Effect.asVoid),
-            measureReconstruction: () =>
-              Effect.succeed({ transcriptChars: 321, entryCount: 2, fixedReservedChars: 123 }),
+          lineRuntimeService: {
+            ensureProjectRuntime: (projectId) =>
+              Effect.sync(() => {
+                ensuredProjects.push(projectId);
+                return ProjectId.make("orchestration-project");
+              }),
+            ensureThread: (input) =>
+              Effect.sync(() => {
+                inputs.push(input);
+                sequence += 1;
+                return { threadId: ThreadId.make(`line-thread-${sequence}`) } as never;
+              }),
           },
         },
       });
 
+      const planId = PlanId.make("plan-lines-rpc");
+      const projectId = MercurianProjectId.make("project-runtime-rpc");
+      const parentCommitId = MercurianCommitId.make("parent");
+      const lineRootCommitId = MercurianCommitId.make("line-root");
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           Effect.gen(function* () {
-            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
-              name: "Astrolabe",
+            const project = yield* client[MERCURIAN_WS_METHODS.ensureProjectRuntime]({
+              projectId,
             });
-            // Before any message the project is in the tree and has no plans.
-            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
-              projectId: project.projectId,
-              message: "Reshape the sidebar",
-              modelChoice: {
-                provider: ProviderDriverKind.make("codex"),
-                model: "gpt-5.4",
-                options: [{ id: "effort", value: "high" }],
-              },
+            const forked = yield* client[MERCURIAN_WS_METHODS.forkLine]({
+              planId,
+              parentCommitId,
             });
-            const appended = yield* client[MERCURIAN_WS_METHODS.appendPlanMessage]({
-              planId: created.plan.planId,
-              text: "And the planning space",
+            const opened = yield* client[MERCURIAN_WS_METHODS.openLine]({
+              planId,
+              lineRootCommitId,
             });
-            const starts = [yield* Queue.take(turnStarts), yield* Queue.take(turnStarts)];
-            const workspaceSettings = yield* client[
-              MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
-            ]({}).pipe(Stream.take(1), Stream.runCollect);
-            // The subscription's own `synchronized` marker is the receipt that
-            // the stream is live: the edit is landed from there, so the commit
-            // that follows can only have arrived as an event.
-            const items = yield* client[MERCURIAN_WS_METHODS.subscribePlan]({
-              planId: created.plan.planId,
-            }).pipe(
-              Stream.tap((item) =>
-                item.kind === "synchronized"
-                  ? client[MERCURIAN_WS_METHODS.savePlanRevision]({
-                      planId: created.plan.planId,
-                      text: "# Approach\n\nStart from the tree.",
-                    }).pipe(Effect.asVoid)
-                  : Effect.void,
-              ),
-              Stream.take(4),
-              Stream.runCollect,
-            );
-            // The artifact as of an earlier commit is the one thing the
-            // subscription deliberately does not carry: revisions travel
-            // without their text.
-            const atRoot = yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
-              planId: created.plan.planId,
-              commitId: created.timeline[0]!.commitId,
-            });
-            const reconstruction = yield* client[MERCURIAN_WS_METHODS.measurePlanReconstruction]({
-              planId: created.plan.planId,
-              commitId: created.timeline[0]!.commitId,
-            });
-            const revisionEvent = items[3];
-            const atRevision =
-              revisionEvent?.kind === "commit"
-                ? yield* client[MERCURIAN_WS_METHODS.getPlanTextAt]({
-                    planId: created.plan.planId,
-                    commitId: revisionEvent.item.commitId,
-                  })
-                : null;
-            return {
-              project,
-              created,
-              appended,
-              starts,
-              workspaceSettings,
-              items,
-              atRoot,
-              reconstruction,
-              atRevision,
-            };
+            return { project, forked, opened };
           }),
         ),
-      ).pipe(Effect.timeout("5 seconds"));
-
-      assert.equal(result.project.name, "Astrolabe");
-      assert.equal(result.created.plan.title, "Reshape the sidebar");
-      assert.equal(result.created.planText, "");
-      const root = result.created.timeline[0];
-      assert.ok(root?._tag === "message");
-      if (root?._tag === "message") {
-        assert.deepEqual(root.ranUnder, {
-          provider: ProviderDriverKind.make("codex"),
-          model: "gpt-5.4",
-          options: [{ id: "effort", value: "high" }],
-        });
-      }
-      // The old-client path omits a directive. The server inherits and
-      // re-stamps the branch's override before starting the turn.
-      assert.deepEqual(result.appended.ranUnder, root?._tag === "message" ? root.ranUnder : null);
-      assert.deepEqual(
-        result.starts.map((start) => start.ranUnder),
-        [result.appended.ranUnder, result.appended.ranUnder],
       );
-      assert.deepEqual(result.workspaceSettings[0], {
-        kind: "snapshot",
-        snapshot: { planningModel: result.appended.ranUnder ?? null },
+
+      assert.deepEqual(result, {
+        project: { orchestrationProjectId: ProjectId.make("orchestration-project") },
+        forked: { threadId: ThreadId.make("line-thread-1") },
+        opened: { threadId: ThreadId.make("line-thread-2") },
       });
-
-      const opening = result.items[0];
-      assert.equal(opening?.kind, "snapshot");
-      const snapshot =
-        opening !== undefined && opening.kind === "snapshot" ? opening.snapshot : null;
-      assert.deepEqual(
-        snapshot?.timeline.map((item) => item._tag),
-        ["message", "message"],
-      );
-      assert.equal(snapshot?.planText, "");
-      assert.deepEqual(result.items[1], { kind: "coding-sessions", sessions: [] });
-      assert.deepEqual(result.items[2], { kind: "synchronized" });
-
-      // The graph's shape rides along: the explorer draws the history from
-      // these rather than from a second read.
-      assert.deepEqual([...(snapshot?.timeline[0]?.parents ?? [])], []);
-      assert.deepEqual(
-        [...(snapshot?.timeline[1]?.parents ?? [])],
-        [snapshot?.timeline[0]?.commitId],
-      );
-      assert.equal(snapshot?.timeline[0]?.published, false);
-
-      const event = result.items[3];
-      assert.equal(event?.kind, "commit");
-      if (event?.kind === "commit") {
-        assert.equal(event.item._tag, "plan-revision");
-        assert.equal(event.item.authorKind, "human");
-        assert.equal(event.planText, "# Approach\n\nStart from the tree.");
-        assert.ok(event.sequence > (snapshot?.snapshotSequence ?? 0));
-      }
-
-      // Born blank at the root, and the revision's own text where it landed.
-      assert.equal(result.atRoot.planText, "");
-      assert.deepEqual(result.reconstruction, {
-        transcriptChars: 321,
-        entryCount: 2,
-        fixedReservedChars: 123,
-      });
-      assert.equal(result.atRevision?.planText, "# Approach\n\nStart from the tree.");
-    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+      assert.deepEqual(inputs, [
+        { planId, forkParentCommitId: parentCommitId },
+        { planId, lineRootCommitId },
+      ]);
+      assert.deepEqual(ensuredProjects, [projectId]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc mercurian visits, and carries status facts on tree rows", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      let planning: PlanningStore.PlanningStore["Service"] | undefined;
+      let planId: PlanId | undefined;
+      const visitedThreadId = ThreadId.make("visited-line-thread");
+      yield* buildAppUnderTest({
+        onPlanningStoreReady: (store) => void (planning = store),
+        layers: {
+          lineTurnReactor: {
+            status: Effect.sync(() =>
+              planId === undefined
+                ? new Map()
+                : new Map([[planId, { isWorking: true, hasPendingInput: true }]]),
+            ),
+          },
+        },
+      });
+      if (planning === undefined) return yield* Effect.die("planning store was not captured");
+      const planningStore = planning;
 
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
@@ -5314,43 +5259,42 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
               name: "Astrolabe",
             });
-            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+            const created = yield* planningStore.createPlan({
               projectId: project.projectId,
               message: "Reshape the sidebar",
+              lastUsed: null,
+              createdAt: TEST_EPOCH,
             });
-
-            // The tree re-sends a whole snapshot on change, so one opening
-            // frame is the whole read.
-            const readTreeRow = client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+            planId = created.plan.planId;
+            const born = yield* client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
               Stream.take(1),
               Stream.runCollect,
               Effect.map((items) =>
                 items[0]?.snapshot.plans.find((plan) => plan.planId === created.plan.planId),
               ),
             );
-
-            const born = yield* readTreeRow;
-            yield* client[MERCURIAN_WS_METHODS.visitPlan]({ planId: created.plan.planId });
-            const visited = yield* readTreeRow;
+            yield* client[MERCURIAN_WS_METHODS.visitPlan]({
+              planId: created.plan.planId,
+              threadId: visitedThreadId,
+            });
+            const visited = yield* planningStore.getPlanSnapshot({ planId: created.plan.planId });
             yield* client[MERCURIAN_WS_METHODS.markPlanUnread]({ planId: created.plan.planId });
-            const rearmed = yield* readTreeRow;
-
+            const rearmed = yield* client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.map((items) =>
+                items[0]?.snapshot.plans.find((plan) => plan.planId === created.plan.planId),
+              ),
+            );
             return { born, visited, rearmed };
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      // The two producer facts ride the row today with no producer behind
-      // them, so the contract 042 and 062 fill in is already the one shipped.
-      assert.equal(result.born?.hasPendingInput, false);
-      assert.equal(result.born?.isWorking, false);
-      // Never opened: no visit at all, which is what reads as unseen.
+      assert.equal(result.born?.isWorking, true);
+      assert.equal(result.born?.hasPendingInput, true);
       assert.equal(result.born?.visitedAt, undefined);
-
-      assert.ok(result.visited?.visitedAt !== undefined);
-      assert.ok(result.visited.visitedAt >= result.visited.updatedAt);
-
-      // Mark unread stands the visit back before the latest activity.
+      assert.equal(result.visited.lastVisitedThreadId, visitedThreadId);
       assert.ok(result.rearmed?.visitedAt !== undefined);
       assert.ok(result.rearmed.visitedAt < result.rearmed.updatedAt);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
@@ -5358,75 +5302,37 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("composes coding-session shell status and re-emits for session approval activity", () =>
     Effect.gen(function* () {
-      const sessionThreadId = ThreadId.make("thread-session-status");
+      let planning: PlanningStore.PlanningStore["Service"] | undefined;
+      let runtime: LineRuntimeRecord | null = null;
+      let liveShell = makeDefaultOrchestrationThreadShell({
+        id: ThreadId.make("thread-session-status"),
+      });
       const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
       const openingSeen = yield* Deferred.make<void>();
-      let sessionPlanId: PlanId | null = null;
-      let liveShell = makeDefaultOrchestrationThreadShell({ id: sessionThreadId });
-      const sessionRecord = () => {
-        if (sessionPlanId === null) return null;
-        return {
-          commitId: MercurianCommitId.make("session-status-commit"),
-          planId: sessionPlanId,
-          repositoryId: MercurianRepositoryId.make("repository-status"),
-          threadId: sessionThreadId,
-          branch: "mercurian/session-status-12345678",
-          worktreePath: "/tmp/session-status",
-          baseRef: "main",
-          startedAt: DateTime.makeUnsafe("2026-08-19T12:00:00.000Z"),
-          endedAt: null,
-          outcome: null,
-          prUrl: null,
-          settledCommitOid: null,
-          partial: false,
-          snapshotOid: null,
-          snapshotKind: null,
-          departedRef: null,
-          branchMovement: null,
-          lineBranchMissingOid: null,
-          unreachableRepositories: [],
-        } as const;
-      };
-      const approvalEvent = (sequence: number, threadId: ThreadId): OrchestrationEvent => ({
-        sequence,
-        eventId: EventId.make(`event-session-status-${sequence}`),
-        aggregateKind: "thread",
-        aggregateId: threadId,
-        occurredAt: "2026-08-19T12:00:00.000Z",
-        commandId: null,
-        causationEventId: null,
-        correlationId: null,
-        metadata: {},
-        type: "thread.approval-response-requested",
-        payload: {
-          threadId,
-          requestId: ApprovalRequestId.make(`request-${sequence}`),
-          decision: "accept",
-          createdAt: "2026-08-19T12:00:00.000Z",
-        },
-      });
       yield* buildAppUnderTest({
+        onPlanningStoreReady: (store) => void (planning = store),
         layers: {
           orchestrationEngine: { streamDomainEvents: Stream.fromPubSub(liveEvents) },
           projectionSnapshotQuery: {
             getThreadShellById: (threadId) =>
-              Effect.succeed(threadId === sessionThreadId ? Option.some(liveShell) : Option.none()),
+              Effect.succeed(
+                threadId === runtime?.threadId ? Option.some(liveShell) : Option.none(),
+              ),
           },
-          codingSessionStore: {
-            listAll: Effect.sync(() => {
-              const record = sessionRecord();
-              return record === null ? [] : [record];
-            }),
-            getByThreadId: (threadId) =>
-              Effect.sync(() => {
-                const record = sessionRecord();
-                return record !== null && threadId === sessionThreadId
-                  ? Option.some(record)
-                  : Option.none();
-              }),
+          lineRuntimeStore: {
+            listByPlan: (candidate) =>
+              Effect.succeed(runtime !== null && runtime.planId === candidate ? [runtime] : []),
+            getByThreadId: (candidate) =>
+              Effect.succeed(
+                runtime !== null && runtime.threadId === candidate
+                  ? Option.some(runtime)
+                  : Option.none(),
+              ),
           },
         },
       });
+      if (planning === undefined) return yield* Effect.die("planning store was not captured");
+      const planningStore = planning;
 
       const wsUrl = yield* getWsServerUrl("/ws");
       const snapshots = yield* Effect.scoped(
@@ -5435,21 +5341,39 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
               name: "Session status",
             });
-            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+            const created = yield* planningStore.createPlan({
               projectId: project.projectId,
               message: "Exercise the session runtime",
+              lastUsed: null,
+              createdAt: TEST_EPOCH,
             });
-            sessionPlanId = created.plan.planId;
-
+            runtime = {
+              planId: created.plan.planId,
+              lineRootCommitId: MercurianCommitId.make(created.timeline[0]!.commitId),
+              threadId: liveShell.id,
+              homeRepositoryId: MercurianRepositoryId.make("repository-status"),
+              branch: "mercurian/session-status",
+              worktreePath: "/tmp/session-status",
+              unreachableRepositories: [],
+              snapshotOid: null,
+              snapshotKind: null,
+              departedRef: null,
+              branchMovement: null,
+              lineBranchMissingOid: null,
+              createdAt: TEST_EPOCH,
+              updatedAt: TEST_EPOCH,
+              repositories: [],
+            };
+            const lineRuntime = runtime;
             const itemsFiber = yield* client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
-              Stream.tap((_item) => Deferred.succeed(openingSeen, undefined).pipe(Effect.ignore)),
+              Stream.tap(() => Deferred.succeed(openingSeen, undefined).pipe(Effect.ignore)),
               Stream.take(2),
               Stream.runCollect,
               Effect.forkScoped,
             );
             yield* Deferred.await(openingSeen);
             liveShell = makeDefaultOrchestrationThreadShell({
-              id: sessionThreadId,
+              id: lineRuntime.threadId,
               latestTurn: {
                 turnId: TurnId.make("turn-session-status"),
                 state: "running",
@@ -5460,15 +5384,33 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               },
               hasPendingApprovals: true,
             });
-            yield* PubSub.publish(liveEvents, approvalEvent(1, sessionThreadId));
+            yield* PubSub.publish(liveEvents, {
+              sequence: 1,
+              eventId: EventId.make("event-session-status"),
+              aggregateKind: "thread",
+              aggregateId: lineRuntime.threadId,
+              occurredAt: "2026-08-19T12:00:00.000Z",
+              commandId: null,
+              causationEventId: null,
+              correlationId: null,
+              metadata: {},
+              type: "thread.approval-response-requested",
+              payload: {
+                threadId: lineRuntime.threadId,
+                requestId: ApprovalRequestId.make("request-session-status"),
+                decision: "accept",
+                createdAt: "2026-08-19T12:00:00.000Z",
+              },
+            });
             return yield* Fiber.join(itemsFiber);
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      const rows = Array.from(snapshots).map((item) =>
-        item.snapshot.plans.find((plan) => plan.planId === sessionPlanId),
-      );
+      const snapshotItems = Array.from(snapshots);
+      const rows = snapshotItems.map((item) => item.snapshot.plans[0]);
+      assert.equal(snapshotItems[0]?.snapshot.threadPlanLinks[0]?.threadId, liveShell.id);
+      assert.ok(snapshotItems[0]?.snapshot.threadPlanLinks[0]?.lineRootCommitId !== undefined);
       assert.equal(rows[0]?.isWorking, false);
       assert.equal(rows[0]?.hasPendingInput, false);
       assert.equal(rows[1]?.isWorking, true);
@@ -5478,65 +5420,354 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc mercurian plan lifecycle: archive, restore, delete", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      let planning: PlanningStore.PlanningStore["Service"] | undefined;
+      yield* buildAppUnderTest({
+        onPlanningStoreReady: (store) => void (planning = store),
+      });
+      if (planning === undefined) return yield* Effect.die("planning store was not captured");
+      const planningStore = planning;
 
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           Effect.gen(function* () {
-            // Each read is its own subscription taken to its opening snapshot:
-            // the tree re-sends whole, so the opening frame is the truth.
-            const readPlanRow = (planId: PlanId) =>
-              client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
-                Stream.take(1),
-                Stream.runCollect,
-                Effect.map((items) =>
-                  items[0]?.snapshot.plans.find((plan) => plan.planId === planId),
-                ),
-              );
-
             const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
               name: "Astrolabe",
             });
-            const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+            const created = yield* planningStore.createPlan({
               projectId: project.projectId,
               message: "Reshape the sidebar",
+              lastUsed: null,
+              createdAt: TEST_EPOCH,
             });
             const planId = created.plan.planId;
-            const born = yield* readPlanRow(planId);
-
             yield* client[MERCURIAN_WS_METHODS.archivePlan]({ planId });
-            const archived = yield* readPlanRow(planId);
-
+            const archived = yield* planningStore.getPlanSnapshot({ planId });
             yield* client[MERCURIAN_WS_METHODS.unarchivePlan]({ planId });
-            const restored = yield* readPlanRow(planId);
-
+            const restored = yield* planningStore.getPlanSnapshot({ planId });
             yield* client[MERCURIAN_WS_METHODS.deletePlan]({ planId });
-            const deleted = yield* readPlanRow(planId);
-            const secondDelete = yield* Effect.flip(
-              client[MERCURIAN_WS_METHODS.deletePlan]({ planId }),
-            );
-
-            return { born, archived, restored, deleted, secondDelete };
+            const deleted = yield* Effect.flip(planningStore.getPlanSnapshot({ planId }));
+            return { archived, restored, deleted };
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      // Born in the tree and born private: the row carries both facts, which
-      // is what lets it decide between archive and delete without a second
-      // read.
-      assert.equal(result.born?.archivedAt, null);
-      assert.equal(result.born?.hasPublishedCommits, false);
+      assert.ok(result.archived.plan.archivedAt !== null);
+      assert.equal(result.restored.plan.archivedAt, null);
+      assert.equal(result.deleted._tag, "PlanNotFoundError");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
 
-      assert.ok(typeof result.archived?.archivedAt === "string");
-      // Archiving destroys nothing — the row is still in the snapshot, just
-      // stamped, which is what the Archived page in Settings renders from.
-      assert.equal(result.archived?.planId, result.born?.planId);
-      assert.equal(result.restored?.archivedAt, null);
+  it.effect("records a new Mercurian thread's first send before claiming its slot", () =>
+    Effect.gen(function* () {
+      let planning: PlanningStore.PlanningStore["Service"] | undefined;
+      let projectId: MercurianProjectId | undefined;
+      let runtime: LineRuntimeRecord | null = null;
+      let ensureSlotCalls = 0;
+      const dispatched: Array<OrchestrationCommand> = [];
+      const order: Array<string> = [];
+      const threadId = ThreadId.make("thread-first-line-send");
+      const messageId = MessageId.make("message-first-line-send");
+      const bootstrapThreadId = ThreadId.make("thread-bootstrap-first-line-send");
+      const bootstrapMessageId = MessageId.make("message-bootstrap-first-line-send");
+      const homeRepositoryId = MercurianRepositoryId.make("repository-first-line-send");
+      const readRuntime = () => runtime;
 
-      // Delete is the other kind of disappearance, and leaves nothing to find.
-      assert.equal(result.deleted, undefined);
-      assert.equal(result.secondDelete._tag, "PlanNotFoundError");
+      yield* buildAppUnderTest({
+        onPlanningStoreReady: (store) => void (planning = store),
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatched.push(command);
+                if (command.type === "thread.turn.start") order.push("dispatch");
+                return { sequence: dispatched.length };
+              }),
+            readEvents: () => Stream.empty,
+          },
+          lineRuntimeStore: {
+            getByThreadId: (candidate) =>
+              Effect.sync(() =>
+                runtime !== null && runtime.threadId === candidate
+                  ? Option.some(runtime)
+                  : Option.none(),
+              ),
+            listByPlan: (candidate) =>
+              Effect.sync(() =>
+                runtime !== null && runtime.planId === candidate ? [runtime] : [],
+              ),
+          },
+          lineTurnReactor: {
+            drainThrough: (sequence) =>
+              Effect.gen(function* () {
+                const command = dispatched[sequence - 1];
+                const store = planning;
+                const mercurianProjectId = projectId;
+                if (
+                  command?.type !== "thread.create" ||
+                  store === undefined ||
+                  mercurianProjectId === undefined
+                ) {
+                  return;
+                }
+                const detail = yield* store
+                  .createPlanFromThread({
+                    projectId: mercurianProjectId,
+                    title: command.title,
+                    createdAt: TEST_EPOCH,
+                  })
+                  .pipe(Effect.orDie);
+                runtime = {
+                  planId: detail.plan.planId,
+                  lineRootCommitId: null,
+                  threadId: command.threadId,
+                  homeRepositoryId,
+                  branch: "mercurian/first-line-send",
+                  worktreePath: "/tmp/first-line-send",
+                  unreachableRepositories: [],
+                  snapshotOid: null,
+                  snapshotKind: null,
+                  departedRef: null,
+                  branchMovement: null,
+                  lineBranchMissingOid: null,
+                  createdAt: TEST_EPOCH,
+                  updatedAt: TEST_EPOCH,
+                  repositories: [],
+                };
+              }),
+            recordSend: (input) =>
+              Effect.gen(function* () {
+                const store = planning;
+                const lineRuntime = runtime;
+                if (store === undefined || lineRuntime === null) {
+                  return yield* Effect.die("line was not adopted before its first send");
+                }
+                order.push("record");
+                const commit = yield* store.appendMessage({
+                  planId: lineRuntime.planId,
+                  commitId: CommitId.make(input.messageId),
+                  text: input.text,
+                  ...(input.attachments.length === 0
+                    ? {}
+                    : { attachments: [...input.attachments] }),
+                  lastUsed: null,
+                  createdAt: DateTime.makeUnsafe(input.createdAt),
+                });
+                runtime = {
+                  ...lineRuntime,
+                  lineRootCommitId: MercurianCommitId.make(commit.commitId),
+                };
+                return { planId: lineRuntime.planId, commitId: commit.commitId };
+              }),
+          },
+          lineRuntimeService: {
+            ensureSlot: () =>
+              Effect.sync(() => {
+                ensureSlotCalls += 1;
+                if (runtime === null || runtime.lineRootCommitId === null) {
+                  throw new Error("slot claim ran before the line was rooted");
+                }
+                order.push("slot");
+                return { record: runtime, slotId: WorktreeSlotId.make("slot-first-line-send") };
+              }),
+          },
+        },
+      });
+      if (planning === undefined) return yield* Effect.die("planning store was not captured");
+      const planningStore = planning;
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            projectId = project.projectId;
+            yield* planningStore.setOrchestrationProjectId(project.projectId, defaultProjectId);
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.create",
+              commandId: CommandId.make("command-create-first-line"),
+              threadId,
+              projectId: defaultProjectId,
+              title: "First line",
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+            });
+            const pending = runtime;
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("command-start-first-line"),
+              threadId,
+              message: {
+                messageId,
+                role: "user",
+                text: "Build the first line",
+                attachments: [],
+              },
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-01-01T00:00:01.000Z",
+            });
+            if (runtime === null) return yield* Effect.die("line runtime was not recorded");
+            const detail = yield* planningStore.getPlanSnapshot({ planId: runtime.planId });
+            const nonBootstrap = {
+              pending,
+              detail,
+              rootedLineRootCommitId: runtime.lineRootCommitId,
+              order: [...order],
+              dispatchedTypes: dispatched.map((command) => command.type),
+              ensureSlotCalls,
+            };
+
+            runtime = null;
+            ensureSlotCalls = 0;
+            dispatched.length = 0;
+            order.length = 0;
+            const bootstrapResponse = yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("command-bootstrap-first-line"),
+              threadId: bootstrapThreadId,
+              message: {
+                messageId: bootstrapMessageId,
+                role: "user",
+                text: "Build the bootstrap line",
+                attachments: [],
+              },
+              modelSelection: defaultModelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              bootstrap: {
+                createThread: {
+                  projectId: defaultProjectId,
+                  title: "Bootstrap first line",
+                  modelSelection: defaultModelSelection,
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  branch: null,
+                  worktreePath: null,
+                  createdAt: "2026-01-01T00:00:02.000Z",
+                },
+              },
+              createdAt: "2026-01-01T00:00:02.000Z",
+            });
+            const bootstrapRuntime = readRuntime();
+            if (bootstrapRuntime === null) {
+              return yield* Effect.die("bootstrap line runtime was not recorded");
+            }
+            const bootstrapDetail = yield* planningStore.getPlanSnapshot({
+              planId: bootstrapRuntime.planId,
+            });
+            return {
+              nonBootstrap,
+              bootstrap: {
+                response: bootstrapResponse,
+                detail: bootstrapDetail,
+                rootedLineRootCommitId: bootstrapRuntime.lineRootCommitId,
+                order: [...order],
+                dispatchedTypes: dispatched.map((command) => command.type),
+                ensureSlotCalls,
+              },
+            };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      assert.equal(result.nonBootstrap.pending?.lineRootCommitId, null);
+      assert.equal(result.nonBootstrap.detail.timeline[0]?.commitId, CommitId.make(messageId));
+      assert.equal(result.nonBootstrap.rootedLineRootCommitId, MercurianCommitId.make(messageId));
+      assert.deepEqual(result.nonBootstrap.order, ["record", "slot", "dispatch"]);
+      assert.equal(result.nonBootstrap.ensureSlotCalls, 1);
+      assert.deepEqual(result.nonBootstrap.dispatchedTypes, ["thread.create", "thread.turn.start"]);
+
+      assert.equal(
+        result.bootstrap.detail.timeline[0]?.commitId,
+        CommitId.make(bootstrapMessageId),
+      );
+      assert.equal(
+        result.bootstrap.rootedLineRootCommitId,
+        MercurianCommitId.make(bootstrapMessageId),
+      );
+      assert.deepEqual(result.bootstrap.order, ["record", "slot", "dispatch"]);
+      assert.equal(result.bootstrap.ensureSlotCalls, 1);
+      assert.equal(result.bootstrap.response.sequence, 2);
+      assert.deepEqual(result.bootstrap.dispatchedTypes, ["thread.create", "thread.turn.start"]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("refuses legacy session turns with an actionable reopen message", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread-legacy-line");
+      const legacySession = {
+        commitId: MercurianCommitId.make("commit-legacy-line"),
+        planId: PlanId.make("plan-legacy-line"),
+        repositoryId: MercurianRepositoryId.make("repository-legacy-line"),
+        threadId,
+        branch: "mercurian/legacy-line",
+        worktreePath: "/tmp/legacy-line",
+        baseRef: "main",
+        startedAt: TEST_EPOCH,
+        endedAt: null,
+        outcome: null,
+        prUrl: null,
+        settledCommitOid: null,
+        partial: false,
+        snapshotOid: null,
+        snapshotKind: null,
+        departedRef: null,
+        branchMovement: null,
+        lineBranchMissingOid: null,
+        unreachableRepositories: [],
+      } as const;
+      const dispatch = vi.fn<OrchestrationEngine.OrchestrationEngineShape["dispatch"]>(() =>
+        Effect.die("legacy turn must be refused before dispatch"),
+      );
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: { dispatch, readEvents: () => Stream.empty },
+          legacySessionStore: {
+            getByThreadId: (candidate) =>
+              Effect.succeed(candidate === threadId ? Option.some(legacySession) : Option.none()),
+          },
+          lineRuntimeStore: {
+            getByThreadId: () => Effect.succeed(Option.none()),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("command-start-legacy-line"),
+            threadId,
+            message: {
+              messageId: MessageId.make("message-start-legacy-line"),
+              role: "user",
+              text: "Continue this line",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          }),
+        ).pipe(Effect.result),
+      );
+
+      assertTrue(result._tag === "Failure");
+      assertTrue(result.failure._tag === "OrchestrationDispatchCommandError");
+      assert.equal(
+        result.failure.message,
+        "This coding session predates threads. Open its line from the plan's checkpoints to continue.",
+      );
+      assert.equal(dispatch.mock.calls.length, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
@@ -5626,29 +5857,29 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("keeps human artifact saves and both committing refresh paths silent", () =>
     Effect.gen(function* () {
-      const startTurnInputs: Array<PlanningAssistant.StartTurnInput> = [];
-      let startTurnBaseline = 0;
-      let liveIssue: TrackerIssue = {
+      let planning: PlanningStore.PlanningStore["Service"] | undefined;
+      let liveIssue = {
         id: TrimmedNonEmptyString.make("M-109"),
         title: "Original contract",
         description: "Original acceptance criteria",
         url: TrimmedNonEmptyString.make("https://linear.app/mercurian/issue/M-109"),
         status: "In Progress",
       };
+      const recordSend = vi.fn<LineTurnReactor.LineTurnReactor["Service"]["recordSend"]>(() =>
+        Effect.die("artifact saves must not record a send"),
+      );
       yield* buildAppUnderTest({
+        onPlanningStoreReady: (store) => void (planning = store),
         layers: {
-          planningAssistant: {
-            startTurn: (input) =>
-              Effect.sync(() => {
-                startTurnInputs.push(input);
-              }),
-          },
+          lineTurnReactor: { recordSend },
           trackerConnector: {
             ...stubTrackerConnector,
             getIssue: () => Effect.succeed(liveIssue),
           },
         },
       });
+      if (planning === undefined) return yield* Effect.die("planning store was not captured");
+      const planningStore = planning;
 
       const wsUrl = yield* getWsServerUrl("/ws");
       yield* Effect.scoped(
@@ -5657,10 +5888,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
               name: "Astrolabe",
             });
-            const blank = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+            const blank = yield* planningStore.createPlan({
               projectId: project.projectId,
               message: "Plan from a human-authored spec",
-              modelChoice: { provider: ProviderDriverKind.make("codex"), model: "gpt-5.4" },
+              lastUsed: null,
+              createdAt: TEST_EPOCH,
             });
             const connection = yield* client[MERCURIAN_TRACKER_WS_METHODS.connectTracker]({
               kind: "linear",
@@ -5672,28 +5904,21 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               issue: liveIssue,
             });
             const root = imported.detail.timeline[0]!;
-            yield* Effect.yieldNow;
-            startTurnBaseline = startTurnInputs.length;
 
             const direct = yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
               planId: blank.plan.planId,
-              parentCommitId: blank.timeline[0]!.commitId,
+              parentCommitId: MercurianCommitId.make(blank.timeline[0]!.commitId),
               expectedSpecRevisionCommitId: null,
               document: {
                 goal: "Human revision",
                 acceptanceCriteria: "Saving it does not start an assistant turn.",
               },
             });
-            yield* Effect.yieldNow;
-            assert.equal(startTurnInputs.length, startTurnBaseline);
-
             yield* client[MERCURIAN_WS_METHODS.savePlanRevision]({
               planId: blank.plan.planId,
               parentCommitId: direct.commitId,
               text: "# Silent human plan edit",
             });
-            yield* Effect.yieldNow;
-            assert.equal(startTurnInputs.length, startTurnBaseline);
 
             liveIssue = {
               ...liveIssue,
@@ -5707,20 +5932,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             });
             assert.equal(refreshed.kind, "committed");
             if (refreshed.kind !== "committed") return;
-            yield* Effect.yieldNow;
-            assert.equal(startTurnInputs.length, startTurnBaseline);
 
             const local = yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
               planId: imported.detail.plan.planId,
               parentCommitId: refreshed.revision.commitId,
               expectedSpecRevisionCommitId: refreshed.revision.commitId,
               document: {
-                goal: refreshed.revision.commitId,
-                acceptanceCriteria: "A local clarification that conflicts with the next refresh.",
+                goal: "Local clarification",
+                acceptanceCriteria: "The next upstream refresh conflicts.",
               },
             });
-            yield* Effect.yieldNow;
-            assert.equal(startTurnInputs.length, startTurnBaseline);
             liveIssue = {
               ...liveIssue,
               title: "Tracker moved again",
@@ -5744,48 +5965,69 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               },
             });
             assert.equal(reconciled.kind, "committed");
-            if (reconciled.kind === "committed") assert.equal(reconciled.outcome, "reconciled");
-            yield* Effect.yieldNow;
-            assert.equal(startTurnInputs.length, startTurnBaseline);
-
-            const workspaceSettings = yield* client[
-              MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings
-            ]({}).pipe(Stream.take(1), Stream.runCollect);
-            assert.deepEqual(workspaceSettings[0], {
-              kind: "snapshot",
-              snapshot: {
-                planningModel: {
-                  provider: ProviderDriverKind.make("codex"),
-                  model: "gpt-5.4",
-                },
-              },
-            });
+            if (reconciled.kind === "committed") {
+              assert.equal(reconciled.outcome, "reconciled");
+            }
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
 
-      yield* Effect.yieldNow;
-      assert.equal(startTurnInputs.length, startTurnBaseline);
+      assert.equal(recordSend.mock.calls.length, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
   it.effect("refuses a plan on an unknown mercurian project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      yield* buildAppUnderTest({
+        layers: {
+          lineRuntimeService: {
+            ensureThread: (input) =>
+              Effect.fail(
+                new LineRuntimeService.LineRuntimeServiceError({
+                  operation: "ensureThread.plan",
+                  cause: `Plan ${input.planId} was not found`,
+                }),
+              ),
+          },
+        },
+      });
 
       const wsUrl = yield* getWsServerUrl("/ws");
-      const failure = yield* Effect.flip(
-        Effect.scoped(
-          withWsRpcClient(wsUrl, (client) =>
-            client[MERCURIAN_WS_METHODS.createPlan]({
-              projectId: MercurianProjectId.make("missing"),
-              message: "Anything",
-            }),
-          ),
+      const failures = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.all({
+            opened: Effect.flip(
+              client[MERCURIAN_WS_METHODS.openLine]({
+                planId: PlanId.make("missing-plan"),
+                lineRootCommitId: MercurianCommitId.make("missing-root"),
+              }),
+            ),
+            forked: Effect.flip(
+              client[MERCURIAN_WS_METHODS.forkLine]({
+                planId: PlanId.make("missing-plan"),
+                parentCommitId: MercurianCommitId.make("missing-parent"),
+              }),
+            ),
+            imported: Effect.flip(
+              client[MERCURIAN_WS_METHODS.importPlan]({
+                projectId: MercurianProjectId.make("missing-project"),
+                connectionId: TrackerConnectionId.make("missing-connection"),
+                issue: {
+                  id: TrimmedNonEmptyString.make("M-404"),
+                  title: "Missing project",
+                  description: "This import must refuse.",
+                  url: TrimmedNonEmptyString.make("https://example.test/M-404"),
+                  status: "Todo",
+                },
+              }),
+            ),
+          }),
         ),
       );
 
-      assert.equal(failure._tag, "MercurianProjectNotFoundError");
+      assert.equal(failures.opened._tag, "MercurianPlanningError");
+      assert.equal(failures.forked._tag, "MercurianPlanningError");
+      assert.equal(failures.imported._tag, "MercurianProjectNotFoundError");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5798,10 +6040,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           prefix: "t3-recreate-line-branch-",
         });
         const runGit = (args: ReadonlyArray<string>) =>
-          NodeChildProcess.spawnSync("git", args, {
-            cwd: repositoryPath,
-            encoding: "utf8",
-          });
+          NodeChildProcess.spawnSync("git", args, { cwd: repositoryPath, encoding: "utf8" });
         assert.equal(runGit(["init", "-b", "main"]).status, 0);
         assert.equal(
           runGit([
@@ -5819,11 +6058,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const baseOid = runGit(["rev-parse", "HEAD"]).stdout.trim();
         const branch = "mercurian/recreated-line";
         const threadId = ThreadId.make("thread-recreate-line");
-        let lineRootCommitId = MercurianCommitId.make("pending-line-root");
+        let planning: PlanningStore.PlanningStore["Service"] | undefined;
+        let runtime: LineRuntimeRecord | null = null;
         let repositoryId = MercurianRepositoryId.make("pending-repository");
-        let session: CodingSessionRecord | null = null;
-        const cleared: Array<{ threadId: ThreadId; oid: string | null }> = [];
-
+        const cleared: Array<{ readonly threadId: ThreadId; readonly oid: string | null }> = [];
         const executeGit: GitVcsDriver.GitVcsDriver["Service"]["execute"] = (input) => {
           const result = NodeChildProcess.spawnSync("git", input.args, {
             cwd: input.cwd,
@@ -5853,61 +6091,63 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         };
 
         yield* buildAppUnderTest({
+          onPlanningStoreReady: (store) => void (planning = store),
           layers: {
             gitVcsDriver: { execute: executeGit },
             lineBranchStore: {
               listAll: Effect.suspend(() =>
-                session === null
+                runtime === null
                   ? Effect.succeed([])
                   : Effect.succeed([
                       {
-                        lineRootCommitId,
+                        lineRootCommitId: runtime.lineRootCommitId!,
                         repositoryId,
                         branch,
                         baseOid,
                         built: true,
                         repointHold: null,
-                        createdAt: session.startedAt,
+                        createdAt: runtime.createdAt,
                       },
                     ]),
               ),
               get: () =>
                 Effect.suspend(() =>
-                  session === null
+                  runtime === null
                     ? Effect.succeed(Option.none())
                     : Effect.succeed(
                         Option.some({
-                          lineRootCommitId,
+                          lineRootCommitId: runtime.lineRootCommitId!,
                           repositoryId,
                           branch,
                           baseOid,
                           built: true,
                           repointHold: null,
-                          createdAt: session.startedAt,
+                          createdAt: runtime.createdAt,
                         }),
                       ),
                 ),
             },
-            codingSessionStore: {
-              listAll: Effect.suspend(() => Effect.succeed(session === null ? [] : [session])),
+            lineRuntimeStore: {
+              listByPlan: (candidate) =>
+                Effect.succeed(runtime !== null && runtime.planId === candidate ? [runtime] : []),
               getByThreadId: (candidate) =>
-                Effect.suspend(() =>
-                  Effect.succeed(
-                    session !== null && candidate === session.threadId
-                      ? Option.some(session)
-                      : Option.none(),
-                  ),
+                Effect.succeed(
+                  runtime !== null && runtime.threadId === candidate
+                    ? Option.some(runtime)
+                    : Option.none(),
                 ),
               recordLineBranchMissing: (candidate, oid) =>
                 Effect.sync(() => {
                   cleared.push({ threadId: candidate, oid });
-                  if (session !== null && candidate === session.threadId) {
-                    session = { ...session, lineBranchMissingOid: oid };
+                  if (runtime !== null && runtime.threadId === candidate) {
+                    runtime = { ...runtime, lineBranchMissingOid: oid };
                   }
                 }),
             },
           },
         });
+        if (planning === undefined) return yield* Effect.die("planning store was not captured");
+        const planningStore = planning;
 
         const wsUrl = yield* getWsServerUrl("/ws");
         yield* Effect.scoped(
@@ -5916,11 +6156,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
                 name: "Recreated line project",
               });
-              const created = yield* client[MERCURIAN_WS_METHODS.createPlan]({
+              const created = yield* planningStore.createPlan({
                 projectId: project.projectId,
                 message: "Recreate the line branch",
+                lastUsed: null,
+                createdAt: TEST_EPOCH,
               });
-              lineRootCommitId = created.timeline[0]!.commitId;
+              const lineRootCommitId = MercurianCommitId.make(created.timeline[0]!.commitId);
               const repository = yield* client[MERCURIAN_REPOSITORY_WS_METHODS.addRepository]({
                 path: repositoryPath,
               });
@@ -5929,32 +6171,27 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 projectId: project.projectId,
                 repositoryIds: [repositoryId],
               });
-              session = {
-                commitId: lineRootCommitId,
+              runtime = {
                 planId: created.plan.planId,
-                repositoryId,
+                lineRootCommitId,
                 threadId,
+                homeRepositoryId: repositoryId,
                 branch,
                 worktreePath: repositoryPath,
-                baseRef: "main",
-                startedAt: TEST_EPOCH,
-                endedAt: null,
-                outcome: null,
-                prUrl: null,
-                settledCommitOid: null,
-                partial: false,
+                unreachableRepositories: [],
                 snapshotOid: null,
                 snapshotKind: null,
                 departedRef: null,
                 branchMovement: null,
                 lineBranchMissingOid: baseOid,
-                unreachableRepositories: [],
+                createdAt: TEST_EPOCH,
+                updatedAt: TEST_EPOCH,
+                repositories: [],
               };
 
               const byThread = yield* client[MERCURIAN_WS_METHODS.recreateLineBranch]({ threadId });
               assert.deepEqual(byThread, { branch, commitOid: baseOid });
               assert.equal(runGit(["rev-parse", `refs/heads/${branch}`]).stdout.trim(), baseOid);
-              assert.deepEqual(cleared, [{ threadId, oid: null }]);
 
               assert.equal(runGit(["branch", "-D", branch]).status, 0);
               const byPlan = yield* client[MERCURIAN_WS_METHODS.recreateLineBranch]({
@@ -8012,25 +8249,21 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const sessionCwd = "/tmp/session-pr";
         const sessionThreadId = ThreadId.make("thread-session-pr");
         const sessionRecord = {
-          commitId: MercurianCommitId.make("session-pr-commit"),
+          lineRootCommitId: MercurianCommitId.make("session-pr-commit"),
           planId: PlanId.make("session-pr-plan"),
-          repositoryId: MercurianRepositoryId.make("session-pr-repository"),
+          homeRepositoryId: MercurianRepositoryId.make("session-pr-repository"),
           threadId: sessionThreadId,
           branch: "feature/session-pr",
           worktreePath: sessionCwd,
-          baseRef: "main",
-          startedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
-          endedAt: null,
-          outcome: null,
-          prUrl: null,
-          settledCommitOid: null,
-          partial: false,
           snapshotOid: null,
           snapshotKind: null,
           departedRef: null,
           branchMovement: null,
           lineBranchMissingOid: null,
           unreachableRepositories: [],
+          createdAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+          updatedAt: DateTime.makeUnsafe("2026-08-20T12:00:00.000Z"),
+          repositories: [],
         } as const;
         const attached: Array<{
           readonly threadId: ThreadId;
@@ -8064,7 +8297,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         yield* buildAppUnderTest({
           layers: {
             vcsDriver: { isInsideWorkTree: () => Effect.succeed(true) },
-            codingSessionStore: {
+            lineRuntimeStore: {
               getByBranch: (branch) =>
                 Effect.succeed(
                   branch === sessionRecord.branch ? Option.some(sessionRecord) : Option.none(),
@@ -8128,7 +8361,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepStrictEqual(attached, [
           {
             threadId: sessionThreadId,
-            repositoryId: sessionRecord.repositoryId,
+            repositoryId: sessionRecord.homeRepositoryId,
             prUrl: "https://example.com/pr/119",
           },
         ]);
