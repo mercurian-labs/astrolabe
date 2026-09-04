@@ -115,14 +115,12 @@ export function condensePlanGraph(graph: PlanGraph): CondensedPlanGraph {
       else if (!children.includes(node.commitId)) children.push(node.commitId);
     }
   }
-  const nodes = nodesInSequence.map(
-    (node): PlanGraphNode => ({
-      ...node,
-      childrenIds: childrenOf.get(node.commitId) ?? [],
-      isBranchPoint: (childrenOf.get(node.commitId)?.length ?? 0) > 1,
-      isMerge: node.parents.length > 1,
-    }),
-  );
+  const nodes = nodesInSequence.map((node): PlanGraphNode => ({
+    ...node,
+    childrenIds: childrenOf.get(node.commitId) ?? [],
+    isBranchPoint: (childrenOf.get(node.commitId)?.length ?? 0) > 1,
+    isMerge: node.parents.length > 1,
+  }));
 
   return {
     nodes,

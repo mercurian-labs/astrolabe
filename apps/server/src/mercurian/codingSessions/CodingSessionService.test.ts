@@ -327,10 +327,11 @@ function runSaga(state: SagaState, request: MercurianStartCodingSessionInput = i
         }),
     }),
     Layer.mock(ThreadDeletionReactor.ThreadDeletionReactor)({
-      drainThrough: () => Effect.sync(() => {
-        state.calls.push("cleanup:drain");
-        state.terminal = false;
-      }),
+      drainThrough: () =>
+        Effect.sync(() => {
+          state.calls.push("cleanup:drain");
+          state.terminal = false;
+        }),
     }),
     Layer.mock(PlanTurnRegistry.PlanTurnRegistry)({
       activeChainMember: () => Effect.succeed(false),

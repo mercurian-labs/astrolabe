@@ -422,7 +422,6 @@ function expandedWorkGroupRow(
   };
 }
 
-
 export function resolveAssistantMessageCopyState({
   text,
   showCopyButton,

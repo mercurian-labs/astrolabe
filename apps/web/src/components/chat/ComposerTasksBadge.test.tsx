@@ -77,11 +77,7 @@ describe("ComposerTasksBadge", () => {
 
   it("expands into a read-only attached task list", () => {
     const markup = renderToStaticMarkup(
-      <ComposerTasksDrawer
-        onCollapse={() => undefined}
-        progress={progress}
-        steps={steps}
-      />,
+      <ComposerTasksDrawer onCollapse={() => undefined} progress={progress} steps={steps} />,
     );
 
     expect(markup).toContain('data-chat-composer-tasks-drawer="true"');

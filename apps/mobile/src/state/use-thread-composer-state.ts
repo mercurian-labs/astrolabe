@@ -294,7 +294,6 @@ export function useThreadComposerState() {
       return null;
     }
 
-
     const metadata = makeQueuedMessageMetadata();
     const messageId = MessageId.make(metadata.messageId);
     // Enqueue publishes the queued atom synchronously (the durable write

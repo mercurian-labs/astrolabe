@@ -61,13 +61,13 @@ application files under `/mnt/c` instead and reinstalls the runtime on the next 
 Astrolabe uses provider runtimes but does not bundle them. Install and authenticate each
 provider's CLI, or use Astrolabe's managed setup for Antigravity.
 
-| Provider    | CLI                                                                                                        | Default binary     | Log in with                        |
-| ----------- | ---------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------- |
-| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)                                                       | `codex`            | `codex login`                      |
-| Claude      | [Claude Code](https://claude.com/product/claude-code)                                                      | `claude`           | `claude auth login`                |
-| Cursor      | [Cursor CLI](https://cursor.com/cli)                                                                       | `cursor-agent`     | `agent login`                      |
-| Grok Build  | [Grok Build CLI](https://x.ai/cli)                                                                         | `grok`             | `grok login`                       |
-| OpenCode    | [OpenCode](https://opencode.ai)                                                                            | `opencode`         | `opencode auth login`              |
+| Provider    | CLI                                                                                                        | Default binary       | Log in with                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------ |
+| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)                                                       | `codex`              | `codex login`                        |
+| Claude      | [Claude Code](https://claude.com/product/claude-code)                                                      | `claude`             | `claude auth login`                  |
+| Cursor      | [Cursor CLI](https://cursor.com/cli)                                                                       | `cursor-agent`       | `agent login`                        |
+| Grok Build  | [Grok Build CLI](https://x.ai/cli)                                                                         | `grok`               | `grok login`                         |
+| OpenCode    | [OpenCode](https://opencode.ai)                                                                            | `opencode`           | `opencode auth login`                |
 | Antigravity | [Official ACP agent](https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json) | Managed by Astrolabe | **Sign in with Google** in Astrolabe |
 
 Codex and Claude are on by default. Cursor, Grok Build, OpenCode, and Antigravity are off by

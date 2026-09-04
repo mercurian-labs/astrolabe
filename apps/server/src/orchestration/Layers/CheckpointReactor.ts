@@ -305,9 +305,10 @@ const make = Effect.gen(function* () {
       members.findIndex((member) => member.cwd === homeCwd),
       0,
     ].find((index) => index >= 0)!;
-    return members.map(
-      (member, index): SessionMember => ({ ...member, home: index === homeIndex }),
-    );
+    return members.map((member, index): SessionMember => ({
+      ...member,
+      home: index === homeIndex,
+    }));
   });
 
   // One member's snapshot: adopt a rename, capture on the chain, read where the

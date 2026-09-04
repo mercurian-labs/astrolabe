@@ -317,11 +317,7 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
 
   const roots: ReadonlyArray<{ directory: string; scope: ClaudeSkillScope }> = [
     { directory: path.join(configDirPath, "skills"), scope: "user" },
-    ...(cwd
-      ? [
-          { directory: path.join(cwd, ".claude", "skills"), scope: "project" as const },
-        ]
-      : []),
+    ...(cwd ? [{ directory: path.join(cwd, ".claude", "skills"), scope: "project" as const }] : []),
   ];
 
   const skillsByName = new Map<string, ServerProviderSkill>();

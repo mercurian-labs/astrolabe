@@ -11,11 +11,7 @@ describe("ChangedFilesCard", () => {
 
     openChangedFileDiff(onOpenTurnDiff, turnId, "apps/web/src/App.tsx", "repository-2");
 
-    expect(onOpenTurnDiff).toHaveBeenCalledWith(
-      turnId,
-      "apps/web/src/App.tsx",
-      "repository-2",
-    );
+    expect(onOpenTurnDiff).toHaveBeenCalledWith(turnId, "apps/web/src/App.tsx", "repository-2");
   });
 
   it("keeps its compact header sticky while preserving singular labels", () => {

@@ -167,7 +167,6 @@ export function threadWokeAt(
   return wakeAtMs <= Date.parse(options.now) ? shell.snoozedUntil : null;
 }
 
-
 const HOUR_MS = 60 * 60 * 1_000;
 const EVENING_HOUR = 18;
 const MORNING_HOUR = 9;

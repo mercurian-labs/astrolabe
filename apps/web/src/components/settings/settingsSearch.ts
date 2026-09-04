@@ -4,12 +4,15 @@ import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/uti
 export type SettingsPath =
   | "/settings/general"
   | "/settings/appearance"
+  | "/settings/preferences"
   | "/settings/keybindings"
   | "/settings/providers"
+  | "/settings/trackers"
   | "/settings/integrations"
   | "/settings/source-control"
   | "/settings/connections"
-  | "/settings/archived";
+  | "/settings/archived"
+  | "/settings/experiments";
 
 export interface SettingsSearchItem {
   readonly id: string;
@@ -49,12 +52,15 @@ export interface SettingsSearchAvailability {
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
+  "/settings/preferences": "Preferences",
   "/settings/keybindings": "Keybindings",
   "/settings/providers": "Providers",
+  "/settings/trackers": "Trackers",
   "/settings/integrations": "Integrations",
   "/settings/source-control": "Source Control",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
+  "/settings/experiments": "Experiments",
 };
 
 /**
@@ -105,7 +111,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
     searchTerms: ["dev nightly artwork pill label hide none"],
     // The setting is stage-dependent, so its parent section is the stable destination.
-    targetId: "appearance",
+    targetId: "appearance-interface",
   },
   {
     id: "interface-font",
@@ -201,6 +207,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Show skills in slash menu",
     to: "/settings/general",
     searchTerms: ["command menu dollar $ slash /"],
+  },
+  {
+    id: "composer-collapse",
+    title: "Collapse composer",
+    to: "/settings/general",
+    searchTerms: [
+      "composer rest resting unfocus blur focus click away scroll wheel conversation timeline shrink minimize",
+    ],
   },
   {
     id: "provider-update-checks",
@@ -333,7 +347,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "browser-default-profile",
     title: "Default browser profile",
     to: "/settings/integrations",
-    targetId: "browser",
+    targetId: "browser-profiles",
   },
   {
     id: "browser-default-viewport",

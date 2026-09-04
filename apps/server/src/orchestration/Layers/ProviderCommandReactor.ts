@@ -676,17 +676,19 @@ const make = Effect.gen(function* () {
       readonly resumeCursor?: unknown;
       readonly provider?: ProviderDriverKind;
     }) =>
-      providerService.startSession(threadId, {
-        threadId,
-        ...(preferredProvider ? { provider: preferredProvider } : {}),
-        providerInstanceId: desiredInstanceId,
-        ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-        ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
-        ...(thread.title ? { title: thread.title } : {}),
-        modelSelection: desiredModelSelection,
-        ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-        runtimeMode: desiredRuntimeMode,
-      }).pipe(Effect.tap(() => refreshWorkspaceSnapshot));
+      providerService
+        .startSession(threadId, {
+          threadId,
+          ...(preferredProvider ? { provider: preferredProvider } : {}),
+          providerInstanceId: desiredInstanceId,
+          ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+          ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
+          ...(thread.title ? { title: thread.title } : {}),
+          modelSelection: desiredModelSelection,
+          ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+          runtimeMode: desiredRuntimeMode,
+        })
+        .pipe(Effect.tap(() => refreshWorkspaceSnapshot));
 
     const bindSessionToThread = (session: ProviderSession) =>
       Effect.gen(function* () {

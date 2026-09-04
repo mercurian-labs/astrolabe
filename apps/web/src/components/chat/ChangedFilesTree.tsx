@@ -191,12 +191,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                       type="button"
                       className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border/70 bg-background/45 px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       onClick={() =>
-                        openChangedFileDiff(
-                          onOpenTurnDiff,
-                          turnId,
-                          file.path,
-                          props.repositoryId,
-                        )
+                        openChangedFileDiff(onOpenTurnDiff, turnId, file.path, props.repositoryId)
                       }
                     />
                   }

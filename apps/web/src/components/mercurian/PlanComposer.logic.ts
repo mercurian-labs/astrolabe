@@ -93,16 +93,14 @@ export function planComposerMenuItems(input: {
       ];
     }
     const provider = input.provider;
-    const items = input.slashCommands.map(
-      (command): PlanComposerSelectableMenuItem => ({
-        id: `provider-slash-command:${provider}:${command.name}`,
-        type: "provider-slash-command",
-        provider,
-        command,
-        label: `/${command.name}`,
-        description: command.description ?? command.input?.hint ?? "Run provider command",
-      }),
-    );
+    const items = input.slashCommands.map((command): PlanComposerSelectableMenuItem => ({
+      id: `provider-slash-command:${provider}:${command.name}`,
+      type: "provider-slash-command",
+      provider,
+      command,
+      label: `/${command.name}`,
+      description: command.description ?? command.input?.hint ?? "Run provider command",
+    }));
     return searchSlashCommandItems(items, input.trigger.query).filter(
       (item): item is PlanComposerSelectableMenuItem => item.type !== "slash-command",
     );

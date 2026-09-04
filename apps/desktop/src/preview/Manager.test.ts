@@ -321,7 +321,6 @@ const setupRecordingRaceTabs = (manager: PreviewManager.PreviewManager["Service"
     };
   });
 
-
 const TEST_FAVICON = "data:image/png;base64,cG5n";
 
 const makeSourcePng = (width = 1, height = 1): Buffer => {
