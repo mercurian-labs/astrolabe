@@ -13,7 +13,7 @@ layer("018_LineRuntimeBirth", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       assert.strictEqual(migrationEntries.length, 24);
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 23);
+      assert.strictEqual(migrationEntries.at(-1)?.[0], 24);
       yield* runMigrations({ toMigrationInclusive: 17 });
       yield* sql`
         INSERT INTO commit_histories (history_id, created_at)

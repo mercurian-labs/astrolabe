@@ -13,7 +13,7 @@ layer("016_DropPlanImplementVerdicts", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       assert.strictEqual(migrationEntries.length, 24);
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 23);
+      assert.strictEqual(migrationEntries.at(-1)?.[0], 24);
       yield* runMigrations({ toMigrationInclusive: 15 });
       const verdictBefore = yield* sql<{ readonly name: string }>`
         SELECT name FROM sqlite_master
