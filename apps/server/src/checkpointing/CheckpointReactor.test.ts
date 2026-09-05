@@ -44,6 +44,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import { OrchestrationCommandInvariantError } from "../orchestration/Errors.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
 import { OrchestrationEngineLive } from "../orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../orchestration/Layers/ProjectionPipeline.ts";
@@ -760,6 +761,61 @@ describe("CheckpointReactor", () => {
         ? captured.payload.captureTerminal
         : undefined,
     ).toBe(true);
+  });
+
+  it("keeps ready files when checkpoint.captured activity fails after terminal dispatch", async () => {
+    const harness = await createHarness({ seedFilesystemCheckpoints: false });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("activity-failure");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("activity-start"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt,
+    });
+    await harness.drain();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "saved files\n");
+    const dispatch = harness.engine.dispatch;
+    let failures = 0;
+    const spy = vi.spyOn(harness.engine, "dispatch").mockImplementation((command) => {
+      if (
+        command.type === "thread.activity.append" &&
+        command.activity.kind === "checkpoint.captured"
+      ) {
+        failures++;
+        return Effect.fail(
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: "injected activity failure",
+          }),
+        );
+      }
+      return dispatch(command);
+    });
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("activity-complete"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    spy.mockRestore();
+    expect(failures).toBe(1);
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captures = events.filter((event) => event.type === "thread.turn-diff-completed");
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.payload.status).toBe("ready");
+    expect(captures[0]?.payload.files.map((file) => file.path)).toContain("README.md");
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.checkpoints).toHaveLength(1);
+    expect(thread?.checkpoints[0]?.status).toBe("ready");
+    expect(thread?.checkpoints[0]?.files.map((file) => file.path)).toContain("README.md");
   });
 
   it("captures pre-turn baseline on turn.started and post-turn checkpoint on turn.completed", async () => {

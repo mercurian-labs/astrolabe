@@ -16,7 +16,7 @@ export const isSnapshotOid = Schema.is(
 );
 
 /** The nearest act on the carrying path, never a merge's other parent or a later runtime tip. */
-export function recordedCheckpointAt(detail: PlanDetail, commitId: string | undefined) {
+export function* checkpointRecordsAt(detail: PlanDetail, commitId: string | undefined) {
   const byId = new Map(detail.timeline.map((item) => [String(item.commitId), item]));
   const records = new Map<string, PlanCheckpointRecord>();
   for (const record of detail.checkpoints ?? []) {
@@ -29,8 +29,16 @@ export function recordedCheckpointAt(detail: PlanDetail, commitId: string | unde
   while (current !== undefined && !visited.has(current)) {
     visited.add(current);
     const record = records.get(current);
-    if (record !== undefined) return record;
+    if (record !== undefined) yield record;
     current = byId.get(current)?.parents[0];
+  }
+}
+
+/** Query facts without a capture inherit prior state; incomplete saved captures remain strict. */
+export function recordedCheckpointAt(detail: PlanDetail, commitId: string | undefined) {
+  for (const record of checkpointRecordsAt(detail, commitId)) {
+    if (record.capture?.terminal === true || (record.capture?.repositories?.length ?? 0) > 0)
+      return record;
   }
   return undefined;
 }

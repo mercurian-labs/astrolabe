@@ -32,6 +32,20 @@ const base = (sequence: number) => ({
   correlationId: null,
   metadata: {},
 });
+export const streaming = (sequence = 2): OrchestrationEvent => ({
+  ...base(sequence),
+  type: "thread.message-sent",
+  payload: {
+    threadId,
+    messageId: MessageId.make("reply"),
+    role: "assistant",
+    text: "delta",
+    turnId,
+    streaming: true,
+    createdAt: now,
+    updatedAt: now,
+  },
+});
 export const start = (sequence = 1): OrchestrationEvent => ({
   ...base(sequence),
   type: "thread.turn-start-requested",

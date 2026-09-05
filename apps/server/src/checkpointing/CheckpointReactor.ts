@@ -652,47 +652,55 @@ const make = Effect.gen(function* () {
       ...(input.departedRef === undefined ? {} : { departedRef: input.departedRef }),
       ...(input.branchMovement === undefined ? {} : { branchMovement: input.branchMovement }),
     });
-    yield* receiptBus.publish({
-      type: "checkpoint.diff.finalized",
-      threadId: input.threadId,
-      turnId: input.turnId,
-      checkpointTurnCount: input.turnCount,
-      checkpointRef: targetCheckpointRef,
-      status,
-      createdAt: input.createdAt,
-    });
-    yield* receiptBus.publish({
-      type: "turn.processing.quiesced",
-      threadId: input.threadId,
-      turnId: input.turnId,
-      checkpointTurnCount: input.turnCount,
-      createdAt: input.createdAt,
-    });
-
-    yield* orchestrationEngine.dispatch({
-      type: "thread.activity.append",
-      commandId: yield* serverCommandId("checkpoint-captured-activity"),
-      threadId: input.threadId,
-      activity: {
-        id: EventId.make(yield* randomUUID),
-        tone: "info",
-        kind: "checkpoint.captured",
-        summary: "Checkpoint captured",
-        payload: {
-          turnCount: input.turnCount,
-          status,
-          summaryStatus,
-          ...(summaryError === undefined ? {} : { summaryError }),
-          ...(input.partial === undefined ? {} : { partial: input.partial }),
-          ...(input.snapshotKind === undefined ? {} : { snapshotKind: input.snapshotKind }),
-          ...(input.departedRef === undefined ? {} : { departedRef: input.departedRef }),
-          ...(input.branchMovement === undefined ? {} : { branchMovement: input.branchMovement }),
-        },
+    // Dispatch has persisted the terminal capture. Notification failures cannot
+    // turn that fact into a synthetic failed capture in the outer recovery path.
+    yield* Effect.gen(function* () {
+      yield* receiptBus.publish({
+        type: "checkpoint.diff.finalized",
+        threadId: input.threadId,
         turnId: input.turnId,
+        checkpointTurnCount: input.turnCount,
+        checkpointRef: targetCheckpointRef,
+        status,
         createdAt: input.createdAt,
-      },
-      createdAt: input.createdAt,
-    });
+      });
+      yield* receiptBus.publish({
+        type: "turn.processing.quiesced",
+        threadId: input.threadId,
+        turnId: input.turnId,
+        checkpointTurnCount: input.turnCount,
+        createdAt: input.createdAt,
+      });
+
+      yield* orchestrationEngine.dispatch({
+        type: "thread.activity.append",
+        commandId: yield* serverCommandId("checkpoint-captured-activity"),
+        threadId: input.threadId,
+        activity: {
+          id: EventId.make(yield* randomUUID),
+          tone: "info",
+          kind: "checkpoint.captured",
+          summary: "Checkpoint captured",
+          payload: {
+            turnCount: input.turnCount,
+            status,
+            summaryStatus,
+            ...(summaryError === undefined ? {} : { summaryError }),
+            ...(input.partial === undefined ? {} : { partial: input.partial }),
+            ...(input.snapshotKind === undefined ? {} : { snapshotKind: input.snapshotKind }),
+            ...(input.departedRef === undefined ? {} : { departedRef: input.departedRef }),
+            ...(input.branchMovement === undefined ? {} : { branchMovement: input.branchMovement }),
+          },
+          turnId: input.turnId,
+          createdAt: input.createdAt,
+        },
+        createdAt: input.createdAt,
+      });
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logError("Checkpoint captured; notification failed", { error }),
+      ),
+    );
   });
 
   const captureCheckpointForTurn = Effect.fn("CheckpointReactor.captureCheckpointForTurn")(

@@ -14,6 +14,7 @@ import {
   type PlanTimelineItem,
 } from "../planning/PlanningStore.ts";
 import {
+  checkpointRecordsAt,
   isSnapshotOid,
   recordedCheckpointAt,
   validateCheckpointRestoration,
@@ -206,6 +207,16 @@ export const make = Effect.gen(function* () {
       for (const root of lineRoots(detail)) {
         const lineRootCommitId = MercurianCommitId.make(root.commitId);
         const recorded = recordedCheckpointAt(detail, root.parents[0]);
+        const uncaptured =
+          recorded === undefined
+            ? checkpointRecordsAt(detail, root.parents[0]).next().value
+            : undefined;
+        // Uncaptured queries inherit their original line base, never a later mutable snapshot.
+        const uncapturedLineRoot =
+          uncaptured === undefined
+            ? undefined
+            : (uncaptured.lineRootCommitId ??
+              lineRootCommitIdFor(detail, uncaptured.ownerCommitId));
         const existingBranches = yield* Effect.forEach(workingRepositories, (repository) =>
           branches.get({ lineRootCommitId, repositoryId: repository.repositoryId }),
         );
@@ -235,17 +246,32 @@ export const make = Effect.gen(function* () {
               (!isSnapshotOid(saved?.branchTipOid) || !isSnapshotOid(saved?.afterSnapshotOid))
             )
               return;
+            const originalBranch =
+              uncapturedLineRoot === undefined
+                ? undefined
+                : Option.getOrUndefined(
+                    yield* branches.get({
+                      lineRootCommitId: MercurianCommitId.make(uncapturedLineRoot),
+                      repositoryId,
+                    }),
+                  );
+            if (uncapturedLineRoot !== undefined && originalBranch === undefined) {
+              yield* Effect.logWarning("Uncaptured query's original line base is unavailable", {
+                lineRootCommitId: root.commitId,
+                repositoryId,
+              });
+              return;
+            }
             const start =
-              recorded === undefined
-                ? yield* lineBranchEnsurer.resolveLineBranchStart({
-                    detail,
-                    lineRootCommitId,
-                    repository,
-                  })
-                : {
-                    baseOid: saved!.branchTipOid!,
-                    inheritedSnapshotOid: saved!.afterSnapshotOid!,
-                  };
+              recorded !== undefined
+                ? { baseOid: saved!.branchTipOid!, inheritedSnapshotOid: saved!.afterSnapshotOid! }
+                : originalBranch !== undefined
+                  ? { baseOid: originalBranch.baseOid }
+                  : yield* lineBranchEnsurer.resolveLineBranchStart({
+                      detail,
+                      lineRootCommitId,
+                      repository,
+                    });
             const current = yield* lineBranchEnsurer.ensureLineBranch({
               detail,
               lineRootCommitId,

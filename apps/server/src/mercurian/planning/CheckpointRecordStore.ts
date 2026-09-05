@@ -316,8 +316,17 @@ export const make = Effect.gen(function* () {
     yield* sql`DELETE FROM checkpoint_unresolved WHERE thread_id = ${threadId} AND turn_id = ${turnId}`;
   });
   /** Cursor advancement and every record changed by this event share one transaction. */
-  const consume = (event: OrchestrationEvent, requestMessageId?: MessageId) =>
-    transaction(
+  const consume = (event: OrchestrationEvent, requestMessageId?: MessageId) => {
+    if (
+      event.type !== "thread.turn-start-requested" &&
+      event.type !== "thread.turn-diff-completed" &&
+      event.type !== "thread.session-set" &&
+      event.type !== "thread.turn-interrupt-requested" &&
+      event.type !== "thread.session-stop-requested" &&
+      event.type !== "thread.deleted"
+    )
+      return Effect.void;
+    return transaction(
       Effect.gen(function* () {
         if (event.sequence <= (yield* eventCursor)) return;
         if (event.type === "thread.turn-start-requested") {
@@ -437,6 +446,7 @@ export const make = Effect.gen(function* () {
         yield* sql`UPDATE checkpoint_record_clock SET event_sequence = ${event.sequence} WHERE singleton = 1`;
       }),
     );
+  };
   /** A restart repairs exact immutable response links, including append-before-attachment crashes. */
   const repair = transaction(
     Effect.gen(function* () {

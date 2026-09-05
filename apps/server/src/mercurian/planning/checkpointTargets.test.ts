@@ -157,4 +157,30 @@ it("keeps owner lookup after response attachment and respects the selected carry
   // Query-edit callers select the query's parent, not its after-snapshot.
   const query = detail.timeline.find((item) => item.commitId === "query-A")!;
   assert.strictEqual(recordedCheckpointAt(detail, query.parents[0]), previous);
+  for (const capture of [undefined, { status: "missing" as const, terminal: false, files: [] }]) {
+    const empty = { ...attached, capture };
+    assert.strictEqual(
+      recordedCheckpointAt({ ...detail, checkpoints: [previous, empty, later] }, "merge"),
+      previous,
+    );
+  }
+  for (const capture of [
+    { status: "error" as const, terminal: true, files: [] },
+    { ...attached.capture!, repositories: [] },
+    {
+      ...attached.capture!,
+      repositories: attached.capture!.repositories!.map((member) => ({
+        ...member,
+        captureStatus: "error" as const,
+        afterSnapshotOid: undefined,
+      })),
+    },
+    { ...attached.capture!, terminal: false },
+  ]) {
+    const incomplete = { ...attached, capture };
+    assert.strictEqual(
+      recordedCheckpointAt({ ...detail, checkpoints: [previous, incomplete, later] }, "merge"),
+      incomplete,
+    );
+  }
 });

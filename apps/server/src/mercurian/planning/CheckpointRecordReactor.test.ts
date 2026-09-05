@@ -10,10 +10,12 @@ import * as Stream from "effect/Stream";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
+import { PersistenceSqlError } from "../../persistence/Errors.ts";
 import { CheckpointRecordStore, layer as storeLayer } from "./CheckpointRecordStore.ts";
 import { CheckpointRecordReactor, layer } from "./CheckpointRecordReactor.ts";
 import {
   seed,
+  streaming,
   planId,
   query,
   start,
@@ -178,3 +180,137 @@ it.effect(
       }).pipe(Effect.scoped, Effect.provide(reactorLayer));
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
 );
+
+it.effect(
+  "drains ignored live/replayed events without persisting them, including subscription overlap",
+  () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const store = yield* CheckpointRecordStore;
+      const bus = yield* PubSub.unbounded<OrchestrationEvent>();
+      const events = [start(), streaming(2)];
+      const consumed: number[] = [];
+      const reactorLayer = layer.pipe(
+        Layer.provide(
+          Layer.succeed(CheckpointRecordStore, {
+            ...store,
+            consume: (event, messageId) =>
+              Effect.sync(() => consumed.push(event.sequence)).pipe(
+                Effect.andThen(store.consume(event, messageId)),
+              ),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(OrchestrationEngineService)({
+            subscribeDomainEvents: Effect.gen(function* () {
+              const queue = yield* PubSub.subscribe(bus);
+              yield* PubSub.publish(bus, streaming(2));
+              return Stream.fromSubscription(queue);
+            }),
+            readEvents: (after) =>
+              Stream.fromIterable(events.filter((event) => event.sequence > after)),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProjectionTurnRepository)({
+            getByTurnId: () => Effect.succeed(Option.none()),
+            listByThreadId: () => Effect.succeed([]),
+          }),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const reactor = yield* CheckpointRecordReactor;
+        yield* reactor.drainThrough(2);
+        assert.strictEqual(yield* store.eventCursor, 1);
+        events.push(streaming(3));
+        yield* PubSub.publish(bus, streaming(3));
+        yield* reactor.drainThrough(3);
+        assert.deepStrictEqual(consumed, [1, 2, 3]);
+        assert.strictEqual(yield* store.eventCursor, 1);
+      }).pipe(Effect.scoped, Effect.provide(reactorLayer));
+      consumed.length = 0;
+      yield* Effect.gen(function* () {
+        const reactor = yield* CheckpointRecordReactor;
+        yield* reactor.drainThrough(3);
+        assert.deepStrictEqual(consumed, [2, 3]);
+        assert.strictEqual(yield* store.eventCursor, 1);
+        yield* PubSub.publish(bus, captured(4));
+        yield* reactor.drainThrough(4);
+        assert.strictEqual(yield* store.eventCursor, 4);
+        assert.strictEqual((yield* store.get(planId, query))?.capture?.terminal, true);
+        assert.deepStrictEqual(consumed, [2, 3, 4]);
+      }).pipe(Effect.scoped, Effect.provide(Layer.fresh(reactorLayer)));
+    }).pipe(Effect.scoped, Effect.provide(testLayer)),
+);
+
+for (const duringReplay of [true, false])
+  it.effect(
+    `fails waiting and subsequent drains when the consumer stops during ${duringReplay ? "replay" : "live consumption"}, then replays from the retained cursor`,
+    () =>
+      Effect.gen(function* () {
+        yield* seed;
+        const store = yield* CheckpointRecordStore;
+        const bus = yield* PubSub.unbounded<OrchestrationEvent>();
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const events = duringReplay ? [start(), captured()] : [start()];
+        const engine = Layer.mock(OrchestrationEngineService)({
+          subscribeDomainEvents: Effect.map(PubSub.subscribe(bus), Stream.fromSubscription),
+          readEvents: (after) =>
+            Stream.fromIterable(events.filter((event) => event.sequence > after)),
+        });
+        const dependencies = Layer.mergeAll(
+          engine,
+          Layer.mock(ProjectionTurnRepository)({
+            getByTurnId: () => Effect.succeed(Option.none()),
+            listByThreadId: () => Effect.succeed([]),
+          }),
+        );
+        const failedLayer = layer.pipe(
+          Layer.provide(dependencies),
+          Layer.provide(
+            Layer.succeed(CheckpointRecordStore, {
+              ...store,
+              consume: (event, messageId) =>
+                event.sequence !== 2
+                  ? store.consume(event, messageId)
+                  : Effect.gen(function* () {
+                      yield* Deferred.succeed(entered, undefined);
+                      yield* Deferred.await(release);
+                      return yield* new PersistenceSqlError({
+                        operation: "injected consume failure",
+                      });
+                    }),
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const reactor = yield* CheckpointRecordReactor;
+          if (!duringReplay) {
+            yield* reactor.drainThrough(1);
+            events.push(captured());
+            yield* PubSub.publish(bus, captured());
+          }
+          yield* Deferred.await(entered);
+          const waiting = yield* reactor
+            .drainThrough(2)
+            .pipe(Effect.flip, Effect.forkScoped({ startImmediately: true }));
+          yield* Deferred.succeed(release, undefined);
+          assert.strictEqual((yield* Fiber.join(waiting))._tag, "CheckpointRecordConsumerError");
+          assert.strictEqual(
+            (yield* reactor.drainThrough(3).pipe(Effect.flip))._tag,
+            "CheckpointRecordConsumerError",
+          );
+          assert.strictEqual(yield* store.eventCursor, 1);
+          assert.strictEqual((yield* store.get(planId, query))?.capture, undefined);
+        }).pipe(Effect.scoped, Effect.provide(failedLayer));
+        yield* Effect.gen(function* () {
+          yield* (yield* CheckpointRecordReactor).drainThrough(2);
+          assert.strictEqual(yield* store.eventCursor, 2);
+          assert.strictEqual((yield* store.get(planId, query))?.capture?.terminal, true);
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(layer.pipe(Layer.provide(Layer.fresh(dependencies)))),
+        );
+      }).pipe(Effect.scoped, Effect.provide(testLayer)),
+  );

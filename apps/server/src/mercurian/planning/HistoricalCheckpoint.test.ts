@@ -20,6 +20,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as Stream from "effect/Stream";
 import * as Config from "../../config.ts";
 import * as ProcessRunner from "../../processRunner.ts";
@@ -59,6 +60,7 @@ import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
 import * as Planning from "./PlanningStore.ts";
 import * as TurnRegistry from "./PlanTurnRegistry.ts";
 import * as Records from "./CheckpointRecordStore.ts";
+import { start, interrupted, sessionSet } from "./CheckpointRecordTestUtils.ts";
 import { checkpointForkParent } from "./checkpointTargets.ts";
 
 const runGit = (cwd: string, args: string[]) =>
@@ -91,17 +93,59 @@ const checkpointLayer = Layer.effect(
   }),
 );
 
-for (const { laterB, cleanup, replyTiming, standaloneMemory } of [
-  { laterB: false, cleanup: false, replyTiming: "before", standaloneMemory: false },
-  { laterB: false, cleanup: true, replyTiming: "before", standaloneMemory: false },
-  { laterB: true, cleanup: false, replyTiming: "before", standaloneMemory: false },
-  { laterB: true, cleanup: true, replyTiming: "before", standaloneMemory: false },
-  { laterB: true, cleanup: true, replyTiming: "absent", standaloneMemory: false },
-  { laterB: true, cleanup: true, replyTiming: "after-fork", standaloneMemory: false },
-  { laterB: false, cleanup: false, replyTiming: "before", standaloneMemory: true },
+for (const { laterB, cleanup, replyTiming, emptyState, standaloneMemory } of [
+  {
+    laterB: false,
+    cleanup: false,
+    replyTiming: "before",
+    emptyState: "unanswered",
+    standaloneMemory: false,
+  },
+  {
+    laterB: false,
+    cleanup: true,
+    replyTiming: "before",
+    emptyState: "cancelled",
+    standaloneMemory: false,
+  },
+  {
+    laterB: true,
+    cleanup: false,
+    replyTiming: "before",
+    emptyState: "cancelled",
+    standaloneMemory: false,
+  },
+  {
+    laterB: true,
+    cleanup: true,
+    replyTiming: "before",
+    emptyState: "failed",
+    standaloneMemory: false,
+  },
+  {
+    laterB: true,
+    cleanup: true,
+    replyTiming: "absent",
+    emptyState: "inflight",
+    standaloneMemory: false,
+  },
+  {
+    laterB: true,
+    cleanup: true,
+    replyTiming: "after-fork",
+    emptyState: "lazy",
+    standaloneMemory: false,
+  },
+  {
+    laterB: false,
+    cleanup: false,
+    replyTiming: "before",
+    emptyState: "unanswered",
+    standaloneMemory: true,
+  },
 ]) {
   it.effect(
-    `forks exact A (reply: ${replyTiming}) ${laterB ? "after B" : "as its first child"}, with A's files and reconstruction ${cleanup ? "after cleanup" : "with the original runtime present"}${standaloneMemory ? " and standalone memory" : ""}`,
+    `forks exact A (reply: ${replyTiming}) ${laterB ? "after B" : "as its first child"}, with A's files and reconstruction ${cleanup ? "after cleanup" : "with the original runtime present"}; query-edit through ${emptyState}${standaloneMemory ? " and standalone memory" : ""}`,
     () =>
       Effect.acquireUseRelease(
         Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "m198-history-"))),
@@ -283,6 +327,58 @@ for (const { laterB, cleanup, replyTiming, standaloneMemory } of [
                     attachments: [],
                     createdAt: iso,
                   });
+                const empty = yield* send(originalThread, "query-empty", "Uncaptured query");
+                const emptyOwner = MercurianCommitId.make(empty.commitId);
+                if (emptyState === "lazy") {
+                  const sql = yield* SqlClient.SqlClient;
+                  yield* sql`DELETE FROM checkpoint_records WHERE owner_commit_id = ${emptyOwner}`;
+                  yield* sql`UPDATE commits SET payload_json = json_remove(payload_json, '$.checkpointRequest') WHERE commit_id = ${emptyOwner}`;
+                  const lazy = yield* records.recordQuery(emptyOwner, originalThread);
+                  assert.strictEqual(lazy?.lineRootCommitId, undefined);
+                } else if (emptyState !== "unanswered") {
+                  const started = start(1);
+                  assert.ok(started.type === "thread.turn-start-requested");
+                  yield* records.consume({
+                    ...started,
+                    payload: {
+                      ...started.payload,
+                      threadId: originalThread,
+                      messageId: MessageId.make(emptyOwner),
+                    },
+                  });
+                  if (emptyState === "cancelled") {
+                    const cancelled = interrupted(2);
+                    assert.ok(cancelled.type === "thread.turn-interrupt-requested");
+                    yield* records.consume({
+                      ...cancelled,
+                      payload: { ...cancelled.payload, threadId: originalThread },
+                    });
+                  } else if (emptyState === "failed") {
+                    const failed = sessionSet(2, {
+                      threadId: originalThread,
+                      status: "error",
+                      activeTurnId: null,
+                    });
+                    assert.ok(failed.type === "thread.session-set");
+                    yield* records.consume({
+                      ...failed,
+                      payload: { ...failed.payload, threadId: originalThread },
+                    });
+                  } else {
+                    yield* records.attach({
+                      ownerCommitId: emptyOwner,
+                      lineRootCommitId: root,
+                      capture: { status: "missing", terminal: false, files: [] },
+                    });
+                  }
+                }
+                const emptyRecord = (yield* records.get(planId, emptyOwner))!;
+                assert.strictEqual(emptyRecord.capture?.terminal === true, false);
+                assert.strictEqual(
+                  (yield* checkpointForkParent(emptyRecord, emptyRecord.revision).pipe(Effect.flip))
+                    ._tag,
+                  "HistoricalCheckpointUnavailable",
+                );
                 const qa = yield* send(originalThread, "query-A", "Request A");
                 const appendReplyA = () =>
                   planning.appendAssistantMessage({
@@ -320,6 +416,10 @@ for (const { laterB, cleanup, replyTiming, standaloneMemory } of [
                       })
                     : undefined;
                 if (pendingBeforeReply !== undefined) ra = yield* appendReplyA();
+                // An uncaptured descendant must inherit A, while a query before A must inherit base.
+                const gap = laterB
+                  ? yield* send(originalThread, "query-gap", "Unanswered after A")
+                  : undefined;
                 if (laterB) {
                   const qb = yield* send(originalThread, "query-B", "Request B");
                   yield* planning.appendAssistantMessage({
@@ -516,6 +616,65 @@ for (const { laterB, cleanup, replyTiming, standaloneMemory } of [
                     assert.strictEqual(responseA.reconstructionId, "native-provenance-A");
                 }
                 yield* slotService.release(slot.slotId, { kind: "turn", threadId: fork.threadId });
+                // A moved source HEAD must not become the fallback for an uncaptured query.
+                if (laterB)
+                  for (const repo of repos) {
+                    yield* branches.markBuilt({
+                      lineRootCommitId: root,
+                      repositoryId: repo.repositoryId,
+                    });
+                    runGit(repo.path, ["add", "."]);
+                    runGit(repo.path, ["commit", "-m", "later B committed"]);
+                    assert.notStrictEqual(runGit(repo.path, ["rev-parse", "HEAD"]), repo.head);
+                  }
+                for (const target of [empty, ...(gap === undefined ? [] : [gap])]) {
+                  const expectsA = target === gap;
+                  const queryFork = yield* runtimeService.ensureThread({
+                    planId,
+                    forkParentCommitId: MercurianCommitId.make(target.commitId),
+                  });
+                  const forkSend = yield* send(
+                    queryFork.threadId,
+                    `edit-${target.commitId}`,
+                    "Edit next query",
+                  );
+                  yield* branchReactor.reconcile();
+                  const claimed = yield* runtimeService.ensureSlot({
+                    threadId: queryFork.threadId,
+                    holder: { kind: "turn" },
+                  });
+                  const editSlot = Option.getOrThrow(
+                    yield* (yield* Slots.SlotStore).get(claimed.slotId),
+                  );
+                  for (const member of editSlot.members) {
+                    const cwd = NodePath.join(editSlot.path, member.relativePath);
+                    assert.strictEqual(
+                      NodeFS.readFileSync(NodePath.join(cwd, "file.txt"), "utf8"),
+                      expectsA ? "captured A\n" : "base\n",
+                    );
+                    assert.strictEqual(
+                      NodeFS.existsSync(NodePath.join(cwd, "new-A.txt")),
+                      expectsA,
+                    );
+                    assert.ok(!NodeFS.existsSync(NodePath.join(cwd, "new-B.txt")));
+                    assert.strictEqual(
+                      runGit(cwd, ["rev-parse", "HEAD"]),
+                      repos.find((repo) => repo.repositoryId === member.repositoryId)!.head,
+                    );
+                  }
+                  const forkDetail = yield* planning.getPlanSnapshot({ planId });
+                  assert.deepStrictEqual(
+                    forkDetail.timeline.find((item) => item.commitId === forkSend.commitId)
+                      ?.parents,
+                    [CommitId.make(target.commitId)],
+                  );
+                  yield* slotService.release(editSlot.slotId, {
+                    kind: "turn",
+                    threadId: queryFork.threadId,
+                  });
+                }
+                if (laterB)
+                  for (const repo of repos) runGit(repo.path, ["reset", "--hard", repo.head]);
                 if (laterB && cleanup) {
                   const standalone = yield* planning.savePlanRevision({
                     planId,

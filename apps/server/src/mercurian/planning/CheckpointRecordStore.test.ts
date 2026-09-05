@@ -4,9 +4,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
-import { CheckpointRecordStore, layer } from "./CheckpointRecordStore.ts";
+import { CheckpointRecordStore, layer, make } from "./CheckpointRecordStore.ts";
 import {
   seed,
+  streaming,
   planId,
   threadId,
   turnId,
@@ -306,4 +307,50 @@ it.effect("a late interruption naming an older provider turn cannot cancel a new
     );
     assert.strictEqual((yield* store.get(planId, query))?.capture?.terminal, true);
   }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect(
+  "ignored streaming events neither enter a SQL transaction nor move the durable cursor",
+  () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const store = yield* CheckpointRecordStore;
+      const sql = yield* SqlClient.SqlClient;
+      yield* store.consume(start());
+      const before = yield* sql<{ changes: number }>`SELECT total_changes() AS changes`;
+      yield* store.consume(streaming(2));
+      assert.deepStrictEqual(yield* sql`SELECT total_changes() AS changes`, before);
+      assert.strictEqual(yield* store.eventCursor, 1);
+      yield* store.consume(captured(3));
+      assert.strictEqual(yield* store.eventCursor, 3);
+      assert.strictEqual((yield* store.get(planId, query))?.capture?.terminal, true);
+    }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect("ignored events do not access SQL at all", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    let accesses = 0;
+    const traced = new Proxy(sql, {
+      apply(target, thisArg, args) {
+        accesses++;
+        return Reflect.apply(target, thisArg, args);
+      },
+      get(target, key, receiver) {
+        if (key === "withTransaction") {
+          return new Proxy(target.withTransaction, {
+            apply(transaction, thisArg, args) {
+              accesses++;
+              return Reflect.apply(transaction, thisArg, args);
+            },
+          });
+        }
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const store = yield* make.pipe(Effect.provideService(SqlClient.SqlClient, traced));
+    accesses = 0;
+    yield* store.consume(streaming());
+    assert.strictEqual(accesses, 0);
+  }).pipe(Effect.provide(database)),
 );

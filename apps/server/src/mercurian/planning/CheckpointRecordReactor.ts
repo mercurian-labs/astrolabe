@@ -4,6 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
@@ -11,15 +12,23 @@ import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionT
 import { forkParked } from "../../serverActivation.ts";
 import { CheckpointRecordStore } from "./CheckpointRecordStore.ts";
 
+export class CheckpointRecordConsumerError extends Schema.TaggedErrorClass<CheckpointRecordConsumerError>()(
+  "CheckpointRecordConsumerError",
+  { cause: Schema.Defect() },
+) {}
+
 export const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngineService;
   const records = yield* CheckpointRecordStore;
   const turns = yield* ProjectionTurnRepository;
   const seen = yield* SubscriptionRef.make(0);
   const reconciled = yield* Deferred.make<void>();
+  const stopped = yield* Deferred.make<never, CheckpointRecordConsumerError>();
   const consume = Effect.fn("CheckpointRecordReactor.consume")(function* (
     event: OrchestrationEvent,
   ) {
+    // Replay and the already-acquired live subscription can contain the same event.
+    if (event.sequence <= (yield* SubscriptionRef.get(seen))) return;
     const turnId =
       event.type === "thread.turn-diff-completed"
         ? event.payload.turnId
@@ -79,18 +88,26 @@ export const make = Effect.gen(function* () {
       yield* Stream.runForEach(live, (event) => consume(event));
     }).pipe(
       Effect.catchCause((cause) =>
-        Effect.logError("checkpoint record consumer stopped; durable cursor retained", { cause }),
+        Deferred.fail(stopped, new CheckpointRecordConsumerError({ cause })).pipe(
+          Effect.andThen(
+            Effect.logError("checkpoint record consumer stopped; durable cursor retained", {
+              cause,
+            }),
+          ),
+        ),
       ),
     ),
   );
   return {
     drainThrough: Effect.fn("CheckpointRecordReactor.drainThrough")(function* (sequence: number) {
       // Replayed events can reach the cursor before startup repairs have completed.
-      yield* Deferred.await(reconciled);
-      yield* SubscriptionRef.changes(seen).pipe(
-        Stream.filter((value) => value >= sequence),
-        Stream.runHead,
-      );
+      yield* Effect.gen(function* () {
+        yield* Deferred.await(reconciled);
+        yield* SubscriptionRef.changes(seen).pipe(
+          Stream.filter((value) => value >= sequence),
+          Stream.runHead,
+        );
+      }).pipe(Effect.raceFirst(Deferred.await(stopped)));
     }),
   };
 });
