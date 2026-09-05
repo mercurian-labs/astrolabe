@@ -443,6 +443,16 @@ describe("checkpoint records", () => {
     ]);
   });
 
+  it("shows a failed request without a second unknown-capture mark", () => {
+    const failed = checkpointRecord("query", {
+      capture: undefined,
+      request: { threadId: ThreadId.make("t"), messageId: MessageId.make("m"), state: "failed" },
+    });
+    expect(condensePlanGraph(turn, [failed]).byId.get("response")?.checkpoint?.status).toEqual([
+      "failed",
+    ]);
+  });
+
   it("attaches a standalone act's record to its own node", () => {
     const graph = condensePlanGraph(buildPlanGraph([specRevision("import", { cause: "import" })]), [
       checkpointRecord("import", { lineRootCommitId: id("import") }),

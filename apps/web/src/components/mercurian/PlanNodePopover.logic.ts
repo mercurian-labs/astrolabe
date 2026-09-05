@@ -268,7 +268,10 @@ export function captureFacts(record: PlanCheckpointRecord): PlanNodeCaptureFacts
           ...(group.captureError === undefined ? {} : { captureError: group.captureError }),
           ...(group.summaryError === undefined ? {} : { summaryError: group.summaryError }),
           files: group.files.map(capturedFile),
-          changesAvailable: true,
+          changesAvailable:
+            group.captureStatus === "ready" &&
+            group.beforeSnapshotOid !== undefined &&
+            group.afterSnapshotOid !== undefined,
         }));
   const facts: PlanNodeCaptureFacts = {
     repositories,

@@ -318,7 +318,8 @@ export function isUnknownCapture(record: PlanCheckpointRecord): boolean {
   return (
     checkpointEffects(record).status.captureUnknown &&
     state !== "unanswered" &&
-    state !== "cancelled"
+    state !== "cancelled" &&
+    state !== "failed"
   );
 }
 

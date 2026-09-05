@@ -503,6 +503,7 @@ describe("captureFacts", () => {
           branchMovement: { kind: "added", count: 2 },
           captureStatus: "ready",
           summaryStatus: "ready",
+          beforeSnapshotOid: "before",
           afterSnapshotOid: "after",
           branchTipOid: "tip",
           files: [
@@ -593,7 +594,7 @@ describe("captureFacts", () => {
     expect(offeredActs(node, graph, false, missingMember)).toEqual(["edit-and-branch"]);
     expect(missingMember.repositories.map((repository) => repository.changesAvailable)).toEqual([
       true,
-      true,
+      false,
     ]);
   });
 
