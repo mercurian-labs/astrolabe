@@ -43,11 +43,14 @@ and the thread you are looking at stays highlighted in the tree while you are an
 
 ### Where a fork came from
 
-A forked line shows **Forked from** above its conversation, naming the checkpoint where it began.
-Select that checkpoint to open **Checkpoints** at its origin. Your current line and composer draft
-stay in place while you inspect the earlier history. **Return to latest** ends that inspection.
-The conversation itself shows this line's messages; earlier turns remain in Checkpoints.
-The origin stays visible after you send messages on the new line.
+A forked line includes an **Earlier conversation** section above its own messages. Expand it to
+read the messages leading up to the fork, with the same message formatting and attachments as the
+rest of the conversation. Earlier history is read-only and collapsed when you open a line.
+
+Use **Older messages** and **Newer messages** to read a long history in small pages. Messages from
+other branches after the fork are excluded. **Fork here** on an earlier user message opens another
+line, leaving the original history intact. Expanding, folding, or paging earlier messages keeps your
+current line and composer draft in place.
 
 ## Status in the tree
 

@@ -298,6 +298,7 @@ import { createPageScrollController, type PageScrollKey } from "./chat/pageScrol
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
+import type { ConversationHistory } from "./chat/ConversationHistory";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
@@ -632,6 +633,7 @@ const SCRIPT_TERMINAL_ROWS = 30;
 type ChatViewSlots = {
   headerContent?: ReactNode;
   headerBanner?: ReactNode;
+  conversationHistory?: ConversationHistory;
   headerLeadingActions?: ReactNode;
   headerProjectName?: string;
   hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId>;
@@ -1365,6 +1367,7 @@ function ChatViewContent(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
     headerContent,
     headerBanner,
+    conversationHistory,
     headerLeadingActions,
     headerProjectName,
     hiddenThreadMenuActions,
@@ -7641,6 +7644,7 @@ function ChatViewContent(props: ChatViewProps) {
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
               <MessagesTimeline
+                conversationHistory={conversationHistory}
                 citationRequest={citationRequest}
                 citationHistoryLoading={threadDetailLoading}
                 onCiteAssistantText={citeAssistantText}
