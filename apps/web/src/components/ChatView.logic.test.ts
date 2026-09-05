@@ -811,6 +811,14 @@ describe("resolveThreadMetadataUpdateForNextTurn", () => {
 });
 
 describe("buildThreadTurnInterruptInput", () => {
+  it("cancels a server-accepted start without a provider turn id", () => {
+    expect(
+      buildThreadTurnInterruptInput(
+        makeThread({ session: { ...readySession, status: "starting" } }),
+      ),
+    ).toEqual({ threadId });
+  });
+
   it("targets the session's active running turn", () => {
     const activeTurnId = TurnId.make("turn-running");
 

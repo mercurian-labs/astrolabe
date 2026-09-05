@@ -976,6 +976,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
   showSendWhileRunning?: boolean;
+  canStopPendingStart: boolean;
   showSecondaryStatus: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
@@ -1009,6 +1010,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
         showSendWhileRunning={props.showSendWhileRunning ?? false}
+        canStopPendingStart={props.canStopPendingStart}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
@@ -1963,6 +1965,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (phase === "running") {
       return "running";
+    }
+    if (phase === "connecting") {
+      return "starting";
     }
     if (showPlanFollowUpPrompt) {
       return prompt.trim().length > 0 ? "plan:refine" : "plan:implement";
@@ -5385,6 +5390,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
+                    canStopPendingStart={phase === "connecting"}
                     showPlanFollowUpPrompt={
                       pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                     }
