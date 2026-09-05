@@ -18,12 +18,12 @@ export const isSnapshotOid = Schema.is(
 /** The nearest act on the carrying path, never a merge's other parent or a later runtime tip. */
 export function recordedCheckpointAt(detail: PlanDetail, commitId: string | undefined) {
   const byId = new Map(detail.timeline.map((item) => [String(item.commitId), item]));
-  const records = new Map(
-    (detail.checkpoints ?? []).map((record) => [
-      String(record.responseCommitId ?? record.ownerCommitId),
-      record,
-    ]),
-  );
+  const records = new Map<string, PlanCheckpointRecord>();
+  for (const record of detail.checkpoints ?? []) {
+    // A pending fork can already carry through the owner when a response arrives.
+    records.set(record.ownerCommitId, record);
+    if (record.responseCommitId !== undefined) records.set(record.responseCommitId, record);
+  }
   const visited = new Set<string>();
   let current = commitId;
   while (current !== undefined && !visited.has(current)) {
@@ -35,14 +35,13 @@ export function recordedCheckpointAt(detail: PlanDetail, commitId: string | unde
   return undefined;
 }
 
-/** Summary failure does not invalidate a snapshot; incomplete member capture does. */
+/** Terminal snapshots survive a lost reply or failed summary; incomplete capture blocks forks. */
 export const capturedRepositories = Effect.fn("checkpointTargets.capturedRepositories")(function* (
   record: PlanCheckpointRecord,
 ) {
   const repositories = record.capture?.repositories;
   if (
     record.capture?.terminal !== true ||
-    (record.request !== undefined && record.responseCommitId === undefined) ||
     repositories === undefined ||
     repositories.length === 0 ||
     new Set(repositories.map((repository) => repository.repositoryId)).size !==

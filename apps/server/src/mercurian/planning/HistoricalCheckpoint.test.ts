@@ -38,6 +38,7 @@ import { TerminalManager } from "../../terminal/Manager.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
+import { CommitId } from "../commitTree/schema.ts";
 import * as LineBranches from "../commitTree/LineBranchStore.ts";
 import * as BranchReactor from "../commitTree/LineBranchReactor.ts";
 import * as Runtimes from "../lineRuntimes/LineRuntimeStore.ts";
@@ -90,15 +91,17 @@ const checkpointLayer = Layer.effect(
   }),
 );
 
-for (const { laterB, cleanup, standaloneMemory } of [
-  { laterB: false, cleanup: false, standaloneMemory: false },
-  { laterB: false, cleanup: true, standaloneMemory: false },
-  { laterB: true, cleanup: false, standaloneMemory: false },
-  { laterB: true, cleanup: true, standaloneMemory: false },
-  { laterB: false, cleanup: false, standaloneMemory: true },
+for (const { laterB, cleanup, replyTiming, standaloneMemory } of [
+  { laterB: false, cleanup: false, replyTiming: "before", standaloneMemory: false },
+  { laterB: false, cleanup: true, replyTiming: "before", standaloneMemory: false },
+  { laterB: true, cleanup: false, replyTiming: "before", standaloneMemory: false },
+  { laterB: true, cleanup: true, replyTiming: "before", standaloneMemory: false },
+  { laterB: true, cleanup: true, replyTiming: "absent", standaloneMemory: false },
+  { laterB: true, cleanup: true, replyTiming: "after-fork", standaloneMemory: false },
+  { laterB: false, cleanup: false, replyTiming: "before", standaloneMemory: true },
 ]) {
   it.effect(
-    `forks exact A ${laterB ? "after B" : "as its first child"}, with A's files and reconstruction ${cleanup ? "after cleanup" : "with the original runtime present"}${standaloneMemory ? " and standalone memory" : ""}`,
+    `forks exact A (reply: ${replyTiming}) ${laterB ? "after B" : "as its first child"}, with A's files and reconstruction ${cleanup ? "after cleanup" : "with the original runtime present"}${standaloneMemory ? " and standalone memory" : ""}`,
     () =>
       Effect.acquireUseRelease(
         Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "m198-history-"))),
@@ -225,8 +228,8 @@ for (const { laterB, cleanup, standaloneMemory } of [
                 Effect.provideService(Snapshots.SnapshotChain, chain),
               );
               yield* Effect.gen(function* () {
-                const runtimeService = yield* RuntimeService.make;
-                const branchReactor = yield* BranchReactor.make;
+                let runtimeService = yield* RuntimeService.make;
+                let branchReactor = yield* BranchReactor.make;
                 yield* branchReactor.reconcile();
                 const branches = yield* LineBranches.LineBranchStore;
                 yield* runtimes.create({
@@ -255,7 +258,7 @@ for (const { laterB, cleanup, standaloneMemory } of [
                         lineRootCommitId: root,
                         repositoryId: repo.repositoryId,
                         lineBranch: branch.branch,
-                        kind: "settled",
+                        kind: label === "A" && replyTiming !== "before" ? "partial" : "settled",
                         ref: CheckpointRef.make(`refs/t3/test/${label}`),
                       });
                       return {
@@ -281,14 +284,16 @@ for (const { laterB, cleanup, standaloneMemory } of [
                     createdAt: iso,
                   });
                 const qa = yield* send(originalThread, "query-A", "Request A");
-                const ra = yield* planning.appendAssistantMessage({
-                  planId,
-                  parentCommitId: qa.commitId,
-                  checkpointOwnerCommitId: MercurianCommitId.make(qa.commitId),
-                  reconstructionId: "native-provenance-A",
-                  text: "Reply A",
-                  createdAt: now,
-                });
+                const appendReplyA = () =>
+                  planning.appendAssistantMessage({
+                    planId,
+                    parentCommitId: qa.commitId,
+                    checkpointOwnerCommitId: MercurianCommitId.make(qa.commitId),
+                    reconstructionId: "native-provenance-A",
+                    text: "Reply A",
+                    createdAt: now,
+                  });
+                let ra = replyTiming === "before" ? yield* appendReplyA() : undefined;
                 for (const repo of repos) {
                   NodeFS.writeFileSync(NodePath.join(repo.path, "file.txt"), "captured A\n");
                   NodeFS.writeFileSync(NodePath.join(repo.path, "new-A.txt"), "uncommitted A\n");
@@ -297,8 +302,24 @@ for (const { laterB, cleanup, standaloneMemory } of [
                 const savedA = (yield* records.attach({
                   ownerCommitId: MercurianCommitId.make(qa.commitId),
                   lineRootCommitId: root,
-                  capture: { status: "ready", terminal: true, files: [], repositories: factsA },
+                  capture: {
+                    status: "ready",
+                    terminal: true,
+                    files: [],
+                    repositories: factsA,
+                    ...(replyTiming === "before"
+                      ? {}
+                      : { partial: true, snapshotKind: "partial" as const }),
+                  },
                 }))!;
+                const pendingBeforeReply =
+                  replyTiming === "after-fork"
+                    ? yield* runtimeService.ensureThread({
+                        planId,
+                        forkParentCommitId: yield* checkpointForkParent(savedA, savedA.revision),
+                      })
+                    : undefined;
+                if (pendingBeforeReply !== undefined) ra = yield* appendReplyA();
                 if (laterB) {
                   const qb = yield* send(originalThread, "query-B", "Request B");
                   yield* planning.appendAssistantMessage({
@@ -328,11 +349,23 @@ for (const { laterB, cleanup, standaloneMemory } of [
                     });
                 }
                 // Runtime deletion does not own capture lookup or retained Git refs.
-                if (cleanup) yield* runtimes.deleteByThread(originalThread);
+                if (cleanup) {
+                  yield* runtimes.deleteByThread(originalThread);
+                  runtimeService = yield* RuntimeService.make;
+                  branchReactor = yield* BranchReactor.make;
+                }
                 for (const repo of repos) runGit(repo.path, ["gc", "--prune=now"]);
                 const reopened = yield* Records.make;
                 const durableA = (yield* reopened.get(planId, savedA.ownerCommitId))!;
-                assert.strictEqual(durableA.responseCommitId, MercurianCommitId.make(ra.commitId));
+                assert.ok(durableA.request);
+                assert.strictEqual(
+                  durableA.responseCommitId,
+                  ra === undefined ? undefined : MercurianCommitId.make(ra.commitId),
+                );
+                if (replyTiming !== "before") {
+                  assert.strictEqual(durableA.capture?.partial, true);
+                  assert.strictEqual(durableA.capture?.terminal, true);
+                }
                 const diffQuery = yield* CheckpointDiff.make;
                 for (const repo of repos) {
                   const result = yield* diffQuery.getCheckpointDiff({
@@ -380,17 +413,39 @@ for (const { laterB, cleanup, standaloneMemory } of [
                     threadId: originalThread,
                   });
                 }
-                const parent = yield* checkpointForkParent(durableA, durableA.revision);
-                const fork = yield* runtimeService.ensureThread({
-                  planId,
-                  forkParentCommitId: parent,
-                });
+                const parent =
+                  pendingBeforeReply === undefined
+                    ? yield* checkpointForkParent(durableA, durableA.revision)
+                    : savedA.ownerCommitId;
+                const fork =
+                  pendingBeforeReply ??
+                  (yield* runtimeService.ensureThread({
+                    planId,
+                    forkParentCommitId: parent,
+                  }));
+                assert.strictEqual(
+                  parent,
+                  MercurianCommitId.make(replyTiming === "before" ? ra!.commitId : qa.commitId),
+                );
+                if (pendingBeforeReply !== undefined) {
+                  assert.strictEqual(
+                    durableA.responseCommitId,
+                    MercurianCommitId.make(ra!.commitId),
+                  );
+                  assert.ok(durableA.revision > savedA.revision);
+                  assert.strictEqual(
+                    yield* checkpointForkParent(durableA, durableA.revision),
+                    MercurianCommitId.make(ra!.commitId),
+                  );
+                  const pending = Option.getOrThrow(yield* runtimes.getByThreadId(fork.threadId));
+                  assert.strictEqual(pending.forkParentCommitId, parent);
+                }
                 const sent = yield* send(fork.threadId, "fork-query", "Continue A");
                 const detail = yield* planning.getPlanSnapshot({ planId });
                 const forkRoot = MercurianCommitId.make(sent.commitId);
                 assert.deepStrictEqual(
                   detail.timeline.find((item) => item.commitId === sent.commitId)?.parents,
-                  [ra.commitId],
+                  [CommitId.make(parent)],
                 );
                 assert.ok(
                   BranchReactor.lineRoots(detail).some((item) => item.commitId === sent.commitId),
@@ -449,13 +504,17 @@ for (const { laterB, cleanup, standaloneMemory } of [
                   contextDisposition: "resume",
                 });
                 assert.deepStrictEqual(prepared.session, { skipResume: true });
-                assert.ok(prepared.text.includes("Reply A"));
+                assert.ok(prepared.text.includes("Request A"));
+                assert.strictEqual(prepared.text.includes("Reply A"), replyTiming === "before");
+                assert.ok(!prepared.text.includes("Request B"));
                 assert.ok(!prepared.text.includes("Reply B"));
                 assert.strictEqual(reconstructions[0]?.throughCommitId, parent);
-                const responseA = detail.timeline.find((item) => item.commitId === ra.commitId);
-                assert.ok(responseA?._tag === "message");
-                if (responseA?._tag === "message")
-                  assert.strictEqual(responseA.reconstructionId, "native-provenance-A");
+                if (ra !== undefined) {
+                  const responseA = detail.timeline.find((item) => item.commitId === ra.commitId);
+                  assert.ok(responseA?._tag === "message");
+                  if (responseA?._tag === "message")
+                    assert.strictEqual(responseA.reconstructionId, "native-provenance-A");
+                }
                 yield* slotService.release(slot.slotId, { kind: "turn", threadId: fork.threadId });
                 if (laterB && cleanup) {
                   const standalone = yield* planning.savePlanRevision({
