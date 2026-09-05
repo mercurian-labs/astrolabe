@@ -520,6 +520,11 @@ export function applyThreadDetailEvent(
       if (existing && existing.status !== "missing" && checkpoint.status === "missing") {
         return { kind: "unchanged" };
       }
+      // A placeholder can race the real interrupted-turn capture; both carry
+      // status "missing", but only the capture carries the partial fact.
+      if (existing?.partial === true && checkpoint.partial !== true) {
+        return { kind: "unchanged" };
+      }
 
       const checkpoints = pipe(
         thread.checkpoints,

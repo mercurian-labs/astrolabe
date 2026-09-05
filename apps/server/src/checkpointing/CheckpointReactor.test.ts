@@ -12,6 +12,7 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import {
+  CheckpointRef,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
@@ -1152,6 +1153,60 @@ describe("CheckpointReactor", () => {
 
     expect(harness.recordedSnapshots).toHaveLength(1);
     expect(harness.recordedSnapshots[0]).toEqual(expect.objectContaining({ kind: "settled" }));
+  });
+
+  it("keeps the settled capture when a placeholder lands after completion", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-late-placeholder");
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "README.md"),
+      "late placeholder work\n",
+      "utf8",
+    );
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-late-placeholder-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    const turnRef = checkpointRefForThreadTurn(threadId, 1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-late-placeholder"),
+        threadId,
+        turnId,
+        completedAt: "2026-01-01T00:00:01.000Z",
+        checkpointRef: CheckpointRef.make("provider-diff:evt-late"),
+        status: "missing",
+        files: [],
+        assistantMessageId: MessageId.make("assistant-late-placeholder"),
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:01.000Z",
+      }),
+    );
+    await harness.drain();
+
+    expect(harness.recordedSnapshots).toEqual([expect.objectContaining({ kind: "settled" })]);
+    const snapshot = await harness.readModel();
+    const checkpoint = snapshot.threads[0]?.checkpoints.find((entry) => entry.turnId === turnId);
+    expect(checkpoint).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        checkpointRef: turnRef,
+        snapshotKind: "settled",
+      }),
+    );
   });
 
   it("keeps a placeholder turn partial when completion is interrupted", async () => {

@@ -1299,6 +1299,43 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.checkpoints[0]?.repositories).toEqual(repositories);
       }
     });
+
+    it("keeps a partial capture when a placeholder for the same turn arrives later", () => {
+      const partialCapture = {
+        turnId: TurnId.make("turn-1"),
+        checkpointTurnCount: 1,
+        checkpointRef: CheckpointRef.make("refs/t3/checkpoints/thread-1/turn/1"),
+        status: "missing" as const,
+        files: [],
+        assistantMessageId: MessageId.make("msg-3"),
+        completedAt: "2026-04-01T12:00:00.000Z",
+        partial: true,
+        snapshotKind: "partial" as const,
+      };
+      const result = applyThreadDetailEvent(
+        { ...baseThread, checkpoints: [partialCapture] },
+        {
+          ...baseEventFields,
+          sequence: 13,
+          occurredAt: "2026-04-01T12:00:01.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.turn-diff-completed",
+          payload: {
+            threadId: ThreadId.make("thread-1"),
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("provider-diff:evt-1"),
+            status: "missing",
+            files: [],
+            assistantMessageId: MessageId.make("msg-3"),
+            completedAt: "2026-04-01T12:00:01.000Z",
+          },
+        },
+      );
+
+      expect(result.kind).toBe("unchanged");
+    });
   });
 
   describe("no-op events", () => {
