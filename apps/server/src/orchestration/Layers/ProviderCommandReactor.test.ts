@@ -3078,13 +3078,14 @@ describe("ProviderCommandReactor", () => {
   });
 
   for (const boundary of ["start", "bind", "list", "capabilities"] as const) {
-    for (const outcome of ["interrupt", "delete", "failure"] as const) {
+    for (const outcome of ["interrupt", "stop", "delete", "failure"] as const) {
       effectIt.effect(`releases prepared attempts after ${outcome} at ${boundary}`, () =>
         Effect.gen(function* () {
           const entered = yield* Deferred.make<void>();
           const failed = yield* Deferred.make<void>();
           let providerStarted = false;
           let failures = 0;
+          let listedBoundary = false;
           const block = Deferred.succeed(entered, undefined).pipe(
             Effect.andThen(
               outcome === "failure" ? Effect.die(new Error("boundary failed")) : Effect.never,
@@ -3105,8 +3106,21 @@ describe("ProviderCommandReactor", () => {
                 return boundary === "start" ? block : Effect.succeed(session);
               },
               ...(boundary === "bind" ? { bindSessionEffect: block } : {}),
-              listSessionsEffect: (sessions) =>
-                boundary === "list" && providerStarted ? block : Effect.succeed(sessions),
+              listSessionsEffect: (sessions) => {
+                if (boundary === "list" && providerStarted && !listedBoundary) {
+                  listedBoundary = true;
+                  return block;
+                }
+                return Effect.succeed(sessions);
+              },
+              interruptTurnEffect: () =>
+                Effect.fail(
+                  new ProviderAdapterRequestError({
+                    provider: "codex",
+                    method: "interruptTurn",
+                    detail: "No binding: would fail or recover an idle session",
+                  }),
+                ),
               getCapabilitiesEffect: () =>
                 boundary === "capabilities" && providerStarted
                   ? block
@@ -3119,7 +3133,12 @@ describe("ProviderCommandReactor", () => {
           yield* Deferred.await(entered);
           if (outcome !== "failure")
             yield* harness.engine.dispatch({
-              type: outcome === "delete" ? "thread.delete" : "thread.turn.interrupt",
+              type:
+                outcome === "delete"
+                  ? "thread.delete"
+                  : outcome === "stop"
+                    ? "thread.session.stop"
+                    : "thread.turn.interrupt",
               commandId: CommandId.make(`cancel-${boundary}-${outcome}`),
               threadId: ThreadId.make("thread-1"),
               createdAt: "2026-01-01T00:00:00.000Z",
@@ -3128,10 +3147,206 @@ describe("ProviderCommandReactor", () => {
           yield* Effect.promise(() => harness.drain());
           expect(failures).toBe(1);
           expect(harness.sendTurn).not.toHaveBeenCalled();
+          if (outcome !== "failure") {
+            expect(harness.interruptTurn).not.toHaveBeenCalled();
+            expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
+            expect(harness.startSession).toHaveBeenCalledTimes(1);
+            const snapshot = yield* Effect.promise(() => harness.readModel());
+            const thread = snapshot.threads.find((thread) => thread.id === "thread-1");
+            if (outcome === "delete") {
+              expect(thread?.deletedAt).not.toBeNull();
+              expect(thread?.session?.status).toBe("stopped");
+              expect(thread?.session?.lastError).toBeNull();
+              expect(harness.runtimeSessions).toHaveLength(0);
+            } else {
+              expect(thread?.session?.status).toBe(
+                outcome === "interrupt" && boundary !== "start" ? "ready" : "stopped",
+              );
+              expect(thread?.session?.lastError).toBeNull();
+              expect(
+                thread?.activities.some(
+                  (activity) => activity.kind === "provider.turn.interrupt.failed",
+                ),
+              ).toBe(false);
+            }
+          }
         }),
       );
     }
   }
+
+  for (const persisted of [false, true]) {
+    for (const stop of [false, true]) {
+      effectIt.effect(
+        `cancels before session creation without ${persisted ? "recovering persisted context" : "routing a missing binding"} (${stop ? "stop" : "interrupt"})`,
+        () =>
+          Effect.gen(function* () {
+            const entered = yield* Deferred.make<void>();
+            const released = yield* Deferred.make<void>();
+            let recoveryStarts = 0;
+            const harness = yield* Effect.promise(() =>
+              createHarness({
+                ...(persisted ? { persistedResumeCursor: { opaque: "native-context" } } : {}),
+                prepareTurn: () =>
+                  Deferred.succeed(entered, undefined).pipe(
+                    Effect.andThen(Effect.never),
+                    Effect.ensuring(Deferred.succeed(released, undefined)),
+                  ),
+                interruptTurnEffect: () =>
+                  persisted
+                    ? Effect.sync(() => {
+                        recoveryStarts++;
+                      })
+                    : Effect.fail(
+                        new ProviderAdapterRequestError({
+                          provider: "codex",
+                          method: "interruptTurn",
+                          detail: "No persisted provider binding",
+                        }),
+                      ),
+              }),
+            );
+            yield* harness.engine.dispatch(
+              requestTurn("thread-1", `before-session-${persisted}-${stop}`),
+            );
+            yield* Deferred.await(entered);
+            yield* harness.engine.dispatch({
+              type: stop ? "thread.session.stop" : "thread.turn.interrupt",
+              commandId: CommandId.make("cancel-before-session"),
+              threadId: ThreadId.make("thread-1"),
+              createdAt: "2026-01-01T00:00:00.000Z",
+            });
+            yield* Deferred.await(released);
+            yield* Effect.promise(() => harness.drain());
+            expect(recoveryStarts).toBe(0);
+            expect(harness.startSession).not.toHaveBeenCalled();
+            expect(harness.sendTurn).not.toHaveBeenCalled();
+            expect(harness.interruptTurn).not.toHaveBeenCalled();
+            expect(harness.stopSession).not.toHaveBeenCalled();
+            const snapshot = yield* Effect.promise(() => harness.readModel());
+            expect(snapshot.threads[0]?.session?.status).toBe("stopped");
+            expect(snapshot.threads[0]?.session?.lastError).toBeNull();
+            expect(
+              snapshot.threads[0]?.activities.some(
+                (activity) => activity.kind === "provider.turn.interrupt.failed",
+              ),
+            ).toBe(false);
+          }),
+      );
+    }
+  }
+
+  for (const stop of [false, true]) {
+    effectIt.effect(
+      `cancelling continuation ${stop ? "stops" : "preserves"} an existing idle provider`,
+      () =>
+        Effect.gen(function* () {
+          const prepared = yield* Deferred.make<void>();
+          const cancelled = yield* Deferred.make<void>();
+          const firstSent = yield* Deferred.make<void>();
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              prepareTurn: ({ message }) =>
+                message.id === "continue-idle"
+                  ? Deferred.succeed(prepared, undefined).pipe(
+                      Effect.andThen(Effect.never),
+                      Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+                    )
+                  : Effect.succeed({
+                      text: message.text,
+                      session: {},
+                      onSubmitted: Deferred.succeed(firstSent, undefined).pipe(Effect.asVoid),
+                    }),
+            }),
+          );
+          yield* harness.engine.dispatch(requestTurn("thread-1", "initial-idle"));
+          yield* Deferred.await(firstSent);
+          yield* Effect.promise(() => harness.drain());
+          yield* harness.engine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make("idle-session-ready"),
+            threadId: ThreadId.make("thread-1"),
+            session: {
+              threadId: ThreadId.make("thread-1"),
+              status: "ready",
+              providerName: "codex",
+              providerInstanceId: ProviderInstanceId.make("codex"),
+              runtimeMode: "approval-required",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+          yield* harness.engine.dispatch(requestTurn("thread-1", "continue-idle"));
+          yield* Deferred.await(prepared);
+          yield* harness.engine.dispatch({
+            type: stop ? "thread.session.stop" : "thread.turn.interrupt",
+            commandId: CommandId.make("cancel-idle"),
+            threadId: ThreadId.make("thread-1"),
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+          yield* Deferred.await(cancelled);
+          yield* Effect.promise(() => harness.drain());
+          expect(harness.startSession).toHaveBeenCalledTimes(1);
+          expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+          expect(harness.interruptTurn).not.toHaveBeenCalled();
+          expect(harness.stopSession).toHaveBeenCalledTimes(stop ? 1 : 0);
+          const snapshot = yield* Effect.promise(() => harness.readModel());
+          expect(snapshot.threads[0]?.session?.status).toBe(stop ? "stopped" : "ready");
+          expect(snapshot.threads[0]?.session?.lastError).toBeNull();
+          expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
+        }),
+    );
+  }
+
+  effectIt.effect("a previous local cancellation never absorbs an interrupt of a newer send", () =>
+    Effect.gen(function* () {
+      const preparing = yield* Deferred.make<void>();
+      const cancelled = yield* Deferred.make<void>();
+      const sending = yield* Deferred.make<void>();
+      const sendCancelled = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          prepareTurn: ({ message }) =>
+            message.id === "old-cancelled"
+              ? Deferred.succeed(preparing, undefined).pipe(
+                  Effect.andThen(Effect.never),
+                  Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+                )
+              : Effect.succeed({ text: message.text, session: {} }),
+        }),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "old-cancelled"));
+      yield* Deferred.await(preparing);
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("stop-old"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(cancelled);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+      harness.sendTurn.mockImplementation(() =>
+        Deferred.succeed(sending, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.ensuring(Deferred.succeed(sendCancelled, undefined)),
+        ),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "new-send"));
+      yield* Deferred.await(sending);
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("stop-new"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(sendCancelled);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.interruptTurn).toHaveBeenCalledTimes(1);
+    }),
+  );
 
   effectIt.effect(
     "other thread starts, approvals and interrupts complete while preparation is blocked",

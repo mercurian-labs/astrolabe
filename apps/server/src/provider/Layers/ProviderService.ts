@@ -1046,6 +1046,16 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       });
       let metricProvider = "unknown";
       return yield* Effect.gen(function* () {
+        if (Option.isNone(yield* directory.getBinding(input.threadId))) {
+          // Cancellation can arrive after the adapter starts but before its
+          // binding is persisted. Stop only live adapters; never recover here.
+          for (const [, adapter] of yield* getAdapterEntries) {
+            if (yield* adapter.hasSession(input.threadId))
+              yield* adapter.stopSession(input.threadId);
+          }
+          yield* clearMcpSession(input.threadId);
+          return;
+        }
         const routed = yield* resolveRoutableSession({
           threadId: input.threadId,
           operation: "ProviderService.stopSession",

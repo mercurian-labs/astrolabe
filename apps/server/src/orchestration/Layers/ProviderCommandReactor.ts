@@ -316,8 +316,14 @@ const make = Effect.gen(function* () {
   const providerAuthService = yield* ProviderAuthService;
   const providerService = yield* ProviderService;
   const turnPreparation = yield* TurnPreparation;
-  const pendingPreparations = new Map<ThreadId, Fiber.Fiber<unknown, unknown>>();
-  const preparationStops = new Map<ThreadId, number>();
+  interface PendingStart {
+    readonly sequence: number;
+    cancelled: boolean;
+    sendStarted: boolean;
+    fiber?: Fiber.Fiber<void>;
+  }
+  const pendingStarts = new Map<ThreadId, Set<PendingStart>>();
+  const cancelledStarts = new Map<number, ReadonlyArray<PendingStart>>();
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -1352,6 +1358,10 @@ const make = Effect.gen(function* () {
       }
     }
 
+    const attempt = [...(pendingStarts.get(event.payload.threadId) ?? [])].find(
+      (candidate) => candidate.sequence === event.sequence,
+    );
+    if (attempt === undefined || attempt.cancelled) return;
     const preparationFiber = yield* Effect.gen(function* () {
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
@@ -1363,6 +1373,10 @@ const make = Effect.gen(function* () {
         interactionMode: event.payload.interactionMode,
         createdAt: event.payload.createdAt,
       });
+      if (attempt.cancelled) return yield* Effect.interrupt;
+      // From this point an interrupt must reach the provider, even if send has
+      // not acknowledged yet. Keep the marker and entry into send synchronous.
+      attempt.sendStarted = true;
       yield* Effect.uninterruptibleMask((restore) =>
         restore(providerService.sendTurn(sendTurnRequest.request)).pipe(
           Effect.tap(() =>
@@ -1377,23 +1391,56 @@ const make = Effect.gen(function* () {
         ),
       );
     }).pipe(Effect.scoped, Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
-    pendingPreparations.set(event.payload.threadId, preparationFiber);
-    if ((preparationStops.get(event.payload.threadId) ?? -1) > event.sequence) {
-      yield* Fiber.interrupt(preparationFiber);
-    }
-    yield* Fiber.await(preparationFiber).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (pendingPreparations.get(event.payload.threadId) === preparationFiber)
-            pendingPreparations.delete(event.payload.threadId);
-        }),
-      ),
+    attempt.fiber = preparationFiber;
+    if (attempt.cancelled) yield* Fiber.interrupt(preparationFiber);
+    yield* Fiber.await(preparationFiber);
+  });
+
+  const satisfyCancelledStart = Effect.fn("satisfyCancelledStart")(function* (
+    event: Extract<
+      ProviderIntentEvent,
+      {
+        type:
+          | "thread.turn-interrupt-requested"
+          | "thread.session-stop-requested"
+          | "thread.deleted";
+      }
+    >,
+  ) {
+    const attempts = cancelledStarts.get(event.sequence);
+    cancelledStarts.delete(event.sequence);
+    if (attempts === undefined || attempts.some((attempt) => attempt.sendStarted)) return false;
+    const live = (yield* providerService.listSessions()).find(
+      (session) => session.threadId === event.payload.threadId,
     );
+    if (live?.status === "running" || live?.activeTurnId != null) return false;
+    const stop = event.type !== "thread.turn-interrupt-requested";
+    if (live !== undefined && (stop || live.status !== "ready"))
+      yield* providerService.stopSession({ threadId: event.payload.threadId });
+    const thread = yield* resolveThread(event.payload.threadId);
+    if (thread === undefined || thread.deletedAt !== null) return true;
+    const instanceId = live?.providerInstanceId ?? thread.session?.providerInstanceId;
+    yield* setThreadSession({
+      threadId: thread.id,
+      session: {
+        threadId: thread.id,
+        status: !stop && live?.status === "ready" ? "ready" : "stopped",
+        providerName: live?.provider ?? thread.session?.providerName ?? null,
+        ...(instanceId === undefined ? {} : { providerInstanceId: instanceId }),
+        runtimeMode: thread.runtimeMode,
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: event.occurredAt,
+      },
+      createdAt: event.occurredAt,
+    });
+    return true;
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-interrupt-requested" }>,
   ) {
+    if (yield* satisfyCancelledStart(event)) return;
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
       return;
@@ -1577,6 +1624,7 @@ const make = Effect.gen(function* () {
   const processSessionStopRequested = Effect.fn("processSessionStopRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.session-stop-requested" }>,
   ) {
+    if (yield* satisfyCancelledStart(event)) return;
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
       return;
@@ -1618,7 +1666,7 @@ const make = Effect.gen(function* () {
     });
     switch (event.type) {
       case "thread.deleted":
-        preparationStops.delete(event.payload.threadId);
+        yield* satisfyCancelledStart(event);
         threadModelSelections.delete(event.payload.threadId);
         return;
       case "thread.meta-updated":
@@ -1641,8 +1689,6 @@ const make = Effect.gen(function* () {
         yield* processTurnStartRequested(event);
         return;
       case "thread.turn-interrupt-requested":
-        if ((preparationStops.get(event.payload.threadId) ?? -1) <= event.sequence)
-          preparationStops.delete(event.payload.threadId);
         yield* processTurnInterruptRequested(event);
         return;
       case "thread.approval-response-requested":
@@ -1652,8 +1698,6 @@ const make = Effect.gen(function* () {
         yield* processUserInputResponseRequested(event);
         return;
       case "thread.session-stop-requested":
-        if ((preparationStops.get(event.payload.threadId) ?? -1) <= event.sequence)
-          preparationStops.delete(event.payload.threadId);
         yield* processSessionStopRequested(event);
         return;
       case "thread.settled": {
@@ -1698,17 +1742,18 @@ const make = Effect.gen(function* () {
       const previous = threadCommands.get(event.payload.threadId);
       const token = yield* Effect.gen(function* () {
         if (previous !== undefined) yield* Fiber.await(previous);
-        if (
-          event.type === "thread.turn-start-requested" &&
-          (preparationStops.get(event.payload.threadId) ?? -1) > event.sequence
-        )
-          return;
         yield* processDomainEventSafely(event);
       }).pipe(
         Effect.ensuring(
           Effect.sync(() => {
             if (threadCommands.get(event.payload.threadId) === token)
               threadCommands.delete(event.payload.threadId);
+            if (event.type === "thread.turn-start-requested") {
+              const starts = pendingStarts.get(event.payload.threadId);
+              for (const start of starts ?? [])
+                if (start.sequence === event.sequence) starts?.delete(start);
+              if (starts?.size === 0) pendingStarts.delete(event.payload.threadId);
+            }
           }),
         ),
         Effect.forkScoped,
@@ -1730,14 +1775,25 @@ const make = Effect.gen(function* () {
       }),
     );
     const processEvent = Effect.fn("processEvent")(function* (event: OrchestrationEvent) {
+      if (event.type === "thread.turn-start-requested") {
+        const starts = pendingStarts.get(event.payload.threadId) ?? new Set<PendingStart>();
+        starts.add({ sequence: event.sequence, cancelled: false, sendStarted: false });
+        pendingStarts.set(event.payload.threadId, starts);
+      }
       if (
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.session-stop-requested" ||
         event.type === "thread.deleted"
       ) {
-        preparationStops.set(event.payload.threadId, event.sequence);
-        const preparation = pendingPreparations.get(event.payload.threadId);
-        if (preparation !== undefined) yield* Fiber.interrupt(preparation).pipe(Effect.forkScoped);
+        const attempts = [...(pendingStarts.get(event.payload.threadId) ?? [])].filter(
+          (attempt) => attempt.sequence < event.sequence,
+        );
+        if (attempts.length > 0) cancelledStarts.set(event.sequence, attempts);
+        for (const attempt of attempts) {
+          attempt.cancelled = true;
+          if (attempt.fiber !== undefined)
+            yield* Fiber.interrupt(attempt.fiber).pipe(Effect.forkScoped);
+        }
       }
       if (
         (event.type === "thread.meta-updated" && event.payload.regenerateTitle === true) ||

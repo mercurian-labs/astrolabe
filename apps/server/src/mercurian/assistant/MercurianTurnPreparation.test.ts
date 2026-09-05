@@ -311,16 +311,32 @@ it.effect(
 );
 
 it.effect("adds only the appendix to a brand-new line's first turn", () => {
-  const dependencies = preparationDependencies({
-    timeline: [],
-    ancestors: [],
-  });
+  const records: import("@t3tools/contracts").PlanReconstruction[] = [];
+  const dependencies = Layer.merge(
+    preparationDependencies({ timeline: [], ancestors: [] }),
+    Layer.mock(ReconstructionStore)({
+      save: (record) =>
+        Effect.sync(() => {
+          records.push(record);
+        }),
+      prepare: () => Effect.void,
+      finish: () => Effect.void,
+    }),
+  );
   return Effect.gen(function* () {
     const preparation = yield* TurnPreparation;
     const prepared = yield* preparation.prepare({ thread, message, sessionIsFresh: true });
     assert.ok(prepared.text.includes("planning assistant"));
     assert.ok(prepared.text.includes("Reply to this message:\nBuild it"));
-    assert.ok(!prepared.text.includes("Earlier conversation"));
+    assert.ok(!prepared.text.includes("recorded conversation"));
+    assert.ok(!prepared.text.includes("Recent conversation, verbatim"));
+    assert.ok(!prepared.text.includes("Current spec"));
+    assert.strictEqual(prepared.text.split("Reply to this message:\n").length, 2);
+    assert.strictEqual(prepared.text.split("Reply to this message:\n")[1], message.text);
+    assert.strictEqual(records.length, 1);
+    assert.strictEqual(records[0]?.throughCommitId, null);
+    assert.strictEqual(records[0]?.sessionStartMessageCommitId, MercurianCommitId.make(message.id));
+    assert.strictEqual(records[0]?.verbatimFromCommitId, MercurianCommitId.make(message.id));
     assert.deepStrictEqual(prepared.session, { skipResume: true });
   }).pipe(
     Effect.provide(

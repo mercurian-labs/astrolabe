@@ -997,6 +997,20 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         });
         return;
       }
+      if (event.type === "thread.deleted") {
+        const session = yield* projectionThreadSessionRepository.getByThreadId({
+          threadId: event.payload.threadId,
+        });
+        if (Option.isSome(session))
+          yield* projectionThreadSessionRepository.upsert({
+            ...session.value,
+            status: "stopped",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: event.payload.deletedAt,
+          });
+        return;
+      }
       if (event.type !== "thread.session-set") {
         return;
       }
@@ -1018,6 +1032,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       switch (event.type) {
         case "thread.created":
           yield* projectionTurnRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.deleted":
+        case "thread.session-stop-requested":
+          yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
             threadId: event.payload.threadId,
           });
           return;
@@ -1231,6 +1252,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
         case "thread.turn-interrupt-requested": {
           if (event.payload.turnId === undefined) {
+            yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+              threadId: event.payload.threadId,
+            });
             return;
           }
           const existingTurn = yield* projectionTurnRepository.getByTurnId({

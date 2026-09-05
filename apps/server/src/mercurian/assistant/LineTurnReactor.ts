@@ -18,12 +18,14 @@ import {
   ThreadId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -180,7 +182,12 @@ export const make = Effect.gen(function* () {
     readonly frame: PlanStreamItem;
   }>();
   const changesPubSub = yield* PubSub.unbounded<void>();
+  const reactorScope = yield* Effect.scope;
   const turns = new Map<ThreadId, TurnRuntime>();
+  const settlements = new Map<
+    PlanTurnId,
+    { readonly turn: TurnRuntime; readonly fiber: Fiber.Fiber<void> }
+  >();
   const seenSequence = yield* SubscriptionRef.make(0);
 
   const turnsOfPlan = (planId: PlanId) =>
@@ -193,47 +200,59 @@ export const make = Effect.gen(function* () {
     turn: TurnRuntime,
     options: { readonly interrupted: boolean },
   ) {
-    if (turn.settling) return;
+    if (turn.settling) return settlements.get(turn.turnId)?.fiber;
+    // Claim before yielding so provider completion, deletion, and stop can only
+    // settle once. Freeze response fields while provenance is still pending.
     turn.settling = true;
-    const claimed = (yield* registry.getTurns(turn.planId)).find(
-      (candidate) => candidate.turnId === turn.turnId,
-    );
-    const question =
-      turn.askedQuestions.length === 0
-        ? undefined
+    const response = {
+      planId: turn.planId,
+      text: turn.text,
+      ...(options.interrupted ? { interrupted: true } : {}),
+      ...(turn.grounding.length === 0 ? {} : { grounding: [...turn.grounding] }),
+      ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
+      ...(turn.askedQuestions.length === 0
+        ? {}
         : {
-            questions: [...turn.askedQuestions],
-            ...(turn.answers === undefined ? {} : { answers: turn.answers }),
-          };
-    const reconstructionId = yield* reconstructionStore.forMessage(
-      turn.threadId,
-      turn.parentCommitId,
-    );
-    const appended = yield* planningStore
-      .appendAssistantMessage({
-        planId: turn.planId,
+            question: {
+              questions: [...turn.askedQuestions],
+              ...(turn.answers === undefined ? {} : { answers: { ...turn.answers } }),
+            },
+          }),
+      ...(turn.modelSelection === undefined ? {} : { generatedBy: turn.modelSelection }),
+    };
+    const fiber = yield* Effect.gen(function* () {
+      const reconstructionId = yield* reconstructionStore.forMessage(
+        turn.threadId,
+        turn.parentCommitId,
+      );
+      const claimed = (yield* registry.getTurns(turn.planId)).find(
+        (candidate) => candidate.turnId === turn.turnId,
+      );
+      yield* planningStore.appendAssistantMessage({
+        ...response,
         parentCommitId: claimed?.tipCommitId ?? turn.parentCommitId,
-        sourceUserMessageId: turn.parentCommitId,
-        text: turn.text,
         ...(reconstructionId === null ? {} : { reconstructionId }),
-        ...(options.interrupted ? { interrupted: true } : {}),
-        ...(turn.grounding.length === 0 ? {} : { grounding: turn.grounding }),
-        ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),
-        ...(question === undefined ? {} : { question }),
-        ...(turn.modelSelection === undefined ? {} : { generatedBy: turn.modelSelection }),
         createdAt: yield* DateTime.now,
-      })
-      .pipe(Effect.result);
-    turns.delete(turn.threadId);
-    yield* registry.close(turn.planId, turn.turnId);
-    if (Result.isFailure(appended)) {
-      yield* Effect.logError("line turn settle failed to commit", {
-        planId: turn.planId,
-        cause: appended.failure,
       });
-    }
-    yield* publishFrame(turn.planId, { kind: "turn-settled", turnId: turn.turnId });
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.void
+          : Effect.logError("line turn settle failed to commit", { planId: turn.planId, cause }),
+      ),
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (turns.get(turn.threadId) === turn) turns.delete(turn.threadId);
+          yield* registry.close(turn.planId, turn.turnId);
+          yield* publishFrame(turn.planId, { kind: "turn-settled", turnId: turn.turnId });
+          yield* announceChange;
+        }).pipe(Effect.ensuring(Effect.sync(() => settlements.delete(turn.turnId)))),
+      ),
+      Effect.forkIn(reactorScope),
+    );
+    settlements.set(turn.turnId, { turn, fiber });
     yield* announceChange;
+    return fiber;
   });
 
   const recordGrounding = Effect.fn("LineTurnReactor.recordGrounding")(function* (
@@ -497,7 +516,19 @@ export const make = Effect.gen(function* () {
       });
       return;
     }
-    if (event.type === "thread.turn-interrupt-requested") {
+    if (event.type === "thread.session-set") {
+      const turn = turns.get(event.payload.threadId);
+      if (
+        turn?.stopRequested &&
+        (event.payload.session.status === "ready" || event.payload.session.status === "stopped")
+      )
+        yield* settleTurn(turn, { interrupted: true });
+      return;
+    }
+    if (
+      event.type === "thread.turn-interrupt-requested" ||
+      event.type === "thread.session-stop-requested"
+    ) {
       const turn = turns.get(event.payload.threadId);
       if (turn === undefined || turn.settling) return;
       turn.stopRequested = true;
@@ -505,12 +536,12 @@ export const make = Effect.gen(function* () {
         Effect.andThen(
           Effect.gen(function* () {
             const current = turns.get(event.payload.threadId);
-            if (current !== undefined && !current.settling && current.stopRequested) {
+            if (current === turn && !current.settling && current.stopRequested) {
               yield* settleTurn(current, { interrupted: true });
             }
           }),
         ),
-        Effect.forkDetach,
+        Effect.forkIn(reactorScope),
       );
       return;
     }
@@ -565,6 +596,13 @@ export const make = Effect.gen(function* () {
     SubscriptionRef.changes(seenSequence).pipe(
       Stream.filter((seen) => seen >= sequence),
       Stream.runHead,
+      Effect.andThen(
+        Effect.suspend(() =>
+          Effect.forEach([...settlements.values()], ({ fiber }) => Fiber.await(fiber), {
+            discard: true,
+          }),
+        ),
+      ),
       Effect.asVoid,
     );
   const inFlightTurns: LineTurnReactor["Service"]["inFlightTurns"] = (planId) =>
@@ -597,6 +635,14 @@ export const make = Effect.gen(function* () {
 
   const teardownPlan: LineTurnReactor["Service"]["teardownPlan"] = (input) =>
     Effect.gen(function* () {
+      if (!input.commitPartial) {
+        const pendingSettlements = [...settlements.values()].filter(
+          ({ turn }) => turn.planId === input.planId,
+        );
+        for (const { fiber } of pendingSettlements) {
+          yield* Fiber.interrupt(fiber);
+        }
+      }
       for (const turn of turnsOfPlan(input.planId)) {
         if (input.commitPartial) yield* settleTurn(turn, { interrupted: true });
         else {
@@ -604,7 +650,14 @@ export const make = Effect.gen(function* () {
           yield* registry.close(input.planId, turn.turnId);
         }
       }
-      if (input.commitPartial) return;
+      if (input.commitPartial) {
+        yield* Effect.forEach(
+          [...settlements.values()].filter(({ turn }) => turn.planId === input.planId),
+          ({ fiber }) => Fiber.await(fiber),
+          { discard: true },
+        );
+        return;
+      }
       const runtimes = input.lineRuntimes ?? (yield* lineRuntimes.listByPlan(input.planId));
       let lastDeleteSequence: number | undefined;
       for (const runtime of runtimes) {
@@ -644,6 +697,7 @@ export const make = Effect.gen(function* () {
     );
 
   const requireClaim = Effect.fn("LineTurnReactor.requireClaim")(function* (threadId: ThreadId) {
+    if (turns.get(threadId)?.settling) return yield* new PlanningTurnNotFoundError({ threadId });
     const claimed = yield* registry.getByThread(threadId);
     if (Option.isNone(claimed)) return yield* new PlanningTurnNotFoundError({ threadId });
     return claimed.value;

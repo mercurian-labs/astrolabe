@@ -221,7 +221,8 @@ export const make = Effect.gen(function* () {
       });
       const mandatoryInput = composeFirstTurnInput({
         appendix,
-        preamble: partition.render(null),
+        preamble:
+          parentCommitId === undefined && entries.length === 0 ? null : partition.render(null),
         message: input.message.text,
         memoryMentionStanza: mention,
       });
@@ -236,7 +237,8 @@ export const make = Effect.gen(function* () {
           : yield* summaries.summarize(partition.olderText, modelSelection);
       const text = composeFirstTurnInput({
         appendix,
-        preamble: partition.render(summary),
+        preamble:
+          parentCommitId === undefined && entries.length === 0 ? null : partition.render(summary),
         message: input.message.text,
         memoryMentionStanza: mention,
       });

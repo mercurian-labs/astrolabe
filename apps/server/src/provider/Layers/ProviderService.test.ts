@@ -1492,6 +1492,28 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("stopping a missing binding does not recover and cleans a live partial start", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("unbound-cancellation");
+      const startsBefore = routing.codex.startSession.mock.calls.length;
+      yield* provider.stopSession({ threadId });
+      assert.equal(routing.codex.startSession.mock.calls.length, startsBefore);
+      yield* routing.codex.startSession({
+        threadId,
+        providerInstanceId: codexInstanceId,
+        runtimeMode: "approval-required",
+      });
+      const startsAfter = routing.codex.startSession.mock.calls.length;
+      yield* provider.stopSession({ threadId });
+      assert.equal(routing.codex.startSession.mock.calls.length, startsAfter);
+      assert.equal(
+        (yield* provider.listSessions()).some((session) => session.threadId === threadId),
+        false,
+      );
+    }),
+  );
+
   it.effect(
     "persisted resume lookup survives stop and only selects the matching instance and driver",
     () =>
