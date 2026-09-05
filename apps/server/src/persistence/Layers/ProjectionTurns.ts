@@ -14,6 +14,8 @@ import {
   checkpointDepartedRefFromStorage,
   checkpointBranchMovementFromStorage,
   checkpointRepositoriesFromStorage,
+  checkpointSummaryErrorFromStorage,
+  checkpointSummaryStatusFromStorage,
   toCheckpointFilesStorage,
 } from "../CheckpointFilesStorage.ts";
 
@@ -56,6 +58,8 @@ const fromDbRow = <A extends { readonly checkpointFiles: CheckpointFilesStorage 
   const departedRef = checkpointDepartedRefFromStorage(row.checkpointFiles);
   const branchMovement = checkpointBranchMovementFromStorage(row.checkpointFiles);
   const repositories = checkpointRepositoriesFromStorage(row.checkpointFiles);
+  const summaryStatus = checkpointSummaryStatusFromStorage(row.checkpointFiles);
+  const summaryError = checkpointSummaryErrorFromStorage(row.checkpointFiles);
   return {
     ...row,
     checkpointFiles: checkpointFilesFromStorage(row.checkpointFiles),
@@ -64,6 +68,8 @@ const fromDbRow = <A extends { readonly checkpointFiles: CheckpointFilesStorage 
     ...(departedRef === undefined ? {} : { checkpointDepartedRef: departedRef }),
     ...(branchMovement === undefined ? {} : { checkpointBranchMovement: branchMovement }),
     ...(repositories === undefined ? {} : { checkpointRepositories: repositories }),
+    ...(summaryStatus === undefined ? {} : { checkpointSummaryStatus: summaryStatus }),
+    ...(summaryError === undefined ? {} : { checkpointSummaryError: summaryError }),
   };
 };
 
@@ -291,6 +297,8 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
         row.checkpointDepartedRef,
         row.checkpointBranchMovement,
         row.checkpointRepositories,
+        row.checkpointSummaryStatus,
+        row.checkpointSummaryError,
       ),
     }).pipe(
       Effect.mapError(

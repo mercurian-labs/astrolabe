@@ -1365,11 +1365,19 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           turnId: command.turnId,
+          ...(command.requestMessageId === undefined
+            ? {}
+            : { requestMessageId: command.requestMessageId }),
+          ...(command.captureTerminal === undefined
+            ? {}
+            : { captureTerminal: command.captureTerminal }),
           checkpointTurnCount: command.checkpointTurnCount,
           checkpointRef: command.checkpointRef,
           status: command.status,
           files: command.files,
           ...(command.repositories === undefined ? {} : { repositories: command.repositories }),
+          ...(command.summaryStatus === undefined ? {} : { summaryStatus: command.summaryStatus }),
+          ...(command.summaryError === undefined ? {} : { summaryError: command.summaryError }),
           assistantMessageId: command.assistantMessageId ?? null,
           completedAt: command.completedAt,
           ...(command.partial === undefined ? {} : { partial: command.partial }),

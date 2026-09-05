@@ -4,12 +4,15 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
+  MercurianCommitId,
   MercurianProjectId,
   PlanId,
+  PlanDetail as WirePlanDetail,
   PlanTurnId,
   ProviderDriverKind,
   ThreadId,
@@ -24,8 +27,10 @@ import * as ProcessRunner from "../../processRunner.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
+import { CheckpointRecordStore } from "./CheckpointRecordStore.ts";
 import * as PlanningStore from "./PlanningStore.ts";
 import * as PlanTurnRegistry from "./PlanTurnRegistry.ts";
+import { toWirePlanDetail } from "./wire.ts";
 
 const layer = it.layer(
   PlanningStore.layer.pipe(
@@ -40,6 +45,8 @@ const layer = it.layer(
     Layer.provide(NodeServicesLayer),
   ),
 );
+
+const decodeWirePlanDetail = Schema.decodeUnknownEffect(WirePlanDetail);
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 const claude = ProviderDriverKind.make("claudeAgent");
@@ -112,6 +119,93 @@ layer("PlanningStore", (it) => {
         { planId: plan.plan.planId, commitId: amendment.commitId },
       ]);
     }),
+  );
+
+  it.effect(
+    "publishes query-owned checkpoint records independently of response reconstruction",
+    () =>
+      Effect.gen(function* () {
+        const store = yield* PlanningStore.PlanningStore;
+        const checkpoints = yield* CheckpointRecordStore;
+        const project = yield* store.createProject({
+          name: "Checkpoint project",
+          createdAt: at("2026-09-05T00:00:00Z"),
+        });
+        const created = yield* store.createPlan({
+          lastUsed: null,
+          projectId: project.projectId,
+          message: "Root",
+          createdAt: at("2026-09-05T00:00:00Z"),
+        });
+        const root = MercurianCommitId.make(created.timeline[0]!.commitId);
+        const query = yield* store.appendMessage({
+          planId: created.plan.planId,
+          commitId: CommitId.make("checkpoint-query"),
+          text: "Do work",
+          lastUsed: null,
+          createdAt: at("2026-09-05T00:01:00Z"),
+          checkpointRequest: {
+            threadId: ThreadId.make("checkpoint-thread"),
+            lineRootCommitId: root,
+          },
+        });
+        const response = yield* store.appendAssistantMessage({
+          planId: created.plan.planId,
+          parentCommitId: query.commitId,
+          checkpointOwnerCommitId: MercurianCommitId.make(query.commitId),
+          reconstructionId: "exact-reconstruction",
+          sourceUserMessageId: query.commitId,
+          text: "Done",
+          createdAt: at("2026-09-05T00:02:00Z"),
+        });
+        const replayed = yield* store.appendAssistantMessage({
+          planId: created.plan.planId,
+          parentCommitId: query.commitId,
+          checkpointOwnerCommitId: MercurianCommitId.make(query.commitId),
+          reconstructionId: "must-not-replace",
+          text: "Duplicate",
+          createdAt: at("2026-09-05T00:03:00Z"),
+        });
+        assert.strictEqual(replayed.commitId, response.commitId);
+        assert.strictEqual(replayed.reconstructionId, "exact-reconstruction");
+        yield* checkpoints.attach({
+          ownerCommitId: MercurianCommitId.make(query.commitId),
+          lineRootCommitId: root,
+          capture: { status: "ready", terminal: true, files: [], summaryStatus: "ready" },
+        });
+        const detail = yield* store.getPlanSnapshot({ planId: created.plan.planId });
+        const wire = toWirePlanDetail(detail);
+        const roundtrip = yield* decodeWirePlanDetail(wire);
+        assert.strictEqual(roundtrip.checkpoints?.length, 1);
+        assert.strictEqual(
+          roundtrip.checkpoints?.[0]?.ownerCommitId,
+          MercurianCommitId.make(query.commitId),
+        );
+        assert.strictEqual(
+          roundtrip.checkpoints?.[0]?.responseCommitId,
+          MercurianCommitId.make(response.commitId),
+        );
+        assert.strictEqual(
+          roundtrip.checkpointSequence,
+          roundtrip.checkpoints?.[0]?.updateSequence,
+        );
+        const reply = roundtrip.timeline.find(
+          (item) => item.commitId === MercurianCommitId.make(response.commitId),
+        );
+        assert.strictEqual(
+          reply?._tag === "message" ? reply.reconstructionId : undefined,
+          "exact-reconstruction",
+        );
+        assert.strictEqual(
+          reply?._tag === "message" ? reply.sourceUserMessageId : undefined,
+          MercurianCommitId.make(query.commitId),
+        );
+        yield* store.deletePlan({ planId: created.plan.planId });
+        assert.strictEqual(
+          yield* checkpoints.get(created.plan.planId, MercurianCommitId.make(query.commitId)),
+          null,
+        );
+      }),
   );
 
   it("classifies refreshes against the ancestry-derived upstream baseline", () => {

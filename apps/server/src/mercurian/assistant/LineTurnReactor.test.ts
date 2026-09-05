@@ -712,6 +712,10 @@ describe("LineTurnReactor", () => {
         const input = yield* Queue.take(harness.humanReceipts);
         assert.strictEqual(input.commitId, CommitId.make(messageId));
         assert.strictEqual(input.parentCommitId, rootId);
+        assert.deepStrictEqual(input.checkpointRequest, {
+          threadId,
+          lineRootCommitId: MercurianCommitId.make(messageId),
+        });
         assert.strictEqual(input.ranUnder?.provider, "codex");
         assert.strictEqual(input.ranUnder?.model, "gpt-5.6");
         assert.strictEqual(

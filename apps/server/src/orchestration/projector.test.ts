@@ -138,6 +138,94 @@ describe("orchestration projector", () => {
     ).rejects.toBeDefined();
   });
 
+  it("projects structured repository checkpoint facts without normalizing paths", async () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const created = await Effect.runPromise(
+      projectEvent(
+        createEmptyReadModel(now),
+        makeEvent({
+          sequence: 1,
+          type: "thread.created",
+          aggregateKind: "thread",
+          aggregateId: "thread-checkpoint-facts",
+          occurredAt: now,
+          commandId: "cmd-thread-checkpoint-facts",
+          payload: {
+            threadId: "thread-checkpoint-facts",
+            projectId: "project-1",
+            title: "demo",
+            modelSelection: { provider: "codex", model: "gpt-5-codex" },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        }),
+      ),
+    );
+    const projected = await Effect.runPromise(
+      projectEvent(
+        created,
+        makeEvent({
+          sequence: 2,
+          type: "thread.turn-diff-completed",
+          aggregateKind: "thread",
+          aggregateId: "thread-checkpoint-facts",
+          occurredAt: now,
+          commandId: "cmd-checkpoint-facts",
+          payload: {
+            threadId: "thread-checkpoint-facts",
+            turnId: "turn-checkpoint-facts",
+            checkpointTurnCount: 1,
+            checkpointRef: "refs/t3/checkpoints/thread-checkpoint-facts/turn/1",
+            status: "ready",
+            files: [],
+            repositories: [
+              {
+                repositoryId: "repository-1",
+                repositoryName: "code",
+                files: [
+                  {
+                    path: " new 路径.txt ",
+                    previousPath: " old ü.txt ",
+                    kind: "renamed",
+                    additions: 0,
+                    deletions: 0,
+                  },
+                ],
+                beforeSnapshotOid: "1111111111111111111111111111111111111111",
+                afterSnapshotOid: "2222222222222222222222222222222222222222",
+                branchName: "mercurian/line",
+                branchTipOid: "3333333333333333333333333333333333333333",
+                captureStatus: "ready",
+                summaryStatus: "ready",
+              },
+            ],
+            summaryStatus: "ready",
+            assistantMessageId: null,
+            completedAt: now,
+          },
+        }),
+      ),
+    );
+
+    expect(projected.threads[0]?.checkpoints[0]).toEqual(
+      expect.objectContaining({
+        summaryStatus: "ready",
+        repositories: [
+          expect.objectContaining({
+            captureStatus: "ready",
+            summaryStatus: "ready",
+            files: [
+              expect.objectContaining({ path: " new 路径.txt ", previousPath: " old ü.txt " }),
+            ],
+          }),
+        ],
+      }),
+    );
+  });
+
   it("applies thread.archived and thread.unarchived events", async () => {
     const now = "2026-01-01T00:00:00.000Z";
     const later = "2026-01-01T00:00:01.000Z";

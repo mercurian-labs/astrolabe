@@ -10,6 +10,7 @@ import {
   type OrchestrationCommand,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -25,6 +26,7 @@ import * as ProviderService from "../../provider/Services/ProviderService.ts";
 import * as TerminalManager from "../../terminal/Manager.ts";
 import * as VcsStatusBroadcaster from "../../vcs/VcsStatusBroadcaster.ts";
 import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotRegistry from "../worktreeSlots/SlotRegistry.ts";
@@ -73,11 +75,12 @@ const makeHarness = Effect.gen(function* () {
       state.runtime = { ...runtime, lineRootCommitId: root };
     });
   const layer = Layer.mergeAll(
+    Layer.mock(GitVcsDriver)({}),
     Layer.mock(PlanningStore.PlanningStore)({
       getPlanSnapshot: () =>
         Effect.succeed({
           plan: { planId, projectId, title: "Runtime line" },
-          timeline: [],
+          timeline: [{ commitId: "fork-parent", parents: [] }],
         } as never),
       getProject: () =>
         Effect.succeed({
@@ -106,6 +109,9 @@ const makeHarness = Effect.gen(function* () {
         ],
         projectRepositories: [{ projectId, repositoryId }],
       } as never),
+    }),
+    Layer.mock(MemorySourceStore.MemorySourceStore)({
+      getSource: () => Effect.succeed(Option.none()),
     }),
     Layer.mock(ProviderService.ProviderService)({
       getCapabilities: () =>

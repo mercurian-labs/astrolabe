@@ -1,5 +1,10 @@
 import {
   ProviderDriverKind,
+  MercurianProjectId,
+  PlanId,
+  ThreadId,
+  MessageId,
+  type PlanCheckpointRecord,
   type PlanCodingSessionRecord,
   type PlanningModelSelection,
   type PlanTimelineItem,
@@ -21,6 +26,8 @@ import { buildPlanGraph } from "./PlanGraph.logic";
 import { planningModelOptionLabels } from "./PlanningModel.logic";
 import {
   branchMovementLabel,
+  captureFacts,
+  capturedRepositoryFactsLabel,
   codingSessionStatus,
   derivePlanNodePopover,
   memoryAmendmentSelection,
@@ -178,7 +185,7 @@ describe("derivePlanNodePopover", () => {
       label: "Update both",
       queryText: "Update both",
       responseExcerpt: "Done",
-      effects: ["Plan updated"],
+      marks: [{ key: "effect:plan", label: "Plan updated", kind: "effect" }],
       modelSwitch: model("claude", "sonnet"),
       stalePlan: true,
       staleSpec: true,
@@ -212,8 +219,8 @@ describe("derivePlanNodePopover", () => {
       staleSpec: false,
       suppressUnanswered: true,
     });
-    expect(prose.effects).toEqual([]);
-    expect(inFlight.effects).toEqual([]);
+    expect(prose.marks).toEqual([]);
+    expect(inFlight.marks).toEqual([]);
   });
 
   it("reads a stamped memory amendment as a standalone history event", () => {
@@ -467,10 +474,142 @@ describe("coding-session facts", () => {
     expect(withDeparture.session?.branch).toBe("feature/checkpoint-line");
     expect(withDeparture.session?.commits).toBe("1 commit added");
     expect(withDeparture.session?.departedRef).toBe("feature/detour");
-    expect(withDeparture.effects).toContain("Departed");
+    expect(withDeparture.marks.map((mark) => mark.label)).toContain("Departed");
     expect(withoutDeparture.session?.branch).toBe("mercurian/session");
     expect(withoutDeparture.session?.commits).toBe("history rewritten");
     expect(withoutDeparture.session).not.toHaveProperty("departedRef");
-    expect(withoutDeparture.effects).not.toContain("Departed");
+    expect(withoutDeparture.marks.map((mark) => mark.label)).not.toContain("Departed");
+  });
+});
+
+describe("captureFacts", () => {
+  const record = (overrides: Partial<PlanCheckpointRecord> = {}): PlanCheckpointRecord => ({
+    ownerCommitId: id("query"),
+    planId: PlanId.make("plan"),
+    projectId: MercurianProjectId.make("project"),
+    lineRootCommitId: id("query"),
+    revision: 1,
+    updateSequence: 1,
+    capture: {
+      status: "ready",
+      terminal: true,
+      summaryStatus: "ready",
+      files: [],
+      repositories: [
+        {
+          repositoryId: "repo-web",
+          repositoryName: "web",
+          branchName: "venk/m-198",
+          branchMovement: { kind: "added", count: 2 },
+          captureStatus: "ready",
+          summaryStatus: "ready",
+          beforeSnapshotOid: "before",
+          afterSnapshotOid: "after",
+          branchTipOid: "tip",
+          files: [
+            {
+              path: "docs/plan.md",
+              previousPath: "docs/draft.md",
+              kind: "renamed",
+              additions: 3,
+              deletions: 1,
+              beforeDocumentRole: "plan",
+              afterDocumentRole: "plan",
+            },
+            {
+              path: "notes/old.md",
+              kind: "deleted",
+              additions: 0,
+              deletions: 9,
+              beforeDocumentRole: "memory",
+            },
+            { path: "src/app.ts", kind: "modified", additions: 1, deletions: 0 },
+          ],
+        },
+      ],
+    },
+    ...overrides,
+  });
+
+  it("reads every recorded file with rename, deletion, role, and branch facts", () => {
+    const facts = captureFacts(record())!;
+    const [web] = facts.repositories;
+    expect(capturedRepositoryFactsLabel(web!)).toBe("venk/m-198 · 2 commits added");
+    expect(web!.files).toEqual([
+      {
+        path: "docs/plan.md",
+        kind: "renamed",
+        previousPath: "docs/draft.md",
+        deleted: false,
+        role: "plan",
+        additions: 3,
+        deletions: 1,
+      },
+      {
+        path: "notes/old.md",
+        kind: "deleted",
+        deleted: true,
+        role: "memory",
+        additions: 0,
+        deletions: 9,
+      },
+      { path: "src/app.ts", kind: "modified", deleted: false, additions: 1, deletions: 0 },
+    ]);
+    expect(web!.changesAvailable).toBe(true);
+    expect(facts.continuable).toBe(true);
+    expect(facts.plain).toBe(false);
+  });
+
+  it("offers continuation only when every member snapshot exists", () => {
+    const graph = buildPlanGraph([
+      message("root"),
+      message("query", { sequence: 2, parents: ["root"] }),
+    ]);
+    const node = condensePlanGraph(graph).byId.get("query")!;
+    const complete = captureFacts(record())!;
+    const base = record();
+    const missingMember = captureFacts(
+      record({
+        capture: {
+          ...base.capture!,
+          partial: true,
+          repositories: [
+            ...base.capture!.repositories!,
+            {
+              repositoryId: "repo-server",
+              repositoryName: "server",
+              captureStatus: "error",
+              summaryStatus: "unavailable",
+              files: [],
+            },
+          ],
+        },
+      }),
+    )!;
+    expect(offeredActs(node, graph, false, complete)).toEqual([
+      "edit-and-branch",
+      "continue-from-checkpoint",
+    ]);
+    expect(missingMember.partial).toBe(true);
+    expect(offeredActs(node, graph, false, missingMember)).toEqual(["edit-and-branch"]);
+    expect(missingMember.repositories.map((repository) => repository.changesAvailable)).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it("says nothing about a workspace when nothing was recorded", () => {
+    expect(
+      captureFacts(
+        record({
+          capture: undefined,
+          request: {
+            threadId: ThreadId.make("t"),
+            messageId: MessageId.make("m"),
+            state: "unanswered",
+          },
+        }),
+      ),
+    ).toBeNull();
   });
 });

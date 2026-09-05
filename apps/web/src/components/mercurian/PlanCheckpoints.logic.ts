@@ -7,9 +7,21 @@
  * every other act independently addressable. The output deliberately keeps
  * the PlanGraph shape so all existing layouts and graph traversals retain one
  * source of truth.
+ *
+ * Durable checkpoint records join by exact ownership: a record's owner is the
+ * query that opened the turn it describes, or the standalone act that attached
+ * it. Workspace effects come from recorded file roles and landed revision
+ * commits; lifecycle marks stay separate, so a saving or unknown capture never
+ * reads as a verified plain turn.
  */
+import {
+  checkpointEffects,
+  type CheckpointEffect,
+} from "@t3tools/client-runtime/state/mercurian-checkpoint-effects";
 import type {
   MercurianCommitId,
+  MercurianReadCheckpointDiffResult,
+  PlanCheckpointRecord,
   PlanCodingSessionRecord,
   PlanTimelineItem,
 } from "@t3tools/contracts";
@@ -19,7 +31,7 @@ import {
   planCommitDetail,
   planCommitSummary,
   type PlanCheckpoint,
-  type PlanCheckpointEffect,
+  type PlanCheckpointStatus,
   type PlanGraph,
   type PlanGraphNode,
 } from "./PlanGraph.logic";
@@ -29,21 +41,56 @@ export interface CondensedPlanGraph extends PlanGraph {
   readonly nodeIdByCommit: ReadonlyMap<string, MercurianCommitId>;
 }
 
+/** Effects and marks without the members they were read from. */
+export interface PlanCheckpointReading {
+  readonly effects: ReadonlyArray<CheckpointEffect>;
+  readonly status: ReadonlyArray<PlanCheckpointStatus>;
+}
+
+export interface PlanCheckpointMark {
+  readonly key: string;
+  readonly label: string;
+  readonly kind: "effect" | "status";
+}
+
 interface CheckpointCandidate {
   readonly entry: PlanGraphNode;
   readonly members: ReadonlyArray<PlanGraphNode>;
   readonly checkpoint: PlanCheckpoint;
   readonly identity: PlanGraphNode;
+  readonly record: PlanCheckpointRecord | undefined;
 }
 
-const EFFECT_LABELS: Readonly<Record<PlanCheckpointEffect, string>> = {
-  "plan-updated": "Plan updated",
-  "spec-updated": "Spec updated",
+const EFFECT_LABELS: Readonly<Record<CheckpointEffect, string>> = {
+  code: "Code changed",
+  memory: "Memory updated",
+  plan: "Plan updated",
+  spec: "Spec updated",
+};
+
+const STATUS_LABELS: Readonly<Record<PlanCheckpointStatus, string>> = {
   interrupted: "Interrupted",
   unanswered: "Unanswered",
   partial: "Partial",
   departed: "Departed",
+  saving: "Saving…",
+  failed: "Capture failed",
+  unknown: "Capture unknown",
 };
+
+/** Glyph precedence on the map, and chip order everywhere else. */
+const EFFECT_ORDER: ReadonlyArray<CheckpointEffect> = ["code", "memory", "plan", "spec"];
+const STATUS_ORDER: ReadonlyArray<PlanCheckpointStatus> = [
+  "interrupted",
+  "unanswered",
+  "partial",
+  "departed",
+  "saving",
+  "failed",
+  "unknown",
+];
+
+const NO_RECORDS: ReadonlyArray<PlanCheckpointRecord> = [];
 
 /**
  * Condense complete human-query/assistant-response turns without changing the
@@ -51,17 +98,21 @@ const EFFECT_LABELS: Readonly<Record<PlanCheckpointEffect, string>> = {
  * then remap through membership so even a fork from an interior revision
  * remains connected to the checkpoint that now represents that revision.
  */
-export function condensePlanGraph(graph: PlanGraph): CondensedPlanGraph {
+export function condensePlanGraph(
+  graph: PlanGraph,
+  records: ReadonlyArray<PlanCheckpointRecord> = NO_RECORDS,
+): CondensedPlanGraph {
   if (graph.nodes.length === 0) {
     return { ...graph, nodeIdByCommit: new Map() };
   }
 
+  const recordByOwner = new Map(records.map((record) => [record.ownerCommitId as string, record]));
   const candidates = new Map<string, CheckpointCandidate>();
   const absorbed = new Set<string>();
 
   for (const node of graph.nodes) {
     if (absorbed.has(node.commitId)) continue;
-    const candidate = checkpointCandidate(graph, node);
+    const candidate = checkpointCandidate(graph, node, recordByOwner.get(node.commitId));
     if (candidate === null) continue;
     candidates.set(node.commitId, candidate);
     for (const member of candidate.members) absorbed.add(member.commitId);
@@ -86,6 +137,7 @@ export function condensePlanGraph(graph: PlanGraph): CondensedPlanGraph {
         {
           ...candidate.identity,
           checkpoint: candidate.checkpoint,
+          ...(candidate.record === undefined ? {} : { record: candidate.record }),
           parents: remapParents(candidate.entry.parents, nodeIdByCommit),
           childrenIds: [],
           isBranchPoint: false,
@@ -94,9 +146,11 @@ export function condensePlanGraph(graph: PlanGraph): CondensedPlanGraph {
       ];
     }
     if (absorbed.has(node.commitId)) return [];
+    const record = recordByOwner.get(node.commitId);
     return [
       {
         ...node,
+        ...(record === undefined ? {} : { record }),
         parents: remapParents(node.parents, nodeIdByCommit),
         childrenIds: [],
         isBranchPoint: false,
@@ -131,7 +185,11 @@ export function condensePlanGraph(graph: PlanGraph): CondensedPlanGraph {
   };
 }
 
-function checkpointCandidate(graph: PlanGraph, opener: PlanGraphNode): CheckpointCandidate | null {
+function checkpointCandidate(
+  graph: PlanGraph,
+  opener: PlanGraphNode,
+  record: PlanCheckpointRecord | undefined,
+): CheckpointCandidate | null {
   if (
     opener.item._tag !== "message" ||
     opener.item.authorKind !== "human" ||
@@ -155,12 +213,14 @@ function checkpointCandidate(graph: PlanGraph, opener: PlanGraphNode): Checkpoin
       return {
         entry: opener,
         members,
+        record,
         checkpoint: {
           query: opener.item,
           revisions: revisions.map((revision) => revision.item),
-          effects: effectsFor(
+          ...checkpointReading(
             members.map((member) => member.item),
             undefined,
+            record,
           ),
         },
         identity: revisions.at(-1) ?? opener,
@@ -171,13 +231,15 @@ function checkpointCandidate(graph: PlanGraph, opener: PlanGraphNode): Checkpoin
       return {
         entry: opener,
         members,
+        record,
         checkpoint: {
           query: opener.item,
           revisions: revisions.map((revision) => revision.item),
           response: child.item,
-          effects: effectsFor(
+          ...checkpointReading(
             members.map((member) => member.item),
             child.item,
+            record,
           ),
         },
         identity: child,
@@ -190,29 +252,103 @@ function checkpointCandidate(graph: PlanGraph, opener: PlanGraphNode): Checkpoin
   return null;
 }
 
-export function effectsFor(
+/**
+ * Effects come from recorded file roles and landed revision commits. Marks come
+ * from the reply, the members, and the record's request and capture lifecycle.
+ */
+export function checkpointReading(
   members: ReadonlyArray<PlanTimelineItem>,
-  response?: PlanTimelineItem,
-): ReadonlyArray<PlanCheckpointEffect> {
-  const effects: Array<PlanCheckpointEffect> = [];
-  if (members.some((member) => member._tag === "plan-revision")) effects.push("plan-updated");
-  if (members.some((member) => member._tag === "spec-revision")) effects.push("spec-updated");
-  if (response?._tag === "message" && response.interrupted === true) effects.push("interrupted");
-  if (members.some((member) => member._tag === "coding-session" && member.partial === true)) {
-    effects.push("partial");
+  response: PlanTimelineItem | undefined,
+  record: PlanCheckpointRecord | undefined,
+): PlanCheckpointReading {
+  const effects = new Set<CheckpointEffect>(
+    record === undefined ? [] : checkpointEffects(record).categories,
+  );
+  if (record === undefined) {
+    if (members.some((member) => member._tag === "plan-revision")) effects.add("plan");
+    if (members.some((member) => member._tag === "spec-revision")) effects.add("spec");
   }
-  if (response === undefined) effects.push("unanswered");
-  return effects;
+
+  const status = new Set<PlanCheckpointStatus>(
+    record === undefined ? [] : recordStatusMarks(record),
+  );
+  if (response?._tag === "message" && response.interrupted === true) status.add("interrupted");
+  if (response === undefined) status.add("unanswered");
+  if (members.some((member) => member._tag === "coding-session" && member.partial === true)) {
+    status.add("partial");
+  }
+  return {
+    effects: EFFECT_ORDER.filter((effect) => effects.has(effect)),
+    status: STATUS_ORDER.filter((mark) => status.has(mark)),
+  };
+}
+
+/** Marks a record carries on its own, for turns and standalone acts alike. */
+export function recordStatusMarks(
+  record: PlanCheckpointRecord,
+): ReadonlyArray<PlanCheckpointStatus> {
+  const recorded = checkpointEffects(record);
+  return STATUS_ORDER.filter((mark) => {
+    switch (mark) {
+      case "interrupted":
+        return recorded.status.interrupted;
+      case "unanswered":
+        return false;
+      case "partial":
+        return recorded.status.partial;
+      case "departed":
+        return recordDeparted(record);
+      case "saving":
+        return recorded.status.saving;
+      case "failed":
+        return recorded.status.failed;
+      case "unknown":
+        return isUnknownCapture(record);
+    }
+  });
+}
+
+/**
+ * A capture that never reached a terminal state and is not being saved. A query
+ * that was never answered or was cancelled before dispatch has no capture to be
+ * unknown about.
+ */
+export function isUnknownCapture(record: PlanCheckpointRecord): boolean {
+  const state = record.request?.state;
+  return (
+    checkpointEffects(record).status.captureUnknown &&
+    state !== "unanswered" &&
+    state !== "cancelled" &&
+    state !== "failed"
+  );
+}
+
+function recordDeparted(record: PlanCheckpointRecord): boolean {
+  const capture = record.capture;
+  if (capture === undefined) return false;
+  return (
+    (capture.departedRef !== undefined && capture.departedRef.length > 0) ||
+    (capture.repositories ?? []).some(
+      (group) => group.departedRef !== undefined && group.departedRef.length > 0,
+    )
+  );
 }
 
 /** Mutable session marks are derived from the keyed record, not immutable checkpoint members. */
-export function codingSessionEffects(
+export function codingSessionStatusMarks(
   record: PlanCodingSessionRecord,
-): ReadonlyArray<PlanCheckpointEffect> {
+): ReadonlyArray<PlanCheckpointStatus> {
   return [
     ...(record.partial ? (["partial"] as const) : []),
     ...(record.departedRef === null ? [] : (["departed"] as const)),
   ];
+}
+
+export function mergeStatusMarks(
+  ...lists: ReadonlyArray<ReadonlyArray<PlanCheckpointStatus>>
+): ReadonlyArray<PlanCheckpointStatus> {
+  const present = new Set(lists.flat());
+  return STATUS_ORDER.filter((mark) => present.has(mark));
 }
 
 function remapParents(
@@ -251,8 +387,40 @@ export function isUnansweredCheckpointInFlight(
   return inFlightAnchorCommitIds.some((anchor) => descendants.has(anchor));
 }
 
-export function planCheckpointEffectLabel(effect: PlanCheckpointEffect): string {
+export function planCheckpointEffectLabel(effect: CheckpointEffect): string {
   return EFFECT_LABELS[effect];
+}
+
+export function planCheckpointStatusLabel(status: PlanCheckpointStatus): string {
+  return STATUS_LABELS[status];
+}
+
+/** Row and popover chips: effects first, then the marks that qualify them. */
+export function planCheckpointMarks(
+  reading: PlanCheckpointReading,
+  suppressUnanswered = false,
+): ReadonlyArray<PlanCheckpointMark> {
+  return [
+    ...reading.effects.map((effect) => ({
+      key: `effect:${effect}`,
+      label: EFFECT_LABELS[effect],
+      kind: "effect" as const,
+    })),
+    ...reading.status
+      .filter((mark) => !suppressUnanswered || mark !== "unanswered")
+      .map((mark) => ({
+        key: `status:${mark}`,
+        label: STATUS_LABELS[mark],
+        kind: "status" as const,
+      })),
+  ];
+}
+
+/** The one effect a turn disc wears on the map: code over memory over plan over spec. */
+export function checkpointGlyphEffect(
+  effects: ReadonlyArray<CheckpointEffect>,
+): CheckpointEffect | null {
+  return EFFECT_ORDER.find((effect) => effects.includes(effect)) ?? null;
 }
 
 /** A checkpoint is named by the query that opened it, not its terminal id. */
@@ -264,31 +432,59 @@ export function planNodeSummary(node: PlanGraphNode): string {
 export function planNodeStatusDots({
   staleSpec,
   stalePlan,
+  status = [],
 }: {
   readonly staleSpec: boolean;
   readonly stalePlan: boolean;
+  readonly status?: ReadonlyArray<PlanCheckpointStatus>;
 }): ReadonlyArray<{ readonly key: string; readonly fillClass: string }> {
   return [
+    ...(status.includes("saving") ? [{ key: "saving", fillClass: "fill-sky-500" }] : []),
+    ...(status.includes("failed") || status.includes("unknown")
+      ? [{ key: "capture-unavailable", fillClass: "fill-red-500" }]
+      : []),
+    ...(status.includes("interrupted") || status.includes("partial")
+      ? [{ key: "incomplete", fillClass: "fill-rose-500" }]
+      : []),
     ...(staleSpec ? [{ key: "stale-spec", fillClass: "fill-amber-500" }] : []),
     ...(stalePlan ? [{ key: "stale-plan", fillClass: "fill-orange-500" }] : []),
   ];
 }
 
-/** Complete map detail: query, landed effects, then a compact response excerpt. */
+/** Complete map detail: query, landed effects and marks, then a compact response excerpt. */
 export function planNodeDetail(node: PlanGraphNode, suppressUnanswered = false): string {
   const checkpoint = node.checkpoint;
   if (checkpoint === undefined) return planCommitDetail(node.item);
 
   const query = `You: ${planCommitDetail(checkpoint.query)}`;
-  const effects = checkpoint.effects
-    .filter((effect) => !suppressUnanswered || effect !== "unanswered")
-    .map(planCheckpointEffectLabel)
+  const marks = planCheckpointMarks(checkpoint, suppressUnanswered)
+    .map((mark) => mark.label)
     .join(" · ");
   const response =
     checkpoint.response === undefined
       ? ""
       : `Assistant: ${responseExcerpt(planCommitDetail(checkpoint.response))}`;
-  return [query, effects, response].filter((part) => part.length > 0).join("\n\n");
+  return [query, marks, response].filter((part) => part.length > 0).join("\n\n");
+}
+
+/** Why a saved checkpoint diff is not shown. Never a current-HEAD fallback. */
+export function recordedCheckpointDiffUnavailableLabel(
+  reason: Extract<MercurianReadCheckpointDiffResult, { readonly status: "unavailable" }>["reason"],
+): string {
+  switch (reason) {
+    case "record-missing":
+      return "This checkpoint has no saved capture record yet.";
+    case "record-changed":
+      return "This checkpoint's record changed. Open its changes again to read the latest capture.";
+    case "capture-pending":
+      return "The workspace capture for this checkpoint is still saving.";
+    case "snapshot-missing":
+      return "The saved snapshot for this checkpoint is unavailable, so its changes cannot be shown.";
+    case "repository-not-recorded":
+      return "This repository was not recorded at this checkpoint.";
+    case "repository-unavailable":
+      return "The repository is not reachable right now. Refresh to try again.";
+  }
 }
 
 const RESPONSE_EXCERPT_LENGTH = 240;

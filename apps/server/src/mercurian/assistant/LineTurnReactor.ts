@@ -231,6 +231,7 @@ export const make = Effect.gen(function* () {
       );
       yield* planningStore.appendAssistantMessage({
         ...response,
+        checkpointOwnerCommitId: MercurianCommitId.make(turn.parentCommitId),
         parentCommitId: claimed?.tipCommitId ?? turn.parentCommitId,
         ...(reconstructionId === null ? {} : { reconstructionId }),
         createdAt: yield* DateTime.now,
@@ -389,6 +390,10 @@ export const make = Effect.gen(function* () {
       const appended = yield* planningStore.appendMessage({
         planId: runtime.value.planId,
         commitId,
+        checkpointRequest: {
+          threadId: input.threadId,
+          lineRootCommitId: runtime.value.lineRootCommitId ?? MercurianCommitId.make(commitId),
+        },
         text: input.text,
         ...(parentCommitId === undefined ? {} : { parentCommitId }),
         ...(input.attachments.length === 0 ? {} : { attachments: [...input.attachments] }),

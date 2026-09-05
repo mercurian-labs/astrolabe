@@ -79,6 +79,8 @@ const sharedExplorerProps = {
   historyWalkViewsEnabled: true,
   providers: [],
   onEditAndBranch: vi.fn(),
+  onOpenChanges: vi.fn(),
+  onContinueFromCheckpoint: vi.fn(),
 } as const;
 
 const popoverController = () =>
@@ -381,12 +383,14 @@ describe("DagExplorer", () => {
       );
       expect(start).toBeGreaterThanOrEqual(0);
       expect(graphSvg).not.toContain("<text");
-      expect(graphSvg).toContain("lucide-messages-square");
+      expect(graphSvg).toContain("lucide-file-text");
       expect(graphSvg).toContain("checkpoint-ring");
       expect(graphSvg).toContain("fill-background stroke-muted-foreground");
       expect(graphSvg).toContain("current-position-ring fill-none stroke-primary");
       expect(graphSvg).not.toContain("node-status-dot");
-      expect(markup).toContain('aria-label="You: Group this turn; Assistant: Grouped and ready"');
+      expect(markup).toContain(
+        'aria-label="You: Group this turn; Assistant: Grouped and ready, plan updated, spec updated"',
+      );
       expect(markup).toContain('aria-haspopup="dialog"');
       expect(markup).toContain('data-commit-id="response"');
     } finally {

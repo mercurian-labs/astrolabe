@@ -117,6 +117,7 @@ layer("019_MemoryAmendmentReviewsCompatibility", (it) => {
         { migrationId: 21, name: "DocumentOrigins" },
         { migrationId: 22, name: "DocumentOperations" },
         { migrationId: 23, name: "ReconstructionRecords" },
+        { migrationId: 24, name: "CheckpointRecords" },
       ]);
     }),
   );

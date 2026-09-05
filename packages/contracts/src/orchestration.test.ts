@@ -9,6 +9,7 @@ import {
   ClientOrchestrationCommand,
   ModelSelection,
   OrchestrationCommand,
+  OrchestrationCheckpointFile,
   OrchestrationDispatchCommandError,
   OrchestrationEvent,
   OrchestrationGetFullThreadDiffInput,
@@ -61,6 +62,7 @@ function getOptionValue(
 }
 const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPayload);
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
+const decodeOrchestrationCheckpointFile = Schema.decodeUnknownEffect(OrchestrationCheckpointFile);
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
 const decodeDispatchCommandError = Schema.decodeUnknownEffect(OrchestrationDispatchCommandError);
@@ -86,6 +88,24 @@ it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
     });
     assert.strictEqual(parsed.fromTurnCount, 1);
     assert.strictEqual(parsed.toTurnCount, 2);
+  }),
+);
+
+it.effect("preserves whitespace and Unicode in checkpoint file paths", () =>
+  Effect.gen(function* () {
+    const file = yield* decodeOrchestrationCheckpointFile({
+      path: " new 路径.txt ",
+      previousPath: " old ü.txt ",
+      kind: "renamed",
+      additions: 0,
+      deletions: 0,
+      beforeDocumentRole: "plan",
+      afterDocumentRole: "spec",
+    });
+    assert.strictEqual(file.path, " new 路径.txt ");
+    assert.strictEqual(file.previousPath, " old ü.txt ");
+    assert.strictEqual(file.beforeDocumentRole, "plan");
+    assert.strictEqual(file.afterDocumentRole, "spec");
   }),
 );
 
@@ -1140,3 +1160,10 @@ it("isProviderSendTurnSupportedImageMimeType accepts raster formats and rejects 
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("IMAGE/JPEG"), true);
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("image/svg+xml"), false);
 });
+
+it.effect("keeps older provider checkpoint kind labels decodable", () =>
+  Effect.gen(function* () {
+    const file = { path: " file.txt ", kind: "provider-specific", additions: 0, deletions: 0 };
+    assert.deepStrictEqual(yield* decodeOrchestrationCheckpointFile(file), file);
+  }),
+);

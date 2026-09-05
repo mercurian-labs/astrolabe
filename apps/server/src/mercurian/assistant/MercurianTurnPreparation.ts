@@ -108,10 +108,15 @@ export const make = Effect.gen(function* () {
       );
       const disposition =
         input.contextDisposition ?? (input.sessionIsFresh ? "clean-start" : "continuation");
+      // Rooting clears the pending fork parent; the first query retains its carrying boundary.
       const isForkStart =
         input.sessionIsFresh &&
         input.thread.messages.length === 1 &&
-        runtime.value.forkParentCommitId !== undefined;
+        (runtime.value.forkParentCommitId !== undefined ||
+          (String(runtime.value.lineRootCommitId) === input.message.id &&
+            detail.timeline.some(
+              (item) => String(item.commitId) === input.message.id && item.parents.length > 0,
+            )));
       const attach = Effect.fn("MercurianTurnPreparation.attach")(function* (
         id: string | null,
         cleanStart = false,

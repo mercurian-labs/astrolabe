@@ -584,3 +584,68 @@ describe("applyPlanStreamItem memory amendments", () => {
     expect(cleared.memoryMergeHomeConflict).toBeNull();
   });
 });
+
+it("updates old checkpoint records with an independent cursor while preserving reconstruction and timeline", () => {
+  const record = {
+    ownerCommitId: MercurianCommitId.make("commit-1"),
+    planId: snapshot.plan.planId,
+    projectId: snapshot.plan.projectId,
+    lineRootCommitId: MercurianCommitId.make("commit-1"),
+    revision: 1,
+    updateSequence: 10,
+  };
+  const first = fold([
+    { kind: "snapshot", snapshot: { ...snapshot, checkpoints: [record], checkpointSequence: 10 } },
+  ]);
+  const updated = applyPlanStreamItem(first, {
+    kind: "checkpoint-update",
+    record: {
+      ...record,
+      revision: 2,
+      updateSequence: 15,
+      responseCommitId: MercurianCommitId.make("response"),
+    },
+  });
+  expect(updated.detail?.timeline).toBe(first.detail?.timeline);
+  expect(updated.detail?.snapshotSequence).toBe(1);
+  expect(updated.detail?.checkpointSequence).toBe(10);
+  expect(updated.detail?.checkpoints?.[0]?.responseCommitId).toBe("response");
+  expect(applyPlanStreamItem(updated, { kind: "checkpoint-update", record })).toBe(updated);
+  const synchronized = applyPlanStreamItem(updated, {
+    kind: "checkpoint-synchronized",
+    planId: snapshot.plan.planId,
+    checkpointSequence: 15,
+  });
+  expect(synchronized.detail?.checkpointSequence).toBe(15);
+  expect(
+    applyPlanStreamItem(synchronized, {
+      kind: "checkpoint-update",
+      record: { ...record, planId: PlanId.make("another-plan"), revision: 4 },
+    }),
+  ).toBe(synchronized);
+  expect(EMPTY_PLAN_STATE.detail).toBe(null);
+});
+
+it("refreshes transient turns on resume and ignores a start already represented by that snapshot", () => {
+  const turnId = PlanTurnId.make("current-turn");
+  const turns = [
+    {
+      turnId,
+      parentCommitId: MercurianCommitId.make("commit-1"),
+      text: "Already streamed",
+      grounding: [],
+    },
+  ];
+  const initial = fold([{ kind: "snapshot", snapshot }]);
+  const refreshed = applyPlanStreamItem(initial, { kind: "in-flight-turns", turns });
+  expect(refreshed.detail?.inFlightTurns).toEqual(turns);
+  const replayed = applyPlanStreamItem(refreshed, {
+    kind: "turn-started",
+    turnId,
+    parentCommitId: turns[0]!.parentCommitId,
+  });
+  expect(replayed.detail?.inFlightTurns[0]?.text).toBe("Already streamed");
+  expect(
+    applyPlanStreamItem(replayed, { kind: "in-flight-turns", turns: [] }).detail?.inFlightTurns,
+  ).toEqual([]);
+});

@@ -1,5 +1,6 @@
 import {
   MercurianCommitId,
+  MercurianProjectId,
   PlanId,
   PlanTurnId,
   ThreadId,
@@ -10,7 +11,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { buildPlanGraph } from "./PlanGraph.logic";
 import { resolveLineInFlightTurn } from "./ThreadSpaceChrome.logic";
-import { lineThreadIdForCommit, resolveLineTip } from "./planLineOwnership.logic";
+import {
+  knownLineRootIds,
+  lineRootCommitIdFor,
+  lineThreadIdForCommit,
+  resolveLineTip,
+} from "./planLineOwnership.logic";
 
 const timelineMessage = (commitId: string, parents: string[], sequence: number) => ({
   _tag: "message" as const,
@@ -123,4 +129,32 @@ describe("plan line ownership", () => {
     expect(resolveLineTip(detail, graph, originRuntime, threadPlanLinks)).toBe("B");
     expect(resolveLineTip(detail, graph, forkRuntime, threadPlanLinks)).toBe("F");
   });
+});
+
+it("retains the explicit first-child carrying boundary after runtime cleanup", () => {
+  const graph = buildPlanGraph([
+    timelineMessage("A", [], 1),
+    timelineMessage("fork", ["A"], 2),
+    timelineMessage("B", ["A"], 3),
+  ]);
+  const planId = PlanId.make("plan");
+  const roots = knownLineRootIds(
+    {
+      plan: { planId },
+      lineRuntimes: [],
+      checkpoints: [
+        {
+          planId,
+          projectId: MercurianProjectId.make("project"),
+          ownerCommitId: MercurianCommitId.make("fork"),
+          lineRootCommitId: MercurianCommitId.make("fork"),
+          revision: 1,
+          updateSequence: 1,
+        },
+      ],
+    },
+    [],
+  );
+  expect(lineRootCommitIdFor(graph, MercurianCommitId.make("fork"), roots)).toBe("fork");
+  expect(lineRootCommitIdFor(graph, MercurianCommitId.make("B"), roots)).toBe("A");
 });

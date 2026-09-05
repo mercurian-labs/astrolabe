@@ -2,6 +2,7 @@ import {
   BranchMovement,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointRepository,
+  OrchestrationCheckpointSummaryStatus,
   SnapshotKind,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -17,6 +18,8 @@ export const CheckpointFilesStorage = Schema.Union([
     departedRef: Schema.optional(Schema.String),
     branchMovement: Schema.optional(BranchMovement),
     repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
+    summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+    summaryError: Schema.optional(Schema.String),
   }),
 ]);
 export type CheckpointFilesStorage = typeof CheckpointFilesStorage.Type;
@@ -27,13 +30,17 @@ export const toCheckpointFilesStorage = (
   snapshotKind?: SnapshotKind,
   departedRef?: string,
   branchMovement?: BranchMovement,
-  repositories?: ReadonlyArray<typeof OrchestrationCheckpointRepository.Type>,
+  repositories?: ReadonlyArray<OrchestrationCheckpointRepository>,
+  summaryStatus?: OrchestrationCheckpointSummaryStatus,
+  summaryError?: string,
 ): CheckpointFilesStorage =>
   partial === undefined &&
   snapshotKind === undefined &&
   departedRef === undefined &&
   branchMovement === undefined &&
-  repositories === undefined
+  repositories === undefined &&
+  summaryStatus === undefined &&
+  summaryError === undefined
     ? files
     : {
         files,
@@ -42,6 +49,8 @@ export const toCheckpointFilesStorage = (
         ...(departedRef === undefined ? {} : { departedRef }),
         ...(branchMovement === undefined ? {} : { branchMovement }),
         ...(repositories === undefined ? {} : { repositories }),
+        ...(summaryStatus === undefined ? {} : { summaryStatus }),
+        ...(summaryError === undefined ? {} : { summaryError }),
       };
 
 export const checkpointFilesFromStorage = (stored: CheckpointFilesStorage) =>
@@ -60,3 +69,9 @@ export const checkpointBranchMovementFromStorage = (stored: CheckpointFilesStora
   "files" in stored ? stored.branchMovement : undefined;
 export const checkpointRepositoriesFromStorage = (stored: CheckpointFilesStorage) =>
   "files" in stored ? stored.repositories : undefined;
+
+export const checkpointSummaryStatusFromStorage = (stored: CheckpointFilesStorage) =>
+  "files" in stored ? stored.summaryStatus : undefined;
+
+export const checkpointSummaryErrorFromStorage = (stored: CheckpointFilesStorage) =>
+  "files" in stored ? stored.summaryError : undefined;

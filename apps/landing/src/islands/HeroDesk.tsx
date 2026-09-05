@@ -341,6 +341,8 @@ const graphProps = {
   staleSpecCommitIds: new Set<string>(),
   onEditAndBranch: () => undefined,
   onImplementFrom: () => undefined,
+  onOpenChanges: () => undefined,
+  onContinueFromCheckpoint: () => undefined,
 } as const;
 
 const composerProps = {

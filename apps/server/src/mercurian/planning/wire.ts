@@ -141,6 +141,8 @@ export const toWirePlanDetail = (detail: PlanDetail): Contracts.PlanDetail => {
         : toWirePlanTimelineItem(item),
     ),
     snapshotSequence: detail.snapshotSequence,
+    checkpoints: detail.checkpoints ?? [],
+    checkpointSequence: detail.checkpointSequence ?? 0,
     codingSessions: detail.codingSessions.map(toWireCodingSessionRecord),
     lineRuntimes: detail.lineRuntimes.map(toWireLineRuntimeRecord),
     ...(detail.lastVisitedThreadId === undefined

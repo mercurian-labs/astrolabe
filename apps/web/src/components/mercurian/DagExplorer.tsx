@@ -1,11 +1,13 @@
 import type {
   MercurianCommitId,
+  PlanCheckpointRecord,
   PlanCodingSessionRecord,
   PlanTimelineItem,
   ServerProvider,
 } from "@t3tools/contracts";
 import {
   ArrowDownIcon,
+  BookOpenCheckIcon,
   CheckIcon,
   CircleDotIcon,
   FileTextIcon,
@@ -73,10 +75,12 @@ import {
   type Pane,
 } from "./PlanColumns.logic";
 import {
+  checkpointGlyphEffect,
   condensePlanGraph,
   isUnansweredCheckpointInFlight,
   mapMarksToNodes,
-  planCheckpointEffectLabel,
+  planCheckpointMarks,
+  planCheckpointStatusLabel,
   planNodeIdForCommit,
   planNodeStatusDots,
   planNodeSummary,
@@ -87,6 +91,7 @@ import {
   descendantClosure,
   effectivePlanExplorerView,
   planCommitSummary,
+  type CheckpointEffect,
   type PlanGraph,
   type PlanGraphNode,
   type SpatialLayout,
@@ -98,6 +103,7 @@ import {
   PlanNodeDetailsButton,
   PlanNodePopover,
   usePlanNodePopover,
+  type PlanNodeActHandlers,
   type PlanNodePopoverController,
 } from "./PlanNodePopover";
 import {
@@ -115,6 +121,7 @@ export const DEFAULT_EXPLORER_VIEW: ExplorerView = "thread";
 
 /** One plain commit row; checkpoint rows expand to fit their turn content. */
 const ROW_HEIGHT = 34;
+const EMPTY_CHECKPOINT_RECORDS: ReadonlyArray<PlanCheckpointRecord> = [];
 
 const MAP_PADDING = 64;
 const MAP_TWEEN_DURATION = 250;
@@ -151,6 +158,7 @@ type DisplaySettingsUpdater = (
  */
 export function DagExplorer({
   graph,
+  checkpointRecords = EMPTY_CHECKPOINT_RECORDS,
   anchoredCommitId,
   inFlightAnchorCommitIds,
   providers,
@@ -159,6 +167,8 @@ export function DagExplorer({
   staleSpecCommitIds,
   historyWalkViewsEnabled,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
   onSelect,
 }: {
   readonly graph: PlanGraph;
@@ -166,15 +176,16 @@ export function DagExplorer({
   readonly anchoredCommitId: MercurianCommitId | null;
   /** The commit an assistant response currently streaming will continue from. */
   readonly inFlightAnchorCommitIds?: ReadonlyArray<MercurianCommitId>;
+  readonly checkpointRecords?: ReadonlyArray<PlanCheckpointRecord>;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly codingSessions: ReadonlyArray<PlanCodingSessionRecord>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   /** Explicit override for development catalogs and focused rendering tests. */
   readonly historyWalkViewsEnabled?: boolean;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
+  readonly onEditAndBranch: PlanNodeActHandlers["onEditAndBranch"];
+  readonly onOpenChanges: PlanNodeActHandlers["onOpenChanges"];
+  readonly onContinueFromCheckpoint: PlanNodeActHandlers["onContinueFromCheckpoint"];
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [storedView] = useLocalStorage(
@@ -184,7 +195,10 @@ export function DagExplorer({
   );
   const [experiments] = useExperiments();
   const walkViewsEnabled = historyWalkViewsEnabled ?? experiments.historyWalkViews;
-  const checkpointGraph = useMemo(() => condensePlanGraph(graph), [graph]);
+  const checkpointGraph = useMemo(
+    () => condensePlanGraph(graph, checkpointRecords),
+    [checkpointRecords, graph],
+  );
   const view = effectivePlanExplorerView(checkpointGraph, storedView, walkViewsEnabled);
   // Standing at the tip is standing at the latest commit; an anchor is what
   // moves the highlight anywhere else.
@@ -229,6 +243,8 @@ export function DagExplorer({
           stalePlanCommitIds={stalePlanNodes}
           staleSpecCommitIds={staleSpecNodes}
           onEditAndBranch={onEditAndBranch}
+          onOpenChanges={onOpenChanges}
+          onContinueFromCheckpoint={onContinueFromCheckpoint}
           onSelect={onSelect}
         />
       ) : view === "columns" ? (
@@ -242,6 +258,8 @@ export function DagExplorer({
           staleSpecCommitIds={staleSpecNodes}
           providers={providers}
           onEditAndBranch={onEditAndBranch}
+          onOpenChanges={onOpenChanges}
+          onContinueFromCheckpoint={onContinueFromCheckpoint}
           onSelect={onSelect}
         />
       ) : (
@@ -255,6 +273,8 @@ export function DagExplorer({
           staleSpecCommitIds={staleSpecNodes}
           providers={providers}
           onEditAndBranch={onEditAndBranch}
+          onOpenChanges={onOpenChanges}
+          onContinueFromCheckpoint={onContinueFromCheckpoint}
           onSelect={onSelect}
         />
       )}
@@ -272,6 +292,8 @@ function ActivePlanNodePopover({
   staleSpecCommitIds,
   inFlightUnansweredNodes,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
 }: {
   readonly controller: PlanNodePopoverController;
   readonly graph: PlanGraph;
@@ -281,9 +303,9 @@ function ActivePlanNodePopover({
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
+  readonly onEditAndBranch: PlanNodeActHandlers["onEditAndBranch"];
+  readonly onOpenChanges: PlanNodeActHandlers["onOpenChanges"];
+  readonly onContinueFromCheckpoint: PlanNodeActHandlers["onContinueFromCheckpoint"];
 }) {
   const node = controller.state === null ? undefined : graph.byId.get(controller.state.commitId);
   return (
@@ -297,6 +319,8 @@ function ActivePlanNodePopover({
       staleSpec={node !== undefined && staleSpecCommitIds.has(node.commitId)}
       suppressUnanswered={node !== undefined && inFlightUnansweredNodes.has(node.commitId)}
       onEditAndBranch={onEditAndBranch}
+      onOpenChanges={onOpenChanges}
+      onContinueFromCheckpoint={onContinueFromCheckpoint}
     />
   );
 }
@@ -443,6 +467,8 @@ function ThreadView({
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
   onSelect,
 }: {
   readonly graph: PlanGraph;
@@ -453,9 +479,9 @@ function ThreadView({
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
+  readonly onEditAndBranch: PlanNodeActHandlers["onEditAndBranch"];
+  readonly onOpenChanges: PlanNodeActHandlers["onOpenChanges"];
+  readonly onContinueFromCheckpoint: PlanNodeActHandlers["onContinueFromCheckpoint"];
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [parentChoices, setParentChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(
@@ -533,6 +559,8 @@ function ThreadView({
         stalePlanCommitIds={stalePlanCommitIds}
         staleSpecCommitIds={staleSpecCommitIds}
         onEditAndBranch={onEditAndBranch}
+        onOpenChanges={onOpenChanges}
+        onContinueFromCheckpoint={onContinueFromCheckpoint}
       />
     </>
   );
@@ -647,6 +675,8 @@ function ColumnsView({
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
   onSelect,
 }: {
   readonly graph: PlanGraph;
@@ -657,9 +687,9 @@ function ColumnsView({
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
+  readonly onEditAndBranch: PlanNodeActHandlers["onEditAndBranch"];
+  readonly onOpenChanges: PlanNodeActHandlers["onOpenChanges"];
+  readonly onContinueFromCheckpoint: PlanNodeActHandlers["onContinueFromCheckpoint"];
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [branchChoices, setBranchChoices] = useState<ReadonlyMap<string, MercurianCommitId>>(() =>
@@ -907,6 +937,8 @@ function ColumnsView({
         stalePlanCommitIds={stalePlanCommitIds}
         staleSpecCommitIds={staleSpecCommitIds}
         onEditAndBranch={onEditAndBranch}
+        onOpenChanges={onOpenChanges}
+        onContinueFromCheckpoint={onContinueFromCheckpoint}
       />
     </>
   );
@@ -1079,6 +1111,8 @@ function GraphView({
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
   onSelect,
 }: {
   readonly graph: PlanGraph;
@@ -1089,9 +1123,9 @@ function GraphView({
   readonly inFlightUnansweredNodes: ReadonlySet<string>;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
+  readonly onEditAndBranch: PlanNodeActHandlers["onEditAndBranch"];
+  readonly onOpenChanges: PlanNodeActHandlers["onOpenChanges"];
+  readonly onContinueFromCheckpoint: PlanNodeActHandlers["onContinueFromCheckpoint"];
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
   const [settings, setSettings] = useLocalStorage(
@@ -1120,6 +1154,8 @@ function GraphView({
       staleSpecCommitIds={staleSpecCommitIds}
       onSettingsChange={setSettings}
       onEditAndBranch={onEditAndBranch}
+      onOpenChanges={onOpenChanges}
+      onContinueFromCheckpoint={onContinueFromCheckpoint}
       onSelect={onSelect}
     />
   );
@@ -1137,6 +1173,8 @@ function SpatialMap({
   stalePlanCommitIds,
   staleSpecCommitIds,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
   onSettingsChange,
   onSelect,
 }: {
@@ -1150,9 +1188,9 @@ function SpatialMap({
   readonly settings: DagExplorerDisplaySettingsValue;
   readonly stalePlanCommitIds: ReadonlySet<string>;
   readonly staleSpecCommitIds: ReadonlySet<string>;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
+  readonly onEditAndBranch: PlanNodeActHandlers["onEditAndBranch"];
+  readonly onOpenChanges: PlanNodeActHandlers["onOpenChanges"];
+  readonly onContinueFromCheckpoint: PlanNodeActHandlers["onContinueFromCheckpoint"];
   readonly onSettingsChange: DisplaySettingsUpdater;
   readonly onSelect: (commitId: MercurianCommitId) => void;
 }) {
@@ -1471,11 +1509,14 @@ function SpatialMap({
             const statusDots = planNodeStatusDots({
               staleSpec: isSpecStale,
               stalePlan: isPlanStale,
+              status: graphNode.checkpoint?.status ?? [],
             });
             const statusDotRadius = radius * 0.35;
             const statusDotAnchor = radius / Math.SQRT2;
             const Glyph =
-              graphNode.checkpoint === undefined ? commitGlyph(node.item) : MessagesSquareIcon;
+              graphNode.checkpoint === undefined
+                ? commitGlyph(node.item)
+                : checkpointGlyph(graphNode.checkpoint.effects);
             const interaction = graphNodePopoverInteraction({
               commitId: node.commitId,
               popover,
@@ -1486,7 +1527,7 @@ function SpatialMap({
                 // A node is a control, and a circle has no accessible name of
                 // its own: without this the map is unreadable to a screen
                 // reader and unreachable by keyboard.
-                aria-label={`${planNodeAccessibleLabel(graphNode)}${isSpecStale ? ", spec stale" : ""}${isPlanStale ? `, ${PLAN_MAY_BE_STALE_LABEL.toLowerCase()}` : ""}`}
+                aria-label={`${planNodeAccessibleLabel(graphNode)}${checkpointMarkSuffix(graphNode, inFlightUnansweredNodes.has(node.commitId))}${isSpecStale ? ", spec stale" : ""}${isPlanStale ? `, ${PLAN_MAY_BE_STALE_LABEL.toLowerCase()}` : ""}`}
                 aria-current={isCurrent ? "true" : undefined}
                 aria-haspopup="dialog"
                 className="cursor-pointer transition-opacity duration-150"
@@ -1595,6 +1636,8 @@ function SpatialMap({
         stalePlanCommitIds={stalePlanCommitIds}
         staleSpecCommitIds={staleSpecCommitIds}
         onEditAndBranch={onEditAndBranch}
+        onOpenChanges={onOpenChanges}
+        onContinueFromCheckpoint={onContinueFromCheckpoint}
       />
       <div className="absolute right-2 bottom-2 z-20 flex flex-col items-end gap-1">
         <div className="flex items-center rounded-md border border-border bg-background/90 p-0.5 shadow-sm">
@@ -1916,6 +1959,30 @@ function interpolateSpatialLayout(
  * What a commit looks like at a glance. One glyph per kind, shared by the map
  * and the list so a commit reads the same in both.
  */
+/** A turn disc wears its strongest recorded effect; a plain or unknown turn keeps the conversation glyph. */
+function checkpointGlyph(effects: ReadonlyArray<CheckpointEffect>) {
+  switch (checkpointGlyphEffect(effects)) {
+    case "code":
+      return SquareTerminalIcon;
+    case "memory":
+      return BookOpenCheckIcon;
+    case "plan":
+      return FileTextIcon;
+    case "spec":
+      return CircleDotIcon;
+    case null:
+      return MessagesSquareIcon;
+  }
+}
+
+/** The map has no text, so a node's effects and marks ride in its accessible name. */
+function checkpointMarkSuffix(node: PlanGraphNode, suppressUnanswered: boolean): string {
+  if (node.checkpoint === undefined) return "";
+  return planCheckpointMarks(node.checkpoint, suppressUnanswered)
+    .map((mark) => `, ${mark.label.toLowerCase()}`)
+    .join("");
+}
+
 function commitGlyph(item: PlanTimelineItem) {
   if (item._tag === "coding-session") return SquareTerminalIcon;
   if (item._tag === "plan-revision") return FileTextIcon;
@@ -2005,9 +2072,7 @@ function CheckpointRow({
 }: PlanNodeRowProps) {
   const checkpoint = node.checkpoint;
   if (checkpoint === undefined) return null;
-  const effects = suppressUnanswered
-    ? checkpoint.effects.filter((effect) => effect !== "unanswered")
-    : checkpoint.effects;
+  const marks = planCheckpointMarks(checkpoint, suppressUnanswered);
   const query = checkpoint.query;
   const response = checkpoint.response;
 
@@ -2056,14 +2121,19 @@ function CheckpointRow({
           ) : null}
           <span className="shrink-0 text-[11px] font-medium text-muted-foreground">You</span>
         </span>
-        {effects.length === 0 && !stalePlan && !staleSpec ? null : (
+        {marks.length === 0 && !stalePlan && !staleSpec ? null : (
           <span className="flex min-w-0 flex-wrap items-center gap-1">
-            {effects.map((effect) => (
+            {marks.map((mark) => (
               <span
-                className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                key={effect}
+                className={cn(
+                  "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                  mark.kind === "effect"
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+                )}
+                key={mark.key}
               >
-                {planCheckpointEffectLabel(effect)}
+                {mark.label}
               </span>
             ))}
             {staleSpec ? (
@@ -2190,7 +2260,7 @@ function CommitRow({
         </span>
         {item._tag === "coding-session" && item.partial === true ? (
           <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-            {planCheckpointEffectLabel("partial")}
+            {planCheckpointStatusLabel("partial")}
           </span>
         ) : null}
         {staleSpec ? (

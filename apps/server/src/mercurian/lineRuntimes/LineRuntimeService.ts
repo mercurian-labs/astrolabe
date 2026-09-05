@@ -24,15 +24,23 @@ import { ProjectionSnapshotQuery } from "../../orchestration/Services/Projection
 import { ThreadDeletionReactor } from "../../orchestration/Services/ThreadDeletionReactor.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { getAutoBootstrapThreadModelSelection } from "../../serverRuntimeStartup.ts";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import {
+  recordedCheckpointAt,
+  validateCheckpointRestoration,
+} from "../planning/checkpointTargets.ts";
 import { TerminalManager } from "../../terminal/Manager.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import type { MercurianProject } from "../planning/schema.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryScript } from "../repositories/schema.ts";
+import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
 import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "../worktreeSlots/SlotService.ts";
+import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
 import type { SlotLeaseHolder, WorktreeSlot, WorktreeSlotId } from "../worktreeSlots/schema.ts";
 import { buildLineBranchName } from "./branch.ts";
@@ -134,7 +142,9 @@ const LINE_BRANCH_WAIT = "30 seconds";
 export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const planning = yield* PlanningStore.PlanningStore;
+  const git = yield* GitVcsDriver;
   const repositories = yield* RepositoryStore;
+  const memorySources = yield* MemorySourceStore;
   const providerService = yield* ProviderService;
   const projections = yield* ProjectionSnapshotQuery;
   const orchestration = yield* OrchestrationEngineService;
@@ -165,6 +175,16 @@ export const make = Effect.gen(function* () {
         return repository === undefined ? [] : [repository];
       });
   });
+
+  const restorationRepositoriesFor = Effect.fn("LineRuntimeService.restorationRepositoriesFor")(
+    function* (projectId: import("@t3tools/contracts").MercurianProjectId) {
+      const [snapshot, source] = yield* Effect.all([
+        repositories.getSnapshot,
+        memorySources.getSource(projectId),
+      ]);
+      return projectWorkingRepositories(snapshot, projectId, Option.getOrNull(source));
+    },
+  );
 
   const awaitLineBranches = Effect.fn("LineRuntimeService.awaitLineBranches")(function* (
     lineRootCommitId: MercurianCommitId,
@@ -390,6 +410,20 @@ export const make = Effect.gen(function* () {
     ) {
       return yield* new RepositoryNotGitError();
     }
+    if (input.forkParentCommitId !== undefined) {
+      if (!detail.timeline.some((item) => String(item.commitId) === input.forkParentCommitId)) {
+        return yield* new LineRuntimeServiceError({
+          operation: "ensureThread:forkParent",
+          cause: "Fork parent does not belong to this plan.",
+        });
+      }
+      const saved = recordedCheckpointAt(detail, input.forkParentCommitId);
+      if (saved !== undefined)
+        yield* validateCheckpointRestoration(
+          saved,
+          yield* restorationRepositoriesFor(detail.plan.projectId),
+        ).pipe(Effect.provideService(GitVcsDriver, git));
+    }
     const orchestrationProjectId = yield* ensureOrchestrationProject(project, primaryRepository);
     const shell = yield* projections.getShellSnapshot();
     const lastThread = shell.threads
@@ -532,10 +566,43 @@ export const make = Effect.gen(function* () {
     ) {
       return yield* new RepositoryNotGitError();
     }
+    const root = detail.timeline.find((item) => String(item.commitId) === record.lineRootCommitId);
+    const hasOwnCapture =
+      detail.checkpoints?.some(
+        (checkpoint) =>
+          checkpoint.lineRootCommitId === record.lineRootCommitId &&
+          checkpoint.capture?.repositories?.some(
+            (member) => member.captureStatus === "ready" && member.afterSnapshotOid !== undefined,
+          ),
+      ) ?? false;
+    const saved = hasOwnCapture ? undefined : recordedCheckpointAt(detail, root?.parents[0]);
+    const restorationRepositories =
+      saved === undefined
+        ? linkedRepositories
+        : yield* restorationRepositoriesFor(detail.plan.projectId);
+    if (saved !== undefined)
+      yield* validateCheckpointRestoration(saved, restorationRepositories).pipe(
+        Effect.provideService(GitVcsDriver, git),
+      );
     yield* awaitLineBranches(
       record.lineRootCommitId,
-      linkedRepositories.map((repository) => repository.repositoryId),
+      restorationRepositories.map((repository) => repository.repositoryId),
     );
+    if (saved !== undefined) {
+      for (const repository of restorationRepositories) {
+        const snapshot = yield* git.execute({
+          operation: "LineRuntimeService.ensureSlot:inheritedSnapshot",
+          cwd: repository.path,
+          args: ["cat-file", "-e", `${lineSnapshotRef(record.lineRootCommitId)}^{commit}`],
+          allowNonZeroExit: true,
+        });
+        if (snapshot.exitCode !== 0)
+          return yield* new LineRuntimeServiceError({
+            operation: "ensureSlot:inheritedSnapshot",
+            cause: "The line's saved snapshot is missing.",
+          });
+      }
+    }
     const leaseHolder = { ...holder, threadId } as SlotLeaseHolder;
     const assigned = (yield* slotStore.listAll).find(
       (slot) =>

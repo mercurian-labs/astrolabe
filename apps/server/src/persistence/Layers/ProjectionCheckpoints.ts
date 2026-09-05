@@ -14,6 +14,8 @@ import {
   checkpointDepartedRefFromStorage,
   checkpointBranchMovementFromStorage,
   checkpointRepositoriesFromStorage,
+  checkpointSummaryErrorFromStorage,
+  checkpointSummaryStatusFromStorage,
   toCheckpointFilesStorage,
 } from "../CheckpointFilesStorage.ts";
 
@@ -176,6 +178,8 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
         row.departedRef,
         row.branchMovement,
         row.repositories,
+        row.summaryStatus,
+        row.summaryError,
       ),
     }).pipe(
       Effect.mapError(
@@ -201,6 +205,8 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
           const departedRef = checkpointDepartedRefFromStorage(row.files);
           const branchMovement = checkpointBranchMovementFromStorage(row.files);
           const repositories = checkpointRepositoriesFromStorage(row.files);
+          const summaryStatus = checkpointSummaryStatusFromStorage(row.files);
+          const summaryError = checkpointSummaryErrorFromStorage(row.files);
           return {
             ...row,
             files: checkpointFilesFromStorage(row.files),
@@ -209,6 +215,8 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
             ...(departedRef === undefined ? {} : { departedRef }),
             ...(branchMovement === undefined ? {} : { branchMovement }),
             ...(repositories === undefined ? {} : { repositories }),
+            ...(summaryStatus === undefined ? {} : { summaryStatus }),
+            ...(summaryError === undefined ? {} : { summaryError }),
           };
         }),
       ),
@@ -233,6 +241,8 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
             const departedRef = checkpointDepartedRefFromStorage(row.files);
             const branchMovement = checkpointBranchMovementFromStorage(row.files);
             const repositories = checkpointRepositoriesFromStorage(row.files);
+            const summaryStatus = checkpointSummaryStatusFromStorage(row.files);
+            const summaryError = checkpointSummaryErrorFromStorage(row.files);
             return Effect.succeed(
               Option.some({
                 ...row,
@@ -242,6 +252,8 @@ const makeProjectionCheckpointRepository = Effect.gen(function* () {
                 ...(departedRef === undefined ? {} : { departedRef }),
                 ...(branchMovement === undefined ? {} : { branchMovement }),
                 ...(repositories === undefined ? {} : { repositories }),
+                ...(summaryStatus === undefined ? {} : { summaryStatus }),
+                ...(summaryError === undefined ? {} : { summaryError }),
               }),
             );
           },

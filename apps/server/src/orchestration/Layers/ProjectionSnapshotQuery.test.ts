@@ -243,7 +243,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           1,
           'checkpoint-1',
           'ready',
-          '[{"path":"README.md","kind":"modified","additions":2,"deletions":1}]'
+          '{"files":[],"summaryStatus":"ready","repositories":[{"repositoryId":"repository-1","repositoryName":"code","files":[{"path":" new 路径.txt ","previousPath":" old ü.txt ","kind":"renamed","additions":0,"deletions":0}],"beforeSnapshotOid":"1111111111111111111111111111111111111111","afterSnapshotOid":"2222222222222222222222222222222222222222","branchName":"mercurian/line","branchTipOid":"3333333333333333333333333333333333333333","captureStatus":"ready","summaryStatus":"ready"}]}'
         )
       `;
 
@@ -379,7 +379,29 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               checkpointTurnCount: 1,
               checkpointRef: asCheckpointRef("checkpoint-1"),
               status: "ready",
-              files: [{ path: "README.md", kind: "modified", additions: 2, deletions: 1 }],
+              files: [],
+              repositories: [
+                {
+                  repositoryId: "repository-1",
+                  repositoryName: "code",
+                  files: [
+                    {
+                      path: " new 路径.txt ",
+                      previousPath: " old ü.txt ",
+                      kind: "renamed",
+                      additions: 0,
+                      deletions: 0,
+                    },
+                  ],
+                  beforeSnapshotOid: "1111111111111111111111111111111111111111",
+                  afterSnapshotOid: "2222222222222222222222222222222222222222",
+                  branchName: "mercurian/line",
+                  branchTipOid: "3333333333333333333333333333333333333333",
+                  captureStatus: "ready",
+                  summaryStatus: "ready",
+                },
+              ],
+              summaryStatus: "ready",
               assistantMessageId: asMessageId("message-1"),
               completedAt: "2026-02-24T00:00:08.000Z",
             },

@@ -407,11 +407,33 @@ export const OrchestrationSession = Schema.Struct({
 });
 export type OrchestrationSession = typeof OrchestrationSession.Type;
 
+/** A Git path. Unlike labels and identifiers, leading and trailing whitespace is significant. */
+export const OrchestrationCheckpointPath = Schema.String.check(Schema.isNonEmpty());
+export type OrchestrationCheckpointPath = typeof OrchestrationCheckpointPath.Type;
+
+export const OrchestrationCheckpointFileKind = Schema.Literals([
+  "added",
+  "deleted",
+  "modified",
+  "renamed",
+  "mode-changed",
+  "type-changed",
+]);
+export type OrchestrationCheckpointFileKind = typeof OrchestrationCheckpointFileKind.Type;
+
+export const OrchestrationCheckpointDocumentRole = Schema.Literals(["plan", "spec", "memory"]);
+export type OrchestrationCheckpointDocumentRole = typeof OrchestrationCheckpointDocumentRole.Type;
+
 export const OrchestrationCheckpointFile = Schema.Struct({
-  path: TrimmedNonEmptyString,
+  path: OrchestrationCheckpointPath,
+  previousPath: Schema.optional(OrchestrationCheckpointPath),
+  // Older providers and persisted events may carry other nonempty kind labels.
   kind: TrimmedNonEmptyString,
   additions: NonNegativeInt,
   deletions: NonNegativeInt,
+  binary: Schema.optional(Schema.Boolean),
+  beforeDocumentRole: Schema.optional(OrchestrationCheckpointDocumentRole),
+  afterDocumentRole: Schema.optional(OrchestrationCheckpointDocumentRole),
 });
 export type OrchestrationCheckpointFile = typeof OrchestrationCheckpointFile.Type;
 
@@ -423,6 +445,13 @@ export type ThreadWorkspaceMember = typeof ThreadWorkspaceMember.Type;
 
 export const OrchestrationCheckpointStatus = Schema.Literals(["ready", "missing", "error"]);
 export type OrchestrationCheckpointStatus = typeof OrchestrationCheckpointStatus.Type;
+
+export const OrchestrationCheckpointSummaryStatus = Schema.Literals([
+  "ready",
+  "unavailable",
+  "error",
+]);
+export type OrchestrationCheckpointSummaryStatus = typeof OrchestrationCheckpointSummaryStatus.Type;
 
 export const SnapshotKind = Schema.Literals([
   "settled",
@@ -440,11 +469,19 @@ export const BranchMovement = Schema.Union([
 ]);
 export type BranchMovement = typeof BranchMovement.Type;
 
-/** One repository's slice of a multi-repository turn: its files, and where its branch went. */
+/** One repository's authoritative slice of a captured turn. */
 export const OrchestrationCheckpointRepository = Schema.Struct({
   repositoryId: TrimmedNonEmptyString,
   repositoryName: TrimmedNonEmptyString,
   files: Schema.Array(OrchestrationCheckpointFile),
+  beforeSnapshotOid: Schema.optional(TrimmedNonEmptyString),
+  afterSnapshotOid: Schema.optional(TrimmedNonEmptyString),
+  branchName: Schema.optional(TrimmedNonEmptyString),
+  branchTipOid: Schema.optional(TrimmedNonEmptyString),
+  captureStatus: Schema.optional(OrchestrationCheckpointStatus),
+  captureError: Schema.optional(TrimmedNonEmptyString),
+  summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+  summaryError: Schema.optional(TrimmedNonEmptyString),
   departedRef: Schema.optional(Schema.String),
   branchMovement: Schema.optional(BranchMovement),
 });
@@ -458,6 +495,8 @@ export const OrchestrationCheckpointSummary = Schema.Struct({
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
   repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
+  summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+  summaryError: Schema.optional(TrimmedNonEmptyString),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
@@ -1168,11 +1207,17 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   turnId: TurnId,
+  /** Exact original query identity, frozen before mutable projections disappear. */
+  requestMessageId: Schema.optional(MessageId),
+  /** True for a finished capture attempt; absent on legacy and mid-turn placeholders. */
+  captureTerminal: Schema.optional(Schema.Boolean),
   completedAt: IsoDateTime,
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
   repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
+  summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+  summaryError: Schema.optional(TrimmedNonEmptyString),
   assistantMessageId: Schema.optional(MessageId),
   checkpointTurnCount: NonNegativeInt,
   createdAt: IsoDateTime,
@@ -1460,11 +1505,17 @@ export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
 export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   threadId: ThreadId,
   turnId: TurnId,
+  /** Exact original query identity, frozen before mutable projections disappear. */
+  requestMessageId: Schema.optional(MessageId),
+  /** True for a finished capture attempt; absent on legacy and mid-turn placeholders. */
+  captureTerminal: Schema.optional(Schema.Boolean),
   checkpointTurnCount: NonNegativeInt,
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
   repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
+  summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+  summaryError: Schema.optional(TrimmedNonEmptyString),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
   partial: Schema.optional(Schema.Boolean),
@@ -1714,6 +1765,9 @@ const ProjectionCheckpointRow = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
+  summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+  summaryError: Schema.optional(TrimmedNonEmptyString),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
 });

@@ -44,6 +44,8 @@ import {
   checkpointDepartedRefFromStorage,
   checkpointBranchMovementFromStorage,
   checkpointRepositoriesFromStorage,
+  checkpointSummaryErrorFromStorage,
+  checkpointSummaryStatusFromStorage,
 } from "../../persistence/CheckpointFilesStorage.ts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -137,6 +139,8 @@ const checkpointSummaryFromRow = (
   const departedRef = checkpointDepartedRefFromStorage(row.files);
   const branchMovement = checkpointBranchMovementFromStorage(row.files);
   const repositories = checkpointRepositoriesFromStorage(row.files);
+  const summaryStatus = checkpointSummaryStatusFromStorage(row.files);
+  const summaryError = checkpointSummaryErrorFromStorage(row.files);
   return {
     ...(row.userMessageId === null ? {} : { userMessageId: row.userMessageId }),
     turnId: row.turnId,
@@ -151,6 +155,8 @@ const checkpointSummaryFromRow = (
     ...(departedRef === undefined ? {} : { departedRef }),
     ...(branchMovement === undefined ? {} : { branchMovement }),
     ...(repositories === undefined ? {} : { repositories }),
+    ...(summaryStatus === undefined ? {} : { summaryStatus }),
+    ...(summaryError === undefined ? {} : { summaryError }),
   };
 };
 const ProjectionLatestTurnDbRowSchema = Schema.Struct({

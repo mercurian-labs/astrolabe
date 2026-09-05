@@ -627,6 +627,11 @@ export function projectEvent(
             checkpointRef: payload.checkpointRef,
             status: payload.status,
             files: payload.files,
+            ...(payload.repositories === undefined ? {} : { repositories: payload.repositories }),
+            ...(payload.summaryStatus === undefined
+              ? {}
+              : { summaryStatus: payload.summaryStatus }),
+            ...(payload.summaryError === undefined ? {} : { summaryError: payload.summaryError }),
             assistantMessageId: payload.assistantMessageId,
             completedAt: payload.completedAt,
             ...(payload.partial === undefined ? {} : { partial: payload.partial }),

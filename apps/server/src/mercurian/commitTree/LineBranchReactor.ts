@@ -2,6 +2,7 @@ import { MercurianCommitId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import { forkParked } from "../../serverActivation.ts";
@@ -12,6 +13,12 @@ import {
   type PlanDetail,
   type PlanTimelineItem,
 } from "../planning/PlanningStore.ts";
+import {
+  checkpointRecordsAt,
+  isSnapshotOid,
+  recordedCheckpointAt,
+  validateCheckpointRestoration,
+} from "../planning/checkpointTargets.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
 import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
@@ -33,11 +40,39 @@ export function lineRoots(detail: PlanDetail): ReadonlyArray<PlanTimelineItem> {
     }
   }
   const roots: Array<PlanTimelineItem> = items.filter((item) => item.parents.length === 0);
+  const recordedOwnership = new Map(
+    (detail.checkpoints ?? []).flatMap((record) =>
+      record.lineRootCommitId === undefined
+        ? []
+        : [
+            [String(record.ownerCommitId), String(record.lineRootCommitId)] as const,
+            ...(record.responseCommitId === undefined
+              ? []
+              : [[String(record.responseCommitId), String(record.lineRootCommitId)] as const]),
+          ],
+    ),
+  );
   for (const siblings of children.values()) {
     siblings.sort((left, right) => left.sequence - right.sequence);
-    roots.push(...siblings.slice(1));
+    roots.push(
+      ...siblings.slice(1).filter((item) => {
+        const owner = recordedOwnership.get(String(item.commitId));
+        return owner === undefined || owner === String(item.commitId);
+      }),
+    );
   }
-  return roots.toSorted((left, right) => left.sequence - right.sequence);
+  const declared = new Set([
+    ...(detail.lineRuntimes ?? []).flatMap((runtime) =>
+      runtime.lineRootCommitId === null ? [] : [String(runtime.lineRootCommitId)],
+    ),
+    ...(detail.checkpoints ?? []).flatMap((record) =>
+      record.lineRootCommitId === undefined ? [] : [String(record.lineRootCommitId)],
+    ),
+  ]);
+  roots.push(...items.filter((item) => declared.has(String(item.commitId))));
+  return [...new Map(roots.map((item) => [item.commitId, item])).values()].toSorted(
+    (left, right) => left.sequence - right.sequence,
+  );
 }
 
 export function lineRootCommitIdFor(detail: PlanDetail, commitId: string): MercurianCommitId {
@@ -170,16 +205,73 @@ export const make = Effect.gen(function* () {
         sourceSnapshot.find((source) => source.projectId === plan.projectId) ?? null,
       );
       for (const root of lineRoots(detail)) {
+        const lineRootCommitId = MercurianCommitId.make(root.commitId);
+        const recorded = recordedCheckpointAt(detail, root.parents[0]);
+        const uncaptured =
+          recorded === undefined
+            ? checkpointRecordsAt(detail, root.parents[0]).next().value
+            : undefined;
+        // Uncaptured queries inherit their original line base, never a later mutable snapshot.
+        const uncapturedLineRoot =
+          uncaptured === undefined
+            ? undefined
+            : (uncaptured.lineRootCommitId ??
+              lineRootCommitIdFor(detail, uncaptured.ownerCommitId));
+        const existingBranches = yield* Effect.forEach(workingRepositories, (repository) =>
+          branches.get({ lineRootCommitId, repositoryId: repository.repositoryId }),
+        );
+        if (recorded !== undefined && existingBranches.some(Option.isNone)) {
+          const valid = yield* validateCheckpointRestoration(recorded, workingRepositories).pipe(
+            Effect.provideService(GitVcsDriver, git),
+            Effect.as(true),
+            Effect.catch((error) =>
+              Effect.logWarning("Historical line snapshot unavailable", {
+                planId: plan.planId,
+                lineRootCommitId: root.commitId,
+                error,
+              }).pipe(Effect.as(false)),
+            ),
+          );
+          if (!valid) continue;
+        }
         for (const repository of workingRepositories) {
           yield* Effect.gen(function* () {
             const repositoryId = repository.repositoryId;
             if (!repository.hasGit) return;
-            const lineRootCommitId = MercurianCommitId.make(root.commitId);
-            const start = yield* lineBranchEnsurer.resolveLineBranchStart({
-              detail,
-              lineRootCommitId,
-              repository,
-            });
+            const saved = recorded?.capture?.repositories?.find(
+              (member) => member.repositoryId === repositoryId,
+            );
+            if (
+              recorded !== undefined &&
+              (!isSnapshotOid(saved?.branchTipOid) || !isSnapshotOid(saved?.afterSnapshotOid))
+            )
+              return;
+            const originalBranch =
+              uncapturedLineRoot === undefined
+                ? undefined
+                : Option.getOrUndefined(
+                    yield* branches.get({
+                      lineRootCommitId: MercurianCommitId.make(uncapturedLineRoot),
+                      repositoryId,
+                    }),
+                  );
+            if (uncapturedLineRoot !== undefined && originalBranch === undefined) {
+              yield* Effect.logWarning("Uncaptured query's original line base is unavailable", {
+                lineRootCommitId: root.commitId,
+                repositoryId,
+              });
+              return;
+            }
+            const start =
+              recorded !== undefined
+                ? { baseOid: saved!.branchTipOid!, inheritedSnapshotOid: saved!.afterSnapshotOid! }
+                : originalBranch !== undefined
+                  ? { baseOid: originalBranch.baseOid, inheritedSnapshotOid: undefined }
+                  : yield* lineBranchEnsurer.resolveLineBranchStart({
+                      detail,
+                      lineRootCommitId,
+                      repository,
+                    });
             const current = yield* lineBranchEnsurer.ensureLineBranch({
               detail,
               lineRootCommitId,

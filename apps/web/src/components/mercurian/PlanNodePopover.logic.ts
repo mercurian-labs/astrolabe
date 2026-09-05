@@ -2,27 +2,44 @@
  * The node popover is a derived reading over recorded checkpoint facts.
  *
  * Nothing here invents history: model switches compare recorded turn choices,
- * effects come only from checkpoint members, and mutable coding-session facts
- * are joined by their leaf commit id. Keeping that work pure gives Thread,
- * Columns, and Graph one answer even though they summon the reading differently.
+ * effects come only from checkpoint members and the durable capture record,
+ * and mutable coding-session facts are joined by their leaf commit id. Keeping
+ * that work pure gives Thread, Columns, and Graph one answer even though they
+ * summon the reading differently.
  */
+import { checkpointEffects } from "@t3tools/client-runtime/state/mercurian-checkpoint-effects";
 import {
   planningModelSelectionsEqual,
   type BranchMovement,
   type MercurianCommitId,
+  type OrchestrationCheckpointDocumentRole,
+  type OrchestrationCheckpointFile,
+  type PlanCheckpointRecord,
   type PlanCodingSessionRecord,
   type PlanningModelSelection,
   type PlanTimelineItem,
 } from "@t3tools/contracts";
 
-import { codingSessionEffects, planCheckpointEffectLabel } from "./PlanCheckpoints.logic";
+import {
+  codingSessionStatusMarks,
+  isUnknownCapture,
+  mergeStatusMarks,
+  planCheckpointMarks,
+  recordStatusMarks,
+  type PlanCheckpointMark,
+} from "./PlanCheckpoints.logic";
 import {
   planCommitDetail,
   planCommitSummary,
   type PlanGraph,
   type PlanGraphNode,
 } from "./PlanGraph.logic";
-export type PlanNodePopoverAct = "edit-and-branch" | "open-session" | "open-memory";
+
+export type PlanNodePopoverAct =
+  | "edit-and-branch"
+  | "open-session"
+  | "open-memory"
+  | "continue-from-checkpoint";
 
 /** How a recorded amendment addresses the Memory tab: by its commit, else by its first note. */
 export function memoryAmendmentSelection(
@@ -51,6 +68,42 @@ export interface PlanNodeSessionFacts {
   readonly prUrl?: string;
 }
 
+export interface PlanNodeCapturedFile {
+  readonly path: string;
+  readonly kind: string;
+  readonly previousPath?: string;
+  readonly deleted: boolean;
+  readonly role?: OrchestrationCheckpointDocumentRole;
+  readonly additions: number;
+  readonly deletions: number;
+}
+
+export interface PlanNodeCapturedRepository {
+  readonly repositoryId: string;
+  readonly repositoryName: string;
+  readonly branch?: string;
+  readonly commits?: string;
+  readonly departedRef?: string;
+  readonly captureError?: string;
+  readonly summaryError?: string;
+  readonly files: ReadonlyArray<PlanNodeCapturedFile>;
+  /** A recorded member may be opened on its own; the panel says when it is unavailable. */
+  readonly changesAvailable: boolean;
+}
+
+/** Recorded capture facts. Current runtime values never replace these. */
+export interface PlanNodeCaptureFacts {
+  readonly repositories: ReadonlyArray<PlanNodeCapturedRepository>;
+  /** Terminal, complete, and verified to have changed nothing. */
+  readonly plain: boolean;
+  readonly saving: boolean;
+  readonly failed: boolean;
+  readonly unknown: boolean;
+  readonly partial: boolean;
+  /** Every required member snapshot exists, so a coherent continuation can be offered. */
+  readonly continuable: boolean;
+}
+
 export interface PlanNodePopoverReading {
   readonly kind: "turn" | "standalone";
   readonly label: string;
@@ -60,13 +113,14 @@ export interface PlanNodePopoverReading {
   readonly response?: Extract<PlanTimelineItem, { readonly _tag: "message" }>;
   readonly queryText?: string;
   readonly responseExcerpt?: string;
-  readonly effects: ReadonlyArray<string>;
+  readonly marks: ReadonlyArray<PlanCheckpointMark>;
   readonly modelSwitch?: PlanningModelSelection;
   readonly staleSpec: boolean;
   readonly stalePlan: boolean;
   readonly movedPastPlan: boolean;
   readonly movedPastRepositoryName?: string;
   readonly session?: PlanNodeSessionFacts;
+  readonly capture?: PlanNodeCaptureFacts;
   readonly acts: ReadonlyArray<PlanNodePopoverAct>;
 }
 
@@ -119,9 +173,7 @@ export function codingSessionStatus(
   return "Ended";
 }
 
-export function branchMovementLabel(
-  movement: NonNullable<PlanCodingSessionRecord["branchMovement"]>,
-): string {
+export function branchMovementLabel(movement: BranchMovement): string {
   switch (movement.kind) {
     case "unchanged":
       return "no commits";
@@ -146,6 +198,99 @@ export function repositoryFactsLabel(repository: {
     : `${movement} · departed to ${repository.departedRef}`;
 }
 
+/** Recorded branch facts for one captured repository, or nothing when none were saved. */
+export function capturedRepositoryFactsLabel(
+  repository: PlanNodeCapturedRepository,
+): string | null {
+  const parts = [
+    repository.branch,
+    repository.commits,
+    repository.departedRef === undefined ? undefined : `departed to ${repository.departedRef}`,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+export function documentRoleLabel(role: OrchestrationCheckpointDocumentRole): string {
+  switch (role) {
+    case "plan":
+      return "Plan";
+    case "spec":
+      return "Spec";
+    case "memory":
+      return "Memory";
+  }
+}
+
+function capturedFile(file: OrchestrationCheckpointFile): PlanNodeCapturedFile {
+  const role = file.afterDocumentRole ?? file.beforeDocumentRole;
+  return {
+    path: file.path,
+    kind: file.kind,
+    ...(file.previousPath === undefined ? {} : { previousPath: file.previousPath }),
+    deleted: file.kind === "deleted",
+    ...(role === undefined ? {} : { role }),
+    additions: file.additions,
+    deletions: file.deletions,
+  };
+}
+
+/**
+ * What the record saved, exactly. Repository groups are authoritative; a legacy
+ * flat file list reads as one unnamed workspace that cannot be diffed. Returns
+ * nothing when there is nothing recorded to say.
+ */
+export function captureFacts(record: PlanCheckpointRecord): PlanNodeCaptureFacts | null {
+  const recorded = checkpointEffects(record);
+  const capture = record.capture;
+  const groups = capture?.repositories;
+  const repositories: ReadonlyArray<PlanNodeCapturedRepository> =
+    groups === undefined
+      ? capture === undefined || capture.files.length === 0
+        ? []
+        : [
+            {
+              repositoryId: "",
+              repositoryName: "Workspace",
+              files: capture.files.map(capturedFile),
+              changesAvailable: false,
+            },
+          ]
+      : groups.map((group) => ({
+          repositoryId: group.repositoryId,
+          repositoryName: group.repositoryName,
+          ...(group.branchName === undefined ? {} : { branch: group.branchName }),
+          ...(group.branchMovement === undefined
+            ? {}
+            : { commits: branchMovementLabel(group.branchMovement) }),
+          ...(group.departedRef === undefined || group.departedRef.length === 0
+            ? {}
+            : { departedRef: group.departedRef }),
+          ...(group.captureError === undefined ? {} : { captureError: group.captureError }),
+          ...(group.summaryError === undefined ? {} : { summaryError: group.summaryError }),
+          files: group.files.map(capturedFile),
+          changesAvailable:
+            group.captureStatus === "ready" &&
+            group.beforeSnapshotOid !== undefined &&
+            group.afterSnapshotOid !== undefined,
+        }));
+  const facts: PlanNodeCaptureFacts = {
+    repositories,
+    plain: recorded.plain,
+    saving: recorded.status.saving,
+    failed: recorded.status.failed,
+    unknown: isUnknownCapture(record),
+    partial: recorded.status.partial,
+    continuable: recorded.status.snapshotsAvailable,
+  };
+  return facts.repositories.length === 0 &&
+    !facts.plain &&
+    !facts.saving &&
+    !facts.failed &&
+    !facts.unknown
+    ? null
+    : facts;
+}
+
 export function derivePlanNodePopover({
   node,
   commitGraph,
@@ -162,6 +307,7 @@ export function derivePlanNodePopover({
   readonly suppressUnanswered: boolean;
 }): PlanNodePopoverReading {
   const checkpoint = node.checkpoint;
+  const record = node.record;
   const queryCandidate = checkpoint?.query ?? node.item;
   const query =
     queryCandidate._tag === "message" &&
@@ -176,15 +322,21 @@ export function derivePlanNodePopover({
   const modelSwitch = query === undefined ? null : modelSwitchFor(commitGraph, query.commitId);
   const splitRepositoryName =
     node.item._tag === "plan-revision" ? node.item.split?.repositoryName : undefined;
-  const record =
+  const sessionRecord =
     node.item._tag === "coding-session"
       ? codingSessionRecordFor(codingSessions, node.commitId)
       : undefined;
-  const effects = (
-    checkpoint?.effects ?? (record === undefined ? [] : codingSessionEffects(record))
-  )
-    .filter((effect) => !suppressUnanswered || effect !== "unanswered")
-    .map(planCheckpointEffectLabel);
+  const marks = planCheckpointMarks(
+    checkpoint ?? {
+      effects: record === undefined ? [] : checkpointEffects(record).categories,
+      status: mergeStatusMarks(
+        sessionRecord === undefined ? [] : codingSessionStatusMarks(sessionRecord),
+        record === undefined ? [] : recordStatusMarks(record),
+      ),
+    },
+    suppressUnanswered,
+  );
+  const capture = record === undefined ? null : captureFacts(record);
   const session =
     node.item._tag === "coding-session"
       ? {
@@ -192,18 +344,22 @@ export function derivePlanNodePopover({
             ? {}
             : { repositoryName: node.item.repositoryName }),
           planRevisionCommitId: node.item.planRevisionCommitId,
-          ...(record === undefined
+          ...(sessionRecord === undefined
             ? {}
             : {
-                status: codingSessionStatus(record),
-                threadId: record.threadId,
-                branch: record.branch,
-                ...(record.branchMovement === null
+                status: codingSessionStatus(sessionRecord),
+                threadId: sessionRecord.threadId,
+                branch: sessionRecord.branch,
+                ...(sessionRecord.branchMovement === null
                   ? {}
-                  : { commits: branchMovementLabel(record.branchMovement) }),
-                ...(record.departedRef === null ? {} : { departedRef: record.departedRef }),
-                ...(record.repositories === undefined ? {} : { repositories: record.repositories }),
-                ...(record.prUrl === null ? {} : { prUrl: record.prUrl }),
+                  : { commits: branchMovementLabel(sessionRecord.branchMovement) }),
+                ...(sessionRecord.departedRef === null
+                  ? {}
+                  : { departedRef: sessionRecord.departedRef }),
+                ...(sessionRecord.repositories === undefined
+                  ? {}
+                  : { repositories: sessionRecord.repositories }),
+                ...(sessionRecord.prUrl === null ? {} : { prUrl: sessionRecord.prUrl }),
               }),
         }
       : undefined;
@@ -223,21 +379,28 @@ export function derivePlanNodePopover({
     ...(response === undefined
       ? {}
       : { response, responseExcerpt: excerpt(planCommitDetail(response)) }),
-    effects,
+    marks,
     staleSpec,
     stalePlan,
     movedPastPlan:
       splitRepositoryName !== undefined && planMovedPastSplit(commitGraph, node.commitId),
     ...(splitRepositoryName === undefined ? {} : { movedPastRepositoryName: splitRepositoryName }),
     ...(session === undefined ? {} : { session }),
-    acts: offeredActs(node, commitGraph, record !== undefined),
+    ...(capture === null ? {} : { capture }),
+    acts: offeredActs(node, commitGraph, sessionRecord !== undefined, capture ?? undefined),
   };
 }
 
+/**
+ * Query editing forks at the query's parent and seeds its text; continuation
+ * restores this checkpoint's saved files and reconstructs through it. They are
+ * different acts and are offered independently.
+ */
 export function offeredActs(
   node: PlanGraphNode,
   commitGraph: PlanGraph,
   hasCodingSessionRecord = false,
+  capture?: PlanNodeCaptureFacts,
 ): ReadonlyArray<PlanNodePopoverAct> {
   if (node.item._tag === "coding-session") {
     return hasCodingSessionRecord ? ["open-session"] : [];
@@ -245,15 +408,17 @@ export function offeredActs(
   if (node.item._tag === "message" && node.item.memoryAmendment !== undefined) {
     return memoryAmendmentSelection(node.item.memoryAmendment) === null ? [] : ["open-memory"];
   }
+  const acts: Array<PlanNodePopoverAct> = [];
   const query = node.checkpoint?.query ?? node.item;
   if (
     query._tag === "message" &&
     query.authorKind === "human" &&
     (commitGraph.byId.get(query.commitId)?.parents.length ?? 0) > 0
   ) {
-    return ["edit-and-branch"];
+    acts.push("edit-and-branch");
   }
-  return [];
+  if (capture?.continuable === true) acts.push("continue-from-checkpoint");
+  return acts;
 }
 
 const RESPONSE_EXCERPT_LENGTH = 240;

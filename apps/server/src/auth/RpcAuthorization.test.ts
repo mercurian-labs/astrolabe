@@ -39,6 +39,12 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.cloudInstallRelayClient)).toBe(AuthRelayWriteScope);
   });
 
+  it("allows saved checkpoint diffs with read access", () => {
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.readCheckpointDiff)).toBe(
+      AuthOrchestrationReadScope,
+    );
+  });
+
   it("separates memory reads from review, revert, and merge mutations", () => {
     expect(requiredScopeForRpcMethod(MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges)).toBe(
       AuthOrchestrationReadScope,

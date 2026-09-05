@@ -11,6 +11,7 @@ import type { PlanGraph } from "./PlanGraph.logic";
 type LineOwnershipDetail = Readonly<{
   plan: Pick<PlanDetail["plan"], "planId">;
   lineRuntimes: PlanDetail["lineRuntimes"];
+  checkpoints?: PlanDetail["checkpoints"];
 }>;
 
 export function knownLineRootIds(
@@ -18,6 +19,9 @@ export function knownLineRootIds(
   threadPlanLinks: ReadonlyArray<MercurianThreadPlanLink>,
 ) {
   return new Set<string>([
+    ...(detail.checkpoints ?? []).flatMap((record) =>
+      record.lineRootCommitId === undefined ? [] : [record.lineRootCommitId],
+    ),
     ...detail.lineRuntimes.flatMap((runtime) =>
       runtime.lineRootCommitId === null ? [] : [runtime.lineRootCommitId],
     ),

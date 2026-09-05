@@ -501,6 +501,12 @@ export function applyThreadDetailEvent(
         ...(event.payload.repositories === undefined
           ? {}
           : { repositories: event.payload.repositories }),
+        ...(event.payload.summaryStatus === undefined
+          ? {}
+          : { summaryStatus: event.payload.summaryStatus }),
+        ...(event.payload.summaryError === undefined
+          ? {}
+          : { summaryError: event.payload.summaryError }),
         assistantMessageId: event.payload.assistantMessageId,
         completedAt: event.payload.completedAt,
         ...(event.payload.partial === undefined ? {} : { partial: event.payload.partial }),

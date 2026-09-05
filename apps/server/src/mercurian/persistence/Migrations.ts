@@ -39,6 +39,7 @@ import Migration0021 from "./Migrations/021_DocumentOrigins.ts";
 import Migration0022 from "./Migrations/022_DocumentOperations.ts";
 
 import Migration0023 from "./Migrations/023_ReconstructionRecords.ts";
+import Migration0024 from "./Migrations/024_CheckpointRecords.ts";
 
 export const migrationEntries = [
   [1, "CommitGraph", Migration0001],
@@ -64,6 +65,7 @@ export const migrationEntries = [
   [21, "DocumentOrigins", Migration0021],
   [22, "DocumentOperations", Migration0022],
   [23, "ReconstructionRecords", Migration0023],
+  [24, "CheckpointRecords", Migration0024],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -4,6 +4,7 @@ import {
   MercurianProjectId,
   MercurianRepositoryId,
   PlanId,
+  type PlanCheckpointRecord,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -17,8 +18,9 @@ import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotStore from "../worktreeSlots/SlotStore.ts";
+import { CommitId } from "./schema.ts";
 import { WorktreeSlotId } from "../worktreeSlots/schema.ts";
-import { make } from "./LineBranchReactor.ts";
+import { make, lineRoots, lineRootCommitIdFor } from "./LineBranchReactor.ts";
 import * as LineBranchStore from "./LineBranchStore.ts";
 
 const planId = PlanId.make("plan-one");
@@ -128,6 +130,7 @@ const makeHarness = (
     readonly slotChanges?: Stream.Stream<void>;
     readonly failBranchCwd?: string;
     readonly standaloneMemory?: boolean;
+    readonly missingObjects?: boolean;
   } = {},
 ) => {
   const rows = [...initial];
@@ -249,7 +252,12 @@ const makeHarness = (
           return input.args[0] === "branch" && input.cwd === options.failBranchCwd
             ? Effect.die(`git failed in ${input.cwd}`)
             : Effect.succeed({
-                exitCode: input.args[0] === "symbolic-ref" || missing ? 1 : 0,
+                exitCode:
+                  input.args[0] === "symbolic-ref" ||
+                  missing ||
+                  (input.args[0] === "cat-file" && options.missingObjects)
+                    ? 1
+                    : 0,
                 stdout: input.args[0] === "rev-parse" ? `${oid}\n` : "",
                 stderr: "",
                 stdoutTruncated: false,
@@ -527,4 +535,158 @@ describe("LineBranchReactor", () => {
       assert.ok(inheritedUpdates[0]?.args[1]?.endsWith("/snapshot"));
     }),
   );
+});
+
+const capturedA: PlanCheckpointRecord = {
+  planId,
+  projectId,
+  ownerCommitId: mainChild,
+  responseCommitId: sessionLeaf,
+  lineRootCommitId: root,
+  revision: 1,
+  updateSequence: 1,
+  capture: {
+    status: "ready",
+    terminal: true,
+    files: [],
+    repositories: [repositoryA, repositoryB].map((repositoryId) => ({
+      repositoryId,
+      repositoryName: repositoryId,
+      files: [],
+      captureStatus: "ready",
+      beforeSnapshotOid: "1".repeat(40),
+      afterSnapshotOid: "2".repeat(40),
+      branchTipOid: "3".repeat(40),
+    })),
+  },
+};
+
+const historicalDetail = (
+  records: ReadonlyArray<PlanCheckpointRecord> = [capturedA],
+): PlanningStore.PlanDetail => ({
+  ...detailWithSession(false),
+  timeline: [
+    { _tag: "message", commitId: root, parents: [], sequence: 1, createdAt },
+    { _tag: "message", commitId: mainChild, parents: [root], sequence: 2, createdAt },
+    { _tag: "message", commitId: sessionLeaf, parents: [mainChild], sequence: 3, createdAt },
+    { _tag: "message", commitId: forkChild, parents: [sessionLeaf], sequence: 4, createdAt },
+  ].map((item) => ({
+    ...item,
+    _tag: "message" as const,
+    commitId: CommitId.make(item.commitId),
+    parents: item.parents.map((parent) => CommitId.make(parent)),
+    text: item.commitId,
+    authorKind: "human" as const,
+    published: false,
+  })),
+  checkpoints: [
+    ...records,
+    {
+      planId,
+      projectId,
+      ownerCommitId: forkChild,
+      lineRootCommitId: forkChild,
+      revision: 1,
+      updateSequence: 2,
+    },
+  ],
+  lineRuntimes: [],
+  codingSessions: [],
+});
+
+describe("recorded historical inheritance", () => {
+  it.effect(
+    "declares an explicit first-child fork and uses A after later B on the original line",
+    () =>
+      Effect.gen(function* () {
+        const later = MercurianCommitId.make("later");
+        const selected = historicalDetail();
+        const withLater: PlanningStore.PlanDetail = {
+          ...selected,
+          timeline: [
+            ...selected.timeline,
+            {
+              ...selected.timeline[1]!,
+              commitId: CommitId.make(later),
+              parents: [CommitId.make(sessionLeaf)],
+              sequence: 5,
+            },
+          ],
+          checkpoints: [
+            ...selected.checkpoints!,
+            {
+              ...capturedA,
+              ownerCommitId: later,
+              responseCommitId: later,
+              revision: 1,
+              updateSequence: 3,
+              capture: {
+                ...capturedA.capture!,
+                repositories: capturedA.capture!.repositories!.map((member) => ({
+                  ...member,
+                  afterSnapshotOid: "4".repeat(40),
+                })),
+              },
+            },
+          ],
+        };
+        assert.deepStrictEqual(
+          lineRoots(selected).map((item) => String(item.commitId)),
+          [root, forkChild],
+        );
+        assert.deepStrictEqual(
+          lineRoots(withLater).map((item) => String(item.commitId)),
+          [root, forkChild],
+        );
+        assert.strictEqual(lineRootCommitIdFor(withLater, later), root);
+        const harness = yield* makeHarness([], "mutable-HEAD", withLater);
+        yield* harness.reactor.reconcile();
+        assert.deepStrictEqual(
+          harness.rows
+            .filter((row) => row.lineRootCommitId === forkChild)
+            .map((row) => row.baseOid),
+          ["3".repeat(40), "3".repeat(40)],
+        );
+        assert.deepStrictEqual(
+          harness.gitCalls
+            .filter((call) => call.args[0] === "update-ref")
+            .map((call) => call.args[2]),
+          ["2".repeat(40), "2".repeat(40)],
+        );
+      }),
+  );
+
+  for (const failure of ["missing-member", "missing-object", "mutable-ref"] as const) {
+    it.effect(`refuses ${failure} without creating any part of the captured fork`, () =>
+      Effect.gen(function* () {
+        const record =
+          failure === "missing-member"
+            ? {
+                ...capturedA,
+                capture: {
+                  ...capturedA.capture!,
+                  repositories: [capturedA.capture!.repositories![0]!],
+                },
+              }
+            : failure === "mutable-ref"
+              ? {
+                  ...capturedA,
+                  capture: {
+                    ...capturedA.capture!,
+                    repositories: capturedA.capture!.repositories!.map((member) => ({
+                      ...member,
+                      afterSnapshotOid: "HEAD",
+                    })),
+                  },
+                }
+              : capturedA;
+        const harness = yield* makeHarness([], "mutable-HEAD", historicalDetail([record]), {
+          missingObjects: failure === "missing-object",
+        });
+        yield* harness.reactor.reconcile();
+        assert.ok(!harness.rows.some((row) => row.lineRootCommitId === forkChild));
+        assert.ok(!harness.gitCalls.some((call) => call.args[0] === "update-ref"));
+      }),
+    );
+  }
 });

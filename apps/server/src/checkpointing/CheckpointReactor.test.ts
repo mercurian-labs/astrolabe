@@ -1,3 +1,4 @@
+import { ProjectionTurnRepositoryLive } from "../persistence/Layers/ProjectionTurns.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 /* oxlint-disable t3code/no-manual-effect-runtime-in-tests -- This suite's existing harness owns a managed reactor runtime; phase A only relocated the suite unchanged. */
 import * as NodeFS from "node:fs";
@@ -43,6 +44,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import { OrchestrationCommandInvariantError } from "../orchestration/Errors.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
 import { OrchestrationEngineLive } from "../orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../orchestration/Layers/ProjectionPipeline.ts";
@@ -74,9 +76,19 @@ import * as SlotStore from "../mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../mercurian/worktreeSlots/SlotRegistry.ts";
 import { WorktreeSlotId } from "../mercurian/worktreeSlots/schema.ts";
 import * as SnapshotChain from "../mercurian/worktreeSlots/SnapshotChain.ts";
+import * as StorageSourceStore from "../mercurian/storage/StorageSourceStore.ts";
+import type { StorageSource } from "../mercurian/storage/schema.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
+
+function storageSource(
+  input: Pick<StorageSource, "projectId" | "repositoryId" | "kind" | "subpath">,
+): StorageSource {
+  const timestamp = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
+  return { ...input, createdAt: timestamp, updatedAt: timestamp };
+}
 
 type LegacyProviderRuntimeEvent = {
   readonly type: string;
@@ -281,7 +293,8 @@ describe("CheckpointReactor", () => {
     | OrchestrationEngineService
     | CheckpointReactor
     | CheckpointStore.CheckpointStore
-    | ProjectionSnapshotQuery,
+    | ProjectionSnapshotQuery
+    | SnapshotChain.SnapshotChain,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -318,6 +331,10 @@ describe("CheckpointReactor", () => {
     readonly slotBackedSession?: boolean;
     readonly multiRepositorySlot?: boolean;
     readonly legacySessionWithoutRepositoryRows?: boolean;
+    readonly threadLineResolveError?: () => Error | undefined;
+    readonly currentStorageSources?: ReadonlyArray<StorageSource>;
+    readonly retainedDocumentLocations?: ReadonlyArray<StorageSource>;
+    readonly storageLookupFails?: boolean;
   }) {
     const slotRoot = options?.multiRepositorySlot
       ? NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-checkpoint-slot-"))
@@ -406,6 +423,10 @@ describe("CheckpointReactor", () => {
     const builtLineRoots: MercurianCommitId[] = [];
     const updatedBranches: string[] = [];
     const builtRepositories: MercurianRepositoryId[] = [];
+    let currentStorageSources = [...(options?.currentStorageSources ?? [])];
+    let retainedDocumentLocations = [...(options?.retainedDocumentLocations ?? [])];
+    let storageSnapshotReads = 0;
+    let retainedLocationReads = 0;
     const emptyRepositoryFacts = {
       snapshotOid: null,
       snapshotKind: null,
@@ -415,28 +436,32 @@ describe("CheckpointReactor", () => {
       prUrl: null,
     } as const;
     const threadLineServiceLayer = Layer.mock(ThreadLineService.ThreadLineService)({
-      resolve: () =>
-        Effect.succeed(
-          options?.slotBackedSession
-            ? Option.some({
-                lineRootCommitId,
-                homeRepositoryId: repositoryId,
-                branch: lineBranch,
-                repositories:
-                  options?.multiRepositorySlot === true &&
-                  options.legacySessionWithoutRepositoryRows !== true
-                    ? [
-                        { ...emptyRepositoryFacts, repositoryId, repositoryName: "server" },
-                        {
-                          ...emptyRepositoryFacts,
-                          repositoryId: secondRepositoryId,
-                          repositoryName: "web",
-                        },
-                      ]
-                    : [],
-              })
-            : Option.none(),
-        ),
+      resolve: () => {
+        const resolveError = options?.threadLineResolveError?.();
+        return resolveError === undefined
+          ? Effect.succeed(
+              options?.slotBackedSession
+                ? Option.some({
+                    lineRootCommitId,
+                    homeRepositoryId: repositoryId,
+                    branch: lineBranch,
+                    repositories:
+                      options?.multiRepositorySlot === true &&
+                      options.legacySessionWithoutRepositoryRows !== true
+                        ? [
+                            { ...emptyRepositoryFacts, repositoryId, repositoryName: "server" },
+                            {
+                              ...emptyRepositoryFacts,
+                              repositoryId: secondRepositoryId,
+                              repositoryName: "web",
+                            },
+                          ]
+                        : [],
+                  })
+                : Option.none(),
+            )
+          : Effect.fail(resolveError);
+      },
       updateBranch: (_threadId, branch) => Effect.sync(() => updatedBranches.push(branch)),
       recordSnapshot: (_threadId, snapshot) =>
         Effect.sync(() => {
@@ -518,6 +543,24 @@ describe("CheckpointReactor", () => {
       }),
       changes: Stream.empty,
     });
+    const storageSourceStoreLayer = Layer.mock(StorageSourceStore.StorageSourceStore)({
+      getSnapshot: Effect.suspend(() => {
+        storageSnapshotReads += 1;
+        return options?.storageLookupFails
+          ? Effect.fail(
+              new PersistenceSqlError({
+                operation: "CheckpointReactor.test.getSnapshot",
+                cause: new Error("storage unavailable"),
+              }),
+            )
+          : Effect.succeed(currentStorageSources);
+      }),
+      getDocumentLocations: Effect.sync(() => {
+        retainedLocationReads += 1;
+        return retainedDocumentLocations;
+      }),
+      changes: Stream.empty,
+    });
     const lineBranchStoreLayer = Layer.mock(LineBranchStore.LineBranchStore)({
       listAll: Effect.succeed([]),
       get: ({ lineRootCommitId, repositoryId: requestedRepositoryId }) =>
@@ -561,6 +604,7 @@ describe("CheckpointReactor", () => {
     );
 
     const layer = CheckpointReactorLive.pipe(
+      Layer.provide(ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory))),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
@@ -569,6 +613,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(threadLineServiceLayer),
       Layer.provideMerge(lineBranchStoreLayer),
       Layer.provideMerge(repositoryStoreLayer),
+      Layer.provideMerge(storageSourceStoreLayer),
       Layer.provideMerge(slotStoreLayer),
       Layer.provideMerge(SlotRegistry.layer),
       Layer.provideMerge(gitVcsDriverLayer),
@@ -593,6 +638,7 @@ describe("CheckpointReactor", () => {
     const checkpointStore = await runtime.runPromise(
       Effect.service(CheckpointStore.CheckpointStore),
     );
+    const snapshotChain = await runtime.runPromise(Effect.service(SnapshotChain.SnapshotChain));
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
     const drain = () => Effect.runPromise(reactor.drain);
@@ -697,8 +743,214 @@ describe("CheckpointReactor", () => {
       repositoryId,
       secondRepositoryId,
       checkpointStore,
+      snapshotChain,
+      setStorageLocations(input: {
+        readonly current: ReadonlyArray<StorageSource>;
+        readonly retained: ReadonlyArray<StorageSource>;
+      }) {
+        currentStorageSources = [...input.current];
+        retainedDocumentLocations = [...input.retained];
+      },
+      storageReadCounts: () => ({ storageSnapshotReads, retainedLocationReads }),
     };
   }
+
+  it("freezes exact query identity into the persisted terminal capture event", async () => {
+    const harness = await createHarness({ seedFilesystemCheckpoints: false });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("exact-provider-turn");
+    const messageId = MessageId.make("exact-query");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("exact-start"),
+        threadId,
+        message: { messageId, role: "user", text: "Work", attachments: [] },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("exact-running"),
+        threadId,
+        session: {
+          threadId,
+          activeTurnId: turnId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "captured work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("exact-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captured = events.find((event) => event.type === "thread.turn-diff-completed");
+    expect(
+      captured?.type === "thread.turn-diff-completed"
+        ? captured.payload.requestMessageId
+        : undefined,
+    ).toBe(messageId);
+    expect(
+      captured?.type === "thread.turn-diff-completed"
+        ? captured.payload.captureTerminal
+        : undefined,
+    ).toBe(true);
+  });
+
+  it("keeps ready files when checkpoint.captured activity fails after terminal dispatch", async () => {
+    const harness = await createHarness({ seedFilesystemCheckpoints: false });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("activity-failure");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("activity-start"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt,
+    });
+    await harness.drain();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "saved files\n");
+    const dispatch = harness.engine.dispatch;
+    let failures = 0;
+    const spy = vi.spyOn(harness.engine, "dispatch").mockImplementation((command) => {
+      if (
+        command.type === "thread.activity.append" &&
+        command.activity.kind === "checkpoint.captured"
+      ) {
+        failures++;
+        return Effect.fail(
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: "injected activity failure",
+          }),
+        );
+      }
+      return dispatch(command);
+    });
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("activity-complete"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    spy.mockRestore();
+    expect(failures).toBe(1);
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captures = events.filter((event) => event.type === "thread.turn-diff-completed");
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.payload.status).toBe("ready");
+    expect(captures[0]?.payload.files.map((file) => file.path)).toContain("README.md");
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.checkpoints).toHaveLength(1);
+    expect(thread?.checkpoints[0]?.status).toBe("ready");
+    expect(thread?.checkpoints[0]?.files.map((file) => file.path)).toContain("README.md");
+  });
+
+  it("persists one terminal error capture when a typed checkpoint failure has no message", async () => {
+    let failCompletionCapture = false;
+    let completionResolveCount = 0;
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      threadLineResolveError: () => {
+        if (!failCompletionCapture || ++completionResolveCount !== 2) return undefined;
+        return new SnapshotChain.SnapshotChainError({
+          operation: "resolve-thread-line",
+          cause: new Error(""),
+        });
+      },
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("zero-message-terminal-failure");
+    const messageId = MessageId.make("zero-message-request");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("zero-message-start"),
+        threadId,
+        message: { messageId, role: "user", text: "Work", attachments: [] },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("zero-message-running"),
+        threadId,
+        session: {
+          threadId,
+          activeTurnId: turnId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
+    failCompletionCapture = true;
+
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("zero-message-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captures = events.filter(
+      (event) => event.type === "thread.turn-diff-completed" && event.payload.turnId === turnId,
+    );
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.payload).toEqual(
+      expect.objectContaining({
+        requestMessageId: messageId,
+        captureTerminal: true,
+        status: "error",
+        summaryStatus: "unavailable",
+        summaryError: expect.stringContaining("resolve-thread-line"),
+      }),
+    );
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.checkpoints.filter((checkpoint) => checkpoint.turnId === turnId)).toEqual([
+      expect.objectContaining({
+        status: "error",
+        summaryError: expect.stringContaining("resolve-thread-line"),
+      }),
+    ]);
+  });
 
   it("captures pre-turn baseline on turn.started and post-turn checkpoint on turn.completed", async () => {
     const harness = await createHarness({ seedFilesystemCheckpoints: false });
@@ -753,7 +1005,14 @@ describe("CheckpointReactor", () => {
       harness.readModel,
       (entry) => entry.latestTurn?.turnId === "turn-1" && entry.checkpoints.length === 1,
     );
-    expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
+    expect(thread.checkpoints[0]).toEqual(
+      expect.objectContaining({
+        checkpointTurnCount: 1,
+        status: "ready",
+        summaryStatus: "ready",
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+      }),
+    );
     expect(
       gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0)),
     ).toBe(true);
@@ -774,6 +1033,267 @@ describe("CheckpointReactor", () => {
         "README.md",
       ),
     ).toBe("v2\n");
+  });
+
+  it("persists capture-time roles for renames, additions, and deletions without matching path siblings", async () => {
+    const projectId = MercurianProjectId.make("project-1");
+    const repositoryId = MercurianRepositoryId.make("repository-1");
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+      currentStorageSources: [
+        storageSource({ projectId, repositoryId, kind: "plan", subpath: "plans" }),
+        storageSource({ projectId, repositoryId, kind: "spec", subpath: "specs" }),
+        storageSource({ projectId, repositoryId, kind: "memory", subpath: "memory" }),
+      ],
+      retainedDocumentLocations: [
+        storageSource({ projectId, repositoryId, kind: "plan", subpath: "retired-plans" }),
+      ],
+    });
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "plans"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "specs"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "memory"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "plans-sibling"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "retired-plans"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans", "renamed.md"), "same\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans", "deleted.md"), "delete\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans-sibling", "source.ts"), "one\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "retired-plans", "old.md"), "old\n");
+    const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    await Effect.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: lineRef,
+        parents: [runGit(harness.cwd, ["rev-parse", "HEAD"]).trim()],
+      }),
+    );
+
+    NodeFS.renameSync(
+      NodePath.join(harness.cwd, "plans", "renamed.md"),
+      NodePath.join(harness.cwd, "specs", "renamed.md"),
+    );
+    NodeFS.rmSync(NodePath.join(harness.cwd, "plans", "deleted.md"));
+    NodeFS.rmSync(NodePath.join(harness.cwd, "retired-plans", "old.md"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "memory", "added.md"), "remember\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans-sibling", "source.ts"), "two\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-document-role-shapes"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-document-role-shapes"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const checkpoint = (await harness.readModel()).threads[0]?.checkpoints[0];
+    const files = new Map(checkpoint?.repositories?.[0]?.files.map((file) => [file.path, file]));
+    expect(files.get("specs/renamed.md")).toEqual(
+      expect.objectContaining({
+        previousPath: "plans/renamed.md",
+        kind: "renamed",
+        beforeDocumentRole: "plan",
+        afterDocumentRole: "spec",
+      }),
+    );
+    expect(files.get("plans/deleted.md")).toEqual(
+      expect.objectContaining({ kind: "deleted", beforeDocumentRole: "plan" }),
+    );
+    expect(files.get("plans/deleted.md")).not.toHaveProperty("afterDocumentRole");
+    expect(files.get("retired-plans/old.md")).toEqual(
+      expect.objectContaining({ kind: "deleted", beforeDocumentRole: "plan" }),
+    );
+    expect(files.get("memory/added.md")).toEqual(
+      expect.objectContaining({ kind: "added", afterDocumentRole: "memory" }),
+    );
+    expect(files.get("memory/added.md")).not.toHaveProperty("beforeDocumentRole");
+    expect(files.get("plans-sibling/source.ts")).not.toHaveProperty("beforeDocumentRole");
+    expect(files.get("plans-sibling/source.ts")).not.toHaveProperty("afterDocumentRole");
+  });
+
+  it("scopes one role snapshot across the actual project and repository members", async () => {
+    const projectId = MercurianProjectId.make("project-1");
+    const otherProjectId = MercurianProjectId.make("project-elsewhere");
+    const repositoryId = MercurianRepositoryId.make("repository-1");
+    const secondRepositoryId = MercurianRepositoryId.make("repository-2");
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+      currentStorageSources: [
+        storageSource({ projectId, repositoryId, kind: "plan", subpath: "docs" }),
+        storageSource({
+          projectId,
+          repositoryId: secondRepositoryId,
+          kind: "spec",
+          subpath: "docs",
+        }),
+        storageSource({
+          projectId: otherProjectId,
+          repositoryId,
+          kind: "memory",
+          subpath: "docs",
+        }),
+      ],
+    });
+    const secondCwd = harness.secondCwd!;
+    for (const cwd of [harness.cwd, secondCwd]) {
+      NodeFS.mkdirSync(NodePath.join(cwd, "docs"));
+      NodeFS.writeFileSync(NodePath.join(cwd, "docs", "shared.md"), "before\n");
+      await Effect.runPromise(
+        harness.checkpointStore.captureCheckpoint({
+          cwd,
+          checkpointRef: SnapshotChain.lineSnapshotRef(harness.lineRootCommitId),
+          parents: [runGit(cwd, ["rev-parse", "HEAD"]).trim()],
+        }),
+      );
+      NodeFS.writeFileSync(NodePath.join(cwd, "docs", "shared.md"), "after\n");
+    }
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-document-role-members"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-document-role-members"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const repositories = (await harness.readModel()).threads[0]?.checkpoints[0]?.repositories ?? [];
+    const first = repositories.find((repository) => repository.repositoryId === repositoryId);
+    const second = repositories.find(
+      (repository) => repository.repositoryId === secondRepositoryId,
+    );
+    expect(first?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "plan", afterDocumentRole: "plan" }),
+    );
+    expect(second?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "spec", afterDocumentRole: "spec" }),
+    );
+    expect(harness.storageReadCounts()).toEqual({
+      storageSnapshotReads: 1,
+      retainedLocationReads: 1,
+    });
+  });
+
+  it("keeps persisted roles immutable and avoids conflicting retained attribution", async () => {
+    const projectId = MercurianProjectId.make("project-1");
+    const repositoryId = MercurianRepositoryId.make("repository-1");
+    const plan = storageSource({ projectId, repositoryId, kind: "plan", subpath: "docs" });
+    const spec = storageSource({ projectId, repositoryId, kind: "spec", subpath: "docs" });
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+      currentStorageSources: [plan],
+      retainedDocumentLocations: [plan, spec],
+    });
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "docs"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "before\n");
+    await Effect.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: SnapshotChain.lineSnapshotRef(harness.lineRootCommitId),
+        parents: [runGit(harness.cwd, ["rev-parse", "HEAD"]).trim()],
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "plan edit\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-before-redesignation"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-before-redesignation"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    harness.setStorageLocations({ current: [spec], retained: [plan, spec] });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "spec edit\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-after-redesignation"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:02:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-after-redesignation"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    harness.setStorageLocations({ current: [], retained: [plan, spec] });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "ambiguous edit\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-after-removal"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:03:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-after-removal"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const checkpoints = (await harness.readModel()).threads[0]?.checkpoints ?? [];
+    expect(checkpoints[0]?.repositories?.[0]?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "plan", afterDocumentRole: "plan" }),
+    );
+    expect(checkpoints[1]?.repositories?.[0]?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "spec", afterDocumentRole: "spec" }),
+    );
+    expect(checkpoints[2]?.repositories?.[0]?.summaryStatus).toBe("unavailable");
+    expect(checkpoints[2]?.repositories?.[0]?.files[0]).not.toHaveProperty("beforeDocumentRole");
+    expect(checkpoints[2]?.repositories?.[0]?.files[0]).not.toHaveProperty("afterDocumentRole");
+  });
+
+  it("retains successful repository captures when role location lookup fails", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+      storageLookupFails: true,
+    });
+    for (const cwd of [harness.cwd, harness.secondCwd!]) {
+      await Effect.runPromise(
+        harness.checkpointStore.captureCheckpoint({
+          cwd,
+          checkpointRef: SnapshotChain.lineSnapshotRef(harness.lineRootCommitId),
+          parents: [runGit(cwd, ["rev-parse", "HEAD"]).trim()],
+        }),
+      );
+      NodeFS.writeFileSync(NodePath.join(cwd, "README.md"), "changed\n");
+    }
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-lookup-failed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-lookup-failed"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const checkpoint = (await harness.readModel()).threads[0]?.checkpoints[0];
+    expect(checkpoint?.status).toBe("ready");
+    expect(checkpoint?.summaryStatus).toBe("unavailable");
+    expect(checkpoint?.repositories).toHaveLength(2);
+    for (const repository of checkpoint?.repositories ?? []) {
+      expect(repository).toEqual(
+        expect.objectContaining({ captureStatus: "ready", summaryStatus: "unavailable" }),
+      );
+      expect(repository.files).toEqual([
+        expect.objectContaining({ path: "README.md", kind: "modified" }),
+      ]);
+      expect(repository.files[0]).not.toHaveProperty("beforeDocumentRole");
+      expect(repository.files[0]).not.toHaveProperty("afterDocumentRole");
+    }
   });
 
   it("captures a settled slot-backed turn without moving or cleaning its branch", async () => {
@@ -1208,8 +1728,17 @@ describe("CheckpointReactor", () => {
         status: "ready",
         checkpointRef: turnRef,
         snapshotKind: "settled",
+        summaryStatus: "error",
       }),
     );
+    expect(checkpoint?.repositories).toEqual([
+      expect.objectContaining({
+        repositoryId: harness.repositoryId,
+        branchName: harness.lineBranch,
+        captureStatus: "ready",
+        summaryStatus: "error",
+      }),
+    ]);
   });
 
   it("keeps a placeholder turn partial when completion is interrupted", async () => {
@@ -1723,7 +2252,14 @@ describe("CheckpointReactor", () => {
       harness.readModel,
       (entry) => entry.latestTurn?.turnId === "turn-main" && entry.checkpoints.length === 1,
     );
-    expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
+    expect(thread.checkpoints[0]).toEqual(
+      expect.objectContaining({
+        checkpointTurnCount: 1,
+        status: "ready",
+        summaryStatus: "ready",
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+      }),
+    );
   });
 
   it("captures pre-turn and completion checkpoints for claude runtime events", async () => {
@@ -1828,7 +2364,14 @@ describe("CheckpointReactor", () => {
         entry.activities.some((activity) => activity.kind === "checkpoint.capture.failed"),
     );
 
-    expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
+    expect(thread.checkpoints[0]).toEqual(
+      expect.objectContaining({
+        checkpointTurnCount: 1,
+        status: "ready",
+        summaryStatus: "error",
+        files: [],
+      }),
+    );
     expect(
       thread.activities.some((activity) => activity.kind === "checkpoint.capture.failed"),
     ).toBe(true);
@@ -2089,18 +2632,176 @@ describe("CheckpointReactor", () => {
       ?.checkpoints.at(-1);
     expect(checkpoint?.files).toEqual([expect.objectContaining({ path: "README.md" })]);
     expect(checkpoint?.repositories).toEqual([
-      {
+      expect.objectContaining({
         repositoryId: harness.repositoryId,
         repositoryName: "server",
         files: [expect.objectContaining({ path: "README.md" })],
+        captureStatus: "ready",
+        summaryStatus: "ready",
+        branchName: harness.lineBranch,
         branchMovement: { kind: "unchanged" },
-      },
-      {
+      }),
+      expect.objectContaining({
         repositoryId: harness.secondRepositoryId,
         repositoryName: "web",
         files: [],
+        captureStatus: "ready",
+        summaryStatus: "ready",
+        branchName: harness.lineBranch,
         branchMovement: { kind: "unchanged" },
-      },
+      }),
+    ]);
+    expect(checkpoint?.repositories?.every((repository) => repository.beforeSnapshotOid)).toBe(
+      true,
+    );
+    expect(checkpoint?.repositories?.every((repository) => repository.afterSnapshotOid)).toBe(true);
+    expect(checkpoint?.repositories?.every((repository) => repository.branchTipOid)).toBe(true);
+    const primaryGroup = checkpoint?.repositories?.find(
+      (repository) => repository.repositoryId === harness.repositoryId,
+    );
+    expect(primaryGroup?.branchTipOid).toBe(primaryHeadBefore);
+    expect(primaryGroup?.beforeSnapshotOid).toBe(
+      runGit(harness.cwd, ["rev-parse", baselineRef]).trim(),
+    );
+    expect(primaryGroup?.afterSnapshotOid).toBe(
+      runGit(harness.cwd, ["rev-parse", checkpointRef]).trim(),
+    );
+    expect(primaryGroup?.afterSnapshotOid).not.toBe(primaryGroup?.branchTipOid);
+  });
+
+  it("keeps successful repository facts when another member fails with a zero-message typed error", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const secondCwd = harness.secondCwd!;
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-zero-message-member-failure");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-zero-message-member-failure"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+    });
+    await harness.drain();
+
+    const capture = harness.snapshotChain.capture;
+    const captureSpy = vi.spyOn(harness.snapshotChain, "capture").mockImplementation((input) =>
+      input.cwd === secondCwd
+        ? Effect.fail(
+            new SnapshotChain.SnapshotChainError({
+              operation: "capture-secondary-snapshot",
+              cause: new Error("secondary repository snapshot failed"),
+            }),
+          )
+        : capture(input),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "successful home work\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(secondCwd, "README.md"), "failed member work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-zero-message-member-failure"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    captureSpy.mockRestore();
+
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captures = events.filter(
+      (event) => event.type === "thread.turn-diff-completed" && event.payload.turnId === turnId,
+    );
+    expect(captures).toHaveLength(1);
+    const capturePayload =
+      captures[0]?.type === "thread.turn-diff-completed" ? captures[0].payload : undefined;
+    const home = capturePayload?.repositories?.find(
+      (repository) => repository.repositoryId === harness.repositoryId,
+    );
+    const failed = capturePayload?.repositories?.find(
+      (repository) => repository.repositoryId === harness.secondRepositoryId,
+    );
+    expect(capturePayload).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+      }),
+    );
+    expect(home).toEqual(
+      expect.objectContaining({
+        captureStatus: "ready",
+        summaryStatus: "ready",
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+        beforeSnapshotOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+        afterSnapshotOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+        branchTipOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+      }),
+    );
+    expect(failed).toEqual(
+      expect.objectContaining({
+        captureStatus: "error",
+        captureError: expect.stringContaining("capture-secondary-snapshot"),
+        summaryStatus: "unavailable",
+        files: [],
+      }),
+    );
+    expect(failed?.captureError?.trim().length).toBeGreaterThan(0);
+
+    const checkpoint = (await harness.readModel()).threads
+      .find((thread) => thread.id === threadId)
+      ?.checkpoints.find((entry) => entry.turnId === turnId);
+    expect(checkpoint?.repositories).toEqual(capturePayload?.repositories);
+    expect(harness.recordedRepositorySnapshots).toEqual([
+      expect.objectContaining({ repositoryId: harness.repositoryId, kind: "settled" }),
+    ]);
+  });
+
+  it("emits an authoritative repository group for a single-repository line", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-single-member-group");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-single-member-group"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+    });
+    await harness.drain();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "single member work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-single-member-group"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const snapshot = await harness.readModel();
+    const checkpoint = snapshot.threads[0]?.checkpoints.find((entry) => entry.turnId === turnId);
+    expect(checkpoint?.repositories).toEqual([
+      expect.objectContaining({
+        repositoryId: harness.repositoryId,
+        repositoryName: "server",
+        captureStatus: "ready",
+        summaryStatus: "ready",
+        branchName: harness.lineBranch,
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+      }),
     ]);
   });
 
@@ -2134,6 +2835,95 @@ describe("CheckpointReactor", () => {
       "web",
     ]);
   });
+
+  it.each([false, true])(
+    "reports home capture failure with all members failing: %s",
+    async (allFail) => {
+      const harness = await createHarness({
+        seedFilesystemCheckpoints: false,
+        slotBackedSession: true,
+        multiRepositorySlot: true,
+        threadBranch: "mercurian/checkpoint-line",
+      });
+      const secondCwd = harness.secondCwd!;
+      const threadId = ThreadId.make("thread-1");
+      const turnId = asTurnId("turn-partial-member-capture");
+      harness.provider.emit({
+        type: "turn.started",
+        eventId: EventId.make("evt-turn-started-partial-member-capture"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        turnId,
+      });
+      await harness.drain();
+      expect(gitRefExists(harness.cwd, checkpointRefForThreadTurn(threadId, 0))).toBe(true);
+      expect(gitRefExists(secondCwd, checkpointRefForThreadTurn(threadId, 0))).toBe(true);
+
+      runGit(harness.cwd, ["config", "filter.checkpoint-fail.clean", "false"]);
+      runGit(harness.cwd, ["config", "filter.checkpoint-fail.required", "true"]);
+      NodeFS.writeFileSync(
+        NodePath.join(harness.cwd, ".gitattributes"),
+        "README.md filter=checkpoint-fail\n",
+        "utf8",
+      );
+      if (allFail) {
+        runGit(secondCwd, ["config", "filter.checkpoint-fail.clean", "false"]);
+        runGit(secondCwd, ["config", "filter.checkpoint-fail.required", "true"]);
+        NodeFS.writeFileSync(
+          NodePath.join(secondCwd, ".gitattributes"),
+          "README.md filter=checkpoint-fail\n",
+          "utf8",
+        );
+      }
+      NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "failed home member\n", "utf8");
+      NodeFS.writeFileSync(NodePath.join(secondCwd, "README.md"), "successful member\n", "utf8");
+      harness.provider.emit({
+        type: "turn.completed",
+        eventId: EventId.make("evt-turn-completed-partial-member-capture"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        turnId,
+        payload: { state: "completed" },
+      });
+      await harness.drain();
+
+      const snapshot = await harness.readModel();
+      const thread = snapshot.threads.find((entry) => entry.id === threadId);
+      const checkpoint = thread?.checkpoints.find((entry) => entry.turnId === turnId);
+      expect(checkpoint).toEqual(
+        expect.objectContaining({ status: "error", summaryStatus: "unavailable" }),
+      );
+      expect(checkpoint?.repositories).toEqual([
+        expect.objectContaining({
+          repositoryId: harness.repositoryId,
+          captureStatus: "error",
+          summaryStatus: "unavailable",
+          files: [],
+        }),
+        expect.objectContaining({
+          repositoryId: harness.secondRepositoryId,
+          captureStatus: allFail ? "error" : "ready",
+          summaryStatus: allFail ? "unavailable" : "ready",
+          files: allFail ? [] : [expect.objectContaining({ path: "README.md", kind: "modified" })],
+        }),
+      ]);
+      expect(harness.recordedRepositorySnapshots).toEqual(
+        allFail
+          ? []
+          : [
+              expect.objectContaining({
+                repositoryId: harness.secondRepositoryId,
+                kind: "settled",
+              }),
+            ],
+      );
+      expect(
+        thread?.activities.some((activity) => activity.kind === "checkpoint.capture.failed"),
+      ).toBe(true);
+    },
+  );
 
   it("keeps an interrupted turn's work in every member as partial snapshots", async () => {
     const harness = await createHarness({
