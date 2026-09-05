@@ -368,37 +368,31 @@ export default function DiffPanel({
         })
       : null,
   );
-  // Rebuilt from the live record on every render: a stronger capture revision
-  // is a new cache identity, so an earlier unavailable answer cannot shadow it.
-  // Revision zero asks for a record the subscription has not delivered yet.
+  // Wait for the subscribed record so loading never looks like a stale-revision error.
+  // A stronger capture revision creates a new cache identity.
   const activeRecordedCheckpointDiff = useEnvironmentQuery(
-    checkpointSelection !== null && activeThreadRef
+    checkpointSelection !== null && activeThreadRef && selectedCheckpointRecord !== undefined
       ? mercurianPlanning.checkpointDiff(
-          selectedCheckpointRecord === undefined
-            ? {
-                environmentId: activeThreadRef.environmentId,
-                input: {
-                  planId: checkpointSelection.planId,
-                  ownerCommitId: checkpointSelection.ownerCommitId,
-                  repositoryId: MercurianRepositoryId.make(checkpointSelection.repositoryId),
-                  checkpointRevision: 0,
-                  ignoreWhitespace: diffIgnoreWhitespace,
-                },
-              }
-            : recordedCheckpointDiffTarget(
-                activeThreadRef.environmentId,
-                selectedCheckpointRecord,
-                MercurianRepositoryId.make(checkpointSelection.repositoryId),
-                diffIgnoreWhitespace,
-              ),
+          recordedCheckpointDiffTarget(
+            activeThreadRef.environmentId,
+            selectedCheckpointRecord,
+            MercurianRepositoryId.make(checkpointSelection.repositoryId),
+            diffIgnoreWhitespace,
+          ),
         )
       : null,
   );
   const recordedCheckpointResult = activeRecordedCheckpointDiff.data;
   const recordedCheckpointUnavailable =
-    recordedCheckpointResult?.status === "unavailable"
-      ? recordedCheckpointDiffUnavailableLabel(recordedCheckpointResult.reason)
-      : null;
+    checkpointSelection !== null &&
+    activePlanDetail !== null &&
+    selectedCheckpointRecord === undefined
+      ? checkpointSelection.planId !== activePlanDetail.plan.planId
+        ? "This checkpoint belongs to another plan."
+        : "This checkpoint has no saved capture record."
+      : recordedCheckpointResult?.status === "unavailable"
+        ? recordedCheckpointDiffUnavailableLabel(recordedCheckpointResult.reason)
+        : null;
   const primaryBranchDiffPreview = useEnvironmentQuery(
     selectedGitScope !== null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
@@ -436,7 +430,8 @@ export default function DiffPanel({
     isGitRepo && selectedGitScope !== null && activeThread != null && activeCwd != null;
   const canRefreshLineUncommittedDiff =
     isGitRepo && isLineUncommittedScope && isMercurianCodingSession && activeThread != null;
-  const canRefreshRecordedCheckpointDiff = isRecordedCheckpointScope && activeThreadRef != null;
+  const canRefreshRecordedCheckpointDiff =
+    isRecordedCheckpointScope && activeThreadRef != null && selectedCheckpointRecord !== undefined;
   const canRefreshSelectedDiff =
     canRefreshGitDiff || canRefreshLineUncommittedDiff || canRefreshRecordedCheckpointDiff;
   const refreshSelectedDiff = isRecordedCheckpointScope
@@ -445,7 +440,7 @@ export default function DiffPanel({
       ? activeLineUncommittedDiff.refresh
       : refreshBranchDiffPreview;
   const isRefreshingSelectedDiff = isRecordedCheckpointScope
-    ? activeRecordedCheckpointDiff.isPending
+    ? activePlanDetail === null || activeRecordedCheckpointDiff.isPending
     : isLineUncommittedScope
       ? activeLineUncommittedDiff.isPending
       : branchDiffPreview.isPending;
@@ -568,7 +563,7 @@ export default function DiffPanel({
   const isLoadingSelectedPatch = memoryScope
     ? memoryComparison.kind === "loading"
     : isRecordedCheckpointScope
-      ? activeRecordedCheckpointDiff.isPending
+      ? activePlanDetail === null || activeRecordedCheckpointDiff.isPending
       : isCheckpointScope
         ? activeCheckpointDiff.isPending
         : isLineUncommittedScope
