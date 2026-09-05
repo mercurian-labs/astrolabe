@@ -23,6 +23,7 @@ import {
   branchMovementLabel,
   codingSessionStatus,
   derivePlanNodePopover,
+  memoryAmendmentSelection,
   modelSwitchFor,
   offeredActs,
   planMovedPastSplit,
@@ -308,6 +309,54 @@ describe("offeredActs", () => {
     expect(cases).toEqual([[], ["edit-and-branch"], [], [], ["open-session"]]);
     expect(cases.flat()).not.toContain("continue");
     expect(cases.flat()).not.toContain("implement");
+  });
+
+  it("offers Open in Memory for a recorded amendment, by commit or else by its first note", () => {
+    const sha = "f".repeat(40);
+    const graph = buildPlanGraph([
+      commit("root", 1, [], "human"),
+      message("landed", {
+        sequence: 2,
+        parents: ["root"],
+        authorKind: "human",
+        memoryAmendment: {
+          title: "Composer",
+          memoryCommitSha: sha,
+          branch: "line/1",
+          notes: ["Composer"],
+        },
+      }),
+      message("unrecorded", {
+        sequence: 3,
+        parents: ["landed"],
+        authorKind: "human",
+        memoryAmendment: {
+          title: "Drafts",
+          memoryCommitSha: null,
+          branch: "line/1",
+          notes: ["Drafts"],
+        },
+      }),
+      message("orphan", {
+        sequence: 4,
+        parents: ["unrecorded"],
+        authorKind: "human",
+        memoryAmendment: { title: "Empty", memoryCommitSha: null, branch: "line/1", notes: [] },
+      }),
+    ]);
+    const condensed = condensePlanGraph(graph);
+    expect(offeredActs(condensed.byId.get("landed")!, graph)).toEqual(["open-memory"]);
+    expect(offeredActs(condensed.byId.get("unrecorded")!, graph)).toEqual(["open-memory"]);
+    expect(offeredActs(condensed.byId.get("orphan")!, graph)).toEqual([]);
+    const landed = condensed.byId.get("landed")!.item;
+    expect(landed._tag === "message" && memoryAmendmentSelection(landed.memoryAmendment!)).toEqual({
+      kind: "amendment",
+      id: sha,
+    });
+    const unrecorded = condensed.byId.get("unrecorded")!.item;
+    expect(
+      unrecorded._tag === "message" && memoryAmendmentSelection(unrecorded.memoryAmendment!),
+    ).toEqual({ kind: "note", name: "Drafts" });
   });
 });
 

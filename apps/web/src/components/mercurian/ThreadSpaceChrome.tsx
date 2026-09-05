@@ -1,13 +1,12 @@
 /** Owned by the header lane of M-197 (plan §7). Header actions, banners, and the overlays that wrap ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { MemoryNote, PlanId } from "@t3tools/contracts";
+import type { PlanId } from "@t3tools/contracts";
 import { XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
 import { useThread } from "../../state/entities";
 import { useMercurianTree, usePlanDetail } from "../../state/mercurian";
-import { useReadMemoryNote } from "../../state/mercurianMemory";
 import type { ThreadSyncPhase } from "../../threadSync";
 import type { ChatMessage } from "../../types";
 import ChatView from "../ChatView";
@@ -15,7 +14,6 @@ import type { ChatComposerMentionSources } from "../chat/ChatComposer";
 import type { ThreadActionMenuId } from "../threadActionMenu.logic";
 import { Button } from "../ui/button";
 import { LineBranchMissingBanner } from "./LineBranchMissingBanner";
-import { MemoryNoteReader } from "./MemoryNoteReader";
 import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
 import { formatMentionCandidate } from "./planMentions.logic";
@@ -195,51 +193,10 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
   };
 }
 
+/** Note mentions and amendment effects route to the Memory tab; only the failure notice overlays here. */
 function ThreadSpaceMemoryOverlays(props: { readonly planId: PlanId }) {
-  const { detail } = useThreadSpace();
   const { memoryAmendmentFailure } = usePlanDetail(props.planId);
-  const readMemoryNote = useReadMemoryNote();
   const [dismissedMemoryFailure, setDismissedMemoryFailure] = useState<string | null>(null);
-  const [memoryReader, setMemoryReader] = useState<{ readonly stack: string[] }>({ stack: [] });
-  const [loadedMemoryNote, setLoadedMemoryNote] = useState<{
-    readonly name: string;
-    readonly note: MemoryNote | null;
-    readonly error: string | null;
-  } | null>(null);
-  const currentMemoryNoteName = memoryReader.stack.at(-1) ?? null;
-  const currentMemoryNote =
-    loadedMemoryNote?.name === currentMemoryNoteName ? loadedMemoryNote : null;
-  const openMemoryNote = useCallback((name: string) => {
-    setMemoryReader((current) => ({ stack: [...current.stack, name] }));
-  }, []);
-
-  useEffect(() => {
-    const projectId = detail?.plan.projectId;
-    if (currentMemoryNoteName === null || projectId === undefined) return;
-    let active = true;
-    void readMemoryNote({ projectId, name: currentMemoryNoteName }).then((result) => {
-      if (!active) return;
-      setLoadedMemoryNote({
-        name: currentMemoryNoteName,
-        note: result.ok ? result.value : null,
-        error: result.ok ? null : memoryReadError(result.error),
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [currentMemoryNoteName, detail?.plan.projectId, readMemoryNote]);
-
-  useEffect(() => {
-    if (currentMemoryNoteName === null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setMemoryReader({ stack: [] });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [currentMemoryNoteName]);
 
   const memoryFailureKey =
     memoryAmendmentFailure === null
@@ -271,27 +228,6 @@ function ThreadSpaceMemoryOverlays(props: { readonly planId: PlanId }) {
           </div>
         </div>
       )}
-      {currentMemoryNoteName === null ? null : (
-        <div className="absolute inset-y-0 right-0 z-40 max-w-full shadow-lg">
-          <MemoryNoteReader
-            error={currentMemoryNote?.error ?? null}
-            loading={currentMemoryNote === null}
-            note={currentMemoryNote?.note ?? null}
-            onOpenNote={openMemoryNote}
-            onClose={() => setMemoryReader({ stack: [] })}
-            {...(memoryReader.stack.length > 1
-              ? {
-                  onBack: () =>
-                    setMemoryReader((current) => ({ stack: current.stack.slice(0, -1) })),
-                }
-              : {})}
-          />
-        </div>
-      )}
     </>
   );
-}
-
-function memoryReadError(error: unknown): string {
-  return error instanceof Error ? error.message : "Could not read this memory note.";
 }

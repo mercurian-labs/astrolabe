@@ -1,5 +1,12 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MercurianCommitId,
+  MercurianProjectId,
+  MercurianRepositoryId,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "./diffPanelStore";
@@ -63,6 +70,42 @@ describe("diffPanelStore", () => {
       repositoryId: null,
       revealRequestId: 2,
     });
+  });
+
+  it("pins a memory comparison with its environment and trees and returns to git scopes cleanly", () => {
+    const oid = "c".repeat(40);
+    const selection = {
+      environmentId: EnvironmentId.make("environment-2"),
+      target: {
+        position: {
+          projectId: MercurianProjectId.make("project-1"),
+          repositoryId: MercurianRepositoryId.make("repository-memory"),
+          memoryRoot: "",
+          lineRootCommitId: MercurianCommitId.make("line-root"),
+          reading: { kind: "latest" as const },
+          baselineTreeOid: oid,
+          baselineSnapshotOid: null,
+          baseCommitOid: oid,
+          snapshotOid: null,
+          treeOid: oid,
+          recordedHeadOid: oid,
+          headOid: oid,
+          captureKind: null,
+        },
+        beforeTreeOid: oid,
+        afterTreeOid: oid,
+        paths: ["Composer.md"],
+      },
+    };
+    useDiffPanelStore.getState().selectMemoryComparison(THREAD_REF, selection, "Composer");
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "memory-comparison", selection, label: "Composer" });
+
+    useDiffPanelStore.getState().selectGitScope(THREAD_REF, "branch");
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "branch", baseRef: null });
   });
 
   it("restores the selected branch base after visiting another scope", () => {

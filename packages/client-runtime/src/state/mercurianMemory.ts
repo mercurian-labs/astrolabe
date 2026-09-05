@@ -1,4 +1,5 @@
 import { MERCURIAN_MEMORY_WS_METHODS } from "@t3tools/contracts";
+import * as Stream from "effect/Stream";
 import type { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
@@ -44,9 +45,12 @@ export function createMercurianMemoryAtoms<R, E>(
       label: "environment-data:mercurian:readMemoryComparison",
       tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
     }),
+    // Every signal is the same `{ kind: "invalidate" }`; the index makes each one a distinct value
+    // so subscribers refresh on every emission rather than on wrapper identity.
     subscribeMemoryInvalidations: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:mercurian:subscribeMemoryInvalidations",
       tag: MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+      transform: Stream.zipWithIndex,
     }),
     readMemoryIndex: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:read-memory-index",

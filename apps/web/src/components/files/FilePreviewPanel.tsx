@@ -2,6 +2,7 @@ import type {
   ChatFileAttachment,
   EditorId,
   EnvironmentId,
+  MemoryDocumentSelection,
   ResolvedKeybindingsConfig,
   ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -63,6 +64,7 @@ import {
   remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
 import { installFileEditorDismissal } from "./fileEditorDismissal";
+import { MemoryDocumentSurface } from "./MemoryDocumentSurface";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
@@ -85,6 +87,8 @@ interface FilePreviewPanelProps {
   projectName: string;
   relativePath: string | null;
   attachment?: ChatFileAttachment;
+  /** An immutable memory document; shown read-only at its recorded version. */
+  memory?: MemoryDocumentSelection;
   threadRef: ScopedThreadRef;
   composerDraftTarget: ScopedThreadRef | DraftId;
   keybindings: ResolvedKeybindingsConfig;
@@ -985,6 +989,7 @@ export default function FilePreviewPanel({
   projectName,
   relativePath,
   attachment,
+  memory,
   threadRef,
   composerDraftTarget,
   keybindings,
@@ -996,6 +1001,62 @@ export default function FilePreviewPanel({
   selectedFilePending,
   workspaceMutationId,
 }: FilePreviewPanelProps) {
+  const wordWrap = useClientSettings((settings) => settings.wordWrap);
+  const [memoryRenderMarkdown, setMemoryRenderMarkdown] = useLocalStorage(
+    RENDER_MARKDOWN_STORAGE_KEY,
+    false,
+    Schema.Boolean,
+  );
+  if (memory !== undefined) {
+    return (
+      <MemoryDocumentSurface
+        composerDraftTarget={composerDraftTarget}
+        memory={memory}
+        renderMarkdown={memoryRenderMarkdown}
+        threadRef={threadRef}
+        wordWrap={wordWrap}
+        onRenderMarkdownChange={setMemoryRenderMarkdown}
+      />
+    );
+  }
+  return (
+    <WorkspaceFilePreviewPanel
+      environmentId={environmentId}
+      cwd={cwd}
+      projectName={projectName}
+      relativePath={relativePath}
+      {...(attachment === undefined ? {} : { attachment })}
+      threadRef={threadRef}
+      composerDraftTarget={composerDraftTarget}
+      keybindings={keybindings}
+      availableEditors={availableEditors}
+      revealLine={revealLine}
+      revealRequestId={revealRequestId}
+      onOpenFile={onOpenFile}
+      onPendingChange={onPendingChange}
+      selectedFilePending={selectedFilePending}
+      workspaceMutationId={workspaceMutationId}
+    />
+  );
+}
+
+function WorkspaceFilePreviewPanel({
+  environmentId,
+  cwd,
+  projectName,
+  relativePath,
+  attachment,
+  threadRef,
+  composerDraftTarget,
+  keybindings,
+  availableEditors,
+  revealLine,
+  revealRequestId,
+  onOpenFile,
+  onPendingChange,
+  selectedFilePending,
+  workspaceMutationId,
+}: Omit<FilePreviewPanelProps, "memory">) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const primaryEnvironmentId = usePrimaryEnvironmentId();

@@ -22,7 +22,22 @@ import {
   type PlanGraph,
   type PlanGraphNode,
 } from "./PlanGraph.logic";
-export type PlanNodePopoverAct = "edit-and-branch" | "open-session";
+export type PlanNodePopoverAct = "edit-and-branch" | "open-session" | "open-memory";
+
+/** How a recorded amendment addresses the Memory tab: by its commit, else by its first note. */
+export function memoryAmendmentSelection(
+  amendment: NonNullable<
+    Extract<PlanTimelineItem, { readonly _tag: "message" }>["memoryAmendment"]
+  >,
+):
+  | { readonly kind: "amendment"; readonly id: string }
+  | { readonly kind: "note"; readonly name: string }
+  | null {
+  if (amendment.memoryCommitSha !== null)
+    return { kind: "amendment", id: amendment.memoryCommitSha };
+  const note = amendment.notes[0];
+  return note === undefined ? null : { kind: "note", name: note };
+}
 
 export interface PlanNodeSessionFacts {
   readonly repositoryName?: string;
@@ -226,6 +241,9 @@ export function offeredActs(
 ): ReadonlyArray<PlanNodePopoverAct> {
   if (node.item._tag === "coding-session") {
     return hasCodingSessionRecord ? ["open-session"] : [];
+  }
+  if (node.item._tag === "message" && node.item.memoryAmendment !== undefined) {
+    return memoryAmendmentSelection(node.item.memoryAmendment) === null ? [] : ["open-memory"];
   }
   const query = node.checkpoint?.query ?? node.item;
   if (

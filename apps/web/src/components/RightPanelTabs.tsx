@@ -92,6 +92,8 @@ interface RightPanelTabsProps {
    */
   previewRuntimeTabId?: ((tabId: string) => string) | undefined;
   terminalLabelsById: ReadonlyMap<string, string>;
+  /** Counts shown on a tab by surface id, such as unreviewed memory changes. */
+  surfaceBadges?: Readonly<Record<string, number>> | undefined;
   onActivate: (surface: RightPanelSurface) => void;
   onCloseSurface: (surface: RightPanelSurface) => void;
   onCloseOtherSurfaces: (surface: RightPanelSurface) => void;
@@ -989,7 +991,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       const pinned = isRightPanelSurfacePinned(surface.id, props.pinnedSurfaceIds);
 
       const items: ContextMenuItem<TabContextMenuAction>[] = [];
-      if (surface.kind === "file" && surface.attachment === undefined) {
+      if (
+        surface.kind === "file" &&
+        surface.attachment === undefined &&
+        surface.memory === undefined
+      ) {
         items.push({ id: "copy-path", label: "Copy path" });
       }
       const menuPreviewTabId = previewTabIdOf(surface, props.previewSessions);
@@ -1023,7 +1029,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
       switch (action) {
         case "copy-path":
-          if (surface.kind === "file" && surface.attachment === undefined) {
+          if (
+            surface.kind === "file" &&
+            surface.attachment === undefined &&
+            surface.memory === undefined
+          ) {
             props.onCopyFilePath(surface.relativePath);
           }
           break;
@@ -1251,10 +1261,18 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       render={
                         <button
                           type="button"
-                          className="cursor-pointer flex min-w-0 items-center"
+                          className="cursor-pointer flex min-w-0 items-center gap-1"
                           onClick={() => props.onActivate(surface)}
                         >
                           <span className="truncate">{title}</span>
+                          {(props.surfaceBadges?.[surface.id] ?? 0) > 0 ? (
+                            <span
+                              aria-label={`${props.surfaceBadges?.[surface.id]} need review`}
+                              className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-warning/15 px-1 text-[10px] font-medium leading-none text-warning-foreground tabular-nums"
+                            >
+                              {props.surfaceBadges?.[surface.id]}
+                            </span>
+                          ) : null}
                         </button>
                       }
                     />

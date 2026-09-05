@@ -641,6 +641,8 @@ type ChatViewSlots = {
   planPanel?: ReactNode;
   specPanel?: ReactNode;
   memoryPanel?: ReactNode;
+  /** Unreviewed memory changes; shown on the Memory tab even while its panel is unmounted. */
+  memoryBadgeCount?: number;
   checkpointsPanel?: ReactNode;
   canForkHere?: (message: ChatMessage) => boolean;
   onForkHere?: (message: ChatMessage) => void;
@@ -1377,11 +1379,17 @@ function ChatViewContent(props: ChatViewProps) {
     planPanel,
     specPanel,
     memoryPanel,
+    memoryBadgeCount,
     checkpointsPanel,
   } = props;
   const planAvailable = planPanel !== undefined;
   const specAvailable = specPanel !== undefined;
   const memoryAvailable = memoryPanel !== undefined;
+  const surfaceBadges = useMemo<Readonly<Record<string, number>>>(
+    () =>
+      memoryBadgeCount === undefined || memoryBadgeCount <= 0 ? {} : { memory: memoryBadgeCount },
+    [memoryBadgeCount],
+  );
   const workingSurfacesReady = workspaceReady !== false;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
@@ -7499,13 +7507,16 @@ function ChatViewContent(props: ChatViewProps) {
     ) : (renderedRightPanelSurface?.kind === "files" ||
         renderedRightPanelSurface?.kind === "file") &&
       ((activeProject && activeWorkspaceRoot) ||
-        (renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.attachment)) ? (
+        (renderedRightPanelSurface.kind === "file" &&
+          (renderedRightPanelSurface.attachment || renderedRightPanelSurface.memory))) ? (
       <Suspense fallback={null}>
         <FilePreviewPanel
           key={`${activeThread.environmentId}:${
             renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.attachment
               ? `attachment:${renderedRightPanelSurface.attachment.id}`
-              : activeWorkspaceRoot
+              : renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.memory
+                ? renderedRightPanelSurface.id
+                : activeWorkspaceRoot
           }`}
           environmentId={activeThread.environmentId}
           cwd={activeWorkspaceRoot ?? ""}
@@ -7521,6 +7532,9 @@ function ChatViewContent(props: ChatViewProps) {
           }
           {...(renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.attachment
             ? { attachment: renderedRightPanelSurface.attachment }
+            : {})}
+          {...(renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.memory
+            ? { memory: renderedRightPanelSurface.memory }
             : {})}
           revealLine={
             renderedRightPanelSurface.kind === "file"
@@ -8017,6 +8031,7 @@ function ChatViewContent(props: ChatViewProps) {
           environmentId={activeThreadRef.environmentId}
           activeSurfaceId={renderedRightPanelSurface?.id ?? null}
           pendingSurfaceIds={pendingFileSurfaceIds}
+          surfaceBadges={surfaceBadges}
           previewSessions={activePreviewState.sessions}
           desktopByTabId={activePreviewState.desktopByTabId}
           previewRuntimeTabId={resolvePreviewRuntimeTabId}
@@ -8075,6 +8090,7 @@ function ChatViewContent(props: ChatViewProps) {
             environmentId={activeThreadRef.environmentId}
             activeSurfaceId={renderedRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
+            surfaceBadges={surfaceBadges}
             previewSessions={activePreviewState.sessions}
             desktopByTabId={activePreviewState.desktopByTabId}
             previewRuntimeTabId={resolvePreviewRuntimeTabId}

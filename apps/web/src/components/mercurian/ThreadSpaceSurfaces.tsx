@@ -4,7 +4,6 @@ import type { MercurianCommitId, PlanDetail, PlanSpecAt } from "@t3tools/contrac
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { useComposerDraftStore } from "../../composerDraftStore";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useGetPlanTextAt, useGetSpecAt, useMercurianTree } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
@@ -12,20 +11,25 @@ import { navigateToThreadRoute } from "../../threadRoutes";
 import { Button } from "../ui/button";
 import { DagExplorer } from "./DagExplorer";
 import { MemoryTab } from "./MemoryTab";
+import { memoryReadingPositionFor } from "./MemoryTab.logic";
 import { PlanArtifact } from "./PlanArtifact";
 import { snapshotTextIsForPath } from "./PlanArtifact.logic";
 import { ancestorClosure } from "./PlanGraph.logic";
 import { LATEST, positionAfterPick, resolveHead } from "./PlanPosition.logic";
 import { SpecArtifact } from "./SpecArtifact";
 import { snapshotSpecIsForPath, stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
+import { resolveLineInFlightTurn } from "./ThreadSpaceChrome.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
 import { lineThreadIdForCommit, resolveLineTip } from "./planLineOwnership.logic";
 import { useForkHere } from "./useForkHere";
+import { useLineMemoryDashboard } from "./useLineMemoryDashboard";
 
 export type ThreadSpaceSurfaces = Readonly<{
   planPanel?: ReactNode;
   specPanel?: ReactNode;
   memoryPanel?: ReactNode;
+  /** Unreviewed memory changes; badges the Memory tab whether or not it is mounted. */
+  memoryBadgeCount?: number;
   checkpointsPanel?: ReactNode;
 }>;
 
@@ -42,7 +46,7 @@ function HistoricalArtifactPlaceholder({ children }: { readonly children: ReactN
 }
 
 export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
-  const { planId, threadId, environmentId, detail, graph, search } = useThreadSpace();
+  const { planId, projectId, threadId, environmentId, detail, graph, search } = useThreadSpace();
   const router = useRouter();
   const getPlanTextAt = useGetPlanTextAt();
   const getSpecAt = useGetSpecAt();
@@ -151,14 +155,23 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     },
     [forkHere, graph.byId],
   );
-  const reconcileMemory = useCallback(
-    (message: string) => {
-      const drafts = useComposerDraftStore.getState();
-      const prompt = drafts.getComposerDraft(threadRef)?.prompt ?? "";
-      drafts.setPrompt(threadRef, prompt.length === 0 ? message : `${prompt}\n\n${message}`);
-    },
-    [threadRef],
+  const memoryReading = useMemo(
+    () => memoryReadingPositionFor({ viewingPast, head }),
+    [head, viewingPast],
   );
+  const memory = useLineMemoryDashboard({
+    environmentId,
+    projectId,
+    threadId,
+    reading: memoryReading,
+  });
+  const memoryActiveTurn =
+    resolveLineInFlightTurn(detail, graph, runtime, tree.threadPlanLinks) !== undefined;
+  const projectName = tree.projects.find((project) => project.projectId === projectId)?.name ?? "";
+  const memoryUnreviewedCount =
+    memory.state.kind === "ready" && memory.state.dashboard.kind === "available"
+      ? memory.state.dashboard.unreviewedCount
+      : 0;
 
   const artifactText =
     planId === null
@@ -210,18 +223,21 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     memoryPanel:
       planId === null ? (
         <HistoricalArtifactPlaceholder>Reading this line's memory…</HistoricalArtifactPlaceholder>
-      ) : viewingPast ? (
-        <HistoricalArtifactPlaceholder>
-          Memory review is available at the latest position. Return to now to curate this line.
-        </HistoricalArtifactPlaceholder>
       ) : (
         <MemoryTab
+          activeTurn={memoryActiveTurn}
           environmentId={environmentId}
-          line={{ threadId }}
-          onReconcile={reconcileMemory}
-          worktreePath={runtime?.worktreePath ?? null}
+          invalidationTick={memory.invalidationTick}
+          projectId={projectId}
+          projectName={projectName}
+          reading={memoryReading}
+          refresh={memory.refresh}
+          state={memory.state}
+          threadRef={threadRef}
+          onReturnToLatest={viewingPast ? backToNow : undefined}
         />
       ),
+    memoryBadgeCount: memoryUnreviewedCount,
     checkpointsPanel: (
       <DagExplorer
         anchoredCommitId={head}

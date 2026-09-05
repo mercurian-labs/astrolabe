@@ -247,10 +247,13 @@ crosses into shared truth.
 
 #### Memory list
 
-The planning space's line-scoped view of every marked amendment, hand-made memory commit, and
-unmarked snapshot delta since the line's base. It renders the exact diffs, preserves per-commit
-review state, and offers review and revert acts without changing what the main memory browser
-reads.
+The thread view's line-scoped Memory surface ([MemoryTab.tsx][38]): every marked amendment,
+hand-made memory commit, and unmarked snapshot delta since the line's base, read at the
+route-selected position through the immutable dashboard. It keeps documents and amendments as
+distinct units, draws the changed notes' prose-link graph, preserves per-amendment review state,
+and offers review, revert, and merge-home acts at the latest position only. Documents and
+comparisons open in the shared Files and Diff surfaces; it never changes what the main memory
+browser reads.
 
 #### Merge home
 
@@ -319,7 +322,7 @@ A [line](#line) whose thread and runtime record exist but whose first human comm
 
 #### Thread space
 
-The upstream thread view, routed at `/threads/$planId`, with Mercurian's thread-level surfaces and chrome chiseled into its existing slots. `?line=<threadId>` selects the current [line](#line), while `?at=<commitId>` changes the viewing position for Plan, Spec, and Checkpoints without replacing that line's conversation. [ThreadSpaceSurfaces.tsx][48] supplies the read-only Plan and Spec surfaces plus Checkpoints; [ThreadSpaceChrome.tsx][49] supplies line banners, memory overlays, note mentions, and **Fork here**.
+The upstream thread view, routed at `/threads/$planId`, with Mercurian's thread-level surfaces and chrome chiseled into its existing slots. `?line=<threadId>` selects the current [line](#line), while `?at=<commitId>` changes the viewing position for Plan, Spec, and Checkpoints without replacing that line's conversation. [ThreadSpaceSurfaces.tsx][48] supplies the read-only Plan and Spec surfaces, the line-scoped [memory list](#memory-list), and Checkpoints; [ThreadSpaceChrome.tsx][49] supplies line banners, the memory-failure notice, note mentions, and **Fork here**. Note mentions and amendment effects address the Memory surface with a selection rather than opening a second reader.
 
 Its right panel always contains the [pinned surface](#pinned-surface) **Checkpoints** first. Plan is selected when a line's panel is first seeded, and Plan and Spec can be added from the plus menu alongside the upstream working surfaces. Picking a checkpoint navigates to its line and viewing position; **Back to now** clears the historical position. The ordinary upstream composer sends thread turns, and the [line turn reactor](#line-turn-reactor) records the thread history from those turns.
 
@@ -522,7 +525,7 @@ ships Astrolabe already matching it.
 [35]: ../../apps/server/src/mercurian/assistant/LineTurnReactor.ts
 [36]: ../../packages/contracts/src/mercurianMemory.ts
 [37]: ../../apps/server/src/mercurian/memory/MemoryIndex.ts
-[38]: ../../apps/web/src/components/mercurian/MemoryAmendmentSheet.tsx
+[38]: ../../apps/web/src/components/mercurian/MemoryTab.tsx
 [39]: ../../apps/web/src/components/mercurian/PlanSuggestions.tsx
 [40]: ../../apps/server/src/mercurian/worktreeSlots/SnapshotChain.ts
 [41]: ../../apps/server/src/mercurian/worktreeSlots/SlotService.ts
