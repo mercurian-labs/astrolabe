@@ -4,6 +4,7 @@ import {
   MercurianCommitId,
   MercurianProjectId,
   MercurianRepositoryId,
+  PlanId,
   type CheckpointRef,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -21,6 +22,8 @@ import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as LineBranchStore from "../commitTree/LineBranchStore.ts";
+import * as MemorySourceStore from "../memory/MemorySourceStore.ts";
+import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as SlotRegistry from "./SlotRegistry.ts";
 import * as SlotStore from "./SlotStore.ts";
@@ -32,6 +35,8 @@ const repositoryA = MercurianRepositoryId.make("repository-a");
 const repositoryB = MercurianRepositoryId.make("repository-b");
 const projectId = MercurianProjectId.make("project-one");
 const otherProjectId = MercurianProjectId.make("project-two");
+const planId = PlanId.make("plan-one");
+const otherPlanId = PlanId.make("plan-two");
 const lineA = MercurianCommitId.make("line-a");
 const lineB = MercurianCommitId.make("line-b");
 const now = DateTime.makeUnsafe("2026-08-31T12:00:00.000Z");
@@ -75,6 +80,8 @@ interface HarnessOptions {
     readonly projectId: MercurianProjectId;
     readonly repositoryId: MercurianRepositoryId;
   }>;
+  readonly standaloneMemory?: boolean;
+  readonly missingLineBranches?: boolean;
 }
 
 const makeHarness = (options: HarnessOptions = {}) => {
@@ -92,6 +99,8 @@ const makeHarness = (options: HarnessOptions = {}) => {
   const events: Array<string> = [];
   const lineRenames: Array<{ readonly repositoryId: string; readonly branch: string }> = [];
   const memberRenames: Array<{ readonly repositoryId: string; readonly branch: string }> = [];
+  const lineBranchRows: Array<LineBranchStore.LineBranch> = [];
+  const requestedPlanIds: Array<PlanId> = [];
   let activeMaterializations = 0;
   let maxActiveMaterializations = 0;
 
@@ -137,18 +146,67 @@ const makeHarness = (options: HarnessOptions = {}) => {
     Layer.mock(LineBranchStore.LineBranchStore)({
       get: ({ lineRootCommitId, repositoryId }) =>
         Effect.succeed(
-          Option.some({
-            lineRootCommitId,
-            repositoryId,
-            branch: `mercurian/${lineRootCommitId}-${repositoryId === repositoryA ? "a" : "b"}`,
-            baseOid: "base-oid",
-            built: false,
-            repointHold: null,
-            createdAt: now,
-          }),
+          options.missingLineBranches === true
+            ? Option.fromNullishOr(
+                lineBranchRows.find(
+                  (row) =>
+                    row.lineRootCommitId === lineRootCommitId && row.repositoryId === repositoryId,
+                ),
+              )
+            : Option.some({
+                lineRootCommitId,
+                repositoryId,
+                branch: `mercurian/${lineRootCommitId}-${repositoryId === repositoryA ? "a" : "b"}`,
+                baseOid: "base-oid",
+                built: false,
+                repointHold: null,
+                createdAt: now,
+              }),
         ),
+      create: (row) =>
+        Effect.sync(() => {
+          if (
+            !lineBranchRows.some(
+              (current) =>
+                current.lineRootCommitId === row.lineRootCommitId &&
+                current.repositoryId === row.repositoryId,
+            )
+          ) {
+            lineBranchRows.push(row);
+          }
+        }),
       rename: ({ repositoryId, branch }) =>
         Effect.sync(() => lineRenames.push({ repositoryId, branch })),
+    }),
+    Layer.mock(PlanningStore.PlanningStore)({
+      getPlanSnapshot: ({ planId: requestedPlanId }) =>
+        Effect.sync(() => {
+          requestedPlanIds.push(requestedPlanId);
+          return {
+            plan: {
+              planId: requestedPlanId,
+              projectId: requestedPlanId === planId ? projectId : otherProjectId,
+              title: requestedPlanId === planId ? "Plan one" : "Plan two",
+            },
+            timeline: [
+              {
+                _tag: "plan-revision",
+                commitId: lineA,
+                parents: [],
+                sequence: 1,
+                createdAt: now,
+              },
+              {
+                _tag: "message",
+                commitId: lineB,
+                parents: [lineA],
+                sequence: 2,
+                createdAt: now,
+              },
+            ],
+            codingSessions: [],
+          } as never;
+        }),
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
       getSnapshot: Effect.succeed({
@@ -181,8 +239,38 @@ const makeHarness = (options: HarnessOptions = {}) => {
       }),
       changes: Stream.empty,
     }),
+    Layer.mock(MemorySourceStore.MemorySourceStore)({
+      getSource: () =>
+        Effect.succeed(
+          options.standaloneMemory
+            ? Option.some({
+                projectId,
+                repositoryId: repositoryB,
+                subpath: null,
+                createdAt: now,
+                updatedAt: now,
+              })
+            : Option.none(),
+        ),
+      getSnapshot: Effect.succeed(
+        options.standaloneMemory
+          ? [
+              {
+                projectId,
+                repositoryId: repositoryB,
+                subpath: null,
+                createdAt: now,
+                updatedAt: now,
+              },
+            ]
+          : [],
+      ),
+    }),
     Layer.mock(ServerSettings.ServerSettingsService)({
-      getSettings: Effect.succeed({ worktreePoolSize: options.poolSize ?? 3 } as never),
+      getSettings: Effect.succeed({
+        worktreePoolSize: options.poolSize ?? 3,
+        newWorktreesStartFromOrigin: false,
+      } as never),
     }),
     Layer.mock(ServerConfig.ServerConfig)({
       worktreesDir: "/worktrees",
@@ -248,7 +336,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
           if (input.args[0] === "checkout" || input.args[0] === "clean") dirty.delete(input.cwd);
           return {
             exitCode: 0,
-            stdout: "",
+            stdout: input.args[0] === "rev-parse" ? "base-oid\n" : "",
             stderr: "",
             stdoutTruncated: false,
             stderrTruncated: false,
@@ -329,16 +417,36 @@ const makeHarness = (options: HarnessOptions = {}) => {
       removedPaths,
       lineRenames,
       memberRenames,
+      lineBranchRows,
+      requestedPlanIds,
       stats: () => ({ maxActiveMaterializations }),
     };
   }).pipe(Effect.provide(Layer.merge(dependencies, NodeServicesLayer)));
 };
 
 describe("SlotService", () => {
+  it.effect("mints missing line branches before claiming a slot", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ missingLineBranches: true });
+      const claimed = yield* harness.service.claim({
+        planId,
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-a"),
+      });
+
+      assert.strictEqual(harness.lineBranchRows.length, 2);
+      assert.strictEqual(harness.gitCalls.filter((call) => call.args[0] === "branch").length, 2);
+      assert.strictEqual(claimed.members.length, 2);
+      assert.deepStrictEqual(harness.requestedPlanIds, [planId]);
+    }),
+  );
+
   it.effect("materializes every linked repository at its project-relative path", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
       const claimed = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -354,10 +462,34 @@ describe("SlotService", () => {
     }),
   );
 
+  it.effect("materializes a standalone memory repository as a slot member", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        links: [{ projectId, repositoryId: repositoryA }],
+        standaloneMemory: true,
+      });
+      const claimed = yield* harness.service.claim({
+        planId,
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("thread-memory"),
+      });
+      assert.deepStrictEqual(
+        claimed.members.map((member) => member.repositoryId),
+        [repositoryA, repositoryB],
+      );
+      assert.deepStrictEqual(harness.materializedPaths, [
+        "/worktrees/project-one/slot-1/a",
+        "/worktrees/project-one/slot-1/b",
+      ]);
+    }),
+  );
+
   it.effect("restores an inherited line snapshot into newly materialized members", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ checkpointExists: true });
       yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -379,6 +511,7 @@ describe("SlotService", () => {
       const harness = yield* makeHarness({ failCreateAtCwd: "/repositories/team/b" });
       yield* harness.service
         .claim({
+          planId,
           projectId,
           lineRootCommitId: lineA,
           holder: holder("thread-a"),
@@ -394,6 +527,7 @@ describe("SlotService", () => {
       const existing = slot(lineA);
       const harness = yield* makeHarness({ initialSlots: [existing] });
       const claimed = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -413,6 +547,7 @@ describe("SlotService", () => {
         dirtyPaths: ["/worktrees/project-one/slot-1/a", "/worktrees/project-one/slot-1/b"],
       });
       const claimed = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineB,
         holder: holder("thread-b"),
@@ -435,6 +570,7 @@ describe("SlotService", () => {
         dirtyPaths: ["/worktrees/project-one/slot-1/b"],
       });
       yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -454,6 +590,7 @@ describe("SlotService", () => {
         checkpointExists: true,
       });
       yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -490,6 +627,7 @@ describe("SlotService", () => {
         standings: { [memberPath]: { _tag: "renamed", branch: "renamed-by-hand" } },
       });
       const claimed = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -526,7 +664,7 @@ describe("SlotService", () => {
         },
       });
       const failure = yield* harness.service
-        .claim({ projectId, lineRootCommitId: lineA, holder: holder("thread-a") })
+        .claim({ planId, projectId, lineRootCommitId: lineA, holder: holder("thread-a") })
         .pipe(Effect.flip);
       assert.ok(isLineBranchMissingError(failure));
       if (isLineBranchMissingError(failure)) {
@@ -543,7 +681,7 @@ describe("SlotService", () => {
         missingRefs: ["refs/heads/mercurian/line-b-a"],
       });
       const failure = yield* harness.service
-        .claim({ projectId, lineRootCommitId: lineB, holder: holder("thread-b") })
+        .claim({ planId, projectId, lineRootCommitId: lineB, holder: holder("thread-b") })
         .pipe(Effect.flip);
       assert.ok(isLineBranchMissingError(failure));
       assert.ok(!harness.gitCalls.some((call) => call.args[0] === "checkout"));
@@ -553,9 +691,15 @@ describe("SlotService", () => {
   it.effect("fails typed when every project slot is leased", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ poolSize: 1 });
-      yield* harness.service.claim({ projectId, lineRootCommitId: lineA, holder: holder("a") });
+      yield* harness.service.claim({
+        planId,
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("a"),
+      });
       const refusal = yield* harness.service
         .claim({
+          planId,
           projectId,
           lineRootCommitId: lineB,
           holder: holder("b"),
@@ -573,12 +717,14 @@ describe("SlotService", () => {
     Effect.gen(function* () {
       const harness = yield* makeHarness({ poolSize: 1 });
       const first = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("a"),
       });
       const waiting = yield* harness.service
         .claim({
+          planId,
           projectId,
           lineRootCommitId: lineB,
           holder: holder("b"),
@@ -596,6 +742,7 @@ describe("SlotService", () => {
     Effect.gen(function* () {
       const harness = yield* makeHarness();
       const claimed = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("thread-a"),
@@ -618,12 +765,12 @@ describe("SlotService", () => {
       const gate = yield* Deferred.make<void>();
       const harness = yield* makeHarness({ poolSize: 2, materializeGate: gate });
       const first = yield* Effect.forkChild(
-        harness.service.claim({ projectId, lineRootCommitId: lineA, holder: holder("a") }),
+        harness.service.claim({ planId, projectId, lineRootCommitId: lineA, holder: holder("a") }),
         { startImmediately: true },
       );
       yield* Effect.yieldNow;
       const second = yield* Effect.forkChild(
-        harness.service.claim({ projectId, lineRootCommitId: lineB, holder: holder("b") }),
+        harness.service.claim({ planId, projectId, lineRootCommitId: lineB, holder: holder("b") }),
         { startImmediately: true },
       );
       yield* Effect.yieldNow;
@@ -645,11 +792,13 @@ describe("SlotService", () => {
         ],
       });
       const first = yield* harness.service.claim({
+        planId,
         projectId,
         lineRootCommitId: lineA,
         holder: holder("a"),
       });
       const second = yield* harness.service.claim({
+        planId: otherPlanId,
         projectId: otherProjectId,
         lineRootCommitId: lineB,
         holder: holder("b"),

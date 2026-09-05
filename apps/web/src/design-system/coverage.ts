@@ -78,6 +78,16 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "The spatial graph adapter is selected and supplied with validated skill-map data by the live Memory page.",
   },
+  "src/components/mercurian/MemoryLocalGraph.tsx": {
+    category: "composition-shell",
+    reason:
+      "The changed-note graph is exercised through the catalogued MemoryTab, which supplies the dashboard graph, documents, and selection.",
+  },
+  "src/components/mercurian/MemoryComparisonScope.tsx": {
+    category: "composition-shell",
+    reason:
+      "A read hook and map-summary strip mounted by the shared Diff panel for a memory comparison selection; the panel owns the visible surface.",
+  },
   "src/components/mercurian/memoryMarkdown.tsx": {
     category: "composition-shell",
     reason:

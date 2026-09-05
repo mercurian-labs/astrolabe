@@ -1,7 +1,6 @@
 import {
   type ChatAttachment,
   CommandId,
-  type MemoryAmendmentProposal,
   MercurianCommitId,
   type MercurianProjectId,
   type MessageId,
@@ -74,7 +73,6 @@ interface TurnRuntime {
   answers: Record<string, unknown> | undefined;
   settling: boolean;
   stopRequested: boolean;
-  pendingMemoryAmendment?: MemoryIndex.PendingMemoryAmendment;
   readonly projectId?: MercurianProjectId;
 }
 
@@ -120,11 +118,6 @@ export class LineTurnReactor extends Context.Service<
     ) => Effect.Effect<{ readonly planId: PlanId; readonly commitId: CommitId }, RecordSendError>;
     readonly drainThrough: (sequence: number) => Effect.Effect<void>;
     readonly inFlightTurns: (planId: PlanId) => Effect.Effect<ReadonlyArray<PlanInFlightTurn>>;
-    readonly memoryAmendmentProposal: (
-      planId: PlanId,
-    ) => Effect.Effect<MemoryAmendmentProposal | undefined>;
-    readonly cancelMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
-    readonly clearMemoryAmendment: (planId: PlanId) => Effect.Effect<void>;
     readonly status: Effect.Effect<ReadonlyMap<PlanId, PlanTurnStatus>>;
     readonly changes: Stream.Stream<void>;
     readonly teardownPlan: (input: {
@@ -150,7 +143,10 @@ export class LineTurnReactor extends Context.Service<
         readonly note: string;
         readonly type?: string;
       }>;
-    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
+    }) => Effect.Effect<
+      void,
+      PlanningTurnNotFoundError | MemoryIndex.MemoryAmendmentValidationError
+    >;
     readonly readPlanFromThread: (input: {
       readonly threadId: ThreadId;
     }) => Effect.Effect<string, PlanningTurnNotFoundError>;
@@ -200,7 +196,6 @@ export const make = Effect.gen(function* () {
   }>();
   const changesPubSub = yield* PubSub.unbounded<void>();
   const turns = new Map<ThreadId, TurnRuntime>();
-  const memoryAmendmentProposals = new Map<PlanId, MemoryAmendmentProposal>();
   const seenSequence = yield* SubscriptionRef.make(0);
 
   const turnsOfPlan = (planId: PlanId) =>
@@ -229,6 +224,7 @@ export const make = Effect.gen(function* () {
       .appendAssistantMessage({
         planId: turn.planId,
         parentCommitId: claimed?.tipCommitId ?? turn.parentCommitId,
+        sourceUserMessageId: turn.parentCommitId,
         text: turn.text,
         ...(options.interrupted ? { interrupted: true } : {}),
         ...(turn.grounding.length === 0 ? {} : { grounding: turn.grounding }),
@@ -247,38 +243,6 @@ export const make = Effect.gen(function* () {
       });
     }
     yield* publishFrame(turn.planId, { kind: "turn-settled", turnId: turn.turnId });
-    yield* announceChange;
-  });
-
-  const settleMemoryAmendment = Effect.fn("LineTurnReactor.settleMemoryAmendment")(function* (
-    turn: TurnRuntime,
-  ) {
-    if (turn.pendingMemoryAmendment === undefined || turn.projectId === undefined) return;
-    const amendment = turn.pendingMemoryAmendment;
-    delete turn.pendingMemoryAmendment;
-    const prepared = yield* memoryIndex
-      .prepareAmendment({ projectId: turn.projectId, turnId: turn.turnId, amendment })
-      .pipe(Effect.result);
-    if (Result.isFailure(prepared)) {
-      const reason =
-        prepared.failure._tag === "MemoryAmendmentValidationError"
-          ? prepared.failure.reason
-          : prepared.failure._tag === "MemoryNotDesignatedError"
-            ? "This project has no designated memory."
-            : "Project memory could not be prepared for review.";
-      memoryAmendmentProposals.delete(turn.planId);
-      yield* publishFrame(turn.planId, {
-        kind: "memory-amendment-failed",
-        turnId: turn.turnId,
-        reason,
-      });
-    } else {
-      memoryAmendmentProposals.set(turn.planId, prepared.success);
-      yield* publishFrame(turn.planId, {
-        kind: "memory-amendment-proposed",
-        proposal: prepared.success,
-      });
-    }
     yield* announceChange;
   });
 
@@ -345,7 +309,6 @@ export const make = Effect.gen(function* () {
         yield* recordGrounding(turn, event);
         return;
       case "turn.completed":
-        if (event.payload.state === "completed") yield* settleMemoryAmendment(turn);
         yield* settleTurn(turn, { interrupted: event.payload.state !== "completed" });
         return;
       case "turn.aborted":
@@ -628,21 +591,6 @@ export const make = Effect.gen(function* () {
           ...(turn.pendingQuestions === undefined ? {} : { questions: turn.pendingQuestions }),
         })),
     );
-  const memoryAmendmentProposal: LineTurnReactor["Service"]["memoryAmendmentProposal"] = (planId) =>
-    Effect.sync(() => memoryAmendmentProposals.get(planId));
-  const cancelMemoryAmendment: LineTurnReactor["Service"]["cancelMemoryAmendment"] = (planId) =>
-    Effect.gen(function* () {
-      const proposal = memoryAmendmentProposals.get(planId);
-      if (proposal === undefined) return;
-      memoryAmendmentProposals.delete(planId);
-      yield* publishFrame(planId, {
-        kind: "memory-amendment-cancelled",
-        turnId: PlanTurnId.make(proposal.turnId),
-      });
-      yield* announceChange;
-    });
-  const clearMemoryAmendment: LineTurnReactor["Service"]["clearMemoryAmendment"] = (planId) =>
-    Effect.sync(() => void memoryAmendmentProposals.delete(planId));
   const status: LineTurnReactor["Service"]["status"] = Effect.sync(() => {
     const result = new Map<PlanId, PlanTurnStatus>();
     for (const turn of turns.values()) {
@@ -659,7 +607,6 @@ export const make = Effect.gen(function* () {
 
   const teardownPlan: LineTurnReactor["Service"]["teardownPlan"] = (input) =>
     Effect.gen(function* () {
-      memoryAmendmentProposals.delete(input.planId);
       for (const turn of turnsOfPlan(input.planId)) {
         if (input.commitPartial) yield* settleTurn(turn, { interrupted: true });
         else {
@@ -742,17 +689,35 @@ export const make = Effect.gen(function* () {
   const proposeMemoryAmendmentFromThread: LineTurnReactor["Service"]["proposeMemoryAmendmentFromThread"] =
     (input) =>
       Effect.gen(function* () {
-        yield* requireClaim(input.threadId);
+        const claimed = yield* requireClaim(input.threadId);
         const turn = turns.get(input.threadId);
-        if (turn === undefined || turn.settling) {
+        if (turn === undefined || turn.settling || turn.projectId === undefined) {
           return yield* new PlanningTurnNotFoundError({ threadId: input.threadId });
         }
-        memoryAmendmentProposals.delete(turn.planId);
-        turn.pendingMemoryAmendment = {
-          title: input.title,
-          notes: input.notes.map((note) => ({ ...note })),
-          placements: input.placements.map((placement) => ({ ...placement })),
-        };
+        const landed = yield* memoryIndex
+          .landAmendment({
+            projectId: turn.projectId,
+            threadId: input.threadId,
+            turnId: turn.turnId,
+            amendment: {
+              title: input.title,
+              notes: input.notes.map((note) => ({ ...note })),
+              placements: input.placements.map((placement) => ({ ...placement })),
+            },
+          })
+          .pipe(Effect.result);
+        if (Result.isSuccess(landed)) return;
+        if (landed.failure._tag === "MemoryAmendmentValidationError") {
+          return yield* landed.failure;
+        }
+        yield* Effect.logError("memory amendment failed to land", {
+          planId: claimed.planId,
+          turnId: claimed.turnId,
+          cause: landed.failure,
+        });
+        return yield* new MemoryIndex.MemoryAmendmentValidationError({
+          reason: "Project memory could not be amended.",
+        });
       });
   const readPlanFromThread: LineTurnReactor["Service"]["readPlanFromThread"] = (input) =>
     Effect.gen(function* () {
@@ -777,9 +742,6 @@ export const make = Effect.gen(function* () {
     recordSend,
     drainThrough,
     inFlightTurns,
-    memoryAmendmentProposal,
-    cancelMemoryAmendment,
-    clearMemoryAmendment,
     status,
     teardownPlan,
     saveRevisionFromThread,

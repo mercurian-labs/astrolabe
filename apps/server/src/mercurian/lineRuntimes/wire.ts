@@ -16,6 +16,10 @@ export const toWireCodingSessionRecord = (
   endedAt: record.endedAt === null ? null : DateTime.formatIso(record.endedAt),
   outcome: record.outcome,
   prUrl: record.prUrl,
+  ...(record.prState == null ? {} : { prState: record.prState }),
+  ...(record.memoryMergedHomeAt == null
+    ? {}
+    : { memoryMergedHomeAt: DateTime.formatIso(record.memoryMergedHomeAt) }),
   settledCommitOid: record.settledCommitOid,
   partial: record.partial !== false && record.partial !== 0,
   snapshotOid: record.snapshotOid,
@@ -47,5 +51,9 @@ export const toWireLineRuntimeRecord = (record: LineRuntimeRecord): PlanLineRunt
   departedRef: record.departedRef,
   branchMovement: record.branchMovement,
   lineBranchMissingOid: record.lineBranchMissingOid,
+  ...(record.prState == null ? {} : { prState: record.prState }),
+  ...(record.memoryMergedHomeAt == null
+    ? {}
+    : { memoryMergedHomeAt: DateTime.formatIso(record.memoryMergedHomeAt) }),
   ...(record.repositories === undefined ? {} : { repositories: record.repositories }),
 });

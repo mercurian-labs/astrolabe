@@ -41,6 +41,11 @@ export function ThreadSpaceProvider({ value, children }: ThreadSpaceProviderProp
   return <ThreadSpaceContext.Provider value={contextValue}>{children}</ThreadSpaceContext.Provider>;
 }
 
+/** For surfaces that also render outside a thread space, such as catalogs and tests. */
+export function useOptionalThreadSpace(): ThreadSpaceValue | null {
+  return useContext(ThreadSpaceContext);
+}
+
 export function useThreadSpace(): ThreadSpaceValue {
   const value = useContext(ThreadSpaceContext);
   if (value === null) {

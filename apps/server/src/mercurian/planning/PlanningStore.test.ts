@@ -78,6 +78,42 @@ it.effect("decodes legacy spec payloads into the two prose fields", () =>
 );
 
 layer("PlanningStore", (it) => {
+  it.effect("announces memory amendments without visits or ordinary planning activity", () =>
+    Effect.gen(function* () {
+      const store = yield* PlanningStore.PlanningStore;
+      const now = at("2026-09-05T00:00:00Z");
+      const project = yield* store.createProject({ name: "Memory", createdAt: now });
+      const plan = yield* store.createPlan({
+        projectId: project.projectId,
+        message: "Start",
+        lastUsed: null,
+        createdAt: now,
+      });
+      const pull = yield* Stream.toPull(store.memoryChanges);
+      const first = yield* pull.pipe(Effect.forkChild({ startImmediately: true }));
+      yield* store.recordPlanVisit({ planId: plan.plan.planId, visitedAt: now });
+      yield* store.markPlanUnread({ planId: plan.plan.planId });
+      const reply = yield* store.appendAssistantMessage({
+        planId: plan.plan.planId,
+        parentCommitId: plan.timeline[0]!.commitId,
+        text: "No memory edit",
+        createdAt: now,
+      });
+      const amendment = yield* store.appendMemoryAmendment({
+        planId: plan.plan.planId,
+        parentCommitId: reply.commitId,
+        title: "Memory capture",
+        memoryCommitSha: "abc",
+        branch: "line",
+        notes: ["A.md"],
+        createdAt: now,
+      });
+      assert.deepStrictEqual(yield* Fiber.join(first), [
+        { planId: plan.plan.planId, commitId: amendment.commitId },
+      ]);
+    }),
+  );
+
   it("classifies refreshes against the ancestry-derived upstream baseline", () => {
     const base = { goal: "Contract", acceptanceCriteria: "Original" };
     const upstream = { goal: "Contract", acceptanceCriteria: "Upstream" };
@@ -431,6 +467,7 @@ layer("PlanningStore", (it) => {
         planId: created.plan.planId,
         parentCommitId: root,
         text: "A reply",
+        sourceUserMessageId: root,
         generatedBy: {
           provider: claude,
           model: "opus",
@@ -451,6 +488,7 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(decodedRoot.generatedBy, undefined);
       const decodedReply = decoded.timeline[1]!;
       assert.ok(decodedReply._tag === "message");
+      assert.strictEqual(decodedReply.sourceUserMessageId, root);
       assert.deepStrictEqual(decodedReply.generatedBy, {
         provider: claude,
         model: "opus",
@@ -2513,7 +2551,7 @@ layer("PlanningStore", (it) => {
     }),
   );
 
-  it.effect("appends a stamped human memory amendment without opening a turn", () =>
+  it.effect("appends a stamped assistant memory amendment inside an active turn", () =>
     Effect.gen(function* () {
       const store = yield* PlanningStore.PlanningStore;
       const registry = yield* PlanTurnRegistry.PlanTurnRegistry;
@@ -2527,35 +2565,24 @@ layer("PlanningStore", (it) => {
         parentCommitId: parent,
         tipCommitId: parent,
       });
-      const refused = yield* Effect.flip(
-        store.appendMemoryAmendment({
-          planId: created.plan.planId,
-          parentCommitId: parent,
-          title: "Record the memory boundary",
-          memoryCommitSha: "abc123",
-          notes: ["Memory", "Composer"],
-          createdAt: at("2026-08-09T03:01:00.000Z"),
-        }),
-      );
-      assert.strictEqual(refused._tag, "PlanTurnActiveError");
-      yield* registry.close(created.plan.planId, turnId);
-
       const landed = yield* store.appendMemoryAmendment({
         planId: created.plan.planId,
         parentCommitId: parent,
         title: "Record the memory boundary",
         memoryCommitSha: "abc123",
+        branch: "mercurian/memory",
         notes: ["Memory", "Composer"],
-        createdAt: at("2026-08-09T03:02:00.000Z"),
+        createdAt: at("2026-08-09T03:01:00.000Z"),
       });
-      assert.strictEqual(landed.authorKind, "human");
+      assert.strictEqual(landed.authorKind, "assistant");
       assert.strictEqual(landed.text, "Record the memory boundary");
       assert.deepStrictEqual(landed.memoryAmendment, {
         title: "Record the memory boundary",
         memoryCommitSha: "abc123",
+        branch: "mercurian/memory",
         notes: ["Memory", "Composer"],
       });
-      assert.deepStrictEqual(yield* registry.getTurns(created.plan.planId), []);
+      assert.strictEqual((yield* registry.getTurns(created.plan.planId)).length, 1);
     }),
   );
 });

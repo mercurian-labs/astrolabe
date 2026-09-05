@@ -4,6 +4,8 @@ import { minimapPointToWorld, minimapProjection } from "./DagExplorer.logic";
 import {
   fitSpatialMap,
   isAtFit,
+  openingSpatialMapTransform,
+  pointWithinBounds,
   spatialMapChromeVisibility,
   spatialMapViewBox,
   spatialMapWheelTransform,
@@ -26,6 +28,83 @@ describe("fitSpatialMap", () => {
     );
 
     expect(transform.zoom).toBeGreaterThan(1);
+  });
+});
+
+describe("fit options for small labelled graphs", () => {
+  // Four compact memory nodes in the 284px graph frame of a phone-width right panel.
+  const graphBounds = { minX: 0, minY: 0, maxX: 368, maxY: 180 } as const;
+  const panelFrame = { width: 284, height: 288 } as const;
+  const fit = { padding: 12, maxZoom: 1.25 } as const;
+
+  it("spends the frame on the graph instead of DAG padding, but a narrow fit still shrinks labels", () => {
+    const stock = fitSpatialMap(graphBounds, panelFrame);
+    const compact = fitSpatialMap(graphBounds, panelFrame, fit);
+    expect(compact.zoom).toBeGreaterThan(stock.zoom);
+    expect(stock.zoom).toBeLessThan(0.5);
+    // Even the compact fit renders a 12px label under 11px here; the opening floor handles it.
+    expect(12 * compact.zoom).toBeLessThan(11);
+  });
+
+  it("opens at the zoom floor, centred, when the fit would fall below it", () => {
+    const opening = openingSpatialMapTransform(graphBounds, panelFrame, fit, 1);
+    expect(opening.zoom).toBe(1);
+    // Centred on the graph: the frame's middle maps to the bounds' middle.
+    expect((panelFrame.width / 2 - opening.x) / opening.zoom).toBeCloseTo(184);
+    expect((panelFrame.height / 2 - opening.y) / opening.zoom).toBeCloseTo(90);
+    expect(isAtFit(opening, graphBounds, panelFrame, 0.001, fit)).toBe(false);
+  });
+
+  it("opens at the plain fit when the fit already meets the floor or no floor is given", () => {
+    const wide = { width: 560, height: 288 } as const;
+    expect(openingSpatialMapTransform(graphBounds, wide, fit, 1)).toEqual(
+      fitSpatialMap(graphBounds, wide, fit),
+    );
+    expect(openingSpatialMapTransform(graphBounds, panelFrame, fit)).toEqual(
+      fitSpatialMap(graphBounds, panelFrame, fit),
+    );
+    expect(openingSpatialMapTransform(graphBounds, panelFrame)).toEqual(
+      fitSpatialMap(graphBounds, panelFrame),
+    );
+  });
+
+  it("caps a lone node at the readable ceiling instead of the map maximum", () => {
+    const loneBounds = { minX: 0, minY: 0, maxX: 128, maxY: 40 } as const;
+    expect(fitSpatialMap(loneBounds, panelFrame, fit).zoom).toBe(1.25);
+    const wide = { width: 560, height: 288 } as const;
+    expect(fitSpatialMap(loneBounds, wide, fit).zoom).toBe(1.25);
+    expect(fitSpatialMap(loneBounds, wide).zoom).toBeGreaterThan(1.25);
+  });
+
+  it("keeps the fitted state and hides the minimap when a surface opts out", () => {
+    const fitted = fitSpatialMap(graphBounds, panelFrame, fit);
+    expect(isAtFit(fitted, graphBounds, panelFrame, 0.001, fit)).toBe(true);
+    expect(isAtFit(fitted, graphBounds, panelFrame)).toBe(false);
+    const narrow = { width: 358, height: 288 } as const;
+    const zoomedOut = fitSpatialMap({ minX: 0, minY: 0, maxX: 900, maxY: 700 }, narrow, fit);
+    expect(
+      spatialMapChromeVisibility(
+        zoomedOut,
+        { minX: 0, minY: 0, maxX: 900, maxY: 700 },
+        narrow,
+        0.001,
+        fit,
+      ).minimap,
+    ).toBe(true);
+    expect(
+      spatialMapChromeVisibility(
+        zoomedOut,
+        { minX: 0, minY: 0, maxX: 900, maxY: 700 },
+        narrow,
+        0.001,
+        { ...fit, minimap: false },
+      ),
+    ).toEqual({ fitButton: false, minimap: false });
+  });
+
+  it("knows when a focused point is already visible", () => {
+    expect(pointWithinBounds({ x: 10, y: 10 }, graphBounds)).toBe(true);
+    expect(pointWithinBounds({ x: 369, y: 10 }, graphBounds)).toBe(false);
   });
 });
 

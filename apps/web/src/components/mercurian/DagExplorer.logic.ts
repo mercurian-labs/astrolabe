@@ -110,15 +110,26 @@ export function wheelIntent({
   return { kind: "pan", dx: deltaX, dy: deltaY };
 }
 
-export function fitTransform(bounds: MapBounds, viewBox: MapViewBox): MapTransform {
+/** Surfaces with a few large labelled nodes opt into tighter padding and a readable zoom ceiling. */
+export interface MapFitOptions {
+  readonly padding?: number;
+  readonly maxZoom?: number;
+}
+
+export function fitTransform(
+  bounds: MapBounds,
+  viewBox: MapViewBox,
+  options: MapFitOptions = {},
+): MapTransform {
+  const padding = options.padding ?? MAP_FIT_PADDING;
   const width = Math.max(bounds.maxX - bounds.minX, 1);
   const height = Math.max(bounds.maxY - bounds.minY, 1);
-  const availableWidth = Math.max(viewBox.width - MAP_FIT_PADDING * 2, 1);
-  const availableHeight = Math.max(viewBox.height - MAP_FIT_PADDING * 2, 1);
+  const availableWidth = Math.max(viewBox.width - padding * 2, 1);
+  const availableHeight = Math.max(viewBox.height - padding * 2, 1);
   const zoom = clamp(
     Math.min(availableWidth / width, availableHeight / height),
     MAP_MIN_ZOOM,
-    MAP_MAX_ZOOM,
+    Math.min(MAP_MAX_ZOOM, options.maxZoom ?? MAP_MAX_ZOOM),
   );
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerY = (bounds.minY + bounds.maxY) / 2;

@@ -1,5 +1,5 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import type { MemoryComparisonSelection, ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -16,7 +16,13 @@ export type DiffPanelSelection =
       filePath: string | null;
       repositoryId: string | null;
       revealRequestId: number;
-    };
+    }
+  /**
+   * An immutable memory comparison from the Memory tab. The environment and
+   * tree objects are part of the selection, so it reads the same two trees
+   * however the header repository or the line's memory later moves.
+   */
+  | { kind: "memory-comparison"; selection: MemoryComparisonSelection; label: string };
 
 const DEFAULT_SELECTION: DiffPanelSelection = { kind: "branch", baseRef: null };
 const DEFAULT_WORKING_TREE_SELECTION: DiffPanelSelection = { kind: "unstaged" };
@@ -26,6 +32,11 @@ interface DiffPanelStoreState {
   branchBaseRefByThreadKey: Record<string, string | null>;
   selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged") => void;
   selectLineUncommittedScope: (ref: ScopedThreadRef) => void;
+  selectMemoryComparison: (
+    ref: ScopedThreadRef,
+    selection: MemoryComparisonSelection,
+    label: string,
+  ) => void;
   selectSessionScope: (ref: ScopedThreadRef) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
   selectTurn: (
@@ -82,6 +93,13 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
           byThreadKey: {
             ...state.byThreadKey,
             [scopedThreadKey(ref)]: { kind: "line-uncommitted" },
+          },
+        })),
+      selectMemoryComparison: (ref, selection, label) =>
+        set((state) => ({
+          byThreadKey: {
+            ...state.byThreadKey,
+            [scopedThreadKey(ref)]: { kind: "memory-comparison", selection, label },
           },
         })),
       selectBranchBaseRef: (ref, baseRef) =>

@@ -125,6 +125,7 @@ const ProjectionThreadActivityIdRowSchema = Schema.Struct({
 const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession;
 const ProjectionCheckpointDbRowSchema = ProjectionCheckpoint.mapFields(
   Struct.assign({
+    userMessageId: Schema.NullOr(MessageId),
     files: Schema.fromJsonString(CheckpointFilesStorage),
   }),
 );
@@ -137,6 +138,7 @@ const checkpointSummaryFromRow = (
   const branchMovement = checkpointBranchMovementFromStorage(row.files);
   const repositories = checkpointRepositoriesFromStorage(row.files);
   return {
+    ...(row.userMessageId === null ? {} : { userMessageId: row.userMessageId }),
     turnId: row.turnId,
     checkpointTurnCount: row.checkpointTurnCount,
     checkpointRef: row.checkpointRef,
@@ -753,6 +755,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           turn_id AS "turnId",
+          pending_message_id AS "userMessageId",
           checkpoint_turn_count AS "checkpointTurnCount",
           checkpoint_ref AS "checkpointRef",
           checkpoint_status AS "status",
@@ -1325,6 +1328,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           turn_id AS "turnId",
+          pending_message_id AS "userMessageId",
           checkpoint_turn_count AS "checkpointTurnCount",
           checkpoint_ref AS "checkpointRef",
           checkpoint_status AS "status",

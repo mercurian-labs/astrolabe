@@ -2,11 +2,9 @@ import { MercurianCommitId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import { forkParked } from "../../serverActivation.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { buildLineBranchName } from "../lineRuntimes/branch.ts";
 import {
@@ -15,8 +13,10 @@ import {
   type PlanTimelineItem,
 } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
-import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";
+import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
+import { projectWorkingRepositories } from "../worktreeSlots/projectWorkingRepositories.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
+import { makeLineBranchEnsurer } from "./ensureLineBranch.ts";
 import { LineBranchStore } from "./LineBranchStore.ts";
 
 const planningItems = (detail: PlanDetail) =>
@@ -146,98 +146,52 @@ function inheritedSnapshotOid(detail: PlanDetail, lineRootCommitId: string, repo
       .find((oid): oid is string => typeof oid === "string")
   );
 }
-
 export const make = Effect.gen(function* () {
   const planning = yield* PlanningStore;
   const repositories = yield* RepositoryStore;
   const branches = yield* LineBranchStore;
   const slots = yield* SlotStore;
   const git = yield* GitVcsDriver;
-  const settings = yield* ServerSettingsService;
-
-  const repositoryDefaultOid = Effect.fn("LineBranchReactor.repositoryDefaultOid")(function* (
-    path: string,
-  ) {
-    const startFromOrigin = (yield* settings.getSettings).newWorktreesStartFromOrigin;
-    const remoteHead = startFromOrigin
-      ? yield* git.execute({
-          operation: "LineBranchReactor.defaultRemote",
-          cwd: path,
-          args: ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-          allowNonZeroExit: true,
-        })
-      : undefined;
-    const ref = remoteHead?.exitCode === 0 ? remoteHead.stdout.trim() : "HEAD";
-    const resolved = yield* git.execute({
-      operation: "LineBranchReactor.resolveBase",
-      cwd: path,
-      args: ["rev-parse", "--verify", `${ref}^{commit}`],
-    });
-    return resolved.stdout.trim();
-  });
+  const memorySources = yield* MemorySourceStore;
+  const lineBranchEnsurer = yield* makeLineBranchEnsurer;
 
   const reconcile = Effect.fn("LineBranchReactor.reconcile")(function* () {
-    const [tree, repositorySnapshot, allSlots] = yield* Effect.all([
+    const [tree, repositorySnapshot, allSlots, sourceSnapshot] = yield* Effect.all([
       planning.getTreeSnapshot,
       repositories.getSnapshot,
       slots.listAll,
+      memorySources.getSnapshot,
     ]);
     for (const plan of tree.plans) {
       const detail = yield* planning.getPlanSnapshot({ planId: plan.planId });
-      const linkedRepositoryIds = repositorySnapshot.projectRepositories
-        .filter((link) => link.projectId === plan.projectId)
-        .map((link) => link.repositoryId);
+      const workingRepositories = projectWorkingRepositories(
+        repositorySnapshot,
+        plan.projectId,
+        sourceSnapshot.find((source) => source.projectId === plan.projectId) ?? null,
+      );
       for (const root of lineRoots(detail)) {
-        for (const repositoryId of linkedRepositoryIds) {
+        for (const repository of workingRepositories) {
           yield* Effect.gen(function* () {
-            const repository = repositorySnapshot.repositories.find(
-              (candidate) => candidate.repositoryId === repositoryId,
-            );
-            if (repository === undefined || !repository.hasGit) return;
-            const inherited = inheritedCommitOid(detail, String(root.commitId), repositoryId);
-            const inheritedSnapshot = inheritedSnapshotOid(
+            const repositoryId = repository.repositoryId;
+            if (!repository.hasGit) return;
+            const lineRootCommitId = MercurianCommitId.make(root.commitId);
+            const start = yield* lineBranchEnsurer.resolveLineBranchStart({
               detail,
-              String(root.commitId),
-              repositoryId,
-            );
-            const baseOid = inherited ?? (yield* repositoryDefaultOid(repository.path));
-            const key = {
-              lineRootCommitId: MercurianCommitId.make(root.commitId),
-              repositoryId,
-            };
-            const current = yield* branches.get(key);
-            if (Option.isNone(current)) {
-              const branch = buildLineBranchName(detail.plan.title, String(root.commitId));
-              yield* git.execute({
-                operation: "LineBranchReactor.createBranch",
-                cwd: repository.path,
-                args: ["branch", branch, baseOid],
-              });
-              if (inheritedSnapshot !== undefined) {
-                yield* git.execute({
-                  operation: "LineBranchReactor.inheritSnapshot",
-                  cwd: repository.path,
-                  args: [
-                    "update-ref",
-                    lineSnapshotRef(MercurianCommitId.make(String(root.commitId))),
-                    inheritedSnapshot,
-                  ],
-                });
-              }
-              yield* branches.create({
-                ...key,
-                branch,
-                baseOid,
-                built: false,
-                repointHold: null,
-                createdAt: root.createdAt,
-              });
-            } else if (!current.value.built && current.value.baseOid !== baseOid) {
+              lineRootCommitId,
+              repository,
+            });
+            const current = yield* lineBranchEnsurer.ensureLineBranch({
+              detail,
+              lineRootCommitId,
+              repository,
+              start,
+            });
+            const key = { lineRootCommitId, repositoryId };
+            if (!current.built && current.baseOid !== start.baseOid) {
               const checkedOut = allSlots.some((slot) =>
                 slot.members.some(
                   (member) =>
-                    member.repositoryId === repositoryId &&
-                    member.currentBranch === current.value.branch,
+                    member.repositoryId === repositoryId && member.currentBranch === current.branch,
                 ),
               );
               if (checkedOut) {
@@ -245,7 +199,7 @@ export const make = Effect.gen(function* () {
                 yield* Effect.logDebug("line-branch re-point held", {
                   lineRootCommitId: key.lineRootCommitId,
                   repositoryId,
-                  branch: current.value.branch,
+                  branch: current.branch,
                   hold: "checked-out",
                 });
                 return;
@@ -253,7 +207,7 @@ export const make = Effect.gen(function* () {
               const namedRef = yield* git.execute({
                 operation: "LineBranchReactor.verifyBranch",
                 cwd: repository.path,
-                args: ["rev-parse", "--verify", "--quiet", `refs/heads/${current.value.branch}`],
+                args: ["rev-parse", "--verify", "--quiet", `refs/heads/${current.branch}`],
                 allowNonZeroExit: true,
               });
               if (namedRef.exitCode !== 0) {
@@ -261,7 +215,7 @@ export const make = Effect.gen(function* () {
                 yield* Effect.logDebug("line-branch re-point held", {
                   lineRootCommitId: key.lineRootCommitId,
                   repositoryId,
-                  branch: current.value.branch,
+                  branch: current.branch,
                   hold: "name-missing",
                 });
                 return;
@@ -269,9 +223,9 @@ export const make = Effect.gen(function* () {
               yield* git.execute({
                 operation: "LineBranchReactor.repointBranch",
                 cwd: repository.path,
-                args: ["branch", "-f", current.value.branch, baseOid],
+                args: ["branch", "-f", current.branch, start.baseOid],
               });
-              yield* branches.repointIfUnbuilt({ ...key, baseOid });
+              yield* branches.repointIfUnbuilt({ ...key, baseOid: start.baseOid });
               yield* branches.recordRepointHold({ ...key, reason: null });
             }
           }).pipe(
@@ -281,7 +235,7 @@ export const make = Effect.gen(function* () {
                 : Effect.logWarning("line-branch reconciliation entry failed", {
                     planId: plan.planId,
                     lineRootCommitId: root.commitId,
-                    repositoryId,
+                    repositoryId: repository.repositoryId,
                     cause: Cause.pretty(cause),
                   }),
             ),

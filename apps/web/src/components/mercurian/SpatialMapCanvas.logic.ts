@@ -1,9 +1,11 @@
 import {
+  centerOn,
   fitTransform,
   MAP_GLYPH_ZOOM,
   wheelIntent,
   zoomAtPoint,
   type MapBounds,
+  type MapFitOptions,
   type MapFrameSize,
   type MapPoint,
   type MapTransform,
@@ -26,8 +28,32 @@ export function spatialMapViewBox(frame: MapFrameSize): MapViewBox {
   };
 }
 
-export function fitSpatialMap(bounds: MapBounds, frame: MapFrameSize): MapTransform {
-  return fitTransform(bounds, spatialMapViewBox(frame));
+export function fitSpatialMap(
+  bounds: MapBounds,
+  frame: MapFrameSize,
+  fit: MapFitOptions = {},
+): MapTransform {
+  return fitTransform(bounds, spatialMapViewBox(frame), fit);
+}
+
+/**
+ * The camera a graph opens with. Normally the fit; when the fit would shrink
+ * labels below reading size, the graph opens centered at the floor zoom instead,
+ * and the Fit control still offers the whole-graph overview.
+ */
+export function openingSpatialMapTransform(
+  bounds: MapBounds,
+  frame: MapFrameSize,
+  fit: MapFitOptions = {},
+  minZoom?: number,
+): MapTransform {
+  const fitted = fitSpatialMap(bounds, frame, fit);
+  if (minZoom === undefined || fitted.zoom >= minZoom) return fitted;
+  return centerOn(
+    { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 },
+    { x: 0, y: 0, zoom: minZoom },
+    spatialMapViewBox(frame),
+  );
 }
 
 export function isAtFit(
@@ -35,8 +61,9 @@ export function isAtFit(
   bounds: MapBounds,
   frame: MapFrameSize,
   epsilon = 0.001,
+  fit: MapFitOptions = {},
 ): boolean {
-  return transformsWithin(transform, fitSpatialMap(bounds, frame), epsilon);
+  return transformsWithin(transform, fitSpatialMap(bounds, frame, fit), epsilon);
 }
 
 export function spatialMapChromeVisibility(
@@ -44,13 +71,24 @@ export function spatialMapChromeVisibility(
   bounds: MapBounds,
   frame: MapFrameSize,
   epsilon = 0.001,
+  options: MapFitOptions & { readonly minimap?: boolean } = {},
 ): { readonly fitButton: boolean; readonly minimap: boolean } {
-  const fitted = fitSpatialMap(bounds, frame);
+  const fitted = fitSpatialMap(bounds, frame, options);
   const awayFromFit = !transformsWithin(transform, fitted, epsilon);
   return {
     fitButton: awayFromFit,
-    minimap: awayFromFit || fitted.zoom <= MAP_GLYPH_ZOOM,
+    minimap: options.minimap !== false && (awayFromFit || fitted.zoom <= MAP_GLYPH_ZOOM),
   };
+}
+
+/** True when a world point sits inside the visible rectangle, so a focus need not move the camera. */
+export function pointWithinBounds(point: MapPoint, bounds: MapBounds): boolean {
+  return (
+    point.x >= bounds.minX &&
+    point.x <= bounds.maxX &&
+    point.y >= bounds.minY &&
+    point.y <= bounds.maxY
+  );
 }
 
 function transformsWithin(left: MapTransform, right: MapTransform, epsilon: number): boolean {

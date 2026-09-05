@@ -8,6 +8,7 @@ import type {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  Brain,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -91,6 +92,8 @@ interface RightPanelTabsProps {
    */
   previewRuntimeTabId?: ((tabId: string) => string) | undefined;
   terminalLabelsById: ReadonlyMap<string, string>;
+  /** Counts shown on a tab by surface id, such as unreviewed memory changes. */
+  surfaceBadges?: Readonly<Record<string, number>> | undefined;
   onActivate: (surface: RightPanelSurface) => void;
   onCloseSurface: (surface: RightPanelSurface) => void;
   onCloseOtherSurfaces: (surface: RightPanelSurface) => void;
@@ -111,6 +114,7 @@ interface RightPanelTabsProps {
   onAddAgents: () => void;
   onAddPlan?: (() => void) | undefined;
   onAddSpec?: (() => void) | undefined;
+  onAddMemory?: (() => void) | undefined;
   workspaceReady?: boolean | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -118,6 +122,7 @@ interface RightPanelTabsProps {
   filesAvailable: boolean;
   planAvailable?: boolean | undefined;
   specAvailable?: boolean | undefined;
+  memoryAvailable?: boolean | undefined;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
@@ -221,6 +226,8 @@ export function artifactSurfaceMenuActions(input: {
   onAddPlan: () => void;
   specAvailable: boolean;
   onAddSpec: () => void;
+  memoryAvailable: boolean;
+  onAddMemory: () => void;
 }) {
   return [
     ...(input.planAvailable
@@ -247,6 +254,20 @@ export function artifactSurfaceMenuActions(input: {
             available: true,
             disabledReason: "",
             onClick: input.onAddSpec,
+            badgeCount: 0,
+          },
+        ]
+      : []),
+    ...(input.memoryAvailable
+      ? [
+          {
+            label: "Memory",
+            description: "Review this line's memory changes.",
+            icon: Brain,
+            shortcut: null,
+            available: true,
+            disabledReason: "",
+            onClick: input.onAddMemory,
             badgeCount: 0,
           },
         ]
@@ -386,12 +407,14 @@ function RightPanelEmptyState(props: {
   onAddAgents: () => void;
   onAddPlan: () => void;
   onAddSpec: () => void;
+  onAddMemory: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
   planAvailable: boolean;
   specAvailable: boolean;
+  memoryAvailable: boolean;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
   workspaceUnavailableReason: string | null;
@@ -446,6 +469,8 @@ function RightPanelEmptyState(props: {
       onAddPlan: props.onAddPlan,
       specAvailable: props.specAvailable,
       onAddSpec: props.onAddSpec,
+      memoryAvailable: props.memoryAvailable,
+      onAddMemory: props.onAddMemory,
     }),
     {
       label: "Pull request",
@@ -704,6 +729,8 @@ function surfaceTitle(
       return "Plan";
     case "spec":
       return "Spec";
+    case "memory":
+      return "Memory";
     case "checkpoints":
       return "Checkpoints";
     case "preview": {
@@ -791,6 +818,8 @@ function SurfaceIcon({
       return <ScrollText className="size-3 shrink-0" />;
     case "spec":
       return <FileText className="size-3 shrink-0" />;
+    case "memory":
+      return <Brain className="size-3 shrink-0" />;
     case "checkpoints":
       return <Waypoints className="size-3 shrink-0" />;
   }
@@ -840,6 +869,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const onAddPlan = props.onAddPlan ?? (() => undefined);
   const specAvailable = (props.specAvailable ?? false) && props.onAddSpec !== undefined;
   const onAddSpec = props.onAddSpec ?? (() => undefined);
+  const memoryAvailable = (props.memoryAvailable ?? false) && props.onAddMemory !== undefined;
+  const onAddMemory = props.onAddMemory ?? (() => undefined);
   const workspaceUnavailableReason =
     props.workspaceReady === false ? DRAFT_WORKSPACE_UNAVAILABLE_REASON : null;
   const [tabScrollState, setTabScrollState] = useState({
@@ -917,6 +948,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onAddPlan,
       specAvailable,
       onAddSpec,
+      memoryAvailable,
+      onAddMemory,
     }),
     {
       label: "Pull request",
@@ -958,7 +991,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       const pinned = isRightPanelSurfacePinned(surface.id, props.pinnedSurfaceIds);
 
       const items: ContextMenuItem<TabContextMenuAction>[] = [];
-      if (surface.kind === "file" && surface.attachment === undefined) {
+      if (
+        surface.kind === "file" &&
+        surface.attachment === undefined &&
+        surface.memory === undefined
+      ) {
         items.push({ id: "copy-path", label: "Copy path" });
       }
       const menuPreviewTabId = previewTabIdOf(surface, props.previewSessions);
@@ -992,7 +1029,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
       switch (action) {
         case "copy-path":
-          if (surface.kind === "file" && surface.attachment === undefined) {
+          if (
+            surface.kind === "file" &&
+            surface.attachment === undefined &&
+            surface.memory === undefined
+          ) {
             props.onCopyFilePath(surface.relativePath);
           }
           break;
@@ -1220,10 +1261,18 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       render={
                         <button
                           type="button"
-                          className="cursor-pointer flex min-w-0 items-center"
+                          className="cursor-pointer flex min-w-0 items-center gap-1"
                           onClick={() => props.onActivate(surface)}
                         >
                           <span className="truncate">{title}</span>
+                          {(props.surfaceBadges?.[surface.id] ?? 0) > 0 ? (
+                            <span
+                              aria-label={`${props.surfaceBadges?.[surface.id]} need review`}
+                              className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-warning/15 px-1 text-[10px] font-medium leading-none text-warning-foreground tabular-nums"
+                            >
+                              {props.surfaceBadges?.[surface.id]}
+                            </span>
+                          ) : null}
                         </button>
                       }
                     />
@@ -1383,12 +1432,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddAgents={props.onAddAgents}
             onAddPlan={onAddPlan}
             onAddSpec={onAddSpec}
+            onAddMemory={onAddMemory}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}
             planAvailable={planAvailable}
             specAvailable={specAvailable}
+            memoryAvailable={memoryAvailable}
             pullRequestAvailable={props.pullRequestAvailable}
             agentsAvailable={props.agentsAvailable}
             workspaceUnavailableReason={workspaceUnavailableReason}

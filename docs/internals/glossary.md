@@ -230,14 +230,45 @@ The single registered repository, optionally narrowed to a repository-relative s
 the project's code-repository set. Removing a repository also removes designations that point to
 it; it never deletes memory files.
 
+#### Memory branch
+
+The line-specific branch of the memory repository. A line reads memory from its latest snapshot
+chain head, falling back to this branch tip, so an amendment belongs to the line that made it and
+does not change the memory repository's main line. Standalone memory repositories participate in
+the same line-branch and worktree-slot model as linked code repositories.
+
+#### Marked and unmarked memory
+
+A **marked** memory change is a commit on the line's memory branch carrying an
+`Astrolabe-Amendment` trailer; a commit without that trailer is shown as a hand-made change. An
+**unmarked** change is the memory-path delta held by the line's latest snapshot beyond its branch
+tip. Merge home first turns that delta into a marked, reviewed commit, so uncommitted state never
+crosses into shared truth.
+
+#### Memory list
+
+The thread view's line-scoped Memory surface ([MemoryTab.tsx][38]): every marked amendment,
+hand-made memory commit, and unmarked snapshot delta since the line's base, read at the
+route-selected position through the immutable dashboard. It keeps documents and amendments as
+distinct units, draws the changed notes' prose-link graph, preserves per-amendment review state,
+and offers review, revert, and merge-home acts at the latest position only. Documents and
+comparisons open in the shared Files and Diff surfaces; it never changes what the main memory
+browser reads.
+
+#### Merge home
+
+The explicit human act that carries a line's reviewed memory into shared truth. For memory inside a
+code repository, the pull request performs the merge and the act records that the review is ready
+to ship. For a standalone memory repository, Astrolabe creates a two-parent merge commit on its
+main branch when Git can merge cleanly; conflicts return to the planning conversation for a new
+amendment. An amendment you never merged home never happened to shared truth.
+
 #### Amendment
 
-A human-reviewed change proposed from a line turn and applied to [memory](#memory) only after
-explicit confirmation. The proposal is transient and carries the exact unified patch and map
-placements; confirming applies the guarded note snapshots, records a commit in the memory's own
-Git history when available, and appends a stamped human `message` commit to the thread without
-starting another turn. Preparation and application live in [MemoryIndex.ts][37], while the review
-surface is [MemoryAmendmentSheet.tsx][38].
+A focused change a planning turn lands on its line's [memory branch](#memory-branch), as one commit
+carrying the turn's mark and a link back to the plan. The write is guarded against memory that
+changed since the assistant read it. The [memory list](#memory-list) is where a person reviews its
+exact diff, and [merge home](#merge-home) is the separate act that can carry it into shared truth.
 
 #### Note
 
@@ -291,7 +322,7 @@ A [line](#line) whose thread and runtime record exist but whose first human comm
 
 #### Thread space
 
-The upstream thread view, routed at `/threads/$planId`, with Mercurian's thread-level surfaces and chrome chiseled into its existing slots. `?line=<threadId>` selects the current [line](#line), while `?at=<commitId>` changes the viewing position for Plan, Spec, and Checkpoints without replacing that line's conversation. [ThreadSpaceSurfaces.tsx][48] supplies the read-only Plan and Spec surfaces plus Checkpoints; [ThreadSpaceChrome.tsx][49] supplies line banners, memory overlays, note mentions, and **Fork here**.
+The upstream thread view, routed at `/threads/$planId`, with Mercurian's thread-level surfaces and chrome chiseled into its existing slots. `?line=<threadId>` selects the current [line](#line), while `?at=<commitId>` changes the viewing position for Plan, Spec, and Checkpoints without replacing that line's conversation. [ThreadSpaceSurfaces.tsx][48] supplies the read-only Plan and Spec surfaces, the line-scoped [memory list](#memory-list), and Checkpoints; [ThreadSpaceChrome.tsx][49] supplies line banners, the memory-failure notice, note mentions, and **Fork here**. Note mentions and amendment effects address the Memory surface with a selection rather than opening a second reader.
 
 Its right panel always contains the [pinned surface](#pinned-surface) **Checkpoints** first. Plan is selected when a line's panel is first seeded, and Plan and Spec can be added from the plus menu alongside the upstream working surfaces. Picking a checkpoint navigates to its line and viewing position; **Back to now** clears the historical position. The ordinary upstream composer sends thread turns, and the [line turn reactor](#line-turn-reactor) records the thread history from those turns.
 
@@ -494,7 +525,7 @@ ships Astrolabe already matching it.
 [35]: ../../apps/server/src/mercurian/assistant/LineTurnReactor.ts
 [36]: ../../packages/contracts/src/mercurianMemory.ts
 [37]: ../../apps/server/src/mercurian/memory/MemoryIndex.ts
-[38]: ../../apps/web/src/components/mercurian/MemoryAmendmentSheet.tsx
+[38]: ../../apps/web/src/components/mercurian/MemoryTab.tsx
 [39]: ../../apps/web/src/components/mercurian/PlanSuggestions.tsx
 [40]: ../../apps/server/src/mercurian/worktreeSlots/SnapshotChain.ts
 [41]: ../../apps/server/src/mercurian/worktreeSlots/SlotService.ts

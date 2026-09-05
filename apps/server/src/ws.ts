@@ -1,3 +1,4 @@
+import { isMemoryReadUnavailableError } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -46,14 +47,13 @@ import {
   MERCURIAN_TRACKER_WS_METHODS,
   MERCURIAN_WORKSPACE_WS_METHODS,
   MercurianCommitId,
+  type MemoryLineRef,
   MercurianRepositoryId,
   MercurianPlanningError,
   MercurianRepositoryError,
   MercurianMemoryError,
-  ConfirmMemoryAmendmentBlockedError,
   MercurianTrackerError,
   MercurianWorkspaceError,
-  isConfirmMemoryAmendmentBlockedError,
   isMercurianProjectNotFoundError,
   isMercurianRepositoryNotFoundError,
   isMemoryNotDesignatedError,
@@ -74,7 +74,7 @@ import {
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
-  type PlanId,
+  PlanId,
   type PlanStreamItem,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -161,6 +161,8 @@ import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import type { RepositoryView } from "./mercurian/repositories/schema.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
+import { memoryInvalidations } from "./mercurian/memory/MemoryInvalidations.ts";
 import { toWireMemorySourcesSnapshot } from "./mercurian/memory/wire.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
@@ -616,17 +618,6 @@ function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) 
   };
 }
 
-export function memoryAmendmentNoteNames(
-  changes: ReadonlyArray<{ readonly path: string }>,
-): ReadonlyArray<string> {
-  return changes
-    .filter(
-      ({ path }) =>
-        path.endsWith(".md") && !path.endsWith(".skillmap.md") && !path.startsWith("maps/"),
-    )
-    .map(({ path }) => path.slice(0, -3).split("/").at(-1)!);
-}
-
 interface CodingSessionSlotMetadata {
   readonly branch: string;
   readonly worktreePath: string;
@@ -696,6 +687,7 @@ const makeWsRpcLayer = (
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
+      const memoryDashboard = yield* MemoryDashboard.MemoryDashboard;
       const trackerStore = yield* TrackerStore.TrackerStore;
       const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
@@ -740,6 +732,27 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
+
+      const planIdForMemoryLine = Effect.fn("ws.planIdForMemoryLine")(function* (
+        line: MemoryLineRef,
+        operation:
+          | "readLineMemoryChanges"
+          | "markMemoryChangeReviewed"
+          | "revertMemoryChange"
+          | "mergeMemoryHome",
+      ) {
+        if ("planId" in line) return line.planId;
+        const resolved = yield* resolveThreadLine(
+          lineRuntimeStore,
+          legacySessionStore,
+          line.threadId,
+        );
+        if (Option.isSome(resolved)) return resolved.value.planId;
+        return yield* new MercurianMemoryError({
+          operation,
+          cause: new Error(`Memory line thread ${line.threadId} is missing`),
+        });
+      });
 
       const slotForCodingSessionThread = Effect.fn("ws.slotForCodingSessionThread")(function* (
         threadId: ThreadId,
@@ -2665,58 +2678,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_WS_METHODS.confirmMemoryAmendment]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.confirmMemoryAmendment,
-            Effect.gen(function* () {
-              const parentCommitId = CommitId.make(input.parentCommitId);
-              yield* planningStore.assertNoActiveTurn({
-                planId: input.planId,
-                parentCommitId,
-              });
-              const proposal = yield* lineTurnReactor.memoryAmendmentProposal(input.planId);
-              if (proposal === undefined) {
-                return yield* new ConfirmMemoryAmendmentBlockedError({ reason: "no-proposal" });
-              }
-              const detail = yield* planningStore.getPlanSnapshot({ planId: input.planId });
-              const memoryCommitSha = yield* memoryIndex.applyAmendment({
-                projectId: detail.plan.projectId,
-                proposal,
-                planId: input.planId,
-                planName: detail.plan.title,
-              });
-              const createdAt = yield* DateTime.now;
-              const message = yield* planningStore.appendMemoryAmendment({
-                planId: input.planId,
-                parentCommitId,
-                title: proposal.title,
-                memoryCommitSha,
-                notes: memoryAmendmentNoteNames(proposal.changes),
-                createdAt,
-              });
-              yield* lineTurnReactor.clearMemoryAmendment(input.planId);
-              return MercurianCommitId.make(message.commitId);
-            }).pipe(
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) ||
-                isPlanTurnActiveError(cause) ||
-                isConfirmMemoryAmendmentBlockedError(cause) ||
-                cause._tag === "MercurianMemoryError"
-                  ? cause
-                  : new MercurianPlanningError({
-                      operation: "confirmMemoryAmendment",
-                      cause,
-                    }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.cancelMemoryAmendment]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.cancelMemoryAmendment,
-            lineTurnReactor.cancelMemoryAmendment(input.planId).pipe(Effect.as({})),
-            { "rpc.aggregate": "mercurian" },
-          ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.visitPlan,
@@ -2915,13 +2876,8 @@ const makeWsRpcLayer = (
                         // The snapshot carries the partial turn, so a window
                         // opened — or reconnected — mid-turn joins coherently
                         // with no frame replay (ADR 002 §3).
-                        Effect.all({
-                          inFlightTurns: lineTurnReactor.inFlightTurns(input.planId),
-                          memoryAmendmentProposal: lineTurnReactor.memoryAmendmentProposal(
-                            input.planId,
-                          ),
-                        }).pipe(
-                          Effect.map(({ inFlightTurns, memoryAmendmentProposal }) => ({
+                        lineTurnReactor.inFlightTurns(input.planId).pipe(
+                          Effect.map((inFlightTurns) => ({
                             cursor: detail.snapshotSequence,
                             items: [
                               {
@@ -2929,9 +2885,6 @@ const makeWsRpcLayer = (
                                 snapshot: {
                                   ...toWirePlanDetail(detail),
                                   inFlightTurns,
-                                  ...(memoryAmendmentProposal === undefined
-                                    ? {}
-                                    : { memoryAmendmentProposal }),
                                 },
                               },
                             ] satisfies ReadonlyArray<PlanStreamItem>,
@@ -3168,14 +3121,68 @@ const makeWsRpcLayer = (
               ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+            memoryDashboard.readCatalog(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+            memoryDashboard.readDashboard(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+            memoryDashboard.readDocument(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+            memoryDashboard.readComparison(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations]: (input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+            Effect.gen(function* () {
+              const changes = yield* Queue.sliding<void, MercurianMemoryError>(1);
+              const relevant = yield* memoryInvalidations(input.scope);
+              yield* Effect.forkScoped(
+                relevant.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                  Effect.catch((error) => Queue.fail(changes, error)),
+                ),
+                { startImmediately: true },
+              );
+              return Stream.concat(
+                Stream.make({ kind: "invalidate" as const }),
+                Stream.fromQueue(changes).pipe(
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.map(() => ({ kind: "invalidate" as const })),
+                ),
+              );
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new MercurianMemoryError({ operation: "subscribeMemoryInvalidations", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex]: (input) =>
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex,
             memoryIndex
-              .readIndex(input.projectId)
+              .readIndex(input.projectId, input.line, input.position)
               .pipe(
                 Effect.mapError((cause) =>
-                  isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                  isMemoryNotDesignatedError(cause) ||
+                  isMemorySourceInvalidError(cause) ||
+                  isMemoryReadUnavailableError(cause)
                     ? cause
                     : new MercurianMemoryError({ operation: "readMemoryIndex", cause }),
                 ),
@@ -3186,14 +3193,132 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.readMemoryNote,
             memoryIndex
-              .readNote(input.projectId, input.name)
+              .readNote(input.projectId, input.name, input.line, input.position)
               .pipe(
                 Effect.mapError((cause) =>
-                  isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                  isMemoryNotDesignatedError(cause) ||
+                  isMemorySourceInvalidError(cause) ||
+                  isMemoryReadUnavailableError(cause)
                     ? cause
                     : new MercurianMemoryError({ operation: "readMemoryNote", cause }),
                 ),
               ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId = yield* planIdForMemoryLine(line, "readLineMemoryChanges");
+              const detail = yield* planningStore.getPlanSnapshot({
+                planId,
+              });
+              return yield* memoryIndex.readLineChanges({
+                projectId: detail.plan.projectId,
+                line,
+                ...(input.position === undefined ? {} : { position: input.position }),
+              });
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                isMemoryReadUnavailableError(cause)
+                  ? cause
+                  : new MercurianMemoryError({ operation: "readLineMemoryChanges", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId = yield* planIdForMemoryLine(line, "markMemoryChangeReviewed");
+              const detail = yield* planningStore.getPlanSnapshot({ planId });
+              yield* memoryIndex.markChangeReviewed({
+                projectId: detail.plan.projectId,
+                line,
+                commitOid: input.commitOid,
+                ...(input.position ? { position: input.position } : {}),
+              });
+              yield* memoryDashboard.invalidate({ projectId: detail.plan.projectId, line });
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                (typeof cause === "object" &&
+                  cause !== null &&
+                  "_tag" in cause &&
+                  cause._tag === "MemoryReviewBlockedError")
+                  ? cause
+                  : new MercurianMemoryError({ operation: "markMemoryChangeReviewed", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId = yield* planIdForMemoryLine(line, "revertMemoryChange");
+              const detail = yield* planningStore.getPlanSnapshot({ planId });
+              yield* memoryIndex.revertChange({
+                projectId: detail.plan.projectId,
+                line,
+                target: input.target,
+                ...(input.position ? { position: input.position } : {}),
+                ...(input.expectedVersion ? { expectedVersion: input.expectedVersion } : {}),
+              });
+              yield* memoryDashboard.invalidate({ projectId: detail.plan.projectId, line });
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                (typeof cause === "object" &&
+                  cause !== null &&
+                  "_tag" in cause &&
+                  cause._tag === "MemoryReviewBlockedError")
+                  ? cause
+                  : new MercurianMemoryError({ operation: "revertMemoryChange", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome,
+            Effect.gen(function* () {
+              const line = input.line;
+              const planId = yield* planIdForMemoryLine(line, "mergeMemoryHome");
+              const detail = yield* planningStore.getPlanSnapshot({ planId });
+              const result = yield* memoryIndex.mergeHome({
+                projectId: detail.plan.projectId,
+                line,
+                ...(input.position ? { position: input.position } : {}),
+                ...(input.expectedVersion ? { expectedVersion: input.expectedVersion } : {}),
+                ...(input.reviewedUnmarkedId !== undefined
+                  ? { reviewedUnmarkedId: input.reviewedUnmarkedId }
+                  : {}),
+              });
+              if (result.kind === "merged" || result.kind === "deferred-to-push")
+                yield* memoryDashboard.invalidate({ projectId: detail.plan.projectId, line });
+              return result;
+            }).pipe(
+              Effect.mapError((cause) =>
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                (typeof cause === "object" &&
+                  cause !== null &&
+                  "_tag" in cause &&
+                  (cause._tag === "MemoryReviewBlockedError" ||
+                    cause._tag === "MergeMemoryHomeBlockedError"))
+                  ? cause
+                  : new MercurianMemoryError({ operation: "mergeMemoryHome", cause }),
+              ),
+            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_MEMORY_WS_METHODS.generateProductMap]: (input) =>

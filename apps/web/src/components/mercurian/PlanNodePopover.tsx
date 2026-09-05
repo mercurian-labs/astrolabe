@@ -23,15 +23,20 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+
 import { cn } from "../../lib/utils";
+import { revealMemorySelection } from "../../memoryPanelStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup } from "../ui/popover";
+import { useOptionalThreadSpace } from "./ThreadSpaceContext";
 import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
 import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
 import type { PlanGraph, PlanGraphNode } from "./PlanGraph.logic";
 import {
   derivePlanNodePopover,
+  memoryAmendmentSelection,
   repositoryFactsLabel,
   type PlanNodePopoverAct,
 } from "./PlanNodePopover.logic";
@@ -355,7 +360,9 @@ export function PlanNodePopoverContent({
       {reading.acts.length === 0 ? null : (
         <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
           {reading.acts.map((act) =>
-            act === "open-session" && reading.session?.threadId !== undefined ? (
+            act === "open-memory" ? (
+              <OpenInMemoryAct key={act} node={node} onClose={onClose} />
+            ) : act === "open-session" && reading.session?.threadId !== undefined ? (
               <Button
                 key={act}
                 render={
@@ -385,6 +392,38 @@ export function PlanNodePopoverContent({
         </div>
       )}
     </div>
+  );
+}
+
+/** Only a line inside a thread space can address its Memory tab; elsewhere the act stays quiet. */
+function OpenInMemoryAct({
+  node,
+  onClose,
+}: {
+  readonly node: PlanGraphNode;
+  readonly onClose: () => void;
+}) {
+  const threadSpace = useOptionalThreadSpace();
+  const selection =
+    node.item._tag === "message" && node.item.memoryAmendment !== undefined
+      ? memoryAmendmentSelection(node.item.memoryAmendment)
+      : null;
+  if (threadSpace === null || selection === null) return null;
+  return (
+    <Button
+      size="sm"
+      type="button"
+      variant="outline"
+      onClick={() => {
+        revealMemorySelection(
+          scopeThreadRef(threadSpace.environmentId, threadSpace.threadId),
+          selection,
+        );
+        onClose();
+      }}
+    >
+      {actLabel("open-memory")}
+    </Button>
   );
 }
 
@@ -494,6 +533,7 @@ function Warning({
 
 function actLabel(act: PlanNodePopoverAct): string {
   if (act === "edit-and-branch") return "Fork here";
+  if (act === "open-memory") return "Open in Memory";
   return "Open line";
 }
 

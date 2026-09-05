@@ -1,0 +1,205 @@
+import {
+  MercurianSubscribeMemoryInvalidationsInput,
+  MercurianReadMemoryIndexInput,
+  MercurianReadMemoryNoteInput,
+  MercurianReadLineMemoryChangesInput,
+  MemoryCatalog,
+  MemoryReadUnavailableError,
+  MercurianMergeMemoryHomeInput,
+  MercurianRevertMemoryChangeInput,
+  MercurianMergeMemoryHomeResult,
+  MemoryReviewBlockedError,
+} from "./mercurianMemory.ts";
+import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
+import {
+  MercurianReadMemoryDashboardInput,
+  MemoryDocumentSelection,
+  MemoryComparisonSelection,
+  MemoryDashboard,
+  MemoryDocumentComment,
+} from "./mercurianMemory.ts";
+
+const decodeMercurianReadMemoryDashboardInput = Schema.decodeUnknownSync(
+  MercurianReadMemoryDashboardInput,
+);
+const decodeMemoryDocumentSelection = Schema.decodeUnknownSync(MemoryDocumentSelection);
+const decodeMemoryComparisonSelection = Schema.decodeUnknownSync(MemoryComparisonSelection);
+const decodeMemoryDocumentComment = Schema.decodeUnknownSync(MemoryDocumentComment);
+const decodeMemoryDashboard = Schema.decodeUnknownSync(MemoryDashboard);
+
+const decodeIndexRequest = Schema.decodeUnknownSync(MercurianReadMemoryIndexInput);
+const decodeNoteRequest = Schema.decodeUnknownSync(MercurianReadMemoryNoteInput);
+const decodeChangesRequest = Schema.decodeUnknownSync(MercurianReadLineMemoryChangesInput);
+const decodeCatalog = Schema.decodeUnknownSync(MemoryCatalog);
+const decodeReadRefusal = Schema.decodeUnknownSync(MemoryReadUnavailableError);
+
+const oid = "a".repeat(40);
+const position = {
+  projectId: "project",
+  repositoryId: "repository",
+  lineRootCommitId: "root",
+  memoryRoot: "memory",
+  reading: { kind: "turn", threadId: "thread", turnCount: 3 },
+  baselineTreeOid: oid,
+  baselineSnapshotOid: null,
+  baseCommitOid: oid,
+  snapshotOid: oid,
+  treeOid: oid,
+  recordedHeadOid: oid,
+  headOid: oid,
+  captureKind: "settled",
+};
+const target = { position, path: "memory/Note.md", treeOid: oid, blobOid: oid, deleted: false };
+describe("immutable Memory wire contracts", () => {
+  it("requires an explicit project, line and reading selection", () => {
+    expect(
+      decodeMercurianReadMemoryDashboardInput({
+        projectId: "project",
+        line: { threadId: "thread" },
+        position: position.reading,
+      }),
+    ).toMatchObject({ position: { turnCount: 3 } });
+    expect(() =>
+      decodeMercurianReadMemoryDashboardInput({
+        projectId: "project",
+        line: { threadId: "thread" },
+      }),
+    ).toThrow();
+  });
+  it("retains environment, repository and immutable versions for shared surfaces and comments", () => {
+    const selection = { environmentId: "remote", target };
+    expect(decodeMemoryDocumentSelection(selection)).toEqual(selection);
+    const comparison = {
+      environmentId: "remote",
+      target: { position, beforeTreeOid: oid, afterTreeOid: "b".repeat(40), paths: [target.path] },
+    };
+    expect(decodeMemoryComparisonSelection(comparison)).toEqual(comparison);
+    expect(
+      decodeMemoryDocumentComment({
+        ...selection,
+        startLine: 2,
+        endLine: 4,
+        text: "Review this version",
+      }),
+    ).toMatchObject(selection);
+    expect(() =>
+      decodeMemoryDocumentSelection({
+        ...selection,
+        target: { ...target, treeOid: "refs/heads/main" },
+      }),
+    ).toThrow();
+  });
+  it("distinguishes missing history from an available empty dashboard", () => {
+    expect(decodeMemoryDashboard({ kind: "unavailable", reason: "object-missing" })).toEqual({
+      kind: "unavailable",
+      reason: "object-missing",
+    });
+    expect(
+      decodeMemoryDashboard({
+        kind: "available",
+        position,
+        curationVersion: "displayed-version",
+        documents: [],
+        amendments: [],
+        graph: { nodes: [], edges: [], outsideReferences: [] },
+        unreviewedCount: 0,
+        limitations: [],
+      }),
+    ).toMatchObject({ kind: "available" });
+  });
+  it("preserves legacy latest defaults while carrying an explicit historical position", () => {
+    const line = { planId: "plan", commitId: "line-root" };
+    expect(decodeIndexRequest({ projectId: "project", line })).toEqual({
+      projectId: "project",
+      line,
+    });
+    const at = { kind: "checkpoint", commitId: "selected-checkpoint" };
+    expect(decodeIndexRequest({ projectId: "project", line, position: at }).position).toEqual(at);
+    expect(
+      decodeNoteRequest({ projectId: "project", line, name: "A", position: at }).position,
+    ).toEqual(at);
+    expect(decodeChangesRequest({ line, position: at }).position).toEqual(at);
+    expect(
+      decodeReadRefusal({ _tag: "MemoryReadUnavailableError", reason: "object-missing" }).reason,
+    ).toBe("object-missing");
+  });
+  it("carries one immutable position for a lazy catalog", () => {
+    const value = {
+      kind: "available",
+      position,
+      entries: [{ path: "memory/Note.md", blobOid: oid, kind: "note" }],
+    };
+    expect(decodeCatalog(value)).toEqual(value);
+  });
+});
+
+const decodeMergeInput = Schema.decodeUnknownSync(MercurianMergeMemoryHomeInput);
+const decodeMergeResult = Schema.decodeUnknownSync(MercurianMergeMemoryHomeResult);
+const decodeReviewBlocked = Schema.decodeUnknownSync(MemoryReviewBlockedError);
+
+describe("versioned memory curation contracts", () => {
+  it("requires the displayed version for both revert targets", () => {
+    const decode = Schema.decodeUnknownSync(MercurianRevertMemoryChangeInput);
+    for (const target of [{ kind: "commit", commitOid: oid }, { kind: "unmarked" }]) {
+      const input = { line: { threadId: "thread" }, target };
+      expect(() => decode(input)).toThrow();
+      expect(decode({ ...input, expectedVersion: "displayed-version" })).toMatchObject({
+        expectedVersion: "displayed-version",
+      });
+    }
+  });
+  it("preserves prepare and confirmation identities and typed inverse conflict context", () => {
+    const line = { threadId: "thread" };
+    const review = {
+      version: "v1",
+      headOid: oid,
+      snapshotOid: oid,
+      treeOid: oid,
+      homeOid: oid,
+      homeRef: "refs/heads/main",
+      unmarkedId: "unmarked:exact",
+      unreviewedIds: [],
+      warnings: ["Malformed map"],
+    };
+    const confirmation = {
+      line,
+      position: { kind: "latest" },
+      expectedVersion: review.version,
+      reviewedUnmarkedId: review.unmarkedId,
+    };
+    expect(decodeMergeInput(confirmation)).toEqual(confirmation);
+    expect(decodeMergeInput({ line })).toEqual({ line });
+    expect(decodeMergeResult({ kind: "review-required", review })).toEqual({
+      kind: "review-required",
+      review,
+    });
+    expect(() =>
+      decodeMergeResult({
+        kind: "review-required",
+        review: { ...review, headOid: "HEAD" },
+      }),
+    ).toThrow();
+    const conflict = {
+      _tag: "MemoryReviewBlockedError",
+      reason: "conflict",
+      paths: ["Note.md"],
+      reconciliationSeed: "Reconcile this exact inverse",
+    };
+    expect(decodeReviewBlocked(conflict)).toMatchObject(conflict);
+  });
+});
+
+describe("memory invalidation subscription scope", () => {
+  const decode = Schema.decodeUnknownSync(MercurianSubscribeMemoryInvalidationsInput);
+  it("keeps old clients valid and accepts stable line scopes without a route position", () => {
+    expect(decode({})).toEqual({});
+    expect(decode({ scope: { projectId: "project", line: { threadId: "thread" } } })).toEqual({
+      scope: { projectId: "project", line: { threadId: "thread" } },
+    });
+    expect(
+      decode({ scope: { projectId: "project", line: { planId: "plan", commitId: "root" } } }),
+    ).toEqual({ scope: { projectId: "project", line: { planId: "plan", commitId: "root" } } });
+    expect(() => decode({ scope: { projectId: "project" } })).toThrow();
+  });
+});

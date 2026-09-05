@@ -3,6 +3,7 @@ import {
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
   AuthRelayWriteScope,
+  MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
@@ -38,7 +39,26 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.cloudInstallRelayClient)).toBe(AuthRelayWriteScope);
   });
 
-  it("requires operate access to start a coding session", () => {});
+  it("separates memory reads from review, revert, and merge mutations", () => {
+    expect(requiredScopeForRpcMethod(MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    for (const method of [
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+      MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    for (const method of [
+      MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
+      MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
+      MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+  });
 
   it("requires operate access to fork and open Mercurian lines", () => {
     expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.forkLine)).toBe(

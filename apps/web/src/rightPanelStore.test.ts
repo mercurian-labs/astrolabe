@@ -1,8 +1,16 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  MercurianCommitId,
+  MercurianProjectId,
+  MercurianRepositoryId,
+  ThreadId,
+  type MemoryPosition,
+} from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
+  memoryDocumentSurfaceId,
   migratePersistedRightPanelState,
   PINNED_SURFACE_IDS,
   pullRequestSurfaceId,
@@ -15,6 +23,23 @@ import {
 
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
+const OID_TREE = "a".repeat(40);
+const OID_BLOB = "b".repeat(40);
+const MEMORY_POSITION: MemoryPosition = {
+  projectId: MercurianProjectId.make("project-1"),
+  repositoryId: MercurianRepositoryId.make("repository-memory"),
+  memoryRoot: "",
+  lineRootCommitId: MercurianCommitId.make("line-root"),
+  reading: { kind: "latest" },
+  baselineTreeOid: OID_TREE,
+  baselineSnapshotOid: null,
+  baseCommitOid: OID_TREE,
+  snapshotOid: null,
+  treeOid: OID_TREE,
+  recordedHeadOid: OID_TREE,
+  headOid: OID_TREE,
+  captureKind: null,
+};
 
 beforeEach(() => {
   useRightPanelStore.setState({ byThreadKey: {} });
@@ -380,6 +405,170 @@ describe("rightPanelStore", () => {
       isOpen: true,
       activeSurfaceId: "diff",
       surfaces: [{ id: "diff", kind: "diff" }],
+    });
+  });
+
+  it("reopens Memory as the same persisted singleton after closing it", () => {
+    useRightPanelStore.getState().open(refA, "memory");
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "memory");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "memory",
+      surfaces: [
+        { id: "memory", kind: "memory" },
+        { id: "diff", kind: "diff" },
+      ],
+    });
+    expect(
+      useRightPanelStore.persist.getOptions().partialize?.(useRightPanelStore.getState()),
+    ).toMatchObject({
+      byThreadKey: {
+        "env-1:thread-A": {
+          activeSurfaceId: "memory",
+          surfaces: expect.arrayContaining([{ id: "memory", kind: "memory" }]),
+        },
+      },
+    });
+
+    useRightPanelStore.getState().closeSurface(refA, "memory");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
+    useRightPanelStore.getState().open(refA, "memory");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("memory");
+  });
+
+  it("opens memory documents as file tabs keyed by their exact objects and keeps them without a workspace", () => {
+    const target = {
+      position: MEMORY_POSITION,
+      path: "notes/Composer.md",
+      treeOid: OID_TREE,
+      blobOid: OID_BLOB,
+      deleted: false,
+    };
+    const selection = { environmentId: "env-1" as EnvironmentId, target };
+    useRightPanelStore.getState().openMemoryDocument(refA, selection);
+    useRightPanelStore.getState().openMemoryDocument(refA, selection);
+    useRightPanelStore.getState().openMemoryDocument(refA, {
+      ...selection,
+      target: { ...target, blobOid: OID_TREE, deleted: true },
+    });
+
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces).toHaveLength(2);
+    expect(state.surfaces[0]).toEqual({
+      id: memoryDocumentSurfaceId(selection),
+      kind: "file",
+      relativePath: "notes/Composer.md",
+      revealLine: null,
+      revealRequestId: 0,
+      memory: selection,
+    });
+    expect(state.surfaces[0]!.id).toContain(encodeURIComponent("repository-memory"));
+    expect(state.surfaces[0]!.id).toContain("line-root:latest");
+    expect(state.surfaces[0]!.id).not.toBe(state.surfaces[1]!.id);
+
+    useRightPanelStore.getState().reconcileFileSurfaces(refA, false);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toHaveLength(2);
+  });
+
+  it("keeps the same bytes read at different checkpoints or lines as separate tabs that never replace each other", () => {
+    const target = {
+      position: MEMORY_POSITION,
+      path: "Composer.md",
+      treeOid: OID_TREE,
+      blobOid: OID_BLOB,
+      deleted: false,
+    };
+    const atLatest = { environmentId: "env-1" as EnvironmentId, target };
+    const atCheckpoint = {
+      environmentId: "env-1" as EnvironmentId,
+      target: {
+        ...target,
+        position: {
+          ...MEMORY_POSITION,
+          reading: { kind: "checkpoint" as const, commitId: MercurianCommitId.make("ckpt-a") },
+        },
+      },
+    };
+    const onOtherLine = {
+      environmentId: "env-1" as EnvironmentId,
+      target: {
+        ...target,
+        position: { ...MEMORY_POSITION, lineRootCommitId: MercurianCommitId.make("line-two") },
+      },
+    };
+    useRightPanelStore.getState().openMemoryDocument(refA, atLatest);
+    useRightPanelStore.getState().openMemoryDocument(refA, atCheckpoint);
+    useRightPanelStore.getState().openMemoryDocument(refA, onOtherLine);
+    useRightPanelStore.getState().openMemoryDocument(refA, atCheckpoint);
+
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces).toHaveLength(3);
+    expect(new Set(state.surfaces.map(({ id }) => id)).size).toBe(3);
+    const first = state.surfaces[0];
+    expect(first?.kind === "file" && first.memory).toEqual(atLatest);
+    expect(first?.kind === "file" && first.memory?.target.position.reading).toEqual({
+      kind: "latest",
+    });
+    expect(state.activeSurfaceId).toBe(memoryDocumentSurfaceId(atCheckpoint));
+
+    const persisted = useRightPanelStore.persist
+      .getOptions()
+      .partialize?.(useRightPanelStore.getState());
+    const restored = migratePersistedRightPanelState(persisted).byThreadKey["env-1:thread-A"];
+    expect(restored?.surfaces.map(({ id }) => id)).toEqual(state.surfaces.map(({ id }) => id));
+    expect(
+      restored?.surfaces.map((surface) =>
+        surface.kind === "file" ? surface.memory?.target.position.reading : null,
+      ),
+    ).toEqual([{ kind: "latest" }, { kind: "checkpoint", commitId: "ckpt-a" }, { kind: "latest" }]);
+  });
+
+  it("restores persisted memory document tabs only when their target still decodes", () => {
+    const selection = {
+      environmentId: "env-1",
+      target: {
+        position: MEMORY_POSITION,
+        path: "Composer.md",
+        treeOid: OID_TREE,
+        blobOid: OID_BLOB,
+        deleted: false,
+      },
+    };
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "memory:stale",
+            surfaces: [
+              { id: "memory:stale", kind: "file", relativePath: "Composer.md", memory: selection },
+              {
+                id: "memory:broken",
+                kind: "file",
+                relativePath: "x.md",
+                memory: { environmentId: "env-1" },
+              },
+            ],
+          },
+        },
+      }).byThreadKey["env-1:thread-A"],
+    ).toEqual({
+      isOpen: true,
+      activeSurfaceId: memoryDocumentSurfaceId(selection as never),
+      surfaces: [
+        {
+          id: memoryDocumentSurfaceId(selection as never),
+          kind: "file",
+          relativePath: "Composer.md",
+          revealLine: null,
+          revealRequestId: 0,
+          memory: selection,
+        },
+      ],
     });
   });
 

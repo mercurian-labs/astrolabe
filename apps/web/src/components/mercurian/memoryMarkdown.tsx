@@ -6,8 +6,13 @@ import { createContext, use, useMemo } from "react";
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-const NOTE_HREF_PREFIX = "#note/";
+export const NOTE_HREF_PREFIX = "#note/";
 const WIKILINK_PATTERN = new RegExp("\\[\\[([^\\[\\]\\n|]+?)(?:\\|([^\\[\\]\\n|]+?))?\\]\\]", "g");
+
+export const memoryNoteNameFromHref = (href: string): string | null =>
+  href.startsWith(NOTE_HREF_PREFIX)
+    ? decodeURIComponent(href.slice(NOTE_HREF_PREFIX.length))
+    : null;
 
 const MemoryMarkdownContext = createContext<{
   readonly resolution: ReadonlyMap<string, boolean>;
@@ -60,7 +65,7 @@ function rewriteTextChildren(parent: MarkdownNode): void {
 }
 
 /** Code and inline-code nodes carry values, not text children, so traversal leaves them untouched. */
-function remarkMemoryWikilinks() {
+export function remarkMemoryWikilinks() {
   return (tree: MarkdownNode) => rewriteTextChildren(tree);
 }
 

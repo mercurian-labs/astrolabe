@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
   MessageId,
+  type MemoryLineRef,
   MercurianCommitId,
   MercurianProjectId,
   MercurianRepositoryId,
@@ -11,6 +12,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as NodePath from "@effect/platform-node/NodePath";
 
 import {
   TurnPreparation,
@@ -55,6 +57,8 @@ interface PreparationOptions {
   readonly spec?: { readonly goal: string; readonly acceptanceCriteria: string } | null;
   readonly memory?: {
     readonly rootPath: string;
+    readonly subpath?: string;
+    readonly readLines?: Array<MemoryLineRef>;
     readonly notes: Readonly<
       Record<
         string,
@@ -82,6 +86,8 @@ const preparationDependencies = (options: PreparationOptions) => {
     departedRef: null,
     branchMovement: null,
     lineBranchMissingOid: null,
+    prState: null,
+    memoryMergedHomeAt: null,
     createdAt: now,
     updatedAt: now,
     repositories: [
@@ -102,11 +108,11 @@ const preparationDependencies = (options: PreparationOptions) => {
       ? Option.none()
       : Option.some({
           projectId: MercurianProjectId.make("project"),
-          repositoryId: MercurianRepositoryId.make("memory"),
+          repositoryId: MercurianRepositoryId.make("repository"),
           repositoryName: "project-memory",
           repositoryPath: options.memory.rootPath,
           rootPath: options.memory.rootPath,
-          subpath: null,
+          subpath: options.memory.subpath ?? null,
           createdAt: now,
           updatedAt: now,
         });
@@ -137,7 +143,8 @@ const preparationDependencies = (options: PreparationOptions) => {
       getResolvedSource: () => Effect.succeed(source),
     }),
     Layer.mock(MemoryIndex.MemoryIndex)({
-      readNote: (_projectId, name) => {
+      readNote: (_projectId, name, line) => {
+        if (line !== undefined) options.memory?.readLines?.push(line);
         const note = options.memory?.notes[name];
         return Effect.succeed({
           name,
@@ -148,6 +155,7 @@ const preparationDependencies = (options: PreparationOptions) => {
         } as never);
       },
     }),
+    NodePath.layer,
   );
 };
 
@@ -194,6 +202,8 @@ it.effect(
               departedRef: null,
               branchMovement: null,
               lineBranchMissingOid: null,
+              prState: null,
+              memoryMergedHomeAt: null,
               createdAt: now,
               updatedAt: now,
               repositories: [
@@ -254,6 +264,7 @@ it.effect(
         getResolvedSource: () => Effect.succeed(Option.none()),
       }),
       Layer.mock(MemoryIndex.MemoryIndex)({}),
+      NodePath.layer,
     );
     return Effect.gen(function* () {
       const preparation = yield* TurnPreparation;
@@ -286,6 +297,7 @@ it.effect("adds only the appendix to a brand-new line's first turn", () => {
 
 it.effect("grounds reachable memory and resolves note mentions on the first turn", () => {
   const root = CommitId.make("root");
+  const readLines: Array<MemoryLineRef> = [];
   const dependencies = preparationDependencies({
     parentCommitId: root,
     timeline: [
@@ -301,9 +313,11 @@ it.effect("grounds reachable memory and resolves note mentions on the first turn
     ],
     ancestors: [ancestor(root, 1, "message")],
     memory: {
-      rootPath: "/memory",
+      rootPath: "/designated-main/memory",
+      subpath: "memory",
+      readLines,
       notes: {
-        Composer: { exists: true, path: "/memory/Composer.md" },
+        Composer: { exists: true, path: "/tmp/repository/memory/Composer.md" },
         Future: { exists: false, backlinks: ["Plans"] },
       },
     },
@@ -320,11 +334,13 @@ it.effect("grounds reachable memory and resolves note mentions on the first turn
       sessionIsFresh: true,
     });
     assert.ok(prepared.text.includes("Project memory (durable design truth"));
-    assert.ok(prepared.text.includes("- /memory"));
+    assert.ok(prepared.text.includes("- /tmp/repository/memory"));
+    assert.ok(!prepared.text.includes("/designated-main/memory"));
     assert.ok(prepared.text.includes("Earlier request"));
-    assert.ok(prepared.text.includes("- Composer: /memory/Composer.md"));
+    assert.ok(prepared.text.includes("- Composer: /tmp/repository/memory/Composer.md"));
     assert.ok(prepared.text.includes("- Future: not yet written — linked from Plans"));
     assert.ok(prepared.text.includes("Reply to this message:\nUse [[Composer]] and [[Future]]."));
+    assert.deepStrictEqual(readLines, [{ threadId }, { threadId }]);
   }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
 });
 
@@ -380,12 +396,14 @@ it.effect("includes a standalone human spec revision in the next turn input", ()
 });
 
 it.effect("keeps the next line turn resumable while resolving note mentions", () => {
+  const readLines: Array<MemoryLineRef> = [];
   const dependencies = preparationDependencies({
     parentCommitId: CommitId.make("root"),
     timeline: [],
     ancestors: [],
     memory: {
       rootPath: "/memory",
+      readLines,
       notes: { Composer: { exists: true, path: "/memory/Composer.md" } },
     },
   });
@@ -402,6 +420,7 @@ it.effect("keeps the next line turn resumable while resolving note mentions", ()
       "Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: /memory/Composer.md",
     );
     assert.deepStrictEqual(prepared.session, {});
+    assert.deepStrictEqual(readLines, [{ threadId }]);
   }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
 });
 

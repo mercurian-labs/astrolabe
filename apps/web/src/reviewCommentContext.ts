@@ -1,6 +1,14 @@
 import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
-import type { PullRequestReviewPosition } from "@t3tools/contracts";
+import {
+  MemoryDocumentComment,
+  type MemoryDocumentTarget,
+  type MemoryReadingPosition,
+  type EnvironmentId,
+  type PullRequestReviewPosition,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+
+import { memoryDocumentIdentity, memoryReadingKey } from "./memoryIdentity";
 
 const ReviewCommentSelectionSchema = Schema.Struct({
   start: Schema.Number,
@@ -22,6 +30,8 @@ export const ReviewCommentContextSchema = Schema.Struct({
   diff: Schema.String,
   fenceLanguage: Schema.optional(Schema.String),
   selection: Schema.optional(ReviewCommentSelectionSchema),
+  /** A comment on an immutable memory document keeps its exact environment, target, and range. */
+  memory: Schema.optional(MemoryDocumentComment),
 });
 
 export interface ReviewCommentContext {
@@ -36,6 +46,55 @@ export interface ReviewCommentContext {
   readonly diff: string;
   readonly fenceLanguage?: string | undefined;
   readonly selection?: ReviewCommentSelection | undefined;
+  readonly memory?: MemoryDocumentComment | undefined;
+}
+
+/** One section per reading: environment, repository, line, position, and the exact blob the reader saw. */
+export function memoryDocumentReviewSectionId(
+  environmentId: EnvironmentId,
+  target: MemoryDocumentTarget,
+): string {
+  return `memory:${memoryDocumentIdentity(environmentId, target)}`;
+}
+
+export function memoryComparisonReviewSectionId(
+  environmentId: EnvironmentId,
+  target: {
+    readonly position: {
+      readonly repositoryId: string;
+      readonly lineRootCommitId: string;
+      readonly reading: MemoryReadingPosition;
+    };
+    readonly beforeTreeOid: string;
+    readonly afterTreeOid: string;
+  },
+): string {
+  return `memory-comparison:${[
+    environmentId,
+    target.position.repositoryId,
+    target.position.lineRootCommitId,
+    memoryReadingKey(target.position.reading),
+  ]
+    .map(encodeURIComponent)
+    .join(":")}:${target.beforeTreeOid}..${target.afterTreeOid}`;
+}
+
+const isMemoryDocumentComment = Schema.is(MemoryDocumentComment);
+const MEMORY_ATTRIBUTE = "memory";
+
+/**
+ * The exact memory identity rides in one JSON attribute so an explicit send keeps the
+ * environment, repository, line, reading position, tree, blob, and range. Only a value
+ * that decodes as the contract is accepted back; anything else is dropped, not guessed.
+ */
+function readMemoryDocumentComment(raw: string | undefined): MemoryDocumentComment | undefined {
+  if (raw === undefined || raw.length === 0) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isMemoryDocumentComment(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 interface DiffReviewLine {
@@ -120,6 +179,7 @@ function parseReviewCommentContext(
     return null;
   }
   const body = extractReviewCommentBody(rawBody);
+  const memory = readMemoryDocumentComment(attributes[MEMORY_ATTRIBUTE]);
 
   return {
     id: `review-comment:${index}:${sectionId}:${filePath}:${startIndex}:${endIndex}`,
@@ -132,6 +192,7 @@ function parseReviewCommentContext(
     text: body.text,
     diff: body.contents,
     fenceLanguage: body.language,
+    ...(memory === undefined ? {} : { memory }),
   };
 }
 
@@ -216,6 +277,9 @@ export function formatReviewCommentContext(comment: ReviewCommentContext): strin
       ` startIndex="${comment.startIndex}"`,
       ` endIndex="${comment.endIndex}"`,
       ` rangeLabel="${escapeReviewCommentAttribute(comment.rangeLabel)}"`,
+      comment.memory === undefined
+        ? ""
+        : ` ${MEMORY_ATTRIBUTE}="${escapeReviewCommentAttribute(JSON.stringify(comment.memory))}"`,
       ">",
     ].join(""),
     neutralizeReviewCommentTags(comment.text.trim()),
@@ -258,6 +322,44 @@ export function buildFileReviewComment(input: {
     text: input.text.trim(),
     diff: selectedLines.join("\n"),
     fenceLanguage: inferReviewCommentFenceLanguage(input.filePath),
+  };
+}
+
+/**
+ * A line comment on a memory document at one immutable version. The prompt block
+ * reads like a file comment, while `memory` keeps the environment, repository,
+ * blob, and one-based range exact for the intended thread's pending review context.
+ */
+export function buildMemoryDocumentReviewComment(input: {
+  id: string;
+  environmentId: EnvironmentId;
+  target: MemoryDocumentTarget;
+  startLine: number;
+  endLine: number;
+  text: string;
+  contents: string;
+}): ReviewCommentContext {
+  const startLine = Math.max(1, Math.min(input.startLine, input.endLine));
+  const endLine = Math.max(startLine, Math.max(input.startLine, input.endLine));
+  const base = buildFileReviewComment({
+    id: input.id,
+    filePath: input.target.path,
+    startLine,
+    endLine,
+    text: input.text,
+    contents: input.contents,
+  });
+  return {
+    ...base,
+    sectionId: memoryDocumentReviewSectionId(input.environmentId, input.target),
+    sectionTitle: input.target.deleted ? "Memory note (former version)" : "Memory note",
+    memory: {
+      environmentId: input.environmentId,
+      target: input.target,
+      startLine,
+      endLine,
+      text: input.text.trim(),
+    },
   };
 }
 

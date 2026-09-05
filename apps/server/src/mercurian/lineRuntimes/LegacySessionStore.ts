@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -29,6 +30,14 @@ export class LegacySessionStore extends Context.Service<
     readonly getByBranch: (
       branch: string,
     ) => Effect.Effect<Option.Option<CodingSessionRecord>, LegacySessionStoreError>;
+    readonly recordPullRequestState: (
+      threadId: ThreadId,
+      state: "open" | "closed" | "merged" | null,
+    ) => Effect.Effect<void, LegacySessionStoreError>;
+    readonly recordMemoryMergedHome: (
+      threadId: ThreadId,
+      mergedAt: DateTime.Utc,
+    ) => Effect.Effect<void, LegacySessionStoreError>;
   }
 >()("t3/mercurian/lineRuntimes/LegacySessionStore") {}
 
@@ -60,6 +69,7 @@ export const make = Effect.gen(function* () {
     thread_id AS "threadId", branch AS "branch", worktree_path AS "worktreePath",
     base_ref AS "baseRef", started_at AS "startedAt", ended_at AS "endedAt",
     outcome AS "outcome", pr_url AS "prUrl", settled_commit_oid AS "settledCommitOid",
+    pr_state AS "prState", memory_merged_home_at AS "memoryMergedHomeAt",
     partial AS "partial", snapshot_oid AS "snapshotOid", snapshot_kind AS "snapshotKind",
     departed_ref AS "departedRef", branch_movement AS "branchMovement",
     line_branch_missing_oid AS "lineBranchMissingOid",
@@ -127,6 +137,19 @@ export const make = Effect.gen(function* () {
     getByBranch: (branch) =>
       mapError(findBranch({ branch }), "LegacySessionStore.getByBranch").pipe(
         Effect.flatMap(hydrate),
+      ),
+    recordPullRequestState: (threadId, state) =>
+      mapError(
+        sql`UPDATE coding_sessions SET pr_state = ${state} WHERE thread_id = ${threadId}`.pipe(
+          Effect.asVoid,
+        ),
+        "LegacySessionStore.recordPullRequestState",
+      ),
+    recordMemoryMergedHome: (threadId, mergedAt) =>
+      mapError(
+        sql`UPDATE coding_sessions SET memory_merged_home_at = ${DateTime.formatIso(mergedAt)}
+            WHERE thread_id = ${threadId}`.pipe(Effect.asVoid),
+        "LegacySessionStore.recordMemoryMergedHome",
       ),
   });
 });

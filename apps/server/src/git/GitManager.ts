@@ -1,3 +1,4 @@
+import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
@@ -615,6 +616,7 @@ function toPullRequestHeadRemoteInfo(pr: {
 }
 
 export const make = Effect.gen(function* () {
+  const memoryExit = yield* MemoryRepositoryExitGate;
   const gitCore = yield* GitVcsDriver.GitVcsDriver;
   const sourceControlProviders = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
   const textGeneration = yield* TextGeneration.TextGeneration;
@@ -2534,6 +2536,8 @@ export const make = Effect.gen(function* () {
             )
           : { status: "skipped_not_requested" as const };
 
+        if (wantsPush || wantsPr) yield* memoryExit.check(input.cwd);
+
         const push = wantsPush
           ? yield* progress
               .emit({
@@ -2585,7 +2589,10 @@ export const make = Effect.gen(function* () {
         return result;
       });
 
-      return yield* runAction().pipe(
+      const action = ["commit", "commit_push", "commit_push_pr"].includes(input.action)
+        ? memoryExit.withLock(input.cwd, runAction())
+        : memoryExit.withExit(input.cwd, runAction());
+      return yield* action.pipe(
         Effect.ensuring(invalidateStatus(input.cwd)),
         Effect.tapError((error) =>
           Effect.flatMap(Ref.get(currentPhase), (phase) =>

@@ -40,6 +40,8 @@ layer("010_CodingSessions", (it) => {
           "branch_movement",
           "line_branch_missing_oid",
           "unreachable_repositories_json",
+          "pr_state",
+          "memory_merged_home_at",
         ],
       );
 

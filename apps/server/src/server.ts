@@ -1,3 +1,4 @@
+import * as MemoryRepositoryExitGate from "./mercurian/memory/MemoryRepositoryExitGate.ts";
 import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -49,6 +50,8 @@ import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
+import * as MemoryReviewStore from "./mercurian/memory/MemoryReviewStore.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
@@ -296,7 +299,6 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(
     ProviderRuntimeIngestionLive.pipe(Layer.provide(MercurianApprovalAutoResponderLive)),
   ),
-  Layer.provideMerge(ProviderCommandReactorLive.pipe(Layer.provide(MercurianTurnPreparationLive))),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
@@ -332,6 +334,7 @@ const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   Layer.provideMerge(LegacySessionStore.layer),
   Layer.provideMerge(LineRuntimeStore.layer),
   Layer.provideMerge(LineBranchStore.layer),
+  Layer.provideMerge(MemoryReviewStore.layer),
   Layer.provideMerge(SlotStore.layer),
   // The turn registry is runtime state shared by the store (the active-turn
   // refusal on human writes) and the assistant runtime (which opens and
@@ -340,12 +343,7 @@ const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   // Repository facts and memory discovery both probe git rather than storing
   // derived state, so they share the process-runner boundary.
   Layer.provideMerge(RepositoryStore.layer.pipe(Layer.provide(ProcessRunner.layer))),
-  Layer.provideMerge(
-    MemoryIndex.layer.pipe(
-      Layer.provideMerge(MemorySourceStore.layer),
-      Layer.provide(ProcessRunner.layer),
-    ),
-  ),
+  Layer.provideMerge(MemorySourceStore.layer.pipe(Layer.provide(GitVcsDriver.layer))),
   Layer.provideMerge(
     MockPlanningModelSeed.layer.pipe(Layer.provideMerge(WorkspaceSettingsStore.layer)),
   ),
@@ -375,13 +373,22 @@ const SourceControlProviderRegistryLayerLive = SourceControlProviderRegistry.lay
   Layer.provideMerge(VcsDriverRegistryLayerLive),
 );
 
+const SlotRegistryLayerLive = SlotRegistry.layer;
+const MemoryRepositoryExitGateLive = MemoryRepositoryExitGate.layer.pipe(
+  Layer.provide(MercurianSqlite.layer),
+  Layer.provide(ProcessRunner.layer),
+  Layer.provide(SlotRegistryLayerLive),
+);
+
 const PullRequestServiceLive = PullRequestService.layer.pipe(
+  Layer.provide(MemoryRepositoryExitGateLive),
   Layer.provide(PullRequestProviderRegistry.layer),
   Layer.provide(SourceControlProviderRegistryLayerLive),
   Layer.provide(SourceControlRateLimit.layer),
 );
 
 const GitManagerLayerLive = GitManager.layer.pipe(
+  Layer.provide(MemoryRepositoryExitGateLive),
   Layer.provideMerge(ProjectSetupScriptRunner.layer),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
@@ -399,6 +406,7 @@ const GitWorkflowLayerLive = GitWorkflowService.layer.pipe(
 );
 
 const SourceControlRepositoryServiceLayerLive = SourceControlRepositoryService.layer.pipe(
+  Layer.provide(MemoryRepositoryExitGateLive),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
 );
@@ -571,8 +579,6 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   ),
 );
 
-const SlotRegistryLayerLive = SlotRegistry.layer;
-
 // Checkpointing consumes slot leases while the slot service consumes the rest
 // of the runtime. Resolve that shared boundary once so both services observe
 // the same in-memory registry instance.
@@ -585,12 +591,30 @@ const SnapshotChainDependenciesLive = SnapshotChain.layer.pipe(
   Layer.provideMerge(MercurianRuntimeBaseDependenciesLive),
 );
 
+const MemoryIndexLayerLive = MemoryIndex.layer.pipe(
+  Layer.provide(ProcessRunner.layer),
+  Layer.provideMerge(SnapshotChainDependenciesLive),
+);
+const MemoryDashboardLayerLive = MemoryDashboard.layer.pipe(
+  Layer.provideMerge(MemoryIndexLayerLive),
+);
+
+// Turn preparation reads line-grounded memory. Build the command reactor
+// after that index exists, but before the orchestration reactor that consumes
+// it, so both sides share the runtime core without a dependency cycle.
+const ProviderCommandReactorLayerLive = ProviderCommandReactorLive.pipe(
+  Layer.provide(MercurianTurnPreparationLive),
+  Layer.provideMerge(MemoryIndexLayerLive),
+  Layer.provideMerge(MercurianRuntimeBaseDependenciesLive),
+);
+
 const CheckpointReactorDependenciesLive = CheckpointReactorLive.pipe(
   Layer.provide(MercurianThreadLineServiceLive),
   Layer.provideMerge(SnapshotChainDependenciesLive),
 );
 
 const MercurianRuntimeCoreDependenciesLive = OrchestrationReactorLive.pipe(
+  Layer.provideMerge(ProviderCommandReactorLayerLive),
   Layer.provideMerge(CheckpointReactorDependenciesLive),
 );
 
@@ -603,6 +627,7 @@ const LineRuntimeServiceLayerLive = LineRuntimeService.layer.pipe(
 );
 
 const LineTurnReactorLayerLive = LineTurnReactor.layer.pipe(
+  Layer.provideMerge(MemoryIndexLayerLive),
   Layer.provideMerge(LineRuntimeServiceLayerLive),
   Layer.provideMerge(SlotServiceLayerLive),
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
@@ -617,7 +642,9 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 );
 
 const RuntimeDependenciesLive = Layer.empty.pipe(
+  Layer.provideMerge(ProviderCommandReactorLayerLive),
   Layer.provideMerge(LineTurnReactorLayerLive),
+  Layer.provideMerge(MemoryDashboardLayerLive),
   Layer.provideMerge(LineRuntimeServiceLayerLive),
   Layer.provideMerge(LineRuntimeRecordReactorLayerLive),
   Layer.provideMerge(LineBranchReactorLayerLive),

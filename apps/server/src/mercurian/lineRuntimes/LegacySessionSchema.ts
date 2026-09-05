@@ -37,6 +37,8 @@ export const CodingSessionRecord = Schema.Struct({
   endedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   outcome: Schema.NullOr(CodingSessionOutcome),
   prUrl: Schema.NullOr(Schema.String),
+  prState: Schema.optional(Schema.NullOr(Schema.Literals(["open", "closed", "merged"]))),
+  memoryMergedHomeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   settledCommitOid: Schema.NullOr(TrimmedNonEmptyString),
   partial: Schema.Union([Schema.Boolean, Schema.Number]),
   snapshotOid: Schema.NullOr(TrimmedNonEmptyString),
