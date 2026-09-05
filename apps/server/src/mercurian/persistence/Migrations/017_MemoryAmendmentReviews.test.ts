@@ -6,12 +6,12 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { migrationEntries, runMigrations } from "../Migrations.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
-layer("017_MemoryAmendmentReviews", (it) => {
+layer("019_MemoryAmendmentReviewsCompatibility", (it) => {
   it.effect("adds review state and the phase-three session columns", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.length, 17);
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 17);
+      assert.strictEqual(migrationEntries.length, 19);
+      assert.strictEqual(migrationEntries.at(-1)?.[0], 19);
       yield* runMigrations();
       const reviews = yield* sql<{
         readonly name: string;

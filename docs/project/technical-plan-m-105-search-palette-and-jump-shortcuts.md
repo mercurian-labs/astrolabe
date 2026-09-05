@@ -106,7 +106,7 @@ Left Sidebar places the palette's opener above the project tree ("a search entry
 - The palette searches **no message/plan text** — the fork's thread-content search rode a server query (`useThreadSearch`) that has no Mercurian analog yet. Titles, project names, sections, and actions are the searchable surface; content search over plan histories is future work nothing here precludes (the item shape already carries `threadContentMatch` rendering).
 - Coding-session rows (061) will join both the palette (result-union arm) and the jump enumeration (a third row level `enumerateJumpTargets` picks up when the tree grows it).
 - Mercurian remains web-only; mobile owes nothing here. Desktop inherits via the wrapped web app.
-- Docs: the palette and the chords are user-visible — `docs/user/projects-and-plans.md` (or a new palette section) and `docs/user/keybindings.md` need product-voice updates; "Search Palette" enters `docs/internals/glossary.md`.
+- Docs: the palette and the chords are user-visible — `docs/user/projects-and-threads.md` (or a new palette section) and `docs/user/keybindings.md` need product-voice updates; "Search Palette" enters `docs/internals/glossary.md`.
 - The Dashboard/Concepts tombstones are already honored in the shell (no such routes); the palette's sections are Repositories and Settings only, matching both the vault and `WorkspaceGroup`.
 
 ## Implementation Checklist

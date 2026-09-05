@@ -86,7 +86,7 @@ describe("folding pages", () => {
 describe("what an import says", () => {
   it("stays quiet on a creation and explains the other two", () => {
     expect(describeImportOutcome("created")).toBe(null);
-    expect(describeImportOutcome("existing")?.title).toBe("This issue already has a plan");
-    expect(describeImportOutcome("resurfaced")?.title).toBe("This issue's plan was restored");
+    expect(describeImportOutcome("existing")?.title).toBe("This issue already has a thread");
+    expect(describeImportOutcome("resurfaced")?.title).toBe("This issue's thread was restored");
   });
 });

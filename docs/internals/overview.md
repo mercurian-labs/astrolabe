@@ -141,6 +141,9 @@ as hidden Git refs through the VCS driver's checkpoint operations; `CheckpointDi
 turn and full-thread diff requests; and `CheckpointReactor` coordinates baseline capture,
 completed-turn capture, and diff projection. The storage contract is `VcsCheckpointOps` in
 [`VcsDriver.ts`](../../apps/server/src/vcs/VcsDriver.ts), implemented for Git in the same directory.
+A provider's mid-turn diff report (such as Codex `turn/diff/updated`) records a placeholder checkpoint
+for the turn; upstream threads replace it immediately, while a coding session takes its settled snapshot
+at turn completion.
 
 Mercurian coding-session checkpoints form a snapshot chain per planning line. Each snapshot records
 the complete working tree, links to the previous line snapshot when one exists, and pins the
@@ -171,35 +174,21 @@ exist. Neither artifact has a table: complete plan and spec snapshots land as `p
 `spec-revision` commits, and current or historical values are derived from revisions on the selected
 path. Spec provenance distinguishes import, tracker refresh, reconciliation, and direct authorship
 without duplicating the commit's author.
-Implementing from a checkpoint opens a local coding-session draft directly. Starting it claims the
-line's worktree slot across every linked repository, records all member paths on the thread, and
-starts the provider in the primary repository with the remaining reachable roots alongside it.
-Every turn end captures a chained snapshot in every member of the slot, and each repository's
-snapshot decides on its own whether that repository is now built; the runtime commits nowhere. The
-session record keeps one row per repository (latest snapshot, where the line's branch stood, whether
-the tree departed, the pull request), and a checkpoint summary keeps the home repository's file list
-beside per-repository groups when the session spans more than one.
+A line owns one orchestration thread and claims its worktree slot across every linked repository on
+its first turn. Every turn end captures a chained snapshot in each member of the slot, and each
+repository's snapshot decides independently whether that repository is built; the runtime commits
+nowhere.
 The client still warns when the selected path's newest spec revision has no descendant plan revision
 in the same ancestry. The warning is advisory and never blocks opening the draft or writes history.
-The tree the left sidebar renders arrives over one `mercurian.subscribeTree` subscription, which
-re-sends a whole (small) snapshot whenever a mutation lands rather than carrying sequenced deltas; a
-planning space instead streams over `mercurian.subscribePlan` — snapshot, then commit events keyed
-by `commits.sequence`, since the commit DAG is already the durable log
-([ADR 002](../architecture/event-streaming-model.md)). Each projected commit carries `parents` and
-`published` alongside `sequence`, which is what lets the DAG explorer draw the history's shape as a
-second rendering of that one subscription rather than a second stream; the artifact as of an earlier
-commit is the only fact the client cannot derive from it; `mercurian.getPlanTextAt` and
-`mercurian.getSpecAt` read the two artifacts unarily over immutable history.
+The thread space is the upstream thread view whole, with Mercurian's Checkpoints, Plan, Spec, line
+chrome, and overlays chiseled into its existing slots. Its conversation rides the orchestration
+thread stream, while `mercurian.subscribePlan` supplies the plan history and artifact surfaces.
 
-Both write paths name their own parent. `appendPlanMessage` and `savePlanRevision` carry an optional
-`parentCommitId` — the commit the act continues from, resolved inside the same transaction as the
-append and refused as `CommitNotFoundError` when it belongs to no history of this plan; absent still
-means the space's tip. Naming a commit that already has a child _is_ the fork, which is why forking
-needs no operation of its own: the commit store already permits it for a human and refuses it for an
-assistant. A plan message may also carry image attachments, and they are the server's ordinary ones
-— normalized at the ws boundary the way a thread turn's are ([`Normalizer.ts`][normalizer]), written
-to the same `attachmentsDir`, and read back through the assets door by id, which never knew what a
-thread was. Only their metadata rides a commit's payload, so the snapshot stays constant-size.
+The upstream composer sends an ordinary thread turn. The server records the human plan commit with
+the orchestration message id, so the two identities are the same; **Fork here** creates a pending
+line from the chosen message's parent and seeds that line's composer rather than appending directly
+to the commit store. Attachments still use the server's ordinary attachment normalization and asset
+door ([`Normalizer.ts`][normalizer]).
 
 Every tree row also carries the facts a status is ranked from — whether something awaits a person,
 whether a reply is streaming, and when the plan was last opened — composed at one point in
@@ -208,15 +197,11 @@ is server state in its own `plan_visits` table, written by `mercurian.visitPlan`
 changes seen-ness and re-armed by `mercurian.markPlanUnread`, so unseen agrees across windows rather
 than living in one of them (§5).
 
-[`assistant/PlanningAssistant.ts`][planning-assistant] runs planning turns on the provider-session
-runtime: a human message committing starts a turn under the workspace planning model, read-only
-(the most restrictive runtime mode plus an auto-answer approval policy), streaming transient frames
-over the same `mercurian.subscribePlan` subscription and landing exactly one assistant commit when
-it settles — marked interrupted when cut short. Its write doors are the planning MCP toolkit's
-`save_plan_revision` and `save_spec_revision`, each paired with a path-aware read. Tool commits
-advance the active turn's tip, so spec changes, plan absorption, and the terminal response form one
-ancestry chain. A standalone human spec change lands only its durable commit; the next human
-message starts a turn whose rebuilt context includes that revision and the current artifacts.
+[`assistant/LineTurnReactor.ts`][planning-assistant] observes orchestration and provider events for
+line threads. It adopts new upstream drafts as pending plan lines, records the human message commit,
+folds reply text, grounding, questions, and memory amendments, and lands the assistant commit when
+the turn settles. Its write doors remain the planning MCP toolkit's `save_plan_revision` and
+`save_spec_revision`, each paired with a path-aware read.
 
 [`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
 database: the registry of codebases the app can reach, the app-owned scripts declared on each, and
@@ -293,7 +278,7 @@ already dispatch.
 [normalizer]: ../../apps/server/src/orchestration/Normalizer.ts
 [planning-store]: ../../apps/server/src/mercurian/planning/PlanningStore.ts
 [planning-wire]: ../../apps/server/src/mercurian/planning/wire.ts
-[planning-assistant]: ../../apps/server/src/mercurian/assistant/PlanningAssistant.ts
+[planning-assistant]: ../../apps/server/src/mercurian/assistant/LineTurnReactor.ts
 [repository-store]: ../../apps/server/src/mercurian/repositories/RepositoryStore.ts
 [trackers]: ../../apps/server/src/mercurian/trackers/
 

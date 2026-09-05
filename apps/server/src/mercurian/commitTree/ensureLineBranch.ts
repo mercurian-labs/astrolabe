@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
-import { buildLineBranchName } from "../codingSessions/branch.ts";
+import { buildLineBranchName } from "../lineRuntimes/branch.ts";
 import type { PlanDetail, PlanTimelineItem } from "../planning/PlanningStore.ts";
 import type { RepositoryView } from "../repositories/schema.ts";
 import { lineSnapshotRef } from "../worktreeSlots/SnapshotChain.ts";

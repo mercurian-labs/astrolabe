@@ -10,12 +10,12 @@ import {
 } from "../state/useEnvironmentBoundCommand";
 
 /**
- * The three ways a plan leaves the tree, from wherever a plan is listed.
+ * The three ways a thread leaves the tree, from wherever a thread is listed.
  *
  * Shaped after `useThreadActions`: perform, toast the refusal, and get out of
- * the way when the plan you just acted on is the one on screen. Two of the
+ * the way when the thread you just acted on is the one on screen. Two of the
  * three are reversible — archiving and restoring are the same door — and the
- * third only exists while the plan is fully private, which the caller decides
+ * third only exists while the thread is fully private, which the caller decides
  * with `buildPlanRowMenuItems` before ever offering it.
  *
  * The refusals are surfaced rather than swallowed, which is why these bind
@@ -33,9 +33,9 @@ export function usePlanLifecycleActions() {
   const runDelete = useEnvironmentBoundCommandResult(mercurianPlanning.deletePlan);
 
   /**
-   * Whether the plan being acted on is the one the route is showing. Archiving
+   * Whether the thread being acted on is the one the route is showing. Archiving
    * or deleting it has to move somewhere first: the tree is the fallback, and
-   * for a delete the URL would otherwise dead-end on a plan that is gone.
+   * for a delete the URL would otherwise dead-end on a thread that is gone.
    */
   const isPlanOpen = useCallback(
     (planId: PlanId) =>
@@ -54,7 +54,7 @@ export function usePlanLifecycleActions() {
       readonly leavesTheRoute: boolean;
     }) => {
       // Navigate before the act when it removes what the route is showing: a
-      // deleted plan's subscription would otherwise refuse mid-render.
+      // deleted thread's subscription would otherwise refuse mid-render.
       if (input.leavesTheRoute && isPlanOpen(input.planId)) {
         await router.navigate({ to: "/", replace: true });
       }
@@ -79,19 +79,19 @@ export function usePlanLifecycleActions() {
       perform({
         planId,
         run: runArchive,
-        failureTitle: "Failed to archive plan",
+        failureTitle: "Failed to archive thread",
         leavesTheRoute: true,
       }),
     [perform, runArchive],
   );
 
-  /** Restore, as the Archived page names it. The plan returns to its project. */
+  /** Restore, as the Archived page names it. The thread returns to its project. */
   const unarchivePlan = useCallback(
     (planId: PlanId) =>
       perform({
         planId,
         run: runUnarchive,
-        failureTitle: "Failed to restore plan",
+        failureTitle: "Failed to restore thread",
         leavesTheRoute: false,
       }),
     [perform, runUnarchive],
@@ -102,7 +102,7 @@ export function usePlanLifecycleActions() {
       perform({
         planId,
         run: runDelete,
-        failureTitle: "Failed to delete plan",
+        failureTitle: "Failed to delete thread",
         leavesTheRoute: true,
       }),
     [perform, runDelete],

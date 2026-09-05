@@ -44,6 +44,24 @@ export interface ThreadActionMenuState {
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
 }
 
+export function filterThreadActionMenuItems(
+  items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>>,
+  hidden: ReadonlySet<ThreadActionMenuId>,
+): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
+  if (hidden.size === 0) return items;
+
+  const visible = items.flatMap((item) => {
+    if (hidden.has(item.id)) return [];
+    if (item.children === undefined) return [item];
+    return [{ ...item, children: filterThreadActionMenuItems(item.children, hidden) }];
+  });
+  const first = visible[0];
+  if (first?.separatorBefore !== true) return visible;
+
+  const { separatorBefore: _separatorBefore, ...withoutLeadingSeparator } = first;
+  return [withoutLeadingSeparator, ...visible.slice(1)];
+}
+
 /**
  * Single source for the per-thread action menu: the sidebar row's right-click
  * menu and the chat header menu both render exactly this list, so labels,

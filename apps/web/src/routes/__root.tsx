@@ -5,13 +5,14 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 
-import { navigateToParkedThreadRoute } from "../threadRoutes";
+import { navigateToThreadRoute } from "../threadRoutes";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Outlet,
   createRootRoute,
   type ErrorComponentProps,
   useLocation,
+  useRouter,
 } from "@tanstack/react-router";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
@@ -133,7 +134,7 @@ function RootRouteView() {
 
   // The palette is a sibling of the shell, not a wrapper around it: the fork's
   // component wrapped the app only to hand its thread composer down, and the
-  // Mercurian palette has no such tenants. `CommandPalette` is parked in place
+  // Mercurian palette has no such tenants. `CommandPalette` stays in place
   // beside the thread surfaces until coding sessions return.
   const appShell = (
     <>
@@ -396,6 +397,7 @@ function AuthenticatedTracingBootstrap() {
 }
 
 function EventRouter() {
+  const router = useRouter();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const primaryEnvironment = usePrimaryEnvironment();
@@ -443,7 +445,7 @@ function EventRouter() {
       }
       // Landing straight in a thread was the thread-first shell's behavior.
       // Navigation is the project tree now, so bootstrap lands on the index.
-      await navigateToParkedThreadRoute({
+      await navigateToThreadRoute(router, {
         kind: "server",
         threadRef: scopeThreadRef(payload.environment.environmentId, payload.bootstrapThreadId),
       });

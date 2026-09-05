@@ -6,6 +6,7 @@ import * as Stream from "effect/Stream";
 
 import { forkParked } from "../../serverActivation.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import { buildLineBranchName } from "../lineRuntimes/branch.ts";
 import {
   PlanningStore,
   type PlanDetail,
@@ -51,6 +52,100 @@ export function lineRootCommitIdFor(detail: PlanDetail, commitId: string): Mercu
   return MercurianCommitId.make(current);
 }
 
+function ancestorsAt(detail: PlanDetail, commitId: string): ReadonlySet<string> {
+  const byId = new Map(detail.timeline.map((item) => [String(item.commitId), item]));
+  const seen = new Set<string>();
+  const pending = [...(byId.get(commitId)?.parents ?? [])].map(String);
+  while (pending.length > 0) {
+    const next = pending.pop()!;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    pending.push(...(byId.get(next)?.parents ?? []).map(String));
+  }
+  return seen;
+}
+
+/** Ancestor sessions on the line, newest first, with their records. */
+function ancestorSessions(detail: PlanDetail, lineRootCommitId: string) {
+  const ancestors = ancestorsAt(detail, lineRootCommitId);
+  const records = new Map(
+    detail.codingSessions.map((session) => [String(session.commitId), session]),
+  );
+  return detail.timeline
+    .filter(
+      (item): item is Extract<PlanTimelineItem, { readonly _tag: "coding-session" }> =>
+        item._tag === "coding-session" && ancestors.has(String(item.commitId)),
+    )
+    .toSorted((left, right) => right.sequence - left.sequence)
+    .map((item) => ({ item, record: records.get(String(item.commitId)) }));
+}
+
+function ancestorLineRuntimes(detail: PlanDetail, lineRootCommitId: string) {
+  const ancestors = ancestorsAt(detail, lineRootCommitId);
+  const sequenceById = new Map(
+    detail.timeline.map((item) => [String(item.commitId), item.sequence]),
+  );
+  return (detail.lineRuntimes ?? [])
+    .filter((runtime) => ancestors.has(String(runtime.lineRootCommitId)))
+    .toSorted(
+      (left, right) =>
+        (sequenceById.get(String(right.lineRootCommitId)) ?? 0) -
+        (sequenceById.get(String(left.lineRootCommitId)) ?? 0),
+    );
+}
+
+// Where a new line's branch starts in a repository: the nearest ancestor
+// session's recorded branch tip there. Sessions recorded before project
+// scoping carry one repository's facts on the record itself.
+function inheritedCommitOid(detail: PlanDetail, lineRootCommitId: string, repositoryId: string) {
+  const runtimeOid = ancestorLineRuntimes(detail, lineRootCommitId)
+    .map(
+      (runtime) =>
+        runtime.repositories?.find((repository) => repository.repositoryId === repositoryId)
+          ?.branchTipOid,
+    )
+    .find((oid): oid is string => typeof oid === "string");
+  return (
+    runtimeOid ??
+    ancestorSessions(detail, lineRootCommitId)
+      .map(({ item, record }) => {
+        const row = record?.repositories?.find(
+          (repository) => repository.repositoryId === repositoryId,
+        );
+        if (row !== undefined) return row.branchTipOid ?? undefined;
+        return item.repositoryId === repositoryId ? record?.settledCommitOid : undefined;
+      })
+      .find((oid): oid is string => typeof oid === "string")
+  );
+}
+
+// The snapshot a new line lays over its branch: the same ancestor's chain head
+// in that repository.
+function inheritedSnapshotOid(detail: PlanDetail, lineRootCommitId: string, repositoryId: string) {
+  const runtimeOid = ancestorLineRuntimes(detail, lineRootCommitId)
+    .map((runtime) => {
+      const repository = runtime.repositories?.find(
+        (candidate) => candidate.repositoryId === repositoryId,
+      );
+      if (repository !== undefined) return repository.snapshotOid ?? undefined;
+      return runtime.homeRepositoryId === repositoryId
+        ? (runtime.snapshotOid ?? undefined)
+        : undefined;
+    })
+    .find((oid): oid is string => typeof oid === "string");
+  return (
+    runtimeOid ??
+    ancestorSessions(detail, lineRootCommitId)
+      .map(({ item, record }) => {
+        const row = record?.repositories?.find(
+          (repository) => repository.repositoryId === repositoryId,
+        );
+        if (row !== undefined) return row.snapshotOid ?? undefined;
+        return item.repositoryId === repositoryId ? record?.snapshotOid : undefined;
+      })
+      .find((oid): oid is string => typeof oid === "string")
+  );
+}
 export const make = Effect.gen(function* () {
   const planning = yield* PlanningStore;
   const repositories = yield* RepositoryStore;

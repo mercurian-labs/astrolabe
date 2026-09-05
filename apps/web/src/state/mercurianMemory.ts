@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianMemoryAtoms } from "@t3tools/client-runtime/state/mercurian-memory";
 import type {
   MemorySourcesSnapshot,
+  EnvironmentId,
   MemoryLineRef,
   MercurianDesignateMemorySourceInput,
   MercurianProjectId,
@@ -87,23 +88,29 @@ export function useReadMemoryNote() {
   return useCallback((input: MercurianReadMemoryNoteInput) => run(input), [run]);
 }
 
-export function useReadLineMemoryChanges() {
-  const run = useEnvironmentBoundCommandResult(mercurianMemory.readLineMemoryChanges);
+export function useReadLineMemoryChanges(environmentId?: EnvironmentId | null) {
+  const run = useEnvironmentBoundCommandResult(
+    mercurianMemory.readLineMemoryChanges,
+    environmentId,
+  );
   return useCallback((input: MercurianReadLineMemoryChangesInput) => run(input), [run]);
 }
 
-export function useMarkMemoryChangeReviewed() {
-  const run = useEnvironmentBoundCommandResult(mercurianMemory.markMemoryChangeReviewed);
+export function useMarkMemoryChangeReviewed(environmentId?: EnvironmentId | null) {
+  const run = useEnvironmentBoundCommandResult(
+    mercurianMemory.markMemoryChangeReviewed,
+    environmentId,
+  );
   return useCallback((input: MercurianMarkMemoryChangeReviewedInput) => run(input), [run]);
 }
 
-export function useRevertMemoryChange() {
-  const run = useEnvironmentBoundCommandResult(mercurianMemory.revertMemoryChange);
+export function useRevertMemoryChange(environmentId?: EnvironmentId | null) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.revertMemoryChange, environmentId);
   return useCallback((input: MercurianRevertMemoryChangeInput) => run(input), [run]);
 }
 
-export function useMergeMemoryHome() {
-  const run = useEnvironmentBoundCommandResult(mercurianMemory.mergeMemoryHome);
+export function useMergeMemoryHome(environmentId?: EnvironmentId | null) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.mergeMemoryHome, environmentId);
   return useCallback((input: MercurianMergeMemoryHomeInput) => run(input), [run]);
 }
 

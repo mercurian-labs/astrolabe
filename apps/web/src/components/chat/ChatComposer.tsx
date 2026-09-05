@@ -5,6 +5,7 @@ import type {
   EnvironmentId,
   ModelSelection,
   PreviewAnnotationPayload,
+  ProjectEntry,
   ProviderApprovalDecision,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
@@ -1157,6 +1158,7 @@ export interface ChatComposerProps {
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;
   gitCwd: string | null;
+  mentionSources?: ChatComposerMentionSources | undefined;
   restingControlsHost: HTMLDivElement | null;
   restingControlsHaveLeadingContext: boolean;
   onRestingControlsVisibilityChange: (visible: boolean) => void;
@@ -1207,6 +1209,23 @@ export interface ChatComposerProps {
   onExpandImage: (preview: ExpandedImagePreview) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
 }
+
+export interface ChatComposerMentionCandidate {
+  readonly id: string;
+  readonly path: string;
+  readonly pathKind?: ProjectEntry["kind"];
+  readonly label: string;
+  readonly description: string;
+  readonly replacement: string;
+}
+
+export interface ChatComposerMentionSources {
+  readonly candidates: ReadonlyArray<ChatComposerMentionCandidate>;
+  readonly sources?: ReactNode;
+  readonly onQueryChange: (query: string | null) => void;
+}
+
+const EMPTY_MENTION_CANDIDATES: ReadonlyArray<ChatComposerMentionCandidate> = [];
 
 // --------------------------------------------------------------------------
 // Component
@@ -1261,6 +1280,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keybindings,
     terminalOpen,
     gitCwd,
+    mentionSources,
     restingControlsHost,
     restingControlsHaveLeadingContext,
     onRestingControlsVisibilityChange,
@@ -1296,6 +1316,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onExpandImage,
     onFileOpen,
   } = props;
+  const extraMentionCandidates = mentionSources?.candidates ?? EMPTY_MENTION_CANDIDATES;
+  const extraMentionSourceNodes = mentionSources?.sources;
+  const onExtraMentionQueryChange = mentionSources?.onQueryChange;
   const activeTasksProgress = props.threadSyncPhase === null ? props.activeTasksProgress : null;
   const activeTaskSteps = props.threadSyncPhase === null ? props.activeTaskSteps : null;
   // ------------------------------------------------------------------
@@ -1793,18 +1816,38 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
+  useEffect(() => {
+    onExtraMentionQueryChange?.(isPathTrigger ? pathTriggerQuery : null);
+  }, [isPathTrigger, onExtraMentionQueryChange, pathTriggerQuery]);
+  const extraMentionCandidatesByItemId = useMemo(
+    () =>
+      new Map(
+        extraMentionCandidates.map((candidate) => [`extra-mention:${candidate.id}`, candidate]),
+      ),
+    [extraMentionCandidates],
+  );
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
-      return workspaceEntries.entries.map((entry) => ({
-        id: `path:${entry.kind}:${entry.path}`,
-        type: "path",
-        path: entry.path,
-        pathKind: entry.kind,
-        label: basenameOfPath(entry.path),
-        description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
-      }));
+      return [
+        ...workspaceEntries.entries.map((entry) => ({
+          id: `path:${entry.kind}:${entry.path}`,
+          type: "path" as const,
+          path: entry.path,
+          pathKind: entry.kind,
+          label: basenameOfPath(entry.path),
+          description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
+        })),
+        ...extraMentionCandidates.map((candidate) => ({
+          id: `extra-mention:${candidate.id}`,
+          type: "path" as const,
+          path: candidate.path,
+          pathKind: candidate.pathKind ?? ("file" as const),
+          label: candidate.label,
+          description: candidate.description,
+        })),
+      ];
     }
     if (composerTrigger.kind === "slash-command") {
       const builtInSlashCommandItems = [
@@ -1871,6 +1914,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
     workspaceEntries.entries,
+    extraMentionCandidates,
   ]);
 
   const composerMenuOpen = Boolean(composerTrigger);
@@ -2552,7 +2596,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const { snapshot, trigger } = resolveActiveComposerTrigger();
       if (!trigger) return;
       if (item.type === "path") {
-        const replacement = `${serializeComposerFileLink(item.path)} `;
+        const replacement =
+          extraMentionCandidatesByItemId.get(item.id)?.replacement ??
+          `${serializeComposerFileLink(item.path)} `;
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
           trigger.rangeEnd,
@@ -2622,6 +2668,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       applyPromptReplacement,
+      extraMentionCandidatesByItemId,
       handleInteractionModeChange,
       planModeUiEnabled,
       resolveActiveComposerTrigger,
@@ -4548,6 +4595,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className="mx-auto w-full min-w-0 max-w-3xl"
       data-chat-composer-form="true"
     >
+      {extraMentionSourceNodes}
       {composerControlsInStrip && restingControlsHost
         ? createPortal(
             <div

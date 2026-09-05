@@ -69,7 +69,7 @@ M-128's effective selection flows through the same `resolvePlanningModel`; the g
 - [ ] `apps/web/src/components/mercurian/PlanModelPicker.logic.ts` (+ test) — `planningModelDisabledReason` exempts `not-signed-in`; options derivation untouched.
 - [ ] `apps/web/src/components/mercurian/PlanningSpace.tsx` — thread the effective selection into the notice helpers (mechanical).
 - [ ] `apps/server/src/provider/Layers/ClaudeProvider.ts` (+ registry test) — the probe runs `claude auth status` and maps an explicit `loggedIn: false` to an `unauthenticated` snapshot that keeps the model list; exit code ignored (the CLI exits 1 exactly when logged out); spawn failure/timeout/unparseable output falls back to the previous path.
-- [ ] Docs ride the PR: the gate's states in `docs/user/projects-and-plans.md` (composer gating sentence + "The planning model" resolution paragraph).
+- [ ] Docs ride the PR: the gate's states in `docs/user/projects-and-threads.md` (composer gating sentence + "The planning model" resolution paragraph).
 - [ ] Do **not** gate on an `unknown` auth status, hide or disable signed-out providers' models in the picker, block the draft composer, rewrite the recorded selection, or touch message landing.
 - [ ] Commits: `feat(contracts): …`, `feat(web): … (M-131)` on branch `venk/m-131-signed-out-providers-gate-sending-the-composer-says-why-the`.
 

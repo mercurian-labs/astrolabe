@@ -272,7 +272,7 @@ A merge that includes the newer spec clears staleness naturally through ancestry
 - **Mobile:** update shared contracts/reducer decoding so streams remain compatible. No native planning UI exists to update.
 - **Providers:** Codex, Claude, Cursor, Grok, and OpenCode receive the same planning toolkit. Exact normalized tool-name and approval tests cover `read_spec` and `save_spec_revision`; no adapter-specific code is needed.
 - **Performance:** snapshots carry one current spec; commit events carry no historical document fan-out; checkpoint projection is one memoized O(V + E) pass when timeline/detail changes, not work on animation frames.
-- **Docs:** update shipped behavior in `docs/user/projects-and-plans.md` and `docs/user/trackers.md`; add spec, checkpoint, and refresh/reconciliation vocabulary to `docs/internals/glossary.md`; update planning/tracker seams in `docs/internals/overview.md`.
+- **Docs:** update shipped behavior in `docs/user/projects-and-threads.md` and `docs/user/trackers.md`; add spec, checkpoint, and refresh/reconciliation vocabulary to `docs/internals/glossary.md`; update planning/tracker seams in `docs/internals/overview.md`.
 
 ## File and module layout
 

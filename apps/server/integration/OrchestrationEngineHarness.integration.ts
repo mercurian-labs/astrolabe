@@ -48,7 +48,7 @@ import {
 import { ProviderService } from "../src/provider/Services/ProviderService.ts";
 import { ProviderAuthService } from "../src/provider/Services/ProviderAuthService.ts";
 import { AnalyticsService } from "../src/telemetry/AnalyticsService.ts";
-import { CheckpointReactorLive } from "../src/orchestration/Layers/CheckpointReactor.ts";
+import { CheckpointReactorLive } from "../src/checkpointing/CheckpointReactor.ts";
 import * as RepositoryIdentityResolver from "../src/project/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "../src/orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../src/orchestration/Layers/ProjectionPipeline.ts";
@@ -87,12 +87,14 @@ import { VcsStatusBroadcaster } from "../src/vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../src/git/GitWorkflowService.ts";
 import * as VcsProcess from "../src/vcs/VcsProcess.ts";
 import * as AgentAwarenessRelay from "../src/relay/AgentAwarenessRelay.ts";
-import * as CodingSessionStore from "../src/mercurian/codingSessions/CodingSessionStore.ts";
+import * as ThreadLineService from "../src/checkpointing/ThreadLineService.ts";
 import * as LineBranchStore from "../src/mercurian/commitTree/LineBranchStore.ts";
 import * as RepositoryStore from "../src/mercurian/repositories/RepositoryStore.ts";
 import * as SlotStore from "../src/mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SnapshotChain from "../src/mercurian/worktreeSlots/SnapshotChain.ts";
+import { ApprovalAutoResponderDefault } from "../src/orchestration/Services/ApprovalAutoResponder.ts";
+import { TurnPreparationDefault } from "../src/orchestration/Services/TurnPreparation.ts";
 
 const decodeCodexSettings = Schema.decodeEffect(CodexSettings);
 
@@ -330,6 +332,7 @@ export const makeOrchestrationIntegrationHarness = (
     );
     const serverSettingsLayer = ServerSettingsService.layerTest();
     const runtimeIngestionLayer = ProviderRuntimeIngestionLive.pipe(
+      Layer.provideMerge(ApprovalAutoResponderDefault),
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(serverSettingsLayer),
     );
@@ -350,6 +353,7 @@ export const makeOrchestrationIntegrationHarness = (
           tryHandlePromptCommand: () => Effect.succeed(false),
         }),
       ),
+      Layer.provideMerge(TurnPreparationDefault),
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(gitWorkflowLayer),
       Layer.provideMerge(textGenerationLayer),
@@ -368,21 +372,11 @@ export const makeOrchestrationIntegrationHarness = (
       ),
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(
-        Layer.mock(CodingSessionStore.CodingSessionStore)({
-          record: () => Effect.void,
-          recordInTransaction: () => Effect.void,
-          announce: () => Effect.void,
-          listForPlan: () => Effect.succeed([]),
-          listAll: Effect.succeed([]),
-          getByThreadId: () => Effect.succeed(Option.none()),
-          getByWorktreePath: () => Effect.succeed(Option.none()),
-          getByBranch: () => Effect.succeed(Option.none()),
+        Layer.mock(ThreadLineService.ThreadLineService)({
+          resolve: () => Effect.succeed(Option.none()),
           updateBranch: () => Effect.void,
           recordSnapshot: () => Effect.void,
-          recordLineBranchMissing: () => Effect.void,
-          end: () => Effect.void,
-          attachPullRequest: () => Effect.void,
-          changes: Stream.empty,
+          recordRepositorySnapshot: () => Effect.void,
         }),
       ),
       Layer.provideMerge(
@@ -465,6 +459,8 @@ export const makeOrchestrationIntegrationHarness = (
       ),
     );
     const layer = Layer.empty.pipe(
+      Layer.provideMerge(ApprovalAutoResponderDefault),
+      Layer.provideMerge(TurnPreparationDefault),
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(orchestrationReactorLayer),
       Layer.provideMerge(providerRegistryLayer),

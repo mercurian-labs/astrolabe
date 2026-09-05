@@ -60,6 +60,7 @@ describe("memory search results", () => {
       "memory",
       "workspace",
     ]);
+    expect(groups.find((entry) => entry.value === "plans")?.label).toBe("Threads");
     expect(noteItemValue("Composer")).toBe("note:Composer");
   });
 });
@@ -166,7 +167,7 @@ describe("filterSearchPaletteGroups", () => {
   it("restricts to actions behind >, and filters within them", () => {
     const groups = [
       group("actions", [
-        item("action:new-plan", ["New plan"]),
+        item("action:new-plan", ["New thread"]),
         item("action:new-project", ["New project"]),
       ]),
       group("plans", [item("plan:one", ["New ideas"])]),
@@ -212,29 +213,48 @@ describe("resolveProjectPick", () => {
 
 describe("resolveCurrentProjectId", () => {
   const plans = [{ planId: "plan-1", projectId: "project-a" }];
-  const draftsById = { "draft-1": { projectId: "project-b" } };
+  const draftProjectIdById = { "draft-1": "project-b" };
 
   it("reads the owning project from inside a plan", () => {
-    expect(resolveCurrentProjectId({ pathname: "/plans/plan-1", plans, draftsById })).toBe(
+    expect(resolveCurrentProjectId({ pathname: "/plans/plan-1", plans, draftProjectIdById })).toBe(
       "project-a",
     );
-    expect(resolveCurrentProjectId({ pathname: "/plans/plan-1/timeline", plans, draftsById })).toBe(
-      "project-a",
-    );
+    expect(
+      resolveCurrentProjectId({ pathname: "/threads/plan-1", plans, draftProjectIdById }),
+    ).toBe("project-a");
+    expect(
+      resolveCurrentProjectId({
+        pathname: "/plans/plan-1/timeline",
+        plans,
+        draftProjectIdById,
+      }),
+    ).toBe("project-a");
   });
 
   it("reads the draft's project from inside a draft", () => {
-    expect(resolveCurrentProjectId({ pathname: "/plans/draft/draft-1", plans, draftsById })).toBe(
-      "project-b",
-    );
+    expect(
+      resolveCurrentProjectId({
+        pathname: "/threads/draft/draft-1",
+        plans,
+        draftProjectIdById,
+      }),
+    ).toBe("project-b");
   });
 
   it("knows nothing anywhere else", () => {
-    expect(resolveCurrentProjectId({ pathname: "/", plans, draftsById })).toBeNull();
-    expect(resolveCurrentProjectId({ pathname: "/repositories", plans, draftsById })).toBeNull();
-    expect(resolveCurrentProjectId({ pathname: "/plans/unknown", plans, draftsById })).toBeNull();
+    expect(resolveCurrentProjectId({ pathname: "/", plans, draftProjectIdById })).toBeNull();
     expect(
-      resolveCurrentProjectId({ pathname: "/plans/draft/unknown", plans, draftsById }),
+      resolveCurrentProjectId({ pathname: "/repositories", plans, draftProjectIdById }),
+    ).toBeNull();
+    expect(
+      resolveCurrentProjectId({ pathname: "/plans/unknown", plans, draftProjectIdById }),
+    ).toBeNull();
+    expect(
+      resolveCurrentProjectId({
+        pathname: "/threads/draft/unknown",
+        plans,
+        draftProjectIdById,
+      }),
     ).toBeNull();
   });
 });

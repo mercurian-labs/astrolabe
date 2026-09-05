@@ -12,7 +12,7 @@ import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
-import * as PlanningAssistant from "../mercurian/assistant/PlanningAssistant.ts";
+import * as LineTurnReactor from "../mercurian/assistant/LineTurnReactor.ts";
 
 const environmentId = EnvironmentId.make("environment-mcp-test");
 const threadId = ThreadId.make("thread-mcp-test");
@@ -54,10 +54,7 @@ const authenticatedMcpDependencies = Layer.mergeAll(
       revokeAll: Effect.void,
     }),
   ),
-  Layer.mock(PlanningAssistant.PlanningAssistant)({
-    startTurn: () => Effect.void,
-    stopTurn: () => Effect.void,
-    answerQuestion: () => Effect.die("unused planning answer"),
+  Layer.mock(LineTurnReactor.LineTurnReactor)({
     frames: () => Stream.empty,
     status: Effect.succeed(new Map()),
     changes: Stream.empty,

@@ -27,9 +27,8 @@ export type SearchPaletteAction = "new-plan" | "new-project" | "open-settings";
  * Everything the palette can put in front of you, by what picking it means.
  *
  * A discriminated union rather than one flattened row shape because the kinds
- * do not navigate alike: a plan opens, a project resolves to a plan first, a
- * section is a page, an action runs. Coding-session results join as their own
- * arm when they arrive, touching none of these.
+ * do not navigate alike: a thread opens, a project resolves to a thread first,
+ * a section is a page, and an action runs.
  */
 export type SearchPaletteResult<TPlan, TProject, TNote> =
   | { readonly kind: "plan"; readonly plan: TPlan; readonly projectName: string }
@@ -41,9 +40,9 @@ export type SearchPaletteResult<TPlan, TProject, TNote> =
 /**
  * The empty query's answer to "where am I needed, where was I".
  *
- * Needing-you first, in the status vocabulary's own order: a plan asking you a
+ * Needing-you first, in the status vocabulary's own order: a thread asking you a
  * question outranks one that merely moved while you were away. Then recents pad
- * the list out, which is where a `working` plan surfaces — something streaming
+ * the list out, which is where a `working` thread surfaces — something streaming
  * is not waiting on you, it is just active. Newest-first inside every tier.
  */
 export function composeEmptyQueryPlanRows<T extends PlanRowStatusFields & { planId: string }>(
@@ -70,7 +69,7 @@ export function composeEmptyQueryPlanRows<T extends PlanRowStatusFields & { plan
 /**
  * Where picking a project takes you: never the project itself.
  *
- * Its most recently active plan, or straight into composing its first — a
+ * Its most recently active thread, or straight into composing its first — a
  * project row in the palette is a promise about work, not a container to land
  * in.
  */
@@ -86,23 +85,23 @@ export function resolveProjectPick<T extends { planId: string; updatedAt: string
 /**
  * Which project you are standing in, if any.
  *
- * Inside a plan it is that plan's project; inside a draft it is the project the
- * draft was opened for — a draft is a project's unborn plan, so "new plan" from
+ * Inside a thread it is that thread's project; inside a draft it is the project the
+ * draft was opened for — a draft is a project's unborn thread, so "new thread" from
  * there means the same project (and reuses that very draft). Anywhere else
  * there is nothing to assume, and the palette has to ask.
  */
 export function resolveCurrentProjectId(input: {
   readonly pathname: string;
   readonly plans: readonly { readonly planId: string; readonly projectId: string }[];
-  readonly draftsById: Readonly<Record<string, { readonly projectId: string }>>;
+  readonly draftProjectIdById: Readonly<Record<string, string>>;
 }): string | null {
   const segments = input.pathname.split("/").filter((segment) => segment.length > 0);
   const [first, second, third] = segments;
-  if (first !== "plans" || second === undefined) return null;
+  if ((first !== "plans" && first !== "threads") || second === undefined) return null;
 
-  if (second === "draft") {
+  if (first === "threads" && second === "draft") {
     if (third === undefined) return null;
-    return input.draftsById[decodeURIComponent(third)]?.projectId ?? null;
+    return input.draftProjectIdById[decodeURIComponent(third)] ?? null;
   }
 
   const planId = decodeURIComponent(second);
@@ -113,7 +112,7 @@ export function resolveCurrentProjectId(input: {
  * The `>` prefix restricts to actions; everything else searches every kind.
  *
  * Ranking is the fork's ladder — exact over prefix over substring, earlier
- * search terms over later, ties keeping source order. For plans that source
+ * search terms over later, ties keeping source order. For threads that source
  * order is the empty query's, so urgency stays the tiebreak among equally good
  * matches.
  */
@@ -191,7 +190,7 @@ export function buildSearchPaletteGroups(input: {
 }): CommandPaletteGroup[] {
   return [
     { value: "actions", label: "Actions", items: input.actionItems },
-    { value: "plans", label: "Plans", items: input.planItems },
+    { value: "plans", label: "Threads", items: input.planItems },
     { value: "projects", label: "Projects", items: input.projectItems },
     { value: "memory", label: "Memory", items: input.noteItems },
     { value: "workspace", label: "Workspace", items: input.sectionItems },

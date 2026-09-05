@@ -1,4 +1,5 @@
 import type {
+  EnvironmentId,
   MemoryLineRef,
   MercurianLineMemoryChanges,
   MercurianMergeMemoryHomeResult,
@@ -12,7 +13,6 @@ import {
   useReadLineMemoryChanges,
   useRevertMemoryChange,
 } from "../../state/mercurianMemory";
-import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { vcsEnvironment } from "../../state/vcs";
 import { WORKSPACE_PANE_TITLE_BAR_CLASS } from "../../workspaceTitlebar";
@@ -37,6 +37,7 @@ const EMPTY: MercurianLineMemoryChanges = {
 
 export function MemoryTab({
   line,
+  environmentId,
   cornerControl,
   onUnreviewedCountChange,
   worktreePath,
@@ -44,17 +45,17 @@ export function MemoryTab({
   onReconcile,
 }: {
   readonly line: MemoryLineRef;
+  readonly environmentId: EnvironmentId;
   readonly cornerControl?: ReactNode;
   readonly onUnreviewedCountChange?: (count: number) => void;
   readonly worktreePath?: string | null;
   readonly mergeHomeConflict?: ReadonlyArray<{ readonly path: string }> | null;
   readonly onReconcile?: (message: string) => void;
 }) {
-  const readChanges = useReadLineMemoryChanges();
-  const markReviewed = useMarkMemoryChangeReviewed();
-  const revertChange = useRevertMemoryChange();
-  const mergeHome = useMergeMemoryHome();
-  const environmentId = usePrimaryEnvironmentId();
+  const readChanges = useReadLineMemoryChanges(environmentId);
+  const markReviewed = useMarkMemoryChangeReviewed(environmentId);
+  const revertChange = useRevertMemoryChange(environmentId);
+  const mergeHome = useMergeMemoryHome(environmentId);
   const refreshVcsStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
   const [result, setResult] = useState<{
     readonly lineKey: string;
@@ -96,7 +97,7 @@ export function MemoryTab({
     };
   }, [line, lineKey, onUnreviewedCountChange, readChanges]);
   useEffect(() => {
-    if (environmentId === null || worktreePath == null) return;
+    if (worktreePath == null) return;
     void refreshVcsStatus({
       environmentId,
       input: { cwd: worktreePath },

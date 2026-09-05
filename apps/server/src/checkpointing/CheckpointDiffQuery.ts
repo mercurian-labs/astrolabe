@@ -35,9 +35,14 @@ import type { CheckpointServiceError } from "./Errors.ts";
 import { chainParentRef, checkpointRefForThreadTurn } from "./Utils.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 import {
-  CodingSessionStore,
-  type CodingSessionStoreError,
-} from "../mercurian/codingSessions/CodingSessionStore.ts";
+  LegacySessionStore,
+  type LegacySessionStoreError,
+} from "../mercurian/lineRuntimes/LegacySessionStore.ts";
+import {
+  LineRuntimeStore,
+  type LineRuntimeStoreError,
+} from "../mercurian/lineRuntimes/LineRuntimeStore.ts";
+import { resolveThreadLine } from "../mercurian/lineRuntimes/resolveThreadLine.ts";
 import {
   LineBranchStore,
   type LineBranchStoreError,
@@ -73,7 +78,11 @@ export class CheckpointDiffQuery extends Context.Service<
       input: MercurianReadLineUncommittedDiffInput,
     ) => Effect.Effect<
       MercurianReadLineUncommittedDiffResult,
-      CheckpointServiceError | CodingSessionStoreError | LineBranchStoreError | RepositoryStoreError
+      | CheckpointServiceError
+      | LegacySessionStoreError
+      | LineRuntimeStoreError
+      | LineBranchStoreError
+      | RepositoryStoreError
     >;
   }
 >()("t3/checkpointing/CheckpointDiffQuery") {}
@@ -99,7 +108,8 @@ function buildTurnDiffResult(
 export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
-  const codingSessions = yield* CodingSessionStore;
+  const lineRuntimes = yield* LineRuntimeStore;
+  const legacySessions = yield* LegacySessionStore;
   const lineBranches = yield* LineBranchStore;
   const repositories = yield* RepositoryStore;
 
@@ -335,8 +345,8 @@ export const make = Effect.gen(function* () {
 
   const getLineUncommittedDiff: CheckpointDiffQuery["Service"]["getLineUncommittedDiff"] =
     Effect.fn("CheckpointDiffQuery.getLineUncommittedDiff")(function* (input) {
-      const session = yield* codingSessions.getByThreadId(input.threadId);
-      if (Option.isNone(session)) {
+      const resolved = yield* resolveThreadLine(lineRuntimes, legacySessions, input.threadId);
+      if (Option.isNone(resolved)) {
         return yield* new CheckpointThreadNotFoundError({
           operation: "CheckpointDiffQuery.getLineUncommittedDiff",
           threadId: input.threadId,
@@ -344,8 +354,8 @@ export const make = Effect.gen(function* () {
       }
       const line = (yield* lineBranches.listAll).find(
         (candidate) =>
-          candidate.repositoryId === session.value.repositoryId &&
-          candidate.branch === session.value.branch,
+          candidate.repositoryId === resolved.value.homeRepositoryId &&
+          candidate.branch === resolved.value.branch,
       );
       if (line === undefined) {
         return yield* new CheckpointRefUnavailableError({
@@ -356,7 +366,7 @@ export const make = Effect.gen(function* () {
         });
       }
       const repository = (yield* repositories.getSnapshot).repositories.find(
-        (candidate) => candidate.repositoryId === session.value.repositoryId,
+        (candidate) => candidate.repositoryId === resolved.value.homeRepositoryId,
       );
       if (repository === undefined) {
         return yield* new CheckpointWorkspacePathMissingError({
@@ -366,7 +376,7 @@ export const make = Effect.gen(function* () {
       }
       const diff = yield* checkpointStore.diffCheckpoints({
         cwd: repository.path,
-        fromCheckpointRef: CheckpointRef.make(`refs/heads/${session.value.branch}`),
+        fromCheckpointRef: CheckpointRef.make(`refs/heads/${resolved.value.branch}`),
         toCheckpointRef: lineSnapshotRef(line.lineRootCommitId),
         fallbackFromToHead: false,
         ignoreWhitespace: input.ignoreWhitespace ?? false,

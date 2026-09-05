@@ -49,9 +49,10 @@ Use **Inspect** to pick an element in the app and reveal its color token. Inspec
 successful pick; its hover glow and badge preview the element and color family that click will select.
 **Cancel** or `Escape` exits Inspect and clears its selection and spotlight.
 
-`commandPalette.toggle` opens the search palette over your plans, projects, workspace sections, and
-the actions that start something new; pressing it again closes it. `plan.new` starts a plan and
-defaults to `mod+n`. See [Projects and plans](./projects-and-plans.md) for what the palette shows
+`commandPalette.toggle` opens the search palette over your threads, projects, workspace sections,
+and the actions that start something new; pressing it again closes it. The legacy command id
+`plan.new` starts a thread and defaults to `mod+n`. See
+[Projects and threads](./projects-and-threads.md) for what the palette shows
 and how picking a result behaves.
 
 The `thread.jump.1` through `thread.jump.9` commands jump to the numbered rows of the project tree,
@@ -61,9 +62,10 @@ the numbered keycaps on the rows they would take you to.
 `rightPanel.toggleMaximized` maximizes or restores the open right panel. It has no default shortcut,
 so add one in **Settings** → **Keybindings** if you want to use it.
 
-`rightPanel.close` closes the active right panel tab and defaults to `mod+w`. Press it again to close
-the next tab. With the terminal focused, `mod+w` closes the terminal instead. Browsers reserve
-`mod+w`, so rebind this command in a browser if needed.
+`rightPanel.close` closes the active closable right-panel tab and defaults to `mod+w`. Press it again
+to close the next tab. A thread's pinned Checkpoints tab remains open. With the terminal focused,
+`mod+w` closes the terminal instead. Browsers reserve `mod+w`, so rebind this command in a browser
+if needed.
 
 `thread.copyReference` copies the active thread's pull request link, or its thread ID when no pull
 request is available. Its default shortcut is `mod+shift+c`.

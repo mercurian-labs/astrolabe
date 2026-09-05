@@ -1918,6 +1918,124 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       }),
   );
 
+  it.effect("keeps a captured checkpoint when a placeholder for the turn lands later", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+        eventStore
+          .append(event)
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+
+      yield* appendAndProject({
+        type: "project.created",
+        eventId: EventId.make("evt-late-placeholder-1"),
+        aggregateKind: "project",
+        aggregateId: ProjectId.make("project-late-placeholder"),
+        occurredAt: "2026-02-26T14:00:00.000Z",
+        commandId: CommandId.make("cmd-late-placeholder-1"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-late-placeholder-1"),
+        metadata: {},
+        payload: {
+          projectId: ProjectId.make("project-late-placeholder"),
+          title: "Project Late Placeholder",
+          workspaceRoot: "/tmp/project-late-placeholder",
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: "2026-02-26T14:00:00.000Z",
+          updatedAt: "2026-02-26T14:00:00.000Z",
+        },
+      });
+      yield* appendAndProject({
+        type: "thread.created",
+        eventId: EventId.make("evt-late-placeholder-2"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-late-placeholder"),
+        occurredAt: "2026-02-26T14:00:01.000Z",
+        commandId: CommandId.make("cmd-late-placeholder-2"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-late-placeholder-2"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-late-placeholder"),
+          projectId: ProjectId.make("project-late-placeholder"),
+          title: "Thread Late Placeholder",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-02-26T14:00:01.000Z",
+          updatedAt: "2026-02-26T14:00:01.000Z",
+        },
+      });
+      yield* appendAndProject({
+        type: "thread.turn-diff-completed",
+        eventId: EventId.make("evt-late-placeholder-3"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-late-placeholder"),
+        occurredAt: "2026-02-26T14:00:02.000Z",
+        commandId: CommandId.make("cmd-late-placeholder-3"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-late-placeholder-3"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-late-placeholder"),
+          turnId: TurnId.make("turn-late-placeholder"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoints/thread-late-placeholder/turn/1"),
+          status: "ready",
+          files: [{ path: "README.md", kind: "modified", additions: 1, deletions: 0 }],
+          assistantMessageId: MessageId.make("assistant-late-placeholder"),
+          completedAt: "2026-02-26T14:00:02.000Z",
+          snapshotKind: "settled",
+        },
+      });
+      yield* appendAndProject({
+        type: "thread.turn-diff-completed",
+        eventId: EventId.make("evt-late-placeholder-4"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-late-placeholder"),
+        occurredAt: "2026-02-26T14:00:03.000Z",
+        commandId: CommandId.make("cmd-late-placeholder-4"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-late-placeholder-4"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-late-placeholder"),
+          turnId: TurnId.make("turn-late-placeholder"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("provider-diff:evt-late"),
+          status: "missing",
+          files: [],
+          assistantMessageId: MessageId.make("assistant-late-placeholder"),
+          completedAt: "2026-02-26T14:00:03.000Z",
+        },
+      });
+
+      const turnRows = yield* sql<{
+        readonly checkpointRef: string | null;
+        readonly checkpointStatus: string | null;
+      }>`
+        SELECT
+          checkpoint_ref AS "checkpointRef",
+          checkpoint_status AS "checkpointStatus"
+        FROM projection_turns
+        WHERE thread_id = 'thread-late-placeholder'
+      `;
+      assert.deepEqual(turnRows, [
+        {
+          checkpointRef: "refs/t3/checkpoints/thread-late-placeholder/turn/1",
+          checkpointStatus: "ready",
+        },
+      ]);
+    }),
+  );
+
   it.effect("clears stale pending approvals from projected shell summaries", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;

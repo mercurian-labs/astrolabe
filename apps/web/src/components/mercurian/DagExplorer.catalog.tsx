@@ -79,9 +79,7 @@ const baseProps = {
   codingSessions: [],
   stalePlanCommitIds: new Set<string>(),
   staleSpecCommitIds: new Set<string>(),
-  onColumnsWidthCapChange: () => undefined,
   onEditAndBranch: () => undefined,
-  onImplementFrom: () => undefined,
   onSelect: () => undefined,
 } as const;
 

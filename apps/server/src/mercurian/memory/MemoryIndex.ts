@@ -36,10 +36,12 @@ import * as ProcessRunner from "../../processRunner.ts";
 import { CheckpointStore } from "../../checkpointing/CheckpointStore.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { CodingSessionStore } from "../codingSessions/CodingSessionStore.ts";
 import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
 import { resolveRepositoryDefault } from "../commitTree/repositoryDefault.ts";
 import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { LegacySessionStore } from "../lineRuntimes/LegacySessionStore.ts";
+import { LineRuntimeStore } from "../lineRuntimes/LineRuntimeStore.ts";
+import { resolveThreadLine } from "../lineRuntimes/resolveThreadLine.ts";
 import { PlanningStore } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
@@ -168,7 +170,8 @@ export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const sourceStore = yield* MemorySourceStore.MemorySourceStore;
   const git = yield* GitVcsDriver;
-  const codingSessions = yield* CodingSessionStore;
+  const lineRuntimes = yield* LineRuntimeStore;
+  const legacySessions = yield* LegacySessionStore;
   const planning = yield* PlanningStore;
   const repositories = yield* RepositoryStore;
   const settings = yield* ServerSettingsService;
@@ -506,10 +509,10 @@ export const make = Effect.gen(function* () {
     let planId: PlanId;
     let commitId: string;
     if ("threadId" in input.line) {
-      const coding = yield* codingSessions.getByThreadId(input.line.threadId);
-      if (Option.isSome(coding)) {
-        planId = coding.value.planId;
-        commitId = coding.value.commitId;
+      const resolved = yield* resolveThreadLine(lineRuntimes, legacySessions, input.line.threadId);
+      if (Option.isSome(resolved) && resolved.value.lineRootCommitId !== null) {
+        planId = resolved.value.planId;
+        commitId = resolved.value.lineRootCommitId;
       } else {
         const active = yield* planTurns.getByThread(input.line.threadId);
         if (Option.isNone(active)) {
@@ -1362,12 +1365,25 @@ export const make = Effect.gen(function* () {
         (session) =>
           lineRootCommitIdFor(context.detail, session.commitId) === context.lineRootCommitId,
       );
+      const lineRuntimeRecords = context.detail.lineRuntimes.filter(
+        (runtime) => runtime.lineRootCommitId === context.lineRootCommitId,
+      );
       const recordMergedHome = Effect.fn("MemoryIndex.mergeHome.record")(function* () {
         const now = yield* DateTime.now;
-        yield* Effect.forEach(
-          lineSessions,
-          (session) => codingSessions.recordMemoryMergedHome(session.threadId, now),
-          { discard: true },
+        yield* Effect.all(
+          [
+            Effect.forEach(
+              lineRuntimeRecords,
+              (runtime) => lineRuntimes.recordMemoryMergedHome(runtime.threadId, now),
+              { discard: true },
+            ),
+            Effect.forEach(
+              lineSessions,
+              (session) => legacySessions.recordMemoryMergedHome(session.threadId, now),
+              { discard: true },
+            ),
+          ],
+          { concurrency: "unbounded", discard: true },
         );
       });
 

@@ -8,10 +8,12 @@ import type {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  Brain,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileDiff,
+  FileText,
   Files,
   GitPullRequest,
   Globe2,
@@ -20,6 +22,7 @@ import {
   TerminalSquare,
   Volume2,
   VolumeOff,
+  Waypoints,
 } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -75,6 +78,7 @@ interface RightPanelTabsProps {
   defaultWidth?: number;
   layoutControls?: ReactNode;
   surfaces: readonly RightPanelSurface[];
+  pinnedSurfaceIds?: ReadonlyArray<string> | undefined;
   /** Fallback environment for surfaces that do not carry their own. */
   environmentId: EnvironmentId | null;
   activeSurfaceId: string | null;
@@ -107,11 +111,16 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddPlan?: (() => void) | undefined;
+  onAddSpec?: (() => void) | undefined;
+  onAddMemory?: (() => void) | undefined;
+  workspaceReady?: boolean | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
   planAvailable?: boolean | undefined;
+  specAvailable?: boolean | undefined;
+  memoryAvailable?: boolean | undefined;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
@@ -167,6 +176,8 @@ const SURFACE_UNAVAILABLE_HINTS = {
   agents: "Available from a thread.",
 } as const;
 
+const DRAFT_WORKSPACE_UNAVAILABLE_REASON = "Available after the first turn starts.";
+
 type TabContextMenuAction =
   | "copy-path"
   | "toggle-mute"
@@ -174,6 +185,93 @@ type TabContextMenuAction =
   | "close-others"
   | "close-to-right"
   | "close-all";
+
+export function isRightPanelSurfacePinned(
+  surfaceId: string,
+  pinnedSurfaceIds: ReadonlyArray<string> | undefined,
+): boolean {
+  return pinnedSurfaceIds?.includes(surfaceId) ?? false;
+}
+
+export function tabCloseContextMenuItems(input: {
+  pinned: boolean;
+  surfaceIndex: number;
+  surfaceCount: number;
+}): ReadonlyArray<ContextMenuItem<TabContextMenuAction>> {
+  if (input.pinned) return [];
+  return [
+    { id: "close", label: "Close" },
+    {
+      id: "close-others",
+      label: "Close others",
+      disabled: input.surfaceCount <= 1,
+    },
+    {
+      id: "close-to-right",
+      label: "Close to the right",
+      disabled: input.surfaceIndex >= input.surfaceCount - 1,
+    },
+    {
+      id: "close-all",
+      label: "Close all",
+      disabled: input.surfaceCount === 0,
+    },
+  ];
+}
+
+export function artifactSurfaceMenuActions(input: {
+  planAvailable: boolean;
+  onAddPlan: () => void;
+  specAvailable: boolean;
+  onAddSpec: () => void;
+  memoryAvailable: boolean;
+  onAddMemory: () => void;
+}) {
+  return [
+    ...(input.planAvailable
+      ? [
+          {
+            label: "Plan",
+            description: "Read the plan this session implements.",
+            icon: ScrollText,
+            shortcut: null,
+            available: true,
+            disabledReason: "",
+            onClick: input.onAddPlan,
+            badgeCount: 0,
+          },
+        ]
+      : []),
+    ...(input.specAvailable
+      ? [
+          {
+            label: "Spec",
+            description: "Read the spec this session implements.",
+            icon: FileText,
+            shortcut: null,
+            available: true,
+            disabledReason: "",
+            onClick: input.onAddSpec,
+            badgeCount: 0,
+          },
+        ]
+      : []),
+    ...(input.memoryAvailable
+      ? [
+          {
+            label: "Memory",
+            description: "Review this line's memory changes.",
+            icon: Brain,
+            shortcut: null,
+            available: true,
+            disabledReason: "",
+            onClick: input.onAddMemory,
+            badgeCount: 0,
+          },
+        ]
+      : []),
+  ];
+}
 
 const TAB_SCROLL_EDGE_TOLERANCE = 1;
 
@@ -306,13 +404,18 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddPlan: () => void;
+  onAddSpec: () => void;
+  onAddMemory: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
   planAvailable: boolean;
+  specAvailable: boolean;
+  memoryAvailable: boolean;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
+  workspaceUnavailableReason: string | null;
   liveAgentCount: number;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
@@ -325,7 +428,7 @@ function RightPanelEmptyState(props: {
       icon: Globe2,
       shortcut: "B",
       available: props.browserAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.browser,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.browser,
       onClick: props.onAddBrowser,
       badgeCount: 0,
     },
@@ -335,7 +438,7 @@ function RightPanelEmptyState(props: {
       icon: TerminalSquare,
       shortcut: "T",
       available: props.terminalAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.terminal,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.terminal,
       onClick: props.onAddTerminal,
       badgeCount: 0,
     },
@@ -345,7 +448,7 @@ function RightPanelEmptyState(props: {
       icon: Files,
       shortcut: "F",
       available: props.filesAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.files,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.files,
       onClick: props.onAddFiles,
       badgeCount: 0,
     },
@@ -355,31 +458,25 @@ function RightPanelEmptyState(props: {
       icon: FileDiff,
       shortcut: "D",
       available: props.diffAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.diff,
       onClick: props.onAddDiff,
       badgeCount: 0,
     },
-    ...(props.planAvailable
-      ? [
-          {
-            label: "Plan",
-            description: "Read the plan this session implements.",
-            icon: ScrollText,
-            shortcut: null,
-            available: true,
-            disabledReason: "",
-            onClick: props.onAddPlan,
-            badgeCount: 0,
-          },
-        ]
-      : []),
+    ...artifactSurfaceMenuActions({
+      planAvailable: props.planAvailable,
+      onAddPlan: props.onAddPlan,
+      specAvailable: props.specAvailable,
+      onAddSpec: props.onAddSpec,
+      memoryAvailable: props.memoryAvailable,
+      onAddMemory: props.onAddMemory,
+    }),
     {
       label: "Pull request",
       description: "Open this branch's pull request.",
       icon: GitPullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequest,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.pullRequest,
       onClick: props.onAddPullRequest,
       badgeCount: 0,
     },
@@ -389,7 +486,7 @@ function RightPanelEmptyState(props: {
       icon: Bot,
       shortcut: "A",
       available: props.agentsAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
+      disabledReason: props.workspaceUnavailableReason ?? SURFACE_UNAVAILABLE_HINTS.agents,
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
     },
@@ -628,6 +725,12 @@ function surfaceTitle(
       return "Agents";
     case "plan":
       return "Plan";
+    case "spec":
+      return "Spec";
+    case "memory":
+      return "Memory";
+    case "checkpoints":
+      return "Checkpoints";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -711,6 +814,12 @@ function SurfaceIcon({
       return <Bot className="size-3 shrink-0" />;
     case "plan":
       return <ScrollText className="size-3 shrink-0" />;
+    case "spec":
+      return <FileText className="size-3 shrink-0" />;
+    case "memory":
+      return <Brain className="size-3 shrink-0" />;
+    case "checkpoints":
+      return <Waypoints className="size-3 shrink-0" />;
   }
 }
 
@@ -756,6 +865,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
   const planAvailable = (props.planAvailable ?? false) && props.onAddPlan !== undefined;
   const onAddPlan = props.onAddPlan ?? (() => undefined);
+  const specAvailable = (props.specAvailable ?? false) && props.onAddSpec !== undefined;
+  const onAddSpec = props.onAddSpec ?? (() => undefined);
+  const memoryAvailable = (props.memoryAvailable ?? false) && props.onAddMemory !== undefined;
+  const onAddMemory = props.onAddMemory ?? (() => undefined);
+  const workspaceUnavailableReason =
+    props.workspaceReady === false ? DRAFT_WORKSPACE_UNAVAILABLE_REASON : null;
   const [tabScrollState, setTabScrollState] = useState({
     hasOverflow: false,
     canScrollLeft: false,
@@ -799,7 +914,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: Globe2,
       shortcut: "B",
       available: props.browserAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.browser,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.browser,
       onClick: props.onAddBrowser,
     },
     {
@@ -807,7 +922,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: TerminalSquare,
       shortcut: "T",
       available: props.terminalAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.terminal,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.terminal,
       onClick: props.onAddTerminal,
     },
     {
@@ -815,7 +930,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: Files,
       shortcut: "F",
       available: props.filesAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.files,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.files,
       onClick: props.onAddFiles,
     },
     {
@@ -823,27 +938,23 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: FileDiff,
       shortcut: "D",
       available: props.diffAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.diff,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.diff,
       onClick: props.onAddDiff,
     },
-    ...(planAvailable
-      ? [
-          {
-            label: "Plan",
-            icon: ScrollText,
-            shortcut: null,
-            available: true,
-            disabledReason: "",
-            onClick: onAddPlan,
-          },
-        ]
-      : []),
+    ...artifactSurfaceMenuActions({
+      planAvailable,
+      onAddPlan,
+      specAvailable,
+      onAddSpec,
+      memoryAvailable,
+      onAddMemory,
+    }),
     {
       label: "Pull request",
       icon: GitPullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.pullRequest,
       onClick: props.onAddPullRequest,
     },
     {
@@ -851,7 +962,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       icon: Bot,
       shortcut: "A",
       available: props.agentsAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.agents,
+      disabledReason: workspaceUnavailableReason ?? SURFACE_DISABLED_REASONS.agents,
       onClick: props.onAddAgents,
     },
   ] as const;
@@ -875,6 +986,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
 
       const surfaceIndex = props.surfaces.findIndex((entry) => entry.id === surface.id);
       if (surfaceIndex < 0) return;
+      const pinned = isRightPanelSurfacePinned(surface.id, props.pinnedSurfaceIds);
 
       const items: ContextMenuItem<TabContextMenuAction>[] = [];
       if (surface.kind === "file" && surface.attachment === undefined) {
@@ -900,23 +1012,13 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         });
       }
       items.push(
-        { id: "close", label: "Close" },
-        {
-          id: "close-others",
-          label: "Close others",
-          disabled: props.surfaces.length <= 1,
-        },
-        {
-          id: "close-to-right",
-          label: "Close to the right",
-          disabled: surfaceIndex >= props.surfaces.length - 1,
-        },
-        {
-          id: "close-all",
-          label: "Close all",
-          disabled: props.surfaces.length === 0,
-        },
+        ...tabCloseContextMenuItems({
+          pinned,
+          surfaceIndex,
+          surfaceCount: props.surfaces.length,
+        }),
       );
+      if (items.length === 0) return;
 
       const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
       switch (action) {
@@ -964,6 +1066,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       if (event.button !== 1) return;
       event.preventDefault();
       event.stopPropagation();
+      if (isRightPanelSurfacePinned(surface.id, props.pinnedSurfaceIds)) return;
       props.onCloseSurface(surface);
     },
     [props],
@@ -1052,6 +1155,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             {props.surfaces.map((surface) => {
               const active = surface.id === props.activeSurfaceId;
               const pending = props.pendingSurfaceIds.has(surface.id);
+              const pinned = isRightPanelSurfacePinned(surface.id, props.pinnedSurfaceIds);
               const title = surfaceTitle(surface, props.previewSessions, props.terminalLabelsById);
               const previewTabId = previewTabIdOf(surface, props.previewSessions);
               // Desktop state is keyed by the session id, but desktop actions
@@ -1076,25 +1180,44 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                   )}
                 >
-                  <PanelTabCloseButton
-                    label={`Close ${title}`}
-                    onClick={() => props.onCloseSurface(surface)}
-                  >
-                    <SurfaceIcon
-                      surface={surface}
-                      sessions={props.previewSessions}
-                      desktopByTabId={props.desktopByTabId}
-                      theme={resolvedTheme}
-                      environmentId={props.environmentId}
-                      pullRequestStatusSeeds={props.pullRequestStatusSeeds}
-                    />
-                    {pending ? (
-                      <span
-                        className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-                        aria-hidden
+                  {pinned ? (
+                    <span className="relative inline-flex shrink-0">
+                      <SurfaceIcon
+                        surface={surface}
+                        sessions={props.previewSessions}
+                        desktopByTabId={props.desktopByTabId}
+                        theme={resolvedTheme}
+                        environmentId={props.environmentId}
+                        pullRequestStatusSeeds={props.pullRequestStatusSeeds}
                       />
-                    ) : null}
-                  </PanelTabCloseButton>
+                      {pending ? (
+                        <span
+                          className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </span>
+                  ) : (
+                    <PanelTabCloseButton
+                      label={`Close ${title}`}
+                      onClick={() => props.onCloseSurface(surface)}
+                    >
+                      <SurfaceIcon
+                        surface={surface}
+                        sessions={props.previewSessions}
+                        desktopByTabId={props.desktopByTabId}
+                        theme={resolvedTheme}
+                        environmentId={props.environmentId}
+                        pullRequestStatusSeeds={props.pullRequestStatusSeeds}
+                      />
+                      {pending ? (
+                        <span
+                          className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </PanelTabCloseButton>
+                  )}
                   {audio === "none" || !audioRuntimeTabId ? null : (
                     <Tooltip>
                       <TooltipTrigger
@@ -1290,13 +1413,18 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddAgents={props.onAddAgents}
             onAddPlan={onAddPlan}
+            onAddSpec={onAddSpec}
+            onAddMemory={onAddMemory}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}
             planAvailable={planAvailable}
+            specAvailable={specAvailable}
+            memoryAvailable={memoryAvailable}
             pullRequestAvailable={props.pullRequestAvailable}
             agentsAvailable={props.agentsAvailable}
+            workspaceUnavailableReason={workspaceUnavailableReason}
             liveAgentCount={props.liveAgentCount}
           />
         ) : (

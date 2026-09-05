@@ -1,13 +1,11 @@
-import type { MercurianCommitId, PlanSpecRevision, PlanTimelineItem } from "@t3tools/contracts";
+import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 
 import { ancestorClosure, descendantClosure, type PlanGraph } from "./PlanGraph.logic";
 
-export function lastSpecRevision(
-  timeline: ReadonlyArray<PlanTimelineItem>,
-): PlanSpecRevision | null {
+function newestSpecCommitId(timeline: ReadonlyArray<PlanTimelineItem>): MercurianCommitId | null {
   for (let index = timeline.length - 1; index >= 0; index -= 1) {
     const item = timeline[index];
-    if (item?._tag === "spec-revision") return item;
+    if (item?._tag === "spec-revision") return item.commitId;
   }
   return null;
 }
@@ -16,7 +14,7 @@ export function snapshotSpecIsForPath(
   timeline: ReadonlyArray<PlanTimelineItem>,
   pathTimeline: ReadonlyArray<PlanTimelineItem>,
 ): boolean {
-  return lastSpecRevision(timeline)?.commitId === lastSpecRevision(pathTimeline)?.commitId;
+  return newestSpecCommitId(timeline) === newestSpecCommitId(pathTimeline);
 }
 
 /** Raw branch leaves whose path has not absorbed the newest spec revision. */
@@ -61,21 +59,4 @@ export function stalePlanLeafIds(graph: PlanGraph): ReadonlySet<string> {
       .filter((node) => node.childrenIds.length === 0 && planMayBeStaleAt(graph, node.commitId))
       .map((node) => node.commitId),
   );
-}
-
-export function specRevisionLabel(revision: PlanSpecRevision | null): string {
-  if (revision === null) return "No spec revision yet";
-  const who = revision.authorKind === "human" ? "You" : "Assistant";
-  if (revision.cause === "import") return `Imported from ${revision.issueId ?? "issue"}`;
-  if (revision.cause === "refresh") return `Refreshed from ${revision.issueId ?? "issue"}`;
-  if (revision.cause === "reconciliation") {
-    return `Reconciled with ${revision.issueId ?? "issue"}`;
-  }
-  return `${who} revised the spec`;
-}
-
-export function expectedSpecRevisionId(
-  timeline: ReadonlyArray<PlanTimelineItem>,
-): MercurianCommitId | null {
-  return lastSpecRevision(timeline)?.commitId ?? null;
 }

@@ -17,26 +17,15 @@ const MIGRATED_STORY_TITLES = [
   "Awaiting input",
   "Working",
   "Unseen updates",
-  "Sessions running and ended",
   "Plan hover card",
-  "Ready to send",
-  "Assistant working",
-  "Command menu open",
-  "Command menu gated",
-  "No model chosen yet",
-  "Not signed in",
-  "Suggested next messages",
   "Reading",
-  "Editing",
-  "Reply streaming on this branch",
+  "Earlier checkpoint",
   "Memory note with links",
   "Memory note not yet written",
   "Memory amendment proposal",
   "Memory amendment blocked",
   "Imported from an issue",
   "No spec yet",
-  "Structured question",
-  "Assistant replying",
   "Turn with a model switch",
   "Coding-session leaf",
   "Spatial map canvas",
@@ -126,7 +115,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(30);
+    expect(migratedEntries).toHaveLength(19);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

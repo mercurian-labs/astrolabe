@@ -26,7 +26,8 @@ import * as MercurianSqlite from "../persistence/Sqlite.ts";
 import * as MemoryIndex from "./MemoryIndex.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
 import * as MemoryReviewStore from "./MemoryReviewStore.ts";
-import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
+import * as LegacySessionStore from "../lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "../lineRuntimes/LineRuntimeStore.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as RepositoryStore from "../repositories/RepositoryStore.ts";
 import * as ServerSettings from "../../serverSettings.ts";
@@ -51,7 +52,10 @@ const gitLayer = GitVcsDriver.layer.pipe(
 const defaultLineServices = Layer.mergeAll(
   PlanTurnRegistry.layer,
   SlotRegistry.layer,
-  Layer.mock(CodingSessionStore.CodingSessionStore)({
+  Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+    getByThreadId: () => Effect.succeed(Option.none()),
+  }),
+  Layer.mock(LegacySessionStore.LegacySessionStore)({
     getByThreadId: () => Effect.succeed(Option.none()),
   }),
   Layer.mock(PlanningStore.PlanningStore)({
@@ -169,6 +173,7 @@ function lineServices(
       readonly commitId: MercurianCommitId;
       readonly threadId: ThreadId;
     }>;
+    readonly runtimes?: ReadonlyArray<{ readonly threadId: ThreadId }>;
     readonly recordedMergedHome?: Array<ThreadId>;
     readonly memoryRepositoryLinked?: boolean;
     readonly gitVersion?: { readonly major: number; readonly minor: number };
@@ -177,6 +182,24 @@ function lineServices(
   },
 ) {
   const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
+  const runtimeRecords = (input.runtimes ?? []).map(({ threadId }) => ({
+    planId: linePlan,
+    lineRootCommitId: lineRoot,
+    threadId,
+    homeRepositoryId: fixture.repositoryId,
+    branch: input.branch,
+    worktreePath: input.slotPath ?? fixture.root,
+    unreachableRepositories: [],
+    snapshotOid: null,
+    snapshotKind: null,
+    departedRef: null,
+    branchMovement: null,
+    lineBranchMissingOid: null,
+    prState: null,
+    memoryMergedHomeAt: null,
+    createdAt,
+    updatedAt: createdAt,
+  }));
   const configuredSlots =
     input.slotPath === undefined
       ? []
@@ -204,7 +227,15 @@ function lineServices(
     input.leases === undefined
       ? SlotRegistry.layer
       : Layer.succeed(SlotRegistry.SlotRegistry, input.leases),
-    Layer.mock(CodingSessionStore.CodingSessionStore)({
+    Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+      getByThreadId: (threadId) =>
+        Effect.succeed(
+          Option.fromNullishOr(runtimeRecords.find((runtime) => runtime.threadId === threadId)),
+        ),
+      recordMemoryMergedHome: (threadId) =>
+        Effect.sync(() => input.recordedMergedHome?.push(threadId)),
+    }),
+    Layer.mock(LegacySessionStore.LegacySessionStore)({
       getByThreadId: () => Effect.succeed(Option.none()),
       recordMemoryMergedHome: (threadId) =>
         Effect.sync(() => input.recordedMergedHome?.push(threadId)),
@@ -228,6 +259,7 @@ function lineServices(
           ],
           snapshotSequence: 1,
           codingSessions: input.sessions ?? [],
+          lineRuntimes: runtimeRecords,
         } as never),
       appendMemoryAmendment: (appendInput) =>
         Effect.sync(() => {
@@ -394,6 +426,30 @@ layer("MemoryIndex", (it) => {
         projectId: fixture.projectId,
         line: { planId: linePlan, commitId: firstChild },
       });
+      assert.deepStrictEqual(requestedLineRoots, [lineRoot]);
+    }),
+  );
+
+  it.effect("resolves a unified runtime thread through its current line ownership", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const fixture = yield* makeFixture("runtime-thread-line", { git: true });
+      yield* fs.writeFileString(`${fixture.root}/Plans.md`, "Main\n");
+      yield* runGit(fixture.root, ["add", "Plans.md"]);
+      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+      const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+      yield* runGit(fixture.root, ["branch", "memory-line"]);
+      const requestedLineRoots: Array<MercurianCommitId> = [];
+      const { index } = yield* makeLineIndex(fixture, {
+        branch: "memory-line",
+        baseOid,
+        requestedLineRoots,
+        runtimes: [{ threadId: lineThread }],
+      });
+
+      const note = yield* index.readNote(fixture.projectId, "Plans", { threadId: lineThread });
+
+      assert.strictEqual(note.markdown, "Main\n");
       assert.deepStrictEqual(requestedLineRoots, [lineRoot]);
     }),
   );
@@ -933,14 +989,12 @@ layer("MemoryIndex", (it) => {
       yield* runGit(fixture.root, ["checkout", "main"]);
       const reviewed = new Set<string>();
       const recordedMergedHome: Array<ThreadId> = [];
-      const createdAt = DateTime.makeUnsafe("2026-09-04T00:00:00.000Z");
       const { index } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid: mainBefore,
         reviewed,
         recordedMergedHome,
-        sessions: [{ commitId: lineSessionCommit, threadId: lineSessionThread }],
-        timeline: mergeTimeline(createdAt),
+        runtimes: [{ threadId: lineSessionThread }],
       });
 
       const result = yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef });

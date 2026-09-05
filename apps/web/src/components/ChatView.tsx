@@ -70,7 +70,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
@@ -172,6 +172,7 @@ import { PullRequestDetailPanel } from "./pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs, type PullRequestTabStatus } from "./RightPanelTabs";
+import type { ThreadActionMenuId } from "./threadActionMenu.logic";
 import { AgentsPanel } from "./AgentsPanel";
 import {
   deriveAgentPanelModel,
@@ -233,7 +234,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
-import { buildThreadRouteParams, navigateToParkedThreadRoute } from "../threadRoutes";
+import { buildThreadRouteParams, navigateToThreadRoute } from "../threadRoutes";
 import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
@@ -288,7 +289,11 @@ import {
   useThreadShell,
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
-import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import {
+  ChatComposer,
+  type ChatComposerHandle,
+  type ChatComposerMentionSources,
+} from "./chat/ChatComposer";
 import { createPageScrollController, type PageScrollKey } from "./chat/pageScrollController";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -623,33 +628,45 @@ function formatOutgoingPrompt(params: {
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
+// The panel lane fills panel slots; the header lane fills header chrome, readiness, and Fork here.
+type ChatViewSlots = {
+  headerContent?: ReactNode;
+  headerBanner?: ReactNode;
+  headerLeadingActions?: ReactNode;
+  headerProjectName?: string;
+  hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId>;
+  workspaceReady?: boolean;
+  workspaceCwdOverride?: string | null;
+  mentionSources?: ChatComposerMentionSources;
+  planPanel?: ReactNode;
+  specPanel?: ReactNode;
+  memoryPanel?: ReactNode;
+  checkpointsPanel?: ReactNode;
+  canForkHere?: (message: ChatMessage) => boolean;
+  onForkHere?: (message: ChatMessage) => void;
+};
+
 type ChatViewProps =
-  | {
+  | (ChatViewSlots & {
       environmentId: EnvironmentId;
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
-      headerContent?: ReactNode;
-      headerBanner?: ReactNode;
-      planPanel?: ReactNode;
       routeKind: "server";
       draftId?: never;
-    }
-  | {
+    })
+  | (ChatViewSlots & {
       environmentId: EnvironmentId;
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
-      headerContent?: ReactNode;
-      headerBanner?: ReactNode;
-      planPanel?: ReactNode;
       routeKind: "draft";
       draftId: DraftId;
-    };
+    });
 
 interface TerminalLaunchContext {
   threadId: ThreadId;
@@ -1349,9 +1366,23 @@ function ChatViewContent(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
     headerContent,
     headerBanner,
+    headerLeadingActions,
+    headerProjectName,
+    hiddenThreadMenuActions,
+    workspaceReady,
+    workspaceCwdOverride,
+    mentionSources,
+    canForkHere,
+    onForkHere,
     planPanel,
+    specPanel,
+    memoryPanel,
+    checkpointsPanel,
   } = props;
   const planAvailable = planPanel !== undefined;
+  const specAvailable = specPanel !== undefined;
+  const memoryAvailable = memoryPanel !== undefined;
+  const workingSurfacesReady = workspaceReady !== false;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
@@ -1456,6 +1487,7 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
+  const router = useRouter();
   const citationLocation = useLocation({
     select: (location) => ({
       href: location.href,
@@ -1810,6 +1842,7 @@ function ChatViewContent(props: ChatViewProps) {
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
+  const pinnedSurfaceIds = rightPanelState.pinnedSurfaceIds;
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
@@ -2151,7 +2184,7 @@ function ChatViewContent(props: ChatViewProps) {
           },
         );
         if (routeKind !== "draft" || draftId !== storedDraftSession.draftId) {
-          await navigateToParkedThreadRoute({
+          await navigateToThreadRoute(router, {
             kind: "draft",
             draftId: storedDraftSession.draftId,
           });
@@ -2185,7 +2218,7 @@ function ChatViewContent(props: ChatViewProps) {
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
-      await navigateToParkedThreadRoute({ kind: "draft", draftId: nextDraftId });
+      await navigateToThreadRoute(router, { kind: "draft", draftId: nextDraftId });
       return nextThreadId;
     },
     [
@@ -2916,13 +2949,17 @@ function ChatViewContent(props: ChatViewProps) {
     }
     return byMessageId;
   }, [turnDiffSummaries]);
+  const workspaceWorktreePath =
+    workspaceCwdOverride === undefined
+      ? (activeThread?.worktreePath ?? null)
+      : workspaceCwdOverride;
   const gitCwd = activeProject
     ? projectScriptCwd({
         project: { cwd: activeProject.workspaceRoot },
-        worktreePath: activeThread?.worktreePath ?? null,
+        worktreePath: workspaceWorktreePath,
       })
     : null;
-  const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
+  const gitStatusCwd = workspaceWorktreePath ?? gitCwd;
   const gitStatusQuery = useEnvironmentQuery(
     gitStatusCwd === null
       ? null
@@ -2994,8 +3031,10 @@ function ChatViewContent(props: ChatViewProps) {
     : null;
   const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
-  const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
-  const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeThreadWorktreePath = workspaceWorktreePath;
+  const activeWorkspaceRoot = workingSurfacesReady
+    ? (activeThreadWorktreePath ?? activeProjectCwd ?? undefined)
+    : undefined;
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
@@ -3345,7 +3384,7 @@ function ChatViewContent(props: ChatViewProps) {
       const isBaseTerminalBusy = runningTerminalIds.includes(baseTerminalId);
       const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
       const shouldCreateNewTerminal = wantsNewTerminal;
-      const targetWorktreePath = options?.worktreePath ?? activeThread.worktreePath ?? null;
+      const targetWorktreePath = options?.worktreePath ?? activeThreadWorktreePath;
 
       setTerminalUiLaunchContext({
         threadId: activeThreadId,
@@ -3426,6 +3465,7 @@ function ChatViewContent(props: ChatViewProps) {
       activeThreadId,
       activeThreadRef,
       gitCwd,
+      activeThreadWorktreePath,
       setTerminalOpen,
       setThreadError,
       storeNewTerminal,
@@ -3654,6 +3694,14 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef || !planAvailable) return;
     useRightPanelStore.getState().open(activeThreadRef, "plan");
   }, [activeThreadRef, planAvailable]);
+  const addSpecSurface = useCallback(() => {
+    if (!activeThreadRef || !specAvailable) return;
+    useRightPanelStore.getState().open(activeThreadRef, "spec");
+  }, [activeThreadRef, specAvailable]);
+  const addMemorySurface = useCallback(() => {
+    if (!activeThreadRef || !memoryAvailable) return;
+    useRightPanelStore.getState().open(activeThreadRef, "memory");
+  }, [activeThreadRef, memoryAvailable]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -7080,7 +7128,7 @@ function ChatViewContent(props: ChatViewProps) {
 
     if (failure === null) {
       const navigateResult = await settlePromise(() =>
-        navigateToParkedThreadRoute({
+        navigateToThreadRoute(router, {
           kind: "server",
           threadRef: scopeThreadRef(activeThread.environmentId, nextThreadId),
         }),
@@ -7296,7 +7344,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   const panelToggleControls = (
     <PanelLayoutControls
-      terminalAvailable={activeProject !== null}
+      terminalAvailable={workingSurfacesReady && activeProject !== null}
       terminalOpen={terminalUiState.terminalOpen}
       terminalShortcutLabel={shortcutLabelForCommand(keybindings, "terminal.toggle")}
       rightPanelAvailable={activeProject !== null}
@@ -7393,6 +7441,12 @@ function ChatViewContent(props: ChatViewProps) {
       </Suspense>
     ) : renderedRightPanelSurface?.kind === "plan" ? (
       planPanel
+    ) : renderedRightPanelSurface?.kind === "spec" ? (
+      specPanel
+    ) : renderedRightPanelSurface?.kind === "memory" ? (
+      memoryPanel
+    ) : renderedRightPanelSurface?.kind === "checkpoints" ? (
+      checkpointsPanel
     ) : renderedRightPanelSurface?.kind === "pull-request" && !pullRequestsCapabilityKnown ? (
       <PullRequestDetailGhost />
     ) : renderedRightPanelSurface?.kind === "pull-request" && !supportsPullRequests ? (
@@ -7516,6 +7570,9 @@ function ChatViewContent(props: ChatViewProps) {
           {!rightPanelControlsInPanel ? panelLayoutControls : null}
           {headerContent ?? (
             <ChatHeader
+              leadingActions={headerLeadingActions}
+              hiddenThreadMenuActions={hiddenThreadMenuActions}
+              workspaceReady={workspaceReady}
               {...(!supportsPullRequests || activeProjectRepository === null
                 ? {}
                 : { onOpenPullRequest: openProjectPullRequest })}
@@ -7524,7 +7581,7 @@ function ChatViewContent(props: ChatViewProps) {
               {...(routeKind === "draft" && draftId ? { draftId } : {})}
               activeThreadTitle={activeThread.title}
               isServerThread={isServerThread}
-              activeProjectName={activeProject?.title}
+              activeProjectName={headerProjectName ?? activeProject?.title}
               activeProjectCwd={activeProject?.workspaceRoot ?? null}
               activeProjectFaviconPath={activeProject?.faviconPath ?? null}
               activeProjectIcon={activeProject?.projectIcon ?? null}
@@ -7632,6 +7689,8 @@ function ChatViewContent(props: ChatViewProps) {
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
                 loadEarlier={loadEarlierTurns}
+                canForkHere={canForkHere}
+                onForkHere={onForkHere}
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
@@ -7689,6 +7748,7 @@ function ChatViewContent(props: ChatViewProps) {
                           draftId={draftId}
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProject?.title ?? null}
+                          projectNameOverride={headerProjectName}
                         />
                       </div>
                     </div>
@@ -7772,6 +7832,7 @@ function ChatViewContent(props: ChatViewProps) {
                             keybindings={keybindings}
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
+                            mentionSources={mentionSources}
                             restingControlsHost={restingComposerControlsHost}
                             restingControlsHaveLeadingContext={
                               isGitRepo || showComposerEnvironmentIndicator
@@ -7952,6 +8013,7 @@ function ChatViewContent(props: ChatViewProps) {
           maximized={rightPanelMaximized}
           layoutControls={rightPanelOpen ? inlineRightPanelControls : null}
           surfaces={renderedRightPanelSurfaces}
+          pinnedSurfaceIds={pinnedSurfaceIds}
           environmentId={activeThreadRef.environmentId}
           activeSurfaceId={renderedRightPanelSurface?.id ?? null}
           pendingSurfaceIds={pendingFileSurfaceIds}
@@ -7973,13 +8035,18 @@ function ChatViewContent(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
           onAddPlan={addPlanSurface}
+          onAddSpec={addSpecSurface}
+          onAddMemory={addMemorySurface}
+          workspaceReady={workspaceReady}
           planAvailable={planAvailable}
-          browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
-          diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          pullRequestAvailable={pullRequestSurfaceAvailable}
-          agentsAvailable
+          specAvailable={specAvailable}
+          memoryAvailable={memoryAvailable}
+          browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
+          terminalAvailable={workingSurfacesReady && activeProject !== null}
+          diffAvailable={workingSurfacesReady && isServerThread && isGitRepo}
+          filesAvailable={workingSurfacesReady && activeProject !== null}
+          pullRequestAvailable={workingSurfacesReady && pullRequestSurfaceAvailable}
+          agentsAvailable={workingSurfacesReady}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -8004,6 +8071,7 @@ function ChatViewContent(props: ChatViewProps) {
               ) : null
             }
             surfaces={renderedRightPanelSurfaces}
+            pinnedSurfaceIds={pinnedSurfaceIds}
             environmentId={activeThreadRef.environmentId}
             activeSurfaceId={renderedRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
@@ -8025,13 +8093,18 @@ function ChatViewContent(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             onAddPlan={addPlanSurface}
+            onAddSpec={addSpecSurface}
+            onAddMemory={addMemorySurface}
+            workspaceReady={workspaceReady}
             planAvailable={planAvailable}
-            browserAvailable={isPreviewSupportedInRuntime()}
-            terminalAvailable={activeProject !== null}
-            diffAvailable={isServerThread && isGitRepo}
-            filesAvailable={activeProject !== null}
-            pullRequestAvailable={pullRequestSurfaceAvailable}
-            agentsAvailable
+            specAvailable={specAvailable}
+            memoryAvailable={memoryAvailable}
+            browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
+            terminalAvailable={workingSurfacesReady && activeProject !== null}
+            diffAvailable={workingSurfacesReady && isServerThread && isGitRepo}
+            filesAvailable={workingSurfacesReady && activeProject !== null}
+            pullRequestAvailable={workingSurfacesReady && pullRequestSurfaceAvailable}
+            agentsAvailable={workingSurfacesReady}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

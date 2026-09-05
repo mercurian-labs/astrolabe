@@ -31,7 +31,7 @@ import {
 } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
-import { navigateToParkedThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
+import { navigateToThreadRoute, resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 
@@ -347,7 +347,7 @@ export function useNewThreadHandler() {
           ) {
             return opened;
           }
-          await navigateToParkedThreadRoute({
+          await navigateToThreadRoute(router, {
             kind: "draft",
             draftId: emptyStoredDraftThread.draftId,
           });
@@ -422,11 +422,14 @@ export function useNewThreadHandler() {
             interactionMode: racedDraft.interactionMode,
             ...pickExplicitWorkspaceOptions(options),
           });
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: racedDraft.draftId },
-            replace: options?.replace ?? false,
-          });
+          await navigateToThreadRoute(
+            router,
+            {
+              kind: "draft",
+              draftId: racedDraft.draftId,
+            },
+            { replace: options?.replace ?? false },
+          );
           return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
@@ -451,11 +454,13 @@ export function useNewThreadHandler() {
           // state. The project default wins when both are present.
           setModelSelection(draftId, modelSelectionOverride, { replaceOptions: true });
         }
-        await router.navigate({
-          to: "/draft/$draftId",
-          params: { draftId },
-          replace: options?.replace ?? false,
-        });
+        await navigateToThreadRoute(
+          router,
+          { kind: "draft", draftId },
+          {
+            replace: options?.replace ?? false,
+          },
+        );
         return { draftId, threadId };
       })();
     },

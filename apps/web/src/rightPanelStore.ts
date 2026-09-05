@@ -23,8 +23,13 @@ export const RIGHT_PANEL_KINDS = [
   "pull-request",
   "agents",
   "plan",
+  "spec",
+  "memory",
+  "checkpoints",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
+
+export const PINNED_SURFACE_IDS = ["checkpoints"] as const;
 
 export type RightPanelSurface =
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
@@ -67,31 +72,19 @@ export type RightPanelSurface =
       repository: string;
       number: number;
     }
-  | {
-      /**
-       * A change request opened beside a thread or in the pull-request list's shared panel.
-       * The reference lives in the id so several pull requests can remain open as peer tabs.
-       */
-      id: `pull-request:${string}`;
-      kind: "pull-request";
-      /**
-       * Which server the change request was read from. The list spans every connected one, so
-       * two of them can hold the same project id; a panel beside a thread leaves this out and
-       * takes the environment from its own ref.
-       */
-      environmentId?: string;
-      projectId: string;
-      repository: string;
-      number: number;
-    }
   | { id: "agents"; kind: "agents" }
-  | { id: "plan"; kind: "plan" };
+  | { id: "plan"; kind: "plan" }
+  | { id: "spec"; kind: "spec" }
+  | { id: "memory"; kind: "memory" }
+  | { id: "checkpoints"; kind: "checkpoints" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
-const RIGHT_PANEL_STORAGE_VERSION = 11;
+// v12 adds the Mercurian Spec and Checkpoints singleton surfaces.
+// v13 adds Memory as a line-scoped singleton surface.
+const RIGHT_PANEL_STORAGE_VERSION = 13;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -103,6 +96,8 @@ export interface ThreadRightPanelState {
   isOpen: boolean;
   activeSurfaceId: string | null;
   surfaces: RightPanelSurface[];
+  /** Present only on Mercurian line threads whose panel owns pinned surfaces. */
+  pinnedSurfaceIds?: ReadonlyArray<string>;
 }
 
 interface RightPanelStoreState {
@@ -141,6 +136,7 @@ interface RightPanelStoreState {
     ref: ScopedThreadRef,
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
   ) => void;
+  seedMercurianLinePanel: (ref: ScopedThreadRef) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
 
@@ -162,8 +158,27 @@ const singletonSurface = (
       return { id: "agents", kind };
     case "plan":
       return { id: "plan", kind };
+    case "spec":
+      return { id: "spec", kind };
+    case "memory":
+      return { id: "memory", kind };
+    case "checkpoints":
+      return { id: "checkpoints", kind };
   }
 };
+
+function isPinnedSurface(state: ThreadRightPanelState, surfaceId: string): boolean {
+  return state.pinnedSurfaceIds?.includes(surfaceId) ?? false;
+}
+
+function withPinnedSurfaces(state: ThreadRightPanelState): ThreadRightPanelState {
+  const missing = PINNED_SURFACE_IDS.filter(
+    (surfaceId) =>
+      isPinnedSurface(state, surfaceId) &&
+      !state.surfaces.some((surface) => surface.id === surfaceId),
+  ).map((surfaceId) => singletonSurface(surfaceId));
+  return missing.length === 0 ? state : { ...state, surfaces: [...missing, ...state.surfaces] };
+}
 
 const browserSurface = (tabId: string | null): RightPanelSurface =>
   tabId
@@ -235,6 +250,7 @@ const upsertSurface = (
   surface: RightPanelSurface,
   activate = true,
 ): ThreadRightPanelState => ({
+  ...current,
   isOpen: true,
   surfaces: current.surfaces.some((entry) => entry.id === surface.id)
     ? current.surfaces
@@ -281,6 +297,8 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                 threadState && typeof threadState === "object" ? threadState : null;
               const surfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
+                    if (!surface || typeof surface !== "object") return [];
+                    if (!(RIGHT_PANEL_KINDS as readonly string[]).includes(surface.kind)) return [];
                     if (surface.kind === "file") {
                       const revealLine =
                         typeof surface.revealLine === "number" &&
@@ -368,7 +386,20 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
               // first survivor instead of rendering an open empty panel.
               const activeSurfaceId =
                 persistedActiveSurfaceId ?? (isOpen ? (surfaces[0]?.id ?? null) : null);
-              return [threadKey, { isOpen, surfaces, activeSurfaceId }];
+              const pinnedSurfaceIds = Array.isArray(validThreadState?.pinnedSurfaceIds)
+                ? PINNED_SURFACE_IDS.filter((surfaceId) =>
+                    validThreadState.pinnedSurfaceIds?.includes(surfaceId),
+                  )
+                : [];
+              return [
+                threadKey,
+                withPinnedSurfaces({
+                  isOpen,
+                  surfaces,
+                  activeSurfaceId,
+                  ...(pinnedSurfaceIds.length === 0 ? {} : { pinnedSurfaceIds }),
+                }),
+              ];
             }),
         )
       : {};
@@ -422,6 +453,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (existing?.revealRequestId ?? 0) + 1,
             );
             return {
+              ...current,
               isOpen: true,
               activeSurfaceId: surface.id,
               surfaces: existing
@@ -534,16 +566,22 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       closeSurface: (ref, surfaceId) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
-            if (index < 0) return current;
-            const surfaces = current.surfaces.filter((surface) => surface.id !== surfaceId);
-            if (current.activeSurfaceId !== surfaceId) {
-              return { ...current, isOpen: surfaces.length > 0 && current.isOpen, surfaces };
+            const pinnedCurrent = withPinnedSurfaces(current);
+            if (isPinnedSurface(pinnedCurrent, surfaceId)) return pinnedCurrent;
+            const index = pinnedCurrent.surfaces.findIndex((surface) => surface.id === surfaceId);
+            if (index < 0) return pinnedCurrent;
+            const surfaces = pinnedCurrent.surfaces.filter((surface) => surface.id !== surfaceId);
+            if (pinnedCurrent.activeSurfaceId !== surfaceId) {
+              return {
+                ...pinnedCurrent,
+                isOpen: surfaces.length > 0 && pinnedCurrent.isOpen,
+                surfaces,
+              };
             }
             const fallback = surfaces[Math.min(index, surfaces.length - 1)] ?? null;
             return {
-              ...current,
-              isOpen: surfaces.length > 0 && current.isOpen,
+              ...pinnedCurrent,
+              isOpen: surfaces.length > 0 && pinnedCurrent.isOpen,
               surfaces,
               activeSurfaceId: fallback?.id ?? null,
             };
@@ -552,12 +590,16 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       closeOtherSurfaces: (ref, surfaceId) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            const surface = current.surfaces.find((entry) => entry.id === surfaceId);
-            if (!surface || current.surfaces.length === 1) return current;
+            const pinnedCurrent = withPinnedSurfaces(current);
+            const surface = pinnedCurrent.surfaces.find((entry) => entry.id === surfaceId);
+            if (!surface || pinnedCurrent.surfaces.length === 1) return pinnedCurrent;
+            const surfaces = pinnedCurrent.surfaces.filter(
+              (entry) => entry.id === surfaceId || isPinnedSurface(pinnedCurrent, entry.id),
+            );
             return {
-              ...current,
+              ...pinnedCurrent,
               isOpen: true,
-              surfaces: [surface],
+              surfaces,
               activeSurfaceId: surface.id,
             };
           }),
@@ -565,26 +607,42 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       closeSurfacesToRight: (ref, surfaceId) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
-            if (index < 0 || index === current.surfaces.length - 1) return current;
-            const surfaces = current.surfaces.slice(0, index + 1);
+            const pinnedCurrent = withPinnedSurfaces(current);
+            const index = pinnedCurrent.surfaces.findIndex((surface) => surface.id === surfaceId);
+            if (index < 0 || index === pinnedCurrent.surfaces.length - 1) return pinnedCurrent;
+            const surfaces = pinnedCurrent.surfaces.filter(
+              (surface, surfaceIndex) =>
+                surfaceIndex <= index || isPinnedSurface(pinnedCurrent, surface.id),
+            );
             const activeStillExists = surfaces.some(
-              (surface) => surface.id === current.activeSurfaceId,
+              (surface) => surface.id === pinnedCurrent.activeSurfaceId,
             );
             return {
-              ...current,
+              ...pinnedCurrent,
               surfaces,
-              activeSurfaceId: activeStillExists ? current.activeSurfaceId : surfaceId,
+              activeSurfaceId: activeStillExists ? pinnedCurrent.activeSurfaceId : surfaceId,
             };
           }),
         })),
       closeAllSurfaces: (ref) =>
         set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
-            current.surfaces.length === 0
-              ? current
-              : { ...current, isOpen: false, surfaces: [], activeSurfaceId: null },
-          ),
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const pinnedCurrent = withPinnedSurfaces(current);
+            if (pinnedCurrent.surfaces.length === 0) return pinnedCurrent;
+            const surfaces = pinnedCurrent.surfaces.filter((surface) =>
+              isPinnedSurface(pinnedCurrent, surface.id),
+            );
+            return {
+              ...pinnedCurrent,
+              isOpen: surfaces.length > 0 && pinnedCurrent.isOpen,
+              surfaces,
+              activeSurfaceId: surfaces.some(
+                (surface) => surface.id === pinnedCurrent.activeSurfaceId,
+              )
+                ? pinnedCurrent.activeSurfaceId
+                : (surfaces[0]?.id ?? null),
+            };
+          }),
         })),
       reconcileBrowserSurfaces: (ref, tabIds) =>
         set((state) => ({
@@ -673,6 +731,25 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return upsertSurface(current, singletonSurface(kind));
           }),
         })),
+      seedMercurianLinePanel: (ref) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          if (threadKey in state.byThreadKey) return state;
+          return {
+            byThreadKey: {
+              ...state.byThreadKey,
+              [threadKey]: {
+                isOpen: true,
+                activeSurfaceId: "plan",
+                surfaces: [
+                  { id: "checkpoints", kind: "checkpoints" },
+                  { id: "plan", kind: "plan" },
+                ],
+                pinnedSurfaceIds: PINNED_SURFACE_IDS,
+              },
+            },
+          };
+        }),
       removeThread: (ref) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
@@ -704,7 +781,8 @@ export function selectThreadRightPanelState(
   ref: ScopedThreadRef | null | undefined,
 ): ThreadRightPanelState {
   if (!ref) return EMPTY_THREAD_STATE;
-  return byThreadKey[scopedThreadKey(ref)] ?? EMPTY_THREAD_STATE;
+  const state = byThreadKey[scopedThreadKey(ref)];
+  return state === undefined ? EMPTY_THREAD_STATE : withPinnedSurfaces(state);
 }
 
 export function selectActiveRightPanel(

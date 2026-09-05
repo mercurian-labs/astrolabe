@@ -1,11 +1,11 @@
 # Permission modes
 
-A permission mode controls how much a coding-session agent can do on its own. The mode belongs to
-that session and can be changed from its composer; changing one session does not change another.
+A permission mode controls how much the agent working in a thread line can do on its own. The mode
+belongs to that line and can be changed from its composer; changing one line does not change another.
 
 ## The four modes
 
-**Supervised** asks before commands, file reads, and file changes that need permission. The session
+**Supervised** asks before commands, file reads, and file changes that need permission. The thread
 pauses at the action until you respond.
 
 **Auto-accept edits** lets file changes proceed and asks before other protected actions. It suits
@@ -60,6 +60,6 @@ describe what you get; the exact per-provider translation is internal and may ch
 
 Mobile offers the same four modes with the same labels and descriptions.
 
-Antigravity's native `/plan` command requests a plan. It does not change the permission mode.
+Antigravity's native `/plan` command requests a plan-mode response. It does not change the permission mode.
 Astrolabe's separate Plan mode control is not available for Antigravity. See
 [Antigravity](./providers-antigravity.md) for setup and thread limits.

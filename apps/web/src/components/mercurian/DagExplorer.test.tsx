@@ -1,8 +1,4 @@
-import {
-  MercurianRepositoryId,
-  type MercurianCommitId,
-  type PlanTimelineItem,
-} from "@t3tools/contracts";
+import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -22,7 +18,6 @@ import {
 import {
   DagExplorer,
   DagExplorerDisplaySettingsControls,
-  DagExplorerWarningsContent,
   EXPLORER_VIEW_STORAGE_KEY,
   ExplorerView,
   graphNodePopoverInteraction,
@@ -30,7 +25,6 @@ import {
 import { DEFAULT_DAG_EXPLORER_DISPLAY_SETTINGS } from "./DagExplorer.logic";
 import { buildPlanGraph } from "./PlanGraph.logic";
 import type { PlanNodePopoverController } from "./PlanNodePopover";
-import { PlanPaneToggle } from "./PlanningSpace";
 
 const root = commitId("root");
 const planStaleTip = commitId("plan-stale-tip");
@@ -85,7 +79,6 @@ const sharedExplorerProps = {
   historyWalkViewsEnabled: true,
   providers: [],
   onEditAndBranch: vi.fn(),
-  onImplementFrom: vi.fn(),
 } as const;
 
 const popoverController = () =>
@@ -109,27 +102,24 @@ const renderExplorer = (
       graph={buildPlanGraph(items)}
       stalePlanCommitIds={new Set()}
       staleSpecCommitIds={new Set()}
-      onColumnsWidthCapChange={vi.fn()}
       onSelect={vi.fn()}
     />,
   );
 
 describe("DagExplorer", () => {
-  it("continues immediately for Graph node click and keyboard activation", () => {
+  it("always selects immediately for Graph node click and keyboard activation", () => {
     const popover = popoverController();
     const calls: Array<string> = [];
     popover.close.mockImplementation(() => calls.push("close"));
     const onSelect = vi.fn(() => calls.push("select"));
     const interaction = graphNodePopoverInteraction({
-      acts: ["continue", "implement"],
       commitId: root,
       popover,
       onSelect,
     });
-    const anchor = {} as Element;
 
-    interaction.activate(anchor);
-    interaction.activate(anchor);
+    interaction.activate();
+    interaction.activate();
 
     expect(popover.open).not.toHaveBeenCalled();
     expect(popover.close).toHaveBeenCalledTimes(2);
@@ -138,28 +128,25 @@ describe("DagExplorer", () => {
     expect(calls).toEqual(["close", "select", "close", "select"]);
   });
 
-  it("opens details when a future Graph node cannot continue", () => {
+  it("selects even when the node popover has no acts", () => {
     const popover = popoverController();
     const onSelect = vi.fn();
     const interaction = graphNodePopoverInteraction({
-      acts: [],
       commitId: root,
       popover,
       onSelect,
     });
-    const anchor = {} as Element;
 
-    interaction.activate(anchor);
+    interaction.activate();
 
-    expect(popover.open).toHaveBeenCalledWith(root, anchor);
-    expect(popover.close).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(popover.open).not.toHaveBeenCalled();
+    expect(popover.close).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith(root);
   });
 
   it("shares linger and delayed close between Graph hover and focus", () => {
     const popover = popoverController();
     const interaction = graphNodePopoverInteraction({
-      acts: ["continue"],
       commitId: root,
       popover,
       onSelect: vi.fn(),
@@ -176,7 +163,7 @@ describe("DagExplorer", () => {
     expect(popover.scheduleClose).toHaveBeenCalledTimes(2);
   });
 
-  it("names the pane and exposes row details without commit-level controls", () => {
+  it("renders barless row details and keeps graph display controls", () => {
     const markup = renderExplorer(checkpointTimeline);
     const settings = renderToStaticMarkup(
       <DagExplorerDisplaySettingsControls
@@ -184,25 +171,31 @@ describe("DagExplorer", () => {
         onSettingsChange={vi.fn()}
       />,
     );
-    const toggle = renderToStaticMarkup(
-      <PlanPaneToggle
-        state={{ open: true, view: "explorer", artifact: "plan" }}
-        onChange={vi.fn()}
-      />,
-    );
 
-    expect(markup).toContain("Checkpoint Graph");
+    expect(markup).not.toContain("Checkpoint Graph");
     expect(markup).not.toContain('aria-label="Checkpoint Graph warnings"');
     expect(markup).toContain(
       'aria-label="Details for You: Group this turn; Assistant: Grouped and ready"',
     );
-    expect(toggle).toContain('aria-label="Checkpoint Graph"');
-    expect(toggle).toContain("lucide-waypoints");
-    expect(toggle).not.toContain("lucide-git-branch");
     expect(settings).toContain("Display layout");
     expect(settings).toContain("Node size");
     expect(settings).toContain("Line thickness");
     expect(settings).not.toMatch(/Detail|Commits/);
+  });
+
+  it("has no title-bar rendering mode", () => {
+    const markup = renderToStaticMarkup(
+      <DagExplorer
+        {...sharedExplorerProps}
+        anchoredCommitId={null}
+        graph={buildPlanGraph(checkpointTimeline)}
+        stalePlanCommitIds={new Set()}
+        staleSpecCommitIds={new Set()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(markup).not.toContain("Checkpoint Graph");
   });
 
   it("renders only Graph without changing a parked stored preference", () => {
@@ -217,7 +210,6 @@ describe("DagExplorer", () => {
           historyWalkViewsEnabled={false}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}
-          onColumnsWidthCapChange={vi.fn()}
           onSelect={vi.fn()}
         />,
       );
@@ -233,23 +225,31 @@ describe("DagExplorer", () => {
     }
   });
 
-  it("restores all three view toggles on a fork when walking views are enabled", () => {
-    const markup = renderToStaticMarkup(
-      <DagExplorer
-        {...sharedExplorerProps}
-        anchoredCommitId={null}
-        graph={buildPlanGraph(timeline)}
-        historyWalkViewsEnabled
-        stalePlanCommitIds={new Set()}
-        staleSpecCommitIds={new Set()}
-        onColumnsWidthCapChange={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+  it("follows the stored columns preference without rendering view toggles", () => {
+    const previous = getLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, ExplorerView);
+    setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, "columns", ExplorerView);
+    try {
+      const markup = renderToStaticMarkup(
+        <DagExplorer
+          {...sharedExplorerProps}
+          anchoredCommitId={null}
+          graph={buildPlanGraph(timeline)}
+          historyWalkViewsEnabled
+          stalePlanCommitIds={new Set()}
+          staleSpecCommitIds={new Set()}
+          onSelect={vi.fn()}
+        />,
+      );
 
-    expect(markup).toContain('aria-label="Thread"');
-    expect(markup).toContain('aria-label="Columns"');
-    expect(markup).toContain('aria-label="Graph"');
+      expect(markup).toContain("overflow-x-auto");
+      expect(markup).not.toContain('<svg class="size-full cursor-grab');
+      expect(markup).not.toContain('aria-label="Thread"');
+      expect(markup).not.toContain('aria-label="Columns"');
+      expect(markup).not.toContain('aria-label="Graph"');
+    } finally {
+      if (previous === null) removeLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY);
+      else setLocalStorageItem(EXPLORER_VIEW_STORAGE_KEY, previous, ExplorerView);
+    }
   });
 
   it("surfaces plan freshness separately from a stale spec branch", () => {
@@ -260,24 +260,15 @@ describe("DagExplorer", () => {
         graph={buildPlanGraph(timeline)}
         stalePlanCommitIds={new Set([planStaleTip])}
         staleSpecCommitIds={new Set([specStaleTip])}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
 
-    const warningContent = renderToStaticMarkup(
-      <DagExplorerWarningsContent stalePlanCount={1} staleSpecCount={1} />,
-    );
-
-    expect(markup).toContain('aria-label="Checkpoint Graph warnings"');
-    expect(markup).toContain("lucide-triangle-alert");
+    expect(markup).not.toContain('aria-label="Checkpoint Graph warnings"');
+    expect(markup).not.toContain("lucide-triangle-alert");
     expect(markup).not.toContain("1 stale spec branch");
     expect(markup).not.toContain("1 plan may be stale");
     expect(markup).toContain("Plan may be stale");
-    expect(warningContent).toContain("1 stale spec branch");
-    expect(warningContent).toContain("spec changed since the branch&#x27;s base");
-    expect(warningContent).toContain("1 plan may be stale");
-    expect(warningContent).toContain("The spec changed after the plan was last revised");
   });
 
   it("uses a terminal glyph and repository summary for a coding-session leaf", () => {
@@ -297,7 +288,6 @@ describe("DagExplorer", () => {
         graph={buildPlanGraph([timeline[0]!, session])}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -345,7 +335,6 @@ describe("DagExplorer", () => {
         inFlightAnchorCommitIds={[anchor]}
         stalePlanCommitIds={new Set()}
         staleSpecCommitIds={new Set()}
-        onColumnsWidthCapChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -418,7 +407,6 @@ describe("DagExplorer", () => {
           graph={buildPlanGraph(checkpointTimeline)}
           stalePlanCommitIds={new Set([response])}
           staleSpecCommitIds={new Set([response])}
-          onColumnsWidthCapChange={vi.fn()}
           onSelect={vi.fn()}
         />,
       );
@@ -474,7 +462,6 @@ describe("DagExplorer", () => {
           inFlightAnchorCommitIds={[anchor]}
           stalePlanCommitIds={new Set()}
           staleSpecCommitIds={new Set()}
-          onColumnsWidthCapChange={vi.fn()}
           onSelect={vi.fn()}
         />,
       );

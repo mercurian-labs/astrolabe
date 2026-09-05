@@ -27,7 +27,7 @@ import { repositoryIdsForProject, sortRepositoriesForPage } from "./Repositories
  *
  * The set is context and never a stamp: nothing else moves when it changes —
  * no grouping in the tree, no badge on a plan, nothing filed under a
- * repository. What it does is tell the planning space which code to reach for
+ * repository. What it does is tell the thread which code to reach for
  * when someone mentions a file.
  */
 export function ManageProjectRepositoriesDialog({
@@ -171,8 +171,8 @@ export function ManageProjectRepositoriesDialog({
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
-                A project&rsquo;s repositories are the context its plans ground in — a default, not
-                a boundary.
+                A project&rsquo;s repositories are the context its threads ground in — a default,
+                not a boundary.
               </p>
               <ul className="space-y-1">
                 {repositories.map((repository) => (

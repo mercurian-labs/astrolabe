@@ -28,7 +28,9 @@ import Migration0013 from "./Migrations/013_WorktreeSlots.ts";
 import Migration0014 from "./Migrations/014_SnapshotChain.ts";
 import Migration0015 from "./Migrations/015_LineBranchHolds.ts";
 import Migration0016 from "./Migrations/016_DropPlanImplementVerdicts.ts";
-import Migration0017 from "./Migrations/017_MemoryAmendmentReviews.ts";
+import Migration0017 from "./Migrations/017_LineRuntimes.ts";
+import Migration0018 from "./Migrations/018_LineRuntimeBirth.ts";
+import Migration0019 from "./Migrations/019_MemoryAmendmentReviewsCompatibility.ts";
 
 export const migrationEntries = [
   [1, "CommitGraph", Migration0001],
@@ -47,7 +49,9 @@ export const migrationEntries = [
   [14, "SnapshotChain", Migration0014],
   [15, "LineBranchHolds", Migration0015],
   [16, "DropPlanImplementVerdicts", Migration0016],
-  [17, "MemoryAmendmentReviews", Migration0017],
+  [17, "LineRuntimes", Migration0017],
+  [18, "LineRuntimeBirth", Migration0018],
+  [19, "MemoryAmendmentReviewsCompatibility", Migration0019],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -28,6 +28,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -52,6 +53,10 @@ import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+import {
+  ApprovalAutoResponder,
+  ApprovalAutoResponderDefault,
+} from "../Services/ApprovalAutoResponder.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -100,13 +105,14 @@ function isLegacyTurnCompletedEvent(
 function createProviderServiceHarness() {
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
   const runtimeSessions: ProviderSession[] = [];
+  const responses: unknown[] = [];
 
   const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
   const service: ProviderServiceShape = {
     startSession: () => unsupported(),
     sendTurn: () => unsupported(),
     interruptTurn: () => unsupported(),
-    respondToRequest: () => unsupported(),
+    respondToRequest: (input) => Effect.sync(() => void responses.push(input)),
     respondToUserInput: () => unsupported(),
     stopSession: () => unsupported(),
     listSessions: () => Effect.succeed([...runtimeSessions]),
@@ -165,6 +171,7 @@ function createProviderServiceHarness() {
     service,
     emit,
     setSession,
+    responses,
   };
 }
 
@@ -228,6 +235,7 @@ describe("ProviderRuntimeIngestion", () => {
   async function createHarness(options?: {
     serverSettings?: Partial<ServerSettings>;
     threadTitle?: string;
+    autoRespondRequests?: boolean;
   }) {
     const workspaceRoot = makeTempDir("t3-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
@@ -244,7 +252,17 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provide(RepositoryIdentityResolver.layer),
       Layer.provide(SqlitePersistenceMemory),
     );
+    const approvalAutoResponderLayer =
+      options?.autoRespondRequests === true
+        ? Layer.succeed(
+            ApprovalAutoResponder,
+            ApprovalAutoResponder.of({
+              decide: () => Effect.succeed(Option.some("acceptForSession" as const)),
+            }),
+          )
+        : ApprovalAutoResponderDefault;
     const layer = ProviderRuntimeIngestionLive.pipe(
+      Layer.provideMerge(approvalAutoResponderLayer),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       // Single shared liveness instance across ingestion (writer), the
@@ -325,6 +343,7 @@ describe("ProviderRuntimeIngestion", () => {
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      responses: provider.responses,
       drain,
     };
   }
@@ -2695,6 +2714,37 @@ describe("ProviderRuntimeIngestion", () => {
       );
     });
     expect(completionEvents).toHaveLength(1);
+  });
+
+  it("auto-responds before projection without appending an approval activity", async () => {
+    const harness = await createHarness({ autoRespondRequests: true });
+    harness.emit({
+      type: "request.opened",
+      eventId: asEventId("evt-auto-request-opened"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      requestId: ApprovalRequestId.make("req-auto"),
+      payload: {
+        requestType: "file_read_approval",
+        detail: "read package.json",
+      },
+    });
+
+    await harness.drain();
+
+    expect(harness.responses).toEqual([
+      {
+        threadId: asThreadId("thread-1"),
+        requestId: ApprovalRequestId.make("req-auto"),
+        decision: "acceptForSession",
+      },
+    ]);
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.activities.some((activity) => activity.id === "evt-auto-request-opened")).toBe(
+      false,
+    );
   });
 
   it("maps canonical request events into approval activities with requestKind", async () => {

@@ -26,10 +26,15 @@ import { GitManagerError, ThreadId } from "@t3tools/contracts";
 import * as VcsStatusBroadcaster from "./VcsStatusBroadcaster.ts";
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
-import * as CodingSessionStore from "../mercurian/codingSessions/CodingSessionStore.ts";
+import * as LegacySessionStore from "../mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "../mercurian/lineRuntimes/LineRuntimeStore.ts";
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
-const noCodingSessionsLayer = Layer.mock(CodingSessionStore.CodingSessionStore)({
+const noLineRuntimesLayer = Layer.mock(LineRuntimeStore.LineRuntimeStore)({
+  getByBranch: () => Effect.succeed(Option.none()),
+  recordPullRequestState: () => Effect.void,
+});
+const noLegacySessionsLayer = Layer.mock(LegacySessionStore.LegacySessionStore)({
   getByBranch: () => Effect.succeed(Option.none()),
   recordPullRequestState: () => Effect.void,
 });
@@ -86,7 +91,7 @@ function makeTestLayer(state: {
     readonly recordedStates: Array<string | null>;
   };
 }) {
-  const codingSessionLayer = Layer.mock(CodingSessionStore.CodingSessionStore)({
+  const lineRuntimeLayer = Layer.mock(LineRuntimeStore.LineRuntimeStore)({
     getByBranch: (branch) =>
       Effect.succeed(
         state.session?.branch === branch
@@ -97,7 +102,8 @@ function makeTestLayer(state: {
       Effect.sync(() => state.session?.recordedStates.push(prState)),
   });
   return VcsStatusBroadcaster.layer.pipe(
-    Layer.provide(codingSessionLayer),
+    Layer.provide(lineRuntimeLayer),
+    Layer.provide(noLegacySessionsLayer),
     Layer.provideMerge(NodeServices.layer),
     Layer.provide(makeBackgroundPolicyLayer(() => true)),
     Layer.provide(
@@ -175,7 +181,8 @@ describe("VcsStatusBroadcaster", () => {
         refName: "main",
       };
       const testLayer = VcsStatusBroadcaster.layer.pipe(
-        Layer.provide(noCodingSessionsLayer),
+        Layer.provide(noLineRuntimesLayer),
+        Layer.provide(noLegacySessionsLayer),
         Layer.provideMerge(NodeServices.layer),
         Layer.provide(makeBackgroundPolicyLayer(() => true)),
         Layer.provide(
@@ -327,7 +334,8 @@ describe("VcsStatusBroadcaster", () => {
       failRemoteStatus: false,
     };
     const testLayer = VcsStatusBroadcaster.layer.pipe(
-      Layer.provide(noCodingSessionsLayer),
+      Layer.provide(noLineRuntimesLayer),
+      Layer.provide(noLegacySessionsLayer),
       Layer.provideMerge(NodeServices.layer),
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
@@ -436,7 +444,8 @@ describe("VcsStatusBroadcaster", () => {
       remoteInvalidationCalls: 0,
     };
     const testLayer = VcsStatusBroadcaster.layer.pipe(
-      Layer.provide(noCodingSessionsLayer),
+      Layer.provide(noLineRuntimesLayer),
+      Layer.provide(noLegacySessionsLayer),
       Layer.provideMerge(NodeServices.layer),
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
@@ -601,7 +610,8 @@ describe("VcsStatusBroadcaster", () => {
     });
     let firstRemoteAttemptDeferred: Deferred.Deferred<void> | null = null;
     const testLayer = VcsStatusBroadcaster.layer.pipe(
-      Layer.provide(noCodingSessionsLayer),
+      Layer.provide(noLineRuntimesLayer),
+      Layer.provide(noLegacySessionsLayer),
       Layer.provideMerge(NodeServices.layer),
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
@@ -813,7 +823,8 @@ describe("VcsStatusBroadcaster", () => {
       remoteInvalidationCalls: 0,
     };
     const testLayer = VcsStatusBroadcaster.layer.pipe(
-      Layer.provide(noCodingSessionsLayer),
+      Layer.provide(noLineRuntimesLayer),
+      Layer.provide(noLegacySessionsLayer),
       Layer.provideMerge(NodeServices.layer),
       Layer.provide(makeBackgroundPolicyLayer(() => false)),
       Layer.provide(
@@ -867,7 +878,8 @@ describe("VcsStatusBroadcaster", () => {
     let remoteInterruptedDeferred: Deferred.Deferred<void, never> | null = null;
     let remoteStartedDeferred: Deferred.Deferred<void, never> | null = null;
     const testLayer = VcsStatusBroadcaster.layer.pipe(
-      Layer.provide(noCodingSessionsLayer),
+      Layer.provide(noLineRuntimesLayer),
+      Layer.provide(noLegacySessionsLayer),
       Layer.provideMerge(NodeServices.layer),
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(

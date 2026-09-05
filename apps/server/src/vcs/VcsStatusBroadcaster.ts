@@ -26,7 +26,8 @@ import { mergeGitStatusParts } from "@t3tools/shared/git";
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { CodingSessionStore } from "../mercurian/codingSessions/CodingSessionStore.ts";
+import { LegacySessionStore } from "../mercurian/lineRuntimes/LegacySessionStore.ts";
+import { LineRuntimeStore } from "../mercurian/lineRuntimes/LineRuntimeStore.ts";
 
 const DEFAULT_VCS_STATUS_REFRESH_INTERVAL = Duration.seconds(30);
 const VCS_STATUS_REFRESH_FAILURE_BASE_DELAY = Duration.seconds(30);
@@ -207,7 +208,8 @@ export const make = Effect.gen(function* () {
   const autoPullPolicy = yield* VcsAutoPullPolicy;
   const workflow = yield* GitWorkflowService.GitWorkflowService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
-  const codingSessions = yield* CodingSessionStore;
+  const lineRuntimes = yield* LineRuntimeStore;
+  const legacySessions = yield* LegacySessionStore;
   const fs = yield* FileSystem.FileSystem;
   const changesPubSub = yield* Effect.acquireRelease(
     PubSub.unbounded<VcsStatusChange>(),
@@ -422,13 +424,18 @@ export const make = Effect.gen(function* () {
       if (remote?.pr === null || remote?.pr === undefined) return;
       const pullRequest = remote.pr;
       yield* Effect.gen(function* () {
-        const session = yield* codingSessions.getByBranch(pullRequest.headRef);
-        if (Option.isSome(session)) {
-          yield* codingSessions.recordPullRequestState(session.value.threadId, pullRequest.state);
+        const runtime = yield* lineRuntimes.getByBranch(pullRequest.headRef);
+        if (Option.isSome(runtime)) {
+          yield* lineRuntimes.recordPullRequestState(runtime.value.threadId, pullRequest.state);
+          return;
+        }
+        const legacy = yield* legacySessions.getByBranch(pullRequest.headRef);
+        if (Option.isSome(legacy)) {
+          yield* legacySessions.recordPullRequestState(legacy.value.threadId, pullRequest.state);
         }
       }).pipe(
         Effect.catch((cause) =>
-          Effect.logWarning("failed to record coding session pull request state", {
+          Effect.logWarning("failed to record Mercurian line pull request state", {
             branch: pullRequest.headRef,
             cause,
           }),

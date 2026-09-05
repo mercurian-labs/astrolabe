@@ -14,16 +14,20 @@ import {
 } from "./PlanningPrompt.ts";
 
 describe("planningSystemAppendix", () => {
-  it("names the identity, the read-only rule, and the one write door", () => {
+  it("names the identity, editable runtime boundary, and artifact tools", () => {
     const appendix = planningSystemAppendix({
       planTitle: "Reshape the sidebar",
       repositories: [{ name: "astrolabe", path: "/repos/astrolabe" }],
       unreachableRepositories: [],
+      memoryRoot: { name: "memory", path: "/repos/astrolabe/memory" },
+      memoryAmendmentsAvailable: true,
     });
     expect(appendix).toContain('planning assistant for the plan "Reshape the sidebar"');
-    expect(appendix).toContain("read-only");
+    expect(appendix).toContain("editable within the runtime mode and permissions");
     expect(appendix).toContain("save_plan_revision");
     expect(appendix).toContain("save_spec_revision");
+    expect(appendix).toContain("An amendment lands on this line's memory branch");
+    expect(appendix).not.toContain("confirm");
     expect(appendix).toContain("Goal / user story describes the outcome");
     expect(appendix).toContain("Acceptance criteria records the observable conditions");
     expect(appendix).toContain("- astrolabe: /repos/astrolabe");

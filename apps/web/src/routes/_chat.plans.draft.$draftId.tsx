@@ -1,16 +1,16 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 
-import { PlanningSpaceDraft } from "../components/mercurian/PlanningSpace";
+function PlanDraftRouteRedirect() {
+  const navigate = useNavigate();
 
-/**
- * The static `draft` segment wins over `$planId`, so an unborn plan gets its
- * own address without shadowing real plans.
- */
-function PlanDraftRouteView() {
-  const { draftId } = Route.useParams();
-  return <PlanningSpaceDraft draftId={draftId} />;
+  useEffect(() => {
+    void navigate({ to: "/", replace: true });
+  }, [navigate]);
+
+  return null;
 }
 
 export const Route = createFileRoute("/_chat/plans/draft/$draftId")({
-  component: PlanDraftRouteView,
+  component: PlanDraftRouteRedirect,
 });

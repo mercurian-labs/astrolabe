@@ -24,40 +24,31 @@
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 
-import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 // Import creates a plan, so it belongs to the planning surface — but the issue
 // it creates one from is the tracker surface's own shape, passed back verbatim.
 import { TrackerConnectionId, TrackerIssue } from "./mercurianTrackers.ts";
 import { PlanningModelSelection } from "./mercurianWorkspace.ts";
-import {
-  BranchMovement,
-  ChatAttachment,
-  ModelSelection,
-  SnapshotKind,
-  UploadChatAttachment,
-} from "./orchestration.ts";
+import { BranchMovement, ChatAttachment, SnapshotKind } from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
   subscribeTree: "mercurian.subscribeTree",
   subscribePlan: "mercurian.subscribePlan",
   createProject: "mercurian.createProject",
-  createPlan: "mercurian.createPlan",
   importPlan: "mercurian.importPlan",
-  appendPlanMessage: "mercurian.appendPlanMessage",
+  ensureProjectRuntime: "mercurian.ensureProjectRuntime",
+  forkLine: "mercurian.forkLine",
+  openLine: "mercurian.openLine",
   savePlanRevision: "mercurian.savePlanRevision",
   saveSpecRevision: "mercurian.saveSpecRevision",
   refreshSpec: "mercurian.refreshSpec",
-  startCodingSession: "mercurian.startCodingSession",
   getPlanTextAt: "mercurian.getPlanTextAt",
-  measurePlanReconstruction: "mercurian.measurePlanReconstruction",
   getSpecAt: "mercurian.getSpecAt",
   visitPlan: "mercurian.visitPlan",
   markPlanUnread: "mercurian.markPlanUnread",
   archivePlan: "mercurian.archivePlan",
   unarchivePlan: "mercurian.unarchivePlan",
   deletePlan: "mercurian.deletePlan",
-  stopPlanningTurn: "mercurian.stopPlanningTurn",
-  answerPlanningQuestion: "mercurian.answerPlanningQuestion",
   subscribeWorktreeSlots: "mercurian.subscribeWorktreeSlots",
   readLineUncommittedDiff: "mercurian.readLineUncommittedDiff",
   recreateLineBranch: "mercurian.recreateLineBranch",
@@ -184,6 +175,27 @@ export const PlanCodingSessionRecord = Schema.Struct({
 });
 export type PlanCodingSessionRecord = typeof PlanCodingSessionRecord.Type;
 
+/** Mutable working-state facts keyed by a plan line. */
+export const PlanLineRuntimeRecord = Schema.Struct({
+  planId: PlanId,
+  lineRootCommitId: Schema.NullOr(MercurianCommitId),
+  forkParentCommitId: Schema.optional(MercurianCommitId),
+  threadId: ThreadId,
+  homeRepositoryId: MercurianRepositoryId,
+  branch: TrimmedNonEmptyString,
+  worktreePath: TrimmedNonEmptyString,
+  unreachableRepositories: Schema.Array(TrimmedNonEmptyString),
+  snapshotOid: Schema.NullOr(TrimmedNonEmptyString),
+  snapshotKind: Schema.NullOr(SnapshotKind),
+  departedRef: Schema.NullOr(Schema.String),
+  branchMovement: Schema.NullOr(BranchMovement),
+  lineBranchMissingOid: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  prState: Schema.optional(Schema.NullOr(Schema.Literals(["open", "closed", "merged"]))),
+  memoryMergedHomeAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  repositories: Schema.optional(Schema.Array(PlanCodingSessionRepository)),
+});
+export type PlanLineRuntimeRecord = typeof PlanLineRuntimeRecord.Type;
+
 /** Mirrors the commit store's author axis. */
 export const PlanAuthorKind = Schema.Literals(["human", "assistant"]);
 export type PlanAuthorKind = typeof PlanAuthorKind.Type;
@@ -201,7 +213,7 @@ export type PlanTurnId = typeof PlanTurnId.Type;
  * provider's own tool vocabulary, so every client renders one shape.
  */
 export const PlanGroundingItem = Schema.Struct({
-  kind: Schema.Literals(["file-read", "search", "listing", "other"]),
+  kind: Schema.Literals(["file-read", "search", "listing", "command", "edit", "other"]),
   /** What a person would recognize it by — a path, a query, a tool name. */
   label: TrimmedNonEmptyString,
   detail: Schema.optional(Schema.String),
@@ -252,6 +264,7 @@ export type PlanQuestionRecord = typeof PlanQuestionRecord.Type;
 
 export const MercurianProject = Schema.Struct({
   projectId: MercurianProjectId,
+  orchestrationProjectId: Schema.NullOr(ProjectId),
   name: TrimmedNonEmptyString,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -307,9 +320,17 @@ export const PlanTreeRow = Schema.Struct({
    * Derived per read from the plan's commits, never stored.
    */
   hasPublishedCommits: Schema.Boolean,
-  codingSessions: Schema.Array(PlanCodingSessionRecord),
 });
 export type PlanTreeRow = typeof PlanTreeRow.Type;
+
+/** Compact routing ownership carried by the tree subscription. */
+export const MercurianThreadPlanLink = Schema.Struct({
+  planId: PlanId,
+  threadId: ThreadId,
+  /** Present for current line runtimes; absent for legacy coding sessions. */
+  lineRootCommitId: Schema.optional(Schema.NullOr(MercurianCommitId)),
+});
+export type MercurianThreadPlanLink = typeof MercurianThreadPlanLink.Type;
 
 /**
  * The commit facts every timeline item carries, whatever kind it is: where it
@@ -467,6 +488,7 @@ export const PlanInFlightTurn = Schema.Struct({
   parentCommitId: MercurianCommitId,
   text: Schema.String,
   grounding: Schema.Array(PlanGroundingItem),
+  phase: Schema.optional(Schema.Literals(["waiting-for-slot", "running"])),
   groundingScope: Schema.optional(PlanGroundingScope),
   /** Present while a structured question waits on the person. */
   questions: Schema.optional(Schema.Array(PlanQuestion)),
@@ -500,6 +522,10 @@ export const PlanDetail = Schema.Struct({
   snapshotSequence: Schema.Number,
   /** Mutable coding-session facts, keyed by their immutable leaf commits. */
   codingSessions: Schema.Array(PlanCodingSessionRecord),
+  /** Working-state facts keyed by line root. */
+  lineRuntimes: Schema.Array(PlanLineRuntimeRecord),
+  /** The line most recently opened, when a visit named one. */
+  lastVisitedThreadId: Schema.optional(ThreadId),
   /** The turns streaming right now — one per branch. Runtime state, never stored. */
   inFlightTurns: Schema.Array(PlanInFlightTurn),
 });
@@ -521,6 +547,7 @@ export const PlanTurnRefusalReason = Schema.Literals([
   "pool-at-capacity",
   "line-branch-missing",
   "slot-unavailable",
+  "repository-not-git",
 ]);
 export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
 
@@ -551,10 +578,15 @@ export const PlanStreamItem = Schema.Union([
     sessions: Schema.Array(PlanCodingSessionRecord),
   }),
   Schema.Struct({
+    kind: Schema.Literal("line-runtimes"),
+    lineRuntimes: Schema.Array(PlanLineRuntimeRecord),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("turn-started"),
     turnId: PlanTurnId,
     parentCommitId: MercurianCommitId,
     groundingScope: Schema.optional(PlanGroundingScope),
+    phase: Schema.optional(Schema.Literals(["waiting-for-slot", "running"])),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn-delta"),
@@ -601,6 +633,9 @@ export type PlanStreamItem = typeof PlanStreamItem.Type;
 export const PlanningTreeSnapshot = Schema.Struct({
   projects: Schema.Array(MercurianProject),
   plans: Schema.Array(PlanTreeRow),
+  threadPlanLinks: Schema.Array(MercurianThreadPlanLink).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 });
 export type PlanningTreeSnapshot = typeof PlanningTreeSnapshot.Type;
 
@@ -621,20 +656,6 @@ export const MercurianCreateProjectInput = Schema.Struct({
   name: TrimmedNonEmptyString,
 });
 export type MercurianCreateProjectInput = typeof MercurianCreateProjectInput.Type;
-
-/**
- * A plan is born with its first message — there is no way to ask for an empty
- * one, which is what keeps empty rows out of the tree.
- */
-export const MercurianCreatePlanInput = Schema.Struct({
-  projectId: MercurianProjectId,
-  message: Schema.String,
-  /** The birth message is a message: it composes with the same powers. */
-  attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
-  /** Absent means seed from the pair this workspace last planned under. */
-  modelChoice: Schema.optional(PlanningModelSelection),
-});
-export type MercurianCreatePlanInput = typeof MercurianCreatePlanInput.Type;
 
 /**
  * Import an issue as a plan. The issue travels whole, exactly as the live
@@ -676,15 +697,30 @@ export type PlanImportResult = typeof PlanImportResult.Type;
  * Absent means the space's tip, which keeps the input honest for a caller with
  * no position of its own.
  */
-export const MercurianAppendPlanMessageInput = Schema.Struct({
+export const MercurianForkLineInput = Schema.Struct({
   planId: PlanId,
-  text: Schema.String,
-  parentCommitId: Schema.optional(MercurianCommitId),
-  attachments: Schema.optional(Schema.Array(UploadChatAttachment)),
-  /** Absent means inherit the nearest pair already carried by this branch. */
-  modelChoice: Schema.optional(PlanningModelSelection),
+  parentCommitId: MercurianCommitId,
 });
-export type MercurianAppendPlanMessageInput = typeof MercurianAppendPlanMessageInput.Type;
+export type MercurianForkLineInput = typeof MercurianForkLineInput.Type;
+
+export const MercurianOpenLineInput = Schema.Struct({
+  planId: PlanId,
+  lineRootCommitId: MercurianCommitId,
+});
+export type MercurianOpenLineInput = typeof MercurianOpenLineInput.Type;
+
+export const MercurianLineResult = Schema.Struct({ threadId: ThreadId });
+export type MercurianLineResult = typeof MercurianLineResult.Type;
+
+export const MercurianEnsureProjectRuntimeInput = Schema.Struct({
+  projectId: MercurianProjectId,
+});
+export type MercurianEnsureProjectRuntimeInput = typeof MercurianEnsureProjectRuntimeInput.Type;
+
+export const MercurianEnsureProjectRuntimeResult = Schema.Struct({
+  orchestrationProjectId: ProjectId,
+});
+export type MercurianEnsureProjectRuntimeResult = typeof MercurianEnsureProjectRuntimeResult.Type;
 
 /**
  * The artifact's whole text after the edit — a revision is a snapshot, not a
@@ -737,20 +773,6 @@ export const MercurianRefreshSpecResult = Schema.Union([
 ]);
 export type MercurianRefreshSpecResult = typeof MercurianRefreshSpecResult.Type;
 
-export const MercurianStartCodingSessionInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: MercurianCommitId,
-  runtimeMode: Schema.Literals(["approval-required", "auto-accept-edits", "full-access"]),
-  modelSelection: ModelSelection,
-});
-export type MercurianStartCodingSessionInput = typeof MercurianStartCodingSessionInput.Type;
-
-export const MercurianStartCodingSessionResult = Schema.Struct({
-  commitId: MercurianCommitId,
-  threadId: ThreadId,
-});
-export type MercurianStartCodingSessionResult = typeof MercurianStartCodingSessionResult.Type;
-
 /**
  * The plan as of one commit — what the artifact showed when that commit
  * landed. Only the client's own subscription can name a commit here, so a
@@ -768,20 +790,6 @@ export const PlanTextAt = Schema.Struct({ planText: Schema.String });
 export type PlanTextAt = typeof PlanTextAt.Type;
 
 /** The immutable position whose next rebuilt reply is being measured. */
-export const MercurianMeasureReconstructionInput = Schema.Struct({
-  planId: PlanId,
-  commitId: MercurianCommitId,
-});
-export type MercurianMeasureReconstructionInput = typeof MercurianMeasureReconstructionInput.Type;
-
-/** Exact character counts from the same renderer used by a rebuilt session. */
-export const PlanReconstructionMeasure = Schema.Struct({
-  transcriptChars: Schema.Number,
-  entryCount: Schema.Number,
-  fixedReservedChars: Schema.Number,
-});
-export type PlanReconstructionMeasure = typeof PlanReconstructionMeasure.Type;
-
 export const MercurianGetSpecAtInput = Schema.Struct({
   planId: PlanId,
   commitId: MercurianCommitId,
@@ -796,7 +804,10 @@ export type SpecAt = typeof SpecAt.Type;
  * plan and nothing else, so no client's clock can put a visit in the future and
  * silence a row forever.
  */
-export const MercurianVisitPlanInput = Schema.Struct({ planId: PlanId });
+export const MercurianVisitPlanInput = Schema.Struct({
+  planId: PlanId,
+  threadId: Schema.optional(ThreadId),
+});
 export type MercurianVisitPlanInput = typeof MercurianVisitPlanInput.Type;
 
 /** Put a plan back in front of you. Re-arms unseen in every open window. */
@@ -846,20 +857,10 @@ export type MercurianSubscribePlanInput = typeof MercurianSubscribePlanInput.Typ
  * streaming: there is nothing to stop, and that is not an error a person
  * caused.
  */
-export const MercurianStopPlanningTurnInput = Schema.Struct({ planId: PlanId, turnId: PlanTurnId });
-export type MercurianStopPlanningTurnInput = typeof MercurianStopPlanningTurnInput.Type;
-
 /**
  * Answer the structured question the plan is waiting on. Answers are keyed by
  * question id; the shape of each answer is the question's own business.
  */
-export const MercurianAnswerPlanningQuestionInput = Schema.Struct({
-  planId: PlanId,
-  turnId: PlanTurnId,
-  answers: Schema.Record(Schema.String, Schema.Unknown),
-});
-export type MercurianAnswerPlanningQuestionInput = typeof MercurianAnswerPlanningQuestionInput.Type;
-
 // ===============================
 // Refusals
 // ===============================
@@ -936,35 +937,6 @@ export class SpecRefreshUnavailableError extends Schema.TaggedErrorClass<SpecRef
   }
 }
 
-export const CodingSessionBlockedReason = Schema.Literals([
-  "repository-not-git",
-  "no-instance",
-  "model-unavailable",
-  "pool-at-capacity",
-  "line-branch-missing",
-]);
-export type CodingSessionBlockedReason = typeof CodingSessionBlockedReason.Type;
-
-export class CodingSessionBlockedError extends Schema.TaggedErrorClass<CodingSessionBlockedError>()(
-  "CodingSessionBlockedError",
-  { reason: CodingSessionBlockedReason },
-) {
-  override get message(): string {
-    switch (this.reason) {
-      case "repository-not-git":
-        return "A linked repository is not a Git repository.";
-      case "no-instance":
-        return "The selected agent is not currently available.";
-      case "model-unavailable":
-        return "The selected model is not available from that agent.";
-      case "pool-at-capacity":
-        return "Every worktree slot for this project is currently in use.";
-      case "line-branch-missing":
-        return "The line's branch no longer exists in the repository.";
-    }
-  }
-}
-
 /** Nothing is waiting for an answer on this plan. */
 export class NoPendingQuestionError extends Schema.TaggedErrorClass<NoPendingQuestionError>()(
   "NoPendingQuestionError",
@@ -981,7 +953,6 @@ export const isPlanDeleteBlockedError = Schema.is(PlanDeleteBlockedError);
 export const isPlanTurnActiveError = Schema.is(PlanTurnActiveError);
 export const isSpecRevisionOutdatedError = Schema.is(SpecRevisionOutdatedError);
 export const isSpecRefreshUnavailableError = Schema.is(SpecRefreshUnavailableError);
-export const isCodingSessionBlockedError = Schema.is(CodingSessionBlockedError);
 export const isNoPendingQuestionError = Schema.is(NoPendingQuestionError);
 
 /**
@@ -996,23 +967,20 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "subscribeTree",
       "subscribePlan",
       "createProject",
-      "createPlan",
       "importPlan",
-      "appendPlanMessage",
+      "ensureProjectRuntime",
+      "forkLine",
+      "openLine",
       "savePlanRevision",
       "saveSpecRevision",
       "refreshSpec",
-      "startCodingSession",
       "getPlanTextAt",
-      "measurePlanReconstruction",
       "getSpecAt",
       "visitPlan",
       "markPlanUnread",
       "archivePlan",
       "unarchivePlan",
       "deletePlan",
-      "stopPlanningTurn",
-      "answerPlanningQuestion",
       "subscribeWorktreeSlots",
       "readLineUncommittedDiff",
       "recreateLineBranch",

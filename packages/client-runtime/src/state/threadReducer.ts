@@ -95,6 +95,7 @@ export function applyThreadDetailEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
+          workspaceMembers: event.payload.workspaceMembers ?? null,
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -234,6 +235,9 @@ export function applyThreadDetailEvent(
           ...(event.payload.branch !== undefined ? { branch: event.payload.branch } : {}),
           ...(event.payload.worktreePath !== undefined
             ? { worktreePath: event.payload.worktreePath }
+            : {}),
+          ...(event.payload.workspaceMembers !== undefined
+            ? { workspaceMembers: event.payload.workspaceMembers }
             : {}),
           ...(event.payload.linkedPullRequest !== undefined
             ? { linkedPullRequest: event.payload.linkedPullRequest }
@@ -494,6 +498,9 @@ export function applyThreadDetailEvent(
         checkpointRef: event.payload.checkpointRef,
         status: event.payload.status,
         files: event.payload.files,
+        ...(event.payload.repositories === undefined
+          ? {}
+          : { repositories: event.payload.repositories }),
         assistantMessageId: event.payload.assistantMessageId,
         completedAt: event.payload.completedAt,
         ...(event.payload.partial === undefined ? {} : { partial: event.payload.partial }),
@@ -511,6 +518,11 @@ export function applyThreadDetailEvent(
       const existing = thread.checkpoints.find((entry) => entry.turnId === checkpoint.turnId);
       // Don't overwrite a non-missing checkpoint with a missing one.
       if (existing && existing.status !== "missing" && checkpoint.status === "missing") {
+        return { kind: "unchanged" };
+      }
+      // A placeholder can race the real interrupted-turn capture; both carry
+      // status "missing", but only the capture carries the partial fact.
+      if (existing?.partial === true && checkpoint.partial !== true) {
         return { kind: "unchanged" };
       }
 

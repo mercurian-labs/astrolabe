@@ -23,7 +23,7 @@ interface SidebarPlanFields extends ProjectScopedFields, PlanLifecycleFields, Pl
 
 interface DraftRowFields extends ProjectScopedFields {
   readonly draftId: string;
-  readonly text: string;
+  readonly invested: boolean;
   readonly createdAt: string;
 }
 
@@ -40,7 +40,7 @@ export function resolveSidebarSelection(pathname: string): SidebarSelection {
   return {
     ...selection,
     activeDraftId:
-      first === "plans" && second === "draft" && third !== undefined
+      first === "threads" && second === "draft" && third !== undefined
         ? decodeURIComponent(third)
         : null,
     isMemoryActive: first === "memory",
@@ -131,9 +131,7 @@ export function resolveDraftRows<T extends DraftRowFields>(
 ): T[] {
   return Object.values(draftsById)
     .filter(
-      (draft) =>
-        draft.text.trim().length > 0 &&
-        (projectScopeId === null || draft.projectId === projectScopeId),
+      (draft) => draft.invested && (projectScopeId === null || draft.projectId === projectScopeId),
     )
     .toSorted(
       (left, right) =>

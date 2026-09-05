@@ -1,33 +1,30 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianPlanningAtoms } from "@t3tools/client-runtime/state/mercurian-planning";
 import type {
-  MercurianAppendPlanMessageInput,
+  EnvironmentId,
   MercurianCommitId,
-  MercurianCreatePlanInput,
+  MercurianEnsureProjectRuntimeInput,
+  MercurianForkLineInput,
   MercurianImportPlanInput,
-  MercurianSavePlanRevisionInput,
-  MercurianSaveSpecRevisionInput,
-  MercurianRefreshSpecInput,
-  MercurianStartCodingSessionInput,
+  MercurianOpenLineInput,
   MercurianRecreateLineBranchInput,
   PlanDetail,
   PlanId,
-  PlanTurnId,
   PlanningTreeSnapshot,
   PlanTurnRefusalReason,
   PlanStreamItem,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "./environments";
-import {
-  useEnvironmentBoundCommand,
-  useEnvironmentBoundCommandResult,
-} from "./useEnvironmentBoundCommand";
+import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
+import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 
@@ -50,6 +47,10 @@ const EMPTY_PLAN_ATOM = Atom.make(
         MercurianCommitId,
         import("@t3tools/contracts").PlanCodingSessionRecord
       >;
+      readonly lineRuntimes: ReadonlyMap<
+        MercurianCommitId,
+        import("@t3tools/contracts").PlanLineRuntimeRecord
+      >;
       readonly synchronized: boolean;
       readonly turnRefusal: PlanTurnRefusalReason | null;
       readonly memoryAmendmentFailure: Extract<
@@ -65,7 +66,7 @@ const EMPTY_PLAN_ATOM = Atom.make(
   >(false),
 );
 
-const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [] };
+const EMPTY_TREE_SNAPSHOT: PlanningTreeSnapshot = { projects: [], plans: [], threadPlanLinks: [] };
 
 function errorMessage<A>(result: AsyncResult.AsyncResult<A, unknown>, fallback: string) {
   if (result._tag !== "Failure") return null;
@@ -80,6 +81,13 @@ export interface MercurianTreeState {
   readonly error: string | null;
 }
 
+export function resolveMercurianQueryPending(
+  environmentId: EnvironmentId | null,
+  pendingForKnownEnvironment: boolean,
+): boolean {
+  return environmentId === null || pendingForKnownEnvironment;
+}
+
 export function useMercurianTree(): MercurianTreeState {
   const environmentId = usePrimaryEnvironmentId();
   const atom =
@@ -88,9 +96,38 @@ export function useMercurianTree(): MercurianTreeState {
   const item = Option.getOrNull(AsyncResult.value(result));
   return {
     snapshot: item?.snapshot ?? EMPTY_TREE_SNAPSHOT,
-    isPending: item === null && environmentId !== null,
+    isPending: resolveMercurianQueryPending(environmentId, item === null),
     error: errorMessage(result, "Could not load the project tree."),
   };
+}
+
+function readMercurianTreeSnapshot(): PlanningTreeSnapshot {
+  const environmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+  if (environmentId === null) return EMPTY_TREE_SNAPSHOT;
+  const result = appAtomRegistry.get(mercurianPlanning.tree({ environmentId, input: {} }));
+  return Option.getOrNull(AsyncResult.value(result))?.snapshot ?? EMPTY_TREE_SNAPSHOT;
+}
+
+export function threadPlanLinkForThread(
+  threadId: ThreadId,
+  snapshot: PlanningTreeSnapshot = readMercurianTreeSnapshot(),
+) {
+  return snapshot.threadPlanLinks.find((link) => link.threadId === threadId) ?? null;
+}
+
+export function planForThread(
+  threadId: ThreadId,
+  snapshot: PlanningTreeSnapshot = readMercurianTreeSnapshot(),
+): PlanId | null {
+  return threadPlanLinkForThread(threadId, snapshot)?.planId ?? null;
+}
+
+export function usePlanForThread(threadId: ThreadId | null): PlanId | null {
+  const { snapshot } = useMercurianTree();
+  return useMemo(
+    () => (threadId === null ? null : planForThread(threadId, snapshot)),
+    [snapshot, threadId],
+  );
 }
 
 export interface PlanDetailState {
@@ -110,7 +147,7 @@ export interface PlanDetailState {
 }
 
 /**
- * The planning space, live. There is no refresh: the artifact and the history
+ * The thread, live. There is no refresh: the artifact and the history
  * are one subscription over the plan's commits, so an edit or a message —
  * from this window or another — arrives as it lands. The streaming turn rides
  * the same subscription as `detail.inFlightTurns`.
@@ -126,8 +163,10 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
   const detail = state?.detail ?? null;
   return {
     detail,
-    isPending: detail === null && environmentId !== null && planId !== null,
-    error: errorMessage(result, "Could not load this plan."),
+    isPending:
+      planId !== null &&
+      resolveMercurianQueryPending(environmentId, detail === null && result._tag !== "Failure"),
+    error: errorMessage(result, "Could not load this thread."),
     turnRefusal: state?.turnRefusal ?? null,
     memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,
     memoryMergeHomeConflict: state?.memoryMergeHomeConflict ?? null,
@@ -139,16 +178,26 @@ export function useCreateMercurianProject() {
   return useCallback((name: string) => run({ name }), [run]);
 }
 
+export function useEnsureProjectRuntime() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.ensureProjectRuntime);
+  return useCallback((input: MercurianEnsureProjectRuntimeInput) => run(input), [run]);
+}
+
+export function useOpenLine() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.openLine);
+  return useCallback((input: MercurianOpenLineInput) => run(input), [run]);
+}
+
+export function useForkLine() {
+  const run = useEnvironmentBoundCommand(mercurianPlanning.forkLine);
+  return useCallback((input: MercurianForkLineInput) => run(input), [run]);
+}
+
 /**
  * The birth act. A plan exists from the moment its first message lands, so
  * this is the only way to make one — and that first message composes with the
  * same powers as every later one, images included.
  */
-export function useCreatePlan() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.createPlan);
-  return useCallback((input: MercurianCreatePlanInput) => run(input), [run]);
-}
-
 /**
  * Say something in a plan, from wherever you are standing. `parentCommitId` is
  * that place: naming a commit that already has a child lands a fork whose
@@ -165,41 +214,6 @@ export function useImportPlan() {
   return useCallback((input: MercurianImportPlanInput) => run(input), [run]);
 }
 
-export function useAppendPlanMessage() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.appendPlanMessage);
-  return useCallback((input: MercurianAppendPlanMessageInput) => run(input), [run]);
-}
-
-/**
- * A direct edit of the plan. The text is the artifact's whole new body — a
- * revision is a snapshot, and an empty one is a legal edit. It lands on the
- * branch its author was standing on, for the same reason a message does.
- *
- * Bound through the result variant: a refusal — a reply streaming on the
- * edit's own branch — is something the artifact pane has to say in place,
- * not a console line the editor swallows.
- */
-export function useSavePlanRevision() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.savePlanRevision);
-  return useCallback((input: MercurianSavePlanRevisionInput) => run(input), [run]);
-}
-
-/** The spec's edit, with the same in-place refusals as the plan's. */
-export function useSaveSpecRevision() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.saveSpecRevision);
-  return useCallback((input: MercurianSaveSpecRevisionInput) => run(input), [run]);
-}
-
-export function useRefreshSpec() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.refreshSpec);
-  return useCallback((input: MercurianRefreshSpecInput) => run(input), [run]);
-}
-
-export function useStartCodingSession() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.startCodingSession);
-  return useCallback((input: MercurianStartCodingSessionInput) => run(input), [run]);
-}
-
 export function useRecreateLineBranch() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.recreateLineBranch);
   return useCallback((input: MercurianRecreateLineBranchInput) => run(input), [run]);
@@ -211,7 +225,10 @@ export function useRecreateLineBranch() {
  */
 export function useVisitPlan() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.visitPlan);
-  return useCallback((planId: PlanId) => run({ planId }), [run]);
+  return useCallback(
+    (input: import("@t3tools/contracts").MercurianVisitPlanInput) => run(input),
+    [run],
+  );
 }
 
 /**
@@ -228,21 +245,6 @@ export function useMarkPlanUnread() {
  * The partial lands as a commit marked interrupted, arriving on the same
  * subscription as everything else.
  */
-export function useStopPlanningTurn() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.stopPlanningTurn);
-  return useCallback((planId: PlanId, turnId: PlanTurnId) => run({ planId, turnId }), [run]);
-}
-
-/** Answer the structured question one turn is waiting on, keyed by question id. */
-export function useAnswerPlanningQuestion() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.answerPlanningQuestion);
-  return useCallback(
-    (planId: PlanId, turnId: PlanTurnId, answers: Readonly<Record<string, unknown>>) =>
-      run({ planId, turnId, answers: answers as Record<string, unknown> }),
-    [run],
-  );
-}
-
 /**
  * The plan as it read at an earlier commit. The timeline's revisions travel
  * without their text — re-sending every historical snapshot would grow the
@@ -258,14 +260,6 @@ export function useGetPlanTextAt() {
 }
 
 /** Exact prompt reconstruction sizes at an immutable plan position. */
-export function useMeasurePlanReconstruction() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.measurePlanReconstruction);
-  return useCallback(
-    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
-    [run],
-  );
-}
-
 export function useGetSpecAt() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.getSpecAt);
   return useCallback(

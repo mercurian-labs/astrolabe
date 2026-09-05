@@ -4,11 +4,11 @@ import {
   EXPLORER_VIEW_STORAGE_KEY,
   ExplorerView,
 } from "~/components/mercurian/DagExplorer";
-import { PlanArtifact } from "~/components/mercurian/PlanArtifact";
-import { lastPlanRevision } from "~/components/mercurian/PlanArtifact.logic";
-import { PlanComposer } from "~/components/mercurian/PlanComposer";
+import { PlanArtifact } from "./legacy/PlanArtifact";
+import { lastPlanRevision } from "./legacy/PlanArtifact.logic";
+import { PlanComposer } from "./legacy/PlanComposer";
 import { ancestorClosure, buildPlanGraph } from "~/components/mercurian/PlanGraph.logic";
-import { PlanModelPicker } from "~/components/mercurian/PlanModelPicker";
+import { PlanModelPicker } from "./legacy/PlanModelPicker";
 import {
   isViewingPast,
   LATEST,
@@ -16,10 +16,10 @@ import {
   resolveHead,
   type PlanPosition,
 } from "~/components/mercurian/PlanPosition.logic";
-import { PlanPaneToggle } from "~/components/mercurian/PlanningSpace";
-import { PlanTimeline } from "~/components/mercurian/PlanTimeline";
-import { SpecArtifact } from "~/components/mercurian/SpecArtifact";
-import { lastSpecRevision } from "~/components/mercurian/SpecArtifact.logic";
+import { PlanPaneToggle } from "./legacy/PlanPaneToggle";
+import { PlanTimeline } from "./legacy/PlanTimeline";
+import { SpecArtifact } from "./legacy/SpecArtifact";
+import { lastSpecRevision } from "./legacy/SpecArtifact.logic";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { Button } from "~/components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "~/components/ui/menu";
@@ -339,7 +339,6 @@ const graphProps = {
   readyCommits: new Map(),
   stalePlanCommitIds: new Set<string>(),
   staleSpecCommitIds: new Set<string>(),
-  onColumnsWidthCapChange: () => undefined,
   onEditAndBranch: () => undefined,
   onImplementFrom: () => undefined,
 } as const;
@@ -365,7 +364,6 @@ const composerProps = {
   ],
   onAddAttachments: () => undefined,
   onRemoveAttachment: () => undefined,
-  onImplement: () => undefined,
 } satisfies Omit<
   HeroComposerProps,
   "banner" | "modelPicker" | "onChangeText" | "onSend" | "onStop" | "text" | "turnActive"
@@ -592,7 +590,9 @@ function HeroWindowInterior() {
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
               Marketing site hero
             </h1>
-            {pane.open ? null : paneToggle}
+            {/* The artifacts carry the toggle in their corner; the graph pane has no
+                corner of its own, so the header keeps it while the graph shows. */}
+            {pane.open && pane.view === "artifact" ? null : paneToggle}
           </WorkspacePageHeader>
           <PlanTimeline
             codingSessions={[]}
@@ -618,7 +618,6 @@ function HeroWindowInterior() {
             {pane.view === "explorer" ? (
               <HeroDagExplorer
                 anchoredCommitId={head}
-                cornerControl={paneCornerControl}
                 graph={graph}
                 inFlightAnchorCommitIds={
                   heroInFlight === undefined ? [] : [heroInFlight.parentCommitId]
@@ -659,13 +658,12 @@ function HeroWindowInterior() {
 
 function HeroDagExplorer({
   anchoredCommitId,
-  cornerControl,
   graph,
   inFlightAnchorCommitIds,
   onSelect,
 }: Pick<
   ComponentProps<typeof DagExplorer>,
-  "anchoredCommitId" | "cornerControl" | "graph" | "inFlightAnchorCommitIds" | "onSelect"
+  "anchoredCommitId" | "graph" | "inFlightAnchorCommitIds" | "onSelect"
 >) {
   const paneRef = useRef<HTMLDivElement>(null);
 
@@ -684,7 +682,6 @@ function HeroDagExplorer({
         {...graphProps}
         graph={graph}
         anchoredCommitId={anchoredCommitId}
-        cornerControl={cornerControl}
         inFlightAnchorCommitIds={inFlightAnchorCommitIds}
         onSelect={onSelect}
       />

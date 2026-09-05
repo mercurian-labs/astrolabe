@@ -1,9 +1,9 @@
 import type { MemoryIndex, MemoryNote } from "@t3tools/contracts";
 import { AlertTriangleIcon, BookOpenIcon, MapIcon } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { usePlanDraftStore } from "../../planDraftStore";
+import { useComposerDraftStore } from "../../composerDraftStore";
+import { useNewMercurianThreadHandler } from "../../hooks/useHandleNewMercurianThread";
 import { useProjectScopeStore } from "../../projectScopeStore";
 import { useMercurianTree } from "../../state/mercurian";
 import {
@@ -11,7 +11,7 @@ import {
   useReadMemoryIndex,
   useReadMemoryNote,
 } from "../../state/mercurianMemory";
-import { cn, randomUUID } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
@@ -143,19 +143,23 @@ export function MemoryPage({
     index,
   });
 
-  const openDraftForProject = usePlanDraftStore((state) => state.openDraftForProject);
-  const setDraftText = usePlanDraftStore((state) => state.setDraftText);
-  const navigate = useNavigate();
+  const newMercurianThread = useNewMercurianThreadHandler();
   /** The frontier's write door: seed a message that starts the amendment flow. */
   const writeThisNote = useCallback(
     (name: string, referencedBy: ReadonlyArray<string>) => {
-      if (projectId === null) return;
+      if (scopedProject === null) return;
       const seed = writeNoteSeedMessage(name, referencedBy);
-      const draft = openDraftForProject(projectId, randomUUID(), new Date().toISOString());
-      setDraftText(draft.draftId, draft.text.length === 0 ? seed : `${draft.text}\n\n${seed}`);
-      void navigate({ to: "/plans/draft/$draftId", params: { draftId: draft.draftId } });
+      void newMercurianThread(scopedProject).then((opened) => {
+        if (opened === null) return;
+        const composerStore = useComposerDraftStore.getState();
+        const prompt = composerStore.getComposerDraft(opened.draftId)?.prompt ?? "";
+        composerStore.setPrompt(
+          opened.draftId,
+          prompt.length === 0 ? seed : `${prompt}\n\n${seed}`,
+        );
+      });
     },
-    [navigate, openDraftForProject, projectId, setDraftText],
+    [newMercurianThread, scopedProject],
   );
 
   if (standing === "no-project") {

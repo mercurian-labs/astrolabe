@@ -32,11 +32,15 @@ import * as CommitStore from "./mercurian/commitTree/CommitStore.ts";
 import * as LineBranchStore from "./mercurian/commitTree/LineBranchStore.ts";
 import { LineBranchReactorLive } from "./mercurian/commitTree/LineBranchReactor.ts";
 import * as MercurianSqlite from "./mercurian/persistence/Sqlite.ts";
-import * as PlanningAssistant from "./mercurian/assistant/PlanningAssistant.ts";
+import * as LineTurnReactor from "./mercurian/assistant/LineTurnReactor.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
-import * as CodingSessionStore from "./mercurian/codingSessions/CodingSessionStore.ts";
-import * as CodingSessionService from "./mercurian/codingSessions/CodingSessionService.ts";
-import { CodingSessionRecordReactorLive } from "./mercurian/codingSessions/CodingSessionRecordReactor.ts";
+import * as LegacySessionStore from "./mercurian/lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "./mercurian/lineRuntimes/LineRuntimeStore.ts";
+import * as LineRuntimeService from "./mercurian/lineRuntimes/LineRuntimeService.ts";
+import { LineRuntimeRecordReactorLive } from "./mercurian/lineRuntimes/LineRuntimeRecordReactor.ts";
+import { MercurianThreadLineServiceLive } from "./mercurian/lineRuntimes/MercurianThreadLineService.ts";
+import { MercurianTurnPreparationLive } from "./mercurian/assistant/MercurianTurnPreparation.ts";
+import { MercurianApprovalAutoResponderLive } from "./mercurian/assistant/MercurianApprovalAutoResponder.ts";
 import * as SlotStore from "./mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "./mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SlotService from "./mercurian/worktreeSlots/SlotService.ts";
@@ -88,7 +92,7 @@ import { OrchestrationReactorLive } from "./orchestration/Layers/OrchestrationRe
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus.ts";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
-import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
+import { CheckpointReactorLive } from "./checkpointing/CheckpointReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "./orchestration/ThreadSettlementReactor.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -290,8 +294,9 @@ const PlatformServicesLive = Layer.unwrap(
 );
 
 const ReactorLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(ProviderRuntimeIngestionLive),
-  Layer.provideMerge(ProviderCommandReactorLive),
+  Layer.provideMerge(
+    ProviderRuntimeIngestionLive.pipe(Layer.provide(MercurianApprovalAutoResponderLive)),
+  ),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
@@ -324,7 +329,8 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // exists: those settings belong to the workspace, and the workspace is what
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
-  Layer.provideMerge(CodingSessionStore.layer),
+  Layer.provideMerge(LegacySessionStore.layer),
+  Layer.provideMerge(LineRuntimeStore.layer),
   Layer.provideMerge(LineBranchStore.layer),
   Layer.provideMerge(MemoryReviewStore.layer),
   Layer.provideMerge(SlotStore.layer),
@@ -575,34 +581,46 @@ const SnapshotChainDependenciesLive = SnapshotChain.layer.pipe(
   Layer.provideMerge(MercurianRuntimeBaseDependenciesLive),
 );
 
+const MemoryIndexLayerLive = MemoryIndex.layer.pipe(
+  Layer.provide(ProcessRunner.layer),
+  Layer.provideMerge(SnapshotChainDependenciesLive),
+);
+
+// Turn preparation reads line-grounded memory. Build the command reactor
+// after that index exists, but before the orchestration reactor that consumes
+// it, so both sides share the runtime core without a dependency cycle.
+const ProviderCommandReactorLayerLive = ProviderCommandReactorLive.pipe(
+  Layer.provide(MercurianTurnPreparationLive),
+  Layer.provideMerge(MemoryIndexLayerLive),
+  Layer.provideMerge(MercurianRuntimeBaseDependenciesLive),
+);
+
 const CheckpointReactorDependenciesLive = CheckpointReactorLive.pipe(
+  Layer.provide(MercurianThreadLineServiceLive),
   Layer.provideMerge(SnapshotChainDependenciesLive),
 );
 
 const MercurianRuntimeCoreDependenciesLive = OrchestrationReactorLive.pipe(
+  Layer.provideMerge(ProviderCommandReactorLayerLive),
   Layer.provideMerge(CheckpointReactorDependenciesLive),
-);
-
-const MemoryIndexLayerLive = MemoryIndex.layer.pipe(
-  Layer.provide(ProcessRunner.layer),
-  Layer.provideMerge(SnapshotChainDependenciesLive),
-  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 
 const SlotServiceLayerLive = SlotService.layer.pipe(
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 
-const PlanningAssistantLayerLive = PlanningAssistant.layer.pipe(
+const LineRuntimeServiceLayerLive = LineRuntimeService.layer.pipe(
+  Layer.provideMerge(SlotServiceLayerLive),
+);
+
+const LineTurnReactorLayerLive = LineTurnReactor.layer.pipe(
   Layer.provideMerge(MemoryIndexLayerLive),
+  Layer.provideMerge(LineRuntimeServiceLayerLive),
   Layer.provideMerge(SlotServiceLayerLive),
+  Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 
-const CodingSessionServiceLayerLive = CodingSessionService.layer.pipe(
-  Layer.provideMerge(SlotServiceLayerLive),
-);
-
-const CodingSessionRecordReactorLayerLive = CodingSessionRecordReactorLive.pipe(
+const LineRuntimeRecordReactorLayerLive = LineRuntimeRecordReactorLive.pipe(
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),
 );
 
@@ -611,10 +629,11 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 );
 
 const RuntimeDependenciesLive = Layer.empty.pipe(
-  Layer.provideMerge(PlanningAssistantLayerLive),
+  Layer.provideMerge(ProviderCommandReactorLayerLive),
+  Layer.provideMerge(LineTurnReactorLayerLive),
   Layer.provideMerge(MemoryIndexLayerLive),
-  Layer.provideMerge(CodingSessionServiceLayerLive),
-  Layer.provideMerge(CodingSessionRecordReactorLayerLive),
+  Layer.provideMerge(LineRuntimeServiceLayerLive),
+  Layer.provideMerge(LineRuntimeRecordReactorLayerLive),
   Layer.provideMerge(LineBranchReactorLayerLive),
   Layer.provideMerge(SlotServiceLayerLive),
   Layer.provideMerge(MercurianRuntimeCoreDependenciesLive),

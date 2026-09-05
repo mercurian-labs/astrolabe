@@ -118,7 +118,7 @@ import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import {
-  navigateToParkedThreadRoute,
+  navigateToThreadRoute,
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
@@ -2424,7 +2424,7 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
+      void navigateToThreadRoute(router, { kind: "server", threadRef: threadRef });
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
@@ -2439,7 +2439,7 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigateToParkedThreadRoute({ kind: "draft", draftId });
+      void navigateToThreadRoute(router, { kind: "draft", draftId });
     },
     [clearSelection, isMobile, router, setOpenMobile],
   );

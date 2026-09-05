@@ -10,7 +10,7 @@ _Amended 2026-08-19, same day: M-110 ("Coding sessions: draft, leaf commit, work
 
 ### M-133 is small and mostly already true
 
-- The string **History** appears in exactly three product places: the pane header ([DagExplorer.tsx:217](../../apps/web/src/components/mercurian/DagExplorer.tsx)), the corner toggle's `aria-label` and tooltip ([PlanningSpace.tsx:710–713](../../apps/web/src/components/mercurian/PlanningSpace.tsx)), and the compressed-columns-pane accessible label `paneSpanLabel` ("History pane: …", [DagExplorer.tsx:981–988](../../apps/web/src/components/mercurian/DagExplorer.tsx)). The user docs also narrate a "history view" ([docs/user/projects-and-plans.md](../user/projects-and-plans.md)).
+- The string **History** appears in exactly three product places: the pane header ([DagExplorer.tsx:217](../../apps/web/src/components/mercurian/DagExplorer.tsx)), the corner toggle's `aria-label` and tooltip ([PlanningSpace.tsx:710–713](../../apps/web/src/components/mercurian/PlanningSpace.tsx)), and the compressed-columns-pane accessible label `paneSpanLabel` ("History pane: …", [DagExplorer.tsx:981–988](../../apps/web/src/components/mercurian/DagExplorer.tsx)). The user docs also narrate a "history view" ([docs/user/projects-and-threads.md](../user/projects-and-threads.md)).
 - **No Detail setting was ever built.** The Graph's display settings are layout/node-size/line-thickness only ([DagExplorer.logic.ts:12–23](../../apps/web/src/components/mercurian/DagExplorer.logic.ts)). Nothing anywhere toggles a commit-level reading — the AC is satisfied by absence, and the tests below pin it so it stays absent.
 - **Checkpoints are already the only reading.** M-132 (merged, amendment included) condenses turns — trailing revisions absorbed, `nodeIdByCommit` remapping every member commit and every pick to its checkpoint ([PlanCheckpoints.logic.ts](../../apps/web/src/components/mercurian/PlanCheckpoints.logic.ts)). The explorer is the only surface that selects commits (`SplitSheet` selects split commits, which are standalone checkpoints), so "no affordance offers continuing from an intermediate commit" already holds; M-133's work is the rename plus regression pins.
 
@@ -43,7 +43,7 @@ _Amended 2026-08-19, same day: M-110 ("Coding sessions: draft, leaf commit, work
 1. **Pane header** (`DagExplorer.tsx:217`): `History` → `Checkpoint Graph`.
 2. **Corner toggle** (`PlanningSpace.tsx:710–713`): `aria-label="Checkpoint Graph"`, tooltip `Checkpoint Graph`. The `GitBranchIcon` stays — the icon was never named History.
 3. **Compressed pane label** (`paneSpanLabel`): "History pane: …" → "Checkpoints: <start> to <end>" (and "Empty checkpoint pane" for the empty case) — the label describes a run of checkpoints, so it should say so.
-4. **User docs** ([docs/user/projects-and-plans.md](../user/projects-and-plans.md)): the pane and its warnings are narrated under the History name; rename to Checkpoint Graph in the prose that names the pane (the sections at lines ~123, ~151–156, ~198–213).
+4. **User docs** ([docs/user/projects-and-threads.md](../user/projects-and-threads.md)): the pane and its warnings are narrated under the History name; rename to Checkpoint Graph in the prose that names the pane (the sections at lines ~123, ~151–156, ~198–213).
 5. **Code identity stays.** `DagExplorer.tsx` and its logic modules keep their names, as do the localStorage keys (`mercurian:dag-explorer-view:v1`, `…-display:v1`) — the issue renames the _product surface_; churning module names and stored keys would add risk for no user-visible fact. (The component's doc comments get the new name where they say "History".)
 6. **Absence pins.** No Detail setting exists to remove; the AC lands as tests: the settings popover exposes exactly layout/node-size/line-thickness, no rendered control mentions Commits/Detail, and a turn's interior commits are not independently selectable in any view (already true via `nodeIdByCommit`; the test makes it a contract).
 
@@ -100,7 +100,7 @@ M-133 (commit as `feat(web): rename the History pane to Checkpoint Graph (M-133)
 
 - [ ] `DagExplorer.tsx`: header string; `paneSpanLabel` wording; doc comments that say History.
 - [ ] `PlanningSpace.tsx`: toggle `aria-label` + tooltip.
-- [ ] `docs/user/projects-and-plans.md`: pane naming in prose.
+- [ ] `docs/user/projects-and-threads.md`: pane naming in prose.
 - [ ] `DagExplorer.test.tsx`: header reads Checkpoint Graph; toggle accessible name; settings popover exposes exactly layout/node-size/line-thickness; no rendered control mentions Detail or Commits.
 
 M-129 (commit as `feat(web): node popover on the Checkpoint Graph views (M-129)`; graph-strip may land as its own commit first):

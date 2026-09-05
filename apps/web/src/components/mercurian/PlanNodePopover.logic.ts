@@ -22,9 +22,7 @@ import {
   type PlanGraph,
   type PlanGraphNode,
 } from "./PlanGraph.logic";
-import { resolveActingHead } from "./PlanPosition.logic";
-
-export type PlanNodePopoverAct = "continue" | "edit-and-branch" | "implement" | "open-session";
+export type PlanNodePopoverAct = "edit-and-branch" | "open-session";
 
 export interface PlanNodeSessionFacts {
   readonly repositoryName?: string;
@@ -227,27 +225,17 @@ export function offeredActs(
   hasCodingSessionRecord = false,
 ): ReadonlyArray<PlanNodePopoverAct> {
   if (node.item._tag === "coding-session") {
-    return hasCodingSessionRecord ? ["continue", "open-session"] : ["continue"];
+    return hasCodingSessionRecord ? ["open-session"] : [];
   }
-  const acts: Array<PlanNodePopoverAct> = ["continue"];
   const query = node.checkpoint?.query ?? node.item;
   if (
     query._tag === "message" &&
     query.authorKind === "human" &&
     (commitGraph.byId.get(query.commitId)?.parents.length ?? 0) > 0
   ) {
-    acts.push("edit-and-branch");
+    return ["edit-and-branch"];
   }
-  acts.push("implement");
-  return acts;
-}
-
-/** The parent an implementation act names, including inspect-only session leaves. */
-export function resolveImplementFrom(
-  graph: PlanGraph,
-  fromCommitId: MercurianCommitId | null,
-): MercurianCommitId | null {
-  return resolveActingHead(graph, fromCommitId);
+  return [];
 }
 
 const RESPONSE_EXCERPT_LENGTH = 240;

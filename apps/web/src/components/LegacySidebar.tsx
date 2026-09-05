@@ -65,7 +65,7 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { useParams, useRouter } from "@tanstack/react-router";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -121,7 +121,7 @@ import { threadEnvironment, useEnvironmentThread } from "../state/threads";
 import { vcsEnvironment } from "../state/vcs";
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
-  navigateToParkedThreadRoute,
+  navigateToThreadRoute,
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
@@ -1760,7 +1760,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
+      void navigateToThreadRoute(router, { kind: "server", threadRef: threadRef });
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
@@ -1804,7 +1804,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
+      void navigateToThreadRoute(router, { kind: "server", threadRef: threadRef });
     },
     [
       clearSelection,
@@ -3086,7 +3086,7 @@ export default function LegacySidebar() {
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
-  const navigate = useNavigate();
+  const router = useRouter();
   const sidebarThreadSortOrder = useClientSettings((s) => s.sidebarThreadSortOrder);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
@@ -3277,9 +3277,9 @@ export default function LegacySidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigateToParkedThreadRoute({ kind: "server", threadRef: threadRef });
+      void navigateToThreadRoute(router, { kind: "server", threadRef: threadRef });
     },
-    [clearSelection, isMobile, navigate, setOpenMobile, setSelectionAnchor],
+    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
 
   const projectDnDSensors = useSensors(

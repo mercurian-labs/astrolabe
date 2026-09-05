@@ -9,7 +9,8 @@ import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import * as CommitStore from "../commitTree/CommitStore.ts";
-import * as CodingSessionStore from "../codingSessions/CodingSessionStore.ts";
+import * as LegacySessionStore from "../lineRuntimes/LegacySessionStore.ts";
+import * as LineRuntimeStore from "../lineRuntimes/LineRuntimeStore.ts";
 import { CommitId, HistoryId } from "../commitTree/schema.ts";
 import * as PlanningStore from "../planning/PlanningStore.ts";
 import * as PlanTurnRegistry from "../planning/PlanTurnRegistry.ts";
@@ -23,7 +24,8 @@ const rootCommitId = Schema.decodeUnknownSync(CommitId)("coexist-root");
 // t3code's store.
 const layer = it.layer(
   PlanningStore.layer.pipe(
-    Layer.provideMerge(CodingSessionStore.layer),
+    Layer.provideMerge(LegacySessionStore.layer),
+    Layer.provideMerge(LineRuntimeStore.layer),
     Layer.provide(
       Layer.mock(RepositoryStore.RepositoryStore)({
         getSnapshot: Effect.succeed({ repositories: [], projectRepositories: [] }),

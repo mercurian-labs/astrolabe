@@ -85,18 +85,16 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
-  CodingSessionBlockedError,
   MERCURIAN_WS_METHODS,
-  MercurianAnswerPlanningQuestionInput,
-  MercurianAppendPlanMessageInput,
   MercurianArchivePlanInput,
-  MercurianStartCodingSessionInput,
-  MercurianStartCodingSessionResult,
-  MercurianCreatePlanInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
+  MercurianEnsureProjectRuntimeInput,
+  MercurianEnsureProjectRuntimeResult,
   MercurianGetPlanTextAtInput,
-  MercurianMeasureReconstructionInput,
+  MercurianForkLineInput,
+  MercurianOpenLineInput,
+  MercurianLineResult,
   MercurianGetSpecAtInput,
   MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
@@ -107,7 +105,6 @@ import {
   MercurianSaveSpecRevisionInput,
   MercurianRefreshSpecInput,
   MercurianRefreshSpecResult,
-  MercurianStopPlanningTurnInput,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
   MercurianSubscribeWorktreeSlotsInput,
@@ -118,11 +115,8 @@ import {
   MercurianPlanAcknowledged,
   MercurianUnarchivePlanInput,
   MercurianVisitPlanInput,
-  NoPendingQuestionError,
   PlanDeleteBlockedError,
-  PlanDetail,
   PlanImportResult,
-  PlanMessage,
   PlanNotFoundError,
   PlanningTreeStreamItem,
   WorktreeSlotStreamItem,
@@ -133,7 +127,6 @@ import {
   SpecRevisionOutdatedError,
   SpecRefreshUnavailableError,
   PlanTextAt,
-  PlanReconstructionMeasure,
   PlanTurnActiveError,
 } from "./mercurian.ts";
 import {
@@ -1306,16 +1299,6 @@ export const WsMercurianCreateProjectRpc = Rpc.make(MERCURIAN_WS_METHODS.createP
   error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
-export const WsMercurianCreatePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.createPlan, {
-  payload: MercurianCreatePlanInput,
-  success: PlanDetail,
-  error: Schema.Union([
-    MercurianProjectNotFoundError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
 // Import is selection, not synchronization: this is the only method that turns
 // an issue into anything Mercurian stores, and it is idempotent by origin — a
 // second import of one issue answers with the plan the first one made.
@@ -1329,15 +1312,29 @@ export const WsMercurianImportPlanRpc = Rpc.make(MERCURIAN_WS_METHODS.importPlan
   ]),
 });
 
-export const WsMercurianAppendPlanMessageRpc = Rpc.make(MERCURIAN_WS_METHODS.appendPlanMessage, {
-  payload: MercurianAppendPlanMessageInput,
-  success: PlanMessage,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
+export const WsMercurianEnsureProjectRuntimeRpc = Rpc.make(
+  MERCURIAN_WS_METHODS.ensureProjectRuntime,
+  {
+    payload: MercurianEnsureProjectRuntimeInput,
+    success: MercurianEnsureProjectRuntimeResult,
+    error: Schema.Union([
+      MercurianProjectNotFoundError,
+      MercurianPlanningError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianForkLineRpc = Rpc.make(MERCURIAN_WS_METHODS.forkLine, {
+  payload: MercurianForkLineInput,
+  success: MercurianLineResult,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
+export const WsMercurianOpenLineRpc = Rpc.make(MERCURIAN_WS_METHODS.openLine, {
+  payload: MercurianOpenLineInput,
+  success: MercurianLineResult,
+  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
 export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.savePlanRevision, {
@@ -1379,42 +1376,6 @@ export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSp
     EnvironmentAuthorizationError,
   ]),
 });
-
-export const WsMercurianStartCodingSessionRpc = Rpc.make(MERCURIAN_WS_METHODS.startCodingSession, {
-  payload: MercurianStartCodingSessionInput,
-  success: MercurianStartCodingSessionResult,
-  error: Schema.Union([
-    PlanNotFoundError,
-    MercurianRepositoryNotFoundError,
-    PlanTurnActiveError,
-    CodingSessionBlockedError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-// The planning turn's two acts. Turns are never started by RPC — a turn
-// starts server-side when a human message commits — so the only verbs a
-// client holds are stopping the reply and answering its question.
-export const WsMercurianStopPlanningTurnRpc = Rpc.make(MERCURIAN_WS_METHODS.stopPlanningTurn, {
-  payload: MercurianStopPlanningTurnInput,
-  success: MercurianPlanAcknowledged,
-  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
-});
-
-export const WsMercurianAnswerPlanningQuestionRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.answerPlanningQuestion,
-  {
-    payload: MercurianAnswerPlanningQuestionInput,
-    success: MercurianPlanAcknowledged,
-    error: Schema.Union([
-      PlanNotFoundError,
-      NoPendingQuestionError,
-      MercurianPlanningError,
-      EnvironmentAuthorizationError,
-    ]),
-  },
-);
 
 // Attention, recorded. Both write one plan's visited-at and answer with
 // nothing: the change they made comes back on the tree subscription, where
@@ -1476,15 +1437,6 @@ export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlan
   success: PlanTextAt,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
-
-export const WsMercurianMeasurePlanReconstructionRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.measurePlanReconstruction,
-  {
-    payload: MercurianMeasureReconstructionInput,
-    success: PlanReconstructionMeasure,
-    error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
-  },
-);
 
 export const WsMercurianGetSpecAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getSpecAt, {
   payload: MercurianGetSpecAtInput,
@@ -1885,13 +1837,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianReadLineUncommittedDiffRpc,
   WsMercurianRecreateLineBranchRpc,
   WsMercurianCreateProjectRpc,
-  WsMercurianCreatePlanRpc,
+  WsMercurianEnsureProjectRuntimeRpc,
+  WsMercurianForkLineRpc,
+  WsMercurianOpenLineRpc,
   WsMercurianImportPlanRpc,
-  WsMercurianAppendPlanMessageRpc,
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSaveSpecRevisionRpc,
   WsMercurianRefreshSpecRpc,
-  WsMercurianStartCodingSessionRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
@@ -1899,10 +1851,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
   WsMercurianGetPlanTextAtRpc,
-  WsMercurianMeasurePlanReconstructionRpc,
   WsMercurianGetSpecAtRpc,
-  WsMercurianStopPlanningTurnRpc,
-  WsMercurianAnswerPlanningQuestionRpc,
   WsMercurianSubscribeRepositoriesRpc,
   WsMercurianRefreshRepositoriesRpc,
   WsMercurianAddRepositoryRpc,

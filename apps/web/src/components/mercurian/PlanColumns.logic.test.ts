@@ -4,7 +4,7 @@ import type { PlanTimelineItem } from "@t3tools/contracts";
 
 import { commitId as id, message } from "../../test/fixtures/timeline";
 
-import { columnLayout, columnViewWidthCap, defaultBranchChoices } from "./PlanColumns.logic";
+import { columnLayout, defaultBranchChoices } from "./PlanColumns.logic";
 import { buildPlanGraph, type PlanGraph } from "./PlanGraph.logic";
 
 const commit = (name: string, sequence: number, parents: ReadonlyArray<string>): PlanTimelineItem =>
@@ -244,14 +244,5 @@ describe("columnLayout", () => {
     const partial = buildPlanGraph([commit("b", 2, ["missing"]), commit("c", 3, ["b"])]);
     expect(paneIds(partial, "c")).toEqual([["b", "c"]]);
     expect(columnLayout(buildPlanGraph([]), null, new Map()).panes).toEqual([]);
-  });
-});
-
-describe("columnViewWidthCap", () => {
-  it("caps at every pane expanded plus their shared flexible room", () => {
-    const graph = buildPlanGraph(nestedFork);
-    const panes = columnLayout(graph, id("end"), defaultBranchChoices(graph, id("end"))).panes;
-
-    expect(columnViewWidthCap(panes)).toBe(224 + 224 + 336);
   });
 });

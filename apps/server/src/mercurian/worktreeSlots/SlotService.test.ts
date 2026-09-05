@@ -713,6 +713,31 @@ describe("SlotService", () => {
     }),
   );
 
+  it.effect("waits at capacity and succeeds after a release signal", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ poolSize: 1 });
+      const first = yield* harness.service.claim({
+        planId,
+        projectId,
+        lineRootCommitId: lineA,
+        holder: holder("a"),
+      });
+      const waiting = yield* harness.service
+        .claim({
+          planId,
+          projectId,
+          lineRootCommitId: lineB,
+          holder: holder("b"),
+          wait: true,
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+      yield* harness.service.release(first.slotId, holder("a"));
+      const claimed = yield* Fiber.join(waiting);
+      assert.strictEqual(claimed.currentLineRootCommitId, lineB);
+    }),
+  );
+
   it.effect("keeps terminal holds after the turn releases and locks every member", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();

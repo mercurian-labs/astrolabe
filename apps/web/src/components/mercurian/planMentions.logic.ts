@@ -1,7 +1,7 @@
 /**
  * Where a plan's mentions look, and what they insert.
  *
- * A planning space reaches for the repositories its project is working in —
+ * A thread reaches for the repositories its project is working in —
  * the set as context, exactly as resolved. With none, the menu never opens,
  * which is the same thing it did before the registry existed. With more than
  * one, every root is searched and the results merge into one list, each entry

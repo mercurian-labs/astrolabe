@@ -51,16 +51,6 @@ export const COLUMN_PANE_WIDTH = 224;
 export const COLUMN_LAST_PANE_MAX_WIDTH = 336;
 
 /**
- * The width at which every pane is open and their shared flexible room is
- * filled. This is the useful end of a columns resize: wider than this has no
- * pane left to reopen and no reading space left to absorb it.
- */
-export function columnViewWidthCap(panes: ReadonlyArray<Pane>): number {
-  if (panes.length === 0) return 0;
-  return (panes.length - 1) * COLUMN_PANE_WIDTH + COLUMN_LAST_PANE_MAX_WIDTH;
-}
-
-/**
  * The branch selections a columns view opens with.
  *
  * A fork in the head's ancestry follows the first child that can reach the

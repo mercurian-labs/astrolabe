@@ -168,19 +168,19 @@ describe("resolveDraftRows", () => {
     empty: {
       draftId: "empty",
       projectId: "project-a",
-      text: "  \n",
+      invested: false,
       createdAt: "2026-08-09T00:00:00.000Z",
     },
     old: {
       draftId: "old",
       projectId: "project-a",
-      text: "First idea",
+      invested: true,
       createdAt: "2026-08-01T00:00:00.000Z",
     },
     newest: {
       draftId: "newest",
       projectId: "project-b",
-      text: "Second idea",
+      invested: true,
       createdAt: "2026-08-08T00:00:00.000Z",
     },
   };
@@ -200,10 +200,14 @@ describe("resolveSidebarSelection", () => {
       activePlanId: "plan-1",
       activeDraftId: null,
     });
+    expect(resolveSidebarSelection("/threads/plan-1")).toMatchObject({
+      activePlanId: "plan-1",
+      activeDraftId: null,
+    });
   });
 
   it("selects draft routes without selecting a plan", () => {
-    expect(resolveSidebarSelection("/plans/draft/draft%201")).toMatchObject({
+    expect(resolveSidebarSelection("/threads/draft/draft%201")).toMatchObject({
       activePlanId: null,
       activeDraftId: "draft 1",
     });

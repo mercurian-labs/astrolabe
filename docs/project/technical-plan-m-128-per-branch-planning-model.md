@@ -58,7 +58,7 @@ There is no live default or mode to follow. The last-used value seeds only a bar
 ### Docs
 
 - `docs/user/settings.md` no longer advertises a planning default.
-- `docs/user/projects-and-plans.md` explains last-used seeding, the shared coding-session picker, per-branch inheritance, draft locality, and unchanged gating.
+- `docs/user/projects-and-threads.md` explains last-used seeding, the shared coding-session picker, per-branch inheritance, draft locality, and unchanged gating.
 - `docs/internals/glossary.md` defines the pair record, nearest-ancestor standing choice, and last-used seed.
 
 ## Gaps where the AC outran the repo

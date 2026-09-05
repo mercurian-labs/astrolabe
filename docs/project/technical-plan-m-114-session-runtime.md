@@ -104,7 +104,7 @@ The plan-history firewall is structural, and this issue locks it with guards rat
 ### 7. Documentation and surface accounting
 
 - `docs/user/permission-modes.md`: rewrite for the product — three tiers (drop the `auto` section), the four approval responses with decline's wordless-continue and cancel's turn-ends semantics, mode-per-session switched from the composer.
-- `docs/user/projects-and-plans.md`: the session runtime section — opening a session from the plan timeline, modes, approvals, the meter, compaction as a session-timeline entry that never appears in plan history.
+- `docs/user/projects-and-threads.md`: the session runtime section — opening a session from the plan timeline, modes, approvals, the meter, compaction as a session-timeline entry that never appears in plan history.
 - `docs/internals/glossary.md`: session compaction vs. the Merges sense; awaiting-your-input's two session triggers.
 - `docs/architecture/fork-baseline.md`: amend the §2 disposition row (surface strip landed at M-114; wire removal at cut-over).
 - Web and desktop apply identically (same served origin, ADR 001 §1); mobile stays parked and untouched; providers behave uniformly through the existing adapter seams, with per-provider approval fidelity noted where it differs (Grok/OpenCode fall back per `docs/user/permission-modes.md`'s existing provider-behavior framing).

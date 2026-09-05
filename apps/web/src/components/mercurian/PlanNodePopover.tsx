@@ -9,6 +9,7 @@ import type {
   MercurianCommitId,
   PlanCodingSessionRecord,
   PlanTimelineItem,
+  PlanningModelSelection,
   ServerProvider,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
@@ -27,13 +28,13 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup } from "../ui/popover";
 import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFreshness";
+import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
 import type { PlanGraph, PlanGraphNode } from "./PlanGraph.logic";
 import {
   derivePlanNodePopover,
   repositoryFactsLabel,
   type PlanNodePopoverAct,
 } from "./PlanNodePopover.logic";
-import { ModelAttribution } from "./PlanTimeline";
 
 export const NODE_POPOVER_HOVER_DELAY = 500;
 const NODE_POPOVER_CLOSE_DELAY = 160;
@@ -143,9 +144,7 @@ export function PlanNodePopover({
   stalePlan,
   staleSpec,
   suppressUnanswered,
-  onSelect,
   onEditAndBranch,
-  onImplementFrom,
 }: {
   readonly controller: PlanNodePopoverController;
   readonly node: PlanGraphNode | undefined;
@@ -155,11 +154,9 @@ export function PlanNodePopover({
   readonly stalePlan: boolean;
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
-  readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onEditAndBranch: (
     query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
   ) => void;
-  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
 }) {
   return (
     <Popover
@@ -187,8 +184,6 @@ export function PlanNodePopover({
             suppressUnanswered={suppressUnanswered}
             onClose={controller.close}
             onEditAndBranch={onEditAndBranch}
-            onImplementFrom={onImplementFrom}
-            onSelect={onSelect}
           />
         )}
       </PopoverPopup>
@@ -205,9 +200,7 @@ export function PlanNodePopoverContent({
   staleSpec,
   suppressUnanswered,
   onClose,
-  onSelect,
   onEditAndBranch,
-  onImplementFrom,
 }: {
   readonly node: PlanGraphNode;
   readonly commitGraph: PlanGraph;
@@ -217,11 +210,9 @@ export function PlanNodePopoverContent({
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
   readonly onClose: () => void;
-  readonly onSelect: (commitId: MercurianCommitId) => void;
   readonly onEditAndBranch: (
     query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
   ) => void;
-  readonly onImplementFrom: (commitId: MercurianCommitId) => void;
 }) {
   const reading = derivePlanNodePopover({
     node,
@@ -361,40 +352,38 @@ export function PlanNodePopoverContent({
         </section>
       )}
 
-      <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
-        {reading.acts.map((act) =>
-          act === "open-session" && reading.session?.threadId !== undefined ? (
-            <Button
-              key={act}
-              render={
-                <Link to="/sessions/$threadId" params={{ threadId: reading.session.threadId }} />
-              }
-              size="sm"
-              variant="outline"
-              onClick={onClose}
-            >
-              Open session
-            </Button>
-          ) : (
-            <Button
-              key={act}
-              size="sm"
-              type="button"
-              variant={act === "continue" ? "default" : "outline"}
-              onClick={() => {
-                runAct(act, reading.query, node.commitId, {
-                  onSelect,
-                  onEditAndBranch,
-                  onImplementFrom,
-                });
-                onClose();
-              }}
-            >
-              {actLabel(act)}
-            </Button>
-          ),
-        )}
-      </div>
+      {reading.acts.length === 0 ? null : (
+        <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
+          {reading.acts.map((act) =>
+            act === "open-session" && reading.session?.threadId !== undefined ? (
+              <Button
+                key={act}
+                render={
+                  <Link to="/sessions/$threadId" params={{ threadId: reading.session.threadId }} />
+                }
+                size="sm"
+                variant="outline"
+                onClick={onClose}
+              >
+                Open line
+              </Button>
+            ) : (
+              <Button
+                key={act}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (reading.query !== undefined) onEditAndBranch(reading.query);
+                  onClose();
+                }}
+              >
+                {actLabel(act)}
+              </Button>
+            ),
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -422,6 +411,27 @@ function MessageIdentity({
         <MessageSquareIcon aria-hidden className="size-3.5 shrink-0 -scale-x-100" />
       ) : null}
     </div>
+  );
+}
+
+/** The provider/model that produced a settled reply, quiet but always visible. */
+function ModelAttribution({
+  selection,
+  providers,
+}: {
+  readonly selection: PlanningModelSelection;
+  readonly providers: ReadonlyArray<ServerProvider>;
+}) {
+  const modelLabel =
+    providers
+      .flatMap((provider) => (provider.driver === selection.provider ? provider.models : []))
+      .find((model) => model.slug === selection.model)?.name ?? selection.model;
+  const optionLabels = planningModelOptionLabels(selection, providers);
+  return (
+    <span className="text-[11px] text-muted-foreground/65">
+      {providerLabel(selection.provider)} · {modelLabel}
+      {optionLabels.length === 0 ? "" : ` · ${optionLabels.join(" · ")}`}
+    </span>
   );
 }
 
@@ -483,27 +493,8 @@ function Warning({
 }
 
 function actLabel(act: PlanNodePopoverAct): string {
-  if (act === "continue") return "Continue from here";
-  if (act === "edit-and-branch") return "Edit and branch";
-  if (act === "open-session") return "Open session";
-  return "Implement from here";
-}
-
-function runAct(
-  act: PlanNodePopoverAct,
-  query: Extract<PlanTimelineItem, { readonly _tag: "message" }> | undefined,
-  commitId: MercurianCommitId,
-  callbacks: {
-    readonly onSelect: (commitId: MercurianCommitId) => void;
-    readonly onEditAndBranch: (
-      query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-    ) => void;
-    readonly onImplementFrom: (commitId: MercurianCommitId) => void;
-  },
-): void {
-  if (act === "continue") callbacks.onSelect(commitId);
-  else if (act === "edit-and-branch" && query !== undefined) callbacks.onEditAndBranch(query);
-  else if (act === "implement") callbacks.onImplementFrom(commitId);
+  if (act === "edit-and-branch") return "Fork here";
+  return "Open line";
 }
 
 function nodeAccessibleName(node: PlanGraphNode): string {

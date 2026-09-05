@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Result from "effect/Result";
 
 import { CheckpointStore } from "../../checkpointing/CheckpointStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -58,7 +59,7 @@ export class LineBranchMissingError extends Schema.TaggedErrorClass<LineBranchMi
 ) {}
 
 const isSlotPoolAtCapacityError = Schema.is(SlotPoolAtCapacityError);
-const isLineBranchMissingError = Schema.is(LineBranchMissingError);
+export const isLineBranchMissingError = Schema.is(LineBranchMissingError);
 const isSlotServiceError = Schema.is(SlotServiceError);
 
 export interface ClaimSlotInput {
@@ -66,6 +67,7 @@ export interface ClaimSlotInput {
   readonly projectId: MercurianProjectId;
   readonly lineRootCommitId: MercurianCommitId;
   readonly holder: SlotLeaseHolder;
+  readonly wait?: true;
 }
 
 interface RepositoryLayoutMember {
@@ -457,7 +459,7 @@ export const make = Effect.gen(function* () {
     return slot;
   });
 
-  const claim: SlotService["Service"]["claim"] = Effect.fn("SlotService.claim")(function* (input) {
+  const claimOnce = Effect.fn("SlotService.claimOnce")(function* (input: ClaimSlotInput) {
     return yield* registry
       .withProjectLock(
         input.projectId,
@@ -559,6 +561,23 @@ export const make = Effect.gen(function* () {
             : new SlotServiceError({ operation: "claim", cause }),
         ),
       );
+  });
+
+  const claim: SlotService["Service"]["claim"] = Effect.fn("SlotService.claim")(function* (input) {
+    while (true) {
+      const result = yield* registry.withReleaseSubscription((awaitRelease) =>
+        claimOnce(input).pipe(
+          Effect.result,
+          Effect.flatMap((attempt) =>
+            Result.isFailure(attempt) && input.wait && isSlotPoolAtCapacityError(attempt.failure)
+              ? awaitRelease.pipe(Effect.as(attempt))
+              : Effect.succeed(attempt),
+          ),
+        ),
+      );
+      if (Result.isSuccess(result)) return result.success;
+      if (!input.wait || !isSlotPoolAtCapacityError(result.failure)) return yield* result.failure;
+    }
   });
 
   const release: SlotService["Service"]["release"] = Effect.fn("SlotService.release")(

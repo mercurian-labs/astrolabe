@@ -10,11 +10,11 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { groupArchivedPlansByProject, resolveArchivedRowActions } from "./ArchivedPlansPanel.logic";
 
 /**
- * Settings → Archived: the reversible half of the plan lifecycle.
+ * Settings → Archived: the reversible half of the thread lifecycle.
  *
- * Archived plans grouped by project, each restorable in one click. Delete
- * appears beside Restore only for a plan that is still fully private — once
- * anything has been published, archive is the only disappearance a plan has,
+ * Archived threads grouped by project, each restorable in one click. Delete
+ * appears beside Restore only for a thread that is still fully private — once
+ * anything has been published, archive is the only disappearance a thread has,
  * so there is nothing here to offer.
  *
  * The page reads the same live tree snapshot the sidebar does, which is why an
@@ -39,10 +39,10 @@ export function ArchivedPlansPanel() {
               <ArchiveIcon className="size-5" />
             </div>
             <EmptyTitle className="text-foreground text-xl">
-              {isPending ? "Loading archived plans" : "No archived plans"}
+              {isPending ? "Loading archived threads" : "No archived threads"}
             </EmptyTitle>
             <EmptyDescription className="mt-2 text-sm text-muted-foreground/78">
-              Archiving is how a plan leaves the tree without being destroyed. Anything archived
+              Archiving is how a thread leaves the tree without being destroyed. Anything archived
               waits here, grouped by project, and comes back where it was.
             </EmptyDescription>
           </EmptyHeader>

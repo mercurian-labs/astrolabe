@@ -62,7 +62,7 @@ Setup scripts (AC6, second half) are **verified, not built**: M-110's birth laun
 
 ### 4. Documentation and surface accounting
 
-- `docs/user/projects-and-plans.md`: the session header's three controls — how finished work leaves the session (commit/push/pull/PR, all human-invoked; the generated message and PR text as offers), when create-PR appears (authenticated provider serving the repository) and where the PR link lands (the leaf's record), the open-in picker, and repository scripts (run here, declared on the Repositories page; preview address; setup-at-birth).
+- `docs/user/projects-and-threads.md`: the session header's three controls — how finished work leaves the session (commit/push/pull/PR, all human-invoked; the generated message and PR text as offers), when create-PR appears (authenticated provider serving the repository) and where the PR link lands (the leaf's record), the open-in picker, and repository scripts (run here, declared on the Repositories page; preview address; setup-at-birth).
 - `docs/internals/glossary.md`: cross-link the session header entry to hosting-provider standing and repository scripts.
 - Web and desktop apply identically (same served origin; preview-on-run is runtime-gated, not surface-forked). Mobile stays parked.
 
@@ -85,7 +85,7 @@ Setup scripts (AC6, second half) are **verified, not built**: M-110's birth laun
 - [ ] `ws.ts` `git.runStackedAction` handler: on success-with-created-PR, resolve the coding session (thread identity, else unique `worktreePath` = action `cwd`; add `CodingSessionStore.getByWorktreePath` if needed) → `attachPullRequest`; non-session threads unchanged; **update `server.test.ts`'s store mock**.
 - [ ] Tests updated: `CodingSessionHeader.test.tsx` pin flips to presence (delete/new-thread absence stays); route test carries the new props.
 - [ ] Do **not** touch: `client-runtime/state/gitActions.ts` (mobile twin), `chat/ChatHeader.tsx` beyond reference, upstream script persistence (`project.update`, t3.json import), `GitManager`'s action phases, M-110's setup launch, any migration or contract schema, `apps/mobile`.
-- [ ] Docs: `docs/user/projects-and-plans.md` + glossary cross-links.
+- [ ] Docs: `docs/user/projects-and-threads.md` + glossary cross-links.
 - [ ] Commits in slices, e.g. `feat(web): session header git actions and open-in, gated by hosting standing (M-119)`, `feat(server): a created PR lands on the session leaf (M-119)`, `feat(web): repository scripts run from the session header (M-119)`, `docs: session header controls (M-119)`.
 
 ## Test Plan

@@ -87,7 +87,7 @@ function TrackersEmptyState({ onConnect }: { onConnect: () => void }) {
       <EmptyHeader>
         <EmptyTitle>No trackers connected</EmptyTitle>
         <EmptyDescription>
-          Connect a tracker and its issues can become the starting points of plans. Mercurian only
+          Connect a tracker and its issues can become the starting points of threads. Mercurian only
           reads — nothing you do here is written back.
         </EmptyDescription>
       </EmptyHeader>
