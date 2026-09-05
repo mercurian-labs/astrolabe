@@ -30,6 +30,7 @@ import {
 } from "./DagExplorer.logic";
 import {
   fitSpatialMap,
+  openingSpatialMapTransform,
   pointWithinBounds,
   spatialMapChromeVisibility,
   spatialMapViewBox,
@@ -67,6 +68,7 @@ export function SpatialMapCanvas({
   edges,
   nodes,
   fit,
+  minOpeningZoom,
   showMinimap = true,
   focus = null,
 }: {
@@ -77,6 +79,11 @@ export function SpatialMapCanvas({
   readonly nodes: ReadonlyArray<SpatialMapCanvasNode>;
   /** Opt-in fit padding and zoom ceiling for small, label-heavy graphs. */
   readonly fit?: MapFitOptions;
+  /**
+   * The graph never opens below this zoom: a narrow frame shows part of the
+   * graph at reading size, panned to its center, and Fit still gives the overview.
+   */
+  readonly minOpeningZoom?: number;
   /** A tiny graph gains nothing from an overview that covers its nodes. */
   readonly showMinimap?: boolean;
   /** When the id changes and the point is out of view, the camera pans to it without rezooming. */
@@ -129,7 +136,7 @@ export function SpatialMapCanvas({
   useEffect(() => {
     if (frame.width <= 0 || frame.height <= 0) return;
     cancelTween();
-    applyTransform(fitSpatialMap(bounds, frame, fitOptions));
+    applyTransform(openingSpatialMapTransform(bounds, frame, fitOptions, minOpeningZoom));
   }, [
     applyTransform,
     bounds.maxX,
@@ -139,7 +146,21 @@ export function SpatialMapCanvas({
     cancelTween,
     fitOptions,
     frame,
+    minOpeningZoom,
   ]);
+
+  // Pans to a world point only when it is out of view, keeping the zoom, so the
+  // picture stays put while the point is already on screen.
+  const reveal = useCallback(
+    (point: MapPoint) => {
+      if (frame.width <= 0 || frame.height <= 0) return;
+      const from = transformRef.current;
+      if (pointWithinBounds(point, visibleWorldRect(from, viewBox, frame))) return;
+      const tween = cameraTween(from, centerOn(point, from, viewBox), viewBox);
+      startTween((progress) => applyTransform(tween(progress)));
+    },
+    [applyTransform, frame, startTween, viewBox],
+  );
 
   const focusId = focus?.id ?? null;
   const focusRef = useRef(focus);
@@ -148,12 +169,9 @@ export function SpatialMapCanvas({
   }, [focus]);
   useEffect(() => {
     const target = focusRef.current;
-    if (focusId === null || target === null || frame.width <= 0 || frame.height <= 0) return;
-    const from = transformRef.current;
-    if (pointWithinBounds(target.point, visibleWorldRect(from, viewBox, frame))) return;
-    const tween = cameraTween(from, centerOn(target.point, from, viewBox), viewBox);
-    startTween((progress) => applyTransform(tween(progress)));
-  }, [applyTransform, focusId, frame, startTween, viewBox]);
+    if (focusId === null || target === null) return;
+    reveal(target.point);
+  }, [focusId, reveal]);
 
   const unitsPerPixel = useCallback(() => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -303,10 +321,12 @@ export function SpatialMapCanvas({
           {edges.map((edge) => (
             <g key={edge.id}>{edge.render(renderContext)}</g>
           ))}
+          {/* Keyboard focus can land on a node the opening view left off screen; reveal it. */}
           {nodes.map((node) => (
             <g
               key={node.id}
               transform={`translate(${node.x - node.width / 2} ${node.y - node.height / 2})`}
+              onFocus={() => reveal({ x: node.x, y: node.y })}
             >
               {node.render(renderContext)}
             </g>

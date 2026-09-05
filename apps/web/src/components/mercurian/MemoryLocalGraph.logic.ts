@@ -10,6 +10,12 @@ import type { MapPoint } from "./DagExplorer.logic";
 export const MEMORY_GRAPH_NODE_SIZE = { width: 128, height: 40 } as const;
 /** Fit for the memory graph: tight padding, and never zoomed past a readable label size. */
 export const MEMORY_GRAPH_FIT = { padding: 12, maxZoom: 1.25 } as const;
+/**
+ * A panel under about 300px cannot show four notes at label size at once. The
+ * graph opens at authored size, centered, rather than shrunk to fit; Fit gives
+ * the overview and panning or a selection brings any note in.
+ */
+export const MEMORY_GRAPH_MIN_OPENING_ZOOM = 1;
 const TICKS = 300;
 const LINK_DISTANCE = 104;
 

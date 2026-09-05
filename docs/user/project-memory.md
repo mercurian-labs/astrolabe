@@ -74,7 +74,9 @@ The panel reads top to bottom:
 - **Local graph.** The notes this line changed and the prose links between them, with added,
   removed, and unchanged links told apart in words as well as strokes. Skill maps are listed as
   documents and never drawn as nodes. Selecting a node selects its document below, and selecting
-  a document or amendment lights up its notes.
+  a document or amendment lights up its notes. In a narrow panel the graph opens at reading size
+  rather than shrunk to fit; drag or scroll to pan, and **Fit graph to view** shows the whole
+  graph.
 - **Changes.** Each changed document with its history (added, modified, renamed from, deleted,
   restored) and each amendment, including which earlier amendment a revert undoes. **Open in
   Files** shows the document read-only at its recorded version; a deleted document opens as its
@@ -101,7 +103,9 @@ and promotes nothing. Mark the remaining changes reviewed, prepare again, then *
 home**. If memory changed in between, confirming returns a fresh review instead of merging; nothing
 retries on your behalf. For a memory folder inside a code repository, confirming approves this
 exact review for the repository's next push or pull request; it is not merged home until that
-ships, and pushes carry commits only, so commit any pending memory work first. For a standalone
+ships, and pushes carry commits only, so commit any pending memory work first. That approval
+covers the memory you confirmed: if a revert, a new capture, or an outside change lands afterwards,
+the panel says the approval no longer applies and offers **Prepare again**. For a standalone
 memory repository, confirming creates the merge commit when Git can merge cleanly; a conflict
 comes back with the paths involved and a **Reconcile in the conversation** action that seeds your
 draft. Host-side merge, auto-merge, and host revert of a pull request that carries shared memory

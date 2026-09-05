@@ -25,6 +25,7 @@ import {
   memoryMergeConfirmInput,
   memoryMergeHomeOutcomeCopy,
   memoryMergeReviewIsConfirmable,
+  memoryMergeStateCopy,
   memoryMergeTransition,
   memoryNeedsReview,
   memoryNoteRequestScope,
@@ -187,6 +188,7 @@ describe("merge home", () => {
       {
         kind: "result",
         result: { kind: "review-required", review: review({ unreviewedIds: ["a"] }) },
+        version: "cv1",
       },
     );
     expect(memoryMergeReviewIsConfirmable(withRemaining)).toBe(false);
@@ -196,9 +198,62 @@ describe("merge home", () => {
     expect(memoryMergeReviewIsConfirmable(stale)).toBe(false);
     const fresh = memoryMergeTransition(
       { kind: "busy", step: "confirm" },
-      { kind: "result", result: { kind: "review-required", review: review({ version: "v2" }) } },
+      {
+        kind: "result",
+        result: { kind: "review-required", review: review({ version: "v2" }) },
+        version: "cv1",
+      },
     );
     expect(fresh).toEqual({ kind: "review", review: review({ version: "v2" }), stale: false });
+  });
+
+  it("keeps a deferred approval through its own confirmation and retires it once memory moves", () => {
+    // Confirm on the shared repository path: the dashboard the person confirmed against is cv1.
+    const approved = memoryMergeTransition(
+      { kind: "busy", step: "confirm" },
+      { kind: "result", result: { kind: "deferred-to-push" }, version: "cv1" },
+    );
+    expect(approved).toEqual({ kind: "deferred-to-push", version: "cv1", stale: false });
+    expect(memoryMergeStateCopy(approved)).toMatch(/^Memory review approved/u);
+    // The confirmation's own invalidation and refresh land: same version, still approved.
+    const afterOwnRefresh = memoryMergeTransition(
+      memoryMergeTransition(approved, { kind: "invalidated" }),
+      { kind: "dashboard", version: "cv1" },
+    );
+    expect(afterOwnRefresh).toBe(approved);
+    // A revert, a new capture, or an outside change moves the version: approval retired.
+    const retired = memoryMergeTransition(afterOwnRefresh, { kind: "dashboard", version: "cv2" });
+    expect(retired).toEqual({ kind: "deferred-to-push", version: "cv1", stale: true });
+    expect(memoryMergeStateCopy(retired)).toMatch(/no longer applies.*Prepare again/u);
+    expect(memoryMergeStateCopy(retired)).not.toMatch(/^Memory review approved/u);
+    // Stale is sticky until the person acts; the way out is dismiss or a fresh prepare.
+    expect(memoryMergeTransition(retired, { kind: "dashboard", version: "cv1" })).toBe(retired);
+    expect(memoryMergeTransition(retired, { kind: "dismiss" })).toEqual({ kind: "idle" });
+    expect(memoryMergeTransition(retired, { kind: "start", step: "prepare" })).toEqual({
+      kind: "busy",
+      step: "prepare",
+    });
+  });
+
+  it("binds an unversioned approval to the first live dashboard instead of retiring it", () => {
+    const unbound = memoryMergeTransition(
+      { kind: "busy", step: "confirm" },
+      { kind: "result", result: { kind: "deferred-to-push" }, version: null },
+    );
+    const bound = memoryMergeTransition(unbound, { kind: "dashboard", version: "cv1" });
+    expect(bound).toEqual({ kind: "deferred-to-push", version: "cv1", stale: false });
+    expect(memoryMergeTransition(bound, { kind: "dashboard", version: "cv2" })).toEqual({
+      kind: "deferred-to-push",
+      version: "cv1",
+      stale: true,
+    });
+    // Other settled outcomes are facts, not promises, and never go stale.
+    const merged = memoryMergeTransition(prepared, {
+      kind: "result",
+      result: { kind: "merged", commitOid: "1234567890" },
+      version: "cv1",
+    });
+    expect(memoryMergeTransition(merged, { kind: "dashboard", version: "cv2" })).toBe(merged);
   });
 
   it("confirms with the prepared version and the reviewed unmarked id, including null", () => {
@@ -217,6 +272,7 @@ describe("merge home", () => {
       memoryMergeTransition(prepared, {
         kind: "result",
         result: { kind: "merged", commitOid: "1234567890" },
+        version: "cv1",
       }),
     ).toEqual({
       kind: "merged",

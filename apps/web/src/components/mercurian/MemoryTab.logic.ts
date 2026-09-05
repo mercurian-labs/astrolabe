@@ -265,31 +265,45 @@ export const memoryComparisonLabel = (
  * Merge home walks in explicit human steps. Preparing never promotes; a fresh
  * review-required always replaces what was prepared before, and nothing here
  * retries a confirmation on its own.
+ *
+ * A deferred approval is a promise about the memory it was confirmed against.
+ * It is bound to the dashboard's curation version at confirmation, which the
+ * approval itself leaves unchanged, and reads stale once that version moves:
+ * a revert, a new capture, or an outside change all retire the approval.
  */
 export type MemoryMergeState =
   | { readonly kind: "idle" }
   | { readonly kind: "busy"; readonly step: "prepare" | "confirm" }
   | { readonly kind: "review"; readonly review: MemoryMergeReview; readonly stale: boolean }
   | { readonly kind: "merged"; readonly commitOid: string }
-  | { readonly kind: "deferred-to-push" }
+  | { readonly kind: "deferred-to-push"; readonly version: string | null; readonly stale: boolean }
   | { readonly kind: "conflict"; readonly paths: ReadonlyArray<string> }
   | { readonly kind: "error"; readonly message: string };
 
 export type MemoryMergeEvent =
   | { readonly kind: "start"; readonly step: "prepare" | "confirm" }
-  | { readonly kind: "result"; readonly result: MercurianMergeMemoryHomeResult }
+  | {
+      readonly kind: "result";
+      readonly result: MercurianMergeMemoryHomeResult;
+      /** The curation version of the dashboard the person confirmed against. */
+      readonly version: string | null;
+    }
   | { readonly kind: "failure"; readonly message: string }
   | { readonly kind: "invalidated" }
+  | { readonly kind: "dashboard"; readonly version: string }
   | { readonly kind: "dismiss" };
 
-function memoryMergeResultState(result: MercurianMergeMemoryHomeResult): MemoryMergeState {
+function memoryMergeResultState(
+  result: MercurianMergeMemoryHomeResult,
+  version: string | null,
+): MemoryMergeState {
   switch (result.kind) {
     case "review-required":
       return { kind: "review", review: result.review, stale: false };
     case "merged":
       return { kind: "merged", commitOid: result.commitOid };
     case "deferred-to-push":
-      return { kind: "deferred-to-push" };
+      return { kind: "deferred-to-push", version, stale: false };
     case "conflict":
       return { kind: "conflict", paths: result.conflicts.map(({ path }) => path) };
   }
@@ -303,11 +317,15 @@ export function memoryMergeTransition(
     case "start":
       return { kind: "busy", step: event.step };
     case "result":
-      return memoryMergeResultState(event.result);
+      return memoryMergeResultState(event.result, event.version);
     case "failure":
       return { kind: "error", message: event.message };
     case "invalidated":
       return state.kind === "review" ? { ...state, stale: true } : state;
+    case "dashboard":
+      if (state.kind !== "deferred-to-push") return state;
+      if (state.version === null) return { ...state, version: event.version };
+      return state.version === event.version || state.stale ? state : { ...state, stale: true };
     case "dismiss":
       return { kind: "idle" };
   }
@@ -323,6 +341,28 @@ export function memoryMergeConfirmInput(review: MemoryMergeReview): {
 
 export const memoryMergeReviewIsConfirmable = (state: MemoryMergeState) =>
   state.kind === "review" && !state.stale && state.review.unreviewedIds.length === 0;
+
+/** What a settled outcome says, null before one lands; a retired approval never reads as approved. */
+export function memoryMergeStateCopy(state: MemoryMergeState): string | null {
+  switch (state.kind) {
+    case "merged":
+      return memoryMergeHomeOutcomeCopy({ kind: "merged", commitOid: state.commitOid });
+    case "deferred-to-push":
+      return state.stale
+        ? "Memory changed since it was approved for this repository's next push, so that approval no longer applies. Prepare again to review and approve the current memory."
+        : memoryMergeHomeOutcomeCopy({ kind: "deferred-to-push" });
+    case "conflict":
+      return memoryMergeHomeOutcomeCopy({
+        kind: "conflict",
+        conflicts: state.paths.map((path) => ({ path })),
+      });
+    case "idle":
+    case "busy":
+    case "review":
+    case "error":
+      return null;
+  }
+}
 
 export function memoryMergeHomeOutcomeCopy(result: MercurianMergeMemoryHomeResult): string {
   switch (result.kind) {

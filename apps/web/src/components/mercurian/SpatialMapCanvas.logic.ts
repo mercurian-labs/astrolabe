@@ -1,4 +1,5 @@
 import {
+  centerOn,
   fitTransform,
   MAP_GLYPH_ZOOM,
   wheelIntent,
@@ -33,6 +34,26 @@ export function fitSpatialMap(
   fit: MapFitOptions = {},
 ): MapTransform {
   return fitTransform(bounds, spatialMapViewBox(frame), fit);
+}
+
+/**
+ * The camera a graph opens with. Normally the fit; when the fit would shrink
+ * labels below reading size, the graph opens centered at the floor zoom instead,
+ * and the Fit control still offers the whole-graph overview.
+ */
+export function openingSpatialMapTransform(
+  bounds: MapBounds,
+  frame: MapFrameSize,
+  fit: MapFitOptions = {},
+  minZoom?: number,
+): MapTransform {
+  const fitted = fitSpatialMap(bounds, frame, fit);
+  if (minZoom === undefined || fitted.zoom >= minZoom) return fitted;
+  return centerOn(
+    { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 },
+    { x: 0, y: 0, zoom: minZoom },
+    spatialMapViewBox(frame),
+  );
 }
 
 export function isAtFit(

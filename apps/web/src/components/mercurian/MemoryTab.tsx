@@ -61,6 +61,7 @@ import {
   memoryMergeHomeOutcomeCopy,
   memoryMergeHomeReconciliationMessage,
   memoryMergeReviewIsConfirmable,
+  memoryMergeStateCopy,
   memoryMergeTransition,
   memoryNeedsReview,
   memoryNoteRequestScope,
@@ -152,7 +153,7 @@ export function MemoryTab({
     (open: boolean) => useMemoryPanelStore.getState().setGraphOpen(threadRef, open),
     [threadRef],
   );
-  const [merge, setMerge] = useState<MemoryMergeState>({ kind: "idle" });
+  const [mergeState, setMerge] = useState<MemoryMergeState>({ kind: "idle" });
   // Browse and the note notice belong to one scope: environment, line, and reading
   // position. Another scope reads them as idle without any reset effect.
   const scope = memoryRequestScope({ environmentId, threadId: threadRef.threadId, reading });
@@ -185,6 +186,15 @@ export function MemoryTab({
     lastInvalidation.current = invalidationTick;
     setMerge((current) => memoryMergeTransition(current, { kind: "invalidated" }));
   }, [invalidationTick]);
+  // A deferred approval follows the live dashboard's curation version, derived in render so
+  // the panel never shows an approval the current dashboard has already retired. History
+  // reads are left out: a checkpoint carries its own version and is not a memory change.
+  const liveVersion = historical ? null : (dashboard?.curationVersion ?? null);
+  const merge =
+    liveVersion === null
+      ? mergeState
+      : memoryMergeTransition(mergeState, { kind: "dashboard", version: liveVersion });
+  if (merge !== mergeState) setMerge(merge);
 
   const openDocument = useCallback(
     (target: MemoryDocumentTarget) =>
@@ -345,13 +355,17 @@ export function MemoryTab({
         return;
       }
       setMerge((current) =>
-        memoryMergeTransition(current, { kind: "result", result: outcome.value }),
+        memoryMergeTransition(current, {
+          kind: "result",
+          result: outcome.value,
+          version: curationVersion,
+        }),
       );
       if (outcome.value.kind === "merged" || outcome.value.kind === "deferred-to-push") {
         await refresh();
       }
     },
-    [line, merge, mergeHome, refresh],
+    [curationVersion, line, merge, mergeHome, refresh],
   );
 
   return (
@@ -767,19 +781,22 @@ function MergeHomePanel({
         </>
       ) : (
         <>
-          <p className="text-sm">
-            {memoryMergeHomeOutcomeCopy(
-              merge.kind === "merged"
-                ? { kind: "merged", commitOid: merge.commitOid }
-                : merge.kind === "deferred-to-push"
-                  ? { kind: "deferred-to-push" }
-                  : { kind: "conflict", conflicts: merge.paths.map((path) => ({ path })) },
-            )}
-          </p>
+          <p className="text-sm">{memoryMergeStateCopy(merge)}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button size="sm" type="button" variant="ghost" onClick={onDismiss}>
               Dismiss
             </Button>
+            {merge.kind === "deferred-to-push" && merge.stale ? (
+              <Button
+                size="sm"
+                type="button"
+                variant="outline"
+                disabled={historical}
+                onClick={onPrepare}
+              >
+                Prepare again
+              </Button>
+            ) : null}
             {merge.kind === "conflict" ? (
               <Button
                 size="sm"

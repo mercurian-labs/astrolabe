@@ -8,6 +8,7 @@ import { cn } from "../../lib/utils";
 import {
   layoutMemoryLocalGraph,
   MEMORY_GRAPH_FIT,
+  MEMORY_GRAPH_MIN_OPENING_ZOOM,
   MEMORY_GRAPH_NODE_SIZE,
   memoryGraphComponents,
   memoryGraphEdgeStatusLabel,
@@ -177,6 +178,7 @@ export function MemoryLocalGraph({
         edges={edges}
         fit={MEMORY_GRAPH_FIT}
         focus={focus}
+        minOpeningZoom={MEMORY_GRAPH_MIN_OPENING_ZOOM}
         nodes={nodes}
         showMinimap={false}
       />
