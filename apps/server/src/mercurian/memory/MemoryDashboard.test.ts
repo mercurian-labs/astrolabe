@@ -203,6 +203,36 @@ const fixture = Effect.fn("memory.fixture")(function* (suffix = "one") {
 });
 layer("immutable memory reads", (it) => {
   it.effect(
+    "reads newly designated memory when earlier turns captured only other repositories",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        f.checkpoints.push({
+          turnId: TurnId.make("earlier-code-turn"),
+          checkpointTurnCount: 1,
+          checkpointRef: checkpointRefForThreadTurn(f.threadId, 1),
+          status: "ready",
+          files: [],
+          repositories: [
+            { repositoryId: MercurianRepositoryId.make("code"), repositoryName: "Code", files: [] },
+          ],
+          assistantMessageId: MessageId.make("after-one"),
+          completedAt: "2026-09-01T00:00:00Z",
+        });
+        const current = yield* f.read();
+        assert(current.kind === "available");
+        assert.equal(current.position.snapshotOid, null);
+        assert.equal(yield* f.run(["show", `${current.position.treeOid}:A.md`]), "base");
+        f.checkpoints[0] = {
+          ...f.checkpoints[0]!,
+          repositories: [
+            { repositoryId: f.context.source.repositoryId, repositoryName: "Memory", files: [] },
+          ],
+        };
+        assert.deepEqual(yield* f.read(), { kind: "unavailable", reason: "object-missing" });
+      }).pipe(Effect.scoped),
+  );
+  it.effect(
     "reads before/after and unchanged planning ancestry without later or main leakage",
     () =>
       Effect.gen(function* () {

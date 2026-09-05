@@ -160,7 +160,23 @@ export const makeMemoryPosition = Effect.gen(function* () {
     );
     const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
     const chainTip = yield* resolve(cwd, `${snapshotRef}^{commit}`);
-    if (!chainTip && checkpoints.some((c) => c.checkpoints.some((p) => p.status === "ready")))
+    const capturedInRepository = (
+      threadId: ThreadId,
+      checkpoint: (typeof checkpoints)[number]["checkpoints"][number],
+    ) => {
+      const home =
+        context.detail.lineRuntimes.find((r) => r.threadId === threadId)?.homeRepositoryId ??
+        context.detail.codingSessions.find((r) => r.threadId === threadId)?.repositoryId;
+      return checkpoint.repositories
+        ? checkpoint.repositories.some((r) => r.repositoryId === context.source.repositoryId)
+        : home === undefined || home === context.source.repositoryId;
+    };
+    if (
+      !chainTip &&
+      checkpoints.some((c) =>
+        c.checkpoints.some((p) => p.status === "ready" && capturedInRepository(c.threadId, p)),
+      )
+    )
       return { kind: "unavailable", reason: "object-missing" };
     const ownSnapshot = (ref: string) =>
       ref.startsWith(snapshotRef.replace(/\/snapshot$/u, "/snapshots/")) ||
@@ -192,9 +208,6 @@ export const makeMemoryPosition = Effect.gen(function* () {
       count: number,
     ) {
       const records = checkpoints.find((c) => c.threadId === threadId)?.checkpoints ?? [];
-      const home =
-        context.detail.lineRuntimes.find((r) => r.threadId === threadId)?.homeRepositoryId ??
-        context.detail.codingSessions.find((r) => r.threadId === threadId)?.repositoryId;
       const candidates = records
         .filter((c) => c.checkpointTurnCount <= count)
         .toSorted((a, b) => b.checkpointTurnCount - a.checkpointTurnCount);
@@ -210,10 +223,8 @@ export const makeMemoryPosition = Effect.gen(function* () {
           `${checkpointRefForThreadTurn(threadId, candidate.checkpointTurnCount)}^{commit}`,
         );
         if (oid) return { snapshotOid: oid };
-        const capturedHere = candidate.repositories
-          ? candidate.repositories.some((r) => r.repositoryId === context.source.repositoryId)
-          : home === undefined || home === context.source.repositoryId;
-        if (capturedHere) return { kind: "unavailable", reason: "object-missing" } as const;
+        if (capturedInRepository(threadId, candidate))
+          return { kind: "unavailable", reason: "object-missing" } as const;
       }
       return { snapshotOid: baselineSnapshotOid };
     });
