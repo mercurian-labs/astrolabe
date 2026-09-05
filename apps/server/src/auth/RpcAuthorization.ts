@@ -44,8 +44,6 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.readLineUncommittedDiff]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.recreateLineBranch]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
-  [MERCURIAN_WS_METHODS.getPlanTextAt]: AuthOrchestrationReadScope,
-  [MERCURIAN_WS_METHODS.getSpecAt]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
   // Importing an issue creates a plan, so it is an operation on the same
   // footing as creating one from a blank draft.
@@ -53,9 +51,6 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.ensureProjectRuntime]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.forkLine]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.openLine]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.savePlanRevision]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.saveSpecRevision]: AuthOrchestrationOperateScope,
-  [MERCURIAN_WS_METHODS.refreshSpec]: AuthOrchestrationOperateScope,
   // A plan's disappearance, reversible or not.
   [MERCURIAN_WS_METHODS.archivePlan]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.unarchivePlan]: AuthOrchestrationOperateScope,

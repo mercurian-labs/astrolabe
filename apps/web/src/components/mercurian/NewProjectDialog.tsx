@@ -1,4 +1,4 @@
-import { useDesignateStorageSource } from "../../state/mercurianStorage";
+import { useDesignateStorageSource, useRemoveStorageSource } from "../../state/mercurianStorage";
 import {
   emptyStorageLocations,
   ProjectDocumentLocationFields,
@@ -37,6 +37,7 @@ export function NewProjectDialog({
 }) {
   const navigate = useNavigate();
   const designateStorage = useDesignateStorageSource();
+  const removeStorage = useRemoveStorageSource();
   const [locations, setLocations] = useState(emptyStorageLocations);
   const createProject = useCreateMercurianProject();
   const setProjectRepositories = useSetProjectRepositories();
@@ -96,13 +97,15 @@ export function NewProjectDialog({
 
     for (const kind of ["memory", "plan", "spec"] as const) {
       const location = locations[kind];
-      if (!location.repositoryId) continue;
-      const saved = await designateStorage({
-        projectId: project.projectId,
-        kind,
-        repositoryId: location.repositoryId as MercurianRepositoryId,
-        subpath: location.subpath,
-      });
+      if (!location.repositoryId && createdProject === null) continue;
+      const saved = location.repositoryId
+        ? await designateStorage({
+            projectId: project.projectId,
+            kind,
+            repositoryId: location.repositoryId as MercurianRepositoryId,
+            subpath: location.subpath,
+          })
+        : await removeStorage(project.projectId, kind);
       if (!saved.ok) {
         setIsSubmitting(false);
         setError(
@@ -119,6 +122,7 @@ export function NewProjectDialog({
   }, [
     createProject,
     designateStorage,
+    removeStorage,
     locations,
     createdProject,
     isSubmitting,

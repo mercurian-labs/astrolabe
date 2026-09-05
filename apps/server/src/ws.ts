@@ -1,11 +1,7 @@
 import { isMemoryReadUnavailableError } from "@t3tools/contracts";
-import * as NodeCrypto from "node:crypto";
-import { DocumentStore } from "./mercurian/documents/DocumentStore.ts";
+import { readDocumentMarkdown } from "./mercurian/documents/markdown.ts";
+import * as IssueImport from "./mercurian/documents/IssueImport.ts";
 import * as SpecRefresh from "./mercurian/documents/SpecRefresh.ts";
-import * as FileSystem from "effect/FileSystem";
-import { importedSpecMarkdown, specRevision } from "./mercurian/documents/markdown.ts";
-import { SnapshotChain } from "./mercurian/worktreeSlots/SnapshotChain.ts";
-import { checkpointRefForThreadTurn } from "./checkpointing/Utils.ts";
 import { MERCURIAN_DOCUMENT_WS_METHODS } from "@t3tools/contracts";
 import * as ProjectDocuments from "./mercurian/documents/ProjectDocuments.ts";
 import { MERCURIAN_STORAGE_WS_METHODS, MercurianStorageError } from "@t3tools/contracts";
@@ -77,11 +73,6 @@ import {
   isRepositoryPathInvalidError,
   isPlanNotFoundError,
   isPlanTurnActiveError,
-  isSpecRevisionOutdatedError,
-  specDocumentFromIssue,
-  SpecRevisionOutdatedError,
-  SpecRefreshUnavailableError,
-  isSpecRefreshUnavailableError,
   isTrackerAuthError,
   isTrackerConnectionNotFoundError,
   isTrackerUnreachableError,
@@ -161,10 +152,6 @@ import {
   composePlanRowStatus,
   toWirePlanDetail,
   toWirePlanImport,
-  toWirePlanRevision,
-  toWirePlanSpecRevision,
-  toWirePlanTextAt,
-  toWireSpecAt,
   toWireProject,
   toWireTreeSnapshot,
 } from "./mercurian/planning/wire.ts";
@@ -707,10 +694,8 @@ const makeWsRpcLayer = (
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
       const storageSourceStore = yield* StorageSourceStore.StorageSourceStore;
       const projectDocuments = yield* ProjectDocuments.make;
-      const documentStore = yield* DocumentStore;
       const refreshProjectSpec = yield* SpecRefresh.make;
-      const documentFs = yield* FileSystem.FileSystem;
-      const documentSnapshots = yield* SnapshotChain;
+      const importIssue = yield* IssueImport.make;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
       const memoryDashboard = yield* MemoryDashboard.MemoryDashboard;
       const trackerStore = yield* TrackerStore.TrackerStore;
@@ -2477,127 +2462,7 @@ const makeWsRpcLayer = (
         [MERCURIAN_WS_METHODS.importPlan]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.importPlan,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                Effect.gen(function* () {
-                  const source = yield* storageSourceStore.getSource(input.projectId, "spec");
-                  if (Option.isNone(source))
-                    return yield* new MercurianStorageError({
-                      operation:
-                        "Choose a spec location in project settings before importing an issue",
-                    });
-                  const imported = yield* planningStore.importPlan({
-                    projectId: input.projectId,
-                    connectionId: input.connectionId,
-                    issueId: input.issue.id,
-                    issueUrl: input.issue.url,
-                    title: input.issue.title,
-                    description: input.issue.description,
-                    createdAt,
-                  });
-                  const documentId = NodeCrypto.createHash("sha256")
-                    .update(
-                      yield* Schema.encodeEffect(
-                        Schema.fromJsonString(Schema.Array(Schema.String)),
-                      )([input.connectionId, input.issue.id]),
-                    )
-                    .digest("hex");
-                  const slug =
-                    input.issue.title
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]+/gu, "-")
-                      .replace(/^-|-$/gu, "")
-                      .slice(0, 64) || "spec";
-                  const document = specDocumentFromIssue(
-                    input.issue.title,
-                    input.issue.description,
-                  );
-                  const origin = yield* documentStore.reserve({
-                    documentId,
-                    projectId: input.projectId,
-                    repositoryId: source.value.repositoryId,
-                    relativePath: [source.value.subpath, `${slug}-${documentId.slice(0, 8)}.md`]
-                      .filter(Boolean)
-                      .join("/"),
-                    connectionId: input.connectionId,
-                    issueId: input.issue.id,
-                    issueUrl: input.issue.url,
-                    imported: false,
-                    ...document,
-                  });
-                  if (origin.imported) return imported;
-                  const root = imported.detail.timeline[0];
-                  if (!root)
-                    return yield* new MercurianStorageError({
-                      operation: "import-root-unavailable",
-                    });
-                  const runtime = yield* lineRuntimeService.ensureThread({
-                    planId: imported.detail.plan.planId,
-                    lineRootCommitId: MercurianCommitId.make(root.commitId),
-                  });
-                  const ensured = yield* lineRuntimeService.ensureSlot({
-                    threadId: runtime.threadId,
-                    holder: { kind: "turn" },
-                  });
-                  yield* Effect.gen(function* () {
-                    const slot = Option.getOrThrow(yield* slotStore.get(ensured.slotId));
-                    const member = slot.members.find(
-                      (candidate) => candidate.repositoryId === origin.repositoryId,
-                    );
-                    if (!member?.currentBranch || !runtime.lineRootCommitId)
-                      return yield* new MercurianStorageError({
-                        operation: "spec-repository-unavailable",
-                      });
-                    const cwd = `${slot.path}/${member.relativePath}`;
-                    const contents = importedSpecMarkdown({
-                      id: documentId,
-                      url: origin.issueUrl,
-                      goal: origin.goal,
-                      acceptanceCriteria: origin.acceptanceCriteria,
-                    });
-                    const exists = yield* documentFs.exists(`${cwd}/${origin.relativePath}`);
-                    const existing = exists
-                      ? Option.some(
-                          yield* workspaceFileSystem.readFile({
-                            cwd,
-                            relativePath: origin.relativePath,
-                          }),
-                        )
-                      : Option.none();
-                    yield* documentStore.saveBaseline(
-                      documentId,
-                      specRevision(origin.goal, origin.acceptanceCriteria),
-                      { goal: origin.goal, acceptanceCriteria: origin.acceptanceCriteria },
-                    );
-                    if (Option.isSome(existing) && existing.value.contents !== contents)
-                      return yield* new MercurianStorageError({
-                        operation: "import-destination-already-exists",
-                      });
-                    if (Option.isNone(existing))
-                      yield* workspaceFileSystem.writeFile({
-                        cwd,
-                        relativePath: origin.relativePath,
-                        contents,
-                      });
-                    yield* documentSnapshots.capture({
-                      cwd,
-                      repositoryId: origin.repositoryId,
-                      lineRootCommitId: runtime.lineRootCommitId,
-                      lineBranch: member.currentBranch,
-                      kind: "external",
-                      ref: checkpointRefForThreadTurn(runtime.threadId, 0),
-                    });
-                    yield* documentStore.markImported(documentId);
-                  }).pipe(
-                    Effect.ensuring(
-                      slotService
-                        .release(ensured.slotId, { kind: "turn", threadId: runtime.threadId })
-                        .pipe(Effect.orDie),
-                    ),
-                  );
-                  return imported;
-                }),
-              ),
+            importIssue(input).pipe(
               Effect.map(toWirePlanImport),
               Effect.mapError((cause) =>
                 isMercurianProjectNotFoundError(cause)
@@ -2648,181 +2513,6 @@ const makeWsRpcLayer = (
                   (cause) => new MercurianPlanningError({ operation: "openLine", cause }),
                 ),
               ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.savePlanRevision]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.savePlanRevision,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                planningStore.savePlanRevision({
-                  planId: input.planId,
-                  text: input.text,
-                  // An edit lands on the branch its author was standing on,
-                  // not on whichever one last received a commit.
-                  ...(input.parentCommitId === undefined
-                    ? {}
-                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
-                  createdAt,
-                }),
-              ),
-              Effect.map(toWirePlanRevision),
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) || isPlanTurnActiveError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "savePlanRevision", cause }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.saveSpecRevision]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.saveSpecRevision,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                planningStore.saveSpecRevision({
-                  planId: input.planId,
-                  document: input.document,
-                  expectedSpecRevisionCommitId:
-                    input.expectedSpecRevisionCommitId === null
-                      ? null
-                      : CommitId.make(input.expectedSpecRevisionCommitId),
-                  ...(input.parentCommitId === undefined
-                    ? {}
-                    : { parentCommitId: CommitId.make(input.parentCommitId) }),
-                  createdAt,
-                }),
-              ),
-              Effect.map(toWirePlanSpecRevision),
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) ||
-                isPlanTurnActiveError(cause) ||
-                isSpecRevisionOutdatedError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "saveSpecRevision", cause }),
-              ),
-            ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.refreshSpec]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.refreshSpec,
-            DateTime.now.pipe(
-              Effect.flatMap((createdAt) =>
-                Effect.gen(function* () {
-                  const context = yield* planningStore.prepareSpecRefresh({
-                    planId: input.planId,
-                    parentCommitId: CommitId.make(input.parentCommitId),
-                  });
-                  if (context.origin === null) {
-                    return yield* new SpecRefreshUnavailableError({ reason: "no-origin" });
-                  }
-                  if (context.local === null || context.upstreamBaseline === null) {
-                    return yield* new SpecRefreshUnavailableError({ reason: "spec-missing" });
-                  }
-                  const issue = yield* trackerStore.getIssue({
-                    connectionId: context.origin.connectionId,
-                    issueId: context.origin.issueId,
-                  });
-                  if (issue === null) {
-                    return yield* new SpecRefreshUnavailableError({ reason: "issue-not-found" });
-                  }
-                  const upstream = specDocumentFromIssue(issue.title, issue.description);
-                  const reconciliation = {
-                    kind: "reconciliation-required" as const,
-                    base: context.upstreamBaseline,
-                    local: context.local.document,
-                    upstream,
-                    expectedSpecRevisionCommitId: MercurianCommitId.make(
-                      context.local.revisionCommitId,
-                    ),
-                  };
-
-                  const confirming =
-                    input.reviewedUpstream !== undefined && input.resolvedDocument !== undefined;
-                  if (confirming) {
-                    const upstreamMoved =
-                      input.reviewedUpstream.goal !== upstream.goal ||
-                      input.reviewedUpstream.acceptanceCriteria !== upstream.acceptanceCriteria;
-                    if (
-                      upstreamMoved ||
-                      String(context.local.revisionCommitId) !==
-                        String(input.expectedSpecRevisionCommitId)
-                    ) {
-                      return reconciliation;
-                    }
-                    const revision = yield* planningStore.saveTrackerSpecRevision({
-                      planId: input.planId,
-                      parentCommitId: CommitId.make(input.parentCommitId),
-                      expectedSpecRevisionCommitId: CommitId.make(
-                        input.expectedSpecRevisionCommitId,
-                      ),
-                      document: input.resolvedDocument,
-                      issueId: context.origin.issueId,
-                      sourceKind: "tracker-reconciliation",
-                      upstream,
-                      createdAt,
-                    });
-                    return {
-                      kind: "committed" as const,
-                      outcome: "reconciled" as const,
-                      revision: toWirePlanSpecRevision(revision),
-                    };
-                  }
-
-                  if (
-                    input.reviewedUpstream !== undefined ||
-                    input.resolvedDocument !== undefined ||
-                    String(context.local.revisionCommitId) !==
-                      String(input.expectedSpecRevisionCommitId)
-                  ) {
-                    return yield* new SpecRevisionOutdatedError({
-                      expectedSpecRevisionCommitId: input.expectedSpecRevisionCommitId,
-                      actualSpecRevisionCommitId: MercurianCommitId.make(
-                        context.local.revisionCommitId,
-                      ),
-                    });
-                  }
-
-                  const classified = PlanningStore.classifySpecRefresh({
-                    base: context.upstreamBaseline,
-                    local: context.local.document,
-                    upstream,
-                  });
-                  if (classified.kind === "unchanged") return classified;
-                  if (classified.kind === "reconciliation-required") return reconciliation;
-
-                  const revision = yield* planningStore.saveTrackerSpecRevision({
-                    planId: input.planId,
-                    parentCommitId: CommitId.make(input.parentCommitId),
-                    expectedSpecRevisionCommitId: CommitId.make(input.expectedSpecRevisionCommitId),
-                    document: classified.document,
-                    issueId: context.origin.issueId,
-                    sourceKind: "tracker-refresh",
-                    createdAt,
-                  });
-                  return {
-                    kind: "committed" as const,
-                    outcome:
-                      classified.kind === "committed-converged"
-                        ? ("converged" as const)
-                        : ("upstream" as const),
-                    revision: toWirePlanSpecRevision(revision),
-                  };
-                }),
-              ),
-              Effect.mapError((cause) =>
-                isPlanNotFoundError(cause) ||
-                isPlanTurnActiveError(cause) ||
-                isSpecRevisionOutdatedError(cause) ||
-                isSpecRefreshUnavailableError(cause) ||
-                isTrackerConnectionNotFoundError(cause) ||
-                isTrackerAuthError(cause) ||
-                isTrackerUnreachableError(cause)
-                  ? cause
-                  : new MercurianPlanningError({ operation: "refreshSpec", cause }),
-              ),
-            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.visitPlan]: (input) =>
@@ -2919,44 +2609,6 @@ const makeWsRpcLayer = (
                   : new MercurianPlanningError({ operation: "deletePlan", cause }),
               ),
             ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.getPlanTextAt]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.getPlanTextAt,
-            planningStore
-              .getPlanTextAt({
-                planId: input.planId,
-                commitId: CommitId.make(input.commitId),
-              })
-              .pipe(
-                Effect.map(toWirePlanTextAt),
-                // A commit the client did not receive from this plan's own
-                // subscription is a planning bug, not something to render.
-                Effect.mapError((cause) =>
-                  isPlanNotFoundError(cause)
-                    ? cause
-                    : new MercurianPlanningError({ operation: "getPlanTextAt", cause }),
-                ),
-              ),
-            { "rpc.aggregate": "mercurian" },
-          ),
-        [MERCURIAN_WS_METHODS.getSpecAt]: (input) =>
-          observeRpcEffect(
-            MERCURIAN_WS_METHODS.getSpecAt,
-            planningStore
-              .getSpecAt({
-                planId: input.planId,
-                commitId: CommitId.make(input.commitId),
-              })
-              .pipe(
-                Effect.map(toWireSpecAt),
-                Effect.mapError((cause) =>
-                  isPlanNotFoundError(cause)
-                    ? cause
-                    : new MercurianPlanningError({ operation: "getSpecAt", cause }),
-                ),
-              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.subscribePlan]: (input) =>
@@ -4159,10 +3811,37 @@ const makeWsRpcLayer = (
                   readOnly: true,
                 };
               }
+              if (input.documentScope) {
+                const currentCwd = yield* projectDocuments.liveCwd(
+                  input.documentScope.threadId,
+                  input.documentScope.repositoryId,
+                );
+                if (currentCwd !== input.cwd)
+                  return yield* new MercurianStorageError({
+                    operation: "document-worktree-moved-reopen-from-plan",
+                  });
+              }
               const file = yield* workspaceFileSystem.readFile(input);
+              const location = yield* projectDocuments.locateDocument(
+                input.cwd,
+                input.relativePath,
+              );
+              const metadata =
+                location?.kind === "spec"
+                  ? readDocumentMarkdown(file.contents, input.relativePath).metadata
+                  : null;
               return {
                 ...file,
-                readOnly: yield* projectDocuments.isDocumentPath(input.cwd, input.relativePath),
+                readOnly: location !== null,
+                ...(location && metadata?.id && metadata.origin
+                  ? {
+                      projectDocument: {
+                        repositoryId: location.repositoryId,
+                        documentId: metadata.id,
+                        relativePath: location.relativePath,
+                      },
+                    }
+                  : {}),
               };
             }).pipe(
               Effect.mapError(

@@ -29,7 +29,6 @@ export const RIGHT_PANEL_KINDS = [
   "pull-request",
   "agents",
   "plan",
-  "spec",
   "memory",
   "checkpoints",
 ] as const;
@@ -92,7 +91,6 @@ export type RightPanelSurface =
     }
   | { id: "agents"; kind: "agents" }
   | { id: "plan"; kind: "plan" }
-  | { id: "spec"; kind: "spec" }
   | { id: "memory"; kind: "memory" }
   | { id: "checkpoints"; kind: "checkpoints" };
 
@@ -102,7 +100,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
 // v12 adds the Mercurian Spec and Checkpoints singleton surfaces.
 // v13 adds Memory as a line-scoped singleton surface.
-const RIGHT_PANEL_STORAGE_VERSION = 13;
+// v14 removes the standalone Spec surface.
+const RIGHT_PANEL_STORAGE_VERSION = 14;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -189,8 +188,6 @@ const singletonSurface = (
       return { id: "agents", kind };
     case "plan":
       return { id: "plan", kind };
-    case "spec":
-      return { id: "spec", kind };
     case "memory":
       return { id: "memory", kind };
     case "checkpoints":

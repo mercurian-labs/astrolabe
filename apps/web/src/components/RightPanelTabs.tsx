@@ -13,7 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDiff,
-  FileText,
   Files,
   GitPullRequest,
   Globe2,
@@ -113,7 +112,6 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddPlan?: (() => void) | undefined;
-  onAddSpec?: (() => void) | undefined;
   onAddMemory?: (() => void) | undefined;
   workspaceReady?: boolean | undefined;
   browserAvailable: boolean;
@@ -122,7 +120,6 @@ interface RightPanelTabsProps {
   filesAvailable: boolean;
   planAvailable?: boolean | undefined;
   planUnavailableReason?: string | undefined;
-  specAvailable?: boolean | undefined;
   memoryAvailable?: boolean | undefined;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
@@ -226,8 +223,6 @@ export function artifactSurfaceMenuActions(input: {
   planAvailable: boolean;
   planUnavailableReason?: string | undefined;
   onAddPlan: () => void;
-  specAvailable: boolean;
-  onAddSpec: () => void;
   memoryAvailable: boolean;
   onAddMemory: () => void;
 }) {
@@ -242,20 +237,6 @@ export function artifactSurfaceMenuActions(input: {
             available: !input.planUnavailableReason,
             disabledReason: input.planUnavailableReason ?? "",
             onClick: input.onAddPlan,
-            badgeCount: 0,
-          },
-        ]
-      : []),
-    ...(input.specAvailable
-      ? [
-          {
-            label: "Spec",
-            description: "Read the spec this session implements.",
-            icon: FileText,
-            shortcut: null,
-            available: true,
-            disabledReason: "",
-            onClick: input.onAddSpec,
             badgeCount: 0,
           },
         ]
@@ -408,7 +389,6 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddPlan: () => void;
-  onAddSpec: () => void;
   onAddMemory: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -416,7 +396,6 @@ function RightPanelEmptyState(props: {
   filesAvailable: boolean;
   planAvailable: boolean;
   planUnavailableReason?: string | undefined;
-  specAvailable: boolean;
   memoryAvailable: boolean;
   pullRequestAvailable: boolean;
   agentsAvailable: boolean;
@@ -471,8 +450,6 @@ function RightPanelEmptyState(props: {
       planAvailable: props.planAvailable,
       planUnavailableReason: props.planUnavailableReason,
       onAddPlan: props.onAddPlan,
-      specAvailable: props.specAvailable,
-      onAddSpec: props.onAddSpec,
       memoryAvailable: props.memoryAvailable,
       onAddMemory: props.onAddMemory,
     }),
@@ -731,8 +708,6 @@ function surfaceTitle(
       return "Agents";
     case "plan":
       return "Plan";
-    case "spec":
-      return "Spec";
     case "memory":
       return "Memory";
     case "checkpoints":
@@ -820,8 +795,6 @@ function SurfaceIcon({
       return <Bot className="size-3 shrink-0" />;
     case "plan":
       return <ScrollText className="size-3 shrink-0" />;
-    case "spec":
-      return <FileText className="size-3 shrink-0" />;
     case "memory":
       return <Brain className="size-3 shrink-0" />;
     case "checkpoints":
@@ -871,8 +844,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
   const planAvailable = (props.planAvailable ?? false) && props.onAddPlan !== undefined;
   const onAddPlan = props.onAddPlan ?? (() => undefined);
-  const specAvailable = (props.specAvailable ?? false) && props.onAddSpec !== undefined;
-  const onAddSpec = props.onAddSpec ?? (() => undefined);
   const memoryAvailable = (props.memoryAvailable ?? false) && props.onAddMemory !== undefined;
   const onAddMemory = props.onAddMemory ?? (() => undefined);
   const workspaceUnavailableReason =
@@ -951,8 +922,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       planAvailable,
       planUnavailableReason: props.planUnavailableReason,
       onAddPlan,
-      specAvailable,
-      onAddSpec,
       memoryAvailable,
       onAddMemory,
     }),
@@ -1436,7 +1405,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddAgents={props.onAddAgents}
             onAddPlan={onAddPlan}
-            onAddSpec={onAddSpec}
             onAddMemory={onAddMemory}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
@@ -1444,7 +1412,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             filesAvailable={props.filesAvailable}
             planAvailable={planAvailable}
             planUnavailableReason={props.planUnavailableReason}
-            specAvailable={specAvailable}
             memoryAvailable={memoryAvailable}
             pullRequestAvailable={props.pullRequestAvailable}
             agentsAvailable={props.agentsAvailable}

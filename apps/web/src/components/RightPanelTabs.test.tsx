@@ -21,22 +21,24 @@ describe("Mercurian panel surfaces", () => {
     );
   });
 
-  it("offers Plan, Spec, and Memory as addable artifacts, but never Checkpoints", () => {
+  it("offers the unified Plan surface and disables it with its setup reason", () => {
     const actions = artifactSurfaceMenuActions({
       planAvailable: true,
       onAddPlan: () => undefined,
-      specAvailable: true,
-      onAddSpec: () => undefined,
       memoryAvailable: true,
       onAddMemory: () => undefined,
     });
 
-    expect(actions.map((action) => action.label)).toEqual(["Plan", "Spec", "Memory"]);
-    expect(actions.map((action) => action.description)).toEqual([
-      "Read the plan this session implements.",
-      "Read the spec this session implements.",
-      "Review this line's memory changes.",
-    ]);
+    expect(actions.map((action) => action.label)).toEqual(["Plan", "Memory"]);
+    const disabled = artifactSurfaceMenuActions({
+      planAvailable: true,
+      planUnavailableReason: "Choose a location",
+      onAddPlan: () => undefined,
+      memoryAvailable: true,
+      onAddMemory: () => undefined,
+    });
+    expect(disabled[0]?.available).toBe(false);
+    expect(disabled[0]?.disabledReason).toBe("Choose a location");
   });
 });
 

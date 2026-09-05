@@ -2230,22 +2230,17 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(path.length, 1);
       const root = path[0]!;
       assert.deepStrictEqual([...root.parents], []);
-      assert.strictEqual(root.kind, "spec-revision");
+      assert.strictEqual(root.kind, "message");
       assert.strictEqual(root.authorKind, "human");
       assert.strictEqual(root.published, true);
-
       assert.deepStrictEqual(
         imported.detail.timeline.map((item) => item._tag),
-        ["spec-revision"],
+        ["message"],
       );
       const item = imported.detail.timeline[0]!;
-      assert.ok(item._tag === "spec-revision");
-      assert.strictEqual(item.cause, "import");
-      assert.strictEqual(item.issueId, "M-101");
-      assert.deepStrictEqual(imported.detail.spec?.document, {
-        goal: "Issue Import",
-        acceptanceCriteria: "Import an issue as the root of a plan.",
-      });
+      assert.ok(item._tag === "message");
+      assert.ok(item.text.includes("https://linear.app/mercurian/issue/M-101"));
+      assert.strictEqual(imported.detail.spec, null);
 
       const origins = yield* originRows("M-101");
       assert.deepStrictEqual(origins, [
@@ -2261,81 +2256,6 @@ layer("PlanningStore", (it) => {
       // The plan appears in the tree, published from birth.
       const row = yield* treeRow(imported.detail.plan.planId);
       assert.strictEqual(row?.hasPublishedCommits, true);
-    }),
-  );
-
-  it.effect("derives tracker baselines from ancestry and records refresh provenance", () =>
-    Effect.gen(function* () {
-      const store = yield* PlanningStore.PlanningStore;
-      const project = yield* seedProject("2026-08-08T01:00:00.000Z");
-      const imported = yield* importIssue({
-        projectId: project.projectId,
-        issueId: "M-refresh",
-        title: "Original",
-        description: "Tracker base",
-      });
-      const root = imported.detail.timeline[0]!;
-
-      const prepared = yield* store.prepareSpecRefresh({
-        planId: imported.detail.plan.planId,
-        parentCommitId: root.commitId,
-      });
-      assert.strictEqual(prepared.origin?.issueId, "M-refresh");
-      assert.deepStrictEqual(prepared.upstreamBaseline, {
-        goal: "Original",
-        acceptanceCriteria: "Tracker base",
-      });
-
-      const refreshed = yield* store.saveTrackerSpecRevision({
-        planId: imported.detail.plan.planId,
-        parentCommitId: root.commitId,
-        expectedSpecRevisionCommitId: root.commitId,
-        document: { goal: "Updated", acceptanceCriteria: "New tracker text" },
-        issueId: "M-refresh",
-        sourceKind: "tracker-refresh",
-        createdAt: at("2026-08-08T01:02:00.000Z"),
-      });
-      assert.strictEqual(refreshed.cause, "refresh");
-
-      const local = yield* store.saveSpecRevision({
-        planId: imported.detail.plan.planId,
-        parentCommitId: refreshed.commitId,
-        expectedSpecRevisionCommitId: refreshed.commitId,
-        document: { goal: "Updated", acceptanceCriteria: "Local clarification" },
-        createdAt: at("2026-08-08T01:03:00.000Z"),
-      });
-      const afterLocal = yield* store.prepareSpecRefresh({
-        planId: imported.detail.plan.planId,
-        parentCommitId: local.commitId,
-      });
-      assert.deepStrictEqual(afterLocal.local?.document, {
-        goal: "Updated",
-        acceptanceCriteria: "Local clarification",
-      });
-      assert.deepStrictEqual(afterLocal.upstreamBaseline, {
-        goal: "Updated",
-        acceptanceCriteria: "New tracker text",
-      });
-
-      const reconciled = yield* store.saveTrackerSpecRevision({
-        planId: imported.detail.plan.planId,
-        parentCommitId: local.commitId,
-        expectedSpecRevisionCommitId: local.commitId,
-        document: { goal: "Updated", acceptanceCriteria: "Resolved wording" },
-        issueId: "M-refresh",
-        sourceKind: "tracker-reconciliation",
-        upstream: { goal: "Updated", acceptanceCriteria: "Newest tracker text" },
-        createdAt: at("2026-08-08T01:04:00.000Z"),
-      });
-      assert.strictEqual(reconciled.cause, "reconciliation");
-      const afterReconciliation = yield* store.prepareSpecRefresh({
-        planId: imported.detail.plan.planId,
-        parentCommitId: reconciled.commitId,
-      });
-      assert.deepStrictEqual(afterReconciliation.upstreamBaseline, {
-        goal: "Updated",
-        acceptanceCriteria: "Newest tracker text",
-      });
     }),
   );
 

@@ -13,7 +13,7 @@ import type {
   ListProjectDocumentsResult,
   ProjectDocument,
 } from "@t3tools/contracts";
-import { MercurianStorageError } from "@t3tools/contracts";
+import { MercurianStorageError, type ThreadId } from "@t3tools/contracts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
@@ -21,6 +21,8 @@ import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 import { readDocumentMarkdown } from "./markdown.ts";
 
 /** Queries files from a line member or its immutable Git snapshot, never the registered live checkout. */
+const isStorageError = Schema.is(MercurianStorageError);
+
 export const make = Effect.gen(function* () {
   const storage = yield* StorageSourceStore;
   const runtimes = yield* LineRuntimeStore;
@@ -31,6 +33,19 @@ export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const liveCwd = Effect.fn("ProjectDocuments.liveCwd")(function* (
+    threadId: ThreadId,
+    repositoryId: string,
+  ) {
+    const runtime = yield* runtimes.getByThreadId(threadId);
+    if (Option.isNone(runtime) || !runtime.value.lineRootCommitId) return null;
+    for (const slot of yield* slots.listAll) {
+      if (slot.currentLineRootCommitId !== runtime.value.lineRootCommitId) continue;
+      const member = slot.members.find((candidate) => candidate.repositoryId === repositoryId);
+      if (member?.currentBranch) return path.join(slot.path, member.relativePath);
+    }
+    return null;
+  });
   const list = Effect.fn("ProjectDocuments.list")(
     function* (input: ListProjectDocumentsInput) {
       const thread = yield* projections.getThreadShellById(input.threadId);
@@ -88,13 +103,12 @@ export const make = Effect.gen(function* () {
           }
       }
       for (const source of sources) {
-        const member = thread.value.workspaceMembers?.find(
-          (candidate) => candidate.repositoryId === source.repositoryId,
-        );
         const registered = registry.repositories.find(
           (candidate) => candidate.repositoryId === source.repositoryId,
         );
-        const cwd = historical ? registered?.path : member?.worktreePath;
+        const cwd = historical
+          ? registered?.path
+          : yield* liveCwd(input.threadId, source.repositoryId);
         if (!cwd) {
           problems.push(
             `${source.kind === "plan" ? "Plans" : "Specs"} repository is unavailable on this line.`,
@@ -123,7 +137,7 @@ export const make = Effect.gen(function* () {
             const walk = Effect.fn("ProjectDocuments.walk")(function* (
               relative: string,
             ): Effect.fn.Return<void, PlatformError> {
-              if (files.length >= 500) return;
+              if (files.length >= 500 || visited.size >= 1000) return;
               const directory = path.join(cwd, relative);
               if (!(yield* fs.exists(directory))) return;
               const canonical = yield* fs.realPath(directory);
@@ -195,19 +209,33 @@ export const make = Effect.gen(function* () {
           (b.changedAt ?? "").localeCompare(a.changedAt ?? "") ||
           a.relativePath.localeCompare(b.relativePath),
       );
-      return { documents, problems } satisfies ListProjectDocumentsResult;
+      const hasHistory =
+        documents.length > 0 ||
+        [...changes.keys()].some((key) =>
+          sources.some((source) => {
+            const prefix = `${source.repositoryId}:`;
+            if (!key.startsWith(prefix)) return false;
+            const file = key.slice(prefix.length);
+            return (
+              /\.md$/iu.test(file) && (!source.subpath || file.startsWith(`${source.subpath}/`))
+            );
+          }),
+        );
+      return { documents, problems, hasHistory } satisfies ListProjectDocumentsResult;
     },
     Effect.mapError((cause) =>
-      Schema.is(MercurianStorageError)(cause)
+      isStorageError(cause)
         ? cause
         : new MercurianStorageError({ operation: "listProjectDocuments", cause }),
     ),
   );
-  const isDocumentPath = Effect.fn("ProjectDocuments.isDocumentPath")(function* (
+  const locateDocument = Effect.fn("ProjectDocuments.locateDocument")(function* (
     cwd: string,
     relativePath: string,
   ) {
-    const target = path.resolve(cwd, relativePath);
+    if (!/\.md$/iu.test(relativePath)) return null;
+    const requested = path.resolve(cwd, relativePath);
+    const target = (yield* fs.exists(requested)) ? yield* fs.realPath(requested) : requested;
     const sources = (yield* storage.getDocumentLocations).filter(
       (source) => source.kind !== "memory",
     );
@@ -227,17 +255,27 @@ export const make = Effect.gen(function* () {
       ];
       for (const root of roots) {
         if (!root) continue;
-        const relative = path.relative(path.resolve(root, source.subpath ?? "."), target);
+        const rootPath = path.resolve(root, source.subpath ?? ".");
+        const canonicalRoot = (yield* fs.exists(rootPath))
+          ? yield* fs.realPath(rootPath)
+          : rootPath;
+        const relative = path.relative(canonicalRoot, target);
         if (
           relative !== ".." &&
           !relative.startsWith(`..${path.sep}`) &&
           !path.isAbsolute(relative) &&
           /\.md$/iu.test(relative)
         )
-          return true;
+          return {
+            repositoryId: source.repositoryId,
+            kind: source.kind,
+            relativePath: path.relative(yield* fs.realPath(root), target),
+          };
       }
     }
-    return false;
+    return null;
   });
-  return { list, isDocumentPath };
+  const isDocumentPath = (cwd: string, relativePath: string) =>
+    locateDocument(cwd, relativePath).pipe(Effect.map((location) => location !== null));
+  return { list, isDocumentPath, locateDocument, liveCwd };
 });

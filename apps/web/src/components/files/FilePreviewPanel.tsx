@@ -1085,7 +1085,15 @@ function WorkspaceFilePreviewPanel({
     relativePath,
     attachment === undefined && !isMedia && !isPdf,
     snapshotOid,
+    documentLocation && threadRef
+      ? { threadId: threadRef.threadId, repositoryId: documentLocation.repositoryId }
+      : undefined,
   );
+  const specDocument =
+    file.data?.projectDocument ??
+    (documentLocation?.documentId && relativePath
+      ? { ...documentLocation, documentId: documentLocation.documentId, relativePath }
+      : null);
   const isHostFile =
     Boolean(snapshotOid || file.data?.readOnly) ||
     attachment !== undefined ||
@@ -1122,9 +1130,9 @@ function WorkspaceFilePreviewPanel({
   const revealHandled =
     revealLine === null ||
     (handledReveal?.path === relativePath && handledReveal.requestId === revealRequestId);
-  const renderMarkdown = isMarkdown && renderMarkdownPreferred && revealHandled;
+  const renderMarkdown = !snapshotOid && isMarkdown && renderMarkdownPreferred && revealHandled;
   const renderBrowserFile = isPdf || (isHtml && renderBrowserFilePreferred && revealHandled);
-  const canToggleRendered = attachment === undefined && (isMarkdown || isHtml);
+  const canToggleRendered = !snapshotOid && attachment === undefined && (isMarkdown || isHtml);
   const rendered = isMarkdown ? renderMarkdown : renderBrowserFile;
   const setRenderedPreferred = isMarkdown
     ? setRenderMarkdownPreferred
@@ -1196,12 +1204,13 @@ function WorkspaceFilePreviewPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      {documentLocation?.documentId && !snapshotOid && relativePath && threadRef && (
+      {specDocument && !snapshotOid && relativePath && threadRef && (
         <SpecRefreshAction
           threadId={threadRef.threadId}
-          documentId={documentLocation.documentId}
-          repositoryId={documentLocation.repositoryId}
-          relativePath={relativePath}
+          environmentId={threadRef.environmentId}
+          documentId={specDocument.documentId}
+          repositoryId={specDocument.repositoryId}
+          relativePath={specDocument.relativePath}
           onSaved={file.refresh}
         />
       )}

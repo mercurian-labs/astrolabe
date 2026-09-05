@@ -231,12 +231,14 @@ export class MemorySourceInvalidError extends Schema.TaggedErrorClass<MemorySour
       "repository-not-found",
       "missing",
       "not-a-directory",
+      "outside-repository",
+      "overlapping-location",
       "nested-repository",
     ]),
   },
 ) {
   override get message(): string {
-    return `Memory source ${this.repositoryId}${this.subpath ? `/${this.subpath}` : ""} is invalid: ${this.reason}`;
+    return `Storage location ${this.repositoryId}${this.subpath ? `/${this.subpath}` : ""} is invalid: ${this.reason}`;
   }
 }
 

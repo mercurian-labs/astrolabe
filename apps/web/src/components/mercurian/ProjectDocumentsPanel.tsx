@@ -11,43 +11,46 @@ import { useThreadSpace } from "./ThreadSpaceContext";
 export function useProjectDocumentsPanel() {
   const { detail, projectId, threadId, environmentId, search } = useThreadSpace();
   const { snapshot } = useStorageSources();
-  const list = useListProjectDocuments();
-  const [result, setResult] = useState<ListProjectDocumentsResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const list = useListProjectDocuments(environmentId);
+  const [response, setResponse] = useState<{
+    key: string;
+    result: ListProjectDocumentsResult | null;
+    error: string | null;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [revision, setRevision] = useState(0);
   const sources = snapshot.sources.filter(
     (source) => source.projectId === projectId && source.kind !== "memory",
   );
   const historical = search.at !== undefined;
+  const requestKey = JSON.stringify([
+    environmentId,
+    projectId,
+    threadId,
+    search.at,
+    snapshot.sources,
+    detail?.snapshotSequence,
+    revision,
+  ]);
+  const result = response?.key === requestKey ? response.result : null;
+  const error = response?.key === requestKey ? response.error : null;
   useEffect(() => {
-    if (!projectId) {
-      setResult(null);
-      return;
-    }
+    if (!projectId) return;
     let cancelled = false;
-    setResult(null);
-    setError(null);
     void list({ projectId, threadId, ...(search.at ? { positionCommitId: search.at } : {}) }).then(
-      (response) => {
-        if (cancelled) return;
-        if (response.ok) setResult(response.value);
-        else setError("Could not load project documents.");
+      (value) => {
+        if (!cancelled)
+          setResponse({
+            key: requestKey,
+            result: value.ok ? value.value : null,
+            error: value.ok ? null : "Could not load project documents.",
+          });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [
-    projectId,
-    threadId,
-    list,
-    snapshot,
-    detail?.snapshotSequence,
-    historical,
-    search.at,
-    revision,
-  ]);
+  }, [projectId, threadId, search.at, requestKey, list]);
   return {
     projectId,
     threadId,

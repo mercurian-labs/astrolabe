@@ -4,12 +4,16 @@ import { parseDocument, stringify } from "yaml";
 
 const Metadata = Schema.Struct({
   id: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
   kind: Schema.optional(Schema.Literals(["plan", "spec"])),
   counterparts: Schema.optional(Schema.Array(Schema.String)),
   origin: Schema.optional(
     Schema.Struct({ url: Schema.String, revision: Schema.optional(Schema.String) }),
   ),
 });
+
+const decodeMetadata = Schema.decodeUnknownSync(Metadata);
+const encodeRevisionFields = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
 /** Metadata is optional; malformed metadata never makes the Markdown body unreadable. */
 export function readDocumentMarkdown(contents: string, filename: string) {
@@ -20,8 +24,8 @@ export function readDocumentMarkdown(contents: string, filename: string) {
   try {
     const parsed = parseDocument(match[1]!, { uniqueKeys: true });
     if (parsed.errors.length) throw parsed.errors[0];
-    const metadata = Schema.decodeUnknownSync(Metadata)(parsed.toJS({ maxAliasCount: 20 }));
-    return { title, body, metadata, problem: null };
+    const metadata = decodeMetadata(parsed.toJS({ maxAliasCount: 20 }));
+    return { title: metadata.title?.trim() || title, body, metadata, problem: null };
   } catch {
     return { title, body, metadata: null, problem: "Invalid document frontmatter" };
   }
@@ -33,7 +37,7 @@ export function importedSpecMarkdown(input: {
   goal: string;
   acceptanceCriteria: string;
 }) {
-  return `---\n${stringify({ id: input.id, kind: "spec", origin: { url: input.url, revision: specRevision(input.goal, input.acceptanceCriteria) } })}---\n\n# Goal\n\n${input.goal}\n\n# Acceptance criteria\n\n${input.acceptanceCriteria}\n`;
+  return `---\n${stringify({ id: input.id, title: input.goal, kind: "spec", origin: { url: input.url, revision: specRevision(input.goal, input.acceptanceCriteria) } })}---\n\n# Goal\n\n${input.goal}\n\n# Acceptance criteria\n\n${input.acceptanceCriteria}\n`;
 }
 
 /** Preserve the exact metadata block while replacing the reviewed spec body. */
@@ -44,12 +48,7 @@ export function replaceSpecBody(contents: string, goal: string, acceptanceCriter
 
 export function specRevision(goal: string, acceptanceCriteria: string) {
   return NodeCrypto.createHash("sha256")
-    .update(
-      Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)))([
-        goal,
-        acceptanceCriteria,
-      ]),
-    )
+    .update(encodeRevisionFields([goal, acceptanceCriteria]))
     .digest("hex");
 }
 export function readSpecBody(contents: string) {

@@ -24,7 +24,6 @@ import { useLineMemoryDashboard } from "./useLineMemoryDashboard";
 export type ThreadSpaceSurfaces = Readonly<{
   planPanel?: ReactNode;
   planUnavailableReason?: string;
-  specPanel?: ReactNode;
   memoryPanel?: ReactNode;
   /** Unreviewed memory changes; badges the Memory tab whether or not it is mounted. */
   memoryBadgeCount?: number;
@@ -119,10 +118,11 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   return {
     planPanel: <ProjectDocumentsPanel state={documentPanel} />,
     ...(storage.sources.some(
-      (source) => source.projectId === detail?.plan.projectId && source.kind !== "memory",
+      (source) => source.projectId === documentPanel.projectId && source.kind !== "memory",
     ) ||
-    documentPanel.result === null ||
-    documentPanel.result.documents.length > 0
+    (documentPanel.result === null && documentPanel.error === null) ||
+    documentPanel.result?.hasHistory ||
+    (documentPanel.result?.problems.length ?? 0) > 0
       ? {}
       : { planUnavailableReason: "Choose a location for plans or specs in project settings." }),
     memoryPanel:

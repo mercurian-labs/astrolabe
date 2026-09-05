@@ -28,7 +28,10 @@ export interface PlanningIdentityInput {
   readonly unreachableRepositories: ReadonlyArray<string>;
   /** Present only when this provider session can reach the designated memory. */
   readonly memoryRoot?: PlanningRepositoryRoot | null | undefined;
-  readonly documentRoots?: ReadonlyArray<{ readonly kind: "plan" | "spec"; readonly path: string }>;
+  readonly documentRoots?: ReadonlyArray<{
+    readonly kind: "plan" | "spec";
+    readonly path: string | null;
+  }>;
   readonly memoryAmendmentsAvailable?: boolean | undefined;
 }
 
@@ -71,14 +74,7 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     }
   }
 
-  for (const kind of ["plan", "spec"] as const) {
-    const root = input.documentRoots?.find((candidate) => candidate.kind === kind);
-    lines.push(
-      root
-        ? `${kind === "plan" ? "Plans" : "Specs"} directory: ${root.path}`
-        : `${kind === "plan" ? "Plans" : "Specs"} location is not configured. Ask the user to select it in project settings before creating documents of this type.`,
-    );
-  }
+  lines.push(documentLocationStanza(input.documentRoots));
 
   if (input.memoryRoot != null) {
     lines.push("", memoryAppendix(input.memoryRoot));
@@ -92,6 +88,20 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
   }
 
   return lines.join("\n");
+}
+
+export function documentLocationStanza(roots: PlanningIdentityInput["documentRoots"]) {
+  return (["plan", "spec"] as const)
+    .map((kind) => {
+      const root = roots?.find((candidate) => candidate.kind === kind);
+      const name = kind === "plan" ? "Plans" : "Specs";
+      return root
+        ? root.path
+          ? `${name} directory: ${root.path}`
+          : `${name} repository is unavailable on this line. Do not substitute another checkout.`
+        : `${name} location is not configured. Ask the user to select it in project settings before creating documents of this type.`;
+    })
+    .join("\n");
 }
 
 /**
@@ -118,8 +128,8 @@ export const TRANSCRIPT_FRAMING_MARGIN = 2_000;
 
 function renderTranscript(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
-  readonly planText: string;
-  readonly spec: SpecDocument | null;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
 }) {
   const renderedEntries = input.entries.map((entry) => {
     if (entry.kind !== "message") {
@@ -134,13 +144,17 @@ function renderTranscript(input: {
   });
 
   const planSection =
-    input.planText.length === 0
-      ? "The plan document is currently empty."
-      : `The plan document currently reads:\n---\n${input.planText}\n---`;
+    input.planText === undefined
+      ? ""
+      : input.planText.length === 0
+        ? "The plan document is currently empty."
+        : `The plan document currently reads:\n---\n${input.planText}\n---`;
   const specSection =
-    input.spec === null
-      ? "The spec artifact does not exist yet."
-      : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
+    input.spec === undefined
+      ? ""
+      : input.spec === null
+        ? "The spec artifact does not exist yet."
+        : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
 
   return { renderedEntries, planSection, specSection };
 }
@@ -148,8 +162,8 @@ function renderTranscript(input: {
 /** Exact character sizes used by transcript reconstruction and its budget. */
 export function measureTranscript(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
-  readonly planText: string;
-  readonly spec: SpecDocument | null;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
 }): {
   readonly renderedEntryLengths: ReadonlyArray<number>;
   readonly planSectionChars: number;
@@ -171,8 +185,8 @@ export function measureTranscript(input: {
 export function transcriptPreamble(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
   /** The plan artifact's current text along this path. `""` renders as empty. */
-  readonly planText: string;
-  readonly spec: SpecDocument | null;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
   /** Characters already spoken for: appendix + the current message. */
   readonly reservedChars: number;
 }): string {

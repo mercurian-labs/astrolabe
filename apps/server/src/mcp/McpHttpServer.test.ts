@@ -59,8 +59,6 @@ const authenticatedMcpDependencies = Layer.mergeAll(
     status: Effect.succeed(new Map()),
     changes: Stream.empty,
     teardownPlan: () => Effect.void,
-    saveRevisionFromThread: () => Effect.void,
-    readPlanFromThread: () => Effect.succeed(""),
   }),
   PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer)),
 );
@@ -227,8 +225,11 @@ it.effect("accepts session requests that omit the negotiated protocol version", 
       const tools = toolsListResult.result.tools;
       const toolNames = tools.map(({ name }) => name);
       expect(toolNames.length).toBeGreaterThan(0);
-      expect(toolNames).toContain("save_plan_revision");
-      expect(toolNames).toContain("read_plan");
+      expect(toolNames).not.toContain("save_plan_revision");
+      expect(toolNames).not.toContain("read_plan");
+      expect(toolNames).not.toContain("save_spec_revision");
+      expect(toolNames).not.toContain("read_spec");
+      expect(toolNames).toContain("propose_memory_amendment");
       expect(toolNames).toContain("preview_status");
       expect(toolNames).toContain("preview_snapshot");
       for (const tool of tools) {

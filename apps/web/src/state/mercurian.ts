@@ -245,25 +245,3 @@ export function useMarkPlanUnread() {
  * The partial lands as a commit marked interrupted, arriving on the same
  * subscription as everything else.
  */
-/**
- * The plan as it read at an earlier commit. The timeline's revisions travel
- * without their text — re-sending every historical snapshot would grow the
- * subscription with the square of editing activity — so looking back asks
- * once. The answer cannot go stale: history above a commit never changes.
- */
-export function useGetPlanTextAt() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.getPlanTextAt);
-  return useCallback(
-    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
-    [run],
-  );
-}
-
-/** Exact prompt reconstruction sizes at an immutable plan position. */
-export function useGetSpecAt() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.getSpecAt);
-  return useCallback(
-    (planId: PlanId, commitId: MercurianCommitId) => run({ planId, commitId }),
-    [run],
-  );
-}

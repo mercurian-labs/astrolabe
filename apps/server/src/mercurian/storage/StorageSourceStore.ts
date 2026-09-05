@@ -157,7 +157,9 @@ export const make = Effect.gen(function* () {
     allowMissing = false,
   ) {
     const candidate = path.resolve(repository.path, subpath ?? ".");
-    const invalid = (reason: "missing" | "not-a-directory") =>
+    const invalid = (
+      reason: "missing" | "not-a-directory" | "outside-repository" | "nested-repository",
+    ) =>
       new MemorySourceInvalidError({
         repositoryId: repository.repositoryId,
         ...(subpath === null ? {} : { subpath }),
@@ -176,11 +178,16 @@ export const make = Effect.gen(function* () {
       .pipe(Effect.mapError(() => invalid("missing")));
     const relative = path.relative(canonicalRepository, canonicalCandidate);
     if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      return yield* invalid("missing");
+      return yield* invalid("outside-repository");
     }
     const info = yield* fs.stat(canonicalCandidate).pipe(Effect.mapError(() => invalid("missing")));
     if (info.type !== "Directory") {
       return yield* invalid("not-a-directory");
+    }
+    let ancestor = canonicalCandidate;
+    while (ancestor !== canonicalRepository && ancestor !== path.dirname(ancestor)) {
+      if (yield* fs.exists(path.join(ancestor, ".git"))) return yield* invalid("nested-repository");
+      ancestor = path.dirname(ancestor);
     }
     return path.resolve(canonicalCandidate, path.relative(existing, candidate));
   });
@@ -227,7 +234,21 @@ export const make = Effect.gen(function* () {
   const designate: StorageSourceStore["Service"]["designate"] = (input) =>
     Effect.gen(function* () {
       const repository = yield* findRepository({ repositoryId: input.repositoryId });
-      const subpath = input.subpath?.trim().replace(/^[/\\]+|[/\\]+$/gu, "") || null;
+      const requested = input.subpath?.trim() ?? "";
+      if (path.isAbsolute(requested) || /^[A-Za-z]:/u.test(requested))
+        return yield* new MemorySourceInvalidError({
+          repositoryId: input.repositoryId,
+          subpath: requested,
+          reason: "outside-repository",
+        });
+      const normalized = path.normalize(requested || ".").replace(/[/\\]+$/gu, "") || ".";
+      const subpath = normalized === "." ? null : normalized;
+      if (normalized === ".." || normalized.startsWith(`..${path.sep}`))
+        return yield* new MemorySourceInvalidError({
+          repositoryId: input.repositoryId,
+          subpath: requested,
+          reason: "outside-repository",
+        });
       if (Option.isNone(repository)) {
         return yield* new MemorySourceInvalidError({
           repositoryId: input.repositoryId,
@@ -235,7 +256,28 @@ export const make = Effect.gen(function* () {
           reason: "repository-not-found",
         });
       }
-      yield* resolveRoot(repository.value, subpath, input.kind !== "memory");
+      const root = yield* resolveRoot(repository.value, subpath, input.kind !== "memory");
+      for (const other of yield* listRows({})) {
+        if (
+          other.projectId !== input.projectId ||
+          other.repositoryId !== input.repositoryId ||
+          other.kind === input.kind
+        )
+          continue;
+        const otherRoot = yield* resolveRoot(repository.value, other.subpath, true);
+        const inside = (parent: string, child: string) => {
+          const relative = path.relative(parent, child);
+          return (
+            relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+          );
+        };
+        if (inside(root, otherRoot) || inside(otherRoot, root))
+          return yield* new MemorySourceInvalidError({
+            repositoryId: input.repositoryId,
+            ...(subpath ? { subpath } : {}),
+            reason: "overlapping-location",
+          });
+      }
       yield* upsertRow({
         projectId: input.projectId,
         kind: input.kind,

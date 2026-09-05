@@ -286,7 +286,9 @@ it.effect(
       assert.ok(fresh.text.includes("Build it"));
       assert.strictEqual(transcriptHead, parentId);
       assert.deepStrictEqual(fresh.session, { skipResume: true });
-      assert.deepStrictEqual(continued, { text: "Build it", session: {} });
+      assert.ok(continued.text.endsWith("Build it"));
+      assert.ok(continued.text.includes("Plans location is not configured"));
+      assert.deepStrictEqual(continued.session, {});
     }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
   },
 );
@@ -375,9 +377,10 @@ it.effect("keeps the next line turn resumable while resolving note mentions", ()
       message: continuedMessage,
       sessionIsFresh: false,
     });
-    assert.strictEqual(
-      prepared.text,
-      "Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: /memory/Composer.md",
+    assert.ok(
+      prepared.text.endsWith(
+        "Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: /memory/Composer.md",
+      ),
     );
     assert.deepStrictEqual(prepared.session, {});
     assert.deepStrictEqual(readLines, [{ threadId }]);

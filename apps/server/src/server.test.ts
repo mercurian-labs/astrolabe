@@ -49,7 +49,6 @@ import {
   MERCURIAN_WS_METHODS,
   MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
-  MERCURIAN_TRACKER_WS_METHODS,
   MercurianCommitId,
   MercurianProjectId,
   MercurianRepositoryId,
@@ -6133,208 +6132,30 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
-  it.effect("routes websocket rpc mercurian issue import, idempotent by origin", () =>
+  it.effect("requires a spec location before importing an issue", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
-
-      const issue = {
-        id: TrimmedNonEmptyString.make("M-101"),
-        title: "Issue Import",
-        description: "The tracker keeps the backlog; Mercurian keeps the plans.",
-        url: TrimmedNonEmptyString.make("https://linear.app/mercurian/issue/M-101"),
-        // A live tracker fact. It crosses on the way in and is stored nowhere.
-        status: "In Progress",
-      };
-      const connectionId = TrackerConnectionId.make("connection-1");
-
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const result = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          Effect.gen(function* () {
-            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
-              name: "Astrolabe",
-            });
-            const imported = yield* client[MERCURIAN_WS_METHODS.importPlan]({
-              projectId: project.projectId,
-              connectionId,
-              issue,
-            });
-            const again = yield* client[MERCURIAN_WS_METHODS.importPlan]({
-              projectId: project.projectId,
-              connectionId,
-              issue,
-            });
-            yield* client[MERCURIAN_WS_METHODS.archivePlan]({
-              planId: imported.detail.plan.planId,
-            });
-            const resurfaced = yield* client[MERCURIAN_WS_METHODS.importPlan]({
-              projectId: project.projectId,
-              connectionId,
-              issue,
-            });
-            const tree = yield* client[MERCURIAN_WS_METHODS.subscribeTree]({}).pipe(
-              Stream.take(1),
-              Stream.runCollect,
-            );
-            return { imported, again, resurfaced, tree };
-          }),
-        ),
-      ).pipe(Effect.timeout("5 seconds"));
-
-      assert.equal(result.imported.outcome, "created");
-      assert.equal(result.imported.detail.plan.title, "Issue Import");
-      // The issue is what you plan from: the artifact is born empty.
-      assert.equal(result.imported.detail.planText, "");
-
-      // The root commit *is* the issue, and it is published from the start.
-      const root = result.imported.detail.timeline[0];
-      assert.equal(root?._tag, "spec-revision");
-      assert.equal(root?.published, true);
-      assert.equal(root?.authorKind, "human");
-      assert.deepEqual([...(root?.parents ?? [])], []);
-      if (root?._tag === "spec-revision") {
-        assert.equal(root.cause, "import");
-        assert.equal(root.issueId, issue.id);
-      }
-      assert.deepEqual(result.imported.detail.spec?.document, {
-        goal: "Issue Import",
-        acceptanceCriteria: issue.description,
-      });
-
-      // Re-importing never duplicates: it goes to the plan that exists, and
-      // brings it back out of the archive when it has left the tree.
-      assert.equal(result.again.outcome, "existing");
-      assert.equal(result.again.detail.plan.planId, result.imported.detail.plan.planId);
-      assert.equal(result.resurfaced.outcome, "resurfaced");
-      assert.equal(result.resurfaced.detail.plan.planId, result.imported.detail.plan.planId);
-
-      const plans = result.tree[0]?.snapshot.plans ?? [];
-      assert.equal(plans.length, 1);
-      assert.equal(plans[0]?.archivedAt, null);
-      // Published from birth, so delete is off the surface from the first
-      // second and archive is this plan's only disappearance.
-      assert.equal(plans[0]?.hasPublishedCommits, true);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
-  );
-
-  it.effect("keeps human artifact saves and both committing refresh paths silent", () =>
-    Effect.gen(function* () {
-      let planning: PlanningStore.PlanningStore["Service"] | undefined;
-      let liveIssue = {
-        id: TrimmedNonEmptyString.make("M-109"),
-        title: "Original contract",
-        description: "Original acceptance criteria",
-        url: TrimmedNonEmptyString.make("https://linear.app/mercurian/issue/M-109"),
-        status: "In Progress",
-      };
-      const recordSend = vi.fn<LineTurnReactor.LineTurnReactor["Service"]["recordSend"]>(() =>
-        Effect.die("artifact saves must not record a send"),
-      );
-      yield* buildAppUnderTest({
-        onPlanningStoreReady: (store) => void (planning = store),
-        layers: {
-          lineTurnReactor: { recordSend },
-          trackerConnector: {
-            ...stubTrackerConnector,
-            getIssue: () => Effect.succeed(liveIssue),
-          },
-        },
-      });
-      if (planning === undefined) return yield* Effect.die("planning store was not captured");
-      const planningStore = planning;
-
       const wsUrl = yield* getWsServerUrl("/ws");
       yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           Effect.gen(function* () {
-            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
-              name: "Astrolabe",
-            });
-            const blank = yield* planningStore.createPlan({
-              projectId: project.projectId,
-              message: "Plan from a human-authored spec",
-              lastUsed: null,
-              createdAt: TEST_EPOCH,
-            });
-            const connection = yield* client[MERCURIAN_TRACKER_WS_METHODS.connectTracker]({
-              kind: "linear",
-              token: TrimmedNonEmptyString.make("test-token"),
-            });
-            const imported = yield* client[MERCURIAN_WS_METHODS.importPlan]({
-              projectId: project.projectId,
-              connectionId: connection.connectionId,
-              issue: liveIssue,
-            });
-            const root = imported.detail.timeline[0]!;
-
-            const direct = yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
-              planId: blank.plan.planId,
-              parentCommitId: MercurianCommitId.make(blank.timeline[0]!.commitId),
-              expectedSpecRevisionCommitId: null,
-              document: {
-                goal: "Human revision",
-                acceptanceCriteria: "Saving it does not start an assistant turn.",
-              },
-            });
-            yield* client[MERCURIAN_WS_METHODS.savePlanRevision]({
-              planId: blank.plan.planId,
-              parentCommitId: direct.commitId,
-              text: "# Silent human plan edit",
-            });
-
-            liveIssue = {
-              ...liveIssue,
-              title: "Upstream-only refresh",
-              description: "The tracker changed while the local spec did not.",
-            };
-            const refreshed = yield* client[MERCURIAN_WS_METHODS.refreshSpec]({
-              planId: imported.detail.plan.planId,
-              parentCommitId: root.commitId,
-              expectedSpecRevisionCommitId: root.commitId,
-            });
-            assert.equal(refreshed.kind, "committed");
-            if (refreshed.kind !== "committed") return;
-
-            const local = yield* client[MERCURIAN_WS_METHODS.saveSpecRevision]({
-              planId: imported.detail.plan.planId,
-              parentCommitId: refreshed.revision.commitId,
-              expectedSpecRevisionCommitId: refreshed.revision.commitId,
-              document: {
-                goal: "Local clarification",
-                acceptanceCriteria: "The next upstream refresh conflicts.",
-              },
-            });
-            liveIssue = {
-              ...liveIssue,
-              title: "Tracker moved again",
-              description: "A different upstream clarification.",
-            };
-            const conflict = yield* client[MERCURIAN_WS_METHODS.refreshSpec]({
-              planId: imported.detail.plan.planId,
-              parentCommitId: local.commitId,
-              expectedSpecRevisionCommitId: local.commitId,
-            });
-            assert.equal(conflict.kind, "reconciliation-required");
-            if (conflict.kind !== "reconciliation-required") return;
-            const reconciled = yield* client[MERCURIAN_WS_METHODS.refreshSpec]({
-              planId: imported.detail.plan.planId,
-              parentCommitId: local.commitId,
-              expectedSpecRevisionCommitId: conflict.expectedSpecRevisionCommitId,
-              reviewedUpstream: conflict.upstream,
-              resolvedDocument: {
-                goal: "Reviewed resolution",
-                acceptanceCriteria: "The person chooses the final contract.",
-              },
-            });
-            assert.equal(reconciled.kind, "committed");
-            if (reconciled.kind === "committed") {
-              assert.equal(reconciled.outcome, "reconciled");
-            }
+            const error = yield* Effect.flip(
+              client[MERCURIAN_WS_METHODS.importPlan]({
+                projectId: MercurianProjectId.make("project"),
+                connectionId: TrackerConnectionId.make("tracker"),
+                issue: {
+                  id: TrimmedNonEmptyString.make("M-1"),
+                  title: "Issue",
+                  description: "Criteria",
+                  url: TrimmedNonEmptyString.make("https://example.com/1"),
+                  status: "Open",
+                },
+              }),
+            );
+            assert.strictEqual(error._tag, "MercurianPlanningError");
           }),
         ),
-      ).pipe(Effect.timeout("5 seconds"));
-
-      assert.equal(recordSend.mock.calls.length, 0);
+      );
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

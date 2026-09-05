@@ -81,7 +81,7 @@ layer("MemorySourceStore", (it) => {
       yield* store.designate({
         projectId: MercurianProjectId.make("memory-project-main"),
         repositoryId: MercurianRepositoryId.make("memory-source-second"),
-        subpath: "/notes/",
+        subpath: "notes/",
         now,
       });
 

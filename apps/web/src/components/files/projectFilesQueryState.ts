@@ -42,6 +42,7 @@ export function getProjectFileQueryAtom(
   cwd: string,
   relativePath: string | null,
   snapshotOid?: string,
+  documentScope?: { threadId: import("@t3tools/contracts").ThreadId; repositoryId: string },
 ) {
   return projectEnvironment.readFile({
     environmentId,
@@ -49,6 +50,7 @@ export function getProjectFileQueryAtom(
       cwd,
       relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH,
       ...(snapshotOid ? { snapshotOid } : {}),
+      ...(documentScope ? { documentScope } : {}),
     },
   });
 }
@@ -187,13 +189,14 @@ export function useProjectFileQuery(
   relativePath: string | null,
   enabled = true,
   snapshotOid?: string,
+  documentScope?: { threadId: import("@t3tools/contracts").ThreadId; repositoryId: string },
 ): ProjectQueryState<ProjectReadFileResult> {
   const isMedia =
     relativePath !== null &&
     (isWorkspaceImagePreviewPath(relativePath) || isWorkspaceVideoPreviewPath(relativePath));
   const atom =
     enabled && !isMedia
-      ? getProjectFileQueryAtom(environmentId, cwd, relativePath, snapshotOid)
+      ? getProjectFileQueryAtom(environmentId, cwd, relativePath, snapshotOid, documentScope)
       : EMPTY_PROJECT_FILE_QUERY_ATOM;
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
@@ -202,7 +205,8 @@ export function useProjectFileQuery(
   const optimisticResult = useAtomValue(
     optimisticFileAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
   );
-  const optimisticFile = relativePath === null || snapshotOid ? null : optimisticResult;
+  const optimisticFile =
+    relativePath === null || snapshotOid || documentScope ? null : optimisticResult;
 
   return {
     data: optimisticFile?.data ?? data,

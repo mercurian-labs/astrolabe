@@ -58,7 +58,7 @@ it.effect(
         yield* decide(
           lineThreadId,
           request(lineThreadId, "dynamic_tool_call", {
-            toolName: "mcp__t3-code__save_plan_revision",
+            toolName: "mcp__t3-code__propose_memory_amendment",
           }),
         ),
         Option.some("acceptForSession"),

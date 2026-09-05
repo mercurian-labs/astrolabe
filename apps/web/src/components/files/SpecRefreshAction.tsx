@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   MercurianRepositoryId,
   type ThreadId,
+  type EnvironmentId,
   type RefreshProjectSpecResult,
   type SpecDocument,
 } from "@t3tools/contracts";
@@ -11,18 +12,20 @@ import { Button } from "../ui/button";
 type Review = Extract<RefreshProjectSpecResult, { kind: "reconciliation-required" }>;
 export function SpecRefreshAction({
   threadId,
+  environmentId,
   documentId,
   repositoryId,
   relativePath,
   onSaved,
 }: {
   threadId: ThreadId;
+  environmentId: EnvironmentId;
   documentId: string;
   repositoryId: string;
   relativePath: string;
   onSaved: () => void;
 }) {
-  const refresh = useRefreshProjectSpec();
+  const refresh = useRefreshProjectSpec(environmentId);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);

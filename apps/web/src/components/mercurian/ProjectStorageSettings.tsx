@@ -4,7 +4,7 @@ import type {
   MercurianRepositoryId,
   ProjectStorageKind,
 } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   useDesignateStorageSource,
   useRemoveStorageSource,
@@ -29,16 +29,21 @@ export function ProjectStorageSettings({
   const source = useStorageSourceForProject(projectId, kind);
   const designate = useDesignateStorageSource();
   const remove = useRemoveStorageSource();
-  const [value, setValue] = useState(emptyStorageLocations()[kind]);
+  const sourceKey = JSON.stringify([projectId, kind, source?.repositoryId, source?.subpath]);
+  const [draft, setDraft] = useState<{
+    key: string;
+    value: { repositoryId: string; subpath: string };
+  } | null>(null);
+  const value =
+    draft?.key === sourceKey
+      ? draft.value
+      : source
+        ? { repositoryId: source.repositoryId, subpath: source.subpath ?? "" }
+        : emptyStorageLocations()[kind];
+  const setValue = (next: { repositoryId: string; subpath: string }) =>
+    setDraft({ key: sourceKey, value: next });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setValue(
-      source
-        ? { repositoryId: source.repositoryId, subpath: source.subpath ?? "" }
-        : emptyStorageLocations()[kind],
-    );
-  }, [source?.repositoryId, source?.subpath, projectId, kind]);
   const save = async () => {
     setBusy(true);
     setError(null);

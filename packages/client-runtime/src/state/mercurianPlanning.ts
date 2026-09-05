@@ -75,36 +75,6 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
-    savePlanRevision: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:save-plan-revision",
-      tag: MERCURIAN_WS_METHODS.savePlanRevision,
-      scheduler: writeScheduler,
-      // Shares the message key: an edit and a message both land at the tip, so
-      // serializing them per plan is what keeps the local history linear.
-      concurrency: serialPerPlan,
-    }),
-    saveSpecRevision: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:save-spec-revision",
-      tag: MERCURIAN_WS_METHODS.saveSpecRevision,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
-    refreshSpec: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:refresh-spec",
-      tag: MERCURIAN_WS_METHODS.refreshSpec,
-      scheduler: writeScheduler,
-      concurrency: serialPerPlan,
-    }),
-    recreateLineBranch: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:recreate-line-branch",
-      tag: MERCURIAN_WS_METHODS.recreateLineBranch,
-      scheduler: writeScheduler,
-    }),
-    /**
-     * You opened a plan. A write: what it changes is read by every window off
-     * the tree, so it shares the plan's key — a visit and a mark-unread on one
-     * plan must not land out of the order they were made in.
-     */
     visitPlan: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:visit-plan",
       tag: MERCURIAN_WS_METHODS.visitPlan,
@@ -145,15 +115,5 @@ export function createMercurianPlanningAtoms<R, E>(
      * above a commit is frozen, so there is nothing to order it against and no
      * concurrency key to give it.
      */
-    getPlanTextAt: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:get-plan-text-at",
-      tag: MERCURIAN_WS_METHODS.getPlanTextAt,
-      scheduler: writeScheduler,
-    }),
-    getSpecAt: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:mercurian:get-spec-at",
-      tag: MERCURIAN_WS_METHODS.getSpecAt,
-      scheduler: writeScheduler,
-    }),
   };
 }

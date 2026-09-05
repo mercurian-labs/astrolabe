@@ -38,6 +38,7 @@ describe("project document Markdown", () => {
       goal: "Search",
       acceptanceCriteria: "Fast",
     });
+    expect(readDocumentMarkdown(markdown, "search.md").title).toBe("Search");
     expect(readDocumentMarkdown(markdown, "search.md").metadata?.origin?.url).toBe(
       "https://example.com/issue/1",
     );

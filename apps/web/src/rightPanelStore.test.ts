@@ -46,23 +46,8 @@ beforeEach(() => {
 });
 
 describe("rightPanelStore", () => {
-  it("preserves persisted Spec and Checkpoints surfaces while dropping unknown kinds", () => {
-    expect(
-      migratePersistedRightPanelState({
-        byThreadKey: {
-          "env-1:thread-A": {
-            isOpen: true,
-            activeSurfaceId: "spec",
-            surfaces: [
-              { id: "spec", kind: "spec" },
-              { id: "checkpoints", kind: "checkpoints" },
-              { id: "future", kind: "future" },
-            ],
-            pinnedSurfaceIds: ["checkpoints", "future"],
-          },
-        },
-      }),
-    ).toEqual({
+  it("drops the removed Spec surface while retaining Checkpoints", () => {
+    const migrated = migratePersistedRightPanelState({
       byThreadKey: {
         "env-1:thread-A": {
           isOpen: true,
@@ -75,6 +60,9 @@ describe("rightPanelStore", () => {
         },
       },
     });
+    expect(migrated.byThreadKey["env-1:thread-A"]?.surfaces).toEqual([
+      { id: "checkpoints", kind: "checkpoints" },
+    ]);
   });
 
   it("seeds the Mercurian line panel once without replacing an existing thread entry", () => {
@@ -1042,4 +1030,24 @@ describe("rightPanelStore", () => {
       ),
     ).toEqual(["terminal:term-1", "browser:tab-b", "browser:tab-c"]);
   });
+});
+
+it("keeps document repository and snapshot identity across reopening and persistence", () => {
+  const open = useRightPanelStore.getState().openDocument;
+  const base = {
+    cwd: "/slot/repo",
+    repositoryId: "repo",
+    relativePath: "plans/design.md",
+    snapshotOid: null,
+  };
+  open(refA, base);
+  open(refA, { ...base, repositoryId: "other", cwd: "/slot/other" });
+  open(refA, { ...base, snapshotOid: "a".repeat(40) });
+  open(refA, base);
+  const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+  expect(state.surfaces.filter((surface) => surface.kind === "file")).toHaveLength(3);
+  const restored = migratePersistedRightPanelState({
+    byThreadKey: useRightPanelStore.getState().byThreadKey,
+  });
+  expect(selectThreadRightPanelState(restored.byThreadKey, refA)).toEqual(state);
 });

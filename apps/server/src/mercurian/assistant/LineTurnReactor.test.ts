@@ -317,7 +317,7 @@ const makeHarness = (options?: {
         ]),
       }),
       Layer.mock(RepositoryStore.RepositoryStore)({
-        getSnapshot: Effect.succeed({
+        getWorkingSnapshot: Effect.succeed({
           repositories: [
             {
               repositoryId: MercurianRepositoryId.make("repository"),
@@ -868,22 +868,6 @@ describe("LineTurnReactor", () => {
           runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
         );
         yield* Queue.take(harness.assistantReceipts);
-      }).pipe(Effect.scoped, Effect.provide(harness.layer));
-    }),
-  );
-
-  it.effect("the MCP artifact doors write at the turn's tip and keep the chain linear", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      yield* Effect.gen(function* () {
-        const reactor = yield* LineTurnReactor;
-        yield* startTurn(harness, reactor);
-        yield* reactor.saveRevisionFromThread({ threadId, text: "# Revised plan" });
-        yield* harness.publishProvider(
-          runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
-        );
-        const settled = yield* Queue.take(harness.assistantReceipts);
-        assert.strictEqual(settled.parentCommitId, CommitId.make("plan-revision"));
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
   );

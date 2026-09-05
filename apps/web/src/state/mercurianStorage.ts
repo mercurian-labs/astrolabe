@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianStorageAtoms } from "@t3tools/client-runtime/state/mercurian-storage";
 import type {
   StorageSourcesSnapshot,
+  EnvironmentId,
   RefreshProjectSpecInput,
   ListProjectDocumentsInput,
   MercurianDesignateStorageSourceInput,
@@ -76,12 +77,15 @@ export function useRemoveStorageSource() {
   );
 }
 
-export function useListProjectDocuments() {
-  const run = useEnvironmentBoundCommandResult(mercurianStorage.listProjectDocuments);
+export function useListProjectDocuments(environmentId?: EnvironmentId) {
+  const run = useEnvironmentBoundCommandResult(
+    mercurianStorage.listProjectDocuments,
+    environmentId,
+  );
   return useCallback((input: ListProjectDocumentsInput) => run(input), [run]);
 }
 
-export function useRefreshProjectSpec() {
-  const run = useEnvironmentBoundCommandResult(mercurianStorage.refreshProjectSpec);
+export function useRefreshProjectSpec(environmentId?: EnvironmentId) {
+  const run = useEnvironmentBoundCommandResult(mercurianStorage.refreshProjectSpec, environmentId);
   return useCallback((input: RefreshProjectSpecInput) => run(input), [run]);
 }

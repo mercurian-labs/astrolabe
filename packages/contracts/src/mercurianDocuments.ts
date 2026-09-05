@@ -25,6 +25,7 @@ export const ListProjectDocumentsInput = Schema.Struct({
 });
 export type ListProjectDocumentsInput = typeof ListProjectDocumentsInput.Type;
 export const ListProjectDocumentsResult = Schema.Struct({
+  hasHistory: Schema.Boolean,
   documents: Schema.Array(ProjectDocument),
   problems: Schema.Array(Schema.String),
 });

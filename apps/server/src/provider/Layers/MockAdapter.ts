@@ -206,8 +206,8 @@ export const makeMockAdapter = Effect.fn("makeMockAdapter")(function* (
       payload: {
         itemType: "mcp_tool_call",
         status: "declined",
-        title: "save_plan_revision",
-        detail: "Mock revision preview; no MCP call was made.",
+        title: "propose_memory_amendment",
+        detail: "Mock amendment preview; no MCP call was made.",
         data: { mock: true },
       },
     });

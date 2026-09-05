@@ -1,8 +1,11 @@
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as DateTime from "effect/DateTime";
 import {
+  CommandId,
+  EventId,
   MercurianStorageError,
   PlanTurnId,
   TrackerConnectionId,
@@ -27,9 +30,15 @@ import { SnapshotChain, lineExtraSnapshotRef } from "../worktreeSlots/SnapshotCh
 import { TrackerStore } from "../trackers/TrackerStore.ts";
 import { specDocumentFromIssue } from "@t3tools/contracts";
 
+const required = <A>(value: Option.Option<A>, operation: string) =>
+  Option.isSome(value)
+    ? Effect.succeed(value.value)
+    : Effect.fail(new MercurianStorageError({ operation }));
+
 /** A refresh holds the same line claim as a turn, including across filesystem and snapshot writes. */
 export const make = Effect.gen(function* () {
   const documents = yield* DocumentStore;
+  const engine = yield* OrchestrationEngineService;
   const runtimes = yield* LineRuntimeStore;
   const runtimeService = yield* LineRuntimeService;
   const turns = yield* PlanTurnRegistry;
@@ -42,7 +51,10 @@ export const make = Effect.gen(function* () {
     function* (
       input: RefreshProjectSpecInput,
     ): Effect.fn.Return<RefreshProjectSpecResult, unknown> {
-      const runtime = Option.getOrThrow(yield* runtimes.getByThreadId(input.threadId));
+      const runtime = yield* required(
+        yield* runtimes.getByThreadId(input.threadId),
+        "line-unavailable",
+      );
       const root = runtime.lineRootCommitId;
       if (!root) return yield* new MercurianStorageError({ operation: "line-unavailable" });
       const claim = PlanTurnId.make(NodeCrypto.randomUUID());
@@ -54,15 +66,16 @@ export const make = Effect.gen(function* () {
         tipCommitId: CommitId.make(root),
       });
       return yield* Effect.gen(function* () {
-        const origin = Option.getOrThrow(yield* documents.get(input.documentId));
-        if (origin.repositoryId !== input.repositoryId)
-          return yield* new MercurianStorageError({ operation: "spec-origin-repository-mismatch" });
+        const origin = yield* required(
+          yield* documents.get(input.documentId),
+          "spec-origin-unavailable",
+        );
         const ensured = yield* runtimeService.ensureSlot({
           threadId: input.threadId,
           holder: { kind: "turn" },
         });
         return yield* Effect.gen(function* () {
-          const slot = Option.getOrThrow(yield* slots.get(ensured.slotId));
+          const slot = yield* required(yield* slots.get(ensured.slotId), "slot-unavailable");
           if (slot.projectId !== origin.projectId)
             return yield* new MercurianStorageError({ operation: "spec-origin-project-mismatch" });
           const member = slot.members.find(
@@ -71,7 +84,92 @@ export const make = Effect.gen(function* () {
           if (!member?.currentBranch)
             return yield* new MercurianStorageError({ operation: "spec-repository-unavailable" });
           const cwd = `${slot.path}/${member.relativePath}`;
+          const lineBranch = member.currentBranch;
+          const capture = (summary = "Spec refreshed from issue") =>
+            Effect.gen(function* () {
+              const now = yield* DateTime.now;
+              const snapshot = yield* snapshots.capture({
+                cwd,
+                repositoryId: input.repositoryId,
+                lineRootCommitId: root,
+                lineBranch,
+                kind: "external",
+                ref: lineExtraSnapshotRef(root, "external", now),
+              });
+              const branchMovement = yield* snapshots.branchMovement({
+                cwd,
+                previousOid: snapshot.previousOid,
+                lineRootCommitId: root,
+                repositoryId: input.repositoryId,
+                lineBranch,
+              });
+              const branchTipOid = yield* snapshots.lineCommit({
+                cwd,
+                lineRootCommitId: root,
+                repositoryId: input.repositoryId,
+                lineBranch,
+              });
+              const facts = {
+                snapshotOid: snapshot.oid,
+                kind: "external" as const,
+                branchTipOid,
+                departedRef: null,
+                branchMovement,
+              };
+              yield* runtimes.recordRepositorySnapshot(input.threadId, input.repositoryId, facts);
+              if (runtime.homeRepositoryId === input.repositoryId)
+                yield* runtimes.recordSnapshot(input.threadId, facts);
+              const createdAt = DateTime.formatIso(now);
+              yield* engine.dispatch({
+                type: "thread.activity.append",
+                commandId: CommandId.make(`document-refresh:${input.threadId}:${snapshot.oid}`),
+                threadId: input.threadId,
+                activity: {
+                  id: EventId.make(`document-refresh:${input.threadId}:${snapshot.oid}`),
+                  tone: "info",
+                  kind: "document.refreshed",
+                  summary,
+                  payload: {
+                    repositoryId: input.repositoryId,
+                    relativePath: input.relativePath,
+                    snapshotOid: snapshot.oid,
+                  },
+                  turnId: null,
+                  createdAt,
+                },
+                createdAt,
+              });
+              yield* documents.complete(input.threadId, input.documentId);
+              return { kind: "saved", snapshotOid: snapshot.oid } as const;
+            });
           const current = yield* files.readFile({ cwd, relativePath: input.relativePath });
+          if (current.truncated)
+            return yield* new MercurianStorageError({ operation: "spec-too-large-to-refresh" });
+          const pending = yield* documents.pending(input.threadId, input.documentId);
+          if (Option.isSome(pending)) {
+            const operation = pending.value;
+            if (
+              operation.repositoryId !== input.repositoryId ||
+              operation.relativePath !== input.relativePath
+            )
+              return yield* new MercurianStorageError({
+                operation: "pending-refresh-location-changed",
+              });
+            if (current.contents === operation.contents) return yield* capture();
+            if (
+              NodeCrypto.createHash("sha256").update(current.contents).digest("hex") ===
+              operation.beforeHash
+            ) {
+              yield* files.writeFile({
+                cwd,
+                relativePath: input.relativePath,
+                contents: operation.contents,
+              });
+              return yield* capture();
+            }
+            // Preserve intervening edits before abandoning the interrupted target and reclassifying.
+            yield* capture("Local spec edits preserved after interrupted refresh");
+          }
           const parsed = readDocumentMarkdown(current.contents, input.relativePath);
           const revision = parsed.metadata?.origin?.revision;
           const local = readSpecBody(current.contents);
@@ -79,7 +177,10 @@ export const make = Effect.gen(function* () {
             return yield* new MercurianStorageError({
               operation: "spec-origin-or-sections-missing",
             });
-          const base = Option.getOrThrow(yield* documents.baseline(input.documentId, revision));
+          const base = yield* required(
+            yield* documents.baseline(input.documentId, revision),
+            "spec-baseline-unavailable",
+          );
           const issue = yield* trackers.getIssue({
             connectionId: TrackerConnectionId.make(origin.connectionId),
             issueId: origin.issueId,
@@ -129,40 +230,14 @@ export const make = Effect.gen(function* () {
           )
             return yield* new MercurianStorageError({ operation: "spec-changed-during-refresh" });
           yield* documents.saveBaseline(input.documentId, upstreamRevision, upstream);
+          yield* documents.stage(input.threadId, input.documentId, {
+            repositoryId: input.repositoryId,
+            relativePath: input.relativePath,
+            beforeHash: expectedHash,
+            contents,
+          });
           yield* files.writeFile({ cwd, relativePath: input.relativePath, contents });
-          const now = yield* DateTime.now;
-          const snapshot = yield* snapshots.capture({
-            cwd,
-            repositoryId: input.repositoryId,
-            lineRootCommitId: root,
-            lineBranch: member.currentBranch,
-            kind: "external",
-            ref: lineExtraSnapshotRef(root, "external", now),
-          });
-          const branchMovement = yield* snapshots.branchMovement({
-            cwd,
-            previousOid: snapshot.previousOid,
-            lineRootCommitId: root,
-            repositoryId: input.repositoryId,
-            lineBranch: member.currentBranch,
-          });
-          const branchTipOid = yield* snapshots.lineCommit({
-            cwd,
-            lineRootCommitId: root,
-            repositoryId: input.repositoryId,
-            lineBranch: member.currentBranch,
-          });
-          const facts = {
-            snapshotOid: snapshot.oid,
-            kind: "external" as const,
-            branchTipOid,
-            departedRef: null,
-            branchMovement,
-          };
-          yield* runtimes.recordRepositorySnapshot(input.threadId, input.repositoryId, facts);
-          if (runtime.homeRepositoryId === input.repositoryId)
-            yield* runtimes.recordSnapshot(input.threadId, facts);
-          return { kind: "saved", snapshotOid: snapshot.oid } as const;
+          return yield* capture();
         }).pipe(
           Effect.ensuring(
             slotService

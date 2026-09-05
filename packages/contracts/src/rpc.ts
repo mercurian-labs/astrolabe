@@ -120,20 +120,14 @@ import {
   MercurianDeletePlanInput,
   MercurianEnsureProjectRuntimeInput,
   MercurianEnsureProjectRuntimeResult,
-  MercurianGetPlanTextAtInput,
   MercurianForkLineInput,
   MercurianOpenLineInput,
   MercurianLineResult,
-  MercurianGetSpecAtInput,
   MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
   MercurianProject,
   MercurianProjectNotFoundError,
-  MercurianSavePlanRevisionInput,
-  MercurianSaveSpecRevisionInput,
-  MercurianRefreshSpecInput,
-  MercurianRefreshSpecResult,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
   MercurianSubscribeWorktreeSlotsInput,
@@ -149,13 +143,7 @@ import {
   PlanNotFoundError,
   PlanningTreeStreamItem,
   WorktreeSlotStreamItem,
-  PlanRevision,
-  PlanSpecRevision,
   PlanStreamItem,
-  SpecAt,
-  SpecRevisionOutdatedError,
-  SpecRefreshUnavailableError,
-  PlanTextAt,
   PlanTurnActiveError,
 } from "./mercurian.ts";
 import {
@@ -1366,45 +1354,6 @@ export const WsMercurianOpenLineRpc = Rpc.make(MERCURIAN_WS_METHODS.openLine, {
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
-export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.savePlanRevision, {
-  payload: MercurianSavePlanRevisionInput,
-  success: PlanRevision,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-export const WsMercurianSaveSpecRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.saveSpecRevision, {
-  payload: MercurianSaveSpecRevisionInput,
-  success: PlanSpecRevision,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    SpecRevisionOutdatedError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSpec, {
-  payload: MercurianRefreshSpecInput,
-  success: MercurianRefreshSpecResult,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    SpecRevisionOutdatedError,
-    SpecRefreshUnavailableError,
-    TrackerConnectionNotFoundError,
-    TrackerAuthError,
-    TrackerUnreachableError,
-    MercurianPlanningError,
-    MercurianTrackerError,
-    EnvironmentAuthorizationError,
-  ]),
-});
 
 // Attention, recorded. Both write one plan's visited-at and answer with
 // nothing: the change they made comes back on the tree subscription, where
@@ -1456,21 +1405,6 @@ export const WsMercurianSubscribePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.subscri
   success: PlanStreamItem,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
   stream: true,
-});
-
-// The plan as of an earlier commit. History above a commit is frozen, so this
-// is a unary read rather than anything the subscription has to carry: the
-// timeline's revisions deliberately travel without their text.
-export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlanTextAt, {
-  payload: MercurianGetPlanTextAtInput,
-  success: PlanTextAt,
-  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
-});
-
-export const WsMercurianGetSpecAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getSpecAt, {
-  payload: MercurianGetSpecAtInput,
-  success: SpecAt,
-  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
 // Mercurian repositories. Same snapshot-re-emit shape as the tree, and for the
@@ -1969,17 +1903,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianForkLineRpc,
   WsMercurianOpenLineRpc,
   WsMercurianImportPlanRpc,
-  WsMercurianSavePlanRevisionRpc,
-  WsMercurianSaveSpecRevisionRpc,
-  WsMercurianRefreshSpecRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
   WsMercurianUnarchivePlanRpc,
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
-  WsMercurianGetPlanTextAtRpc,
-  WsMercurianGetSpecAtRpc,
   WsMercurianSubscribeRepositoriesRpc,
   WsMercurianRefreshRepositoriesRpc,
   WsMercurianAddRepositoryRpc,

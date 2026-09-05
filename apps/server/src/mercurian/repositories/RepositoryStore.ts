@@ -857,7 +857,7 @@ export const make = Effect.gen(function* () {
   // Storage repositories participate in work without becoming code-context selections.
   const getWorkingSnapshot = Effect.gen(function* () {
     const snapshot = yield* getSnapshot;
-    const sources = yield* storage.getSnapshot;
+    const sources = [...(yield* storage.getSnapshot), ...(yield* storage.getDocumentLocations)];
     const links = [...snapshot.projectRepositories];
     for (const source of sources) {
       if (

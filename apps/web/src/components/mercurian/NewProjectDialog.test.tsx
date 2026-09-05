@@ -32,7 +32,10 @@ vi.mock("../../projectScopeStore", () => ({
   ) => selector({ projectScopeId: null, setProjectScope: vi.fn() }),
 }));
 
-vi.mock("../../state/mercurianStorage", () => ({ useDesignateStorageSource: () => vi.fn() }));
+vi.mock("../../state/mercurianStorage", () => ({
+  useDesignateStorageSource: () => vi.fn(),
+  useRemoveStorageSource: () => vi.fn(),
+}));
 
 vi.mock("../../state/mercurian", () => ({
   useCreateMercurianProject: () => vi.fn(),

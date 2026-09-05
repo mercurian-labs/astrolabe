@@ -47,6 +47,17 @@ it.layer(
         }),
       );
       assert.strictEqual(escaped._tag, "MemorySourceInvalidError");
+      assert.strictEqual((yield* store.getDocumentLocations).length, 3);
+      const overlap = yield* Effect.flip(
+        store.designate({ projectId, repositoryId, kind: "spec", subpath: "new-plans/specs", now }),
+      );
+      assert.strictEqual(overlap._tag, "MemorySourceInvalidError");
+      if (overlap._tag === "MemorySourceInvalidError")
+        assert.strictEqual(overlap.reason, "overlapping-location");
+      const absolute = yield* Effect.flip(
+        store.designate({ projectId, repositoryId, kind: "spec", subpath: root, now }),
+      );
+      assert.strictEqual(absolute._tag, "MemorySourceInvalidError");
     }),
   );
 });
