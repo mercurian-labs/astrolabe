@@ -19,6 +19,7 @@ import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shar
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -310,6 +311,7 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
 }
 
 const make = Effect.gen(function* () {
+  const serviceScope = yield* Effect.scope;
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
@@ -324,6 +326,11 @@ const make = Effect.gen(function* () {
   }
   const pendingStarts = new Map<ThreadId, Set<PendingStart>>();
   const cancelledStarts = new Map<number, ReadonlyArray<PendingStart>>();
+  const removePendingStart = (threadId: ThreadId, attempt: PendingStart) => {
+    const starts = pendingStarts.get(threadId);
+    starts?.delete(attempt);
+    if (starts?.size === 0) pendingStarts.delete(threadId);
+  };
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -1362,7 +1369,8 @@ const make = Effect.gen(function* () {
       (candidate) => candidate.sequence === event.sequence,
     );
     if (attempt === undefined || attempt.cancelled) return;
-    const preparationFiber = yield* Effect.gen(function* () {
+    const submissionBoundary = yield* Deferred.make<void>();
+    const submit = Effect.gen(function* () {
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
         message,
@@ -1373,27 +1381,41 @@ const make = Effect.gen(function* () {
         interactionMode: event.payload.interactionMode,
         createdAt: event.payload.createdAt,
       });
-      if (attempt.cancelled) return yield* Effect.interrupt;
-      // From this point an interrupt must reach the provider, even if send has
-      // not acknowledged yet. Keep the marker and entry into send synchronous.
-      attempt.sendStarted = true;
       yield* Effect.uninterruptibleMask((restore) =>
-        restore(providerService.sendTurn(sendTurnRequest.request)).pipe(
-          Effect.tap(() =>
-            restore(sendTurnRequest.preparedTurn?.onSubmitted ?? Effect.void).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("provider turn submitted but reconstruction bookkeeping failed", {
-                  cause: Cause.pretty(cause),
-                }),
-              ),
+        Effect.gen(function* () {
+          if (attempt.cancelled) return yield* Effect.interrupt;
+          // Release command ordering at send entry: ACP sends can wait for an
+          // approval or user-input command on this same thread before returning.
+          attempt.sendStarted = true;
+          yield* Deferred.succeed(submissionBoundary, undefined);
+          yield* restore(providerService.sendTurn(sendTurnRequest.request));
+          yield* (sendTurnRequest.preparedTurn?.onSubmitted ?? Effect.void).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("provider turn submitted but reconstruction bookkeeping failed", {
+                cause: Cause.pretty(cause),
+              }),
             ),
-          ),
-        ),
+          );
+        }),
       );
-    }).pipe(Effect.scoped, Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
-    attempt.fiber = preparationFiber;
-    if (attempt.cancelled) yield* Fiber.interrupt(preparationFiber);
-    yield* Fiber.await(preparationFiber);
+    }).pipe(
+      Effect.scoped,
+      Effect.catchCause(recoverTurnStartFailure),
+      Effect.ensuring(
+        Effect.sync(() => removePendingStart(event.payload.threadId, attempt)).pipe(
+          Effect.andThen(Deferred.succeed(submissionBoundary, undefined)),
+        ),
+      ),
+    );
+    yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        // The send consumer outlives this command, but never the reactor service.
+        attempt.fiber = yield* Effect.forkIn(submit, serviceScope);
+        if (attempt.cancelled && !attempt.sendStarted) yield* Fiber.interrupt(attempt.fiber);
+        // Preparation exits release ordering only after scope cleanup and recovery.
+        yield* restore(Deferred.await(submissionBoundary));
+      }),
+    );
   });
 
   const satisfyCancelledStart = Effect.fn("satisfyCancelledStart")(function* (
@@ -1734,8 +1756,8 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  // Commands retain their thread order while model preparation on one thread
-  // cannot occupy the environment's dispatcher. Drain includes these tails.
+  // Commands retain their thread order through preparation, not send completion.
+  // Drain includes these tails, while sends remain owned by the service scope.
   const threadCommands = new Map<ThreadId, Fiber.Fiber<void>>();
   const worker = yield* makeDrainableWorker((event: ProviderIntentEvent) =>
     Effect.gen(function* () {
@@ -1751,8 +1773,8 @@ const make = Effect.gen(function* () {
             if (event.type === "thread.turn-start-requested") {
               const starts = pendingStarts.get(event.payload.threadId);
               for (const start of starts ?? [])
-                if (start.sequence === event.sequence) starts?.delete(start);
-              if (starts?.size === 0) pendingStarts.delete(event.payload.threadId);
+                if (start.sequence === event.sequence && start.fiber === undefined)
+                  removePendingStart(event.payload.threadId, start);
             }
           }),
         ),
@@ -1789,9 +1811,10 @@ const make = Effect.gen(function* () {
           (attempt) => attempt.sequence < event.sequence,
         );
         if (attempts.length > 0) cancelledStarts.set(event.sequence, attempts);
+        // Mark every queued start before interrupting any predecessor can release it.
+        for (const attempt of attempts) attempt.cancelled = true;
         for (const attempt of attempts) {
-          attempt.cancelled = true;
-          if (attempt.fiber !== undefined)
+          if (attempt.fiber !== undefined && !attempt.sendStarted)
             yield* Fiber.interrupt(attempt.fiber).pipe(Effect.forkScoped);
         }
       }
