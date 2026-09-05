@@ -1,4 +1,3 @@
-import * as Path from "effect/Path";
 import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -26,7 +25,6 @@ import {
 
 export const make = Effect.gen(function* () {
   const storage = yield* StorageSourceStore;
-  const path = yield* Path.Path;
   const lineRuntimes = yield* LineRuntimeStore;
   const planning = yield* PlanningStore;
   const commits = yield* CommitStore;

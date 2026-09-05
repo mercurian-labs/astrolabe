@@ -1039,6 +1039,8 @@ export default function FilePreviewPanel({
       revealRequestId={revealRequestId}
       onOpenFile={onOpenFile}
       onPendingChange={onPendingChange}
+      {...(snapshotOid === undefined ? {} : { snapshotOid })}
+      {...(documentLocation === undefined ? {} : { documentLocation })}
       selectedFilePending={selectedFilePending}
       workspaceMutationId={workspaceMutationId}
     />
@@ -1046,6 +1048,8 @@ export default function FilePreviewPanel({
 }
 
 function WorkspaceFilePreviewPanel({
+  snapshotOid,
+  documentLocation,
   environmentId,
   cwd,
   projectName,

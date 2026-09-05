@@ -62,10 +62,10 @@ export const make = Effect.gen(function* () {
     execute: () => sql`
     SELECT s.project_id AS "projectId", s.repository_id AS "repositoryId", r.path,
       coalesce(s.subpath, '') AS "memoryRoot", s.updated_at AS "sourceUpdatedAt"
-    FROM project_memory_sources s JOIN repositories r ON r.repository_id = s.repository_id
-    WHERE s.subpath IS NOT NULL OR EXISTS (
+    FROM project_storage_sources s JOIN repositories r ON r.repository_id = s.repository_id
+    WHERE s.kind = 'memory' AND (s.subpath IS NOT NULL OR EXISTS (
       SELECT 1 FROM project_repositories p WHERE p.project_id = s.project_id AND p.repository_id = s.repository_id
-    )
+    ))
   `,
   });
   const branches = SqlSchema.findAll({

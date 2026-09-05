@@ -62,7 +62,10 @@ export class StorageSourceStore extends Context.Service<
       projectId: MercurianProjectId,
       kind: ProjectStorageKind,
     ) => Effect.Effect<Option.Option<ResolvedStorageSource>, StorageSourceStoreError>;
-    readonly changes: Stream.Stream<void>;
+    readonly changes: Stream.Stream<{
+      readonly projectId: MercurianProjectId;
+      readonly kind: ProjectStorageKind;
+    }>;
   }
 >()("t3/mercurian/storage/StorageSourceStore") {}
 
@@ -98,8 +101,12 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const changesPubSub = yield* PubSub.unbounded<void>();
-  const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
+  const changesPubSub = yield* PubSub.unbounded<{
+    readonly projectId: MercurianProjectId;
+    readonly kind: ProjectStorageKind;
+  }>();
+  const announceChange = (projectId: MercurianProjectId, kind: ProjectStorageKind) =>
+    PubSub.publish(changesPubSub, { projectId, kind }).pipe(Effect.asVoid);
 
   const columns = sql`
     kind AS "kind",
@@ -288,7 +295,7 @@ export const make = Effect.gen(function* () {
       });
       if (input.kind !== "memory")
         yield* sql`INSERT INTO project_document_locations(project_id, kind, repository_id, subpath, created_at, updated_at) VALUES (${input.projectId}, ${input.kind}, ${input.repositoryId}, ${subpath ?? ""}, ${DateTime.formatIso(input.now)}, ${DateTime.formatIso(input.now)}) ON CONFLICT(project_id, kind, repository_id, subpath) DO NOTHING`;
-      yield* announceChange;
+      yield* announceChange(input.projectId, input.kind);
     }).pipe(
       Effect.mapError(
         toStoreError("StorageSourceStore.designate:query", "StorageSourceStore.designate:decode"),
@@ -298,7 +305,7 @@ export const make = Effect.gen(function* () {
   const remove: StorageSourceStore["Service"]["remove"] = (projectId, kind) =>
     Effect.gen(function* () {
       yield* deleteRow({ projectId, kind });
-      yield* announceChange;
+      yield* announceChange(projectId, kind);
     }).pipe(
       Effect.mapError(
         toStoreError("StorageSourceStore.remove:query", "StorageSourceStore.remove:decode"),

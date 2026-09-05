@@ -41,7 +41,7 @@ export class MemorySourceStore extends Context.Service<
     readonly getResolvedSource: (
       projectId: MercurianProjectId,
     ) => Effect.Effect<Option.Option<ResolvedMemorySource>, MemorySourceStoreError>;
-    readonly changes: Stream.Stream<void>;
+    readonly changes: Stream.Stream<MercurianProjectId>;
   }
 >()("t3/mercurian/memory/MemorySourceStore") {}
 
@@ -56,7 +56,10 @@ export const make = Effect.gen(function* () {
     ),
     getSource: (projectId) => storage.getSource(projectId, "memory"),
     getResolvedSource: (projectId) => storage.getResolvedSource(projectId, "memory"),
-    changes: storage.changes,
+    changes: storage.changes.pipe(
+      Stream.filter((change) => change.kind === "memory"),
+      Stream.map((change) => change.projectId),
+    ),
   });
 });
 export const layer = Layer.effect(MemorySourceStore, make).pipe(

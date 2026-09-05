@@ -62,6 +62,11 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     [graph, lineTip, search.at],
   );
   const head = resolveHead(graph, position);
+  const viewingPast = search.at !== undefined && head !== lineTip;
+  const backToNow = useCallback(() => {
+    if (planId === null) return;
+    void navigateToThreadRoute(router, { kind: "server", threadRef, planId });
+  }, [planId, router, threadRef]);
   const staleSpecLeaves = useMemo(() => staleSpecLeafIds(graph), [graph]);
   const stalePlanLeaves = useMemo(() => stalePlanLeafIds(graph), [graph]);
   const selectCheckpoint = useCallback(

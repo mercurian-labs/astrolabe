@@ -75,6 +75,16 @@ export function createMercurianPlanningAtoms<R, E>(
       scheduler: writeScheduler,
       concurrency: serialPerPlan,
     }),
+    recreateLineBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:recreate-line-branch",
+      tag: MERCURIAN_WS_METHODS.recreateLineBranch,
+      scheduler: writeScheduler,
+    }),
+    /**
+     * You opened a plan. A write: what it changes is read by every window off
+     * the tree, so it shares the plan's key — a visit and a mark-unread on one
+     * plan must not land out of the order they were made in.
+     */
     visitPlan: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:visit-plan",
       tag: MERCURIAN_WS_METHODS.visitPlan,

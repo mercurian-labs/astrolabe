@@ -1354,7 +1354,6 @@ export const WsMercurianOpenLineRpc = Rpc.make(MERCURIAN_WS_METHODS.openLine, {
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
-
 // Attention, recorded. Both write one plan's visited-at and answer with
 // nothing: the change they made comes back on the tree subscription, where
 // every other row fact already lives. Neither joins the environment

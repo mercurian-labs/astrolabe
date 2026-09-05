@@ -892,7 +892,10 @@ export const make = Effect.gen(function* () {
       return Stream.fromPubSub(changesPubSub);
     },
     get workingChanges() {
-      return Stream.merge(Stream.fromPubSub(changesPubSub), storage.changes);
+      return Stream.merge(
+        Stream.fromPubSub(changesPubSub),
+        storage.changes.pipe(Stream.map(() => undefined)),
+      );
     },
   } satisfies RepositoryStore["Service"];
 });
