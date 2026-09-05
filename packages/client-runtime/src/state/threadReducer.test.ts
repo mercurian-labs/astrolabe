@@ -1257,6 +1257,48 @@ describe("applyThreadDetailEvent", () => {
         );
       }
     });
+
+    it("keeps the per-repository groups on a live checkpoint", () => {
+      const repositories = [
+        {
+          repositoryId: "repo-alpha",
+          repositoryName: "alpha",
+          files: [{ path: "src/index.ts", kind: "modified" as const, additions: 1, deletions: 0 }],
+          branchMovement: { kind: "added" as const, count: 1 },
+        },
+        {
+          repositoryId: "repo-beta",
+          repositoryName: "beta",
+          files: [{ path: "README.md", kind: "modified" as const, additions: 1, deletions: 0 }],
+          branchMovement: { kind: "unchanged" as const },
+        },
+      ];
+      const result = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 13,
+        occurredAt: "2026-04-01T12:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.turn-diff-completed",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          turnId: TurnId.make("turn-1"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("ref-1"),
+          status: "ready",
+          files: repositories[0]!.files,
+          repositories,
+          assistantMessageId: MessageId.make("msg-3"),
+          completedAt: "2026-04-01T12:00:00.000Z",
+          snapshotKind: "settled",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.checkpoints[0]?.repositories).toEqual(repositories);
+      }
+    });
   });
 
   describe("no-op events", () => {
