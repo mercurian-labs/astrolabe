@@ -39,6 +39,7 @@ export const MERCURIAN_WS_METHODS = {
   ensureProjectRuntime: "mercurian.ensureProjectRuntime",
   forkLine: "mercurian.forkLine",
   openLine: "mercurian.openLine",
+  getReconstruction: "mercurian.getReconstruction",
   visitPlan: "mercurian.visitPlan",
   markPlanUnread: "mercurian.markPlanUnread",
   archivePlan: "mercurian.archivePlan",
@@ -344,6 +345,31 @@ const PlanCommitFields = {
   createdAt: IsoDateTime,
 } as const;
 
+/** Immutable evidence of the input Mercurian supplied at a clean session start. */
+export const PlanReconstruction = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  planId: PlanId,
+  sessionStartMessageCommitId: MercurianCommitId,
+  throughCommitId: Schema.NullOr(MercurianCommitId),
+  verbatimFromCommitId: MercurianCommitId,
+  version: Schema.Literal(1),
+  compacted: Schema.NullOr(
+    Schema.Struct({
+      throughCommitId: MercurianCommitId,
+      summary: Schema.String.check(Schema.isNonEmpty()),
+    }),
+  ),
+});
+export type PlanReconstruction = typeof PlanReconstruction.Type;
+
+export const MercurianGetReconstructionInput = Schema.Struct({
+  planId: PlanId,
+  reconstructionId: TrimmedNonEmptyString,
+});
+export const PlanReconstructionResult = Schema.Struct({
+  reconstruction: Schema.NullOr(PlanReconstruction),
+});
+
 export const PlanMessage = Schema.Struct({
   ...PlanCommitFields,
   text: Schema.String,
@@ -370,6 +396,7 @@ export const PlanMessage = Schema.Struct({
   /** What produced this assistant reply, captured when its turn started. */
   generatedBy: Schema.optional(PlanningModelSelection),
   sourceUserMessageId: Schema.optional(MercurianCommitId),
+  reconstructionId: Schema.optional(TrimmedNonEmptyString),
   memoryAmendment: Schema.optional(
     Schema.Struct({
       title: TrimmedNonEmptyString,
@@ -972,6 +999,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "refreshSpec",
       "getPlanTextAt",
       "getSpecAt",
+      "getReconstruction",
       "visitPlan",
       "markPlanUnread",
       "archivePlan",

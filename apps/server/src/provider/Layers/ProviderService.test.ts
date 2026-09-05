@@ -61,6 +61,10 @@ import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
 import { makeProviderServiceLive } from "./ProviderService.ts";
+import {
+  ReconstructionSummary,
+  layer as reconstructionSummaryLayer,
+} from "../../mercurian/assistant/ReconstructionSummary.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import { ProviderSessionDirectoryLive } from "./ProviderSessionDirectory.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -1488,6 +1492,223 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("discards persisted native context without recovering an inactive session", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("discard-unprimed-clean-start");
+      const initial = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      yield* routing.codex.stopSession(threadId);
+      const startsBeforeDiscard = routing.codex.startSession.mock.calls.length;
+      yield* provider.stopSession({ threadId }, { discardBinding: true });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, startsBeforeDiscard);
+      assert.ok(Option.isNone(yield* directory.getBinding(threadId)));
+      assert.equal(
+        yield* provider.getPersistedResumeCursor(
+          initial.threadId,
+          initial.providerInstanceId ?? codexInstanceId,
+        ),
+        undefined,
+      );
+    }),
+  );
+
+  it.effect("stopping a missing binding does not recover and cleans a live partial start", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("unbound-cancellation");
+      const startsBefore = routing.codex.startSession.mock.calls.length;
+      yield* provider.stopSession({ threadId });
+      assert.equal(routing.codex.startSession.mock.calls.length, startsBefore);
+      yield* routing.codex.startSession({
+        threadId,
+        providerInstanceId: codexInstanceId,
+        runtimeMode: "approval-required",
+      });
+      const startsAfter = routing.codex.startSession.mock.calls.length;
+      yield* provider.stopSession({ threadId });
+      assert.equal(routing.codex.startSession.mock.calls.length, startsAfter);
+      assert.equal(
+        (yield* provider.listSessions()).some((session) => session.threadId === threadId),
+        false,
+      );
+    }),
+  );
+
+  it.effect(
+    "persisted resume lookup survives stop and only selects the matching instance and driver",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+        const threadId = asThreadId("persisted-lookup");
+        const initial = yield* provider.startSession(threadId, {
+          threadId,
+          providerInstanceId: codexInstanceId,
+          runtimeMode: "full-access",
+        });
+        yield* provider.stopSession({ threadId });
+        assert.equal(
+          (yield* provider.listSessions()).some((session) => session.threadId === threadId),
+          false,
+        );
+        assert.deepEqual(
+          yield* provider.getPersistedResumeCursor(threadId, codexInstanceId),
+          initial.resumeCursor,
+        );
+        assert.equal(
+          yield* provider.getPersistedResumeCursor(threadId, claudeAgentInstanceId),
+          undefined,
+        );
+        yield* directory.upsert({
+          threadId,
+          provider: CLAUDE_AGENT_DRIVER,
+          providerInstanceId: codexInstanceId,
+          resumeCursor: initial.resumeCursor,
+        });
+        assert.equal(
+          yield* provider.getPersistedResumeCursor(threadId, codexInstanceId),
+          undefined,
+        );
+        assert.equal(
+          yield* provider.getPersistedResumeCursor(asThreadId("missing-binding"), codexInstanceId),
+          undefined,
+        );
+      }),
+  );
+
+  it.effect("ephemeral helpers release their bindings and preserve real stopped sessions", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("real-session");
+      yield* provider.startSession(threadId, {
+        threadId,
+        providerInstanceId: codexInstanceId,
+        runtimeMode: "full-access",
+      });
+      yield* provider.stopSession({ threadId });
+      const before = yield* directory.listThreadIds();
+      for (let index = 0; index < 2; index++) {
+        const helper = yield* Effect.gen(function* () {
+          const session = yield* provider.startEphemeralSession({
+            providerInstanceId: codexInstanceId,
+            runtimeMode: "approval-required",
+          });
+          assert.ok(Option.isSome(yield* directory.getBinding(session.threadId)));
+          yield* provider.sendTurn({ threadId: session.threadId, input: "summarize" });
+          return session;
+        }).pipe(Effect.scoped);
+        assert.ok(Option.isNone(yield* directory.getBinding(helper.threadId)));
+        assert.equal(
+          (yield* provider.listSessions()).some((session) => session.threadId === helper.threadId),
+          false,
+        );
+      }
+      assert.deepEqual(yield* directory.listThreadIds(), before);
+    }),
+  );
+
+  it.effect("repeated summaries leave no helper bindings in the real provider directory", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const before = yield* directory.listThreadIds();
+      for (let index = 0; index < 2; index++) {
+        routing.codex.sendTurn.mockImplementationOnce((input) =>
+          Effect.sync(() => {
+            const base = {
+              provider: CODEX_DRIVER,
+              threadId: input.threadId,
+              turnId: asTurnId("summary-turn"),
+              eventId: asEventId("summary-event"),
+              createdAt: "2026-01-01T00:00:00.000Z",
+            };
+            routing.codex.emit({
+              ...base,
+              type: "content.delta",
+              payload: { streamKind: "assistant_text", delta: "Faithful summary" },
+            });
+            routing.codex.emit({
+              ...base,
+              type: "turn.completed",
+              payload: { state: "completed" },
+            });
+            return { threadId: input.threadId, turnId: base.turnId };
+          }),
+        );
+        const summary = yield* Effect.flatMap(ReconstructionSummary, (service) =>
+          service.summarize("history", { instanceId: codexInstanceId, model: "model" }),
+        ).pipe(
+          Effect.provide(
+            reconstructionSummaryLayer.pipe(
+              Layer.provide(Layer.succeed(ProviderService.ProviderService, provider)),
+              Layer.provide(NodeServices.layer),
+            ),
+          ),
+        );
+        assert.equal(summary, "Faithful summary");
+        assert.deepEqual(yield* directory.listThreadIds(), before);
+      }
+    }),
+  );
+
+  it.effect("ephemeral cancellation stops a partial start before a binding exists", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const started = yield* Deferred.make<ThreadId>();
+      const original = routing.codex.startSession.getMockImplementation()!;
+      routing.codex.startSession.mockImplementationOnce((input) =>
+        original(input).pipe(
+          Effect.tap(() => Deferred.succeed(started, input.threadId)),
+          Effect.andThen(Effect.never),
+        ),
+      );
+      const owner = yield* provider
+        .startEphemeralSession({
+          providerInstanceId: codexInstanceId,
+          runtimeMode: "approval-required",
+        })
+        .pipe(Effect.scoped, Effect.forkScoped);
+      const threadId = yield* Deferred.await(started);
+      yield* Fiber.interrupt(owner);
+      assert.ok(Option.isNone(yield* directory.getBinding(threadId)));
+      assert.equal(
+        (yield* provider.listSessions()).some((session) => session.threadId === threadId),
+        false,
+      );
+    }),
+  );
+
+  it.effect("a clean start suppresses both requested and persisted resume cursors", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-clean-reconstruction");
+      const input = {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: "/tmp/clean-reconstruction",
+        runtimeMode: "full-access" as const,
+      };
+      const previous = yield* provider.startSession(threadId, input);
+      yield* provider.startSession(threadId, {
+        ...input,
+        resumeCursor: previous.resumeCursor,
+        skipResume: true,
+      });
+      assert.equal(routing.codex.startSession.mock.calls.at(-1)?.[0].resumeCursor, undefined);
+    }),
+  );
+
   it.effect("routes explicit claudeAgent provider session starts to the claude adapter", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;
@@ -2618,6 +2839,7 @@ const getBinding = vi.fn((threadId: ThreadId) =>
 const boundedListing = makeProviderServiceLayer({
   directory: {
     upsert: () => Effect.void,
+    delete: () => Effect.die("Unexpected helper binding deletion"),
     getProvider: () => Effect.die("ProviderService.listSessions does not use getProvider"),
     getBinding,
     listThreadIds,

@@ -60,6 +60,12 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("allows reconstruction inspection with read access", () => {
+    expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.getReconstruction)).toBe(
+      AuthOrchestrationReadScope,
+    );
+  });
+
   it("requires operate access to fork and open Mercurian lines", () => {
     expect(requiredScopeForRpcMethod(MERCURIAN_WS_METHODS.forkLine)).toBe(
       AuthOrchestrationOperateScope,

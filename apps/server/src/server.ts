@@ -1,5 +1,7 @@
 import * as MemoryRepositoryExitGate from "./mercurian/memory/MemoryRepositoryExitGate.ts";
 import * as DocumentStore from "./mercurian/documents/DocumentStore.ts";
+import * as ReconstructionStore from "./mercurian/assistant/ReconstructionStore.ts";
+import * as ReconstructionSummary from "./mercurian/assistant/ReconstructionSummary.ts";
 import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -333,6 +335,7 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
   Layer.provideMerge(DocumentStore.layer),
+  Layer.provideMerge(ReconstructionStore.layer),
   Layer.provideMerge(LegacySessionStore.layer),
   Layer.provideMerge(LineRuntimeStore.layer),
   Layer.provideMerge(LineBranchStore.layer),
@@ -605,7 +608,7 @@ const MemoryDashboardLayerLive = MemoryDashboard.layer.pipe(
 // after that index exists, but before the orchestration reactor that consumes
 // it, so both sides share the runtime core without a dependency cycle.
 const ProviderCommandReactorLayerLive = ProviderCommandReactorLive.pipe(
-  Layer.provide(MercurianTurnPreparationLive),
+  Layer.provide(MercurianTurnPreparationLive.pipe(Layer.provide(ReconstructionSummary.layer))),
   Layer.provideMerge(MemoryIndexLayerLive),
   Layer.provideMerge(MercurianRuntimeBaseDependenciesLive),
 );

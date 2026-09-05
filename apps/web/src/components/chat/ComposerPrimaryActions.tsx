@@ -32,6 +32,12 @@ interface ComposerPrimaryActionsProps {
   /** Enter-to-send is disabled on mobile viewports, where stop would otherwise
    * be the only primary action and a running turn could not be steered. */
   showSendWhileRunning?: boolean;
+  /** The server accepted a turn start and is still preparing the provider
+   * session (status "starting", no active turn). Stop cancels that pending
+   * start through the thread-only interrupt; send stays unavailable because
+   * nothing is running to steer. Local drafts and worktree preparation never
+   * qualify: they have no server session yet. */
+  canStopPendingStart?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -73,6 +79,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
   showSendWhileRunning = false,
+  canStopPendingStart = false,
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
@@ -85,6 +92,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const stageBackdropVariant = useSidebarStageBackdropVariant(
     environmentIdentificationMode === "artwork",
   );
+  const showSendBesideStop = isRunning && showSendWhileRunning && hasSendableContent;
 
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
     <button
@@ -93,7 +101,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         "flex cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-[0_1px_--theme(--color-white/16%)] transition-all duration-150 hover:bg-destructive hover:scale-105 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none",
         insidePendingAction
           ? "size-8 sm:size-7"
-          : showSendWhileRunning && hasSendableContent
+          : showSendBesideStop
             ? "size-9 sm:size-8"
             : "size-8 sm:h-8 sm:w-8",
       )}
@@ -106,6 +114,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </svg>
     </button>
   );
+
+  if (canStopPendingStart) return renderStopGenerationButton(false);
 
   if (pendingAction) {
     return (
@@ -278,7 +288,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   return (
     <>
       {renderStopGenerationButton(false)}
-      {showSendWhileRunning && hasSendableContent ? sendButton : null}
+      {showSendBesideStop ? sendButton : null}
     </>
   );
 });

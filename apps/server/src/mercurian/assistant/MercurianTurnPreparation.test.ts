@@ -1,5 +1,8 @@
 import * as Path from "effect/Path";
 import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { ReconstructionStore } from "./ReconstructionStore.ts";
+import { ReconstructionSummary } from "./ReconstructionSummary.ts";
 import { assert, it } from "@effect/vitest";
 import {
   MessageId,
@@ -50,14 +53,13 @@ const thread = {
     { repositoryId: MercurianRepositoryId.make("repository"), worktreePath: "/tmp/repository" },
     { repositoryId: MercurianRepositoryId.make("memory"), worktreePath: "/memory" },
   ],
-} as never;
+} as unknown as import("@t3tools/contracts").OrchestrationThread;
 
 interface PreparationOptions {
   readonly parentCommitId?: CommitId;
+  readonly forkParentCommitId?: MercurianCommitId;
   readonly timeline: ReadonlyArray<Record<string, unknown>>;
   readonly ancestors: ReadonlyArray<Record<string, unknown>>;
-  readonly planText?: string;
-  readonly spec?: { readonly goal: string; readonly acceptanceCriteria: string } | null;
   readonly memory?: {
     readonly rootPath: string;
     readonly subpath?: string;
@@ -75,9 +77,23 @@ interface PreparationOptions {
   };
 }
 
+const reconstructionDependencies = Layer.mergeAll(
+  NodeServices.layer,
+  Layer.mock(ReconstructionStore)({
+    save: () => Effect.void,
+    prepare: () => Effect.void,
+    current: () => Effect.succeed(null),
+    finish: () => Effect.void,
+  }),
+  Layer.mock(ReconstructionSummary)({ summarize: () => Effect.succeed("Older history summary") }),
+);
+
 const preparationDependencies = (options: PreparationOptions) => {
   const runtime = {
     planId,
+    ...(options.forkParentCommitId === undefined
+      ? {}
+      : { forkParentCommitId: options.forkParentCommitId }),
     lineRootCommitId: MercurianCommitId.make("line-root"),
     threadId,
     homeRepositoryId: MercurianRepositoryId.make("repository"),
@@ -135,9 +151,6 @@ const preparationDependencies = (options: PreparationOptions) => {
           plan: { planId, projectId: MercurianProjectId.make("project"), title: "Ship runtime" },
           timeline: options.timeline,
         } as never),
-      getPlanTextAt: () => Effect.succeed(options.planText ?? ""),
-      getSpecAt: () =>
-        Effect.succeed(options.spec == null ? null : ({ document: options.spec } as never)),
     }),
     Layer.mock(CommitStore.CommitStore)({
       getCommit: () =>
@@ -193,7 +206,6 @@ it.effect("keeps the default turn preparation byte-identical", () =>
 it.effect(
   "adds the appendix and ancestor transcript with skipResume on the first line turn",
   () => {
-    let transcriptHead: CommitId | undefined;
     const dependencies = Layer.mergeAll(
       Path.layer,
       Layer.mock(StorageSourceStore)({ getSnapshot: Effect.succeed([]) }),
@@ -248,14 +260,12 @@ it.effect(
               },
             ],
           } as never),
-        getPlanTextAt: () => Effect.succeed("# Current plan"),
-        getSpecAt: () => Effect.succeed(null),
       }),
       Layer.mock(CommitStore.CommitStore)({
         getCommit: () => Effect.succeed(Option.some({ parents: [parentId] } as never)),
         ancestors: ({ commitId }) =>
           Effect.sync(() => {
-            transcriptHead = commitId;
+            void commitId;
             return [
               {
                 commitId: parentId,
@@ -284,28 +294,58 @@ it.effect(
       assert.ok(fresh.text.includes("planning assistant"));
       assert.ok(fresh.text.includes("Earlier request"));
       assert.ok(fresh.text.includes("Build it"));
-      assert.strictEqual(transcriptHead, parentId);
+
       assert.deepStrictEqual(fresh.session, { skipResume: true });
       assert.ok(continued.text.endsWith("Build it"));
       assert.ok(continued.text.includes("Plans location is not configured"));
       assert.deepStrictEqual(continued.session, {});
-    }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MercurianTurnPreparationLive,
+          Layer.merge(reconstructionDependencies, dependencies),
+        ),
+      ),
+    );
   },
 );
 
 it.effect("adds only the appendix to a brand-new line's first turn", () => {
-  const dependencies = preparationDependencies({
-    timeline: [],
-    ancestors: [],
-  });
+  const records: import("@t3tools/contracts").PlanReconstruction[] = [];
+  const dependencies = Layer.merge(
+    preparationDependencies({ timeline: [], ancestors: [] }),
+    Layer.mock(ReconstructionStore)({
+      save: (record) =>
+        Effect.sync(() => {
+          records.push(record);
+        }),
+      prepare: () => Effect.void,
+      finish: () => Effect.void,
+    }),
+  );
   return Effect.gen(function* () {
     const preparation = yield* TurnPreparation;
     const prepared = yield* preparation.prepare({ thread, message, sessionIsFresh: true });
     assert.ok(prepared.text.includes("planning assistant"));
     assert.ok(prepared.text.includes("Reply to this message:\nBuild it"));
-    assert.ok(!prepared.text.includes("Earlier conversation"));
-    assert.deepStrictEqual(prepared.session, {});
-  }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
+    assert.ok(!prepared.text.includes("recorded conversation"));
+    assert.ok(!prepared.text.includes("Recent conversation, verbatim"));
+    assert.ok(!prepared.text.includes("Current spec"));
+    assert.strictEqual(prepared.text.split("Reply to this message:\n").length, 2);
+    assert.strictEqual(prepared.text.split("Reply to this message:\n")[1], message.text);
+    assert.strictEqual(records.length, 1);
+    assert.strictEqual(records[0]?.throughCommitId, null);
+    assert.strictEqual(records[0]?.sessionStartMessageCommitId, MercurianCommitId.make(message.id));
+    assert.strictEqual(records[0]?.verbatimFromCommitId, MercurianCommitId.make(message.id));
+    assert.deepStrictEqual(prepared.session, { skipResume: true });
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
+      ),
+    ),
+  );
 });
 
 it.effect("grounds reachable memory and resolves note mentions on the first turn", () => {
@@ -354,7 +394,110 @@ it.effect("grounds reachable memory and resolves note mentions on the first turn
     assert.ok(prepared.text.includes("- Future: not yet written — linked from Plans"));
     assert.ok(prepared.text.includes("Reply to this message:\nUse [[Composer]] and [[Future]]."));
     assert.deepStrictEqual(readLines, [{ threadId }, { threadId }]);
-  }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
+      ),
+    ),
+  );
+});
+
+it.effect(
+  "preserves a legacy human spec revision marker without claiming current document contents",
+  () => {
+    const root = CommitId.make("root");
+    const specRevision = CommitId.make("spec-revision");
+    const dependencies = preparationDependencies({
+      parentCommitId: specRevision,
+      timeline: [
+        {
+          _tag: "message",
+          commitId: MercurianCommitId.make(root),
+          parents: [],
+          sequence: 1,
+          authorKind: "human",
+          text: "Reshape the sidebar",
+          createdAt: now,
+        },
+        {
+          _tag: "spec-revision",
+          commitId: MercurianCommitId.make(specRevision),
+          parents: [MercurianCommitId.make(root)],
+          sequence: 2,
+          authorKind: "human",
+          cause: "direct",
+          createdAt: now,
+        },
+      ],
+      ancestors: [ancestor(root, 1, "message"), ancestor(specRevision, 2, "spec-revision")],
+    });
+    const nextMessage = { ...message, text: "What should change in the plan?" };
+    return Effect.gen(function* () {
+      const preparation = yield* TurnPreparation;
+      const prepared = yield* preparation.prepare({
+        thread,
+        message: nextMessage,
+        sessionIsFresh: true,
+      });
+      assert.ok(prepared.text.includes("[The person revised the spec.]"));
+      assert.ok(prepared.text.includes("Plans location is not configured"));
+      assert.ok(!prepared.text.includes("The spec artifact"));
+      assert.ok(!prepared.text.includes("The plan document"));
+      assert.ok(prepared.text.includes("Reply to this message:\nWhat should change in the plan?"));
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MercurianTurnPreparationLive,
+          Layer.merge(reconstructionDependencies, dependencies),
+        ),
+      ),
+    );
+  },
+);
+
+it.effect("grounds project documents in the line workspace on fresh and continued turns", () => {
+  const dependencies = Layer.merge(
+    preparationDependencies({ timeline: [], ancestors: [] }),
+    Layer.mock(StorageSourceStore)({
+      getSnapshot: Effect.succeed([
+        {
+          projectId: MercurianProjectId.make("project"),
+          repositoryId: MercurianRepositoryId.make("repository"),
+          kind: "plan",
+          subpath: "plans",
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          projectId: MercurianProjectId.make("project"),
+          repositoryId: MercurianRepositoryId.make("unreachable"),
+          kind: "spec",
+          subpath: "specs",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]),
+    }),
+  );
+  return Effect.gen(function* () {
+    const preparation = yield* TurnPreparation;
+    for (const sessionIsFresh of [true, false]) {
+      const prepared = yield* preparation.prepare({ thread, message, sessionIsFresh });
+      assert.ok(prepared.text.includes("Plans directory: /tmp/repository/plans"));
+      assert.ok(prepared.text.includes("Specs repository is unavailable on this line"));
+      assert.ok(!prepared.text.includes("The plan document is currently empty"));
+      assert.ok(!prepared.text.includes("The spec artifact does not exist yet"));
+    }
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
+      ),
+    ),
+  );
 });
 
 it.effect("keeps the next line turn resumable while resolving note mentions", () => {
@@ -384,7 +527,14 @@ it.effect("keeps the next line turn resumable while resolving note mentions", ()
     );
     assert.deepStrictEqual(prepared.session, {});
     assert.deepStrictEqual(readLines, [{ threadId }]);
-  }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
+      ),
+    ),
+  );
 });
 
 it.effect("a fork rebuilds the session with the ancestor transcript", () => {
@@ -435,10 +585,232 @@ it.effect("a fork rebuilds the session with the ancestor transcript", () => {
       message: forkMessage,
       sessionIsFresh: true,
     });
-    assert.ok(prepared.text.includes("resuming a planning conversation"));
+    assert.ok(prepared.text.includes("recorded conversation"));
     assert.ok(prepared.text.includes("Reshape the sidebar"));
     assert.ok(prepared.text.includes("Selected answer"));
     assert.ok(!prepared.text.includes("Other answer"));
     assert.ok(prepared.text.includes("Reply to this message:\nTry another direction"));
-  }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
+      ),
+    ),
+  );
 });
+
+it.effect(
+  "records exact summarized input at a later clean restart, including its selected parent",
+  () => {
+    const root = MercurianCommitId.make("root");
+    const selected = MercurianCommitId.make("selected");
+    const records: import("@t3tools/contracts").PlanReconstruction[] = [];
+    const bindings: string[] = [];
+    const summary = "\n The earlier decision was to preserve history. \n";
+    const dependencies = Layer.mergeAll(
+      preparationDependencies({
+        parentCommitId: CommitId.make(selected),
+        ancestors: [],
+        timeline: [
+          {
+            _tag: "message",
+            commitId: root,
+            parents: [],
+            authorKind: "human",
+            text: "old".repeat(50_000),
+          },
+          {
+            _tag: "message",
+            commitId: selected,
+            parents: [root],
+            authorKind: "assistant",
+            text: "The selected answer",
+          },
+        ],
+      }),
+      Layer.mock(ReconstructionStore)({
+        save: (record) =>
+          Effect.sync(() => {
+            records.push(record);
+          }),
+        prepare: (_threadId, messageId, id) =>
+          Effect.sync(() => {
+            bindings.push(`${messageId}:${id}`);
+          }),
+        finish: () => Effect.void,
+      }),
+      Layer.mock(ReconstructionSummary)({
+        summarize: (text) =>
+          Effect.sync(() => {
+            assert.ok(text.includes("The selected answer"));
+            return summary;
+          }),
+      }),
+    );
+    return Effect.gen(function* () {
+      const prepared = yield* (yield* TurnPreparation).prepare({
+        thread: { ...thread, messages: [message, message, message] },
+        message,
+        sessionIsFresh: true,
+        contextDisposition: "clean-start",
+      });
+      const record = records[0]!;
+      assert.strictEqual(record.compacted?.summary, summary);
+      assert.strictEqual(record.compacted?.throughCommitId, selected);
+      assert.strictEqual(record.throughCommitId, selected);
+      assert.strictEqual(String(record.verbatimFromCommitId), String(message.id));
+      assert.ok(prepared.text.includes(summary));
+      assert.deepStrictEqual(bindings, [`${message.id}:${record.id}`]);
+      assert.ok(prepared.onSubmitted);
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MercurianTurnPreparationLive,
+          Layer.merge(reconstructionDependencies, dependencies),
+        ),
+      ),
+    );
+  },
+);
+
+it.effect(
+  "a genuine resume inherits known provenance without reconstructing or summarizing",
+  () => {
+    const bound: string[] = [];
+    const dependencies = Layer.merge(
+      preparationDependencies({ timeline: [], ancestors: [] }),
+      Layer.mock(ReconstructionStore)({
+        current: () => Effect.succeed("known"),
+        prepare: (_thread, _message, id) =>
+          Effect.sync(() => {
+            bound.push(id);
+          }),
+        finish: () => Effect.void,
+      }),
+    );
+    return Effect.gen(function* () {
+      const prepared = yield* (yield* TurnPreparation).prepare({
+        thread,
+        message,
+        sessionIsFresh: true,
+        contextDisposition: "resume",
+      });
+      assert.ok(prepared.text.endsWith(message.text));
+      assert.ok(prepared.text.includes("Plans location is not configured"));
+      assert.deepStrictEqual(prepared.session, {});
+      assert.deepStrictEqual(bound, ["known"]);
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MercurianTurnPreparationLive,
+          Layer.merge(reconstructionDependencies, dependencies),
+        ),
+      ),
+    );
+  },
+);
+
+it.effect("refuses oversized mandatory input before making a summary or saving evidence", () => {
+  const parent = CommitId.make("root");
+  const dependencies = Layer.mergeAll(
+    preparationDependencies({
+      parentCommitId: parent,
+      ancestors: [],
+      timeline: [
+        {
+          _tag: "message",
+          commitId: parent,
+          parents: [],
+          authorKind: "human",
+          text: "Earlier question",
+        },
+      ],
+    }),
+    Layer.mock(ReconstructionStore)({ save: () => Effect.die("Must not record unsent context") }),
+    Layer.mock(ReconstructionSummary)({
+      summarize: () => Effect.die("Must reject before summarizing"),
+    }),
+  );
+  return Effect.gen(function* () {
+    const result = yield* Effect.result(
+      (yield* TurnPreparation).prepare({
+        thread,
+        message: { ...message, text: "x".repeat(130_000) },
+        sessionIsFresh: true,
+      }),
+    );
+    assert.strictEqual(result._tag, "Failure");
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
+      ),
+    ),
+  );
+});
+
+it.effect("native resume leaves unknown legacy provenance unknown", () => {
+  const dependencies = Layer.mergeAll(
+    preparationDependencies({ timeline: [], ancestors: [] }),
+    Layer.mock(ReconstructionStore)({ current: () => Effect.succeed(null) }),
+    Layer.mock(ReconstructionSummary)({}),
+  );
+  return Effect.gen(function* () {
+    const prepared = yield* (yield* TurnPreparation).prepare({
+      thread,
+      message,
+      sessionIsFresh: true,
+      contextDisposition: "resume",
+    });
+    assert.ok(prepared.text.endsWith(message.text));
+    assert.ok(prepared.text.includes("Plans location is not configured"));
+    assert.deepStrictEqual(prepared.session, {});
+    assert.strictEqual(prepared.onSubmitted, undefined);
+    assert.strictEqual(prepared.onFailed, undefined);
+  }).pipe(
+    Effect.provide(
+      MercurianTurnPreparationLive.pipe(
+        Layer.provide(Layer.merge(reconstructionDependencies, dependencies)),
+      ),
+    ),
+  );
+});
+
+it.effect(
+  "a genuine fork ignores inherited native context and records its own reconstruction",
+  () => {
+    const parent = MercurianCommitId.make("fork-parent");
+    const dependencies = preparationDependencies({
+      forkParentCommitId: parent,
+      timeline: [
+        {
+          _tag: "message",
+          commitId: parent,
+          parents: [],
+          authorKind: "assistant",
+          text: "Selected ancestor",
+        },
+      ],
+      ancestors: [],
+    });
+    return Effect.gen(function* () {
+      const prepared = yield* (yield* TurnPreparation).prepare({
+        thread,
+        message,
+        sessionIsFresh: true,
+        contextDisposition: "resume",
+      });
+      assert.ok(prepared.text.includes("Selected ancestor"));
+      assert.deepStrictEqual(prepared.session, { skipResume: true });
+      assert.ok(prepared.onSubmitted);
+    }).pipe(
+      Effect.provide(
+        MercurianTurnPreparationLive.pipe(
+          Layer.provide(Layer.merge(reconstructionDependencies, dependencies)),
+        ),
+      ),
+    );
+  },
+);

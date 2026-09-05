@@ -162,6 +162,8 @@ describe("ProviderSessionReaper", () => {
     );
 
     const providerService: ProviderServiceShape = {
+      startEphemeralSession: () => Effect.die(new Error("Unexpected helper session")),
+      getPersistedResumeCursor: () => Effect.succeed(undefined),
       startSession: () => unsupported(),
       sendTurn: () => unsupported(),
       interruptTurn: () => unsupported(),
@@ -187,6 +189,7 @@ describe("ProviderSessionReaper", () => {
       },
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
+      subscribeEvents: Effect.succeed(Stream.empty),
       streamEvents: Stream.empty,
     };
 

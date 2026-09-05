@@ -1,3 +1,4 @@
+import type * as Scope from "effect/Scope";
 /**
  * ProviderService - Service interface for provider sessions, turns, and checkpoints.
  *
@@ -46,6 +47,17 @@ export interface ProviderServiceShape {
     input: ProviderSessionStartInput,
   ) => Effect.Effect<ProviderSession, ProviderServiceError>;
 
+  /** Start a fresh helper owned by the calling scope, including its binding. */
+  readonly startEphemeralSession: (
+    input: Omit<ProviderSessionStartInput, "threadId">,
+  ) => Effect.Effect<ProviderSession, ProviderServiceError, Scope.Scope>;
+
+  /** Persisted native cursor for this exact configured instance and driver. */
+  readonly getPersistedResumeCursor: (
+    threadId: ThreadId,
+    instanceId: ProviderInstanceId,
+  ) => Effect.Effect<unknown | undefined, ProviderServiceError>;
+
   /**
    * Send a provider turn.
    */
@@ -79,6 +91,10 @@ export interface ProviderServiceShape {
    */
   readonly stopSession: (
     input: ProviderStopSessionInput,
+    options?: {
+      /** Remove persisted native context owned only by an unsubmitted clean start. */
+      readonly discardBinding?: boolean;
+    },
   ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
@@ -127,6 +143,8 @@ export interface ProviderServiceShape {
    * Fan-out is owned by ProviderService (not by a standalone event-bus service).
    */
   readonly streamEvents: Stream.Stream<ProviderRuntimeEvent>;
+  /** Acquire a subscription before issuing a request that can emit immediately. */
+  readonly subscribeEvents: Effect.Effect<Stream.Stream<ProviderRuntimeEvent>, never, Scope.Scope>;
 }
 
 /**

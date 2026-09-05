@@ -109,6 +109,8 @@ function createProviderServiceHarness() {
 
   const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
   const service: ProviderServiceShape = {
+    startEphemeralSession: () => Effect.die(new Error("Unexpected helper session")),
+    getPersistedResumeCursor: () => Effect.succeed(undefined),
     startSession: () => unsupported(),
     sendTurn: () => unsupported(),
     interruptTurn: () => unsupported(),
@@ -134,6 +136,7 @@ function createProviderServiceHarness() {
     },
     rollbackConversation: () => unsupported(),
     uploadFeedback: () => unsupported(),
+    subscribeEvents: Effect.succeed(Stream.empty),
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
     },

@@ -90,6 +90,7 @@ export const MessageCommitPayload = Schema.Struct({
   generatedBy: Schema.optional(PlanningModelSelection),
   /** Exact human send shared with the orchestration turn; assistant IDs are independent. */
   sourceUserMessageId: Schema.optional(CommitId),
+  reconstructionId: Schema.optional(Schema.String),
   /**
    * The planning turn's facts, present only on assistant replies and all
    * optional so every message written before turns existed keeps decoding:
@@ -212,6 +213,7 @@ export const PlanMessage = Schema.Struct({
   ranUnder: Schema.optional(PlanningModelSelection),
   generatedBy: Schema.optional(PlanningModelSelection),
   sourceUserMessageId: Schema.optional(CommitId),
+  reconstructionId: Schema.optional(Schema.String),
   memoryAmendment: MessageCommitPayload.fields.memoryAmendment,
 });
 export type PlanMessage = typeof PlanMessage.Type;
@@ -480,6 +482,7 @@ export const AppendAssistantMessageInput = Schema.Struct({
   question: Schema.optional(PlanQuestionRecord),
   generatedBy: Schema.optional(PlanningModelSelection),
   sourceUserMessageId: Schema.optional(CommitId),
+  reconstructionId: Schema.optional(Schema.String),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendAssistantMessageInput = typeof AppendAssistantMessageInput.Type;
@@ -1306,6 +1309,9 @@ export const make = Effect.gen(function* () {
       ...(payload.sourceUserMessageId === undefined
         ? {}
         : { sourceUserMessageId: payload.sourceUserMessageId }),
+      ...(payload.reconstructionId === undefined
+        ? {}
+        : { reconstructionId: payload.reconstructionId }),
       ...(payload.memoryAmendment === undefined
         ? {}
         : { memoryAmendment: payload.memoryAmendment }),
@@ -2137,6 +2143,9 @@ export const make = Effect.gen(function* () {
           ...(input.sourceUserMessageId === undefined
             ? {}
             : { sourceUserMessageId: input.sourceUserMessageId }),
+          ...(input.reconstructionId === undefined
+            ? {}
+            : { reconstructionId: input.reconstructionId }),
         } satisfies MessageCommitPayload,
         createdAt: input.createdAt,
       });

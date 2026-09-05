@@ -13,7 +13,7 @@
  *
  * @module PlanningPrompt
  */
-import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS, type SpecDocument } from "@t3tools/contracts";
+import type { SpecDocument } from "@t3tools/contracts";
 
 export interface PlanningRepositoryRoot {
   readonly name: string;
@@ -159,69 +159,6 @@ function renderTranscript(input: {
   return { renderedEntries, planSection, specSection };
 }
 
-/** Exact character sizes used by transcript reconstruction and its budget. */
-export function measureTranscript(input: {
-  readonly entries: ReadonlyArray<TranscriptEntry>;
-  readonly planText?: string;
-  readonly spec?: SpecDocument | null;
-}): {
-  readonly renderedEntryLengths: ReadonlyArray<number>;
-  readonly planSectionChars: number;
-  readonly specSectionChars: number;
-} {
-  const rendered = renderTranscript(input);
-  return {
-    renderedEntryLengths: rendered.renderedEntries.map((entry) => entry.length),
-    planSectionChars: rendered.planSection.length,
-    specSectionChars: rendered.specSection.length,
-  };
-}
-
-/**
- * The conversation so far, rendered as dialogue for a session that was not
- * there. Oldest entries are elided first when the whole thing cannot fit the
- * provider's input cap — the recent turns are what the next reply hangs on.
- */
-export function transcriptPreamble(input: {
-  readonly entries: ReadonlyArray<TranscriptEntry>;
-  /** The plan artifact's current text along this path. `""` renders as empty. */
-  readonly planText?: string;
-  readonly spec?: SpecDocument | null;
-  /** Characters already spoken for: appendix + the current message. */
-  readonly reservedChars: number;
-}): string {
-  const { renderedEntries, planSection, specSection } = renderTranscript(input);
-
-  const budget = Math.max(
-    0,
-    PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
-      input.reservedChars -
-      planSection.length -
-      specSection.length -
-      TRANSCRIPT_FRAMING_MARGIN,
-  );
-
-  const kept: Array<string> = [];
-  let used = 0;
-  let elided = 0;
-  for (let index = renderedEntries.length - 1; index >= 0; index -= 1) {
-    const entry = renderedEntries[index]!;
-    if (used + entry.length > budget) {
-      elided = index + 1;
-      break;
-    }
-    kept.unshift(entry);
-    used += entry.length;
-  }
-
-  const header =
-    elided === 0
-      ? "You are resuming a planning conversation. Here is what has happened so far:"
-      : `You are resuming a planning conversation. Its first ${elided} entries are elided for length; here is the rest:`;
-
-  return [header, "", kept.join("\n\n"), "", specSection, "", planSection].join("\n");
-}
-
 /**
  * A fresh session's first turn: appendix, then the transcript when the
  * conversation predates this session, then the message being replied to. A
@@ -273,4 +210,53 @@ export function memoryMentionResolutionStanza(
 
 export function appendMemoryMentionStanza(input: string, stanza: string | null): string {
   return stanza === null ? input : `${input}\n\n---\n\n${stanza}`;
+}
+
+/** Keeps a chronological suffix; its index travels with the input as evidence. */
+export function partitionReconstruction(input: {
+  readonly entries: ReadonlyArray<TranscriptEntry>;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
+  readonly reservedChars: number;
+  readonly summaryChars: number;
+  readonly maxChars: number;
+}) {
+  const { renderedEntries, planSection, specSection } = renderTranscript(input);
+  const available =
+    input.maxChars -
+    input.reservedChars -
+    planSection.length -
+    specSection.length -
+    TRANSCRIPT_FRAMING_MARGIN;
+  const all = renderedEntries.join("\n\n");
+  let firstKept = 0;
+  if (all.length > available) {
+    let used = 0;
+    firstKept = renderedEntries.length;
+    for (let index = renderedEntries.length - 1; index >= 0; index--) {
+      const size = renderedEntries[index]!.length + 2;
+      if (used + size > available - input.summaryChars) break;
+      firstKept = index;
+      used += size;
+    }
+    // An answer without its opening query is not a verbatim turn.
+    while (firstKept < input.entries.length) {
+      const entry = input.entries[firstKept]!;
+      if (entry.kind === "message" && entry.author === "human") break;
+      firstKept++;
+    }
+  }
+  return {
+    firstKept,
+    olderText: renderedEntries.slice(0, firstKept).join("\n\n"),
+    render: (summary: string | null) =>
+      [
+        "This session starts with the following recorded conversation.",
+        ...(summary === null ? [] : ["Older history, summarized:", summary]),
+        "Recent conversation, verbatim:",
+        renderedEntries.slice(firstKept).join("\n\n"),
+        specSection,
+        planSection,
+      ].join("\n\n"),
+  };
 }

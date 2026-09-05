@@ -10,8 +10,8 @@ layer("019_MemoryAmendmentReviewsCompatibility", (it) => {
   it.effect("adds review state and the phase-three session columns", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.length, 22);
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 22);
+      assert.strictEqual(migrationEntries.length, 23);
+      assert.strictEqual(migrationEntries.at(-1)?.[0], 23);
       yield* runMigrations();
       const reviews = yield* sql<{
         readonly name: string;

@@ -1,3 +1,4 @@
+import * as Queue from "effect/Queue";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -66,7 +67,6 @@ import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
-  type PreparedTurn,
   TurnPreparation,
   TurnPreparationDefault,
   type TurnPreparationInput,
@@ -189,7 +189,14 @@ describe("ProviderCommandReactor", () => {
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
     readonly tryHandlePromptCommandEffect?: ProviderAuthService["Service"]["tryHandlePromptCommand"];
-    readonly prepareTurn?: (input: TurnPreparationInput) => Effect.Effect<PreparedTurn, object>;
+    readonly prepareTurn?: TurnPreparation["Service"]["prepare"];
+    readonly secondThread?: boolean;
+    readonly bindSessionEffect?: Effect.Effect<void>;
+    readonly listSessionsEffect?: (
+      sessions: ReadonlyArray<ProviderSession>,
+    ) => Effect.Effect<ReadonlyArray<ProviderSession>>;
+    readonly persistedResumeCursor?: unknown;
+    readonly getCapabilitiesEffect?: ProviderServiceShape["getCapabilities"];
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -358,14 +365,18 @@ describe("ProviderCommandReactor", () => {
 
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
     const service: ProviderServiceShape = {
+      startEphemeralSession: () => Effect.die(new Error("Unexpected helper session")),
+      getPersistedResumeCursor: () => Effect.succeed(input?.persistedResumeCursor),
       startSession: startSession as ProviderServiceShape["startSession"],
       sendTurn: sendTurn as ProviderServiceShape["sendTurn"],
       interruptTurn: interruptTurn as ProviderServiceShape["interruptTurn"],
       respondToRequest: respondToRequest as ProviderServiceShape["respondToRequest"],
       respondToUserInput: respondToUserInput as ProviderServiceShape["respondToUserInput"],
       stopSession: stopSession as ProviderServiceShape["stopSession"],
-      listSessions: () => Effect.succeed(runtimeSessions),
+      listSessions: () =>
+        input?.listSessionsEffect?.(runtimeSessions) ?? Effect.succeed(runtimeSessions),
       getCapabilities: (_provider) =>
+        input?.getCapabilitiesEffect?.(_provider) ??
         Effect.succeed({
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
           groundingRoots: input?.groundingRoots ?? "multi",
@@ -398,6 +409,7 @@ describe("ProviderCommandReactor", () => {
       },
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
+      subscribeEvents: Effect.succeed(Stream.empty),
       get streamEvents() {
         return Stream.fromPubSub(runtimeEventPubSub);
       },
@@ -420,6 +432,7 @@ describe("ProviderCommandReactor", () => {
       Layer.provide(SqlitePersistenceMemory),
     );
     let titleRegenerationCompletionDispatchAttempts = 0;
+    let bindingIntercepted = false;
     const reactorOrchestrationLayer = Layer.effect(
       OrchestrationEngineService,
       Effect.gen(function* () {
@@ -435,6 +448,15 @@ describe("ProviderCommandReactor", () => {
               ) {
                 return Effect.die(new Error("Injected title regeneration completion failure"));
               }
+            }
+            if (
+              command.type === "thread.session.set" &&
+              runtimeSessions.length > 0 &&
+              !bindingIntercepted &&
+              input?.bindSessionEffect !== undefined
+            ) {
+              bindingIntercepted = true;
+              return input.bindSessionEffect.pipe(Effect.andThen(engine.dispatch(command)));
             }
             return engine.dispatch(command);
           },
@@ -520,7 +542,7 @@ describe("ProviderCommandReactor", () => {
         createdAt: now,
       }),
     );
-    if (input?.titleRegenerationBeforeStart === "two") {
+    if (input?.secondThread || input?.titleRegenerationBeforeStart === "two") {
       await Effect.runPromise(
         engine.dispatch({
           type: "thread.create",
@@ -858,53 +880,60 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.runtimeMode).toBe("approval-required");
   });
 
-  it("prepares fresh and continued turns and can suppress resume on restart", async () => {
-    const harness = await createHarness({
-      prepareTurn: ({ message, sessionIsFresh }) =>
-        Effect.succeed({
-          text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
-          session: { skipResume: true },
-        }),
-    });
-    const startTurn = (suffix: string) =>
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make(`cmd-turn-preparation-${suffix}`),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId(`message-preparation-${suffix}`),
-          role: "user",
-          text: suffix,
-          attachments: [],
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: "2026-01-01T00:00:00.000Z",
-      });
-
-    await Effect.runPromise(startTurn("one"));
-    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
-    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "fresh:one" });
-
-    await Effect.runPromise(startTurn("two"));
-    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
-    expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({ input: "continued:two" });
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.meta.update",
-        commandId: CommandId.make("cmd-turn-preparation-move"),
-        threadId: ThreadId.make("thread-1"),
-        worktreePath: "/tmp/provider-project-moved",
+  effectIt.effect(
+    "prepares fresh, continued, and resumed turns and acknowledges each submitted input",
+    () =>
+      Effect.gen(function* () {
+        const dispositions: string[] = [];
+        const submitted = yield* Queue.unbounded<string>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            prepareTurn: ({ message, sessionIsFresh, contextDisposition }) =>
+              Effect.sync(() => {
+                dispositions.push(contextDisposition ?? "missing");
+                return {
+                  text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
+                  session: { skipResume: true },
+                  onSubmitted: Queue.offer(submitted, message.text).pipe(Effect.asVoid),
+                };
+              }),
+          }),
+        );
+        const startTurn = (suffix: string) =>
+          harness.engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make(`cmd-turn-preparation-${suffix}`),
+            threadId: ThreadId.make("thread-1"),
+            message: {
+              messageId: asMessageId(`message-preparation-${suffix}`),
+              role: "user",
+              text: suffix,
+              attachments: [],
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+        yield* startTurn("one");
+        expect(yield* Queue.take(submitted)).toBe("one");
+        expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "fresh:one" });
+        yield* startTurn("two");
+        expect(yield* Queue.take(submitted)).toBe("two");
+        expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({ input: "continued:two" });
+        yield* harness.engine.dispatch({
+          type: "thread.meta.update",
+          commandId: CommandId.make("cmd-turn-preparation-move"),
+          threadId: ThreadId.make("thread-1"),
+          worktreePath: "/tmp/provider-project-moved",
+        });
+        yield* startTurn("three");
+        expect(yield* Queue.take(submitted)).toBe("three");
+        expect(dispositions).toEqual(["clean-start", "continuation", "resume"]);
+        expect(harness.startSession).toHaveBeenCalledTimes(2);
+        expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
+        expect(harness.sendTurn.mock.calls[2]?.[0]).toMatchObject({ input: "fresh:three" });
       }),
-    );
-    await Effect.runPromise(startTurn("three"));
-    await waitFor(() => harness.sendTurn.mock.calls.length === 3);
-
-    expect(harness.startSession).toHaveBeenCalledTimes(2);
-    expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
-    expect(harness.sendTurn.mock.calls[2]?.[0]).toMatchObject({ input: "fresh:three" });
-  });
+  );
 
   it("starts a multi-root provider with every additional workspace member", async () => {
     const harness = await createHarness({
@@ -3033,6 +3062,913 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
+  const requestTurn = (threadId: string, messageId: string) => ({
+    type: "thread.turn.start" as const,
+    commandId: CommandId.make(`start-${messageId}`),
+    threadId: ThreadId.make(threadId),
+    message: {
+      messageId: asMessageId(messageId),
+      role: "user" as const,
+      text: "continue",
+      attachments: [],
+    },
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    runtimeMode: "approval-required" as const,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  for (const boundary of ["start", "bind", "list", "capabilities"] as const) {
+    for (const outcome of ["interrupt", "stop", "delete", "failure"] as const) {
+      effectIt.effect(`releases prepared attempts after ${outcome} at ${boundary}`, () =>
+        Effect.gen(function* () {
+          const entered = yield* Deferred.make<void>();
+          const failed = yield* Deferred.make<void>();
+          const nextSubmitted = yield* Deferred.make<void>();
+          let providerStarted = false;
+          let failures = 0;
+          let listedBoundary = false;
+          let startBoundary = false;
+          let capabilitiesBoundary = false;
+          const preparations: Array<{
+            readonly disposition: TurnPreparationInput["contextDisposition"];
+            readonly messageIds: ReadonlyArray<string>;
+          }> = [];
+          const block = Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(
+              outcome === "failure" ? Effect.die(new Error("boundary failed")) : Effect.never,
+            ),
+          );
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              prepareTurn: (preparation) =>
+                Effect.sync(() => {
+                  preparations.push({
+                    disposition: preparation.contextDisposition,
+                    messageIds: preparation.thread.messages.map((message) => message.id),
+                  });
+                  return {
+                    text: `${preparation.contextDisposition}:${preparation.thread.messages
+                      .map((message) => message.id)
+                      .join(",")}`,
+                    session:
+                      preparation.contextDisposition === "clean-start"
+                        ? { skipResume: true as const }
+                        : {},
+                    ...(preparation.message.id.startsWith("after-cancel-")
+                      ? {
+                          onSubmitted: Deferred.succeed(nextSubmitted, undefined).pipe(
+                            Effect.asVoid,
+                          ),
+                        }
+                      : {}),
+                    onFailed: Effect.sync(() => {
+                      failures++;
+                    }).pipe(Effect.andThen(Deferred.succeed(failed, undefined)), Effect.asVoid),
+                  };
+                }),
+              startSessionEffect: (session) => {
+                providerStarted = true;
+                if (boundary === "start" && !startBoundary) {
+                  startBoundary = true;
+                  return block;
+                }
+                return Effect.succeed(session);
+              },
+              ...(boundary === "bind" ? { bindSessionEffect: block } : {}),
+              listSessionsEffect: (sessions) => {
+                if (boundary === "list" && providerStarted && !listedBoundary) {
+                  listedBoundary = true;
+                  return block;
+                }
+                return Effect.succeed(sessions);
+              },
+              interruptTurnEffect: () =>
+                Effect.fail(
+                  new ProviderAdapterRequestError({
+                    provider: "codex",
+                    method: "interruptTurn",
+                    detail: "No binding: would fail or recover an idle session",
+                  }),
+                ),
+              getCapabilitiesEffect: () =>
+                boundary === "capabilities" && providerStarted && !capabilitiesBoundary
+                  ? Effect.sync(() => {
+                      capabilitiesBoundary = true;
+                    }).pipe(Effect.andThen(block))
+                  : Effect.succeed({ sessionModelSwitch: "in-session", groundingRoots: "multi" }),
+            }),
+          );
+          yield* harness.engine.dispatch(
+            requestTurn("thread-1", `boundary-${boundary}-${outcome}`),
+          );
+          yield* Deferred.await(entered);
+          if (outcome !== "failure")
+            yield* harness.engine.dispatch({
+              type:
+                outcome === "delete"
+                  ? "thread.delete"
+                  : outcome === "stop"
+                    ? "thread.session.stop"
+                    : "thread.turn.interrupt",
+              commandId: CommandId.make(`cancel-${boundary}-${outcome}`),
+              threadId: ThreadId.make("thread-1"),
+              createdAt: "2026-01-01T00:00:00.000Z",
+            });
+          yield* Deferred.await(failed);
+          yield* Effect.promise(() => harness.drain());
+          expect(failures).toBe(1);
+          expect(harness.sendTurn).not.toHaveBeenCalled();
+          if (outcome !== "failure") {
+            expect(harness.interruptTurn).not.toHaveBeenCalled();
+            expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
+            expect(harness.startSession).toHaveBeenCalledTimes(1);
+            const snapshot = yield* Effect.promise(() => harness.readModel());
+            const thread = snapshot.threads.find((thread) => thread.id === "thread-1");
+            if (outcome === "delete") {
+              expect(thread?.deletedAt).not.toBeNull();
+              expect(thread?.session?.status).toBe("stopped");
+              expect(thread?.session?.lastError).toBeNull();
+              expect(harness.runtimeSessions).toHaveLength(0);
+            } else {
+              expect(thread?.session?.status).toBe("stopped");
+              expect(thread?.session?.lastError).toBeNull();
+              expect(
+                thread?.activities.some(
+                  (activity) => activity.kind === "provider.turn.interrupt.failed",
+                ),
+              ).toBe(false);
+              expect(harness.stopSession).toHaveBeenCalledWith(
+                { threadId: "thread-1" },
+                { discardBinding: true },
+              );
+
+              yield* harness.engine.dispatch(
+                requestTurn("thread-1", `after-cancel-${boundary}-${outcome}`),
+              );
+              yield* Deferred.await(nextSubmitted);
+              yield* Effect.promise(() => harness.drain());
+              expect(preparations.at(-1)).toEqual({
+                disposition: "clean-start",
+                messageIds: [
+                  `after-cancel-${boundary}-${outcome}`,
+                  `boundary-${boundary}-${outcome}`,
+                ],
+              });
+              expect(harness.sendTurn).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                  input: `clean-start:after-cancel-${boundary}-${outcome},boundary-${boundary}-${outcome}`,
+                }),
+              );
+            }
+          }
+        }),
+      );
+    }
+  }
+
+  for (const persisted of [false, true]) {
+    for (const stop of [false, true]) {
+      effectIt.effect(
+        `cancels before session creation without ${persisted ? "recovering persisted context" : "routing a missing binding"} (${stop ? "stop" : "interrupt"})`,
+        () =>
+          Effect.gen(function* () {
+            const entered = yield* Deferred.make<void>();
+            const released = yield* Deferred.make<void>();
+            let recoveryStarts = 0;
+            const harness = yield* Effect.promise(() =>
+              createHarness({
+                ...(persisted ? { persistedResumeCursor: { opaque: "native-context" } } : {}),
+                prepareTurn: () =>
+                  Deferred.succeed(entered, undefined).pipe(
+                    Effect.andThen(Effect.never),
+                    Effect.ensuring(Deferred.succeed(released, undefined)),
+                  ),
+                interruptTurnEffect: () =>
+                  persisted
+                    ? Effect.sync(() => {
+                        recoveryStarts++;
+                      })
+                    : Effect.fail(
+                        new ProviderAdapterRequestError({
+                          provider: "codex",
+                          method: "interruptTurn",
+                          detail: "No persisted provider binding",
+                        }),
+                      ),
+              }),
+            );
+            yield* harness.engine.dispatch(
+              requestTurn("thread-1", `before-session-${persisted}-${stop}`),
+            );
+            yield* Deferred.await(entered);
+            yield* harness.engine.dispatch({
+              type: stop ? "thread.session.stop" : "thread.turn.interrupt",
+              commandId: CommandId.make("cancel-before-session"),
+              threadId: ThreadId.make("thread-1"),
+              createdAt: "2026-01-01T00:00:00.000Z",
+            });
+            yield* Deferred.await(released);
+            yield* Effect.promise(() => harness.drain());
+            expect(recoveryStarts).toBe(0);
+            expect(harness.startSession).not.toHaveBeenCalled();
+            expect(harness.sendTurn).not.toHaveBeenCalled();
+            expect(harness.interruptTurn).not.toHaveBeenCalled();
+            expect(harness.stopSession).not.toHaveBeenCalled();
+            const snapshot = yield* Effect.promise(() => harness.readModel());
+            expect(snapshot.threads[0]?.session?.status).toBe("stopped");
+            expect(snapshot.threads[0]?.session?.lastError).toBeNull();
+            expect(
+              snapshot.threads[0]?.activities.some(
+                (activity) => activity.kind === "provider.turn.interrupt.failed",
+              ),
+            ).toBe(false);
+          }),
+      );
+    }
+  }
+
+  for (const stop of [false, true]) {
+    effectIt.effect(
+      `cancelling continuation ${stop ? "stops" : "preserves"} an existing idle provider`,
+      () =>
+        Effect.gen(function* () {
+          const prepared = yield* Deferred.make<void>();
+          const cancelled = yield* Deferred.make<void>();
+          const firstSent = yield* Deferred.make<void>();
+          const nextSent = yield* Deferred.make<void>();
+          const dispositions: TurnPreparationInput["contextDisposition"][] = [];
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              prepareTurn: ({ contextDisposition, message }) => {
+                dispositions.push(contextDisposition);
+                if (message.id === "continue-idle") {
+                  return Deferred.succeed(prepared, undefined).pipe(
+                    Effect.andThen(Effect.never),
+                    Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+                  );
+                }
+                return Effect.succeed({
+                  text: message.text,
+                  session: {},
+                  onSubmitted: Deferred.succeed(
+                    message.id === "after-idle-cancel" ? nextSent : firstSent,
+                    undefined,
+                  ).pipe(Effect.asVoid),
+                });
+              },
+            }),
+          );
+          yield* harness.engine.dispatch(requestTurn("thread-1", "initial-idle"));
+          yield* Deferred.await(firstSent);
+          yield* Effect.promise(() => harness.drain());
+          yield* harness.engine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make("idle-session-ready"),
+            threadId: ThreadId.make("thread-1"),
+            session: {
+              threadId: ThreadId.make("thread-1"),
+              status: "ready",
+              providerName: "codex",
+              providerInstanceId: ProviderInstanceId.make("codex"),
+              runtimeMode: "approval-required",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+          yield* harness.engine.dispatch(requestTurn("thread-1", "continue-idle"));
+          yield* Deferred.await(prepared);
+          yield* harness.engine.dispatch({
+            type: stop ? "thread.session.stop" : "thread.turn.interrupt",
+            commandId: CommandId.make("cancel-idle"),
+            threadId: ThreadId.make("thread-1"),
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+          yield* Deferred.await(cancelled);
+          yield* Effect.promise(() => harness.drain());
+          expect(harness.startSession).toHaveBeenCalledTimes(1);
+          expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+          expect(harness.interruptTurn).not.toHaveBeenCalled();
+          expect(harness.stopSession).toHaveBeenCalledTimes(stop ? 1 : 0);
+          expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
+          if (stop) {
+            expect(harness.stopSession).toHaveBeenCalledWith({ threadId: "thread-1" });
+            expect(harness.stopSession.mock.calls[0]).toHaveLength(1);
+          } else {
+            yield* harness.engine.dispatch(requestTurn("thread-1", "after-idle-cancel"));
+            yield* Deferred.await(nextSent);
+            yield* Effect.promise(() => harness.drain());
+            expect(dispositions).toEqual(["clean-start", "continuation", "continuation"]);
+            expect(harness.startSession).toHaveBeenCalledTimes(1);
+            expect(harness.sendTurn).toHaveBeenCalledTimes(2);
+          }
+          const snapshot = yield* Effect.promise(() => harness.readModel());
+          expect(snapshot.threads[0]?.session?.status).toBe(stop ? "stopped" : "starting");
+          expect(snapshot.threads[0]?.session?.lastError).toBeNull();
+        }),
+    );
+  }
+
+  effectIt.effect("a previous local cancellation never absorbs an interrupt of a newer send", () =>
+    Effect.gen(function* () {
+      const preparing = yield* Deferred.make<void>();
+      const cancelled = yield* Deferred.make<void>();
+      const sending = yield* Deferred.make<void>();
+      const releaseSend = yield* Deferred.make<void>();
+      const completed = yield* Deferred.make<void>();
+      const submitted = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      const sendCancelled = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          interruptTurnEffect: () => Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid),
+          prepareTurn: ({ message }) =>
+            message.id === "old-cancelled"
+              ? Deferred.succeed(preparing, undefined).pipe(
+                  Effect.andThen(Effect.never),
+                  Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+                )
+              : Effect.succeed({
+                  text: message.text,
+                  session: {},
+                  onSubmitted: Deferred.succeed(submitted, undefined).pipe(Effect.asVoid),
+                }),
+        }),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "old-cancelled"));
+      yield* Deferred.await(preparing);
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("stop-old"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(cancelled);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+      harness.sendTurn.mockImplementation(() =>
+        Deferred.succeed(sending, undefined).pipe(
+          Effect.andThen(Deferred.await(releaseSend)),
+          Effect.andThen(Deferred.succeed(completed, undefined)),
+          Effect.as({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("turn-1") }),
+          Effect.onInterrupt(() => Deferred.succeed(sendCancelled, undefined)),
+        ),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "new-send"));
+      yield* Deferred.await(sending);
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("stop-new"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(interrupted);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.interruptTurn).toHaveBeenCalledTimes(1);
+      expect(yield* Deferred.isDone(sendCancelled)).toBe(false);
+      expect(yield* Deferred.isDone(completed)).toBe(false);
+      yield* Deferred.succeed(releaseSend, undefined);
+      yield* Deferred.await(completed);
+      yield* Deferred.await(submitted);
+    }),
+  );
+
+  for (const response of ["approval", "user-input"] as const) {
+    effectIt.effect(`same-thread ${response} response unblocks a pending provider send`, () =>
+      Effect.gen(function* () {
+        const sending = yield* Deferred.make<void>();
+        const responded = yield* Deferred.make<void>();
+        const releaseSend = yield* Deferred.make<void>();
+        const completed = yield* Deferred.make<void>();
+        const submitted = yield* Deferred.make<void>();
+        const sendCancelled = yield* Deferred.make<void>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            prepareTurn: ({ message }) =>
+              Effect.succeed({
+                text: message.text,
+                session: {},
+                onSubmitted: Deferred.succeed(submitted, undefined).pipe(Effect.asVoid),
+              }),
+          }),
+        );
+        harness.sendTurn.mockImplementation(() =>
+          Deferred.succeed(sending, undefined).pipe(
+            Effect.andThen(Deferred.await(responded)),
+            Effect.andThen(Deferred.await(releaseSend)),
+            Effect.andThen(Deferred.succeed(completed, undefined)),
+            Effect.as({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("turn-1") }),
+            Effect.onInterrupt(() => Deferred.succeed(sendCancelled, undefined)),
+          ),
+        );
+        const respond = () => Deferred.succeed(responded, undefined).pipe(Effect.asVoid);
+        harness.respondToRequest.mockImplementation(respond);
+        harness.respondToUserInput.mockImplementation(respond);
+        yield* harness.engine.dispatch(requestTurn("thread-1", `send-waits-for-${response}`));
+        yield* Deferred.await(sending);
+        yield* harness.engine.dispatch({
+          ...(response === "approval"
+            ? { type: "thread.approval.respond" as const, decision: "accept" as const }
+            : { type: "thread.user-input.respond" as const, answers: { plan: "proceed" } }),
+          commandId: CommandId.make(`respond-during-send-${response}`),
+          threadId: ThreadId.make("thread-1"),
+          requestId: asApprovalRequestId(`request-during-send-${response}`),
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(responded);
+        yield* Effect.promise(() => harness.drain());
+        expect(yield* Deferred.isDone(completed)).toBe(false);
+        expect(yield* Deferred.isDone(sendCancelled)).toBe(false);
+        expect(yield* Deferred.isDone(submitted)).toBe(false);
+        expect(
+          response === "approval" ? harness.respondToRequest : harness.respondToUserInput,
+        ).toHaveBeenCalledWith({
+          threadId: "thread-1",
+          requestId: `request-during-send-${response}`,
+          ...(response === "approval" ? { decision: "accept" } : { answers: { plan: "proceed" } }),
+        });
+        yield* Deferred.succeed(releaseSend, undefined);
+        yield* Deferred.await(completed);
+        yield* Deferred.await(submitted);
+      }),
+    );
+  }
+
+  effectIt.effect(
+    "other thread starts, approvals and interrupts complete while preparation is blocked",
+    () =>
+      Effect.gen(function* () {
+        const preparing = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const approved = yield* Deferred.make<void>();
+        const interrupted = yield* Deferred.make<void>();
+        const sent = yield* Deferred.make<void>();
+        const drained = yield* Deferred.make<void>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            secondThread: true,
+            prepareTurn: ({ thread, message }) =>
+              thread.id === "thread-1"
+                ? Deferred.succeed(preparing, undefined).pipe(
+                    Effect.andThen(Deferred.await(release)),
+                    Effect.as({ text: message.text, session: {} }),
+                  )
+                : Effect.succeed({ text: message.text, session: {} }),
+            interruptTurnEffect: () => Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid),
+          }),
+        );
+        harness.respondToRequest.mockImplementation(() =>
+          Deferred.succeed(approved, undefined).pipe(Effect.asVoid),
+        );
+        harness.sendTurn.mockImplementation(() =>
+          Deferred.succeed(sent, undefined).pipe(
+            Effect.as({ threadId: ThreadId.make("thread-2"), turnId: asTurnId("turn-2") }),
+          ),
+        );
+        yield* harness.engine.dispatch(requestTurn("thread-1", "blocked-first"));
+        yield* Deferred.await(preparing);
+        yield* harness.engine.dispatch(requestTurn("thread-2", "responsive-second"));
+        yield* Deferred.await(sent);
+        yield* Effect.promise(() => harness.drain()).pipe(
+          Effect.andThen(Deferred.succeed(drained, undefined)),
+          Effect.forkScoped,
+        );
+        yield* harness.engine.dispatch({
+          type: "thread.approval.respond",
+          commandId: CommandId.make("approve-second"),
+          threadId: ThreadId.make("thread-2"),
+          requestId: asApprovalRequestId("approval-second"),
+          decision: "accept",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(approved);
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("interrupt-second"),
+          threadId: ThreadId.make("thread-2"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(interrupted);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect(yield* Deferred.isDone(drained)).toBe(false);
+        yield* Deferred.succeed(release, undefined);
+        yield* Deferred.await(drained);
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).toHaveBeenCalledTimes(2);
+      }),
+  );
+
+  effectIt.effect(
+    "serializes starts and cancels the newer preparation after its predecessor exits",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const second = yield* Deferred.make<void>();
+        const cancelled = yield* Deferred.make<void>();
+        const preparedIds: string[] = [];
+        const third = yield* Deferred.make<void>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            prepareTurn: ({ message }) =>
+              Effect.gen(function* () {
+                preparedIds.push(message.id);
+                if (message.id === "ordered-third") yield* Deferred.succeed(third, undefined);
+                if (message.id === "ordered-first") {
+                  yield* Deferred.succeed(first, undefined);
+                  yield* Deferred.await(release);
+                }
+                if (message.id === "ordered-second") {
+                  yield* Deferred.succeed(second, undefined);
+                  return yield* Effect.never.pipe(
+                    Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+                  );
+                }
+                return { text: message.text, session: {} };
+              }),
+          }),
+        );
+        yield* harness.engine.dispatch(requestTurn("thread-1", "ordered-first"));
+        yield* Deferred.await(first);
+        yield* harness.engine.dispatch(requestTurn("thread-1", "ordered-second"));
+        expect(preparedIds).toEqual(["ordered-first"]);
+        yield* Deferred.succeed(release, undefined);
+        yield* Deferred.await(second);
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("cancel-newer"),
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(cancelled);
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        yield* harness.engine.dispatch(requestTurn("thread-1", "ordered-third"));
+        yield* Deferred.await(third);
+        yield* Effect.promise(() => harness.drain());
+        expect(preparedIds).toEqual(["ordered-first", "ordered-second", "ordered-third"]);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(2);
+      }),
+  );
+
+  effectIt.effect("cancels both queued starts and closes preparation before a newer start", () =>
+    Effect.gen(function* () {
+      const preparing = yield* Deferred.make<void>();
+      const closing = yield* Deferred.make<void>();
+      const releaseCleanup = yield* Deferred.make<void>();
+      const submitted = yield* Deferred.make<void>();
+      const preparedIds: string[] = [];
+      let closed = false;
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          prepareTurn: ({ message }) =>
+            Effect.gen(function* () {
+              preparedIds.push(message.id);
+              if (message.id === "queued-first") {
+                yield* Effect.addFinalizer(() =>
+                  Deferred.succeed(closing, undefined).pipe(
+                    Effect.andThen(Deferred.await(releaseCleanup)),
+                    Effect.andThen(
+                      Effect.sync(() => {
+                        closed = true;
+                      }),
+                    ),
+                  ),
+                );
+                yield* Deferred.succeed(preparing, undefined);
+                return yield* Effect.never;
+              }
+              expect(closed).toBe(true);
+              return {
+                text: message.text,
+                session: {},
+                onSubmitted: Deferred.succeed(submitted, undefined).pipe(Effect.asVoid),
+              };
+            }),
+        }),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "queued-first"));
+      yield* Deferred.await(preparing);
+      yield* harness.engine.dispatch(requestTurn("thread-1", "queued-second"));
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cancel-both-queued"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(closing);
+      yield* harness.engine.dispatch(requestTurn("thread-1", "after-queued-cancellation"));
+      expect(preparedIds).toEqual(["queued-first"]);
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+      yield* Deferred.succeed(releaseCleanup, undefined);
+      yield* Deferred.await(submitted);
+      yield* Effect.promise(() => harness.drain());
+      expect(preparedIds).toEqual(["queued-first", "after-queued-cancellation"]);
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+    }),
+  );
+
+  effectIt.effect("reports a send failure after releasing the command tail", () =>
+    Effect.gen(function* () {
+      const sending = yield* Deferred.make<void>();
+      const failSend = yield* Deferred.make<void>();
+      const reported = yield* Deferred.make<void>();
+      let submitted = 0;
+      let failed = 0;
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          prepareTurn: ({ message }) =>
+            Effect.succeed({
+              text: message.text,
+              session: {},
+              onSubmitted: Effect.sync(() => {
+                submitted++;
+              }),
+              onFailed: Effect.sync(() => {
+                failed++;
+              }),
+            }),
+        }),
+      );
+      const events = yield* harness.engine.subscribeDomainEvents;
+      yield* Stream.runForEach(events, (event) =>
+        event.type === "thread.activity-appended" &&
+        event.payload.activity.kind === "provider.turn.start.failed"
+          ? Deferred.succeed(reported, undefined)
+          : Effect.void,
+      ).pipe(Effect.forkScoped);
+      harness.sendTurn.mockImplementation(() =>
+        Deferred.succeed(sending, undefined).pipe(
+          Effect.andThen(Deferred.await(failSend)),
+          Effect.andThen(Effect.die(new Error("pending send failed"))),
+        ),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "send-failure"));
+      yield* Deferred.await(sending);
+      yield* Effect.promise(() => harness.drain());
+      expect(failed).toBe(0);
+      yield* Deferred.succeed(failSend, undefined);
+      yield* Deferred.await(reported);
+      expect(failed).toBe(1);
+      expect(submitted).toBe(0);
+      const snapshot = yield* Effect.promise(() => harness.readModel());
+      expect(snapshot.threads[0]?.session?.status).toBe("error");
+      expect(snapshot.threads[0]?.session?.lastError).toContain("pending send failed");
+    }),
+  );
+
+  effectIt.effect(
+    "service shutdown interrupts a pending send and releases its preparation scope",
+    () =>
+      Effect.gen(function* () {
+        const sending = yield* Deferred.make<void>();
+        const interrupted = yield* Deferred.make<void>();
+        const released = yield* Deferred.make<void>();
+        let submitted = 0;
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            prepareTurn: ({ message }) =>
+              Effect.succeed({
+                text: message.text,
+                session: {},
+                onSubmitted: Effect.sync(() => {
+                  submitted++;
+                }),
+                onFailed: Deferred.succeed(released, undefined).pipe(Effect.asVoid),
+              }),
+          }),
+        );
+        harness.sendTurn.mockImplementation(() =>
+          Deferred.succeed(sending, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+          ),
+        );
+        yield* harness.engine.dispatch(requestTurn("thread-1", "shutdown-send"));
+        yield* Deferred.await(sending);
+        yield* Effect.promise(() => harness.drain());
+        expect(yield* Deferred.isDone(interrupted)).toBe(false);
+        expect(yield* Deferred.isDone(released)).toBe(false);
+        yield* Effect.promise(() => runtime!.dispose());
+        runtime = null;
+        yield* Deferred.await(interrupted);
+        yield* Deferred.await(released);
+        expect(submitted).toBe(0);
+      }),
+  );
+
+  effectIt.effect("a submitted turn stays successful when provenance persistence fails", () =>
+    Effect.gen(function* () {
+      let failed = 0;
+      const submitted = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          prepareTurn: ({ message }) =>
+            Effect.succeed({
+              text: message.text,
+              session: {},
+              onSubmitted: Deferred.succeed(submitted, undefined).pipe(
+                Effect.andThen(Effect.fail({ message: "SQL failed" })),
+              ),
+              onFailed: Effect.sync(() => {
+                failed++;
+              }),
+            }),
+        }),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "bookkeeping-failed"));
+      yield* Deferred.await(submitted);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      expect(failed).toBe(0);
+      const snapshot = yield* Effect.promise(() => harness.readModel());
+      expect(
+        snapshot.threads[0]?.activities.some(
+          (activity) => activity.kind === "provider.turn.start.failed",
+        ),
+      ).toBe(false);
+      expect(snapshot.threads[0]?.session?.status).not.toBe("error");
+    }),
+  );
+
+  effectIt.effect(
+    "interrupting submission bookkeeping preserves provenance without a start failure",
+    () =>
+      Effect.gen(function* () {
+        const bookkeeping = yield* Deferred.make<void>();
+        const finishBookkeeping = yield* Deferred.make<void>();
+        const submitted = yield* Deferred.make<void>();
+        const released = yield* Deferred.make<void>();
+        const interrupted = yield* Deferred.make<void>();
+        let failed = 0;
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            interruptTurnEffect: () => Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid),
+            prepareTurn: ({ message }) =>
+              Effect.succeed({
+                text: message.text,
+                session: {},
+                onSubmitted: Deferred.succeed(bookkeeping, undefined).pipe(
+                  Effect.andThen(Deferred.await(finishBookkeeping)),
+                  Effect.andThen(Deferred.succeed(submitted, undefined)),
+                  Effect.ensuring(Deferred.succeed(released, undefined)),
+                ),
+                onFailed: Effect.sync(() => {
+                  failed++;
+                }),
+              }),
+          }),
+        );
+        yield* harness.engine.dispatch(requestTurn("thread-1", "bookkeeping-interrupt"));
+        yield* Deferred.await(bookkeeping);
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("interrupt-bookkeeping"),
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(interrupted);
+        yield* Effect.promise(() => harness.drain());
+        expect(yield* Deferred.isDone(released)).toBe(false);
+        yield* Deferred.succeed(finishBookkeeping, undefined);
+        yield* Deferred.await(submitted);
+        yield* Deferred.await(released);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect(failed).toBe(0);
+        const snapshot = yield* Effect.promise(() => harness.readModel());
+        expect(
+          snapshot.threads[0]?.activities.some(
+            (activity) => activity.kind === "provider.turn.start.failed",
+          ),
+        ).toBe(false);
+      }),
+  );
+
+  effectIt.effect("preparation natively resumes a stopped persisted session", () =>
+    Effect.gen(function* () {
+      const dispositions: TurnPreparationInput["contextDisposition"][] = [];
+      const prepared = yield* Deferred.make<void>();
+      const cursor = { opaque: "persisted-after-reap" };
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          persistedResumeCursor: cursor,
+          prepareTurn: (input) =>
+            Effect.sync(() => {
+              dispositions.push(input.contextDisposition);
+              return {
+                text: input.message.text,
+                session: input.contextDisposition === "clean-start" ? { skipResume: true } : {},
+              };
+            }).pipe(Effect.tap(() => Deferred.succeed(prepared, undefined))),
+        }),
+      );
+      yield* harness.engine.dispatch(requestTurn("thread-1", "resume-persisted"));
+      yield* Deferred.await(prepared);
+      yield* Effect.promise(() => harness.drain());
+      expect(dispositions).toEqual(["resume"]);
+      expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({ resumeCursor: cursor });
+      expect(harness.startSession.mock.calls[0]?.[1]).not.toHaveProperty("skipResume");
+    }),
+  );
+
+  effectIt.effect(
+    "interrupting a newly restarted native context preserves it for continuation",
+    () =>
+      Effect.gen(function* () {
+        const binding = yield* Deferred.make<void>();
+        const cancelled = yield* Deferred.make<void>();
+        const continued = yield* Deferred.make<void>();
+        const cursor = { opaque: "persisted-restart" };
+        const dispositions: TurnPreparationInput["contextDisposition"][] = [];
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            persistedResumeCursor: cursor,
+            bindSessionEffect: Deferred.succeed(binding, undefined).pipe(
+              Effect.andThen(Effect.never),
+            ),
+            prepareTurn: ({ contextDisposition, message }) => {
+              dispositions.push(contextDisposition);
+              return Effect.succeed({
+                text: message.text,
+                session: {},
+                ...(message.id === "resume-cancelled"
+                  ? { onFailed: Deferred.succeed(cancelled, undefined).pipe(Effect.asVoid) }
+                  : { onSubmitted: Deferred.succeed(continued, undefined).pipe(Effect.asVoid) }),
+              });
+            },
+          }),
+        );
+
+        yield* harness.engine.dispatch(requestTurn("thread-1", "resume-cancelled"));
+        yield* Deferred.await(binding);
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("interrupt-resumed-bind"),
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(cancelled);
+        yield* Effect.promise(() => harness.drain());
+
+        expect(harness.stopSession).not.toHaveBeenCalled();
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+        expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({ resumeCursor: cursor });
+        expect((yield* Effect.promise(() => harness.readModel())).threads[0]?.session?.status).toBe(
+          "ready",
+        );
+
+        yield* harness.engine.dispatch(requestTurn("thread-1", "continue-resumed"));
+        yield* Deferred.await(continued);
+        yield* Effect.promise(() => harness.drain());
+        expect(dispositions).toEqual(["resume", "continuation"]);
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      }),
+  );
+
+  effectIt.effect("cancels preparation before the provider turn starts", () =>
+    Effect.gen(function* () {
+      const preparing = yield* Deferred.make<void>();
+      const cancelled = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          prepareTurn: () =>
+            Deferred.succeed(preparing, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+            ),
+        }),
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("prepare-cancel-start"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("prepare-cancel-message"),
+          role: "user",
+          text: "rebuild",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(preparing);
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("prepare-cancel-stop"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(cancelled);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+    }),
+  );
+
   it("reacts to thread.turn.interrupt-requested by calling provider interrupt", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
@@ -3700,7 +4636,10 @@ describe("ProviderCommandReactor", () => {
   });
 
   it("reacts to thread.session.stop by stopping provider session and clearing thread session state", async () => {
-    const harness = await createHarness();
+    const stopped = Effect.runSync(Deferred.make<void>());
+    const harness = await createHarness({
+      stopSessionEffect: () => Deferred.succeed(stopped, undefined).pipe(Effect.asVoid),
+    });
     const now = "2026-01-01T00:00:00.000Z";
 
     await harness.runEffect(
@@ -3731,7 +4670,9 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    await Effect.runPromise(Deferred.await(stopped));
+    await harness.drain();
+    expect(harness.stopSession).toHaveBeenCalledTimes(1);
     const readModel = await harness.readModel();
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session).not.toBeNull();

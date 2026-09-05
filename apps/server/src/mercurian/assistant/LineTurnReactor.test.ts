@@ -9,6 +9,7 @@ import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { make as makeSnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
 import { makeMemoryPosition, type MemoryLineContext } from "../memory/MemoryPosition.ts";
 import { TurnId, type OrchestrationCheckpointSummary } from "@t3tools/contracts";
+import { ReconstructionStore, layer as reconstructionStoreLayer } from "./ReconstructionStore.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -24,6 +25,11 @@ import {
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import { runMigrations } from "../persistence/Migrations.ts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -109,17 +115,22 @@ interface HarnessState {
 const makeHarness = (options?: {
   readonly persistReplies?: boolean;
   readonly upstream?: boolean;
+  readonly reconstructionStore?: ReconstructionStore["Service"];
+  readonly forMessage?: ReconstructionStore["Service"]["forMessage"];
+  readonly secondThread?: boolean;
   readonly pending?: boolean;
   readonly forkParent?: CommitId;
   readonly unreachableRepositories?: ReadonlyArray<string>;
   readonly memoryLandingFailure?: MemoryIndex.MemoryAmendmentValidationError;
 }) =>
   Effect.gen(function* () {
+    const turnRegistry = yield* PlanTurnRegistry.make;
     const domain = yield* PubSub.unbounded<OrchestrationEvent>();
     const provider = yield* PubSub.unbounded<ProviderRuntimeEvent>();
     const humanReceipts = yield* Queue.unbounded<PlanningStore.AppendMessageInput>();
     const assistantReceipts = yield* Queue.unbounded<PlanningStore.AppendAssistantMessageInput>();
     const birthReceipts = yield* Queue.unbounded<void>();
+    const renameReceipts = yield* Queue.unbounded<string>();
     const runtimeReads = yield* Queue.unbounded<void>();
     const memoryLandings =
       yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["landAmendment"]>[0]>();
@@ -168,6 +179,14 @@ const makeHarness = (options?: {
       rootCalls: 0,
       planTitle: "Line turn",
     };
+    let otherRuntime =
+      options?.secondThread && state.runtime !== null
+        ? {
+            ...state.runtime,
+            threadId: ThreadId.make("other-thread"),
+            lineRootCommitId: MercurianCommitId.make("other-root"),
+          }
+        : null;
     const detail = () =>
       ({
         plan: {
@@ -200,7 +219,10 @@ const makeHarness = (options?: {
             state.createdPlans += 1;
             return detail();
           }).pipe(Effect.tap(() => Queue.offer(birthReceipts, undefined))),
-        renamePlan: (input) => Effect.sync(() => void (state.planTitle = input.title)),
+        renamePlan: (input) =>
+          Effect.sync(() => void (state.planTitle = input.title)).pipe(
+            Effect.andThen(Queue.offer(renameReceipts, input.title)),
+          ),
         getPlanSnapshot: () => Effect.succeed(detail()),
         appendMessage: (input) =>
           Effect.sync(() => {
@@ -245,9 +267,13 @@ const makeHarness = (options?: {
         getSpecAt: () => Effect.succeed(null),
       }),
       Layer.mock(LineRuntimeStore.LineRuntimeStore)({
-        getByThreadId: () =>
+        getByThreadId: (candidate) =>
           Queue.offer(runtimeReads, undefined).pipe(
-            Effect.as(state.runtime === null ? Option.none() : Option.some(state.runtime)),
+            Effect.andThen(
+              Effect.sync(() =>
+                Option.fromNullishOr(candidate === threadId ? state.runtime : otherRuntime),
+              ),
+            ),
           ),
         create: (input) =>
           Effect.sync(() => {
@@ -269,7 +295,11 @@ const makeHarness = (options?: {
               state.runtime = { ...record, lineRootCommitId };
             }
           }),
-        deleteByThread: () => Effect.sync(() => void (state.runtime = null)),
+        deleteByThread: (candidate) =>
+          Effect.sync(() => {
+            if (candidate === threadId) state.runtime = null;
+            else otherRuntime = null;
+          }),
         listByPlan: () => Effect.succeed(state.runtime === null ? [] : [state.runtime]),
       }),
       Layer.mock(CommitStore.CommitStore)({
@@ -352,17 +382,26 @@ const makeHarness = (options?: {
       Layer.mock(SlotRegistry.SlotRegistry)({ lease: () => Effect.succeed(Option.none()) }),
       Layer.mock(SlotService.SlotService)({ release: () => Effect.succeed(false) }),
       Layer.mock(ThreadDeletionReactor.ThreadDeletionReactor)({ drainThrough: () => Effect.void }),
-      PlanTurnRegistry.layer,
+      options?.reconstructionStore === undefined
+        ? Layer.mock(ReconstructionStore)({
+            forMessage:
+              options?.forMessage ??
+              ((_thread, messageId) => Effect.succeed(`reconstruction:${messageId}`)),
+          })
+        : Layer.succeed(ReconstructionStore, options.reconstructionStore),
+      Layer.succeed(PlanTurnRegistry.PlanTurnRegistry, turnRegistry),
       NodeServices.layer,
     );
     return {
       state,
+      turnRegistry,
       layer: layer.pipe(Layer.provide(dependencies)),
       publishDomain: (event: OrchestrationEvent) => PubSub.publish(domain, event),
       publishProvider: (event: ProviderRuntimeEvent) => PubSub.publish(provider, event),
       humanReceipts,
       assistantReceipts,
       birthReceipts,
+      renameReceipts,
       runtimeReads,
       memoryLandings,
     };
@@ -736,6 +775,7 @@ describe("LineTurnReactor", () => {
         const settled = yield* Queue.take(harness.assistantReceipts);
         assert.strictEqual(settled.parentCommitId, CommitId.make(messageId));
         assert.strictEqual(settled.text, "Done");
+        assert.strictEqual(settled.reconstructionId, `reconstruction:${messageId}`);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
   );
@@ -901,6 +941,7 @@ describe("LineTurnReactor", () => {
         );
         const settled = yield* Queue.take(harness.assistantReceipts);
         assert.strictEqual(settled.text, "Partial");
+        assert.strictEqual(settled.reconstructionId, `reconstruction:${messageId}`);
         assert.strictEqual(settled.interrupted, true);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
@@ -927,8 +968,317 @@ describe("LineTurnReactor", () => {
         yield* TestClock.adjust("5 seconds");
         const settled = yield* Queue.take(harness.assistantReceipts);
         assert.strictEqual(settled.text, "Partial");
+        assert.strictEqual(settled.reconstructionId, `reconstruction:${messageId}`);
         assert.strictEqual(settled.interrupted, true);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect(
+    "deletion settlement releases a cancelled reconstruction and the domain loop continues",
+    () =>
+      Effect.gen(function* () {
+        yield* runMigrations();
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO projects (project_id, name, created_at, updated_at) VALUES ('project', 'Project', '', '')`;
+        yield* sql`INSERT INTO commit_histories (history_id, created_at) VALUES ('history', '')`;
+        yield* sql`INSERT INTO plans (plan_id, project_id, history_id, title, created_at, updated_at) VALUES (${planId}, 'project', 'history', 'Plan', '', '')`;
+        const store = yield* ReconstructionStore;
+        yield* store.save({
+          id: "pending",
+          planId,
+          version: 1,
+          sessionStartMessageCommitId: MercurianCommitId.make(messageId),
+          throughCommitId: null,
+          verbatimFromCommitId: MercurianCommitId.make(messageId),
+          compacted: null,
+        });
+        const prepared = yield* Deferred.make<void>();
+        const settling = yield* Deferred.make<void>();
+        const owner = yield* Effect.gen(function* () {
+          yield* store.prepare(threadId, messageId, "pending", true);
+          yield* Deferred.succeed(prepared, undefined);
+          return yield* Effect.never;
+        }).pipe(Effect.scoped, Effect.forkScoped);
+        yield* Deferred.await(prepared);
+        const harness = yield* makeHarness({
+          reconstructionStore: {
+            ...store,
+            forMessage: (threadId, messageId) =>
+              Deferred.succeed(settling, undefined).pipe(
+                Effect.andThen(store.forMessage(threadId, messageId)),
+              ),
+          },
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* LineTurnReactor;
+          yield* startTurn(harness, reactor);
+          yield* harness.publishDomain({
+            ...baseEvent,
+            sequence: 2,
+            type: "thread.deleted",
+            payload: { threadId, deletedAt: now },
+          } as OrchestrationEvent);
+          yield* Deferred.await(settling);
+          yield* harness.publishDomain({
+            ...baseEvent,
+            sequence: 3,
+            type: "thread.meta-updated",
+            payload: { threadId, title: "Later event", updatedAt: now },
+          } as OrchestrationEvent);
+          yield* Fiber.interrupt(owner);
+          yield* reactor.drainThrough(3);
+          const settled = yield* Queue.take(harness.assistantReceipts);
+          assert.strictEqual(settled.interrupted, true);
+          assert.strictEqual(settled.reconstructionId, undefined);
+          assert.strictEqual(harness.state.runtime, null);
+        }).pipe(Effect.scoped, Effect.provide(harness.layer));
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          reconstructionStoreLayer.pipe(Layer.provideMerge(NodeSqliteClient.layerMemory())),
+        ),
+      ),
+  );
+
+  for (const deleted of [false, true]) {
+    it.effect(
+      `pending settlement on A leaves B streaming and settles once${deleted ? " through deletion" : ""}`,
+      () =>
+        Effect.gen(function* () {
+          const waiting = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const otherThread = ThreadId.make("other-thread");
+          const otherMessage = MessageId.make("other-human");
+          const harness = yield* makeHarness({
+            secondThread: true,
+            forMessage: (_thread, message) =>
+              message === messageId
+                ? Deferred.succeed(waiting, undefined).pipe(
+                    Effect.andThen(Deferred.await(release)),
+                    Effect.as("known-A"),
+                  )
+                : Effect.succeed(null),
+          });
+          yield* Effect.gen(function* () {
+            const reactor = yield* LineTurnReactor;
+            const deltas = yield* Queue.unbounded<string>();
+            const settledFrames = yield* Queue.unbounded<void>();
+            yield* Stream.runForEach(reactor.frames(planId), (frame) =>
+              frame.kind === "turn-delta"
+                ? Queue.offer(deltas, frame.textDelta)
+                : frame.kind === "turn-settled"
+                  ? Queue.offer(settledFrames, undefined)
+                  : Effect.void,
+            ).pipe(Effect.forkScoped({ startImmediately: true }));
+            yield* startTurn(harness, reactor);
+            const claim = yield* harness.turnRegistry.getByThread(threadId);
+            assert.ok(Option.isSome(claim));
+            yield* harness.turnRegistry.advanceTip(
+              planId,
+              claim.value.turnId,
+              CommitId.make("intervening-commit"),
+            );
+            harness.state.timeline.push({
+              _tag: "message",
+              commitId: MercurianCommitId.make(otherMessage),
+              parents: [],
+              sequence: 3,
+              authorKind: "human",
+              text: "Other request",
+              createdAt: DateTime.makeUnsafe(now),
+            });
+            yield* harness.publishDomain({
+              ...turnStarted(),
+              sequence: 2,
+              type: "thread.turn-start-requested",
+              payload: {
+                threadId: otherThread,
+                messageId: otherMessage,
+                modelSelection: { instanceId, model: "gpt-5.6" },
+                runtimeMode: "approval-required",
+                createdAt: now,
+              },
+            } as OrchestrationEvent);
+            yield* reactor.drainThrough(2);
+            yield* harness.publishProvider(
+              runtimeEvent({
+                type: "content.delta",
+                payload: { streamKind: "assistant_text", delta: "Captured A" },
+              }),
+            );
+            assert.strictEqual(yield* Queue.take(deltas), "Captured A");
+            yield* harness.publishProvider(
+              runtimeEvent({ type: "session.exited", payload: { reason: "stopped" } }),
+            );
+            yield* Deferred.await(waiting);
+            const drained = yield* Deferred.make<void>();
+            yield* reactor
+              .drainThrough(2)
+              .pipe(Effect.andThen(Deferred.succeed(drained, undefined)), Effect.forkScoped);
+
+            assert.strictEqual(
+              (yield* reactor.inFlightTurns(planId)).some(
+                (turn) => String(turn.parentCommitId) === messageId,
+              ),
+              false,
+            );
+            if (deleted)
+              yield* harness.publishDomain({
+                ...baseEvent,
+                sequence: 3,
+                type: "thread.deleted",
+                payload: { threadId, deletedAt: now },
+              } as OrchestrationEvent);
+            if (deleted) {
+              yield* harness.publishDomain({
+                ...baseEvent,
+                sequence: 4,
+                type: "thread.meta-updated",
+                payload: { threadId: otherThread, title: "B while A waits", updatedAt: now },
+              } as OrchestrationEvent);
+              assert.strictEqual(yield* Queue.take(harness.renameReceipts), "B while A waits");
+            }
+            yield* harness.publishProvider(
+              runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
+            );
+            yield* harness.publishProvider(
+              runtimeEvent({
+                type: "content.delta",
+                payload: { streamKind: "assistant_text", delta: "Late A ignored" },
+              }),
+            );
+            yield* harness.publishProvider(
+              runtimeEvent({
+                threadId: otherThread,
+                type: "content.delta",
+                payload: { streamKind: "assistant_text", delta: "B remains responsive" },
+              }),
+            );
+            assert.strictEqual(yield* Queue.take(deltas), "B remains responsive");
+            yield* harness.publishProvider(
+              runtimeEvent({
+                threadId: otherThread,
+                type: "turn.completed",
+                payload: { state: "completed" },
+              }),
+            );
+            const b = yield* Queue.take(harness.assistantReceipts);
+            assert.strictEqual(b.text, "B remains responsive");
+            yield* Queue.take(settledFrames);
+            assert.strictEqual(yield* Deferred.isDone(drained), false);
+            yield* Deferred.succeed(release, undefined);
+            yield* Deferred.await(drained);
+            const a = yield* Queue.take(harness.assistantReceipts);
+            assert.strictEqual(a.text, "Captured A");
+            assert.strictEqual(a.parentCommitId, CommitId.make("intervening-commit"));
+            assert.strictEqual(a.sourceUserMessageId, CommitId.make(messageId));
+            assert.strictEqual(a.reconstructionId, "known-A");
+            assert.strictEqual(a.interrupted, true);
+            yield* Queue.take(settledFrames);
+            assert.strictEqual(harness.state.assistantCommits.length, 2);
+            assert.deepStrictEqual(yield* reactor.inFlightTurns(planId), []);
+            assert.strictEqual((yield* reactor.status).get(planId), undefined);
+            if (deleted) assert.strictEqual(harness.state.runtime, null);
+          }).pipe(Effect.scoped, Effect.provide(harness.layer));
+        }),
+    );
+  }
+
+  for (const stop of [false, true]) {
+    it.effect(
+      `local ${stop ? "stop" : "interrupt"} acknowledgment clears line status without a grace delay`,
+      () =>
+        Effect.gen(function* () {
+          const harness = yield* makeHarness();
+          yield* Effect.gen(function* () {
+            const reactor = yield* LineTurnReactor;
+            yield* startTurn(harness, reactor);
+            yield* harness.publishDomain({
+              ...baseEvent,
+              sequence: 2,
+              type: stop ? "thread.session-stop-requested" : "thread.turn-interrupt-requested",
+              payload: { threadId, createdAt: now },
+            } as OrchestrationEvent);
+            yield* harness.publishDomain({
+              ...baseEvent,
+              sequence: 3,
+              type: "thread.session-set",
+              payload: {
+                threadId,
+                session: {
+                  threadId,
+                  status: stop ? "stopped" : "ready",
+                  providerName: "codex",
+                  providerInstanceId: instanceId,
+                  runtimeMode: "approval-required",
+                  activeTurnId: null,
+                  lastError: null,
+                  updatedAt: now,
+                },
+                createdAt: now,
+              },
+            } as OrchestrationEvent);
+            yield* reactor.drainThrough(3);
+            assert.strictEqual((yield* reactor.status).get(planId), undefined);
+            assert.deepStrictEqual(yield* reactor.inFlightTurns(planId), []);
+            assert.strictEqual(harness.state.assistantCommits.length, 1);
+            assert.strictEqual(harness.state.assistantCommits[0]?.interrupted, true);
+          }).pipe(Effect.scoped, Effect.provide(harness.layer));
+        }),
+    );
+  }
+
+  it.effect("discard teardown cancels a pending settlement before it can append", () =>
+    Effect.gen(function* () {
+      const waiting = yield* Deferred.make<void>();
+      const released = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        forMessage: () =>
+          Deferred.succeed(waiting, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(Deferred.succeed(released, undefined)),
+          ),
+      });
+      yield* Effect.gen(function* () {
+        const reactor = yield* LineTurnReactor;
+        yield* startTurn(harness, reactor);
+        yield* harness.publishProvider(
+          runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
+        );
+        yield* Deferred.await(waiting);
+        yield* reactor.teardownPlan({ planId, commitPartial: false, lineRuntimes: [] });
+        yield* Deferred.await(released);
+        yield* reactor.drainThrough(1);
+        assert.deepStrictEqual(harness.state.assistantCommits, []);
+        assert.deepStrictEqual(yield* reactor.inFlightTurns(planId), []);
+      }).pipe(Effect.scoped, Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect("closing the reactor scope cancels its pending settlement", () =>
+    Effect.gen(function* () {
+      const waiting = yield* Deferred.make<void>();
+      const released = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        forMessage: () =>
+          Deferred.succeed(waiting, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(Deferred.succeed(released, undefined)),
+          ),
+      });
+      const owner = yield* Effect.gen(function* () {
+        const reactor = yield* LineTurnReactor;
+        yield* startTurn(harness, reactor);
+        yield* harness.publishProvider(
+          runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
+        );
+        return yield* Effect.never;
+      }).pipe(Effect.scoped, Effect.provide(harness.layer), Effect.forkScoped);
+      yield* Deferred.await(waiting);
+      yield* Fiber.interrupt(owner);
+      yield* Deferred.await(released);
+      assert.deepStrictEqual(harness.state.assistantCommits, []);
     }),
   );
 

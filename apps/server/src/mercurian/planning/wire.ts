@@ -74,6 +74,7 @@ export const toWirePlanMessage = (message: PlanMessage): Contracts.PlanMessage =
   ...(message.sourceUserMessageId === undefined
     ? {}
     : { sourceUserMessageId: MercurianCommitId.make(message.sourceUserMessageId) }),
+  ...(message.reconstructionId === undefined ? {} : { reconstructionId: message.reconstructionId }),
   ...(message.memoryAmendment === undefined ? {} : { memoryAmendment: message.memoryAmendment }),
 });
 
