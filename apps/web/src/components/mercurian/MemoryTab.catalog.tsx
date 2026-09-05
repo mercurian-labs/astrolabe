@@ -5,6 +5,7 @@ import type { CatalogEntry } from "../../design-system/catalog";
 import type { MemorySelection } from "../../memoryPanelStore";
 import { MemoryTabView, type MemoryBrowseState, type MemoryTabViewProps } from "./MemoryTab";
 import {
+  MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD,
   MEMORY_FIXTURE_CATALOG,
   MEMORY_FIXTURE_DASHBOARD,
   MEMORY_FIXTURE_EMPTY_DASHBOARD,
@@ -157,6 +158,19 @@ export const MEMORY_TAB_CATALOG_ENTRIES = [
       "Only a skill map changed: it stays reviewable as a document while the graph explains that maps are never nodes.",
     sourcePath: "src/components/mercurian/MemoryTab.tsx",
     render: () => <CatalogMemoryTab activeTurn state={ready(MEMORY_FIXTURE_MAP_ONLY_DASHBOARD)} />,
+    layout: "preview",
+    preferredCanvas: "wide",
+    viewportTags: ["desktop"],
+  },
+  {
+    id: "mercurian/memory-tab-asset-only",
+    section: "mercurian-grammar",
+    group: "MemoryTab",
+    title: "Memory asset-only amendment",
+    description:
+      "An amendment that changed no memory documents stays listed and reviewable, and the graph says why it draws nothing.",
+    sourcePath: "src/components/mercurian/MemoryTab.tsx",
+    render: () => <CatalogMemoryTab state={ready(MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD)} />,
     layout: "preview",
     preferredCanvas: "wide",
     viewportTags: ["desktop"],

@@ -3,20 +3,25 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   MEMORY_FIXTURE_AMENDMENTS,
+  MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD,
   MEMORY_FIXTURE_CATALOG,
   MEMORY_FIXTURE_DASHBOARD,
   MEMORY_FIXTURE_DOCUMENTS,
+  MEMORY_FIXTURE_EMPTY_DASHBOARD,
   MEMORY_FIXTURE_MAP_ONLY_DASHBOARD,
   MEMORY_FIXTURE_POSITION,
 } from "./MemoryTab.fixtures";
 import {
   appendToDraftPrompt,
   createMemoryRequestGate,
+  memoryChangesSummary,
   memoryCurationRefusal,
   memoryDocumentStatusLabel,
   memoryDocumentTargetForCatalogEntry,
+  memoryGraphEmptyCopy,
   memoryGraphIsMapOnly,
   memoryGraphStructureKey,
+  memoryLimitationCopy,
   memoryMergeConfirmInput,
   memoryMergeHomeOutcomeCopy,
   memoryMergeReviewIsConfirmable,
@@ -233,6 +238,62 @@ describe("merge home", () => {
   });
 });
 
+describe("truthful empty states", () => {
+  it("explains an empty graph by what actually changed", () => {
+    expect(memoryGraphEmptyCopy(MEMORY_FIXTURE_DASHBOARD)).toBeNull();
+    expect(memoryGraphEmptyCopy(MEMORY_FIXTURE_EMPTY_DASHBOARD)).toBe(
+      "No memory notes changed on this line.",
+    );
+    expect(memoryGraphEmptyCopy(MEMORY_FIXTURE_MAP_ONLY_DASHBOARD)).toMatch(/Only skill maps/u);
+    expect(memoryGraphEmptyCopy(MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD)).toMatch(
+      /This amendment changed no memory documents.*raw comparison/u,
+    );
+    const genericDocument = {
+      ...MEMORY_FIXTURE_MAP_ONLY_DASHBOARD,
+      documents: MEMORY_FIXTURE_MAP_ONLY_DASHBOARD.documents.map((document) => ({
+        ...document,
+        kind: "document" as const,
+      })),
+    };
+    expect(memoryGraphIsMapOnly(genericDocument)).toBe(false);
+    expect(memoryGraphEmptyCopy(genericDocument)).toMatch(/not notes.*listed under Changes/u);
+  });
+
+  it("keeps asset-only amendments reviewable and says no documents only when true", () => {
+    expect(memoryNeedsReview(MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD.amendments)).toHaveLength(1);
+    expect(memoryChangesSummary(MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD)).toMatch(
+      /No memory documents changed\. 1 amendment changed other files/u,
+    );
+    expect(memoryChangesSummary(MEMORY_FIXTURE_DASHBOARD)).toBeNull();
+    expect(memoryChangesSummary(MEMORY_FIXTURE_EMPTY_DASHBOARD)).toBeNull();
+    expect(MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD.amendments[0]?.comparison.paths).toEqual([
+      "assets/composer.png",
+    ]);
+  });
+
+  it("speaks limitations in plain words without ticket ids", () => {
+    const copies = MEMORY_FIXTURE_DASHBOARD.limitations.map(memoryLimitationCopy);
+    expect(copies.join("\n")).not.toMatch(/M-\d+/u);
+    expect(copies[0]).toMatch(/classified by the memory designation/u);
+    expect(copies[1]).toMatch(/stamps and structured rationales are not recorded yet/u);
+    expect(memoryLimitationCopy("Rename detection (M-999) is approximate.")).toBe(
+      "Rename detection is approximate.",
+    );
+  });
+});
+
+describe("revert versioning", () => {
+  it("reports a stale version by reason so the tab can refresh before a new explicit click", () => {
+    const refusal = memoryCurationRefusal(
+      { _tag: "MemoryReviewBlockedError", reason: "stale-review" },
+      "revert",
+    );
+    expect(refusal.reason).toBe("stale-review");
+    expect(refusal.message).toMatch(/refreshed.*try again/u);
+    expect(memoryCurationRefusal(new Error("boom"), "revert").reason).toBeUndefined();
+  });
+});
+
 describe("request scoping", () => {
   const latest = { kind: "latest" as const };
   const checkpointA = { kind: "checkpoint" as const, commitId: MercurianCommitId.make("ckpt-a") };
@@ -291,6 +352,7 @@ describe("refusals", () => {
     );
     expect(conflict).toEqual({
       message: "The inverse overlaps later changes in Composer.md. Nothing was changed.",
+      reason: "conflict",
       paths: ["Composer.md"],
       reconciliationSeed: "Reconcile Composer.md",
     });

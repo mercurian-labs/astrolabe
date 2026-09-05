@@ -21,6 +21,7 @@ import {
   minimapSize,
   visibleWorldRect,
   type MapBounds,
+  type MapFitOptions,
   type MapFrameSize,
   type MapPoint,
   type MapTransform,
@@ -29,6 +30,7 @@ import {
 } from "./DagExplorer.logic";
 import {
   fitSpatialMap,
+  pointWithinBounds,
   spatialMapChromeVisibility,
   spatialMapViewBox,
   spatialMapWheelTransform,
@@ -64,12 +66,21 @@ export function SpatialMapCanvas({
   className,
   edges,
   nodes,
+  fit,
+  showMinimap = true,
+  focus = null,
 }: {
   readonly ariaLabel: string;
   readonly bounds: MapBounds;
   readonly className?: string;
   readonly edges: ReadonlyArray<SpatialMapCanvasEdge>;
   readonly nodes: ReadonlyArray<SpatialMapCanvasNode>;
+  /** Opt-in fit padding and zoom ceiling for small, label-heavy graphs. */
+  readonly fit?: MapFitOptions;
+  /** A tiny graph gains nothing from an overview that covers its nodes. */
+  readonly showMinimap?: boolean;
+  /** When the id changes and the point is out of view, the camera pans to it without rezooming. */
+  readonly focus?: { readonly id: string; readonly point: MapPoint } | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -105,11 +116,44 @@ export function SpatialMapCanvas({
     return () => observer.disconnect();
   }, []);
 
+  const fitPadding = fit?.padding;
+  const fitMaxZoom = fit?.maxZoom;
+  const fitOptions = useMemo<MapFitOptions>(
+    () => ({
+      ...(fitPadding === undefined ? {} : { padding: fitPadding }),
+      ...(fitMaxZoom === undefined ? {} : { maxZoom: fitMaxZoom }),
+    }),
+    [fitMaxZoom, fitPadding],
+  );
+
   useEffect(() => {
     if (frame.width <= 0 || frame.height <= 0) return;
     cancelTween();
-    applyTransform(fitSpatialMap(bounds, frame));
-  }, [applyTransform, bounds.maxX, bounds.maxY, bounds.minX, bounds.minY, cancelTween, frame]);
+    applyTransform(fitSpatialMap(bounds, frame, fitOptions));
+  }, [
+    applyTransform,
+    bounds.maxX,
+    bounds.maxY,
+    bounds.minX,
+    bounds.minY,
+    cancelTween,
+    fitOptions,
+    frame,
+  ]);
+
+  const focusId = focus?.id ?? null;
+  const focusRef = useRef(focus);
+  useEffect(() => {
+    focusRef.current = focus;
+  }, [focus]);
+  useEffect(() => {
+    const target = focusRef.current;
+    if (focusId === null || target === null || frame.width <= 0 || frame.height <= 0) return;
+    const from = transformRef.current;
+    if (pointWithinBounds(target.point, visibleWorldRect(from, viewBox, frame))) return;
+    const tween = cameraTween(from, centerOn(target.point, from, viewBox), viewBox);
+    startTween((progress) => applyTransform(tween(progress)));
+  }, [applyTransform, focusId, frame, startTween, viewBox]);
 
   const unitsPerPixel = useCallback(() => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -212,13 +256,16 @@ export function SpatialMapCanvas({
 
   const fitToView = () => {
     const from = transformRef.current;
-    const tween = cameraTween(from, fitSpatialMap(bounds, frame), viewBox);
+    const tween = cameraTween(from, fitSpatialMap(bounds, frame, fitOptions), viewBox);
     startTween((progress) => applyTransform(tween(progress)));
   };
 
   const overviewSize = useMemo(() => minimapSize(frame.width, frame.height), [frame]);
   const renderContext = useMemo<SpatialMapRenderContext>(() => ({ markerId }), [markerId]);
-  const chrome = spatialMapChromeVisibility(transform, bounds, frame);
+  const chrome = spatialMapChromeVisibility(transform, bounds, frame, undefined, {
+    ...fitOptions,
+    minimap: showMinimap,
+  });
 
   return (
     <div

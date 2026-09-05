@@ -184,9 +184,50 @@ export function memorySelectionHighlight(
     : { documentIds: new Set(amendment.documentIds), amendmentIds: new Set([amendment.id]) };
 }
 
-/** Maps are reviewed as documents; a graph with no note nodes is the map-only state. */
+/** Maps are reviewed as documents; a graph with no note nodes and only maps is the map-only state. */
 export const memoryGraphIsMapOnly = (dashboard: MemoryAvailableDashboard) =>
-  dashboard.documents.length > 0 && dashboard.graph.nodes.length === 0;
+  dashboard.graph.nodes.length === 0 &&
+  dashboard.documents.length > 0 &&
+  dashboard.documents.every((document) => document.kind === "skill-map");
+
+/** Why there is nothing to draw, said truthfully; null when the graph has nodes. */
+export function memoryGraphEmptyCopy(dashboard: MemoryAvailableDashboard): string | null {
+  if (dashboard.graph.nodes.length > 0) return null;
+  if (dashboard.documents.length === 0) {
+    return dashboard.amendments.length === 0
+      ? "No memory notes changed on this line."
+      : `${dashboard.amendments.length === 1 ? "This amendment" : "These amendments"} changed no memory documents, so there are no notes to draw. Open the changes for the raw comparison.`;
+  }
+  if (memoryGraphIsMapOnly(dashboard)) {
+    return "Only skill maps changed here. Maps are reviewed as documents under Changes and are never drawn as graph nodes.";
+  }
+  return "The changed documents are not notes, so there is nothing to draw. They are listed under Changes.";
+}
+
+/** The Changes heading's second line when documents and amendments disagree in count. */
+export function memoryChangesSummary(dashboard: MemoryAvailableDashboard): string | null {
+  if (dashboard.documents.length > 0 || dashboard.amendments.length === 0) return null;
+  const count = dashboard.amendments.length;
+  return `No memory documents changed. ${count} ${count === 1 ? "amendment" : "amendments"} changed other files in the memory repository; open its changes for the raw comparison.`;
+}
+
+/**
+ * The server names missing pieces by ticket for maintainers; people reviewing memory get
+ * the capability gap in plain words. Unknown strings keep their words minus ticket ids.
+ */
+export function memoryLimitationCopy(limitation: string): string {
+  if (/Plan\/Spec document locations/iu.test(limitation)) {
+    return "Plan and spec documents inside memory are classified by the memory designation for now, not by a configured location.";
+  }
+  if (/stamps and structured rationales/iu.test(limitation)) {
+    return "Change stamps and structured rationales are not recorded yet; a map's authored fields stay visible in the raw comparison.";
+  }
+  return limitation
+    .replace(/\s*\((?:M-\d+(?:\/M-\d+)*)\)/gu, "")
+    .replace(/\bM-\d+(?:\/M-\d+)*\s*/gu, "")
+    .replace(/\s{2,}/gu, " ")
+    .trim();
+}
 
 /** Structure only: statuses and review state may change without moving a node. */
 export function memoryGraphStructureKey(graph: MemoryLocalGraph): string {
@@ -300,6 +341,8 @@ export function memoryMergeHomeOutcomeCopy(result: MercurianMergeMemoryHomeResul
 
 export interface MemoryCurationRefusal {
   readonly message: string;
+  /** The typed reason when the server gave one; lets the caller refresh on a stale version. */
+  readonly reason?: string;
   readonly paths?: ReadonlyArray<string>;
   readonly reconciliationSeed?: string;
 }
@@ -325,6 +368,7 @@ export function memoryCurationRefusal(
         : undefined;
     const withDetails = (message: string): MemoryCurationRefusal => ({
       message,
+      ...(typeof cause.reason === "string" ? { reason: cause.reason } : {}),
       ...(paths === undefined ? {} : { paths }),
       ...(seed === undefined ? {} : { reconciliationSeed: seed }),
     });
@@ -342,7 +386,11 @@ export function memoryCurationRefusal(
       case "historical-position":
         return withDetails("Return to the latest position before curating memory.");
       case "stale-review":
-        return withDetails("Memory changed since this was prepared. Prepare again to continue.");
+        return withDetails(
+          act === "merge"
+            ? "Memory changed since this was prepared. Prepare again to continue."
+            : "Memory changed since this dashboard was read. It has been refreshed; check the change and try again.",
+        );
       case "conflict":
         return withDetails(
           `The inverse overlaps later changes${paths && paths.length > 0 ? ` in ${paths.join(", ")}` : ""}. Nothing was changed.`,

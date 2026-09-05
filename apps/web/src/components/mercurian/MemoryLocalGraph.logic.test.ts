@@ -36,6 +36,27 @@ describe("layoutMemoryLocalGraph", () => {
     expect(selfLink.path.startsWith("M ")).toBe(true);
   });
 
+  it("keeps a small graph compact enough to read in a right panel", () => {
+    const layout = layoutMemoryLocalGraph({
+      nodes: [
+        { id: "a", name: "Composer" },
+        { id: "b", name: "Drafts" },
+        { id: "c", name: "Glossary" },
+        { id: "d", name: "Plans" },
+      ],
+      edges: [
+        { from: "a", to: "b", status: "unchanged" },
+        { from: "b", to: "c", status: "added" },
+        { from: "c", to: "a", status: "removed" },
+      ],
+      outsideReferences: [],
+    });
+    // A 360px panel with 12px fit padding leaves 336px; the layout must fit at a zoom that keeps
+    // the 12px label at 11px or larger.
+    const zoom = Math.min(336 / layout.width, 264 / layout.height);
+    expect(zoom).toBeGreaterThanOrEqual(11 / 12);
+  });
+
   it("is deterministic for the same structure and separates overlapping nodes", () => {
     const first = layoutMemoryLocalGraph(graph);
     const second = layoutMemoryLocalGraph(graph);

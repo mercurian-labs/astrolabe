@@ -53,8 +53,10 @@ import {
   memoryDocumentKindLabel,
   memoryDocumentName,
   memoryDocumentStatusLabel,
+  memoryChangesSummary,
   memoryDocumentTargetForCatalogEntry,
-  memoryGraphIsMapOnly,
+  memoryGraphEmptyCopy,
+  memoryLimitationCopy,
   memoryMergeConfirmInput,
   memoryMergeHomeOutcomeCopy,
   memoryMergeHomeReconciliationMessage,
@@ -291,7 +293,13 @@ export function MemoryTab({
     ) => {
       if (historical) return { message: "Return to the latest position before curating memory." };
       const outcome = await run();
-      if (!outcome.ok) return memoryCurationRefusal(outcome.error, act);
+      if (!outcome.ok) {
+        const refusal = memoryCurationRefusal(outcome.error, act);
+        // A stale version means the person acted on an older dashboard: show the current one
+        // and wait for a new explicit click. Nothing is resubmitted here.
+        if (refusal.reason === "stale-review") await refresh();
+        return refusal;
+      }
       setMerge((current) => memoryMergeTransition(current, { kind: "invalidated" }));
       await refresh();
       return null;
@@ -302,26 +310,21 @@ export function MemoryTab({
     (amendmentId: string) => settle("review", () => markReviewed({ line, commitOid: amendmentId })),
     [line, markReviewed, settle],
   );
+  // Both revert targets are bound to the version of the dashboard the person is looking at,
+  // never to a version fetched after the click; a mismatch is a stale-review refusal.
+  const curationVersion = dashboard?.curationVersion ?? null;
   const onRevert = useCallback(
     (amendment: MemoryAmendmentSummary) =>
-      settle("revert", async () => {
-        let expectedVersion: string | undefined;
-        if (amendment.kind === "unmarked") {
-          // The captured tail has no commit to name; a prepared review pins the exact version.
-          const prepared = await mergeHome({ line });
-          if (!prepared.ok) return prepared;
-          if (prepared.value.kind !== "review-required") {
-            return { ok: false, error: new Error("Nothing captured is left to revert.") };
-          }
-          expectedVersion = prepared.value.review.version;
-        }
-        return revertChange({
-          line,
-          target: memoryTabRevertTarget(amendment),
-          ...(expectedVersion === undefined ? {} : { expectedVersion }),
-        });
-      }),
-    [line, mergeHome, revertChange, settle],
+      settle("revert", async () =>
+        curationVersion === null
+          ? { ok: false, error: new Error("The dashboard is not available to revert against.") }
+          : revertChange({
+              line,
+              target: memoryTabRevertTarget(amendment),
+              expectedVersion: curationVersion,
+            }),
+      ),
+    [curationVersion, line, revertChange, settle],
   );
   const runMerge = useCallback(
     async (step: "prepare" | "confirm") => {
@@ -492,7 +495,8 @@ function AvailableDashboard({
     () => memoryNeedsReview(dashboard.amendments),
     [dashboard.amendments],
   );
-  const mapOnly = memoryGraphIsMapOnly(dashboard);
+  const graphEmptyCopy = memoryGraphEmptyCopy(dashboard);
+  const changesSummary = memoryChangesSummary(dashboard);
   const empty = dashboard.documents.length === 0 && dashboard.amendments.length === 0;
   const selectDocument = useCallback(
     (id: string) =>
@@ -581,13 +585,8 @@ function AvailableDashboard({
         </button>
         {props.graphOpen ? (
           <div className="border-t border-border p-3">
-            {empty ? (
-              <p className="text-sm text-muted-foreground">No memory notes changed on this line.</p>
-            ) : mapOnly ? (
-              <p className="text-sm text-muted-foreground">
-                Only skill maps changed here. Maps are reviewed as documents under Changes and are
-                never drawn as graph nodes.
-              </p>
+            {graphEmptyCopy !== null ? (
+              <p className="text-sm text-muted-foreground">{graphEmptyCopy}</p>
             ) : (
               <MemoryLocalGraph
                 documents={dashboard.documents}
@@ -618,6 +617,9 @@ function AvailableDashboard({
           />
         ) : (
           <>
+            {changesSummary === null ? null : (
+              <p className="text-sm text-muted-foreground">{changesSummary}</p>
+            )}
             <ul className="space-y-1.5">
               {dashboard.documents.map((document) => (
                 <DocumentRow
@@ -656,7 +658,7 @@ function AvailableDashboard({
       {dashboard.limitations.length === 0 ? null : (
         <ul className="space-y-0.5 text-[11px] text-muted-foreground/80">
           {dashboard.limitations.map((limitation) => (
-            <li key={limitation}>{limitation}</li>
+            <li key={limitation}>{memoryLimitationCopy(limitation)}</li>
           ))}
         </ul>
       )}

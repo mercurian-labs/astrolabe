@@ -13,6 +13,7 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
 import { DIFF_SURFACE_THEME_UNSAFE_CSS, resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
+import { memoryReadingLabel } from "~/memoryIdentity";
 import { buildMemoryDocumentReviewComment } from "~/reviewCommentContext";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useReadMemoryDocument } from "~/state/mercurianMemory";
@@ -121,9 +122,12 @@ export function MemoryDocumentSurface({
     },
     [available, openSibling],
   );
+  // The origin comes from the immutable target, never the current route, so two tabs
+  // holding the same bytes still say which reading each one is.
+  const origin = memoryReadingLabel(target.position.reading);
   const versionLabel = target.deleted
-    ? "Former version, before deletion"
-    : `Version ${target.blobOid.slice(0, 8)} · read-only`;
+    ? `Former version, before deletion · ${origin}`
+    : `Version ${target.blobOid.slice(0, 8)} · ${origin} · read-only`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -134,7 +138,14 @@ export function MemoryDocumentSurface({
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
           <BookOpenIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate font-medium">{target.path}</span>
-          <span className="shrink-0 text-muted-foreground">· {versionLabel}</span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="min-w-0 truncate text-muted-foreground">· {versionLabel}</span>
+              }
+            />
+            <TooltipPopup>{versionLabel}</TooltipPopup>
+          </Tooltip>
         </div>
         <Tooltip>
           <TooltipTrigger

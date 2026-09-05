@@ -26,6 +26,7 @@ const MIGRATED_STORY_TITLES = [
   "Memory merge review prepared",
   "Memory at an earlier checkpoint",
   "Memory map-only change",
+  "Memory asset-only amendment",
   "Memory with nothing changed",
   "Memory not designated",
   "Imported from an issue",
@@ -119,7 +120,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(23);
+    expect(migratedEntries).toHaveLength(24);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

@@ -7439,11 +7439,18 @@ function ChatViewContent(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
+        {/*
+          The panel reads its scope by thread. On a thread-space route the URL names a plan,
+          not a thread, so the active line's ref is passed explicitly; without it the panel
+          falls back to route params and reports no thread. The scope selection itself lives
+          in the persisted diff store, so a remount keeps an exact memory comparison.
+        */}
         <DiffPanel
           key={`${activeThreadKey}:${diffPanelGitStatusResolutionKey}`}
           mode="embedded"
           composerDraftTarget={composerDraftTarget}
           initialGitScope={initialDiffPanelGitScope}
+          threadRef={activeThreadRef}
           workspaceMutationId={workspaceMutationId}
         />
       </Suspense>

@@ -3,9 +3,15 @@ import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY
 
 import type { MapPoint } from "./DagExplorer.logic";
 
-export const MEMORY_GRAPH_NODE_SIZE = { width: 156, height: 44 } as const;
+/**
+ * Sized for a right panel a few hundred pixels wide: a handful of notes must fit
+ * at a zoom where the 12px label still reads, so nodes are compact and sit close.
+ */
+export const MEMORY_GRAPH_NODE_SIZE = { width: 128, height: 40 } as const;
+/** Fit for the memory graph: tight padding, and never zoomed past a readable label size. */
+export const MEMORY_GRAPH_FIT = { padding: 12, maxZoom: 1.25 } as const;
 const TICKS = 300;
-const LINK_DISTANCE = 170;
+const LINK_DISTANCE = 104;
 
 export interface MemoryGraphLayoutNode extends MapPoint {
   readonly id: string;
@@ -58,14 +64,12 @@ export function layoutMemoryLocalGraph(graph: MemoryLocalGraph): MemoryGraphLayo
         .id((node: ForceNode) => node.id)
         .distance(LINK_DISTANCE),
     )
-    .force("charge", forceManyBody().strength(-520))
-    .force("x", forceX(0).strength(0.06))
-    .force("y", forceY(0).strength(0.06))
+    .force("charge", forceManyBody().strength(-220))
+    .force("x", forceX(0).strength(0.09))
+    .force("y", forceY(0).strength(0.09))
     .force(
       "collide",
-      forceCollide(
-        Math.hypot(MEMORY_GRAPH_NODE_SIZE.width, MEMORY_GRAPH_NODE_SIZE.height) / 2 + 10,
-      ),
+      forceCollide(Math.hypot(MEMORY_GRAPH_NODE_SIZE.width, MEMORY_GRAPH_NODE_SIZE.height) / 2 + 4),
     )
     .stop()
     .tick(TICKS);

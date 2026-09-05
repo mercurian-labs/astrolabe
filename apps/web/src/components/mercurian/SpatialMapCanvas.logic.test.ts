@@ -4,6 +4,7 @@ import { minimapPointToWorld, minimapProjection } from "./DagExplorer.logic";
 import {
   fitSpatialMap,
   isAtFit,
+  pointWithinBounds,
   spatialMapChromeVisibility,
   spatialMapViewBox,
   spatialMapWheelTransform,
@@ -26,6 +27,64 @@ describe("fitSpatialMap", () => {
     );
 
     expect(transform.zoom).toBeGreaterThan(1);
+  });
+});
+
+describe("fit options for small labelled graphs", () => {
+  // Four compact memory nodes in a right panel about 360px wide.
+  const graphBounds = { minX: 0, minY: 0, maxX: 330, maxY: 250 } as const;
+  const panelFrame = { width: 360, height: 288 } as const;
+
+  it("spends the frame on the graph instead of DAG padding, so labels stay readable", () => {
+    const stock = fitSpatialMap(graphBounds, panelFrame);
+    const compact = fitSpatialMap(graphBounds, panelFrame, { padding: 12, maxZoom: 1.25 });
+    expect(stock.zoom).toBeLessThan(0.75);
+    expect(compact.zoom).toBeGreaterThanOrEqual(0.95);
+    // A 12px label rendered at the compact fit stays at or above 11px.
+    expect(12 * compact.zoom).toBeGreaterThanOrEqual(11);
+  });
+
+  it("caps a lone node at the readable ceiling instead of the map maximum", () => {
+    const lone = fitSpatialMap({ minX: 0, minY: 0, maxX: 128, maxY: 40 }, panelFrame, {
+      padding: 12,
+      maxZoom: 1.25,
+    });
+    expect(lone.zoom).toBe(1.25);
+    expect(
+      fitSpatialMap({ minX: 0, minY: 0, maxX: 128, maxY: 40 }, panelFrame).zoom,
+    ).toBeGreaterThan(1.25);
+  });
+
+  it("keeps the fitted state and hides the minimap when a surface opts out", () => {
+    const fit = { padding: 12, maxZoom: 1.25 } as const;
+    const fitted = fitSpatialMap(graphBounds, panelFrame, fit);
+    expect(isAtFit(fitted, graphBounds, panelFrame, 0.001, fit)).toBe(true);
+    expect(isAtFit(fitted, graphBounds, panelFrame)).toBe(false);
+    const narrow = { width: 358, height: 288 } as const;
+    const zoomedOut = fitSpatialMap({ minX: 0, minY: 0, maxX: 900, maxY: 700 }, narrow, fit);
+    expect(
+      spatialMapChromeVisibility(
+        zoomedOut,
+        { minX: 0, minY: 0, maxX: 900, maxY: 700 },
+        narrow,
+        0.001,
+        fit,
+      ).minimap,
+    ).toBe(true);
+    expect(
+      spatialMapChromeVisibility(
+        zoomedOut,
+        { minX: 0, minY: 0, maxX: 900, maxY: 700 },
+        narrow,
+        0.001,
+        { ...fit, minimap: false },
+      ),
+    ).toEqual({ fitButton: false, minimap: false });
+  });
+
+  it("knows when a focused point is already visible", () => {
+    expect(pointWithinBounds({ x: 10, y: 10 }, graphBounds)).toBe(true);
+    expect(pointWithinBounds({ x: 331, y: 10 }, graphBounds)).toBe(false);
   });
 });
 

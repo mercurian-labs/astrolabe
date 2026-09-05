@@ -32,7 +32,7 @@ describe("memory merge-home suggestion", () => {
   const noChanges = { marked: [], hand: [], unmarked: null, unreviewedCount: 0 } as const;
   const changes = {
     ...noChanges,
-    unmarked: { diff: "diff --git a/Memory.md b/Memory.md" },
+    unmarked: { id: "unmarked:head:snapshot:paths", diff: "diff --git a/Memory.md b/Memory.md" },
     unreviewedCount: 1,
   };
   const detail = (prState?: "open" | "closed" | "merged", archivedAt?: string) =>

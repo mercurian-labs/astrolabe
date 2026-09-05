@@ -22,6 +22,18 @@ export function memoryReadingKey(reading: MemoryReadingPosition): string {
   }
 }
 
+/** Where a read-only document came from, said plainly and only from its immutable target. */
+export function memoryReadingLabel(reading: MemoryReadingPosition): string {
+  switch (reading.kind) {
+    case "latest":
+      return "latest captured";
+    case "checkpoint":
+      return `checkpoint ${reading.commitId.slice(0, 8)}`;
+    case "turn":
+      return `turn ${reading.turnCount}`;
+  }
+}
+
 export function memoryDocumentIdentity(
   environmentId: EnvironmentId | string,
   target: MemoryDocumentTarget,

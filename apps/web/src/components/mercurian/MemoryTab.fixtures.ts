@@ -133,9 +133,12 @@ export const MEMORY_FIXTURE_DOCUMENTS: ReadonlyArray<MemoryChangedDocument> = [
   }),
 ];
 
+export const MEMORY_FIXTURE_CURATION_VERSION = "curation-v1";
+
 export const MEMORY_FIXTURE_DASHBOARD: MemoryAvailableDashboard = {
   kind: "available",
   position: MEMORY_FIXTURE_POSITION,
+  curationVersion: MEMORY_FIXTURE_CURATION_VERSION,
   documents: MEMORY_FIXTURE_DOCUMENTS,
   amendments: MEMORY_FIXTURE_AMENDMENTS,
   graph: {
@@ -165,6 +168,25 @@ export const MEMORY_FIXTURE_MAP_ONLY_DASHBOARD: MemoryAvailableDashboard = {
   ...MEMORY_FIXTURE_DASHBOARD,
   documents: MEMORY_FIXTURE_DOCUMENTS.filter((entry) => entry.kind === "skill-map"),
   amendments: [MEMORY_FIXTURE_AMENDMENTS[1]!],
+  graph: { nodes: [], edges: [], outsideReferences: [] },
+  unreviewedCount: 1,
+};
+
+/** An amendment that touched only assets or configuration: reviewable, but it draws nothing. */
+export const MEMORY_FIXTURE_ASSET_ONLY_DASHBOARD: MemoryAvailableDashboard = {
+  ...MEMORY_FIXTURE_DASHBOARD,
+  documents: [],
+  amendments: [
+    {
+      id: oid("4d4"),
+      kind: "hand",
+      title: "Swap the diagram asset",
+      turnId: null,
+      reviewed: false,
+      documentIds: [],
+      comparison: comparison(["assets/composer.png"], oid("aaa4"), oid("aaa5")),
+    },
+  ],
   graph: { nodes: [], edges: [], outsideReferences: [] },
   unreviewedCount: 1,
 };

@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 import {
   layoutMemoryLocalGraph,
+  MEMORY_GRAPH_FIT,
   MEMORY_GRAPH_NODE_SIZE,
   memoryGraphComponents,
   memoryGraphEdgeStatusLabel,
@@ -38,7 +39,7 @@ function useMemoryGraphLayout(graph: MemoryLocalGraphData): MemoryGraphLayout {
   return useMemo(() => projectMemoryGraphLayout(geometry, graph), [geometry, graph]);
 }
 
-const truncate = (label: string) => (label.length > 20 ? `${label.slice(0, 19)}…` : label);
+const truncate = (label: string) => (label.length > 18 ? `${label.slice(0, 17)}…` : label);
 
 export function MemoryLocalGraph({
   graph,
@@ -159,6 +160,12 @@ export function MemoryLocalGraph({
       }),
     [layout.edges, selectedDocumentIds],
   );
+  // The camera follows a selection made elsewhere (a document row, an amendment) only when
+  // that node is out of view, so the picture stays put during ordinary review.
+  const focus = useMemo(() => {
+    const node = layout.nodes.find((candidate) => selectedDocumentIds.has(candidate.id));
+    return node === undefined ? null : { id: node.id, point: { x: node.x, y: node.y } };
+  }, [layout.nodes, selectedDocumentIds]);
   if (layout.nodes.length === 0) return null;
   const isolates = components.filter((component) => component.length === 1).length;
   return (
@@ -166,9 +173,12 @@ export function MemoryLocalGraph({
       <SpatialMapCanvas
         ariaLabel="Changed memory notes and their prose links"
         bounds={{ minX: 0, minY: 0, maxX: layout.width, maxY: layout.height }}
-        className="h-64 min-h-56 max-h-[45vh]"
+        className="h-72 min-h-64 max-h-[50vh]"
         edges={edges}
+        fit={MEMORY_GRAPH_FIT}
+        focus={focus}
         nodes={nodes}
+        showMinimap={false}
       />
       <p className="text-[11px] text-muted-foreground">
         {layout.nodes.length} changed {layout.nodes.length === 1 ? "note" : "notes"} ·{" "}
