@@ -143,6 +143,11 @@ export const MERCURIAN_CLASSIFICATIONS: Readonly<
     reason:
       "Search results and actions combine router state, the live Mercurian tree, keybindings, and project creation.",
   },
+  "src/components/mercurian/SessionReconstruction.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Reads the selected reply’s reconstruction record on demand through the active thread space and environment RPC.",
+  },
   "src/components/mercurian/SettingsEmptyPage.tsx": {
     category: "deferred",
     reason:
