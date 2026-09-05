@@ -184,6 +184,10 @@ const makeProviderSessionDirectory = Effect.gen(function* () {
 
   return {
     upsert,
+    delete: (threadId) =>
+      repository
+        .deleteByThreadId({ threadId })
+        .pipe(Effect.mapError(toPersistenceError("ProviderSessionDirectory.delete"))),
     getProvider,
     getBinding,
     listThreadIds,

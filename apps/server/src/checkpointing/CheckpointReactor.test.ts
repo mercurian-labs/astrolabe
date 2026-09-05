@@ -123,6 +123,8 @@ function createProviderServiceHarness(
         ] satisfies ReadonlyArray<ProviderSession>)
       : Effect.succeed([] as ReadonlyArray<ProviderSession>);
   const service: ProviderServiceShape = {
+    startEphemeralSession: () => Effect.die(new Error("Unexpected helper session")),
+    getPersistedResumeCursor: () => Effect.succeed(undefined),
     startSession: () => unsupported(),
     sendTurn: () => unsupported(),
     interruptTurn: () => unsupported(),

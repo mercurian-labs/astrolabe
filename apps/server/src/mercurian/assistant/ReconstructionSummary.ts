@@ -1,6 +1,5 @@
-import { ThreadId, type ModelSelection, type ProviderRuntimeEvent } from "@t3tools/contracts";
+import { type ModelSelection, type ProviderRuntimeEvent } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -36,20 +35,11 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const provider = yield* ProviderService;
     const fs = yield* FileSystem.FileSystem;
-    const crypto = yield* Crypto.Crypto;
     const summarizeChunk = Effect.fn("ReconstructionSummary.chunk")(
       function* (text: string, modelSelection: ModelSelection) {
-        const threadId = ThreadId.make(`reconstruction-${yield* crypto.randomUUIDv4}`);
         const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-reconstruction-" });
         const subscribed = yield* provider.subscribeEvents;
-        const pull = yield* Stream.toPull(
-          subscribed.pipe(Stream.filter((event) => event.threadId === threadId)),
-        );
-        yield* Effect.addFinalizer(() =>
-          provider.stopSession({ threadId }).pipe(Effect.ignoreCause()),
-        );
-        yield* provider.startSession(threadId, {
-          threadId,
+        const session = yield* provider.startEphemeralSession({
           cwd,
           providerInstanceId: modelSelection.instanceId,
           modelSelection,
@@ -58,6 +48,10 @@ export const layer = Layer.effect(
           approvalPolicy: "never",
           isolateProviderSettings: true,
         });
+        const threadId = session.threadId;
+        const pull = yield* Stream.toPull(
+          subscribed.pipe(Stream.filter((event) => event.threadId === threadId)),
+        );
         const guardEvents = yield* provider.subscribeEvents;
         const guard = Stream.runForEach(guardEvents, (event) =>
           event.threadId === threadId && requestsAction(event)
@@ -157,6 +151,14 @@ function requestsAction(event: ProviderRuntimeEvent): boolean {
     event.type === "request.opened" ||
     event.type === "user-input.requested" ||
     (event.type === "item.started" &&
-      !["assistant_message", "reasoning"].includes(event.payload.itemType))
+      [
+        "command_execution",
+        "file_change",
+        "mcp_tool_call",
+        "dynamic_tool_call",
+        "collab_agent_tool_call",
+        "web_search",
+        "image_view",
+      ].includes(event.payload.itemType))
   );
 }

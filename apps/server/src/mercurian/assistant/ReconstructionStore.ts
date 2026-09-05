@@ -4,6 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
@@ -22,7 +23,7 @@ export class ReconstructionStore extends Context.Service<
       messageId: string,
       id: string,
       cleanStart?: boolean,
-    ) => Effect.Effect<void, PersistenceSqlError>;
+    ) => Effect.Effect<void, PersistenceSqlError, Scope.Scope>;
     readonly finish: (
       threadId: ThreadId,
       messageId: string,
@@ -64,29 +65,52 @@ export const layer = Layer.effect(
       }>`SELECT reconstruction_id, status FROM reconstruction_attempts WHERE thread_id = ${threadId} AND (status = 'submitted' OR clean_start = 1) ORDER BY sequence DESC LIMIT 1`;
       return rows[0]?.status === "submitted" ? rows[0].reconstruction_id : null;
     }, Effect.mapError(failure));
-    const prepare = Effect.fn("ReconstructionStore.prepare")(function* (
-      threadId: ThreadId,
-      messageId: string,
-      id: string,
-      cleanStart = false,
-    ) {
-      yield* sql`INSERT INTO reconstruction_attempts (thread_id, message_id, reconstruction_id, clean_start, status) VALUES (${threadId}, ${messageId}, ${id}, ${cleanStart ? 1 : 0}, 'prepared')`;
-      pending.set(key(threadId, messageId), yield* Deferred.make<void>());
-    }, Effect.mapError(failure));
     const finish = Effect.fn("ReconstructionStore.finish")(function* (
       threadId: ThreadId,
       messageId: string,
       submitted: boolean,
     ) {
       const entryKey = key(threadId, messageId);
-      yield* sql`UPDATE reconstruction_attempts SET status = ${submitted ? "submitted" : "failed"} WHERE thread_id = ${threadId} AND message_id = ${messageId} AND status = 'prepared'`.pipe(
-        Effect.ensuring(
-          Effect.gen(function* () {
-            const deferred = pending.get(entryKey);
-            pending.delete(entryKey);
-            if (deferred !== undefined) yield* Deferred.succeed(deferred, undefined);
-          }),
+      const deferred = pending.get(entryKey);
+      yield* Effect.uninterruptibleMask((restore) =>
+        restore(
+          sql`UPDATE reconstruction_attempts SET status = ${submitted ? "submitted" : "failed"} WHERE thread_id = ${threadId} AND message_id = ${messageId} AND status = 'prepared'`,
+        ).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              if (pending.get(entryKey) === deferred) pending.delete(entryKey);
+              if (deferred !== undefined) yield* Deferred.succeed(deferred, undefined);
+            }),
+          ),
         ),
+      );
+    }, Effect.mapError(failure));
+    const prepare = Effect.fn("ReconstructionStore.prepare")(function* (
+      threadId: ThreadId,
+      messageId: string,
+      id: string,
+      cleanStart = false,
+    ) {
+      yield* Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const entryKey = key(threadId, messageId);
+          const deferred = yield* Deferred.make<void>();
+          // Install ownership before the interruptible SQL boundary. Scope closure
+          // releases settlement even when preparation never returns its callbacks.
+          yield* Effect.addFinalizer(() =>
+            pending.get(entryKey) === deferred
+              ? finish(threadId, messageId, false).pipe(Effect.ignoreCause())
+              : Effect.void,
+          );
+          if (pending.has(entryKey))
+            return yield* Effect.die(new Error("Reconstruction attempt already pending"));
+          pending.set(entryKey, deferred);
+          yield* restore(
+            sql`INSERT INTO reconstruction_attempts (thread_id, message_id, reconstruction_id, clean_start, status) VALUES (${threadId}, ${messageId}, ${id}, ${cleanStart ? 1 : 0}, 'prepared')`,
+          ).pipe(
+            Effect.onError(() => finish(threadId, messageId, false).pipe(Effect.ignoreCause())),
+          );
+        }),
       );
     }, Effect.mapError(failure));
     const forMessage = Effect.fn("ReconstructionStore.forMessage")(function* (

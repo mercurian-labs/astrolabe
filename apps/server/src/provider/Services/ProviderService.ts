@@ -47,6 +47,17 @@ export interface ProviderServiceShape {
     input: ProviderSessionStartInput,
   ) => Effect.Effect<ProviderSession, ProviderServiceError>;
 
+  /** Start a fresh helper owned by the calling scope, including its binding. */
+  readonly startEphemeralSession: (
+    input: Omit<ProviderSessionStartInput, "threadId">,
+  ) => Effect.Effect<ProviderSession, ProviderServiceError, Scope.Scope>;
+
+  /** Persisted native cursor for this exact configured instance and driver. */
+  readonly getPersistedResumeCursor: (
+    threadId: ThreadId,
+    instanceId: ProviderInstanceId,
+  ) => Effect.Effect<unknown | undefined, ProviderServiceError>;
+
   /**
    * Send a provider turn.
    */

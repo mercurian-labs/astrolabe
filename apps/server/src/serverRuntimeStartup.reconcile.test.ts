@@ -49,6 +49,8 @@ const makeThread = (
 
 const makeProviderService = (liveThreadIds: ReadonlyArray<ThreadId> = []) =>
   ({
+    startEphemeralSession: () => Effect.die("unused"),
+    getPersistedResumeCursor: () => Effect.die("unused"),
     startSession: () => Effect.die("unused"),
     sendTurn: () => Effect.die("unused"),
     interruptTurn: () => Effect.die("unused"),
@@ -134,6 +136,7 @@ it.effect("marks active running sessions that have persisted resume state", () =
           ),
         ),
       upsert: (binding) => Effect.sync(() => upserts.push(binding)),
+      delete: () => Effect.die("Unexpected helper binding deletion"),
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
       listBindings: () => Effect.die("unused"),
@@ -235,6 +238,7 @@ it.effect("continues marked sessions after activation with provider-specific inp
               firstMarkerCleared ? Deferred.succeed(continuationCleared, undefined) : Effect.void,
             ),
           ),
+        delete: () => Effect.die("Unexpected helper binding deletion"),
         getProvider: () => Effect.die("unused"),
         listThreadIds: () => Effect.die("unused"),
         listBindings: () => Effect.die("unused"),
@@ -358,6 +362,7 @@ it.effect("does not continue archived or deleted marked sessions", () => {
         );
       },
       upsert: () => Effect.void,
+      delete: () => Effect.die("Unexpected helper binding deletion"),
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
       listBindings: () => Effect.die("unused"),
@@ -413,6 +418,7 @@ it.effect("retries continuation preparation before settling a persistent failure
           }),
         ),
       upsert: () => Effect.void,
+      delete: () => Effect.die("Unexpected helper binding deletion"),
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
       listBindings: () => Effect.die("unused"),
@@ -484,6 +490,7 @@ it.effect("reconciles multiple active and archived orphans but skips live sessio
           ),
         ),
       upsert: (binding) => Effect.sync(() => upserts.push(binding)),
+      delete: () => Effect.die("Unexpected helper binding deletion"),
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
       listBindings: () => Effect.die("unused"),
@@ -562,6 +569,7 @@ it.effect(
                   }),
                 ),
         upsert: () => Effect.fail(writeFailure),
+        delete: () => Effect.die("Unexpected helper binding deletion"),
         getProvider: () => Effect.die("unused"),
         listThreadIds: () => Effect.die("unused"),
         listBindings: () => Effect.die("unused"),
@@ -599,6 +607,7 @@ it.effect("retries failed projections and continues after a persistent failure",
     directory: {
       getBinding: () => Effect.succeed(Option.none()),
       upsert: () => Effect.void,
+      delete: () => Effect.die("Unexpected helper binding deletion"),
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
       listBindings: () => Effect.die("unused"),
@@ -648,6 +657,7 @@ it.effect("does not fail startup when the live provider session inventory cannot
     Effect.provideService(ProviderSessionDirectory.ProviderSessionDirectory, {
       getBinding: () => Effect.die("unused"),
       upsert: () => Effect.die("unused"),
+      delete: () => Effect.die("Unexpected helper binding deletion"),
       getProvider: () => Effect.die("unused"),
       listThreadIds: () => Effect.die("unused"),
       listBindings: () => Effect.die("unused"),

@@ -2,6 +2,7 @@ import type { ModelSelection, OrchestrationMessage, OrchestrationThread } from "
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type * as Scope from "effect/Scope";
 
 export interface TurnPreparationInput {
   readonly thread: OrchestrationThread;
@@ -24,7 +25,9 @@ export interface PreparedTurn {
 export class TurnPreparation extends Context.Service<
   TurnPreparation,
   {
-    readonly prepare: (input: TurnPreparationInput) => Effect.Effect<PreparedTurn, object>;
+    readonly prepare: (
+      input: TurnPreparationInput,
+    ) => Effect.Effect<PreparedTurn, object, Scope.Scope>;
   }
 >()("t3/orchestration/Services/TurnPreparation") {}
 

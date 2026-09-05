@@ -67,7 +67,8 @@ type ProviderIntentEvent = Extract<
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
       | "thread.session-stop-requested"
-      | "thread.settled";
+      | "thread.settled"
+      | "thread.deleted";
   }
 >;
 
@@ -680,44 +681,61 @@ const make = Effect.gen(function* () {
       : Effect.void;
 
     let preparedTurn: PreparedTurn | undefined;
+    const prepareTurn = (input: Parameters<typeof turnPreparation.prepare>[0]) =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const prepared = yield* restore(turnPreparation.prepare(input));
+          let submitted = false;
+          yield* Effect.addFinalizer(() =>
+            submitted ? Effect.void : (prepared.onFailed ?? Effect.void).pipe(Effect.ignoreCause()),
+          );
+          return {
+            ...prepared,
+            onSubmitted: Effect.sync(() => {
+              submitted = true;
+            }).pipe(Effect.andThen(prepared.onSubmitted ?? Effect.void)),
+          };
+        }),
+      );
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
-      readonly provider?: ProviderDriverKind;
+      readonly skipResume?: boolean;
     }) =>
       Effect.gen(function* () {
+        const resumeCursor =
+          input?.skipResume === true
+            ? undefined
+            : (input?.resumeCursor ??
+              (yield* providerService.getPersistedResumeCursor(threadId, desiredInstanceId)));
         preparedTurn =
           options?.message === undefined
             ? undefined
-            : yield* turnPreparation.prepare({
+            : yield* prepareTurn({
                 thread,
                 message: options.message,
                 sessionIsFresh: true,
-                contextDisposition: input?.resumeCursor === undefined ? "clean-start" : "resume",
+                contextDisposition: resumeCursor == null ? "clean-start" : "resume",
                 modelSelection: desiredModelSelection,
               });
-        return yield* providerService
-          .startSession(threadId, {
-            threadId,
-            ...(preferredProvider ? { provider: preferredProvider } : {}),
-            providerInstanceId: desiredInstanceId,
-            ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-            ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
-            ...(thread.title ? { title: thread.title } : {}),
-            modelSelection: desiredModelSelection,
-            ...(preparedTurn?.session.skipResume === true ? { skipResume: true } : {}),
-            ...(input?.resumeCursor !== undefined && preparedTurn?.session.skipResume !== true
-              ? { resumeCursor: input.resumeCursor }
-              : {}),
-            ...(preparedTurn?.session.isolateProviderSettings === undefined
-              ? {}
-              : { isolateProviderSettings: preparedTurn.session.isolateProviderSettings }),
-            runtimeMode: desiredRuntimeMode,
-          })
-          .pipe(
-            Effect.onError(() =>
-              (preparedTurn?.onFailed ?? Effect.void).pipe(Effect.ignoreCause()),
-            ),
-          );
+        return yield* providerService.startSession(threadId, {
+          threadId,
+          ...(preferredProvider ? { provider: preferredProvider } : {}),
+          providerInstanceId: desiredInstanceId,
+          ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+          ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
+          ...(thread.title ? { title: thread.title } : {}),
+          modelSelection: desiredModelSelection,
+          ...(input?.skipResume === true || preparedTurn?.session.skipResume === true
+            ? { skipResume: true }
+            : {}),
+          ...(resumeCursor != null && preparedTurn?.session.skipResume !== true
+            ? { resumeCursor }
+            : {}),
+          ...(preparedTurn?.session.isolateProviderSettings === undefined
+            ? {}
+            : { isolateProviderSettings: preparedTurn.session.isolateProviderSettings }),
+          runtimeMode: desiredRuntimeMode,
+        });
       }).pipe(Effect.tap(() => refreshWorkspaceSnapshot));
 
     const bindSessionToThread = (session: ProviderSession) =>
@@ -779,7 +797,7 @@ const make = Effect.gen(function* () {
         preparedTurn =
           options?.message === undefined
             ? undefined
-            : yield* turnPreparation.prepare({
+            : yield* prepareTurn({
                 thread,
                 message: options.message,
                 sessionIsFresh: false,
@@ -812,7 +830,11 @@ const make = Effect.gen(function* () {
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(
-        resumeCursor !== undefined ? { resumeCursor } : undefined,
+        shouldRestartForModelChange
+          ? { skipResume: true }
+          : resumeCursor !== undefined
+            ? { resumeCursor }
+            : undefined,
       );
       yield* Effect.logInfo("provider command reactor restarted provider session", {
         threadId,
@@ -1330,40 +1352,42 @@ const make = Effect.gen(function* () {
       }
     }
 
-    const preparationFiber = yield* buildSendTurnRequestForThread({
-      threadId: event.payload.threadId,
-      message,
-      ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-      ...(event.payload.modelSelection !== undefined
-        ? { modelSelection: event.payload.modelSelection }
-        : {}),
-      interactionMode: event.payload.interactionMode,
-      createdAt: event.payload.createdAt,
-    }).pipe(
-      Effect.map(Option.some),
-      Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
-      Effect.forkScoped,
-    );
+    const preparationFiber = yield* Effect.gen(function* () {
+      const sendTurnRequest = yield* buildSendTurnRequestForThread({
+        threadId: event.payload.threadId,
+        message,
+        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+        ...(event.payload.modelSelection !== undefined
+          ? { modelSelection: event.payload.modelSelection }
+          : {}),
+        interactionMode: event.payload.interactionMode,
+        createdAt: event.payload.createdAt,
+      });
+      yield* Effect.uninterruptibleMask((restore) =>
+        restore(providerService.sendTurn(sendTurnRequest.request)).pipe(
+          Effect.tap(() =>
+            restore(sendTurnRequest.preparedTurn?.onSubmitted ?? Effect.void).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("provider turn submitted but reconstruction bookkeeping failed", {
+                  cause: Cause.pretty(cause),
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
     pendingPreparations.set(event.payload.threadId, preparationFiber);
     if ((preparationStops.get(event.payload.threadId) ?? -1) > event.sequence) {
       yield* Fiber.interrupt(preparationFiber);
     }
-    const sendTurnRequest = yield* Fiber.join(preparationFiber).pipe(
-      Effect.catchCause(() => Effect.succeed(Option.none())),
-      Effect.ensuring(Effect.sync(() => pendingPreparations.delete(event.payload.threadId))),
-    );
-
-    if (Option.isNone(sendTurnRequest)) {
-      return;
-    }
-
-    yield* providerService.sendTurn(sendTurnRequest.value.request).pipe(
-      Effect.tap(() => sendTurnRequest.value.preparedTurn?.onSubmitted ?? Effect.void),
-      Effect.onError(() =>
-        (sendTurnRequest.value.preparedTurn?.onFailed ?? Effect.void).pipe(Effect.ignoreCause()),
+    yield* Fiber.await(preparationFiber).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (pendingPreparations.get(event.payload.threadId) === preparationFiber)
+            pendingPreparations.delete(event.payload.threadId);
+        }),
       ),
-      Effect.catchCause(recoverTurnStartFailure),
-      Effect.forkScoped,
     );
   });
 
@@ -1593,6 +1617,10 @@ const make = Effect.gen(function* () {
       eventType: event.type,
     });
     switch (event.type) {
+      case "thread.deleted":
+        preparationStops.delete(event.payload.threadId);
+        threadModelSelections.delete(event.payload.threadId);
+        return;
       case "thread.meta-updated":
         yield* threadTitleRegenerationWorker.enqueue(event);
         return;
@@ -1662,7 +1690,32 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  const worker = yield* makeDrainableWorker(processDomainEventSafely);
+  // Commands retain their thread order while model preparation on one thread
+  // cannot occupy the environment's dispatcher. Drain includes these tails.
+  const threadCommands = new Map<ThreadId, Fiber.Fiber<void>>();
+  const worker = yield* makeDrainableWorker((event: ProviderIntentEvent) =>
+    Effect.gen(function* () {
+      const previous = threadCommands.get(event.payload.threadId);
+      const token = yield* Effect.gen(function* () {
+        if (previous !== undefined) yield* Fiber.await(previous);
+        if (
+          event.type === "thread.turn-start-requested" &&
+          (preparationStops.get(event.payload.threadId) ?? -1) > event.sequence
+        )
+          return;
+        yield* processDomainEventSafely(event);
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (threadCommands.get(event.payload.threadId) === token)
+              threadCommands.delete(event.payload.threadId);
+          }),
+        ),
+        Effect.forkScoped,
+      );
+      threadCommands.set(event.payload.threadId, token);
+    }),
+  );
 
   const start: ProviderCommandReactorShape["start"] = Effect.fn("start")(function* () {
     const interruptedTitleRegenerations = yield* findInterruptedThreadTitleRegenerations().pipe(
@@ -1684,8 +1737,7 @@ const make = Effect.gen(function* () {
       ) {
         preparationStops.set(event.payload.threadId, event.sequence);
         const preparation = pendingPreparations.get(event.payload.threadId);
-        if (preparation !== undefined) yield* Fiber.interrupt(preparation);
-        if (event.type === "thread.deleted") preparationStops.delete(event.payload.threadId);
+        if (preparation !== undefined) yield* Fiber.interrupt(preparation).pipe(Effect.forkScoped);
       }
       if (
         (event.type === "thread.meta-updated" && event.payload.regenerateTitle === true) ||
@@ -1695,7 +1747,8 @@ const make = Effect.gen(function* () {
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
         event.type === "thread.session-stop-requested" ||
-        event.type === "thread.settled"
+        event.type === "thread.settled" ||
+        event.type === "thread.deleted"
       ) {
         return yield* worker.enqueue(event);
       }
@@ -1735,6 +1788,7 @@ const make = Effect.gen(function* () {
     start,
     drain: Effect.gen(function* () {
       yield* worker.drain;
+      yield* Effect.forEach([...threadCommands.values()], Fiber.await, { discard: true });
       yield* threadTitleRegenerationWorker.drain;
     }),
   } satisfies ProviderCommandReactorShape;

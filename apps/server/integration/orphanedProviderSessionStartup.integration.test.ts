@@ -108,6 +108,8 @@ const startupDependencies = Layer.mergeAll(
   AnalyticsService.layerTest,
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),
   Layer.succeed(ProviderService.ProviderService, {
+    startEphemeralSession: () => Effect.die("unused"),
+    getPersistedResumeCursor: () => Effect.die("unused"),
     startSession: () => Effect.die("unused"),
     sendTurn: () => Effect.die("unused"),
     interruptTurn: () => Effect.die("unused"),

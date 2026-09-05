@@ -28,6 +28,8 @@ import {
 } from "@t3tools/contracts";
 import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCitations";
 import { causeErrorTag } from "@t3tools/shared/observability";
+import * as Crypto from "effect/Crypto";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -249,6 +251,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     options?.issueMcpCredential ?? McpSessionRegistry.issueActiveMcpCredential;
   const revokeMcpCredential =
     options?.revokeMcpCredential ?? McpSessionRegistry.revokeActiveMcpThread;
+  const crypto = yield* Crypto.Crypto.pipe(Effect.provide(NodeCrypto.layer));
   const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   /**
@@ -603,6 +606,16 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     );
   });
 
+  const getPersistedResumeCursor: ProviderServiceMethod<"getPersistedResumeCursor"> = Effect.fn(
+    "getPersistedResumeCursor",
+  )(function* (threadId, instanceId) {
+    const info = yield* registry.getInstanceInfo(instanceId);
+    const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+    return binding?.providerInstanceId === instanceId && binding.provider === info.driverKind
+      ? (binding.resumeCursor ?? undefined)
+      : undefined;
+  });
+
   const startSession: ProviderServiceMethod<"startSession"> = Effect.fn("startSession")(
     function* (threadId, rawInput) {
       const parsed = yield* decodeInputOrValidationError({
@@ -647,6 +660,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         if (
           persistedBinding?.provider === resolvedProvider &&
           persistedBinding.providerInstanceId !== resolvedInstanceId &&
+          input.skipResume !== true &&
           (input.resumeCursor != null || persistedBinding.resumeCursor != null)
         ) {
           const previousInstanceId = yield* requireBindingInstanceId(
@@ -668,7 +682,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           input.skipResume === true
             ? undefined
             : (input.resumeCursor ??
-              (persistedBinding?.providerInstanceId === resolvedInstanceId
+              (persistedBinding?.providerInstanceId === resolvedInstanceId &&
+              persistedBinding.provider === resolvedProvider
                 ? persistedBinding.resumeCursor
                 : undefined));
         const effectiveCwd =
@@ -1070,6 +1085,30 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
+  const startEphemeralSession: ProviderServiceMethod<"startEphemeralSession"> = Effect.fn(
+    "startEphemeralSession",
+  )(function* (input) {
+    const threadId = ThreadId.make(
+      `reconstruction-${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}`,
+    );
+    const instanceId = yield* requireBindingInstanceId(
+      "ProviderService.startEphemeralSession",
+      input,
+    );
+    const adapter = yield* registry.getByInstance(instanceId);
+    // Register before starting: even a partial start without a binding must stop.
+    yield* Effect.addFinalizer(() =>
+      adapter.stopSession(threadId).pipe(
+        Effect.ensuring(clearMcpSession(threadId)),
+        Effect.ensuring(directory.delete(threadId).pipe(Effect.orDie)),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("failed to clean up ephemeral provider session", { threadId, cause }),
+        ),
+      ),
+    );
+    return yield* startSession(threadId, { ...input, threadId, skipResume: true });
+  });
+
   const listSessions: ProviderServiceMethod<"listSessions"> = Effect.fn("listSessions")(
     function* () {
       const currentAdapters = yield* getAdapterEntries;
@@ -1323,6 +1362,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   return {
     startSession,
+    startEphemeralSession,
+    getPersistedResumeCursor,
     sendTurn,
     interruptTurn,
     respondToRequest,

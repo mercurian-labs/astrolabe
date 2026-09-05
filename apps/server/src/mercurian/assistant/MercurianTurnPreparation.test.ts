@@ -57,6 +57,7 @@ const thread = {
 
 interface PreparationOptions {
   readonly parentCommitId?: CommitId;
+  readonly forkParentCommitId?: MercurianCommitId;
   readonly timeline: ReadonlyArray<Record<string, unknown>>;
   readonly ancestors: ReadonlyArray<Record<string, unknown>>;
   readonly memory?: {
@@ -90,6 +91,9 @@ const reconstructionDependencies = Layer.mergeAll(
 const preparationDependencies = (options: PreparationOptions) => {
   const runtime = {
     planId,
+    ...(options.forkParentCommitId === undefined
+      ? {}
+      : { forkParentCommitId: options.forkParentCommitId }),
     lineRootCommitId: MercurianCommitId.make("line-root"),
     threadId,
     homeRepositoryId: MercurianRepositoryId.make("repository"),
@@ -725,6 +729,66 @@ it.effect(
         Layer.provide(
           MercurianTurnPreparationLive,
           Layer.merge(reconstructionDependencies, dependencies),
+        ),
+      ),
+    );
+  },
+);
+
+it.effect("native resume leaves unknown legacy provenance unknown", () => {
+  const dependencies = Layer.mergeAll(
+    preparationDependencies({ timeline: [], ancestors: [] }),
+    Layer.mock(ReconstructionStore)({ current: () => Effect.succeed(null) }),
+    Layer.mock(ReconstructionSummary)({}),
+  );
+  return Effect.gen(function* () {
+    const prepared = yield* (yield* TurnPreparation).prepare({
+      thread,
+      message,
+      sessionIsFresh: true,
+      contextDisposition: "resume",
+    });
+    assert.deepStrictEqual(prepared, { text: message.text, session: {} });
+  }).pipe(
+    Effect.provide(
+      MercurianTurnPreparationLive.pipe(
+        Layer.provide(Layer.merge(reconstructionDependencies, dependencies)),
+      ),
+    ),
+  );
+});
+
+it.effect(
+  "a genuine fork ignores inherited native context and records its own reconstruction",
+  () => {
+    const parent = MercurianCommitId.make("fork-parent");
+    const dependencies = preparationDependencies({
+      forkParentCommitId: parent,
+      timeline: [
+        {
+          _tag: "message",
+          commitId: parent,
+          parents: [],
+          authorKind: "assistant",
+          text: "Selected ancestor",
+        },
+      ],
+      ancestors: [],
+    });
+    return Effect.gen(function* () {
+      const prepared = yield* (yield* TurnPreparation).prepare({
+        thread,
+        message,
+        sessionIsFresh: true,
+        contextDisposition: "resume",
+      });
+      assert.ok(prepared.text.includes("Selected ancestor"));
+      assert.deepStrictEqual(prepared.session, { skipResume: true });
+      assert.ok(prepared.onSubmitted);
+    }).pipe(
+      Effect.provide(
+        MercurianTurnPreparationLive.pipe(
+          Layer.provide(Layer.merge(reconstructionDependencies, dependencies)),
         ),
       ),
     );

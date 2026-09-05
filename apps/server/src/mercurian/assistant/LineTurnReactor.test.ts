@@ -9,7 +9,7 @@ import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { make as makeSnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
 import { makeMemoryPosition, type MemoryLineContext } from "../memory/MemoryPosition.ts";
 import { TurnId, type OrchestrationCheckpointSummary } from "@t3tools/contracts";
-import { ReconstructionStore } from "./ReconstructionStore.ts";
+import { ReconstructionStore, layer as reconstructionStoreLayer } from "./ReconstructionStore.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -25,6 +25,11 @@ import {
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import { runMigrations } from "../persistence/Migrations.ts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -110,6 +115,7 @@ interface HarnessState {
 const makeHarness = (options?: {
   readonly persistReplies?: boolean;
   readonly upstream?: boolean;
+  readonly reconstructionStore?: ReconstructionStore["Service"];
   readonly pending?: boolean;
   readonly forkParent?: CommitId;
   readonly unreachableRepositories?: ReadonlyArray<string>;
@@ -353,9 +359,11 @@ const makeHarness = (options?: {
       Layer.mock(SlotRegistry.SlotRegistry)({ lease: () => Effect.succeed(Option.none()) }),
       Layer.mock(SlotService.SlotService)({ release: () => Effect.succeed(false) }),
       Layer.mock(ThreadDeletionReactor.ThreadDeletionReactor)({ drainThrough: () => Effect.void }),
-      Layer.mock(ReconstructionStore)({
-        forMessage: (_thread, messageId) => Effect.succeed(`reconstruction:${messageId}`),
-      }),
+      options?.reconstructionStore === undefined
+        ? Layer.mock(ReconstructionStore)({
+            forMessage: (_thread, messageId) => Effect.succeed(`reconstruction:${messageId}`),
+          })
+        : Layer.succeed(ReconstructionStore, options.reconstructionStore),
       PlanTurnRegistry.layer,
       NodeServices.layer,
     );
@@ -937,6 +945,73 @@ describe("LineTurnReactor", () => {
         assert.strictEqual(settled.interrupted, true);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
+  );
+
+  it.effect(
+    "deletion settlement releases a cancelled reconstruction and the domain loop continues",
+    () =>
+      Effect.gen(function* () {
+        yield* runMigrations();
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO projects (project_id, name, created_at, updated_at) VALUES ('project', 'Project', '', '')`;
+        yield* sql`INSERT INTO commit_histories (history_id, created_at) VALUES ('history', '')`;
+        yield* sql`INSERT INTO plans (plan_id, project_id, history_id, title, created_at, updated_at) VALUES (${planId}, 'project', 'history', 'Plan', '', '')`;
+        const store = yield* ReconstructionStore;
+        yield* store.save({
+          id: "pending",
+          planId,
+          version: 1,
+          sessionStartMessageCommitId: MercurianCommitId.make(messageId),
+          throughCommitId: null,
+          verbatimFromCommitId: MercurianCommitId.make(messageId),
+          compacted: null,
+        });
+        const prepared = yield* Deferred.make<void>();
+        const settling = yield* Deferred.make<void>();
+        const owner = yield* Effect.gen(function* () {
+          yield* store.prepare(threadId, messageId, "pending", true);
+          yield* Deferred.succeed(prepared, undefined);
+          return yield* Effect.never;
+        }).pipe(Effect.scoped, Effect.forkScoped);
+        yield* Deferred.await(prepared);
+        const harness = yield* makeHarness({
+          reconstructionStore: {
+            ...store,
+            forMessage: (threadId, messageId) =>
+              Deferred.succeed(settling, undefined).pipe(
+                Effect.andThen(store.forMessage(threadId, messageId)),
+              ),
+          },
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* LineTurnReactor;
+          yield* startTurn(harness, reactor);
+          yield* harness.publishDomain({
+            ...baseEvent,
+            sequence: 2,
+            type: "thread.deleted",
+            payload: { threadId, deletedAt: now },
+          } as OrchestrationEvent);
+          yield* Deferred.await(settling);
+          yield* harness.publishDomain({
+            ...baseEvent,
+            sequence: 3,
+            type: "thread.meta-updated",
+            payload: { threadId, title: "Later event", updatedAt: now },
+          } as OrchestrationEvent);
+          yield* Fiber.interrupt(owner);
+          yield* reactor.drainThrough(3);
+          const settled = yield* Queue.take(harness.assistantReceipts);
+          assert.strictEqual(settled.interrupted, true);
+          assert.strictEqual(settled.reconstructionId, undefined);
+          assert.strictEqual(harness.state.runtime, null);
+        }).pipe(Effect.scoped, Effect.provide(harness.layer));
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          reconstructionStoreLayer.pipe(Layer.provideMerge(NodeSqliteClient.layerMemory())),
+        ),
+      ),
   );
 
   it.effect("upstream project threads produce no commits", () =>

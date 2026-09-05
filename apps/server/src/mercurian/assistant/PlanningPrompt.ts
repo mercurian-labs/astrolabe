@@ -159,3 +159,104 @@ function renderTranscript(input: {
   return { renderedEntries, planSection, specSection };
 }
 
+/**
+ * A fresh session's first turn: appendix, then the transcript when the
+ * conversation predates this session, then the message being replied to. A
+ * continued session sends the message alone.
+ */
+export function composeFirstTurnInput(input: {
+  readonly appendix: string;
+  readonly preamble: string | null;
+  readonly message: string;
+  readonly memoryMentionStanza?: string | null | undefined;
+}): string {
+  let composed: string;
+  if (/^\s*[/$]\S+/.test(input.message)) {
+    const context = [
+      "Context for this conversation (it predates this session):",
+      input.appendix,
+      ...(input.preamble === null ? [] : [input.preamble]),
+    ].join("\n\n");
+    composed = [input.message, context].join("\n\n---\n\n");
+  } else {
+    composed = [
+      input.appendix,
+      ...(input.preamble === null ? [] : [input.preamble]),
+      `Reply to this message:\n${input.message}`,
+    ].join("\n\n---\n\n");
+  }
+  return appendMemoryMentionStanza(composed, input.memoryMentionStanza ?? null);
+}
+
+export interface MemoryMentionResolution {
+  readonly name: string;
+  readonly path?: string | undefined;
+  readonly referencedBy?: ReadonlyArray<string> | undefined;
+}
+
+export function memoryMentionResolutionStanza(
+  resolutions: ReadonlyArray<MemoryMentionResolution>,
+): string | null {
+  if (resolutions.length === 0) return null;
+  return [
+    "Memory notes mentioned in this message:",
+    ...resolutions.map((resolution) =>
+      resolution.path !== undefined
+        ? `- ${resolution.name}: ${resolution.path}`
+        : `- ${resolution.name}: not yet written — linked from ${(resolution.referencedBy ?? []).join(", ")}`,
+    ),
+  ].join("\n");
+}
+
+export function appendMemoryMentionStanza(input: string, stanza: string | null): string {
+  return stanza === null ? input : `${input}\n\n---\n\n${stanza}`;
+}
+
+/** Keeps a chronological suffix; its index travels with the input as evidence. */
+export function partitionReconstruction(input: {
+  readonly entries: ReadonlyArray<TranscriptEntry>;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
+  readonly reservedChars: number;
+  readonly summaryChars: number;
+  readonly maxChars: number;
+}) {
+  const { renderedEntries, planSection, specSection } = renderTranscript(input);
+  const available =
+    input.maxChars -
+    input.reservedChars -
+    planSection.length -
+    specSection.length -
+    TRANSCRIPT_FRAMING_MARGIN;
+  const all = renderedEntries.join("\n\n");
+  let firstKept = 0;
+  if (all.length > available) {
+    let used = 0;
+    firstKept = renderedEntries.length;
+    for (let index = renderedEntries.length - 1; index >= 0; index--) {
+      const size = renderedEntries[index]!.length + 2;
+      if (used + size > available - input.summaryChars) break;
+      firstKept = index;
+      used += size;
+    }
+    // An answer without its opening query is not a verbatim turn.
+    while (firstKept < input.entries.length) {
+      const entry = input.entries[firstKept]!;
+      if (entry.kind === "message" && entry.author === "human") break;
+      firstKept++;
+    }
+  }
+  return {
+    firstKept,
+    olderText: renderedEntries.slice(0, firstKept).join("\n\n"),
+    render: (summary: string | null) =>
+      [
+        "This session starts with the following recorded conversation.",
+        ...(summary === null ? [] : ["Older history, summarized:", summary]),
+        "Recent conversation, verbatim:",
+        renderedEntries.slice(firstKept).join("\n\n"),
+        specSection,
+        planSection,
+      ].join("\n\n"),
+  };
+}
