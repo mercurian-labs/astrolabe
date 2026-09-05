@@ -802,8 +802,8 @@ const make = Effect.gen(function* () {
 
   // ProviderRuntimeIngestion creates placeholder checkpoints on turn.diff.updated
   // events from the Codex runtime. Plain threads replace the placeholder with a
-  // real git checkpoint immediately; coding sessions leave it missing until the
-  // settled capture runs on turn completion.
+  // real git checkpoint immediately; a thread on a line leaves it missing until
+  // the settled capture runs on turn completion.
   const captureCheckpointFromPlaceholder = Effect.fn("captureCheckpointFromPlaceholder")(function* (
     event: Extract<OrchestrationEvent, { type: "thread.turn-diff-completed" }>,
   ) {
@@ -822,10 +822,10 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const codingSession = yield* codingSessions.getByThreadId(threadId);
-    if (Option.isSome(codingSession)) {
+    const line = yield* threadLines.resolve(threadId);
+    if (Option.isSome(line)) {
       yield* Effect.logDebug(
-        "checkpoint placeholder left unsettled: coding session settles on turn completion",
+        "checkpoint placeholder left unsettled: a line's turn settles on turn completion",
         { threadId, turnId },
       );
       return;
@@ -1156,7 +1156,7 @@ const make = Effect.gen(function* () {
     }
 
     // A mid-turn provider diff creates a missing placeholder. Plain threads replace
-    // it immediately; coding sessions keep the marker and settle on turn.completed.
+    // it immediately; a thread on a line keeps the marker and settles on turn.completed.
     if (event.type === "thread.turn-diff-completed") {
       yield* captureCheckpointFromPlaceholder(event).pipe(
         Effect.catch((error) =>
