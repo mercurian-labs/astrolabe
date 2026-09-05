@@ -6139,9 +6139,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Import without storage",
+            });
             const error = yield* Effect.flip(
               client[MERCURIAN_WS_METHODS.importPlan]({
-                projectId: MercurianProjectId.make("project"),
+                projectId: project.projectId,
                 connectionId: TrackerConnectionId.make("tracker"),
                 issue: {
                   id: TrimmedNonEmptyString.make("M-1"),
