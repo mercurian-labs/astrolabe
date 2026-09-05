@@ -316,6 +316,7 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const turnPreparation = yield* TurnPreparation;
   const pendingPreparations = new Map<ThreadId, Fiber.Fiber<unknown, unknown>>();
+  const preparationStops = new Map<ThreadId, number>();
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -1344,6 +1345,9 @@ const make = Effect.gen(function* () {
       Effect.forkScoped,
     );
     pendingPreparations.set(event.payload.threadId, preparationFiber);
+    if ((preparationStops.get(event.payload.threadId) ?? -1) > event.sequence) {
+      yield* Fiber.interrupt(preparationFiber);
+    }
     const sendTurnRequest = yield* Fiber.join(preparationFiber).pipe(
       Effect.catchCause(() => Effect.succeed(Option.none())),
       Effect.ensuring(Effect.sync(() => pendingPreparations.delete(event.payload.threadId))),
@@ -1609,6 +1613,8 @@ const make = Effect.gen(function* () {
         yield* processTurnStartRequested(event);
         return;
       case "thread.turn-interrupt-requested":
+        if ((preparationStops.get(event.payload.threadId) ?? -1) <= event.sequence)
+          preparationStops.delete(event.payload.threadId);
         yield* processTurnInterruptRequested(event);
         return;
       case "thread.approval-response-requested":
@@ -1618,6 +1624,8 @@ const make = Effect.gen(function* () {
         yield* processUserInputResponseRequested(event);
         return;
       case "thread.session-stop-requested":
+        if ((preparationStops.get(event.payload.threadId) ?? -1) <= event.sequence)
+          preparationStops.delete(event.payload.threadId);
         yield* processSessionStopRequested(event);
         return;
       case "thread.settled": {
@@ -1674,8 +1682,10 @@ const make = Effect.gen(function* () {
         event.type === "thread.session-stop-requested" ||
         event.type === "thread.deleted"
       ) {
+        preparationStops.set(event.payload.threadId, event.sequence);
         const preparation = pendingPreparations.get(event.payload.threadId);
         if (preparation !== undefined) yield* Fiber.interrupt(preparation);
+        if (event.type === "thread.deleted") preparationStops.delete(event.payload.threadId);
       }
       if (
         (event.type === "thread.meta-updated" && event.payload.regenerateTitle === true) ||

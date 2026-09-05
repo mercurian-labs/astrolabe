@@ -1,3 +1,4 @@
+import * as Queue from "effect/Queue";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -859,72 +860,60 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.runtimeMode).toBe("approval-required");
   });
 
-  it("prepares fresh and continued turns and can suppress resume on restart", async () => {
-    const dispositions: string[] = [];
-    const submitted: string[] = [];
-    const submittedThird = Effect.runSync(Deferred.make<void>());
-    const harness = await createHarness({
-      prepareTurn: ({ message, sessionIsFresh, contextDisposition }) =>
-        Effect.sync(() => {
-          dispositions.push(contextDisposition ?? "missing");
-          return {
-            onSubmitted: Effect.sync(() => {
-              submitted.push(message.text);
-            }).pipe(
-              Effect.andThen(
-                message.text === "three"
-                  ? Deferred.succeed(submittedThird, undefined).pipe(Effect.asVoid)
-                  : Effect.void,
-              ),
-            ),
-            text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
-            session: { skipResume: true },
-          };
-        }),
-    });
-    const startTurn = (suffix: string) =>
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make(`cmd-turn-preparation-${suffix}`),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId(`message-preparation-${suffix}`),
-          role: "user",
-          text: suffix,
-          attachments: [],
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: "2026-01-01T00:00:00.000Z",
-      });
-
-    await Effect.runPromise(startTurn("one"));
-    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
-    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "fresh:one" });
-
-    await Effect.runPromise(startTurn("two"));
-    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
-    expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({ input: "continued:two" });
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.meta.update",
-        commandId: CommandId.make("cmd-turn-preparation-move"),
-        threadId: ThreadId.make("thread-1"),
-        worktreePath: "/tmp/provider-project-moved",
+  effectIt.effect(
+    "prepares fresh, continued, and resumed turns and acknowledges each submitted input",
+    () =>
+      Effect.gen(function* () {
+        const dispositions: string[] = [];
+        const submitted = yield* Queue.unbounded<string>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            prepareTurn: ({ message, sessionIsFresh, contextDisposition }) =>
+              Effect.sync(() => {
+                dispositions.push(contextDisposition ?? "missing");
+                return {
+                  text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
+                  session: { skipResume: true },
+                  onSubmitted: Queue.offer(submitted, message.text).pipe(Effect.asVoid),
+                };
+              }),
+          }),
+        );
+        const startTurn = (suffix: string) =>
+          harness.engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make(`cmd-turn-preparation-${suffix}`),
+            threadId: ThreadId.make("thread-1"),
+            message: {
+              messageId: asMessageId(`message-preparation-${suffix}`),
+              role: "user",
+              text: suffix,
+              attachments: [],
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+        yield* startTurn("one");
+        expect(yield* Queue.take(submitted)).toBe("one");
+        expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "fresh:one" });
+        yield* startTurn("two");
+        expect(yield* Queue.take(submitted)).toBe("two");
+        expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({ input: "continued:two" });
+        yield* harness.engine.dispatch({
+          type: "thread.meta.update",
+          commandId: CommandId.make("cmd-turn-preparation-move"),
+          threadId: ThreadId.make("thread-1"),
+          worktreePath: "/tmp/provider-project-moved",
+        });
+        yield* startTurn("three");
+        expect(yield* Queue.take(submitted)).toBe("three");
+        expect(dispositions).toEqual(["clean-start", "continuation", "resume"]);
+        expect(harness.startSession).toHaveBeenCalledTimes(2);
+        expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
+        expect(harness.sendTurn.mock.calls[2]?.[0]).toMatchObject({ input: "fresh:three" });
       }),
-    );
-    await Effect.runPromise(startTurn("three"));
-    await waitFor(() => harness.sendTurn.mock.calls.length === 3);
-
-    await harness.drain();
-    expect(dispositions).toEqual(["clean-start", "continuation", "resume"]);
-    await Effect.runPromise(Deferred.await(submittedThird));
-    expect(submitted).toEqual(["one", "two", "three"]);
-    expect(harness.startSession).toHaveBeenCalledTimes(2);
-    expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
-    expect(harness.sendTurn.mock.calls[2]?.[0]).toMatchObject({ input: "fresh:three" });
-  });
+  );
 
   it("starts a multi-root provider with every additional workspace member", async () => {
     const harness = await createHarness({
@@ -3052,6 +3041,46 @@ describe("ProviderCommandReactor", () => {
       },
     });
   });
+
+  effectIt.effect("cancels preparation before the provider turn starts", () =>
+    Effect.gen(function* () {
+      const preparing = yield* Deferred.make<void>();
+      const cancelled = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          prepareTurn: () =>
+            Deferred.succeed(preparing, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.ensuring(Deferred.succeed(cancelled, undefined)),
+            ),
+        }),
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("prepare-cancel-start"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("prepare-cancel-message"),
+          role: "user",
+          text: "rebuild",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(preparing);
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("prepare-cancel-stop"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(cancelled);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+    }),
+  );
 
   it("reacts to thread.turn.interrupt-requested by calling provider interrupt", async () => {
     const harness = await createHarness();

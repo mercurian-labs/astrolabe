@@ -18,6 +18,8 @@ export class ReconstructionError extends Schema.TaggedErrorClass<ReconstructionE
   { message: Schema.String },
 ) {}
 
+const isReconstructionError = Schema.is(ReconstructionError);
+
 export class ReconstructionSummary extends Context.Service<
   ReconstructionSummary,
   {
@@ -83,9 +85,13 @@ export const layer = Layer.effect(
           .pipe(Effect.raceFirst(guard));
         let output = "";
         let buffered: ProviderRuntimeEvent[] = [];
+        let index = 0;
         while (true) {
-          if (buffered.length === 0) buffered = [...(yield* pull)];
-          const event = buffered.shift()!;
+          if (index === buffered.length) {
+            buffered = [...(yield* pull)];
+            index = 0;
+          }
+          const event = buffered[index++]!;
           if (event.turnId !== undefined && event.turnId !== sent.turnId) continue;
           if (requestsAction(event)) {
             return yield* new ReconstructionError({
@@ -137,7 +143,7 @@ export const layer = Layer.effect(
         });
       },
       Effect.mapError((cause) =>
-        Schema.is(ReconstructionError)(cause)
+        isReconstructionError(cause)
           ? cause
           : new ReconstructionError({ message: "Could not prepare the history summary." }),
       ),

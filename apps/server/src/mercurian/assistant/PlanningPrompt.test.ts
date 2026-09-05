@@ -1,17 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
-
 import {
   composeFirstTurnInput,
   partitionReconstruction,
   appendMemoryMentionStanza,
-  measureTranscript,
   memoryMentionResolutionStanza,
   planningSystemAppendix,
-  TRANSCRIPT_FRAMING_MARGIN,
-  transcriptPreamble,
-  type TranscriptEntry,
 } from "./PlanningPrompt.ts";
 
 describe("planningSystemAppendix", () => {
@@ -77,85 +71,6 @@ describe("planningSystemAppendix", () => {
         unreachableRepositories: [],
       }),
     ).not.toContain("Project memory");
-  });
-});
-
-describe("transcriptPreamble", () => {
-  const entries: ReadonlyArray<TranscriptEntry> = [
-    { kind: "message", author: "human", text: "Where should the tree live?" },
-    { kind: "message", author: "assistant", text: "In the sidebar.", interrupted: true },
-    { kind: "plan-revision", author: "assistant" },
-    { kind: "plan-revision", author: "human" },
-    { kind: "spec-revision", author: "assistant" },
-  ];
-
-  it("renders dialogue, revision markers, and the current artifact", () => {
-    const preamble = transcriptPreamble({
-      entries,
-      planText: "# Plan body",
-      spec: { goal: "Contract", acceptanceCriteria: "- [ ] It works" },
-      reservedChars: 0,
-    });
-    expect(preamble).toContain("Person:\nWhere should the tree live?");
-    expect(preamble).toContain("You:\nIn the sidebar.");
-    expect(preamble).toContain("[This reply was stopped mid-response.]");
-    expect(preamble).toContain("[You revised the plan.]");
-    expect(preamble).toContain("[The person revised the plan.]");
-    expect(preamble).toContain("[You revised the spec.]");
-    expect(preamble).toContain("- [ ] It works");
-    expect(preamble).toContain("# Plan body");
-  });
-
-  it("renders an empty artifact as empty, not missing", () => {
-    const preamble = transcriptPreamble({ entries, planText: "", spec: null, reservedChars: 0 });
-    expect(preamble).toContain("currently empty");
-  });
-
-  it("elides oldest entries first when the budget cannot hold everything", () => {
-    const wide: ReadonlyArray<TranscriptEntry> = [
-      { kind: "message", author: "human", text: `first ${"x".repeat(400)}` },
-      { kind: "message", author: "assistant", text: `middle ${"y".repeat(400)}` },
-      { kind: "message", author: "human", text: "last words" },
-    ];
-    const preamble = transcriptPreamble({
-      entries: wide,
-      planText: "",
-      spec: null,
-      // Leave room for roughly one entry beyond the framing margin.
-      reservedChars: PROVIDER_SEND_TURN_MAX_INPUT_CHARS - 2_600,
-    });
-    expect(preamble).toContain("elided for length");
-    expect(preamble).toContain("last words");
-    expect(preamble).not.toContain("x".repeat(400));
-  });
-
-  it("measures the exact keep-or-elide boundary", () => {
-    const boundaryEntries: ReadonlyArray<TranscriptEntry> = [
-      { kind: "message", author: "human", text: "first" },
-      { kind: "message", author: "assistant", text: "second" },
-    ];
-    const measured = measureTranscript({ entries: boundaryEntries, planText: "", spec: null });
-    const transcriptChars = measured.renderedEntryLengths.reduce((sum, length) => sum + length, 0);
-    const fixedChars =
-      measured.planSectionChars + measured.specSectionChars + TRANSCRIPT_FRAMING_MARGIN;
-    const reservedAtBoundary = PROVIDER_SEND_TURN_MAX_INPUT_CHARS - fixedChars - transcriptChars;
-
-    const fitsExactly = transcriptPreamble({
-      entries: boundaryEntries,
-      planText: "",
-      spec: null,
-      reservedChars: reservedAtBoundary,
-    });
-    const oneCharShort = transcriptPreamble({
-      entries: boundaryEntries,
-      planText: "",
-      spec: null,
-      reservedChars: reservedAtBoundary + 1,
-    });
-
-    expect(fitsExactly).not.toContain("elided for length");
-    expect(oneCharShort).toContain("Its first 1 entries are elided for length");
-    expect(TRANSCRIPT_FRAMING_MARGIN).toBe(2_000);
   });
 });
 

@@ -162,6 +162,9 @@ describe("coding-session contracts", () => {
   });
 });
 
+const decodeReconstruction = Schema.decodeUnknownSync(PlanReconstruction);
+const encodeReconstruction = Schema.encodeSync(PlanReconstruction);
+
 describe("session reconstruction evidence", () => {
   const record = {
     id: "record",
@@ -173,18 +176,18 @@ describe("session reconstruction evidence", () => {
     compacted: { throughCommitId: "parent", summary: "\n Exact rendition. \n" },
   };
   it("preserves summary whitespace through encoding and decoding", () => {
-    const decoded = Schema.decodeUnknownSync(PlanReconstruction)(record);
-    expect(Schema.encodeSync(PlanReconstruction)(decoded)).toEqual(record);
+    const decoded = decodeReconstruction(record);
+    expect(encodeReconstruction(decoded)).toEqual(record);
   });
   it("requires both the rendition and its historical endpoint", () => {
     expect(() =>
-      Schema.decodeUnknownSync(PlanReconstruction)({
+      decodeReconstruction({
         ...record,
         compacted: { summary: "summary" },
       }),
     ).toThrow();
     expect(() =>
-      Schema.decodeUnknownSync(PlanReconstruction)({
+      decodeReconstruction({
         ...record,
         compacted: { throughCommitId: "parent" },
       }),

@@ -690,3 +690,43 @@ it.effect(
     );
   },
 );
+
+it.effect(
+  "refuses oversized mandatory artifacts before making a summary or saving evidence",
+  () => {
+    const parent = CommitId.make("root");
+    const dependencies = Layer.mergeAll(
+      preparationDependencies({
+        parentCommitId: parent,
+        planText: "x".repeat(130_000),
+        ancestors: [],
+        timeline: [
+          {
+            _tag: "message",
+            commitId: parent,
+            parents: [],
+            authorKind: "human",
+            text: "Earlier question",
+          },
+        ],
+      }),
+      Layer.mock(ReconstructionStore)({ save: () => Effect.die("Must not record unsent context") }),
+      Layer.mock(ReconstructionSummary)({
+        summarize: () => Effect.die("Must reject before summarizing"),
+      }),
+    );
+    return Effect.gen(function* () {
+      const result = yield* Effect.result(
+        (yield* TurnPreparation).prepare({ thread, message, sessionIsFresh: true }),
+      );
+      assert.strictEqual(result._tag, "Failure");
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MercurianTurnPreparationLive,
+          Layer.merge(reconstructionDependencies, dependencies),
+        ),
+      ),
+    );
+  },
+);

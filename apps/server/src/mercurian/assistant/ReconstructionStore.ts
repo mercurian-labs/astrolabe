@@ -21,6 +21,7 @@ export class ReconstructionStore extends Context.Service<
       threadId: ThreadId,
       messageId: string,
       id: string,
+      cleanStart?: boolean,
     ) => Effect.Effect<void, PersistenceSqlError>;
     readonly finish: (
       threadId: ThreadId,
@@ -34,6 +35,10 @@ export class ReconstructionStore extends Context.Service<
   }
 >()("t3/mercurian/assistant/ReconstructionStore") {}
 
+const recordJson = Schema.fromJsonString(PlanReconstruction);
+const decodeRecord = Schema.decodeUnknownEffect(recordJson);
+const encodeRecord = Schema.encodeEffect(recordJson);
+
 export const layer = Layer.effect(
   ReconstructionStore,
   Effect.gen(function* () {
@@ -46,29 +51,26 @@ export const layer = Layer.effect(
       const rows = yield* sql<{
         record_json: string;
       }>`SELECT record_json FROM session_reconstructions WHERE plan_id = ${planId} AND reconstruction_id = ${id}`;
-      return rows[0] === undefined
-        ? null
-        : yield* Schema.decodeUnknownEffect(Schema.fromJsonString(PlanReconstruction))(
-            rows[0].record_json,
-          );
+      return rows[0] === undefined ? null : yield* decodeRecord(rows[0].record_json);
     }, Effect.mapError(failure));
     const save = Effect.fn("ReconstructionStore.save")(function* (record: PlanReconstruction) {
-      const json = yield* Schema.encodeEffect(Schema.fromJsonString(PlanReconstruction))(record);
+      const json = yield* encodeRecord(record);
       yield* sql`INSERT INTO session_reconstructions (reconstruction_id, plan_id, record_json) VALUES (${record.id}, ${record.planId}, ${json})`;
     }, Effect.mapError(failure));
     const current = Effect.fn("ReconstructionStore.current")(function* (threadId: ThreadId) {
       const rows = yield* sql<{
         reconstruction_id: string;
         status: string;
-      }>`SELECT reconstruction_id, status FROM reconstruction_attempts WHERE thread_id = ${threadId} ORDER BY sequence DESC LIMIT 1`;
+      }>`SELECT reconstruction_id, status FROM reconstruction_attempts WHERE thread_id = ${threadId} AND (status = 'submitted' OR clean_start = 1) ORDER BY sequence DESC LIMIT 1`;
       return rows[0]?.status === "submitted" ? rows[0].reconstruction_id : null;
     }, Effect.mapError(failure));
     const prepare = Effect.fn("ReconstructionStore.prepare")(function* (
       threadId: ThreadId,
       messageId: string,
       id: string,
+      cleanStart = false,
     ) {
-      yield* sql`INSERT INTO reconstruction_attempts (thread_id, message_id, reconstruction_id, status) VALUES (${threadId}, ${messageId}, ${id}, 'prepared')`;
+      yield* sql`INSERT INTO reconstruction_attempts (thread_id, message_id, reconstruction_id, clean_start, status) VALUES (${threadId}, ${messageId}, ${id}, ${cleanStart ? 1 : 0}, 'prepared')`;
       pending.set(key(threadId, messageId), yield* Deferred.make<void>());
     }, Effect.mapError(failure));
     const finish = Effect.fn("ReconstructionStore.finish")(function* (

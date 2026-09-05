@@ -16,6 +16,7 @@ export default Effect.gen(function* () {
       thread_id TEXT NOT NULL,
       message_id TEXT NOT NULL,
       reconstruction_id TEXT NOT NULL REFERENCES session_reconstructions(reconstruction_id) ON DELETE CASCADE,
+      clean_start INTEGER NOT NULL CHECK (clean_start IN (0, 1)),
       status TEXT NOT NULL CHECK (status IN ('prepared', 'submitted', 'failed')),
       UNIQUE(thread_id, message_id)
     )

@@ -112,9 +112,12 @@ export const make = Effect.gen(function* () {
         input.sessionIsFresh &&
         input.thread.messages.length === 1 &&
         runtime.value.forkParentCommitId !== undefined;
-      const attach = Effect.fn("MercurianTurnPreparation.attach")(function* (id: string | null) {
+      const attach = Effect.fn("MercurianTurnPreparation.attach")(function* (
+        id: string | null,
+        cleanStart = false,
+      ) {
         if (id === null) return {};
-        yield* reconstructions.prepare(input.thread.id, input.message.id, id);
+        yield* reconstructions.prepare(input.thread.id, input.message.id, id, cleanStart);
         return {
           onSubmitted: reconstructions.finish(input.thread.id, input.message.id, true),
           onFailed: reconstructions.finish(input.thread.id, input.message.id, false),
@@ -153,111 +156,8 @@ export const make = Effect.gen(function* () {
           return yield* new ReconstructionError({
             message: "This merged history has no recorded reconstruction rendition.",
           });
-        historyPath.unshift(item);
+        historyPath.push(item);
         cursor = item.parents[0];
       }
+      historyPath.reverse();
       const sources = historyPath.flatMap(
-        (item): ReadonlyArray<{ commitId: MercurianCommitId; entry: TranscriptEntry }> => {
-          if (item._tag === "coding-session") return [];
-          return [
-            {
-              commitId: MercurianCommitId.make(item.commitId),
-              entry:
-                item._tag === "message"
-                  ? {
-                      kind: "message",
-                      author: item.authorKind,
-                      text: item.text,
-                      ...(item.interrupted === undefined ? {} : { interrupted: item.interrupted }),
-                    }
-                  : { kind: item._tag, author: item.authorKind },
-            },
-          ];
-        },
-      );
-      const entries = sources.map((source) => source.entry);
-      const repositoryNames = new Map(
-        (runtime.value.repositories ?? []).map((repository) => [
-          String(repository.repositoryId),
-          repository.repositoryName,
-        ]),
-      );
-      const repositories = (input.thread.workspaceMembers ?? []).map((member) => ({
-        name: repositoryNames.get(String(member.repositoryId)) ?? String(member.repositoryId),
-        path: member.worktreePath,
-      }));
-      const memorySource = yield* memorySources
-        .getResolvedSource(detail.plan.projectId)
-        .pipe(Effect.orElseSucceed(() => Option.none()));
-      const memoryMember = Option.isNone(memorySource)
-        ? undefined
-        : input.thread.workspaceMembers?.find(
-            (member) => member.repositoryId === memorySource.value.repositoryId,
-          );
-      const memoryRoot =
-        Option.isSome(memorySource) && memoryMember !== undefined
-          ? {
-              name: memorySource.value.repositoryName,
-              path: path.join(memoryMember.worktreePath, memorySource.value.subpath ?? ""),
-            }
-          : null;
-      const appendix = planningSystemAppendix({
-        planTitle: detail.plan.title,
-        repositories,
-        unreachableRepositories: runtime.value.unreachableRepositories,
-        memoryRoot,
-        memoryAmendmentsAvailable: memoryRoot !== null,
-        documentRoots,
-      });
-      const partition = partitionReconstruction({
-        entries,
-        reservedChars: appendix.length + input.message.text.length + (mention?.length ?? 0),
-        summaryChars: SUMMARY_MAX_CHARS,
-        maxChars: PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-      });
-      const mandatoryInput = composeFirstTurnInput({
-        appendix,
-        preamble: partition.render(null),
-        message: input.message.text,
-        memoryMentionStanza: mention,
-      });
-      if (mandatoryInput.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS)
-        return yield* new ReconstructionError({
-          message: "The current message and artifacts exceed the reconstruction input budget.",
-        });
-      const modelSelection = input.modelSelection ?? input.thread.modelSelection;
-      const summary =
-        partition.firstKept === 0
-          ? null
-          : yield* summaries.summarize(partition.olderText, modelSelection);
-      const text = composeFirstTurnInput({
-        appendix,
-        preamble: partition.render(summary),
-        message: input.message.text,
-        memoryMentionStanza: mention,
-      });
-      if (text.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS)
-        return yield* new ReconstructionError({
-          message: "The current message and artifacts exceed the reconstruction input budget.",
-        });
-      const record: PlanReconstruction = {
-        id: yield* crypto.randomUUIDv4,
-        planId: runtime.value.planId,
-        sessionStartMessageCommitId: MercurianCommitId.make(input.message.id),
-        throughCommitId:
-          parentCommitId === undefined ? null : MercurianCommitId.make(parentCommitId),
-        verbatimFromCommitId:
-          sources[partition.firstKept]?.commitId ?? MercurianCommitId.make(input.message.id),
-        version: 1,
-        compacted:
-          summary === null
-            ? null
-            : { summary, throughCommitId: sources[partition.firstKept - 1]!.commitId },
-      };
-      yield* reconstructions.save(record);
-      return { text, session: { skipResume: true }, ...(yield* attach(record.id)) };
-    }),
-  });
-});
-
-export const MercurianTurnPreparationLive = Layer.effect(TurnPreparation, make);

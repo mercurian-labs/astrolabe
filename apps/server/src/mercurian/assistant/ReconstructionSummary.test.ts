@@ -21,7 +21,7 @@ const modelSelection = { instanceId: ProviderInstanceId.make("test"), model: "mo
 const harness = Effect.fn("summaryTest.harness")(function* (
   output: string,
   state: "completed" | "interrupted" = "completed",
-  block = false,
+  block: boolean | "action" = false,
 ) {
   const events = yield* PubSub.unbounded<ProviderRuntimeEvent>();
   const started = yield* Deferred.make<void>();
@@ -47,7 +47,6 @@ const harness = Effect.fn("summaryTest.harness")(function* (
       Effect.gen(function* () {
         prompts.push(input.input ?? "");
         yield* Deferred.succeed(started, undefined);
-        if (block) return yield* Effect.never;
         const base = {
           threadId: input.threadId,
           turnId: TurnId.make("turn"),
@@ -55,6 +54,15 @@ const harness = Effect.fn("summaryTest.harness")(function* (
           eventId: EventId.make("event"),
           createdAt: "2026-09-05T00:00:00.000Z",
         };
+        if (block) {
+          if (block === "action")
+            yield* PubSub.publish(events, {
+              ...base,
+              type: "item.started",
+              payload: { itemType: "command_execution" },
+            });
+          return yield* Effect.never;
+        }
         yield* PubSub.publish(events, {
           ...base,
           turnId: TurnId.make("unrelated"),
@@ -138,4 +146,17 @@ it.effect("cancellation closes a helper even while its send is pending", () =>
     yield* Fiber.interrupt(fiber);
     assert.strictEqual(h.stopped(), 1);
   }).pipe(Effect.scoped),
+);
+
+it.effect("refuses actions while a helper's send is still pending", () =>
+  Effect.gen(function* () {
+    const h = yield* harness("", "completed", "action");
+    const result = yield* Effect.gen(function* () {
+      return yield* Effect.result(
+        (yield* ReconstructionSummary).summarize("history", modelSelection),
+      );
+    }).pipe(Effect.provide(h.layer));
+    assert.strictEqual(result._tag, "Failure");
+    assert.strictEqual(h.stopped(), 1);
+  }),
 );

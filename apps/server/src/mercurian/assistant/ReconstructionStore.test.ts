@@ -58,7 +58,10 @@ it.effect("settlement waits for acknowledgment and never records a failed send",
     yield* store.finish(threadId, "first", true);
     assert.strictEqual(yield* Fiber.join(settlement), record.id);
     assert.strictEqual(yield* store.current(threadId), record.id);
-    yield* store.prepare(threadId, "second", record.id);
+    yield* store.prepare(threadId, "continuation", record.id);
+    yield* store.finish(threadId, "continuation", false);
+    assert.strictEqual(yield* store.current(threadId), record.id);
+    yield* store.prepare(threadId, "second", record.id, true);
     yield* store.finish(threadId, "second", false);
     assert.strictEqual(yield* store.forMessage(threadId, "second"), null);
     assert.strictEqual(yield* store.current(threadId), null);
@@ -76,12 +79,13 @@ it.effect(
       yield* first.save(record);
       yield* first.prepare(threadId, "submitted", record.id);
       yield* first.finish(threadId, "submitted", true);
-      yield* first.prepare(threadId, "abandoned", record.id);
+      yield* first.prepare(threadId, "abandoned", record.id, true);
       yield* Effect.gen(function* () {
         const reopened = yield* ReconstructionStore;
         assert.deepStrictEqual(yield* reopened.get(record.planId, record.id), record);
         assert.strictEqual(yield* reopened.forMessage(threadId, "submitted"), record.id);
         assert.strictEqual(yield* reopened.forMessage(threadId, "abandoned"), null);
+        assert.strictEqual(yield* reopened.current(threadId), null);
       }).pipe(Effect.provide(Layer.fresh(layer)));
     }).pipe(Effect.provide(testLayer)),
 );

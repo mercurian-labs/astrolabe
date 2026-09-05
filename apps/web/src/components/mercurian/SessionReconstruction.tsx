@@ -17,28 +17,30 @@ export function SessionReconstruction({
   const { planId, environmentId } = useThreadSpace();
   const get = useGetReconstruction();
   const cacheKey = JSON.stringify([environmentId, planId, reconstructionId]);
-  const [record, setRecord] = useState<PlanReconstruction | null | undefined>(() =>
-    cache.get(cacheKey),
-  );
   const [attempt, setAttempt] = useState(0);
+  const requestKey = `${cacheKey}:${attempt}`;
+  const [result, setResult] = useState<{ key: string; value: PlanReconstruction | null }>();
+  const record = result?.key === requestKey ? result.value : cache.get(cacheKey);
   useEffect(() => {
     let active = true;
-    const cached = cache.get(cacheKey);
-    setRecord(cached);
-    if (cached !== undefined || planId === null) return;
-    void get({ planId, reconstructionId }).then((result) => {
-      if (!active) return;
-      const value = result.ok ? result.value.reconstruction : null;
-      if (value !== null) {
-        if (cache.size >= 64) cache.delete(cache.keys().next().value!);
-        cache.set(cacheKey, value);
-      }
-      setRecord(value);
-    });
+    if (cache.has(cacheKey) || planId === null) return;
+    void get({ planId, reconstructionId })
+      .then((response) => {
+        if (!active) return;
+        const value = response.ok ? response.value.reconstruction : null;
+        if (value !== null) {
+          if (cache.size >= 64) cache.delete(cache.keys().next().value!);
+          cache.set(cacheKey, value);
+        }
+        setResult({ key: requestKey, value });
+      })
+      .catch(() => {
+        if (active) setResult({ key: requestKey, value: null });
+      });
     return () => {
       active = false;
     };
-  }, [get, cacheKey, planId, reconstructionId, attempt]);
+  }, [get, requestKey, cacheKey, planId, reconstructionId]);
   return (
     <section className="flex flex-col gap-1.5 border-t border-border pt-3">
       <p className="font-medium">Session reconstruction</p>
