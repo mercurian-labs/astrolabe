@@ -88,6 +88,8 @@ export const MessageCommitPayload = Schema.Struct({
   ranUnder: Schema.optional(PlanningModelSelection),
   /** The provider/model captured when an assistant reply's turn started. */
   generatedBy: Schema.optional(PlanningModelSelection),
+  /** Exact human send shared with the orchestration turn; assistant IDs are independent. */
+  sourceUserMessageId: Schema.optional(CommitId),
   /**
    * The planning turn's facts, present only on assistant replies and all
    * optional so every message written before turns existed keeps decoding:
@@ -209,6 +211,7 @@ export const PlanMessage = Schema.Struct({
   question: Schema.optional(PlanQuestionRecord),
   ranUnder: Schema.optional(PlanningModelSelection),
   generatedBy: Schema.optional(PlanningModelSelection),
+  sourceUserMessageId: Schema.optional(CommitId),
   memoryAmendment: MessageCommitPayload.fields.memoryAmendment,
 });
 export type PlanMessage = typeof PlanMessage.Type;
@@ -476,6 +479,7 @@ export const AppendAssistantMessageInput = Schema.Struct({
   groundingScope: Schema.optional(PlanGroundingScope),
   question: Schema.optional(PlanQuestionRecord),
   generatedBy: Schema.optional(PlanningModelSelection),
+  sourceUserMessageId: Schema.optional(CommitId),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendAssistantMessageInput = typeof AppendAssistantMessageInput.Type;
@@ -1290,6 +1294,9 @@ export const make = Effect.gen(function* () {
       ...(payload.question === undefined ? {} : { question: payload.question }),
       ...(payload.ranUnder === undefined ? {} : { ranUnder: payload.ranUnder }),
       ...(payload.generatedBy === undefined ? {} : { generatedBy: payload.generatedBy }),
+      ...(payload.sourceUserMessageId === undefined
+        ? {}
+        : { sourceUserMessageId: payload.sourceUserMessageId }),
       ...(payload.memoryAmendment === undefined
         ? {}
         : { memoryAmendment: payload.memoryAmendment }),
@@ -2118,6 +2125,9 @@ export const make = Effect.gen(function* () {
           ...(input.groundingScope === undefined ? {} : { groundingScope: input.groundingScope }),
           ...(input.question === undefined ? {} : { question: input.question }),
           ...(input.generatedBy === undefined ? {} : { generatedBy: input.generatedBy }),
+          ...(input.sourceUserMessageId === undefined
+            ? {}
+            : { sourceUserMessageId: input.sourceUserMessageId }),
         } satisfies MessageCommitPayload,
         createdAt: input.createdAt,
       });

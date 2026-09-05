@@ -1,6 +1,6 @@
 import { repositoryExitApproval } from "./MemoryRepositoryExitGate.ts";
 import { makeWithLineIdentity as makeMemoryDashboard } from "./MemoryDashboard.ts";
-import { memoryReviewVersion, unmarkedReviewId } from "./memoryReviewIdentity.ts";
+import { memoryReviewVersion } from "./memoryReviewIdentity.ts";
 import { makeMemoryGitTrees } from "./memoryGitTrees.ts";
 import {
   makeMemoryLineIdentity,
@@ -33,7 +33,6 @@ import {
   type MemoryNote,
   type MercurianLineMemoryChanges,
   type MercurianMergeMemoryHomeResult,
-  type MercurianCommitId,
   MercurianMemoryError,
   type MercurianProjectId,
   type PlanTurnId,
@@ -56,7 +55,7 @@ import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
 import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
-import { lineSnapshotRef, SnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
+import { SnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
 import { slotMemberWorktreePath } from "../worktreeSlots/SlotService.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
 import { MemoryReviewStore } from "./MemoryReviewStore.ts";
@@ -881,83 +880,16 @@ export const make = Effect.gen(function* () {
       return { memoryCommitSha, branch: context.branch.branch };
     }).pipe(Effect.mapError(normalizeLandError));
 
-  const readUnmarkedSnapshot = Effect.fn("MemoryIndex.readUnmarkedSnapshot")(function* (input: {
-    readonly cwd: string;
-    readonly lineRootCommitId: MercurianCommitId;
-    readonly scope: string;
-    readonly snapshotOid?: string | null;
-  }) {
-    let chainHead = input.snapshotOid;
-    if (chainHead === undefined) {
-      const resolvedSnapshot = yield* git.execute({
-        operation: "MemoryIndex.readUnmarkedSnapshot.resolveSnapshot",
-        cwd: input.cwd,
-        args: [
-          "rev-parse",
-          "--verify",
-          "--quiet",
-          `${lineSnapshotRef(input.lineRootCommitId)}^{commit}`,
-        ],
-        allowNonZeroExit: true,
-      });
-      chainHead = resolvedSnapshot.exitCode === 0 ? resolvedSnapshot.stdout.trim() : null;
-    }
-    if (chainHead === null) return null;
-    const secondParent = yield* git.execute({
-      operation: "MemoryIndex.readUnmarkedSnapshot.secondParent",
-      cwd: input.cwd,
-      args: ["rev-parse", "--verify", "--quiet", `${chainHead}^2`],
-      allowNonZeroExit: true,
-    });
-    const recordedHead =
-      secondParent.exitCode === 0
-        ? secondParent.stdout.trim()
-        : (yield* git.execute({
-            operation: "MemoryIndex.readUnmarkedSnapshot.firstParent",
-            cwd: input.cwd,
-            args: ["rev-parse", "--verify", `${chainHead}^1`],
-          })).stdout.trim();
-    const diff = yield* checkpoints.diffCheckpoints({
-      cwd: input.cwd,
-      fromCheckpointRef: CheckpointRef.make(recordedHead),
-      toCheckpointRef: CheckpointRef.make(chainHead),
-      ignoreWhitespace: false,
-      paths: [input.scope],
-    });
-    if (diff.trim().length === 0) return null;
-    const paths = (yield* git.execute({
-      operation: "MemoryIndex.readUnmarkedSnapshot.paths",
-      cwd: input.cwd,
-      args: [
-        "diff",
-        "--name-only",
-        "--no-renames",
-        "-z",
-        recordedHead,
-        chainHead,
-        "--",
-        input.scope,
-      ],
-    })).stdout
-      .split("\0")
-      .filter(Boolean);
-    return {
-      chainHead,
-      recordedHead,
-      diff,
-      paths,
-      id: unmarkedReviewId(recordedHead, chainHead, paths),
-    };
-  });
-
   const readLineChanges: MemoryIndex["Service"]["readLineChanges"] = (input) =>
     Effect.gen(function* () {
       const context = yield* lineIdentity(input);
-      const position = yield* positions
-        .read(context, input.position ?? { kind: "latest" })
-        .pipe(Effect.scoped);
-      if ("kind" in position)
-        return yield* new MemoryReadUnavailableError({ reason: position.reason });
+      const current = yield* dashboard.readDashboard({
+        ...input,
+        position: input.position ?? { kind: "latest" },
+      });
+      if (current.kind !== "available")
+        return yield* new MemoryReadUnavailableError({ reason: current.reason });
+      const position = current.position;
       const scope = position.memoryRoot || ".";
       const log = yield* git.execute({
         operation: "MemoryIndex.readLineChanges.log",
@@ -971,6 +903,9 @@ export const make = Effect.gen(function* () {
           scope,
         ],
       });
+      const visibleAmendments = new Map(
+        current.amendments.map((amendment) => [amendment.id, amendment]),
+      );
       const entries = log.stdout
         .split("\x1e")
         .map((entry) => entry.trim())
@@ -979,13 +914,22 @@ export const make = Effect.gen(function* () {
           const [oid = "", title = "", trailers = "", authoredAt = ""] = entry.split("\0");
           const match = /^Astrolabe-Amendment:\s*(.+)$/imu.exec(trailers);
           return { oid, title, turnId: match?.[1]?.trim() ?? null, authoredAt };
-        });
+        })
+        .filter((entry) => visibleAmendments.has(entry.oid));
       const withDiff = yield* Effect.forEach(entries, (entry) =>
         git
           .execute({
             operation: "MemoryIndex.readLineChanges.diff",
             cwd: context.source.repositoryPath,
-            args: ["show", "--format=", "--patch", entry.oid, "--", scope],
+            args: [
+              "--literal-pathspecs",
+              "show",
+              "--format=",
+              "--patch",
+              entry.oid,
+              "--",
+              ...visibleAmendments.get(entry.oid)!.comparison.paths,
+            ],
           })
           .pipe(Effect.map((result) => ({ ...entry, diff: result.stdout }))),
       );
@@ -995,12 +939,19 @@ export const make = Effect.gen(function* () {
           repositoryId: context.source.repositoryId,
         })).map(({ commitOid }) => commitOid),
       );
-      const unmarked = yield* readUnmarkedSnapshot({
-        cwd: context.source.repositoryPath,
-        lineRootCommitId: context.lineRootCommitId,
-        scope,
-        snapshotOid: position.snapshotOid,
-      });
+      const amendment = current.amendments.find((a) => a.kind === "unmarked");
+      const unmarked = amendment
+        ? {
+            id: amendment.id,
+            diff: yield* checkpoints.diffCheckpoints({
+              cwd: context.source.repositoryPath,
+              fromCheckpointRef: CheckpointRef.make(position.recordedHeadOid),
+              toCheckpointRef: CheckpointRef.make(position.snapshotOid!),
+              ignoreWhitespace: false,
+              paths: amendment.comparison.paths.map((path) => `:(literal)${path}`),
+            }),
+          }
+        : null;
       return {
         marked: withDiff
           .filter((entry) => entry.turnId !== null)
@@ -1011,7 +962,7 @@ export const make = Effect.gen(function* () {
             ...entry,
             reviewed: reviewed.has(entry.oid),
           })),
-        unmarked: unmarked === null ? null : { diff: unmarked.diff },
+        unmarked,
         unreviewedCount:
           withDiff.filter((entry) => !reviewed.has(entry.oid)).length +
           (unmarked === null || reviewed.has(unmarked.id) ? 0 : 1),
@@ -1210,6 +1161,11 @@ export const make = Effect.gen(function* () {
           yield* ensureNoActiveTurn(context.lineRootCommitId);
           yield* requireModernGit;
           const current = yield* currentDashboard(input);
+          if (
+            input.expectedVersion === undefined ||
+            input.expectedVersion !== current.curationVersion
+          )
+            return yield* new MemoryReviewBlockedError({ reason: "stale-review" });
           const position = current.position;
           const selected =
             input.target.kind === "commit"
@@ -1226,14 +1182,6 @@ export const make = Effect.gen(function* () {
               return;
             }
             return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
-          }
-          if (input.expectedVersion !== undefined) {
-            const prepared = yield* prepareMerge(input);
-            if (prepared.review.version !== input.expectedVersion)
-              return yield* new MemoryReviewBlockedError({ reason: "stale-review" });
-          } else if (input.target.kind === "unmarked") {
-            // Old clients have no exact unmarked target. Refuse rather than discard a newer capture.
-            return yield* new MemoryReviewBlockedError({ reason: "stale-review" });
           }
           const cwd = context.source.repositoryPath;
           const fullTree = yield* effectiveTree(cwd, position);

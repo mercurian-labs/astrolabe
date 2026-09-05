@@ -2589,10 +2589,9 @@ export const make = Effect.gen(function* () {
         return result;
       });
 
-      const action =
-        input.action === "commit"
-          ? memoryExit.withLock(input.cwd, runAction())
-          : memoryExit.withExit(input.cwd, runAction());
+      const action = ["commit", "commit_push", "commit_push_pr"].includes(input.action)
+        ? memoryExit.withLock(input.cwd, runAction())
+        : memoryExit.withExit(input.cwd, runAction());
       return yield* action.pipe(
         Effect.ensuring(invalidateStatus(input.cwd)),
         Effect.tapError((error) =>

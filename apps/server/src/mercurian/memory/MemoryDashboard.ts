@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { MemorySourceStore, type MemorySourceStoreError } from "./MemorySourceStore.ts";
 import {
@@ -33,7 +34,7 @@ import * as Layer from "effect/Layer";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { MemoryIndex } from "./MemoryIndex.ts";
-import { unmarkedReviewId } from "./memoryReviewIdentity.ts";
+import { memoryReviewVersion, unmarkedReviewId } from "./memoryReviewIdentity.ts";
 import { MemoryReviewStore } from "./MemoryReviewStore.ts";
 import { makeMemoryPosition } from "./MemoryPosition.ts";
 import {
@@ -229,9 +230,20 @@ export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* 
       checkpoint: string | null,
       only?: ReadonlySet<string>,
     ) {
-      const delta = yield* changes(cwd, before, after, root);
+      const rawDelta = yield* changes(cwd, before, after, root);
       const priorEntries = new Map((yield* tree(cwd, before, root)).map((e) => [e.path, e]));
       const afterEntries = new Map((yield* tree(cwd, after, root)).map((e) => [e.path, e.blobOid]));
+      const delta = rawDelta.filter(
+        (change) =>
+          !(
+            amendmentId &&
+            !amendments.some((amendment) => amendment.comparison.paths.includes(change.path)) &&
+            !change.previousPath &&
+            baselineByPath.get(change.path) !== baseByPath.get(change.path) &&
+            priorEntries.get(change.path)?.blobOid === baseByPath.get(change.path) &&
+            afterEntries.get(change.path) === baselineByPath.get(change.path)
+          ),
+      );
       for (const change of delta) {
         if (only && !only.has(change.path)) continue;
         if (
@@ -241,15 +253,6 @@ export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* 
           continue;
         const previousPath = change.previousPath ?? change.path;
         const id = atPath.get(previousPath) ?? `${position.repositoryId}:${previousPath}`;
-        if (
-          !documents.has(id) &&
-          amendmentId &&
-          !change.previousPath &&
-          baselineByPath.get(change.path) !== baseByPath.get(change.path) &&
-          priorEntries.get(change.path)?.blobOid === baseByPath.get(change.path) &&
-          afterEntries.get(change.path) === baselineByPath.get(change.path)
-        )
-          continue;
         const doc = documents.get(id) ?? {
           id,
           path: change.path,
@@ -292,6 +295,7 @@ export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* 
       const before = (yield* positions.resolve(cwd, `${parent}^{tree}`))!;
       const after = (yield* positions.resolve(cwd, `${oid}^{tree}`))!;
       const delta = yield* record(before, after, oid, null);
+      if (!delta.length) continue;
       const turnId = /^Astrolabe-Amendment:\s*(.+)$/imu.exec(trailers)?.[1]?.trim() ?? null;
       amendments.push({
         id: oid,
@@ -439,15 +443,22 @@ export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* 
         ]),
       });
     }
-    const summaries = amendments
-      .map((a) => ({
-        ...a,
-        documentIds: result.filter((d) => d.amendmentIds.includes(a.id)).map((d) => d.id),
-      }))
-      .filter((a) => a.documentIds.length > 0);
+    const summaries = amendments.map((a) => ({
+      ...a,
+      documentIds: result.filter((d) => d.amendmentIds.includes(a.id)).map((d) => d.id),
+    }));
+    // Exclude reading mode and review flags: marking a row reviewed does not change
+    // the snapshot the person saw. Source designation and all object identities do.
+    const { reading: _reading, ...identity } = position;
+    const curationVersion = memoryReviewVersion({
+      sourceUpdatedAt: DateTime.formatIso(context.source.updatedAt),
+      position: identity,
+      amendments: summaries.map((a) => a.id),
+    });
     return {
       kind: "available",
       position,
+      curationVersion,
       documents: result.sort((a, b) => a.path.localeCompare(b.path)),
       amendments: summaries,
       graph: memoryLocalGraph(graphDocs),

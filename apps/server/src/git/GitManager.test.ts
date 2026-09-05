@@ -1,4 +1,13 @@
-import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
+import * as MercurianSqlite from "../mercurian/persistence/Sqlite.ts";
+import * as SlotRegistry from "../mercurian/worktreeSlots/SlotRegistry.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { MercurianProjectId, MercurianRepositoryId, MercurianCommitId } from "@t3tools/contracts";
+import {
+  make as makeMemoryExitGate,
+  repositoryExitApproval,
+  MemoryRepositoryExitGate,
+} from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -5337,7 +5346,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       ]);
     }),
   );
-  it.effect("refuses every repository exit before an optional commit or PR side effect", () =>
+  it.effect("refuses push and PR actions before side effects", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const cwd = yield* makeTempDir("memory-exit-manager-");
@@ -5355,7 +5364,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           withExit: () => refuse,
         },
       });
-      for (const action of ["push", "create_pr", "commit_push", "commit_push_pr"] as const) {
+      for (const action of ["push", "create_pr"] as const) {
         const error = yield* Effect.flip(
           runStackedAction(manager, { cwd, action, commitMessage: "pending" }),
         );
@@ -5366,43 +5375,76 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
-  it.effect(
-    "revalidates after the optional commit before pushing the changed approval target",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const cwd = yield* makeTempDir("memory-exit-revalidate-");
-        yield* initRepo(cwd);
-        const remote = yield* createBareRemote();
-        yield* runGit(cwd, ["remote", "add", "origin", remote]);
-        yield* runGit(cwd, ["checkout", "-b", "feature/revalidate"]);
-        yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "pending change\n");
-        const before = (yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout;
-        const refuse = Effect.fail(
-          new GitManagerError({
-            operation: "memoryRepositoryExit",
-            cwd,
-            detail: "Approval target changed",
-          }),
-        );
-        const { manager } = yield* makeManager({
-          memoryExit: {
-            check: () => refuse,
-            checkRemoteAction: () => refuse,
-            withLock: (_cwd, effect) => effect,
-            withExit: (_cwd, effect) => effect,
-          },
-        });
-        const error = yield* Effect.flip(
-          runStackedAction(manager, {
-            cwd,
-            action: "commit_push",
-            commitMessage: "commit pending",
-          }),
-        );
-        expect(error.message).toContain("Approval target changed");
-        expect((yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout).not.toBe(before);
-        expect((yield* runGit(remote, ["for-each-ref", "--format=%(objectname)"])).stdout).toBe("");
-      }),
-  );
+  for (const action of ["commit_push", "commit_push_pr"] as const) {
+    it.effect(
+      `the real memory gate permits ${action} to commit then refuses stale approval before publishing`,
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const sql = yield* SqlClient.SqlClient;
+          const cwd = yield* makeTempDir("memory-exit-revalidate-");
+          yield* initRepo(cwd);
+          yield* runGit(cwd, ["branch", "-M", "main"]);
+          const remote = yield* createBareRemote();
+          yield* runGit(cwd, ["remote", "add", "origin", remote]);
+          yield* runGit(cwd, ["checkout", "-b", "feature/revalidate"]);
+          const before = (yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout.trim();
+          const treeOid = (yield* runGit(cwd, ["rev-parse", "HEAD^{tree}"])).stdout.trim();
+          const projectId = MercurianProjectId.make("gate-project");
+          const repositoryId = MercurianRepositoryId.make("gate-repo");
+          const lineRootCommitId = MercurianCommitId.make("gate-line");
+          const stamp = "2026-09-04T00:00:00.000Z";
+          yield* sql`INSERT INTO repositories (repository_id, name, path, created_at, updated_at) VALUES (${repositoryId}, 'gate', ${cwd}, ${stamp}, ${stamp})`;
+          yield* sql`INSERT INTO project_memory_sources (project_id, repository_id, subpath, created_at, updated_at) VALUES (${projectId}, ${repositoryId}, 'memory', ${stamp}, ${stamp})`;
+          yield* sql`INSERT INTO line_branches (line_root_commit_id, repository_id, branch, base_oid, built, created_at) VALUES (${lineRootCommitId}, ${repositoryId}, 'feature/revalidate', ${before}, 1, ${stamp})`;
+          const approval = repositoryExitApproval({
+            projectId,
+            repositoryId,
+            lineRootCommitId,
+            sourceUpdatedAt: stamp,
+            memoryRoot: "memory",
+            baseOid: before,
+            reviewIds: [],
+            review: {
+              version: "reviewed-before-commit",
+              headOid: before,
+              snapshotOid: null,
+              treeOid,
+              homeOid: before,
+              homeRef: "refs/heads/main",
+              unmarkedId: null,
+              unreviewedIds: [],
+              warnings: [],
+            },
+          });
+          yield* sql`INSERT INTO memory_amendment_reviews (line_root_commit_id, repository_id, commit_oid, reviewed_at) VALUES (${lineRootCommitId}, ${repositoryId}, ${approval}, ${stamp})`;
+          const gate = yield* makeMemoryExitGate;
+          yield* gate.check(cwd);
+          yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "pending change\n");
+          const dirty = yield* Effect.flip(gate.check(cwd));
+          expect(dirty.message).toContain("Commit pending work first");
+          const { manager, ghCalls } = yield* makeManager({ memoryExit: gate });
+          const error = yield* Effect.flip(
+            runStackedAction(manager, { cwd, action, commitMessage: "commit pending" }),
+          );
+          expect(error.message).toContain("optional commit invalidates the previous approval");
+          expect((yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout.trim()).not.toBe(before);
+          expect((yield* runGit(cwd, ["log", "-1", "--format=%s"])).stdout.trim()).toBe(
+            "commit pending",
+          );
+          expect((yield* runGit(remote, ["for-each-ref", "--format=%(objectname)"])).stdout).toBe(
+            "",
+          );
+          expect(ghCalls.some((call) => call.includes("create"))).toBe(false);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              MercurianSqlite.layerMemory,
+              SlotRegistry.layer,
+              ProcessRunner.layer,
+            ).pipe(Layer.provide(NodeServices.layer)),
+          ),
+        ),
+    );
+  }
 });

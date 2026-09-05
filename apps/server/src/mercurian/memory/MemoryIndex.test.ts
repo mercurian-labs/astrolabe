@@ -328,19 +328,8 @@ function lineServices(
         ) as never,
       diffCheckpoints: (diffInput) =>
         Effect.gen(function* () {
-          const git = yield* GitVcsDriver.GitVcsDriver;
-          const result = yield* git.execute({
-            operation: "MemoryIndex.test.diffCheckpoints",
-            cwd: diffInput.cwd,
-            args: [
-              "diff",
-              String(diffInput.fromCheckpointRef),
-              String(diffInput.toCheckpointRef),
-              "--",
-              ...(diffInput.paths ?? []),
-            ],
-          });
-          return result.stdout;
+          const driver = yield* GitVcsDriver.makeVcsDriverShape();
+          return yield* driver.checkpoints.diffCheckpoints(diffInput);
         }) as never,
     }),
     input.reviewStore
@@ -418,6 +407,19 @@ const makeLineIndex = Effect.fn("test.makeLineMemoryIndex")(function* (
     Effect.provideService(GitVcsDriver.GitVcsDriver, effectiveGit),
   );
   return { index, turns, leases, dashboard, chain };
+});
+
+const curationVersion = Effect.fn("test.curationVersion")(function* (
+  dashboard: MemoryDashboard.MemoryDashboard["Service"],
+  projectId: MercurianProjectId,
+) {
+  const current = yield* dashboard.readDashboard({
+    projectId,
+    line: lineRef,
+    position: { kind: "latest" },
+  });
+  assert(current.kind === "available");
+  return current.curationVersion;
 });
 
 const reviewAndMerge = Effect.fn("test.reviewAndMerge")(function* (
@@ -914,7 +916,7 @@ layer("MemoryIndex", (it) => {
       ]);
       const changedOid = yield* runGit(slotPath, ["rev-parse", "HEAD"]);
       const reviewed = new Set<string>();
-      const { index } = yield* makeLineIndex(fixture, {
+      const { index, dashboard } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid,
         slotPath,
@@ -922,6 +924,7 @@ layer("MemoryIndex", (it) => {
       });
 
       yield* index.revertChange({
+        expectedVersion: yield* curationVersion(dashboard, fixture.projectId),
         projectId: fixture.projectId,
         line: lineRef,
         target: { kind: "commit", commitOid: changedOid },
@@ -962,7 +965,7 @@ layer("MemoryIndex", (it) => {
       yield* fs.writeFileString(path.join(fixture.root, "Plans.md"), "Main only\n");
       yield* runGit(fixture.root, ["commit", "-am", "Main-only change"]);
       const unrelatedOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
-      const { index } = yield* makeLineIndex(fixture, {
+      const { index, dashboard } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid,
       });
@@ -970,6 +973,7 @@ layer("MemoryIndex", (it) => {
       for (const commitOid of [baseOid, unrelatedOid]) {
         const error = yield* Effect.flip(
           index.revertChange({
+            expectedVersion: yield* curationVersion(dashboard, fixture.projectId),
             projectId: fixture.projectId,
             line: lineRef,
             target: { kind: "commit", commitOid },
@@ -1037,7 +1041,7 @@ layer("MemoryIndex", (it) => {
         Effect.provide(services),
         Effect.provideService(GitVcsDriver.GitVcsDriver, git),
       );
-      const { index } = yield* makeLineIndex(fixture, {
+      const { index, dashboard } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid,
         slotPath,
@@ -1048,7 +1052,7 @@ layer("MemoryIndex", (it) => {
       assert.strictEqual(prepared.kind, "review-required");
       if (prepared.kind !== "review-required") return;
       yield* index.revertChange({
-        expectedVersion: prepared.review.version,
+        expectedVersion: yield* curationVersion(dashboard, fixture.projectId),
         projectId: fixture.projectId,
         line: lineRef,
         target: { kind: "unmarked" },
@@ -1094,7 +1098,7 @@ layer("MemoryIndex", (it) => {
       yield* runGit(fixture.root, ["add", "Plans.md"]);
       yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
       const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
-      const { index, leases } = yield* makeLineIndex(fixture, {
+      const { index, leases, dashboard } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid,
         slotPath: fixture.root,
@@ -1107,6 +1111,7 @@ layer("MemoryIndex", (it) => {
       );
       const error = yield* Effect.flip(
         index.revertChange({
+          expectedVersion: yield* curationVersion(dashboard, fixture.projectId),
           projectId: fixture.projectId,
           line: lineRef,
           target: { kind: "unmarked" },
@@ -1147,7 +1152,7 @@ layer("MemoryIndex", (it) => {
       ]);
       const lineTip = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
       yield* runGit(fixture.root, ["checkout", "main"]);
-      const { index } = yield* makeLineIndex(fixture, {
+      const { index, dashboard } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid: mainBefore,
       });
@@ -1159,6 +1164,7 @@ layer("MemoryIndex", (it) => {
       assert.strictEqual(changes.unmarked, null);
 
       yield* index.revertChange({
+        expectedVersion: yield* curationVersion(dashboard, fixture.projectId),
         projectId: fixture.projectId,
         line: lineRef,
         target: { kind: "unmarked" },
@@ -1588,16 +1594,18 @@ layer("MemoryIndex", (it) => {
         yield* runGit(f.root, ["add", "Code.ts"]);
         yield* runGit(f.root, ["commit", "-m", "Code-only commit"]);
         const codeOid = yield* runGit(f.root, ["rev-parse", "HEAD"]);
+
         const reviewed = new Set<string>();
         const h = yield* makeLineIndex(f, { branch: "memory-line", baseOid, reviewed });
         const input = { projectId: f.projectId, line: lineRef };
-        for (const commitOid of [baseOid, codeOid, "a".repeat(40), "unmarked"]) {
+        for (const commitOid of [baseOid, "a".repeat(40), "unmarked"]) {
           const error = yield* Effect.flip(h.index.markChangeReviewed({ ...input, commitOid }));
           assert.strictEqual(error._tag, "MemoryReviewBlockedError");
         }
         yield* h.index.markChangeReviewed({ ...input, commitOid: amendment });
         yield* h.index.markChangeReviewed({ ...input, commitOid: amendment });
         assert.strictEqual(reviewed.size, 1);
+        yield* h.index.markChangeReviewed({ ...input, commitOid: codeOid });
         const historical = yield* Effect.flip(
           h.index.markChangeReviewed({
             ...input,
@@ -1609,6 +1617,7 @@ layer("MemoryIndex", (it) => {
         const historicalPosition = { kind: "checkpoint" as const, commitId: lineRoot };
         const historicalRevert = yield* Effect.flip(
           h.index.revertChange({
+            expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
             ...input,
             position: historicalPosition,
             target: { kind: "commit", commitOid: amendment },
@@ -1683,6 +1692,7 @@ layer("MemoryIndex", (it) => {
         treeOid: tree,
       });
       yield* h.index.revertChange({
+        expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
         projectId: f.projectId,
         line: lineRef,
         target: { kind: "commit", commitOid: a },
@@ -1740,6 +1750,7 @@ layer("MemoryIndex", (it) => {
       const h = yield* makeLineIndex(f, { branch: "memory-line", baseOid });
       const error = yield* Effect.flip(
         h.index.revertChange({
+          expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
           projectId: f.projectId,
           line: lineRef,
           target: { kind: "commit", commitOid: a },
@@ -1784,6 +1795,7 @@ layer("MemoryIndex", (it) => {
           treeOid: yield* runGit(f.root, ["write-tree"]),
         });
         yield* h.index.revertChange({
+          expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
           projectId: f.projectId,
           line: lineRef,
           target: { kind: "commit", commitOid: a },
@@ -1896,6 +1908,7 @@ layer("MemoryIndex", (it) => {
       });
       const curation = yield* h.index
         .revertChange({
+          expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
           projectId: f.projectId,
           line: lineRef,
           target: { kind: "commit", commitOid: selected },
@@ -2104,7 +2117,11 @@ layer("MemoryIndex", (it) => {
         const code = yield* fs.readFileString(`${slotPath}/Code.ts`);
         const input = { projectId: f.projectId, line: lineRef };
         const reverted = yield* Effect.flip(
-          h.index.revertChange({ ...input, target: { kind: "commit", commitOid: a } }),
+          h.index.revertChange({
+            expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
+            ...input,
+            target: { kind: "commit", commitOid: a },
+          }),
         );
         assert.strictEqual(reverted._tag, "MemoryReviewBlockedError");
         if (reverted._tag === "MemoryReviewBlockedError")
@@ -2117,7 +2134,7 @@ layer("MemoryIndex", (it) => {
           h.index.revertChange({
             ...input,
             target: { kind: "unmarked" },
-            expectedVersion: prepared.review.version,
+            expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
           }),
         );
         assert.strictEqual(unmarked._tag, "MemoryReviewBlockedError");
@@ -2165,6 +2182,7 @@ layer("MemoryIndex", (it) => {
         const refs = yield* runGit(f.root, ["show-ref"]);
         const result = yield* Effect.flip(
           h.index.revertChange({
+            expectedVersion: yield* curationVersion(h.dashboard, f.projectId),
             projectId: f.projectId,
             line: lineRef,
             target: { kind: "commit", commitOid: a },
@@ -2178,6 +2196,180 @@ layer("MemoryIndex", (it) => {
       }),
     );
   }
+
+  for (const targetKind of ["commit", "unmarked"] as const) {
+    it.effect(
+      `binds ${targetKind} reverts to the displayed capture without merge-home preconditions`,
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const f = yield* makeFixture(`view-version-${targetKind}`, { git: true });
+          yield* fs.writeFileString(`${f.root}/Note.md`, "base\n");
+          yield* runGit(f.root, ["add", "."]);
+          yield* runGit(f.root, ["commit", "-m", "base"]);
+          yield* runGit(f.root, ["branch", "-M", "main"]);
+          const baseOid = yield* runGit(f.root, ["rev-parse", "HEAD"]);
+          const slotPath = yield* fs.makeTempDirectoryScoped({ prefix: "memory-version-slot-" });
+          yield* fs.remove(slotPath, { recursive: true });
+          yield* runGit(f.root, ["worktree", "add", "-b", "memory-line", slotPath]);
+          yield* fs.writeFileString(`${slotPath}/Asset.json`, '{"review":true}\n');
+          yield* runGit(slotPath, ["add", "."]);
+          yield* runGit(slotPath, ["commit", "-m", "asset only"]);
+          const commitOid = yield* runGit(slotPath, ["rev-parse", "HEAD"]);
+          const h = yield* makeLineIndex(f, { branch: "memory-line", baseOid, slotPath });
+          const input = { projectId: f.projectId, line: lineRef };
+          const capture = Effect.fn(function* (body: string) {
+            yield* fs.writeFileString(`${slotPath}/Tail.json`, body);
+            yield* runGit(slotPath, ["add", "."]);
+            yield* h.chain.captureTree({
+              cwd: f.root,
+              repositoryId: f.repositoryId,
+              lineRootCommitId: lineRoot,
+              lineBranch: "memory-line",
+              kind: "curated",
+              treeOid: yield* runGit(slotPath, ["write-tree"]),
+            });
+          });
+          yield* capture("first\n");
+          const viewed = yield* h.dashboard.readDashboard({
+            ...input,
+            position: { kind: "latest" },
+          });
+          assert(viewed.kind === "available");
+          assert.deepStrictEqual(viewed.documents, []);
+          assert.deepStrictEqual(viewed.graph, { nodes: [], edges: [], outsideReferences: [] });
+          assert.deepStrictEqual(
+            viewed.amendments.map((a) => a.comparison.paths),
+            [["Asset.json"], ["Tail.json"]],
+          );
+          const mergeReview = yield* h.index.mergeHome(input);
+          assert(mergeReview.kind === "review-required");
+          assert.deepStrictEqual(
+            mergeReview.review.unreviewedIds,
+            viewed.amendments.map((a) => a.id),
+          );
+          const target =
+            targetKind === "commit"
+              ? { kind: "commit" as const, commitOid }
+              : { kind: "unmarked" as const };
+          yield* capture("new unseen capture\n");
+          const refs = yield* runGit(f.root, ["show-ref"]);
+          const stale = yield* Effect.flip(
+            h.index.revertChange({ ...input, target, expectedVersion: viewed.curationVersion }),
+          );
+          assert(stale._tag === "MemoryReviewBlockedError");
+          assert.strictEqual(stale.reason, "stale-review");
+          assert.strictEqual(yield* runGit(f.root, ["show-ref"]), refs);
+          const missing = yield* Effect.flip(h.index.revertChange({ ...input, target }));
+          assert(missing._tag === "MemoryReviewBlockedError");
+          assert.strictEqual(missing.reason, "stale-review");
+          assert.strictEqual(yield* runGit(f.root, ["show-ref"]), refs);
+          yield* fs.writeFileString(`${f.root}/Note.md`, "dirty standalone home\n");
+          const dirtyMerge = yield* Effect.flip(h.index.mergeHome(input));
+          assert(dirtyMerge._tag === "MergeMemoryHomeBlockedError");
+          assert.strictEqual(dirtyMerge.reason, "checkout-dirty");
+          // A fresh dashboard is an explicit new review, not hidden preparation on click.
+          const refreshed = yield* h.dashboard.readDashboard({
+            ...input,
+            position: { kind: "latest" },
+          });
+          assert(refreshed.kind === "available");
+          assert.notStrictEqual(refreshed.curationVersion, viewed.curationVersion);
+          yield* h.index.revertChange({
+            ...input,
+            target,
+            expectedVersion: refreshed.curationVersion,
+          });
+          assert.strictEqual(
+            yield* fs.readFileString(`${f.root}/Note.md`),
+            "dirty standalone home\n",
+          );
+          const after = yield* h.dashboard.readDashboard({
+            ...input,
+            position: { kind: "latest" },
+          });
+          assert(after.kind === "available");
+          assert.deepStrictEqual(after.documents, []);
+          assert.deepStrictEqual(after.graph, { nodes: [], edges: [], outsideReferences: [] });
+          if (targetKind === "commit") {
+            assert.isFalse(yield* fs.exists(`${slotPath}/Asset.json`));
+            assert.strictEqual(
+              yield* fs.readFileString(`${slotPath}/Tail.json`),
+              "new unseen capture\n",
+            );
+            assert(after.amendments.some((a) => a.revertsAmendmentId === commitOid && a.reviewed));
+          } else {
+            assert.isFalse(yield* fs.exists(`${slotPath}/Tail.json`));
+            assert.isTrue(yield* fs.exists(`${slotPath}/Asset.json`));
+          }
+        }),
+    );
+  }
+
+  it.effect(
+    "shares fork-inherited unmarked presence, identity and exact diff with legacy reads",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const f = yield* makeFixture("fork-legacy-delta", { git: true });
+        yield* fs.writeFileString(`${f.root}/Note.md`, "base\n");
+        yield* runGit(f.root, ["add", "."]);
+        yield* runGit(f.root, ["commit", "-m", "base"]);
+        const baseOid = yield* runGit(f.root, ["rev-parse", "HEAD"]);
+        yield* runGit(f.root, ["checkout", "-b", "memory-line"]);
+        yield* fs.writeFileString(`${f.root}/Inherited.md`, "inherited uncaptured\n");
+        yield* runGit(f.root, ["add", "."]);
+        const inherited = yield* runGit(f.root, [
+          "commit-tree",
+          yield* runGit(f.root, ["write-tree"]),
+          "-p",
+          baseOid,
+          "-m",
+          "fork boundary",
+        ]);
+        yield* runGit(f.root, ["update-ref", lineSnapshotRef(lineRoot), inherited]);
+        const h = yield* makeLineIndex(f, { branch: "memory-line", baseOid });
+        const input = { projectId: f.projectId, line: lineRef };
+        const before = yield* h.dashboard.readDashboard({ ...input, position: { kind: "latest" } });
+        assert(before.kind === "available");
+        assert.deepStrictEqual(before.amendments, []);
+        assert.strictEqual((yield* h.index.readLineChanges(input)).unmarked, null);
+        yield* runGit(f.root, ["commit", "-m", "Record inherited memory"]);
+        const inheritedDashboard = yield* h.dashboard.readDashboard({
+          ...input,
+          position: { kind: "latest" },
+        });
+        assert(inheritedDashboard.kind === "available");
+        assert.deepStrictEqual(inheritedDashboard.amendments, []);
+        const inheritedLegacy = yield* h.index.readLineChanges(input);
+        assert.deepStrictEqual(inheritedLegacy.hand, []);
+        assert.deepStrictEqual(inheritedLegacy.marked, []);
+        assert.strictEqual(inheritedLegacy.unreviewedCount, 0);
+        yield* fs.writeFileString(`${f.root}/Own.json`, "new fork asset\n");
+        yield* runGit(f.root, ["add", "."]);
+        yield* h.chain.captureTree({
+          cwd: f.root,
+          repositoryId: f.repositoryId,
+          lineRootCommitId: lineRoot,
+          lineBranch: "memory-line",
+          kind: "curated",
+          treeOid: yield* runGit(f.root, ["write-tree"]),
+        });
+        const current = yield* h.dashboard.readDashboard({
+          ...input,
+          position: { kind: "latest" },
+        });
+        assert(current.kind === "available");
+        const unmarked = current.amendments.find((a) => a.kind === "unmarked")!;
+        assert.deepStrictEqual(unmarked.comparison.paths, ["Own.json"]);
+        const legacy = yield* h.index.readLineChanges(input);
+        assert.strictEqual(legacy.unmarked?.id, unmarked.id);
+        assert.include(legacy.unmarked!.diff, "new fork asset");
+        assert.notInclude(legacy.unmarked!.diff, "Inherited.md");
+        yield* h.index.markChangeReviewed({ ...input, commitOid: legacy.unmarked!.id });
+        assert.strictEqual((yield* h.index.readLineChanges(input)).unreviewedCount, 0);
+      }),
+  );
 
   it.effect(
     "the actual shared repository push requires the versioned review and rejects a stale approval",
@@ -2215,6 +2407,14 @@ layer("MemoryIndex", (it) => {
         const gate = yield* makeExitGate.pipe(
           Effect.provideService(SlotRegistry.SlotRegistry, h.leases),
         );
+        for (const branch of ["main", "manual-feature"]) {
+          if (branch !== "main") yield* runGit(f.root, ["checkout", "-b", branch]);
+          const nonline = yield* Effect.flip(gate.check(f.root));
+          assert.include(nonline.detail, "unregistered branch (including main)");
+          assert.include(nonline.detail, "external Git");
+          assert.notInclude(nonline.detail, "confirm Merge home");
+        }
+        yield* runGit(f.root, ["checkout", "main"]);
         const missing = yield* makeFixture("offline-unrelated", { git: true });
         yield* fs.makeDirectory(`${missing.root}/memory`);
         yield* source.designate({

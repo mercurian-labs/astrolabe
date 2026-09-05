@@ -149,7 +149,7 @@ export const MercurianLineMemoryChanges = Schema.Struct({
       reviewed: Schema.Boolean,
     }),
   ),
-  unmarked: Schema.NullOr(Schema.Struct({ diff: Schema.String })),
+  unmarked: Schema.NullOr(Schema.Struct({ id: TrimmedNonEmptyString, diff: Schema.String })),
   unreviewedCount: Schema.Number,
 });
 export type MercurianLineMemoryChanges = typeof MercurianLineMemoryChanges.Type;
@@ -168,7 +168,7 @@ export type MercurianMarkMemoryChangeReviewedInput =
 export const MercurianRevertMemoryChangeInput = Schema.Struct({
   line: MemoryLineRef,
   position: Schema.optional(MemoryReadingPosition),
-  expectedVersion: Schema.optional(TrimmedNonEmptyString),
+  expectedVersion: TrimmedNonEmptyString,
   target: Schema.Union([
     Schema.Struct({ kind: Schema.Literal("commit"), commitOid: TrimmedNonEmptyString }),
     Schema.Struct({ kind: Schema.Literal("unmarked") }),
@@ -437,6 +437,8 @@ export const MemoryDashboard = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("available"),
     position: MemoryPosition,
+    /** Pass the version from the displayed dashboard to either revert target. */
+    curationVersion: TrimmedNonEmptyString,
     documents: Schema.Array(MemoryChangedDocument),
     amendments: Schema.Array(MemoryAmendmentSummary),
     graph: MemoryLocalGraph,

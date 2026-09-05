@@ -5,6 +5,7 @@ import {
   MemoryCatalog,
   MemoryReadUnavailableError,
   MercurianMergeMemoryHomeInput,
+  MercurianRevertMemoryChangeInput,
   MercurianMergeMemoryHomeResult,
   MemoryReviewBlockedError,
 } from "./mercurianMemory.ts";
@@ -97,6 +98,7 @@ describe("immutable Memory wire contracts", () => {
       decodeMemoryDashboard({
         kind: "available",
         position,
+        curationVersion: "displayed-version",
         documents: [],
         amendments: [],
         graph: { nodes: [], edges: [], outsideReferences: [] },
@@ -136,6 +138,16 @@ const decodeMergeResult = Schema.decodeUnknownSync(MercurianMergeMemoryHomeResul
 const decodeReviewBlocked = Schema.decodeUnknownSync(MemoryReviewBlockedError);
 
 describe("versioned memory curation contracts", () => {
+  it("requires the displayed version for both revert targets", () => {
+    const decode = Schema.decodeUnknownSync(MercurianRevertMemoryChangeInput);
+    for (const target of [{ kind: "commit", commitOid: oid }, { kind: "unmarked" }]) {
+      const input = { line: { threadId: "thread" }, target };
+      expect(() => decode(input)).toThrow();
+      expect(decode({ ...input, expectedVersion: "displayed-version" })).toMatchObject({
+        expectedVersion: "displayed-version",
+      });
+    }
+  });
   it("preserves prepare and confirmation identities and typed inverse conflict context", () => {
     const line = { threadId: "thread" };
     const review = {

@@ -431,6 +431,7 @@ layer("PlanningStore", (it) => {
         planId: created.plan.planId,
         parentCommitId: root,
         text: "A reply",
+        sourceUserMessageId: root,
         generatedBy: {
           provider: claude,
           model: "opus",
@@ -451,6 +452,7 @@ layer("PlanningStore", (it) => {
       assert.strictEqual(decodedRoot.generatedBy, undefined);
       const decodedReply = decoded.timeline[1]!;
       assert.ok(decodedReply._tag === "message");
+      assert.strictEqual(decodedReply.sourceUserMessageId, root);
       assert.deepStrictEqual(decodedReply.generatedBy, {
         provider: claude,
         model: "opus",

@@ -451,6 +451,7 @@ export const OrchestrationCheckpointRepository = Schema.Struct({
 export type OrchestrationCheckpointRepository = typeof OrchestrationCheckpointRepository.Type;
 
 export const OrchestrationCheckpointSummary = Schema.Struct({
+  userMessageId: Schema.optional(MessageId),
   turnId: TurnId,
   checkpointTurnCount: NonNegativeInt,
   checkpointRef: CheckpointRef,

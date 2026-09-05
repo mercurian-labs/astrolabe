@@ -72,6 +72,7 @@ export function createMercurianMemoryAtoms<R, E>(
       tag: MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
       scheduler: writeScheduler,
     }),
+    // Keep expectedVersion from the displayed dashboard for either revert target.
     revertMemoryChange: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:revert-memory-change",
       tag: MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,

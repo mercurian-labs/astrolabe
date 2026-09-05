@@ -36,15 +36,6 @@ import { CommitId } from "../commitTree/schema.ts";
 
 const encodeDashboard = Schema.encodeSync(Schema.fromJsonString(MemoryDashboardSchema));
 const encodeCatalog = Schema.encodeSync(Schema.fromJsonString(MemoryCatalogSchema));
-const encodeMeasurement = Schema.encodeSync(
-  Schema.fromJsonString(
-    Schema.Struct({
-      files: Schema.Number,
-      overviewBytes: Schema.Number,
-      catalogBytes: Schema.Number,
-    }),
-  ),
-);
 
 const layer = it.layer(
   GitVcsDriver.layer.pipe(
@@ -592,14 +583,7 @@ layer("immutable memory reads", (it) => {
         assert.equal(catalog.entries.length, 1002);
         assert(!("position" in catalog.entries[0]!));
         assert(!f.commands.some((args) => args.includes("cat-file")));
-        yield* f.fs.writeFileString(
-          "/private/tmp/memory-correction1-payload.json",
-          encodeMeasurement({
-            files: catalog.entries.length,
-            overviewBytes: new TextEncoder().encode(encodeDashboard(overview)).length,
-            catalogBytes: new TextEncoder().encode(encodeCatalog(catalog)).length,
-          }),
-        );
+        assert(encodeCatalog(catalog).length < 300_000);
       }).pipe(Effect.scoped),
   );
 });

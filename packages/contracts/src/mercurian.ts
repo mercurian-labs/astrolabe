@@ -374,6 +374,7 @@ export const PlanMessage = Schema.Struct({
   ranUnder: Schema.optional(PlanningModelSelection),
   /** What produced this assistant reply, captured when its turn started. */
   generatedBy: Schema.optional(PlanningModelSelection),
+  sourceUserMessageId: Schema.optional(MercurianCommitId),
   memoryAmendment: Schema.optional(
     Schema.Struct({
       title: TrimmedNonEmptyString,

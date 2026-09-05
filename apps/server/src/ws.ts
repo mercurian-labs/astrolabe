@@ -3305,7 +3305,8 @@ const makeWsRpcLayer = (
                   ? { reviewedUnmarkedId: input.reviewedUnmarkedId }
                   : {}),
               });
-              yield* memoryDashboard.invalidate;
+              if (result.kind === "merged" || result.kind === "deferred-to-push")
+                yield* memoryDashboard.invalidate;
               return result;
             }).pipe(
               Effect.mapError((cause) =>

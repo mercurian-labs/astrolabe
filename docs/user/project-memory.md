@@ -90,8 +90,9 @@ send the message.
 **Revert** undoes one amendment as a new amendment on the line. It refuses, without touching your
 edits, while a turn is running, while the line's working slot is leased or holds uncaptured edits,
 at an earlier checkpoint, or when later changes overlap the revert; in that last case you can add
-a reconciliation request to your draft instead. Reverting the captured tail first prepares a merge
-review so the revert is pinned to what you saw.
+a reconciliation request to your draft instead. Every revert is pinned to the memory snapshot you
+reviewed. If a new capture or amendment arrives, refresh and review it before trying again. A dirty
+standalone home checkout does not prevent a safe revert on the line.
 
 ## Merge memory home
 
@@ -105,3 +106,13 @@ memory repository, confirming creates the merge commit when Git can merge cleanl
 comes back with the paths involved and a **Reconcile in the conversation** action that seeds your
 draft. Host-side merge, auto-merge, and host revert of a pull request that carries shared memory
 stay refused until the host contracts can check the exact remote head.
+
+Assets and configuration files inside the designated memory folder need review too. Their
+amendments retain the exact changed paths even when there are no changed Markdown documents or
+graph nodes.
+
+App push and pull request publishing from an unregistered branch, including main, are currently
+unavailable in shared memory repositories. Use a registered thread line and review its memory
+changes, or use external Git outside the app's review boundary. Combined commit-and-push actions
+can commit pending work, then refuse publication because the new commit needs a fresh review.
+They never approve that new commit automatically.

@@ -239,9 +239,44 @@ export const makeMemoryPosition = Effect.gen(function* () {
       )
         return { kind: "unavailable", reason: "checkpoint-missing" };
       for (const item of memoryAncestors(context, reading.commitId)) {
-        const owner = checkpoints
-          .flatMap((c) => c.checkpoints.map((checkpoint) => ({ threadId: c.threadId, checkpoint })))
-          .find((c) => c.checkpoint.assistantMessageId === String(item.commitId));
+        const all = checkpoints.flatMap((c) =>
+          c.checkpoints.map((checkpoint) => ({ threadId: c.threadId, checkpoint })),
+        );
+        let userMessageId = item._tag === "message" ? item.sourceUserMessageId : undefined;
+        // Older unified replies have random planning IDs, but their first-parent path
+        // still names the exact human send recorded in projection_turns.pending_message_id.
+        if (
+          item._tag === "message" &&
+          item.authorKind === "assistant" &&
+          !item.memoryAmendment &&
+          !userMessageId
+        ) {
+          let parent = item.parents.length === 1 ? item.parents[0] : undefined;
+          const seen = new Set<string>();
+          while (parent && !seen.has(parent)) {
+            seen.add(parent);
+            const ancestor = context.detail.timeline.find((entry) => entry.commitId === parent);
+            if (!ancestor) break;
+            if (ancestor._tag === "message" && ancestor.authorKind === "human") {
+              userMessageId = ancestor.commitId;
+              break;
+            }
+            if (
+              ancestor._tag === "message" &&
+              ancestor.authorKind === "assistant" &&
+              !ancestor.memoryAmendment
+            )
+              break;
+            parent = ancestor.parents.length === 1 ? ancestor.parents[0] : undefined;
+          }
+        }
+        const owners = all.filter(
+          (c) =>
+            c.checkpoint.assistantMessageId === String(item.commitId) ||
+            (userMessageId !== undefined && c.checkpoint.userMessageId === String(userMessageId)),
+        );
+        if (owners.length > 1) return { kind: "unavailable", reason: "checkpoint-missing" };
+        const owner = owners[0];
         if (owner) {
           if (owner.checkpoint.status !== "ready")
             return { kind: "unavailable", reason: "checkpoint-missing" };
@@ -258,6 +293,8 @@ export const makeMemoryPosition = Effect.gen(function* () {
           selectedCommit ??= item.memoryAmendment.memoryCommitSha;
           continue;
         }
+        if (item._tag === "message" && item.authorKind === "assistant")
+          return { kind: "unavailable", reason: "checkpoint-missing" };
         if (String(item.commitId) === String(context.lineRootCommitId)) {
           snapshotOid = baselineSnapshotOid;
           selectedCommit ??= context.branch.baseOid;

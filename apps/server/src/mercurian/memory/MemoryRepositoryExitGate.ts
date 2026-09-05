@@ -150,7 +150,13 @@ export const make = Effect.gen(function* () {
       const branchName =
         target?.branch ?? (yield* run(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]));
       const line = (yield* branches(source.repositoryId)).find((b) => b.branch === branchName);
-      if (!line) return yield* fail(cwd);
+      if (!line)
+        return yield* new GitManagerError({
+          operation: "memoryRepositoryExit",
+          cwd,
+          detail:
+            "App push and PR publishing are unavailable from an unregistered branch (including main) in a shared memory repository. Use a registered line and review its memory changes, or use external Git outside the app review boundary.",
+        });
       for (const slot of yield* slotRows(line.lineRootCommitId)) {
         const lease = yield* registry.lease(slot.slotId);
         if (Option.isSome(lease) && lease.value.holders.some((h) => h.kind === "turn"))

@@ -224,6 +224,7 @@ export const make = Effect.gen(function* () {
       .appendAssistantMessage({
         planId: turn.planId,
         parentCommitId: claimed?.tipCommitId ?? turn.parentCommitId,
+        sourceUserMessageId: turn.parentCommitId,
         text: turn.text,
         ...(options.interrupted ? { interrupted: true } : {}),
         ...(turn.grounding.length === 0 ? {} : { grounding: turn.grounding }),
