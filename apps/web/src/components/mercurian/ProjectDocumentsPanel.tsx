@@ -7,9 +7,15 @@ import { Button } from "../ui/button";
 import { ManageProjectRepositoriesDialog } from "./ManageProjectRepositoriesDialog";
 import { useThreadSpace } from "./ThreadSpaceContext";
 
+const EMPTY_DOCUMENTS: ListProjectDocumentsResult = {
+  documents: [],
+  problems: [],
+  hasHistory: false,
+};
+
 /** Navigation into shared Files; the line dashboard can consume the same document references. */
 export function useProjectDocumentsPanel() {
-  const { detail, projectId, threadId, environmentId, search } = useThreadSpace();
+  const { planId, detail, projectId, threadId, environmentId, search } = useThreadSpace();
   const { snapshot } = useStorageSources();
   const list = useListProjectDocuments(environmentId);
   const [response, setResponse] = useState<{
@@ -22,6 +28,7 @@ export function useProjectDocumentsPanel() {
   const sources = snapshot.sources.filter(
     (source) => source.projectId === projectId && source.kind !== "memory",
   );
+  const isDraft = planId === null;
   const historical = search.at !== undefined;
   const requestKey = JSON.stringify([
     environmentId,
@@ -32,10 +39,10 @@ export function useProjectDocumentsPanel() {
     detail?.snapshotSequence,
     revision,
   ]);
-  const result = response?.key === requestKey ? response.result : null;
-  const error = response?.key === requestKey ? response.error : null;
+  const result = isDraft ? EMPTY_DOCUMENTS : response?.key === requestKey ? response.result : null;
+  const error = !isDraft && response?.key === requestKey ? response.error : null;
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || isDraft) return;
     let cancelled = false;
     void list({ projectId, threadId, ...(search.at ? { positionCommitId: search.at } : {}) }).then(
       (value) => {
@@ -50,7 +57,7 @@ export function useProjectDocumentsPanel() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, threadId, search.at, requestKey, list]);
+  }, [projectId, isDraft, threadId, search.at, requestKey, list]);
   return {
     projectId,
     threadId,
@@ -61,6 +68,7 @@ export function useProjectDocumentsPanel() {
     setSettingsOpen,
     setRevision,
     historical,
+    isDraft,
     sources,
   };
 }
@@ -113,7 +121,9 @@ export function ProjectDocumentsPanel({
       )}
       {result && result.documents.length === 0 && sources.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          No plans or specs in this line's configured locations yet.
+          {state.isDraft
+            ? "Start this thread to browse its plans and specs."
+            : "No plans or specs in this line's configured locations yet."}
         </p>
       )}
       {result && result.documents.some((document) => document.lastCheckpoint !== null) && (

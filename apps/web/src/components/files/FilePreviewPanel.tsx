@@ -1208,6 +1208,11 @@ function WorkspaceFilePreviewPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      {snapshotOid && (
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Saved checkpoint · {snapshotOid.slice(0, 8)} · Read-only
+        </p>
+      )}
       {specDocument && !snapshotOid && relativePath && threadRef && (
         <SpecRefreshAction
           threadId={threadRef.threadId}

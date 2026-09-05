@@ -57,6 +57,7 @@ export type RightPanelSurface =
       documentLocation?: {
         cwd: string;
         repositoryId: string;
+        repositoryName?: string | undefined;
         documentId?: string;
         snapshotOid?: string;
       };
@@ -129,6 +130,7 @@ interface RightPanelStoreState {
     document: {
       cwd: string;
       repositoryId: string;
+      repositoryName?: string | undefined;
       relativePath: string;
       snapshotOid: string | null;
       id?: string | null;
@@ -499,6 +501,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               documentLocation: {
                 cwd: document.cwd,
                 repositoryId: document.repositoryId,
+                ...(document.repositoryName ? { repositoryName: document.repositoryName } : {}),
                 ...(document.id && document.kind === "spec" && document.originUrl
                   ? { documentId: document.id }
                   : {}),

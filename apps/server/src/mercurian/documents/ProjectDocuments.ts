@@ -79,12 +79,27 @@ export const make = Effect.gen(function* () {
           ancestors.add(id);
           pending.push(...(byId.get(id)?.parents ?? []));
         }
-        turnCount = checkpoints
-          .filter(
-            (checkpoint) =>
-              checkpoint.assistantMessageId && ancestors.has(checkpoint.assistantMessageId),
-          )
-          .reduce((max, checkpoint) => Math.max(max, checkpoint.checkpointTurnCount), 0);
+        const completedSends = new Set(
+          detail.timeline.flatMap((item) =>
+            ancestors.has(item.commitId) &&
+            item._tag === "message" &&
+            item.authorKind === "assistant" &&
+            item.sourceUserMessageId
+              ? [String(item.sourceUserMessageId)]
+              : [],
+          ),
+        );
+        const matching = checkpoints.filter(
+          (checkpoint) =>
+            (checkpoint.assistantMessageId && ancestors.has(checkpoint.assistantMessageId)) ||
+            (checkpoint.userMessageId && completedSends.has(checkpoint.userMessageId)),
+        );
+        if (matching.some((checkpoint) => checkpoint.status !== "ready"))
+          return yield* new MercurianStorageError({ operation: "checkpoint-unavailable" });
+        turnCount = matching.reduce(
+          (max, checkpoint) => Math.max(max, checkpoint.checkpointTurnCount),
+          0,
+        );
       }
       const ref = historical
         ? checkpointRefForThreadTurn(input.threadId, turnCount ?? 0)
@@ -181,6 +196,7 @@ export const make = Effect.gen(function* () {
             const parsed = readDocumentMarkdown(contents, path.basename(relativePath));
             documents.push({
               repositoryId: source.repositoryId,
+              repositoryName: registered?.name ?? source.repositoryId,
               cwd,
               relativePath,
               kind: source.kind === "plan" ? "plan" : "spec",

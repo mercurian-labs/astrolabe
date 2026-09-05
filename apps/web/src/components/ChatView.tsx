@@ -7573,7 +7573,12 @@ function ChatViewContent(props: ChatViewProps) {
           renderedRightPanelSurface.documentLocation?.snapshotOid
             ? { snapshotOid: renderedRightPanelSurface.documentLocation.snapshotOid }
             : {})}
-          projectName={activeProject?.title ?? ""}
+          projectName={
+            renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.documentLocation
+              ? (renderedRightPanelSurface.documentLocation.repositoryName ??
+                renderedRightPanelSurface.documentLocation.repositoryId)
+              : (activeProject?.title ?? "")
+          }
           threadRef={activeThreadRef}
           composerDraftTarget={composerDraftTarget}
           keybindings={keybindings}

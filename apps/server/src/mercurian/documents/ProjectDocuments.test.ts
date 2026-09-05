@@ -50,6 +50,11 @@ it.effect(
           const repositoryId = MercurianRepositoryId.make("repo");
           const projectId = MercurianProjectId.make("project");
           git(["update-ref", checkpointRefForThreadTurn(threadId, 0), "HEAD"]);
+          const baselineOid = git(["rev-parse", "HEAD"]);
+          NodeFS.writeFileSync(NodePath.join(cwd, "plans/design.md"), "# Checkpoint design\n");
+          git(["add", "."]);
+          git(["commit", "-m", "update document"]);
+          git(["update-ref", checkpointRefForThreadTurn(threadId, 1), "HEAD"]);
           NodeFS.writeFileSync(NodePath.join(cwd, "plans/design.md"), "# Live design\n");
           const alias = NodePath.join(root, "alias.md");
           NodeFS.symlinkSync(NodePath.join(cwd, "plans/design.md"), alias);
@@ -114,7 +119,20 @@ it.effect(
                 ),
             }),
             Layer.mock(PlanningStore)({
-              getPlanSnapshot: () => Effect.succeed({ plan: { projectId }, timeline: [] } as never),
+              getPlanSnapshot: () =>
+                Effect.succeed({
+                  plan: { projectId },
+                  timeline: [
+                    { _tag: "message", commitId: "send", authorKind: "human", parents: [] },
+                    {
+                      _tag: "message",
+                      commitId: "planning-reply",
+                      authorKind: "assistant",
+                      sourceUserMessageId: "send",
+                      parents: ["send"],
+                    },
+                  ],
+                } as never),
             }),
             Layer.mock(ProjectionSnapshotQuery)({
               getThreadShellById: () =>
@@ -124,7 +142,20 @@ it.effect(
                   } as never),
                 ),
               getThreadCheckpointContext: () =>
-                Effect.succeed(Option.some({ checkpoints: [] } as never)),
+                Effect.succeed(
+                  Option.some({
+                    checkpoints: [
+                      {
+                        userMessageId: "send",
+                        assistantMessageId: "provider-reply",
+                        checkpointTurnCount: 1,
+                        status: "ready",
+                        completedAt: "2026-09-05T00:00:00Z",
+                        repositories: [],
+                      },
+                    ],
+                  } as never),
+                ),
             }),
             Layer.mock(GitVcsDriver)({
               execute: (input) =>
@@ -148,7 +179,20 @@ it.effect(
             );
             const historical = yield* documents.list({ threadId, projectId, turnCount: 0 });
             assert.strictEqual(historical.documents[0]?.title, "Historical design");
-            assert.strictEqual(historical.documents[0]?.snapshotOid, git(["rev-parse", "HEAD"]));
+            assert.strictEqual(historical.documents[0]?.snapshotOid, baselineOid);
+            assert.strictEqual(historical.documents[0]?.repositoryName, "Repo");
+            const selected = yield* documents.list({
+              threadId,
+              projectId,
+              positionCommitId: MercurianCommitId.make("planning-reply"),
+            });
+            assert.strictEqual(selected.documents[0]?.title, "Checkpoint design");
+            const beforeReply = yield* documents.list({
+              threadId,
+              projectId,
+              positionCommitId: MercurianCommitId.make("send"),
+            });
+            assert.strictEqual(beforeReply.documents[0]?.title, "Historical design");
             assert.strictEqual(yield* documents.isDocumentPath(root, "alias.md"), true);
             assert.strictEqual(yield* documents.isDocumentPath(cwd, "code.ts"), false);
             attached = false;

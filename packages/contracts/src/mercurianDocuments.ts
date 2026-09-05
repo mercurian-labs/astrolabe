@@ -4,6 +4,7 @@ import { MercurianRepositoryId } from "./mercurianRepositories.ts";
 import { ThreadId } from "./baseSchemas.ts";
 export const ProjectDocument = Schema.Struct({
   repositoryId: MercurianRepositoryId,
+  repositoryName: Schema.optional(Schema.String),
   cwd: Schema.String,
   relativePath: Schema.String,
   kind: Schema.Literals(["plan", "spec"]),
