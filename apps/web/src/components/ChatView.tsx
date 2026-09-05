@@ -643,7 +643,7 @@ type ChatViewSlots = {
   workspaceCwdOverride?: string | null;
   mentionSources?: ChatComposerMentionSources;
   planPanel?: ReactNode;
-  specPanel?: ReactNode;
+  planUnavailableReason?: string;
   memoryPanel?: ReactNode;
   /** Unreviewed memory changes; shown on the Memory tab even while its panel is unmounted. */
   memoryBadgeCount?: number;
@@ -1382,13 +1382,12 @@ function ChatViewContent(props: ChatViewProps) {
     canForkHere,
     onForkHere,
     planPanel,
-    specPanel,
+    planUnavailableReason,
     memoryPanel,
     memoryBadgeCount,
     checkpointsPanel,
   } = props;
   const planAvailable = planPanel !== undefined;
-  const specAvailable = specPanel !== undefined;
   const memoryAvailable = memoryPanel !== undefined;
   const surfaceBadges = useMemo<Readonly<Record<string, number>>>(
     () =>
@@ -3739,13 +3738,9 @@ function ChatViewContent(props: ChatViewProps) {
     onDiffPanelOpen?.();
   }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
   const addPlanSurface = useCallback(() => {
-    if (!activeThreadRef || !planAvailable) return;
+    if (!activeThreadRef || !planAvailable || planUnavailableReason) return;
     useRightPanelStore.getState().open(activeThreadRef, "plan");
-  }, [activeThreadRef, planAvailable]);
-  const addSpecSurface = useCallback(() => {
-    if (!activeThreadRef || !specAvailable) return;
-    useRightPanelStore.getState().open(activeThreadRef, "spec");
-  }, [activeThreadRef, specAvailable]);
+  }, [activeThreadRef, planAvailable, planUnavailableReason]);
   const addMemorySurface = useCallback(() => {
     if (!activeThreadRef || !memoryAvailable) return;
     useRightPanelStore.getState().open(activeThreadRef, "memory");
@@ -7497,8 +7492,6 @@ function ChatViewContent(props: ChatViewProps) {
       </Suspense>
     ) : renderedRightPanelSurface?.kind === "plan" ? (
       planPanel
-    ) : renderedRightPanelSurface?.kind === "spec" ? (
-      specPanel
     ) : renderedRightPanelSurface?.kind === "memory" ? (
       memoryPanel
     ) : renderedRightPanelSurface?.kind === "checkpoints" ? (
@@ -7567,8 +7560,25 @@ function ChatViewContent(props: ChatViewProps) {
                 : activeWorkspaceRoot
           }`}
           environmentId={activeThread.environmentId}
-          cwd={activeWorkspaceRoot ?? ""}
-          projectName={activeProject?.title ?? ""}
+          {...(renderedRightPanelSurface.kind === "file" &&
+          renderedRightPanelSurface.documentLocation
+            ? { documentLocation: renderedRightPanelSurface.documentLocation }
+            : {})}
+          cwd={
+            renderedRightPanelSurface.kind === "file"
+              ? (renderedRightPanelSurface.documentLocation?.cwd ?? activeWorkspaceRoot ?? "")
+              : (activeWorkspaceRoot ?? "")
+          }
+          {...(renderedRightPanelSurface.kind === "file" &&
+          renderedRightPanelSurface.documentLocation?.snapshotOid
+            ? { snapshotOid: renderedRightPanelSurface.documentLocation.snapshotOid }
+            : {})}
+          projectName={
+            renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.documentLocation
+              ? (renderedRightPanelSurface.documentLocation.repositoryName ??
+                renderedRightPanelSurface.documentLocation.repositoryId)
+              : (activeProject?.title ?? "")
+          }
           threadRef={activeThreadRef}
           composerDraftTarget={composerDraftTarget}
           keybindings={keybindings}
@@ -8109,11 +8119,10 @@ function ChatViewContent(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
           onAddPlan={addPlanSurface}
-          onAddSpec={addSpecSurface}
           onAddMemory={addMemorySurface}
           workspaceReady={workspaceReady}
           planAvailable={planAvailable}
-          specAvailable={specAvailable}
+          planUnavailableReason={planUnavailableReason}
           memoryAvailable={memoryAvailable}
           browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
           terminalAvailable={workingSurfacesReady && activeProject !== null}
@@ -8168,11 +8177,10 @@ function ChatViewContent(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             onAddPlan={addPlanSurface}
-            onAddSpec={addSpecSurface}
             onAddMemory={addMemorySurface}
             workspaceReady={workspaceReady}
             planAvailable={planAvailable}
-            specAvailable={specAvailable}
+            planUnavailableReason={planUnavailableReason}
             memoryAvailable={memoryAvailable}
             browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
             terminalAvailable={workingSurfacesReady && activeProject !== null}

@@ -1,0 +1,102 @@
+import type {
+  MercurianProjectId,
+  MercurianRepository,
+  MercurianRepositoryId,
+  ProjectStorageKind,
+} from "@t3tools/contracts";
+import { useState } from "react";
+import { isMemorySourceInvalidError } from "@t3tools/contracts";
+import {
+  useDesignateStorageSource,
+  useRemoveStorageSource,
+  useStorageSourceForProject,
+} from "../../state/mercurianStorage";
+import { Button } from "../ui/button";
+import {
+  emptyStorageLocations,
+  ProjectDocumentLocationFields,
+  storageLabels,
+} from "./ProjectDocumentLocationFields";
+
+export function ProjectStorageSettings({
+  projectId,
+  kind,
+  repositories,
+}: {
+  projectId: MercurianProjectId;
+  kind: ProjectStorageKind;
+  repositories: ReadonlyArray<MercurianRepository>;
+}) {
+  const source = useStorageSourceForProject(projectId, kind);
+  const designate = useDesignateStorageSource();
+  const remove = useRemoveStorageSource();
+  const sourceKey = JSON.stringify([projectId, kind, source?.repositoryId, source?.subpath]);
+  const [draft, setDraft] = useState<{
+    key: string;
+    value: { repositoryId: string; subpath: string };
+  } | null>(null);
+  const value =
+    draft?.key === sourceKey
+      ? draft.value
+      : source
+        ? { repositoryId: source.repositoryId, subpath: source.subpath ?? "" }
+        : emptyStorageLocations()[kind];
+  const setValue = (next: { repositoryId: string; subpath: string }) => {
+    setDraft({ key: sourceKey, value: next });
+    setSaved(false);
+    setError(null);
+  };
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    const result = value.repositoryId
+      ? await designate({
+          projectId,
+          kind,
+          repositoryId: value.repositoryId as MercurianRepositoryId,
+          subpath: value.subpath,
+        })
+      : await remove(projectId, kind);
+    if (!result.ok)
+      setError(
+        isMemorySourceInvalidError(result.error) && result.error.reason === "overlapping-location"
+          ? "This location overlaps another configured storage location. Choose a separate directory or repository for Memory, Plans, and Specs."
+          : result.error instanceof Error
+            ? result.error.message
+            : `Could not save ${storageLabels[kind].toLowerCase()} location.`,
+      );
+    else setSaved(true);
+    setBusy(false);
+  };
+  return (
+    <section className="space-y-2 border-t border-border pt-4">
+      <ProjectDocumentLocationFields
+        kind={kind}
+        repositories={repositories}
+        value={value}
+        onChange={setValue}
+        disabled={busy}
+      />
+      <p className="text-xs text-muted-foreground">
+        Changing this location does not move existing documents.
+      </p>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>
+        Save {storageLabels[kind].toLowerCase()} location
+      </Button>
+      {saved && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {storageLabels[kind]} location saved.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}

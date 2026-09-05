@@ -5,13 +5,7 @@ import * as Option from "effect/Option";
 import { ApprovalAutoResponder } from "../../orchestration/Services/ApprovalAutoResponder.ts";
 import { LineRuntimeStore } from "../lineRuntimes/LineRuntimeStore.ts";
 
-const PLANNING_TOOLS = new Set([
-  "save_plan_revision",
-  "save_spec_revision",
-  "propose_memory_amendment",
-  "read_plan",
-  "read_spec",
-]);
+const PLANNING_TOOLS = new Set(["propose_memory_amendment"]);
 const PREFIXES = ["mcp__t3-code__", "t3-code_"] as const;
 
 export const normalizePlanningToolName = (name: string): string | undefined => {

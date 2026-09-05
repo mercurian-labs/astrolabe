@@ -141,7 +141,7 @@ const makeHarness = (
       changes: Stream.empty,
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
-      getSnapshot: Effect.succeed({
+      getWorkingSnapshot: Effect.succeed({
         repositories: [
           {
             repositoryId: repositoryA,
@@ -165,7 +165,7 @@ const makeHarness = (
               { projectId, repositoryId: repositoryB },
             ],
       } as never),
-      changes: Stream.empty,
+      workingChanges: Stream.empty,
     }),
     Layer.mock(MemorySourceStore.MemorySourceStore)({
       getSnapshot: Effect.succeed(

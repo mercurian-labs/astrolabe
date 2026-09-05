@@ -1,3 +1,5 @@
+import * as Path from "effect/Path";
+import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 import { assert, it } from "@effect/vitest";
 import {
   MessageId,
@@ -46,6 +48,7 @@ const thread = {
   messages: [message],
   workspaceMembers: [
     { repositoryId: MercurianRepositoryId.make("repository"), worktreePath: "/tmp/repository" },
+    { repositoryId: MercurianRepositoryId.make("memory"), worktreePath: "/memory" },
   ],
 } as never;
 
@@ -117,6 +120,12 @@ const preparationDependencies = (options: PreparationOptions) => {
           updatedAt: now,
         });
   return Layer.mergeAll(
+    Path.layer,
+    Layer.mock(StorageSourceStore)({
+      getSnapshot: Effect.succeed(
+        Option.isSome(source) ? [{ ...source.value, kind: "memory" as const }] : [],
+      ),
+    }),
     Layer.mock(LineRuntimeStore.LineRuntimeStore)({
       getByThreadId: () => Effect.succeed(Option.some(runtime)),
     }),
@@ -186,6 +195,8 @@ it.effect(
   () => {
     let transcriptHead: CommitId | undefined;
     const dependencies = Layer.mergeAll(
+      Path.layer,
+      Layer.mock(StorageSourceStore)({ getSnapshot: Effect.succeed([]) }),
       Layer.mock(LineRuntimeStore.LineRuntimeStore)({
         getByThreadId: () =>
           Effect.succeed(
@@ -275,7 +286,9 @@ it.effect(
       assert.ok(fresh.text.includes("Build it"));
       assert.strictEqual(transcriptHead, parentId);
       assert.deepStrictEqual(fresh.session, { skipResume: true });
-      assert.deepStrictEqual(continued, { text: "Build it", session: {} });
+      assert.ok(continued.text.endsWith("Build it"));
+      assert.ok(continued.text.includes("Plans location is not configured"));
+      assert.deepStrictEqual(continued.session, {});
     }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
   },
 );
@@ -344,57 +357,6 @@ it.effect("grounds reachable memory and resolves note mentions on the first turn
   }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
 });
 
-it.effect("includes a standalone human spec revision in the next turn input", () => {
-  const root = CommitId.make("root");
-  const specRevision = CommitId.make("spec-revision");
-  const spec = {
-    goal: "Keep the revised navigation contract",
-    acceptanceCriteria: "The sidebar preserves the active project while it resizes.",
-  };
-  const dependencies = preparationDependencies({
-    parentCommitId: specRevision,
-    timeline: [
-      {
-        _tag: "message",
-        commitId: MercurianCommitId.make(root),
-        parents: [],
-        sequence: 1,
-        authorKind: "human",
-        text: "Reshape the sidebar",
-        createdAt: now,
-      },
-      {
-        _tag: "spec-revision",
-        commitId: MercurianCommitId.make(specRevision),
-        parents: [MercurianCommitId.make(root)],
-        sequence: 2,
-        authorKind: "human",
-        cause: "direct",
-        createdAt: now,
-      },
-    ],
-    ancestors: [ancestor(root, 1, "message"), ancestor(specRevision, 2, "spec-revision")],
-    spec,
-  });
-  const nextMessage = { ...message, text: "What should change in the plan?" };
-  return Effect.gen(function* () {
-    const preparation = yield* TurnPreparation;
-    const prepared = yield* preparation.prepare({
-      thread,
-      message: nextMessage,
-      sessionIsFresh: true,
-    });
-    assert.ok(prepared.text.includes("[The person revised the spec.]"));
-    assert.ok(prepared.text.includes("Goal / user story:\nKeep the revised navigation contract"));
-    assert.ok(
-      prepared.text.includes(
-        "Acceptance criteria:\n---\nThe sidebar preserves the active project while it resizes.",
-      ),
-    );
-    assert.ok(prepared.text.includes("Reply to this message:\nWhat should change in the plan?"));
-  }).pipe(Effect.provide(Layer.provide(MercurianTurnPreparationLive, dependencies)));
-});
-
 it.effect("keeps the next line turn resumable while resolving note mentions", () => {
   const readLines: Array<MemoryLineRef> = [];
   const dependencies = preparationDependencies({
@@ -415,9 +377,10 @@ it.effect("keeps the next line turn resumable while resolving note mentions", ()
       message: continuedMessage,
       sessionIsFresh: false,
     });
-    assert.strictEqual(
-      prepared.text,
-      "Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: /memory/Composer.md",
+    assert.ok(
+      prepared.text.endsWith(
+        "Consult [[Composer]].\n\n---\n\nMemory notes mentioned in this message:\n- Composer: /memory/Composer.md",
+      ),
     );
     assert.deepStrictEqual(prepared.session, {});
     assert.deepStrictEqual(readLines, [{ threadId }]);

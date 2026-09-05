@@ -52,9 +52,6 @@ const SEARCH_TOOL_NAMES = new Set([
 
 const LISTING_TOOL_NAMES = new Set(["glob", "ls", "list", "list_dir", "listdirectory", "tree"]);
 
-const isPlanningWriteTool = (toolName: string) =>
-  toolName.includes("save_plan_revision") || toolName.includes("save_spec_revision");
-
 function classifyToolName(toolName: string): PlanGroundingItem["kind"] {
   const normalized = toolName.trim().toLowerCase();
   if (READ_TOOL_NAMES.has(normalized)) return "file-read";
@@ -133,7 +130,6 @@ export function foldGroundingEvent(event: ProviderRuntimeEvent): GroundingFoldRe
       // its argument summary when the adapter provides one.
       const title = payload.title;
       if (title === undefined) return null;
-      if (isPlanningWriteTool(title)) return null;
       const item = toItem(classifyToolName(title), payload.detail ?? title, payload.detail);
       return item === null ? null : { key, item };
     }
@@ -143,8 +139,8 @@ export function foldGroundingEvent(event: ProviderRuntimeEvent): GroundingFoldRe
       const payload = event.payload;
       const toolName = payload.toolName;
       if (toolName === undefined) return null;
-      // The planning MCP door's own tools are the write path, not grounding.
-      if (toolName.startsWith("mcp__") || isPlanningWriteTool(toolName)) return null;
+      // MCP progress is represented by lifecycle events.
+      if (toolName.startsWith("mcp__")) return null;
       const kind = classifyToolName(toolName);
       const label =
         payload.summary === undefined ? toolName : stripToolPrefix(payload.summary, toolName);

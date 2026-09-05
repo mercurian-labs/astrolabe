@@ -15,8 +15,7 @@ Connecting repositories at creation is optional — the set is a default, not a 
 a label on anything. The dialog lists the repositories this workspace already knows; **Manage
 Repos** takes you to the [Repositories](./repositories.md) page to add or remove them, and a
 workspace with no repositories yet offers just that button. For an existing project, the same
-choices live behind the project filter's **repositories** icon. That dialog also designates the
-project's [memory](./project-memory.md), which may live in any registered repository or folder.
+choices live behind the project filter's **repositories** icon. Both dialogs let you independently choose a repository and directory for [memory](./project-memory.md), plans, and specs. These locations are optional. Changing a location never moves existing files.
 
 A project row expands and collapses with a click, and the tree remembers which projects you left
 expanded. A project with many threads shows its most recent ones and a **Show more** row for the
@@ -130,7 +129,7 @@ Instead of guessing, the assistant can ask you a structured question — a card 
 in the conversation. The thread shows **Awaiting your input** in the tree until you answer, and the
 question and your answer stay in the record with the reply.
 
-The assistant can also update the Spec and Plan mid-reply. Those revisions appear in the history,
+The assistant can also edit plan and spec files mid-reply. Those edits are captured with the turn,
 live in every window, and land before the reply that explains them. A claim in reply text is not an
 artifact change. The assistant never forks a line for you.
 
@@ -151,10 +150,10 @@ is using. Provider compaction remains part of the thread timeline rather than be
 checkpoint.
 
 The panel starts with **Checkpoints** pinned first and **Plan** selected. Checkpoints cannot be
-closed. Use the **+** menu to add **Plan** and **Spec**, alongside available workspace surfaces such
-as Terminal, Files, Diff, and Browser. Plan and Spec are read-only and use the panel itself as their
-header, so there is no second title bar inside either surface. Other tabs can be switched or closed
-normally.
+closed. The Plan surface lists both plan and spec documents and opens them in Files. The **+** menu
+also offers available workspace surfaces such as Terminal, Files, Diff, and Browser. When neither
+plans nor specs have a location and there are no documents to show, Plan is disabled with a setup
+explanation. Configuring either type enables it; the other type can be configured later.
 
 Drag the divider to give the conversation or panel more room; the width is remembered.
 Maximize the panel when it needs the whole workspace. On a narrow window it opens as a sheet. The
@@ -162,34 +161,30 @@ terminal drawer is independent of the panel, so you can keep a shell open below 
 while reading another surface on the right. Selected terminal output can be added to the next
 message as context.
 
-## The Spec
+## Plans and specs
 
-The Spec is the behavioral contract the thread is planned from: its user story, expected behavior,
-and acceptance criteria. The Plan describes the approach. Both are first-class artifacts in the
-same history, but they have opposite roles.
+Plans describe the implementation approach. Specs describe expected behavior and acceptance
+criteria. Both are Markdown files in project repositories, available to future threads. A thread
+can work on several documents and does not need a plan/spec pair.
 
-An imported issue becomes the first Spec revision. A thread started blank has no Spec until the
-assistant writes one. The Spec tab reads the contract for the selected checkpoint; it does not edit
-the artifact directly.
+Choose their locations independently in project settings or when creating a project. Changing or
+removing a location does not move or delete files from the previous location. No blank documents
+are created by setting a location.
 
-If another line has not absorbed the newest Spec, Checkpoints shows a **Spec stale** badge on that
-line. A merge that includes the newer revision clears the badge naturally.
+The Plan surface shows documents available on the line, with the most recently checkpointed
+changes first. Open a row to read it in Files. Plan and spec files are read-only in the app,
+including Markdown checkboxes; ask the assistant to edit them using its normal file tools. Use Diff
+to inspect changes. The list does not generate change summaries.
 
-When the newest Spec on a path has no later Plan revision, Checkpoints shows **Plan may be stale**
-separately from a stale spec line.
+Selecting a checkpoint reads saved Git content rather than the current working file. Historical
+files open as read-only source, so relative images cannot silently load from the live worktree.
+Missing repositories or snapshots are reported rather than substituted with current content.
 
-## The Plan
-
-Every thread has exactly one Plan. It is written in Markdown and appears read-only in the
-Plan tab. Ask the assistant to change it; the saved revision joins the same history as the
-conversation.
-
-An artifact change is not a side channel: it joins the thread's history alongside messages, in the
-order things happened, with who made it and when. The Plan's text is always exactly what that
-history adds up to.
-
-Nothing here needs refreshing. An edit or a message appears as it lands — including one made in
-another window open on the same thread.
+An imported issue creates a spec in the configured specs directory. In its Files view,
+**Refresh from issue** checks the issue without sending an assistant message. An unchanged issue
+writes nothing. If both versions changed, review the previous import, local spec, and upstream
+issue, then choose or edit the result before saving. The app rechecks the reviewed versions and
+captures the saved file in Git.
 
 ## Checkpoints and lines
 
@@ -232,7 +227,7 @@ An archived thread's own address keeps working, so a link to it still opens.
 
 **Delete** is only there while a thread is fully private, which means no commit in it has been
 published. Before that crossing the work was never seen by anyone else, so deleting leaves no
-trace: the thread, its conversation, its Plan, and its history are gone, and importing the same
+trace: the thread, its conversation, and its history are gone; repository documents are retained, and importing the same
 issue again starts a fresh thread. Once anything in a thread is published, delete stops being offered
 anywhere in the app — archive is the only disappearance a published thread has. Threads that came in through issue
 import are published from birth, so they are archive-only from the start.

@@ -12,26 +12,6 @@ import { PlanningToolkit } from "./tools.ts";
  * equal standing, live, mid-turn.
  */
 const handlers = {
-  save_plan_revision: (input) =>
-    Effect.gen(function* () {
-      const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* LineTurnReactor;
-      yield* assistant.saveRevisionFromThread({
-        threadId: invocation.threadId,
-        text: input.text,
-      });
-      return { saved: true as const };
-    }),
-  save_spec_revision: (input) =>
-    Effect.gen(function* () {
-      const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* LineTurnReactor;
-      yield* assistant.saveSpecRevisionFromThread({
-        threadId: invocation.threadId,
-        document: input.document,
-      });
-      return { saved: true as const };
-    }),
   propose_memory_amendment: (input) =>
     Effect.gen(function* () {
       const invocation = yield* McpInvocationContext.McpInvocationContext;
@@ -48,20 +28,6 @@ const handlers = {
         })),
       });
       return { saved: true as const };
-    }),
-  read_plan: () =>
-    Effect.gen(function* () {
-      const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* LineTurnReactor;
-      const text = yield* assistant.readPlanFromThread({ threadId: invocation.threadId });
-      return { text };
-    }),
-  read_spec: () =>
-    Effect.gen(function* () {
-      const invocation = yield* McpInvocationContext.McpInvocationContext;
-      const assistant = yield* LineTurnReactor;
-      const spec = yield* assistant.readSpecFromThread({ threadId: invocation.threadId });
-      return { spec };
     }),
 } satisfies Parameters<typeof PlanningToolkit.toLayer>[0];
 

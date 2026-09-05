@@ -1,3 +1,4 @@
+import { MERCURIAN_STORAGE_WS_METHODS } from "@t3tools/contracts";
 import {
   MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
@@ -56,6 +57,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof MERCURIAN_WS_METHODS.subscribePlan
   | typeof MERCURIAN_REPOSITORY_WS_METHODS.subscribeRepositories
   | typeof MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations
+  | typeof MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources
   | typeof MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources
   | typeof MERCURIAN_TRACKER_WS_METHODS.subscribeTrackers
   | typeof MERCURIAN_WORKSPACE_WS_METHODS.subscribeWorkspaceSettings

@@ -1,3 +1,4 @@
+import { SpecRefreshAction } from "./SpecRefreshAction";
 import type {
   ChatFileAttachment,
   EditorId,
@@ -82,6 +83,8 @@ import {
 } from "./projectFilesQueryState";
 
 interface FilePreviewPanelProps {
+  snapshotOid?: string;
+  documentLocation?: { repositoryId: string; documentId?: string };
   environmentId: EnvironmentId;
   cwd: string;
   projectName: string;
@@ -984,6 +987,8 @@ function initialExplorerOpen(): boolean {
 }
 
 export default function FilePreviewPanel({
+  snapshotOid,
+  documentLocation,
   environmentId,
   cwd,
   projectName,
@@ -1034,6 +1039,8 @@ export default function FilePreviewPanel({
       revealRequestId={revealRequestId}
       onOpenFile={onOpenFile}
       onPendingChange={onPendingChange}
+      {...(snapshotOid === undefined ? {} : { snapshotOid })}
+      {...(documentLocation === undefined ? {} : { documentLocation })}
       selectedFilePending={selectedFilePending}
       workspaceMutationId={workspaceMutationId}
     />
@@ -1041,6 +1048,8 @@ export default function FilePreviewPanel({
 }
 
 function WorkspaceFilePreviewPanel({
+  snapshotOid,
+  documentLocation,
   environmentId,
   cwd,
   projectName,
@@ -1074,21 +1083,33 @@ function WorkspaceFilePreviewPanel({
   // PDFs have no text to show; HTML has, and can toggle between page and source.
   const isPdf = relativePath !== null && isPdfPreviewFile(relativePath);
   const isHtml = relativePath !== null && !isPdf && isBrowserPreviewFile(relativePath);
-  // A file outside the workspace (an absolute path) is shown, never edited.
-  const isHostFile =
-    attachment !== undefined || (relativePath !== null && isAbsolutePath(relativePath));
   const file = useProjectFileQuery(
     environmentId,
     cwd,
     relativePath,
     attachment === undefined && !isMedia && !isPdf,
+    snapshotOid,
+    documentLocation && threadRef
+      ? { threadId: threadRef.threadId, repositoryId: documentLocation.repositoryId }
+      : undefined,
   );
+  const specDocument =
+    file.data?.projectDocument ??
+    (documentLocation?.documentId && relativePath
+      ? { ...documentLocation, documentId: documentLocation.documentId, relativePath }
+      : null);
+  const isHostFile =
+    Boolean(snapshotOid || file.data?.readOnly) ||
+    attachment !== undefined ||
+    (relativePath !== null && isAbsolutePath(relativePath));
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
-  const showExplorer = shouldShowFileExplorer({
-    relativePath,
-    explorerOpen,
-    attachmentOpen: attachment !== undefined,
-  });
+  const showExplorer =
+    !snapshotOid &&
+    shouldShowFileExplorer({
+      relativePath,
+      explorerOpen,
+      attachmentOpen: attachment !== undefined,
+    });
   // Reading markdown rendered is a preference, not a property of one file. Keeping
   // it on the panel meant a thread switch dropped it and forced source back.
   const [renderMarkdownPreferred, setRenderMarkdownPreferred] = useLocalStorage(
@@ -1113,9 +1134,9 @@ function WorkspaceFilePreviewPanel({
   const revealHandled =
     revealLine === null ||
     (handledReveal?.path === relativePath && handledReveal.requestId === revealRequestId);
-  const renderMarkdown = isMarkdown && renderMarkdownPreferred && revealHandled;
+  const renderMarkdown = !snapshotOid && isMarkdown && renderMarkdownPreferred && revealHandled;
   const renderBrowserFile = isPdf || (isHtml && renderBrowserFilePreferred && revealHandled);
-  const canToggleRendered = attachment === undefined && (isMarkdown || isHtml);
+  const canToggleRendered = !snapshotOid && attachment === undefined && (isMarkdown || isHtml);
   const rendered = isMarkdown ? renderMarkdown : renderBrowserFile;
   const setRenderedPreferred = isMarkdown
     ? setRenderMarkdownPreferred
@@ -1187,6 +1208,21 @@ function WorkspaceFilePreviewPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      {snapshotOid && (
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Saved checkpoint · {snapshotOid.slice(0, 8)} · Read-only
+        </p>
+      )}
+      {specDocument && !snapshotOid && relativePath && threadRef && (
+        <SpecRefreshAction
+          threadId={threadRef.threadId}
+          environmentId={threadRef.environmentId}
+          documentId={specDocument.documentId}
+          repositoryId={specDocument.repositoryId}
+          relativePath={specDocument.relativePath}
+          onSaved={file.refresh}
+        />
+      )}
       {relativePath ? (
         <div
           className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"

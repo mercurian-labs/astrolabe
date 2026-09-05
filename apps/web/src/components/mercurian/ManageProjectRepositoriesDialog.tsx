@@ -1,13 +1,12 @@
+import { ProjectStorageSettings } from "./ProjectStorageSettings";
 import type { MemoryIndex, MercurianProjectId, MercurianRepositoryId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  useDesignateMemorySource,
   useGenerateProductMap,
   useMemorySourceForProject,
   useReadMemoryIndex,
-  useRemoveMemorySource,
 } from "../../state/mercurianMemory";
 import { useRepositories, useSetProjectRepositories } from "../../state/mercurianRepositories";
 import { Button } from "../ui/button";
@@ -45,14 +44,10 @@ export function ManageProjectRepositoriesDialog({
   const { snapshot } = useRepositories();
   const setProjectRepositories = useSetProjectRepositories();
   const memorySource = useMemorySourceForProject(projectId);
-  const designateMemorySource = useDesignateMemorySource();
-  const removeMemorySource = useRemoveMemorySource();
   const readMemoryIndex = useReadMemoryIndex();
   const generateProductMap = useGenerateProductMap();
   const [selected, setSelected] = useState<ReadonlySet<MercurianRepositoryId>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
-  const [memoryRepositoryId, setMemoryRepositoryId] = useState("");
-  const [memorySubpath, setMemorySubpath] = useState("");
   const [memoryIndex, setMemoryIndex] = useState<MemoryIndex | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryBusy, setMemoryBusy] = useState(false);
@@ -60,8 +55,6 @@ export function ManageProjectRepositoriesDialog({
   useEffect(() => {
     if (!open || projectId === null) return;
     setSelected(repositoryIdsForProject(snapshot.projectRepositories, projectId));
-    setMemoryRepositoryId(snapshot.repositories[0]?.repositoryId ?? "");
-    setMemorySubpath("");
     setMemoryIndex(null);
     setMemoryError(null);
     // Deliberately keyed to the opening, not to the snapshot: a live re-read
@@ -90,49 +83,6 @@ export function ManageProjectRepositoriesDialog({
   }, [isSaving, onOpenChange, projectId, selected, setProjectRepositories]);
 
   const repositories = sortRepositoriesForPage(snapshot.repositories);
-  const designatedRepository =
-    memorySource === null
-      ? null
-      : (snapshot.repositories.find(
-          (repository) => repository.repositoryId === memorySource.repositoryId,
-        ) ?? null);
-
-  const designate = useCallback(async () => {
-    if (projectId === null || memoryRepositoryId.length === 0 || memoryBusy) return;
-    setMemoryBusy(true);
-    setMemoryError(null);
-    const result = await designateMemorySource({
-      projectId,
-      repositoryId: memoryRepositoryId as MercurianRepositoryId,
-      ...(memorySubpath.trim() ? { subpath: memorySubpath.trim() } : {}),
-    });
-    if (result.ok) {
-      const indexResult = await readMemoryIndex(projectId);
-      if (indexResult.ok) setMemoryIndex(indexResult.value);
-      else setMemoryError(memoryRefusalMessage(indexResult.error));
-    } else {
-      setMemoryError(memoryRefusalMessage(result.error));
-    }
-    setMemoryBusy(false);
-  }, [
-    designateMemorySource,
-    memoryBusy,
-    memoryRepositoryId,
-    memorySubpath,
-    projectId,
-    readMemoryIndex,
-  ]);
-
-  const removeDesignation = useCallback(async () => {
-    if (projectId === null || memoryBusy) return;
-    setMemoryBusy(true);
-    setMemoryError(null);
-    const result = await removeMemorySource(projectId);
-    if (!result.ok) setMemoryError(memoryRefusalMessage(result.error));
-    else setMemoryIndex(null);
-    setMemoryBusy(false);
-  }, [memoryBusy, projectId, removeMemorySource]);
-
   const generate = useCallback(async () => {
     if (projectId === null || memoryBusy) return;
     setMemoryBusy(true);
@@ -222,87 +172,42 @@ export function ManageProjectRepositoriesDialog({
                 as a subpath.
               </p>
             </div>
-            {memorySource === null ? (
-              repositories.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Register a repository before designating memory.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <label className="block space-y-1 text-xs text-muted-foreground">
-                    <span>Repository</span>
-                    <select
-                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-                      value={memoryRepositoryId}
-                      onChange={(event) => setMemoryRepositoryId(event.target.value)}
-                    >
-                      {repositories.map((repository) => (
-                        <option key={repository.repositoryId} value={repository.repositoryId}>
-                          {repository.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block space-y-1 text-xs text-muted-foreground">
-                    <span>Subpath (optional)</span>
-                    <input
-                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-                      placeholder="notes"
-                      value={memorySubpath}
-                      onChange={(event) => setMemorySubpath(event.target.value)}
-                    />
-                  </label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={memoryBusy || memoryRepositoryId.length === 0}
-                    onClick={() => void designate()}
-                  >
-                    Designate memory
-                  </Button>
-                </div>
-              )
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-                  <div className="min-w-0 text-xs">
-                    <p className="truncate font-medium text-foreground">
-                      {designatedRepository?.name ?? "Unknown repository"}
-                      {memorySource.subpath ? ` / ${memorySource.subpath}` : ""}
-                    </p>
-                    <p className="truncate text-muted-foreground">
-                      {designatedRepository?.path ?? memorySource.repositoryId}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={memoryBusy}
-                    onClick={() => void removeDesignation()}
-                  >
-                    Remove
-                  </Button>
-                </div>
-                {memoryIndex?.productMapOffer === null ||
-                memoryIndex?.productMapOffer === undefined ? null : (
-                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span>
-                      Generate the product map from {memoryIndex.productMapOffer.declarationCount}{" "}
-                      containment declarations
-                    </span>
-                    <Button size="sm" disabled={memoryBusy} onClick={() => void generate()}>
-                      Generate
-                    </Button>
-                  </div>
-                )}
-              </div>
+            {projectId !== null && (
+              <ProjectStorageSettings
+                projectId={projectId}
+                kind="memory"
+                repositories={repositories}
+              />
             )}
+            <div className="space-y-2">
+              {memoryIndex?.productMapOffer === null ||
+              memoryIndex?.productMapOffer === undefined ? null : (
+                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span>
+                    Generate the product map from {memoryIndex.productMapOffer.declarationCount}{" "}
+                    containment declarations
+                  </span>
+                  <Button size="sm" disabled={memoryBusy} onClick={() => void generate()}>
+                    Generate
+                  </Button>
+                </div>
+              )}
+            </div>
             {memoryError === null ? null : (
               <p role="alert" className="text-xs text-destructive">
                 {memoryError}
               </p>
             )}
           </section>
+          {projectId !== null &&
+            (["plan", "spec"] as const).map((kind) => (
+              <ProjectStorageSettings
+                key={kind}
+                projectId={projectId}
+                kind={kind}
+                repositories={repositories}
+              />
+            ))}
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -1,4 +1,5 @@
 import * as MemoryRepositoryExitGate from "./mercurian/memory/MemoryRepositoryExitGate.ts";
+import * as DocumentStore from "./mercurian/documents/DocumentStore.ts";
 import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -331,6 +332,7 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 // exists: those settings belong to the workspace, and the workspace is what
 // this file is.
 const MercurianPersistenceLayerLive = PlanningStore.layer.pipe(
+  Layer.provideMerge(DocumentStore.layer),
   Layer.provideMerge(LegacySessionStore.layer),
   Layer.provideMerge(LineRuntimeStore.layer),
   Layer.provideMerge(LineBranchStore.layer),

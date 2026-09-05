@@ -14,7 +14,7 @@ import {
 } from "./PlanningPrompt.ts";
 
 describe("planningSystemAppendix", () => {
-  it("names the identity, editable runtime boundary, and artifact tools", () => {
+  it("names the identity, editable runtime boundary, and document locations", () => {
     const appendix = planningSystemAppendix({
       planTitle: "Reshape the sidebar",
       repositories: [{ name: "astrolabe", path: "/repos/astrolabe" }],
@@ -24,12 +24,12 @@ describe("planningSystemAppendix", () => {
     });
     expect(appendix).toContain('planning assistant for the plan "Reshape the sidebar"');
     expect(appendix).toContain("editable within the runtime mode and permissions");
-    expect(appendix).toContain("save_plan_revision");
-    expect(appendix).toContain("save_spec_revision");
+    expect(appendix).toContain("ordinary file tools");
+    expect(appendix).toContain("YAML frontmatter");
+    expect(appendix).toContain("A spec describes behavior and acceptance criteria");
+    expect(appendix).toContain("a plan describes the approach");
     expect(appendix).toContain("An amendment lands on this line's memory branch");
     expect(appendix).not.toContain("confirm");
-    expect(appendix).toContain("Goal / user story describes the outcome");
-    expect(appendix).toContain("Acceptance criteria records the observable conditions");
     expect(appendix).toContain("- astrolabe: /repos/astrolabe");
     expect(appendix).not.toContain("Out of reach");
   });

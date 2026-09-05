@@ -20,6 +20,7 @@ import { ServerConfig } from "../../config.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as MemorySourceStore from "./MemorySourceStore.ts";
+import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 
 const gitLayer = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "memory-source-test-" })),
@@ -72,16 +73,26 @@ layer("MemorySourceStore", (it) => {
       const changed = yield* Stream.runHead(store.changes).pipe(
         Effect.forkScoped({ startImmediately: true }),
       );
+      const storage = yield* StorageSourceStore;
+      yield* storage.designate({
+        projectId: MercurianProjectId.make("unrelated-plan-project"),
+        repositoryId: MercurianRepositoryId.make("memory-source-first"),
+        kind: "plan",
+        subpath: "plans",
+        now,
+      });
+      yield* storage.remove(MercurianProjectId.make("unrelated-plan-project"), "plan");
       yield* store.designate({
         projectId: MercurianProjectId.make("memory-project-main"),
         repositoryId: MercurianRepositoryId.make("memory-source-first"),
         now,
       });
-      assert.strictEqual((yield* Fiber.join(changed))._tag, "Some");
+      const announced = yield* Fiber.join(changed);
+      assert.strictEqual(announced._tag === "Some" ? announced.value : null, "memory-project-main");
       yield* store.designate({
         projectId: MercurianProjectId.make("memory-project-main"),
         repositoryId: MercurianRepositoryId.make("memory-source-second"),
-        subpath: "/notes/",
+        subpath: "notes/",
         now,
       });
 

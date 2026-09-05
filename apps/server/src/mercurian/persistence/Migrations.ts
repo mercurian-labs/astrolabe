@@ -32,6 +32,12 @@ import Migration0017 from "./Migrations/017_LineRuntimes.ts";
 import Migration0018 from "./Migrations/018_LineRuntimeBirth.ts";
 import Migration0019 from "./Migrations/019_MemoryAmendmentReviewsCompatibility.ts";
 
+import Migration0020 from "./Migrations/020_ProjectStorage.ts";
+
+import Migration0021 from "./Migrations/021_DocumentOrigins.ts";
+
+import Migration0022 from "./Migrations/022_DocumentOperations.ts";
+
 export const migrationEntries = [
   [1, "CommitGraph", Migration0001],
   [2, "ProjectsPlans", Migration0002],
@@ -52,6 +58,9 @@ export const migrationEntries = [
   [17, "LineRuntimes", Migration0017],
   [18, "LineRuntimeBirth", Migration0018],
   [19, "MemoryAmendmentReviewsCompatibility", Migration0019],
+  [20, "ProjectStorage", Migration0020],
+  [21, "DocumentOrigins", Migration0021],
+  [22, "DocumentOperations", Migration0022],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

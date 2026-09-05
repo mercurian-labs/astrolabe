@@ -1,3 +1,6 @@
+import { ProjectStorageSettings } from "./ProjectStorageSettings";
+import { useStorageSourceForProject } from "../../state/mercurianStorage";
+import { useRepositories } from "../../state/mercurianRepositories";
 import type {
   MercurianProjectId,
   PlanId,
@@ -62,6 +65,8 @@ export function ImportIssueDialog({
   const { connections, isPending: connectionsPending, error: connectionsError } = useTrackers();
   const listTrackerIssues = useListTrackerIssues();
   const importPlan = useImportPlan();
+  const specSource = useStorageSourceForProject(projectId, "spec");
+  const { snapshot: repositories } = useRepositories();
 
   const [chosenConnectionId, setChosenConnectionId] = useState<TrackerConnectionId | null>(null);
   const [search, setSearch] = useState("");
@@ -166,6 +171,16 @@ export function ImportIssueDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-3">
+          {!specSource && (
+            <div className="space-y-2">
+              <p className="text-xs">Choose where imported specs should go before importing.</p>
+              <ProjectStorageSettings
+                projectId={projectId}
+                kind="spec"
+                repositories={repositories.repositories}
+              />
+            </div>
+          )}
           {connectionsError !== null ? (
             <p role="alert" className="text-[13px] leading-[1.45] text-destructive-foreground">
               {connectionsError}
@@ -232,7 +247,7 @@ export function ImportIssueDialog({
             Cancel
           </Button>
           <Button
-            disabled={selectedIssue === null || isImporting}
+            disabled={selectedIssue === null || isImporting || !specSource}
             onClick={() => void handleImport()}
           >
             {isImporting ? (

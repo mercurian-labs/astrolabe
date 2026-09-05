@@ -109,21 +109,14 @@ search, and press **Load more** to page further — the search goes to the track
 thing that knows how to search its own backlog. Every issue on screen was fetched just now and is
 kept nowhere: close the dialog and it is gone. Nothing is stored until you import.
 
-Select an issue and press **Import**. The thread exists immediately, appears under its project, and
-takes the issue's title. The issue title becomes the Spec's **Goal / user story**, and the issue
-description becomes its **Acceptance criteria**. Together they form the thread's root **Spec**
-revision: the contract the thread is planned from.
+Select an issue and press **Import**. If the project has no specs location, choose a repository
+and directory in the dialog first. Import creates a Markdown spec in that repository's working
+copy for the line. Its Goal comes from the issue title and its Acceptance criteria from the issue
+description. The thread starts with a link to the issue; no empty plan is created.
 
-Three things follow from importing rather than starting blank:
-
-- **The thread is shared from the start.** The issue having a thread is not a private fact, so the
-  thread and the imported Spec are published as soon as they exist. Everything you add afterwards is
-  a private draft until you publish it. Because something is published from birth, an imported thread
-  can only be archived, never deleted.
-- **The Plan is empty.** The issue is what the thread is planned _from_, not the Plan itself, so the
-  Plan artifact starts blank and the assistant fills it in.
-- **The thread has no repositories yet.** Which code the work touches is something the thread works
-  out, not something importing decides.
+The imported thread is published from birth and can be archived rather than deleted. Publishing
+the thread does not push the spec file to a remote repository. The project settings determine
+which repositories participate in its work.
 
 ### Importing the same issue twice
 
@@ -135,7 +128,10 @@ That link is to a specific connection. If you disconnect a tracker and connect t
 again, the new connection is a new starting point, and importing an issue through it starts a new
 thread.
 
-Issues are not synchronized after import — the Spec records the issue as it read when imported.
+Issues are not synchronized automatically. Open the imported spec from Plan into Files and use
+**Refresh from issue** to check again. Unchanged upstream content makes no file change. If local
+and upstream edits conflict, review all versions before choosing or editing the saved result.
+Refreshing does not send an assistant message.
 
 ## Connection status
 

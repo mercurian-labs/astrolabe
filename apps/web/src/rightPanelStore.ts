@@ -29,7 +29,6 @@ export const RIGHT_PANEL_KINDS = [
   "pull-request",
   "agents",
   "plan",
-  "spec",
   "memory",
   "checkpoints",
 ] as const;
@@ -55,6 +54,13 @@ export type RightPanelSurface =
       kind: "file";
       /** Workspace-relative, or absolute for a host file outside the workspace. */
       relativePath: string;
+      documentLocation?: {
+        cwd: string;
+        repositoryId: string;
+        repositoryName?: string | undefined;
+        documentId?: string;
+        snapshotOid?: string;
+      };
       revealLine: number | null;
       revealRequestId: number;
       /** Present when the file lives in the thread's attachment store rather
@@ -86,7 +92,6 @@ export type RightPanelSurface =
     }
   | { id: "agents"; kind: "agents" }
   | { id: "plan"; kind: "plan" }
-  | { id: "spec"; kind: "spec" }
   | { id: "memory"; kind: "memory" }
   | { id: "checkpoints"; kind: "checkpoints" };
 
@@ -96,7 +101,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
 // v12 adds the Mercurian Spec and Checkpoints singleton surfaces.
 // v13 adds Memory as a line-scoped singleton surface.
-const RIGHT_PANEL_STORAGE_VERSION = 13;
+// v14 removes the standalone Spec surface.
+const RIGHT_PANEL_STORAGE_VERSION = 14;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -119,6 +125,19 @@ interface RightPanelStoreState {
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
+  openDocument: (
+    ref: ScopedThreadRef,
+    document: {
+      cwd: string;
+      repositoryId: string;
+      repositoryName?: string | undefined;
+      relativePath: string;
+      snapshotOid: string | null;
+      id?: string | null;
+      kind?: string;
+      originUrl?: string | null;
+    },
+  ) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
   openMemoryDocument: (ref: ScopedThreadRef, selection: MemoryDocumentSelection) => void;
@@ -171,8 +190,6 @@ const singletonSurface = (
       return { id: "agents", kind };
     case "plan":
       return { id: "plan", kind };
-    case "spec":
-      return { id: "spec", kind };
     case "memory":
       return { id: "memory", kind };
     case "checkpoints":
@@ -471,6 +488,27 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             return upsertSurface(current, pullRequestSurface(target));
           }),
+        })),
+      openDocument: (ref, document) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, {
+              id: `file:${JSON.stringify([document.repositoryId, document.cwd, document.relativePath, document.snapshotOid])}`,
+              kind: "file",
+              relativePath: document.relativePath,
+              revealLine: null,
+              revealRequestId: 0,
+              documentLocation: {
+                cwd: document.cwd,
+                repositoryId: document.repositoryId,
+                ...(document.repositoryName ? { repositoryName: document.repositoryName } : {}),
+                ...(document.id && document.kind === "spec" && document.originUrl
+                  ? { documentId: document.id }
+                  : {}),
+                ...(document.snapshotOid ? { snapshotOid: document.snapshotOid } : {}),
+              },
+            }),
+          ),
         })),
       openFile: (ref, relativePath, line) =>
         set((state) => ({

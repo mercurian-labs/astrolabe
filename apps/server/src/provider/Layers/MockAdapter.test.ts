@@ -156,7 +156,7 @@ it.effect("emits a tool-shaped revision preview without an MCP call", () =>
     assert.strictEqual(revision?.type, "item.completed");
     if (revision?.type === "item.completed") {
       assert.strictEqual(revision.payload.status, "declined");
-      assert.strictEqual(revision.payload.title, "save_plan_revision");
+      assert.strictEqual(revision.payload.title, "propose_memory_amendment");
     }
     assert.match(reply, /Mock revision/);
   }).pipe(Effect.scoped),

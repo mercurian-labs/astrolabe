@@ -12,8 +12,8 @@ layer("016_DropPlanImplementVerdicts", (it) => {
   it.effect("retires verdicts and adds repository-scoped session facts", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.length, 19);
-      assert.strictEqual(migrationEntries.at(-1)?.[0], 19);
+      assert.strictEqual(migrationEntries.length, 22);
+      assert.strictEqual(migrationEntries.at(-1)?.[0], 22);
       yield* runMigrations({ toMigrationInclusive: 15 });
       const verdictBefore = yield* sql<{ readonly name: string }>`
         SELECT name FROM sqlite_master

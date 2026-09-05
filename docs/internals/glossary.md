@@ -352,19 +352,19 @@ The user action that opens a new [pending line](#pending-line) from an existing 
 
 #### DAG explorer
 
-The thread's history as the Checkpoints [pinned surface](#pinned-surface) draws it as a spatial map. It opens no channel of its own — `parents` and `published` ride on every timeline item, so the explorer is a second _rendering_ of the thread subscription, modelled purely in `PlanGraph.logic.ts`. Published and private commits are distinguished. Picking a commit navigates to its owning line and viewing position, while `mercurian.getPlanTextAt` and `mercurian.getSpecAt` read the two artifacts there. Stale-Spec branch leaves are derived from ancestry: a leaf outside the newest Spec revision's descendant closure is marked **Spec stale** until a merge or revision absorbs it. Nothing is written by moving.
+The thread's history as the Checkpoints [pinned surface](#pinned-surface) draws it as a spatial map. It opens no channel of its own — `parents` and `published` ride on every timeline item, so the explorer is a second _rendering_ of the thread subscription, modelled purely in `PlanGraph.logic.ts`. Published and private commits are distinguished. Picking a commit navigates to its owning line and viewing position. Document reads resolve the saved Git checkpoint at that position. Moving the selection writes nothing.
 
 #### Plan revision
 
-A complete Plan snapshot recorded as a `plan-revision` commit in the thread's one history, interleaved with messages at the same standing. Its payload is the Plan's _whole_ text after the edit, not a diff, so the Plan at any commit is the nearest revision at or above it — no patch replay, and a fork's text is just its own path's latest snapshot. Nothing stores the Plan anywhere else: the current text is derived from the history, which is why a thread born blank derives an empty artifact and an imported thread whose root is a revision renders from that root.
+A changed version of a project plan Markdown file, captured in the line's Git snapshot. The file is the source of truth; conversation records do not store its current body.
 
 #### Spec
 
-The behavioral contract a thread is planned from, held in two prose fields: Goal / user story describes the intended outcome and behavioral context, while Acceptance criteria describes the observable conditions for completion. Neither field is artifact metadata or an implementation approach. It is parallel to the Plan in mechanism and opposite in role — Spec says _what_, Plan says _how_. The current Spec is the nearest [Spec revision](#spec-revision) on the selected path; a blank thread may have none until the assistant drafts it.
+A project Markdown document describing expected behavior and acceptance criteria. Specs have an independently configured repository and directory. They can be used by multiple threads and opened through Files from the unified Plan surface.
 
 #### Spec revision
 
-A complete `{ goal, acceptanceCriteria }` `SpecDocument` snapshot recorded as a `spec-revision` commit in the same history as messages and Plan revisions. Earlier stored `{ title, description }` forms decode at the persistence boundary; new writes use only the semantic prose names. Provenance records how the revision was written; the current UI creates imported or direct revisions. Authorship remains the commit's human/assistant field. Imported issues derive root Spec revisions by mapping issue title to Goal and description to Acceptance criteria. An assistant revision belongs to the line turn that must reconcile the Plan before responding. Reply prose is never authoritative without the commit.
+A changed version of a spec file captured in Git. Imported specs keep optional YAML identity and origin metadata in the file; local operational records retain upstream baselines for explicit refresh and reconciliation. See [project documents](./project-documents.md).
 
 #### Split
 
@@ -434,7 +434,7 @@ The per-tracker adapter, `TrackerConnector`: a `probe` that validates a credenti
 
 #### Issue import
 
-Turning a tracked issue into a thread from the search palette's **Import from a tracker** action (`mercurian.importPlan`). Outside a project's thread, the palette first asks which project to **Import into**; inside one, it opens that project's tracker picker immediately. Import is _selection, not synchronization_: the browse is live and nothing stores it. The imported content becomes the history's human-authored root `spec-revision`; **issue** remains the tracker object and origin vocabulary, while **Spec** is the thread artifact. Import is idempotent by `(connection_id, issue_id)`, born published, and ungrounded. The issue is not synchronized after import, and issue status is never stored.
+Turning a tracked issue into a thread through `mercurian.importPlan`. Import requires a specs location and creates a Markdown file in the line's repository member, plus a published conversation root linking to the issue. It is idempotent by `(connection_id, issue_id)`. Browse results and issue status are not persisted. Explicit Files refresh updates the spec without starting a provider turn.
 
 #### Origin (thread)
 

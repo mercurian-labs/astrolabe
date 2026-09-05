@@ -180,9 +180,9 @@ repository's snapshot decides independently whether that repository is built; th
 nowhere.
 The client still warns when the selected path's newest spec revision has no descendant plan revision
 in the same ancestry. The warning is advisory and never blocks opening the draft or writes history.
-The thread space is the upstream thread view whole, with Mercurian's Checkpoints, Plan, Spec, line
+The thread space is the upstream thread view whole, with Mercurian's Checkpoints, unified Plan surface, line
 chrome, and overlays chiseled into its existing slots. Its conversation rides the orchestration
-thread stream, while `mercurian.subscribePlan` supplies the plan history and artifact surfaces.
+thread stream, while `mercurian.subscribePlan` supplies the conversation graph. Project documents are queried separately from their repository files.
 
 The upstream composer sends an ordinary thread turn. The server records the human plan commit with
 the orchestration message id, so the two identities are the same; **Fork here** creates a pending
@@ -200,8 +200,8 @@ than living in one of them (§5).
 [`assistant/LineTurnReactor.ts`][planning-assistant] observes orchestration and provider events for
 line threads. It adopts new upstream drafts as pending plan lines, records the human message commit,
 folds reply text, grounding, questions, and memory amendments, and lands the assistant commit when
-the turn settles. Its write doors remain the planning MCP toolkit's `save_plan_revision` and
-`save_spec_revision`, each paired with a path-aware read.
+the turn settles. Plans and specs use ordinary filesystem tools. The planning MCP toolkit retains only reviewed
+memory amendment proposals. See [project documents](./project-documents.md) for storage and refresh.
 
 [`repositories/RepositoryStore.ts`][repository-store] is the third Mercurian service, in the same
 database: the registry of codebases the app can reach, the app-owned scripts declared on each, and

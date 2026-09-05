@@ -1,3 +1,4 @@
+import * as StorageSourceStore from "../storage/StorageSourceStore.ts";
 /**
  * RepositoryStore — the registry of codebases Mercurian can reach.
  *
@@ -141,6 +142,7 @@ export class RepositoryStore extends Context.Service<
     ) => Effect.Effect<RepositoryView, RepositoryStoreError>;
     /** Every repository and every project membership, in one value. */
     readonly getSnapshot: Effect.Effect<RepositoriesSnapshot, RepositoryStoreError>;
+    readonly getWorkingSnapshot: Effect.Effect<RepositoriesSnapshot, RepositoryStoreError>;
     /** Re-answer every live repository fact and notify snapshot subscribers. */
     readonly refreshRepositories: Effect.Effect<void>;
     /**
@@ -165,6 +167,7 @@ export class RepositoryStore extends Context.Service<
     readonly changes: Stream.Stream<void>;
     /** Removal or explicit disk refresh; scripts and project membership do not change memory. */
     readonly memoryChanges: Stream.Stream<MercurianRepositoryId | null>;
+    readonly workingChanges: Stream.Stream<void>;
   }
 >()("t3/mercurian/repositories/RepositoryStore") {}
 
@@ -322,6 +325,7 @@ const GIT_PROBE_TTL = Duration.minutes(1);
 const GIT_PROBE_CACHE_CAPACITY = 512;
 
 export const make = Effect.gen(function* () {
+  const storage = yield* StorageSourceStore.StorageSourceStore;
   const sql = yield* SqlClient.SqlClient;
   const crypto = yield* Crypto.Crypto;
   const fs = yield* FileSystem.FileSystem;
@@ -850,9 +854,35 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  // Storage repositories participate in work without becoming code-context selections.
+  const getWorkingSnapshot = Effect.gen(function* () {
+    const snapshot = yield* getSnapshot;
+    const sources = [...(yield* storage.getSnapshot), ...(yield* storage.getDocumentLocations)];
+    const links = [...snapshot.projectRepositories];
+    for (const source of sources) {
+      if (
+        !links.some(
+          (link) =>
+            link.projectId === source.projectId && link.repositoryId === source.repositoryId,
+        )
+      ) {
+        links.push({ projectId: source.projectId, repositoryId: source.repositoryId });
+      }
+    }
+    return { ...snapshot, projectRepositories: links };
+  }).pipe(
+    Effect.mapError(
+      toRepositoryStoreError(
+        "RepositoryStore.getWorkingSnapshot",
+        "RepositoryStore.getWorkingSnapshot:decode",
+      ),
+    ),
+  );
+
   return {
     addRepository,
     getSnapshot,
+    getWorkingSnapshot,
     refreshRepositories,
     removeRepository,
     saveScripts,
@@ -861,7 +891,15 @@ export const make = Effect.gen(function* () {
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },
+    get workingChanges() {
+      return Stream.merge(
+        Stream.fromPubSub(changesPubSub),
+        storage.changes.pipe(Stream.map(() => undefined)),
+      );
+    },
   } satisfies RepositoryStore["Service"];
 });
 
-export const layer = Layer.effect(RepositoryStore, make);
+export const layer = Layer.effect(RepositoryStore, make).pipe(
+  Layer.provideMerge(StorageSourceStore.layer),
+);

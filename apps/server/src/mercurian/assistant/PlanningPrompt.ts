@@ -28,6 +28,10 @@ export interface PlanningIdentityInput {
   readonly unreachableRepositories: ReadonlyArray<string>;
   /** Present only when this provider session can reach the designated memory. */
   readonly memoryRoot?: PlanningRepositoryRoot | null | undefined;
+  readonly documentRoots?: ReadonlyArray<{
+    readonly kind: "plan" | "spec";
+    readonly path: string | null;
+  }>;
   readonly memoryAmendmentsAvailable?: boolean | undefined;
 }
 
@@ -53,9 +57,8 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     "",
     "Ground your replies in the project's repositories. The working tree is editable within the runtime mode and permissions the person chose for this turn.",
     "",
-    "There are two first-class artifacts. The spec has two prose fields: Goal / user story describes the outcome and behavioral context, while Acceptance criteria records the observable conditions that make it complete. The plan describes implementation approach.",
-    "Revise them only through their artifact doors: use `read_spec` then `save_spec_revision` for the complete spec, and `read_plan` then `save_plan_revision` for the complete plan. A statement in your response does not change an artifact; never claim a change without a successful save tool call.",
-    "When discovery changes the contract, save the spec directly and then reconcile the plan in this same turn when its approach is affected. You may suggest a separate planning space, but only the person can create one, fork, or merge.",
+    "Plans and specs are durable project Markdown files. A spec describes behavior and acceptance criteria; a plan describes the approach. Read and edit them with ordinary file tools. Continue existing documents where relevant; a thread does not own a mandatory pair.",
+    "Use optional YAML frontmatter for id, kind, counterparts (explicit document ids), and origin.url. Preserve existing metadata; never infer counterpart links from names. Create no empty documents and add no change-summary reporting calls.",
     "When you need a decision from the person you are planning with, ask a structured question with the question tool available to you instead of guessing.",
   ];
 
@@ -71,6 +74,8 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     }
   }
 
+  lines.push(documentLocationStanza(input.documentRoots));
+
   if (input.memoryRoot != null) {
     lines.push("", memoryAppendix(input.memoryRoot));
   }
@@ -83,6 +88,20 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
   }
 
   return lines.join("\n");
+}
+
+export function documentLocationStanza(roots: PlanningIdentityInput["documentRoots"]) {
+  return (["plan", "spec"] as const)
+    .map((kind) => {
+      const root = roots?.find((candidate) => candidate.kind === kind);
+      const name = kind === "plan" ? "Plans" : "Specs";
+      return root
+        ? root.path
+          ? `${name} directory: ${root.path}`
+          : `${name} repository is unavailable on this line. Do not substitute another checkout.`
+        : `${name} location is not configured. Ask the user to select it in project settings before creating documents of this type.`;
+    })
+    .join("\n");
 }
 
 /**
@@ -109,8 +128,8 @@ export const TRANSCRIPT_FRAMING_MARGIN = 2_000;
 
 function renderTranscript(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
-  readonly planText: string;
-  readonly spec: SpecDocument | null;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
 }) {
   const renderedEntries = input.entries.map((entry) => {
     if (entry.kind !== "message") {
@@ -125,13 +144,17 @@ function renderTranscript(input: {
   });
 
   const planSection =
-    input.planText.length === 0
-      ? "The plan document is currently empty."
-      : `The plan document currently reads:\n---\n${input.planText}\n---`;
+    input.planText === undefined
+      ? ""
+      : input.planText.length === 0
+        ? "The plan document is currently empty."
+        : `The plan document currently reads:\n---\n${input.planText}\n---`;
   const specSection =
-    input.spec === null
-      ? "The spec artifact does not exist yet."
-      : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
+    input.spec === undefined
+      ? ""
+      : input.spec === null
+        ? "The spec artifact does not exist yet."
+        : `The spec artifact currently reads:\nGoal / user story:\n${input.spec.goal}\n\nAcceptance criteria:\n---\n${input.spec.acceptanceCriteria}\n---`;
 
   return { renderedEntries, planSection, specSection };
 }
@@ -139,8 +162,8 @@ function renderTranscript(input: {
 /** Exact character sizes used by transcript reconstruction and its budget. */
 export function measureTranscript(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
-  readonly planText: string;
-  readonly spec: SpecDocument | null;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
 }): {
   readonly renderedEntryLengths: ReadonlyArray<number>;
   readonly planSectionChars: number;
@@ -162,8 +185,8 @@ export function measureTranscript(input: {
 export function transcriptPreamble(input: {
   readonly entries: ReadonlyArray<TranscriptEntry>;
   /** The plan artifact's current text along this path. `""` renders as empty. */
-  readonly planText: string;
-  readonly spec: SpecDocument | null;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
   /** Characters already spoken for: appendix + the current message. */
   readonly reservedChars: number;
 }): string {

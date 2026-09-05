@@ -12,7 +12,7 @@ layer("017_LineRuntimes", (it) => {
   it.effect("adds line runtimes while preserving legacy sessions", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.length, 19);
+      assert.strictEqual(migrationEntries.length, 22);
       assert.strictEqual(migrationEntries[16]?.[0], 17);
 
       yield* runMigrations({ toMigrationInclusive: 17 });

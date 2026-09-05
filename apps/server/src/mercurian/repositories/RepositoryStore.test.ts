@@ -1,3 +1,4 @@
+import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 import { assert, it } from "@effect/vitest";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
@@ -140,6 +141,55 @@ const insertProject = (projectId: string) =>
   });
 
 layer("RepositoryStore", (it) => {
+  it.effect(
+    "adds storage worktrees without changing code context and retains previous document repositories",
+    () =>
+      Effect.gen(function* () {
+        const store = yield* RepositoryStore.RepositoryStore;
+        const storage = yield* StorageSourceStore;
+        const code = yield* store.addRepository({
+          path: yield* makeDirectory("code-with-docs"),
+          createdAt: at,
+        });
+        const documents = yield* store.addRepository({
+          path: yield* makeDirectory("document-repository"),
+          createdAt: at,
+        });
+        const projectId = yield* insertProject("project-with-document-locations");
+        yield* store.setProjectRepositories({
+          projectId,
+          repositoryIds: [code.repositoryId],
+          addedAt: at,
+        });
+        yield* storage.designate({
+          projectId,
+          repositoryId: code.repositoryId,
+          kind: "plan",
+          subpath: "plans",
+          now: at,
+        });
+        yield* storage.designate({
+          projectId,
+          repositoryId: documents.repositoryId,
+          kind: "spec",
+          subpath: "specs",
+          now: at,
+        });
+        assert.deepStrictEqual(repositoriesOfProject(yield* store.getSnapshot, projectId), [
+          code.repositoryId,
+        ]);
+        assert.deepStrictEqual(repositoriesOfProject(yield* store.getWorkingSnapshot, projectId), [
+          code.repositoryId,
+          documents.repositoryId,
+        ]);
+        yield* storage.remove(projectId, "spec");
+        assert.deepStrictEqual(repositoriesOfProject(yield* store.getWorkingSnapshot, projectId), [
+          code.repositoryId,
+          documents.repositoryId,
+        ]);
+      }),
+  );
+
   it.effect("registers a directory, naming it after its last segment", () =>
     Effect.gen(function* () {
       yield* setGitScript({});

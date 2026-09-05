@@ -125,14 +125,6 @@ export class LineTurnReactor extends Context.Service<
       readonly commitPartial: boolean;
       readonly lineRuntimes?: ReadonlyArray<LineRuntimeRecord>;
     }) => Effect.Effect<void>;
-    readonly saveRevisionFromThread: (input: {
-      readonly threadId: ThreadId;
-      readonly text: string;
-    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
-    readonly saveSpecRevisionFromThread: (input: {
-      readonly threadId: ThreadId;
-      readonly document: import("@t3tools/contracts").SpecDocument;
-    }) => Effect.Effect<void, PlanningTurnNotFoundError>;
     readonly proposeMemoryAmendmentFromThread: (input: {
       readonly threadId: ThreadId;
       readonly title: string;
@@ -146,15 +138,6 @@ export class LineTurnReactor extends Context.Service<
     }) => Effect.Effect<
       void,
       PlanningTurnNotFoundError | MemoryIndex.MemoryAmendmentValidationError
-    >;
-    readonly readPlanFromThread: (input: {
-      readonly threadId: ThreadId;
-    }) => Effect.Effect<string, PlanningTurnNotFoundError>;
-    readonly readSpecFromThread: (input: {
-      readonly threadId: ThreadId;
-    }) => Effect.Effect<
-      import("@t3tools/contracts").SpecDocument | null,
-      PlanningTurnNotFoundError
     >;
   }
 >()("t3/mercurian/assistant/LineTurnReactor") {}
@@ -398,7 +381,7 @@ export const make = Effect.gen(function* () {
     if (Option.isSome(yield* lineRuntimes.getByThreadId(event.payload.threadId))) return;
     const owner = yield* planningStore.getProjectByOrchestrationProjectId(event.payload.projectId);
     if (Option.isNone(owner)) return;
-    const snapshot = yield* repositoryStore.getSnapshot;
+    const snapshot = yield* repositoryStore.getWorkingSnapshot;
     const linked = snapshot.projectRepositories
       .filter((link) => link.projectId === owner.value.projectId)
       .flatMap((link) => {
@@ -658,34 +641,6 @@ export const make = Effect.gen(function* () {
     if (Option.isNone(claimed)) return yield* new PlanningTurnNotFoundError({ threadId });
     return claimed.value;
   });
-  const saveRevisionFromThread: LineTurnReactor["Service"]["saveRevisionFromThread"] = (input) =>
-    Effect.gen(function* () {
-      const turn = yield* requireClaim(input.threadId);
-      const revision = yield* planningStore
-        .saveAssistantPlanRevision({
-          planId: turn.planId,
-          parentCommitId: turn.tipCommitId,
-          text: input.text,
-          createdAt: yield* DateTime.now,
-        })
-        .pipe(Effect.mapError(() => new PlanningTurnNotFoundError({ threadId: input.threadId })));
-      yield* registry.advanceTip(turn.planId, turn.turnId, revision.commitId);
-    });
-  const saveSpecRevisionFromThread: LineTurnReactor["Service"]["saveSpecRevisionFromThread"] = (
-    input,
-  ) =>
-    Effect.gen(function* () {
-      const turn = yield* requireClaim(input.threadId);
-      const revision = yield* planningStore
-        .saveAssistantSpecRevision({
-          planId: turn.planId,
-          parentCommitId: turn.tipCommitId,
-          document: input.document,
-          createdAt: yield* DateTime.now,
-        })
-        .pipe(Effect.mapError(() => new PlanningTurnNotFoundError({ threadId: input.threadId })));
-      yield* registry.advanceTip(turn.planId, turn.turnId, revision.commitId);
-    });
   const proposeMemoryAmendmentFromThread: LineTurnReactor["Service"]["proposeMemoryAmendmentFromThread"] =
     (input) =>
       Effect.gen(function* () {
@@ -719,23 +674,6 @@ export const make = Effect.gen(function* () {
           reason: "Project memory could not be amended.",
         });
       });
-  const readPlanFromThread: LineTurnReactor["Service"]["readPlanFromThread"] = (input) =>
-    Effect.gen(function* () {
-      const turn = yield* requireClaim(input.threadId);
-      return yield* planningStore
-        .getPlanTextAt({ planId: turn.planId, commitId: turn.tipCommitId })
-        .pipe(Effect.mapError(() => new PlanningTurnNotFoundError({ threadId: input.threadId })));
-    });
-  const readSpecFromThread: LineTurnReactor["Service"]["readSpecFromThread"] = (input) =>
-    Effect.gen(function* () {
-      const turn = yield* requireClaim(input.threadId);
-      return yield* planningStore
-        .getSpecAt({ planId: turn.planId, commitId: turn.tipCommitId })
-        .pipe(
-          Effect.map((at) => at?.document ?? null),
-          Effect.mapError(() => new PlanningTurnNotFoundError({ threadId: input.threadId })),
-        );
-    });
 
   return LineTurnReactor.of({
     frames,
@@ -744,11 +682,7 @@ export const make = Effect.gen(function* () {
     inFlightTurns,
     status,
     teardownPlan,
-    saveRevisionFromThread,
-    saveSpecRevisionFromThread,
     proposeMemoryAmendmentFromThread,
-    readPlanFromThread,
-    readSpecFromThread,
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

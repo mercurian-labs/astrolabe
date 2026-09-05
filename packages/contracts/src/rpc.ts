@@ -1,3 +1,9 @@
+import { RefreshProjectSpecInput, RefreshProjectSpecResult } from "./mercurianDocuments.ts";
+import {
+  MERCURIAN_DOCUMENT_WS_METHODS,
+  ListProjectDocumentsInput,
+  ListProjectDocumentsResult,
+} from "./mercurianDocuments.ts";
 import {
   MemoryReadUnavailableError,
   MercurianReadMemoryCatalogInput,
@@ -13,6 +19,14 @@ import {
   MemoryComparisonResult,
   MemoryInvalidation,
 } from "./mercurianMemory.ts";
+import {
+  MERCURIAN_STORAGE_WS_METHODS,
+  MercurianSubscribeStorageSourcesInput,
+  StorageSourcesStreamItem,
+  MercurianStorageError,
+  MercurianDesignateStorageSourceInput,
+  MercurianRemoveStorageSourceInput,
+} from "./mercurianStorage.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -106,20 +120,14 @@ import {
   MercurianDeletePlanInput,
   MercurianEnsureProjectRuntimeInput,
   MercurianEnsureProjectRuntimeResult,
-  MercurianGetPlanTextAtInput,
   MercurianForkLineInput,
   MercurianOpenLineInput,
   MercurianLineResult,
-  MercurianGetSpecAtInput,
   MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
   MercurianProject,
   MercurianProjectNotFoundError,
-  MercurianSavePlanRevisionInput,
-  MercurianSaveSpecRevisionInput,
-  MercurianRefreshSpecInput,
-  MercurianRefreshSpecResult,
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
   MercurianSubscribeWorktreeSlotsInput,
@@ -135,13 +143,7 @@ import {
   PlanNotFoundError,
   PlanningTreeStreamItem,
   WorktreeSlotStreamItem,
-  PlanRevision,
-  PlanSpecRevision,
   PlanStreamItem,
-  SpecAt,
-  SpecRevisionOutdatedError,
-  SpecRefreshUnavailableError,
-  PlanTextAt,
   PlanTurnActiveError,
 } from "./mercurian.ts";
 import {
@@ -1352,46 +1354,6 @@ export const WsMercurianOpenLineRpc = Rpc.make(MERCURIAN_WS_METHODS.openLine, {
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
-export const WsMercurianSavePlanRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.savePlanRevision, {
-  payload: MercurianSavePlanRevisionInput,
-  success: PlanRevision,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-export const WsMercurianSaveSpecRevisionRpc = Rpc.make(MERCURIAN_WS_METHODS.saveSpecRevision, {
-  payload: MercurianSaveSpecRevisionInput,
-  success: PlanSpecRevision,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    SpecRevisionOutdatedError,
-    MercurianPlanningError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSpec, {
-  payload: MercurianRefreshSpecInput,
-  success: MercurianRefreshSpecResult,
-  error: Schema.Union([
-    PlanNotFoundError,
-    PlanTurnActiveError,
-    SpecRevisionOutdatedError,
-    SpecRefreshUnavailableError,
-    TrackerConnectionNotFoundError,
-    TrackerAuthError,
-    TrackerUnreachableError,
-    MercurianPlanningError,
-    MercurianTrackerError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
 // Attention, recorded. Both write one plan's visited-at and answer with
 // nothing: the change they made comes back on the tree subscription, where
 // every other row fact already lives. Neither joins the environment
@@ -1442,21 +1404,6 @@ export const WsMercurianSubscribePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.subscri
   success: PlanStreamItem,
   error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
   stream: true,
-});
-
-// The plan as of an earlier commit. History above a commit is frozen, so this
-// is a unary read rather than anything the subscription has to carry: the
-// timeline's revisions deliberately travel without their text.
-export const WsMercurianGetPlanTextAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getPlanTextAt, {
-  payload: MercurianGetPlanTextAtInput,
-  success: PlanTextAt,
-  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
-});
-
-export const WsMercurianGetSpecAtRpc = Rpc.make(MERCURIAN_WS_METHODS.getSpecAt, {
-  payload: MercurianGetSpecAtInput,
-  success: SpecAt,
-  error: Schema.Union([PlanNotFoundError, MercurianPlanningError, EnvironmentAuthorizationError]),
 });
 
 // Mercurian repositories. Same snapshot-re-emit shape as the tree, and for the
@@ -1531,6 +1478,55 @@ export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
       MercurianRepositoryError,
       EnvironmentAuthorizationError,
     ]),
+  },
+);
+
+export const WsMercurianRefreshProjectSpecRpc = Rpc.make(
+  MERCURIAN_DOCUMENT_WS_METHODS.refreshProjectSpec,
+  {
+    payload: RefreshProjectSpecInput,
+    success: RefreshProjectSpecResult,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsMercurianListProjectDocumentsRpc = Rpc.make(
+  MERCURIAN_DOCUMENT_WS_METHODS.listProjectDocuments,
+  {
+    payload: ListProjectDocumentsInput,
+    success: ListProjectDocumentsResult,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianSubscribeStorageSourcesRpc = Rpc.make(
+  MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources,
+  {
+    payload: MercurianSubscribeStorageSourcesInput,
+    success: StorageSourcesStreamItem,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianDesignateStorageSourceRpc = Rpc.make(
+  MERCURIAN_STORAGE_WS_METHODS.designateStorageSource,
+  {
+    payload: MercurianDesignateStorageSourceInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemorySourceInvalidError,
+      MercurianStorageError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianRemoveStorageSourceRpc = Rpc.make(
+  MERCURIAN_STORAGE_WS_METHODS.removeStorageSource,
+  {
+    payload: MercurianRemoveStorageSourceInput,
+    success: Schema.Void,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
   },
 );
 
@@ -1906,23 +1902,23 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianForkLineRpc,
   WsMercurianOpenLineRpc,
   WsMercurianImportPlanRpc,
-  WsMercurianSavePlanRevisionRpc,
-  WsMercurianSaveSpecRevisionRpc,
-  WsMercurianRefreshSpecRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
   WsMercurianUnarchivePlanRpc,
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
-  WsMercurianGetPlanTextAtRpc,
-  WsMercurianGetSpecAtRpc,
   WsMercurianSubscribeRepositoriesRpc,
   WsMercurianRefreshRepositoriesRpc,
   WsMercurianAddRepositoryRpc,
   WsMercurianRemoveRepositoryRpc,
   WsMercurianSaveRepositoryScriptsRpc,
   WsMercurianSetProjectRepositoriesRpc,
+  WsMercurianRefreshProjectSpecRpc,
+  WsMercurianListProjectDocumentsRpc,
+  WsMercurianSubscribeStorageSourcesRpc,
+  WsMercurianDesignateStorageSourceRpc,
+  WsMercurianRemoveStorageSourceRpc,
   WsMercurianSubscribeMemorySourcesRpc,
   WsMercurianDesignateMemorySourceRpc,
   WsMercurianRemoveMemorySourceRpc,

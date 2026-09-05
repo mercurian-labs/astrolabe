@@ -158,7 +158,7 @@ export const make = Effect.gen(function* () {
   const reconcile = Effect.fn("LineBranchReactor.reconcile")(function* () {
     const [tree, repositorySnapshot, allSlots, sourceSnapshot] = yield* Effect.all([
       planning.getTreeSnapshot,
-      repositories.getSnapshot,
+      repositories.getWorkingSnapshot,
       slots.listAll,
       memorySources.getSnapshot,
     ]);
@@ -247,7 +247,10 @@ export const make = Effect.gen(function* () {
 
   return {
     reconcile,
-    changes: Stream.merge(Stream.merge(planning.changes, repositories.changes), slots.changes),
+    changes: Stream.merge(
+      Stream.merge(planning.changes, repositories.workingChanges),
+      slots.changes,
+    ),
   };
 });
 

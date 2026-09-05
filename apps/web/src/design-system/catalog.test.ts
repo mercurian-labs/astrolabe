@@ -18,8 +18,6 @@ const MIGRATED_STORY_TITLES = [
   "Working",
   "Unseen updates",
   "Plan hover card",
-  "Reading",
-  "Earlier checkpoint",
   "Memory note with links",
   "Memory note not yet written",
   "Memory needs review",
@@ -29,8 +27,6 @@ const MIGRATED_STORY_TITLES = [
   "Memory asset-only amendment",
   "Memory with nothing changed",
   "Memory not designated",
-  "Imported from an issue",
-  "No spec yet",
   "Turn with a model switch",
   "Coding-session leaf",
   "Spatial map canvas",
@@ -120,7 +116,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(24);
+    expect(migratedEntries).toHaveLength(20);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

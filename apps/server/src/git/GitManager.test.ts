@@ -5395,7 +5395,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           const lineRootCommitId = MercurianCommitId.make("gate-line");
           const stamp = "2026-09-04T00:00:00.000Z";
           yield* sql`INSERT INTO repositories (repository_id, name, path, created_at, updated_at) VALUES (${repositoryId}, 'gate', ${cwd}, ${stamp}, ${stamp})`;
-          yield* sql`INSERT INTO project_memory_sources (project_id, repository_id, subpath, created_at, updated_at) VALUES (${projectId}, ${repositoryId}, 'memory', ${stamp}, ${stamp})`;
+          yield* sql`INSERT INTO project_storage_sources (project_id, kind, repository_id, subpath, created_at, updated_at) VALUES (${projectId}, 'memory', ${repositoryId}, 'memory', ${stamp}, ${stamp})`;
           yield* sql`INSERT INTO line_branches (line_root_commit_id, repository_id, branch, base_oid, built, created_at) VALUES (${lineRootCommitId}, ${repositoryId}, 'feature/revalidate', ${before}, 1, ${stamp})`;
           const approval = repositoryExitApproval({
             projectId,

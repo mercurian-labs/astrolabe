@@ -1,3 +1,4 @@
+import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -14,6 +15,7 @@ import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
 import { PlanningStore } from "../planning/PlanningStore.ts";
 import {
   appendMemoryMentionStanza,
+  documentLocationStanza,
   composeFirstTurnInput,
   memoryMentionResolutionStanza,
   planningSystemAppendix,
@@ -22,6 +24,7 @@ import {
 } from "./PlanningPrompt.ts";
 
 export const make = Effect.gen(function* () {
+  const storage = yield* StorageSourceStore;
   const lineRuntimes = yield* LineRuntimeStore;
   const planning = yield* PlanningStore;
   const commits = yield* CommitStore;
@@ -64,6 +67,23 @@ export const make = Effect.gen(function* () {
       const runtime = yield* lineRuntimes.getByThreadId(input.thread.id);
       if (Option.isNone(runtime)) return { text: input.message.text, session: {} };
       const detail = yield* planning.getPlanSnapshot({ planId: runtime.value.planId });
+      const sources = (yield* storage.getSnapshot).filter(
+        (source) => source.projectId === detail.plan.projectId,
+      );
+      const roots = sources.flatMap((source) => {
+        const member = input.thread.workspaceMembers?.find(
+          (candidate) => candidate.repositoryId === source.repositoryId,
+        );
+        return member
+          ? [{ kind: source.kind, path: path.join(member.worktreePath, source.subpath ?? "") }]
+          : [];
+      });
+      const documentRoots = sources
+        .filter((source) => source.kind !== "memory")
+        .map((source) => ({
+          kind: source.kind === "plan" ? ("plan" as const) : ("spec" as const),
+          path: roots.find((root) => root.kind === source.kind)?.path ?? null,
+        }));
       const memoryLine = { threadId: input.thread.id } as const;
       const mention = yield* resolveMemoryMentionStanza(
         detail.plan.projectId,
@@ -73,7 +93,7 @@ export const make = Effect.gen(function* () {
       const isFirstLineTurn = input.sessionIsFresh && input.thread.messages.length === 1;
       if (!isFirstLineTurn) {
         return {
-          text: appendMemoryMentionStanza(input.message.text, mention),
+          text: `${documentLocationStanza(documentRoots)}\n\n${appendMemoryMentionStanza(input.message.text, mention)}`,
           session: {},
         };
       }
@@ -106,17 +126,6 @@ export const make = Effect.gen(function* () {
         }
         return [{ kind: item._tag, author: item.authorKind }];
       });
-      const planText =
-        parentCommitId === undefined
-          ? ""
-          : yield* planning.getPlanTextAt({
-              planId: runtime.value.planId,
-              commitId: parentCommitId,
-            });
-      const spec =
-        parentCommitId === undefined
-          ? null
-          : yield* planning.getSpecAt({ planId: runtime.value.planId, commitId: parentCommitId });
       const repositoryNames = new Map(
         (runtime.value.repositories ?? []).map((repository) => [
           String(repository.repositoryId),
@@ -148,14 +157,13 @@ export const make = Effect.gen(function* () {
         unreachableRepositories: runtime.value.unreachableRepositories,
         memoryRoot,
         memoryAmendmentsAvailable: memoryRoot !== null,
+        documentRoots,
       });
       const preamble =
         entries.length === 0
           ? null
           : transcriptPreamble({
               entries,
-              planText,
-              spec: spec?.document ?? null,
               reservedChars: appendix.length + input.message.text.length + (mention?.length ?? 0),
             });
       return {

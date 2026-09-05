@@ -1662,14 +1662,13 @@ export const make = Effect.gen(function* () {
           historyId,
           rootCommit: {
             commitId: rootCommitId,
-            kind: "spec-revision",
+            kind: "message",
             // Import is a human act, and opening a history is one.
             authorKind: "human",
             createdAt: input.createdAt,
             payload: {
-              document: specDocumentFromIssue(input.title, input.description),
-              source: { kind: "import", issueId: input.issueId },
-            } satisfies SpecRevisionCommitPayload,
+              text: `Imported ${input.title}\n\n${input.issueUrl}`,
+            } satisfies MessageCommitPayload,
           },
           // The carve-out this whole feature turns on: the issue having a plan
           // is shared truth, so the plan and its root are published from the
