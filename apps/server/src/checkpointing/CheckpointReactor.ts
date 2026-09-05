@@ -24,6 +24,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
@@ -86,6 +87,33 @@ function checkpointStatusFromRuntime(status: string | undefined): "ready" | "mis
     default:
       return "ready";
   }
+}
+
+function checkpointFailureDetail(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (message.length > 0) return message;
+
+  if (Predicate.isObject(error)) {
+    const operation = Predicate.isString(error.operation) ? error.operation.trim() : "";
+    const tag = Predicate.isString(error._tag) ? error._tag.trim() : "";
+    const causeMessage =
+      error.cause instanceof Error
+        ? error.cause.message.trim()
+        : Predicate.isString(error.cause)
+          ? error.cause.trim()
+          : "";
+    const subject = tag.length > 0 ? tag : "Checkpoint failure";
+    if (operation.length > 0 && causeMessage.length > 0) {
+      return `${subject} during ${operation}: ${causeMessage}`;
+    }
+    if (operation.length > 0) {
+      return `${subject} during ${operation}.`;
+    }
+    if (causeMessage.length > 0) return causeMessage;
+    if (tag.length > 0) return `${tag}.`;
+  }
+
+  return fallback;
 }
 
 const make = Effect.gen(function* () {
@@ -410,7 +438,7 @@ const make = Effect.gen(function* () {
     const detail =
       summary.failure._tag === "CheckpointChangesError"
         ? summary.failure.detail
-        : summary.failure.message;
+        : checkpointFailureDetail(summary.failure, "Checkpoint change summary failed.");
     yield* appendCaptureFailureActivity({
       threadId: input.threadId,
       turnId: input.turnId,
@@ -560,13 +588,17 @@ const make = Effect.gen(function* () {
           }),
         );
         if (Result.isFailure(captureResult)) {
+          const detail = checkpointFailureDetail(
+            captureResult.failure,
+            "Checkpoint capture failed.",
+          );
           status = "error";
           summaryStatus = "unavailable";
-          summaryError = captureResult.failure.message;
+          summaryError = detail;
           yield* appendCaptureFailureActivity({
             threadId: input.threadId,
             turnId: input.turnId,
-            detail: captureResult.failure.message,
+            detail,
             createdAt: input.createdAt,
           }).pipe(Effect.catch(() => Effect.void));
         } else {
@@ -596,7 +628,7 @@ const make = Effect.gen(function* () {
             summaryError =
               pair.failure._tag === "CheckpointChangesError"
                 ? pair.failure.detail
-                : pair.failure.message;
+                : checkpointFailureDetail(pair.failure, "Checkpoint snapshot pair is unavailable.");
             yield* appendCaptureFailureActivity({
               threadId: input.threadId,
               turnId: input.turnId,
@@ -772,7 +804,10 @@ const make = Effect.gen(function* () {
               const groups = yield* Effect.forEach(attempts, ({ member, result: attempt }) =>
                 Effect.gen(function* () {
                   if (Result.isFailure(attempt)) {
-                    const detail = attempt.failure.message;
+                    const detail = checkpointFailureDetail(
+                      attempt.failure,
+                      `Checkpoint capture failed in ${member.repositoryName}.`,
+                    );
                     yield* appendCaptureFailureActivity({
                       threadId: input.threadId,
                       turnId: input.turnId,
@@ -810,7 +845,10 @@ const make = Effect.gen(function* () {
                         error:
                           before.failure._tag === "CheckpointChangesError"
                             ? before.failure.detail
-                            : before.failure.message,
+                            : checkpointFailureDetail(
+                                before.failure,
+                                `Checkpoint before snapshot is unavailable in ${captured.member.repositoryName}.`,
+                              ),
                       }
                     : yield* checkpointFiles({
                         cwd: captured.member.cwd,
@@ -825,7 +863,10 @@ const make = Effect.gen(function* () {
                     const detail =
                       before.failure._tag === "CheckpointChangesError"
                         ? before.failure.detail
-                        : before.failure.message;
+                        : checkpointFailureDetail(
+                            before.failure,
+                            `Checkpoint before snapshot is unavailable in ${captured.member.repositoryName}.`,
+                          );
                     yield* appendCaptureFailureActivity({
                       threadId: input.threadId,
                       turnId: input.turnId,
@@ -1380,14 +1421,15 @@ const make = Effect.gen(function* () {
     if (event.type === "thread.turn-diff-completed") {
       yield* captureCheckpointFromPlaceholder(event).pipe(
         Effect.catch((error) =>
-          Effect.flatMap(nowIso, (createdAt) =>
-            appendCaptureFailureActivity({
+          Effect.flatMap(nowIso, (createdAt) => {
+            const detail = checkpointFailureDetail(error, "Checkpoint capture failed.");
+            return appendCaptureFailureActivity({
               threadId: event.payload.threadId,
               turnId: event.payload.turnId,
-              detail: error.message,
+              detail,
               createdAt,
-            }).pipe(Effect.catch(() => Effect.void)),
-          ),
+            }).pipe(Effect.catch(() => Effect.void));
+          }),
         ),
       );
     }
@@ -1405,22 +1447,24 @@ const make = Effect.gen(function* () {
       yield* refreshLocalGitStatusFromTurnCompletion(event);
       yield* captureCheckpointFromTurnCompletion(event).pipe(
         Effect.catch((error) =>
-          Effect.flatMap(nowIso, (createdAt) =>
-            (turnId === null
-              ? Effect.void
-              : recordTerminalCaptureFailure(event.threadId, turnId, error.message, createdAt)
+          Effect.flatMap(nowIso, (createdAt) => {
+            const detail = checkpointFailureDetail(error, "Checkpoint capture failed.");
+            return (
+              turnId === null
+                ? Effect.void
+                : recordTerminalCaptureFailure(event.threadId, turnId, detail, createdAt)
             ).pipe(
               Effect.andThen(
                 appendCaptureFailureActivity({
                   threadId: event.threadId,
                   turnId,
-                  detail: error.message,
+                  detail,
                   createdAt,
                 }),
               ),
               Effect.catch(() => Effect.void),
-            ),
-          ),
+            );
+          }),
         ),
       );
       return;

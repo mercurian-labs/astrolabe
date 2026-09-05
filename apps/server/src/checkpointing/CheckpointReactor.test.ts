@@ -283,7 +283,8 @@ describe("CheckpointReactor", () => {
     | OrchestrationEngineService
     | CheckpointReactor
     | CheckpointStore.CheckpointStore
-    | ProjectionSnapshotQuery,
+    | ProjectionSnapshotQuery
+    | SnapshotChain.SnapshotChain,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -320,6 +321,7 @@ describe("CheckpointReactor", () => {
     readonly slotBackedSession?: boolean;
     readonly multiRepositorySlot?: boolean;
     readonly legacySessionWithoutRepositoryRows?: boolean;
+    readonly threadLineResolveError?: () => Error | undefined;
   }) {
     const slotRoot = options?.multiRepositorySlot
       ? NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-checkpoint-slot-"))
@@ -417,28 +419,32 @@ describe("CheckpointReactor", () => {
       prUrl: null,
     } as const;
     const threadLineServiceLayer = Layer.mock(ThreadLineService.ThreadLineService)({
-      resolve: () =>
-        Effect.succeed(
-          options?.slotBackedSession
-            ? Option.some({
-                lineRootCommitId,
-                homeRepositoryId: repositoryId,
-                branch: lineBranch,
-                repositories:
-                  options?.multiRepositorySlot === true &&
-                  options.legacySessionWithoutRepositoryRows !== true
-                    ? [
-                        { ...emptyRepositoryFacts, repositoryId, repositoryName: "server" },
-                        {
-                          ...emptyRepositoryFacts,
-                          repositoryId: secondRepositoryId,
-                          repositoryName: "web",
-                        },
-                      ]
-                    : [],
-              })
-            : Option.none(),
-        ),
+      resolve: () => {
+        const resolveError = options?.threadLineResolveError?.();
+        return resolveError === undefined
+          ? Effect.succeed(
+              options?.slotBackedSession
+                ? Option.some({
+                    lineRootCommitId,
+                    homeRepositoryId: repositoryId,
+                    branch: lineBranch,
+                    repositories:
+                      options?.multiRepositorySlot === true &&
+                      options.legacySessionWithoutRepositoryRows !== true
+                        ? [
+                            { ...emptyRepositoryFacts, repositoryId, repositoryName: "server" },
+                            {
+                              ...emptyRepositoryFacts,
+                              repositoryId: secondRepositoryId,
+                              repositoryName: "web",
+                            },
+                          ]
+                        : [],
+                  })
+                : Option.none(),
+            )
+          : Effect.fail(resolveError);
+      },
       updateBranch: (_threadId, branch) => Effect.sync(() => updatedBranches.push(branch)),
       recordSnapshot: (_threadId, snapshot) =>
         Effect.sync(() => {
@@ -596,6 +602,7 @@ describe("CheckpointReactor", () => {
     const checkpointStore = await runtime.runPromise(
       Effect.service(CheckpointStore.CheckpointStore),
     );
+    const snapshotChain = await runtime.runPromise(Effect.service(SnapshotChain.SnapshotChain));
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
     const drain = () => Effect.runPromise(reactor.drain);
@@ -700,6 +707,7 @@ describe("CheckpointReactor", () => {
       repositoryId,
       secondRepositoryId,
       checkpointStore,
+      snapshotChain,
     };
   }
 
@@ -816,6 +824,88 @@ describe("CheckpointReactor", () => {
     expect(thread?.checkpoints).toHaveLength(1);
     expect(thread?.checkpoints[0]?.status).toBe("ready");
     expect(thread?.checkpoints[0]?.files.map((file) => file.path)).toContain("README.md");
+  });
+
+  it("persists one terminal error capture when a typed checkpoint failure has no message", async () => {
+    let failCompletionCapture = false;
+    let completionResolveCount = 0;
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      threadLineResolveError: () => {
+        if (!failCompletionCapture || ++completionResolveCount !== 2) return undefined;
+        return new SnapshotChain.SnapshotChainError({
+          operation: "resolve-thread-line",
+          cause: new Error(""),
+        });
+      },
+    });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("zero-message-terminal-failure");
+    const messageId = MessageId.make("zero-message-request");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("zero-message-start"),
+        threadId,
+        message: { messageId, role: "user", text: "Work", attachments: [] },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("zero-message-running"),
+        threadId,
+        session: {
+          threadId,
+          activeTurnId: turnId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
+    failCompletionCapture = true;
+
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("zero-message-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captures = events.filter(
+      (event) => event.type === "thread.turn-diff-completed" && event.payload.turnId === turnId,
+    );
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.payload).toEqual(
+      expect.objectContaining({
+        requestMessageId: messageId,
+        captureTerminal: true,
+        status: "error",
+        summaryStatus: "unavailable",
+        summaryError: expect.stringContaining("resolve-thread-line"),
+      }),
+    );
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.checkpoints.filter((checkpoint) => checkpoint.turnId === turnId)).toEqual([
+      expect.objectContaining({
+        status: "error",
+        summaryError: expect.stringContaining("resolve-thread-line"),
+      }),
+    ]);
   });
 
   it("captures pre-turn baseline on turn.started and post-turn checkpoint on turn.completed", async () => {
@@ -2272,6 +2362,99 @@ describe("CheckpointReactor", () => {
       runGit(harness.cwd, ["rev-parse", checkpointRef]).trim(),
     );
     expect(primaryGroup?.afterSnapshotOid).not.toBe(primaryGroup?.branchTipOid);
+  });
+
+  it("keeps successful repository facts when another member fails with a zero-message typed error", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+    });
+    const secondCwd = harness.secondCwd!;
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("turn-zero-message-member-failure");
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-turn-started-zero-message-member-failure"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId,
+    });
+    await harness.drain();
+
+    const capture = harness.snapshotChain.capture;
+    const captureSpy = vi.spyOn(harness.snapshotChain, "capture").mockImplementation((input) =>
+      input.cwd === secondCwd
+        ? Effect.fail(
+            new SnapshotChain.SnapshotChainError({
+              operation: "capture-secondary-snapshot",
+              cause: new Error("secondary repository snapshot failed"),
+            }),
+          )
+        : capture(input),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "successful home work\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(secondCwd, "README.md"), "failed member work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-zero-message-member-failure"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    captureSpy.mockRestore();
+
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captures = events.filter(
+      (event) => event.type === "thread.turn-diff-completed" && event.payload.turnId === turnId,
+    );
+    expect(captures).toHaveLength(1);
+    const capturePayload =
+      captures[0]?.type === "thread.turn-diff-completed" ? captures[0].payload : undefined;
+    const home = capturePayload?.repositories?.find(
+      (repository) => repository.repositoryId === harness.repositoryId,
+    );
+    const failed = capturePayload?.repositories?.find(
+      (repository) => repository.repositoryId === harness.secondRepositoryId,
+    );
+    expect(capturePayload).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+      }),
+    );
+    expect(home).toEqual(
+      expect.objectContaining({
+        captureStatus: "ready",
+        summaryStatus: "ready",
+        files: [expect.objectContaining({ path: "README.md", kind: "modified" })],
+        beforeSnapshotOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+        afterSnapshotOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+        branchTipOid: expect.stringMatching(/^[0-9a-f]{40}$/),
+      }),
+    );
+    expect(failed).toEqual(
+      expect.objectContaining({
+        captureStatus: "error",
+        captureError: expect.stringContaining("capture-secondary-snapshot"),
+        summaryStatus: "unavailable",
+        files: [],
+      }),
+    );
+    expect(failed?.captureError?.trim().length).toBeGreaterThan(0);
+
+    const checkpoint = (await harness.readModel()).threads
+      .find((thread) => thread.id === threadId)
+      ?.checkpoints.find((entry) => entry.turnId === turnId);
+    expect(checkpoint?.repositories).toEqual(capturePayload?.repositories);
+    expect(harness.recordedRepositorySnapshots).toEqual([
+      expect.objectContaining({ repositoryId: harness.repositoryId, kind: "settled" }),
+    ]);
   });
 
   it("emits an authoritative repository group for a single-repository line", async () => {
