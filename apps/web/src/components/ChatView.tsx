@@ -7485,7 +7485,6 @@ function ChatViewContent(props: ChatViewProps) {
           key={`${activeThreadKey}:${diffPanelGitStatusResolutionKey}`}
           mode="embedded"
           composerDraftTarget={composerDraftTarget}
-          threadRef={activeThreadRef}
           initialGitScope={initialDiffPanelGitScope}
           threadRef={activeThreadRef}
           workspaceMutationId={workspaceMutationId}
