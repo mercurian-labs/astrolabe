@@ -266,7 +266,7 @@ export const make = Effect.gen(function* () {
               recorded !== undefined
                 ? { baseOid: saved!.branchTipOid!, inheritedSnapshotOid: saved!.afterSnapshotOid! }
                 : originalBranch !== undefined
-                  ? { baseOid: originalBranch.baseOid }
+                  ? { baseOid: originalBranch.baseOid, inheritedSnapshotOid: undefined }
                   : yield* lineBranchEnsurer.resolveLineBranchStart({
                       detail,
                       lineRootCommitId,
