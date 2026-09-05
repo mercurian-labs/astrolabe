@@ -159,6 +159,18 @@ Refs decide where a line stands. If the recorded branch name is gone and a named
 
 Mercurian's durable link between an existing history act and its workspace capture facts. A turn is owned by its opening query and may later link its response; a standalone act needs no provider turn. Capture availability and response publication are independent. See [durable checkpoint history](checkpoint-history.md).
 
+#### Checkpoint capture
+
+The saved workspace facts for a [checkpoint record](#checkpoint-record): per-repository files, document roles when recorded, snapshot objects, branch facts, and capture/summary status. See [durable checkpoint history](checkpoint-history.md).
+
+#### Checkpoint effect
+
+A recorded file change classified as code, memory, plan, or spec. Effects determine the turn glyph in that order; status such as partial, saving, or failed appears separately. Legacy turns without capture records retain their artifact-revision reading.
+
+#### Reconstruction boundary
+
+The recorded starting boundary of the conversation supplied to a clean session, shown beside checkpoint capture facts. See [session reconstruction](session-reconstruction.md).
+
 #### Checkpoint ref
 
 The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed for ordinary turn checkpoints in [Utils.ts][22], and used by [CheckpointStore.ts][19]. Mercurian keeps turn snapshots at the existing turn refs, the latest snapshot for each line at a line-head ref, and named recovery or external snapshots below that line's ref namespace. [SnapshotChain.ts][40] constructs and advances the line refs.

@@ -219,16 +219,43 @@ describe("selected document ancestry", () => {
       "merge",
     );
   });
-  it("uses the exact response link and never borrows an unrelated line's record", () => {
+  it("keeps the selected owner while excluding future owners and unrelated lines", () => {
     const result = checkpointDocumentHistory({
       timeline,
       records: [
-        { ...record("root", [plan("future.md")]), responseCommitId: id("future") },
+        { ...record("root", [plan("owner.md")]), responseCommitId: id("future") },
+        record("future", [plan("future.md")]),
         { ...record("a", [plan("wrong.md")]), lineRootCommitId: id("other") },
       ],
       selectedCommitId: id("a"),
       lineRootCommitId: id("root"),
     });
-    expect(result).toEqual([]);
+    expect(result.map((entry) => [entry.path, entry.carryingCommitId])).toEqual([
+      ["owner.md", "root"],
+    ]);
+  });
+  it("keeps an owner-selected path's effects at the owner before and after a reply attaches", () => {
+    const forkTimeline = [
+      message("root"),
+      message("owner", ["root"]),
+      message("reply", ["owner"]),
+      message("fork", ["owner"]),
+    ];
+    const before = record("owner", [plan("owner.md")]);
+    const after = { ...before, responseCommitId: id("reply"), revision: 2 };
+    const read = (records: ReadonlyArray<PlanCheckpointRecord>, selected: string) =>
+      checkpointDocumentHistory({
+        timeline: forkTimeline,
+        records,
+        selectedCommitId: id(selected),
+        lineRootCommitId: id("root"),
+      });
+    for (const records of [[before], [after]]) {
+      const [entry] = read(records, "fork");
+      expect(entry?.path).toBe("owner.md");
+      expect(entry?.carryingCommitId).toBe("owner");
+    }
+    expect(read([after], "reply")[0]?.carryingCommitId).toBe("reply");
+    expect(read([after], "root")).toEqual([]);
   });
 });

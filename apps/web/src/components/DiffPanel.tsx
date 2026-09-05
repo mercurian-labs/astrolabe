@@ -6,7 +6,13 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import { PlanId, type ScopedThreadRef, type TurnId } from "@t3tools/contracts";
+import { recordedCheckpointDiffTarget } from "@t3tools/client-runtime/state/threads";
+import {
+  MercurianRepositoryId,
+  PlanId,
+  type ScopedThreadRef,
+  type TurnId,
+} from "@t3tools/contracts";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -80,7 +86,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
-import { usePlanDetail } from "../state/mercurian";
+import { mercurianPlanning, usePlanDetail } from "../state/mercurian";
+import { recordedCheckpointDiffUnavailableLabel } from "./mercurian/PlanCheckpoints.logic";
 import { lineUncommittedDiff } from "../state/mercurianDiff";
 import { memoryComparisonReviewSectionId } from "../reviewCommentContext";
 import {
@@ -199,6 +206,24 @@ export default function DiffPanel({
     storedDiffSelection.kind === "line-uncommitted" && !isMercurianCodingSession
       ? ({ kind: "branch", baseRef: null } as const)
       : storedDiffSelection;
+  const checkpointSelection = diffSelection.kind === "checkpoint" ? diffSelection : null;
+  const isRecordedCheckpointScope = checkpointSelection !== null;
+  const selectedCheckpointRecord =
+    checkpointSelection === null ||
+    activePlanDetail === null ||
+    activePlanDetail.plan.planId !== checkpointSelection.planId
+      ? undefined
+      : activePlanDetail.checkpoints?.find(
+          (record) => record.ownerCommitId === checkpointSelection.ownerCommitId,
+        );
+  const selectedCheckpointRepositoryName =
+    selectedCheckpointRecord?.capture?.repositories?.find(
+      (group) => group.repositoryId === checkpointSelection?.repositoryId,
+    )?.repositoryName ?? checkpointSelection?.repositoryId;
+  const checkpointScopeLabel =
+    selectedCheckpointRepositoryName === undefined
+      ? null
+      : `Checkpoint · ${selectedCheckpointRepositoryName}`;
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
@@ -259,29 +284,33 @@ export default function DiffPanel({
     (latestTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[latestTurn.turnId]);
   const selectedScopeLabel = memoryScope
     ? `Memory · ${memoryScope.label}`
-    : isLineUncommittedScope
-      ? "Uncommitted"
-      : isSessionScope
-        ? "Whole session"
-        : selectedTurnId === null
-          ? selectedGitScope === "unstaged"
-            ? "Working tree"
-            : "Branch changes"
-          : selectedTurn?.turnId === latestTurn?.turnId
-            ? "Latest turn"
-            : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
+    : checkpointScopeLabel !== null
+      ? checkpointScopeLabel
+      : isLineUncommittedScope
+        ? "Uncommitted"
+        : isSessionScope
+          ? "Whole session"
+          : selectedTurnId === null
+            ? selectedGitScope === "unstaged"
+              ? "Working tree"
+              : "Branch changes"
+            : selectedTurn?.turnId === latestTurn?.turnId
+              ? "Latest turn"
+              : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
   const reviewSectionId = memoryScope
     ? memoryComparisonReviewSectionId(
         memoryScope.selection.environmentId,
         memoryScope.selection.target,
       )
-    : isLineUncommittedScope
-      ? "line-uncommitted"
-      : isSessionScope
-        ? "session"
-        : selectedTurn
-          ? `turn:${selectedTurn.turnId}`
-          : (selectedGitScope ?? "branch");
+    : checkpointSelection !== null
+      ? `checkpoint:${checkpointSelection.ownerCommitId}:${checkpointSelection.repositoryId}`
+      : isLineUncommittedScope
+        ? "line-uncommitted"
+        : isSessionScope
+          ? "session"
+          : selectedTurn
+            ? `turn:${selectedTurn.turnId}`
+            : (selectedGitScope ?? "branch");
   const collapseScopeKey = activeThreadRef
     ? `${activeThreadRef.environmentId}:${activeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -292,15 +321,17 @@ export default function DiffPanel({
       : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
   const reviewSectionTitle = memoryScope
     ? `Memory · ${memoryScope.label}`
-    : selectedTurn
-      ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
-      : isLineUncommittedScope
-        ? "Uncommitted"
-        : isSessionScope
-          ? "Whole session"
-          : selectedGitScope === "unstaged"
-            ? "Working tree"
-            : "Branch changes";
+    : checkpointScopeLabel !== null
+      ? checkpointScopeLabel
+      : selectedTurn
+        ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
+        : isLineUncommittedScope
+          ? "Uncommitted"
+          : isSessionScope
+            ? "Whole session"
+            : selectedGitScope === "unstaged"
+              ? "Working tree"
+              : "Branch changes";
   const selectedCheckpointRange = useMemo(() => {
     if (isSessionScope) {
       return typeof latestCheckpointTurnCount === "number"
@@ -337,6 +368,37 @@ export default function DiffPanel({
         })
       : null,
   );
+  // Rebuilt from the live record on every render: a stronger capture revision
+  // is a new cache identity, so an earlier unavailable answer cannot shadow it.
+  // Revision zero asks for a record the subscription has not delivered yet.
+  const activeRecordedCheckpointDiff = useEnvironmentQuery(
+    checkpointSelection !== null && activeThreadRef
+      ? mercurianPlanning.checkpointDiff(
+          selectedCheckpointRecord === undefined
+            ? {
+                environmentId: activeThreadRef.environmentId,
+                input: {
+                  planId: checkpointSelection.planId,
+                  ownerCommitId: checkpointSelection.ownerCommitId,
+                  repositoryId: MercurianRepositoryId.make(checkpointSelection.repositoryId),
+                  checkpointRevision: 0,
+                  ignoreWhitespace: diffIgnoreWhitespace,
+                },
+              }
+            : recordedCheckpointDiffTarget(
+                activeThreadRef.environmentId,
+                selectedCheckpointRecord,
+                MercurianRepositoryId.make(checkpointSelection.repositoryId),
+                diffIgnoreWhitespace,
+              ),
+        )
+      : null,
+  );
+  const recordedCheckpointResult = activeRecordedCheckpointDiff.data;
+  const recordedCheckpointUnavailable =
+    recordedCheckpointResult?.status === "unavailable"
+      ? recordedCheckpointDiffUnavailableLabel(recordedCheckpointResult.reason)
+      : null;
   const primaryBranchDiffPreview = useEnvironmentQuery(
     selectedGitScope !== null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
@@ -374,13 +436,19 @@ export default function DiffPanel({
     isGitRepo && selectedGitScope !== null && activeThread != null && activeCwd != null;
   const canRefreshLineUncommittedDiff =
     isGitRepo && isLineUncommittedScope && isMercurianCodingSession && activeThread != null;
-  const canRefreshSelectedDiff = canRefreshGitDiff || canRefreshLineUncommittedDiff;
-  const refreshSelectedDiff = isLineUncommittedScope
-    ? activeLineUncommittedDiff.refresh
-    : refreshBranchDiffPreview;
-  const isRefreshingSelectedDiff = isLineUncommittedScope
-    ? activeLineUncommittedDiff.isPending
-    : branchDiffPreview.isPending;
+  const canRefreshRecordedCheckpointDiff = isRecordedCheckpointScope && activeThreadRef != null;
+  const canRefreshSelectedDiff =
+    canRefreshGitDiff || canRefreshLineUncommittedDiff || canRefreshRecordedCheckpointDiff;
+  const refreshSelectedDiff = isRecordedCheckpointScope
+    ? activeRecordedCheckpointDiff.refresh
+    : isLineUncommittedScope
+      ? activeLineUncommittedDiff.refresh
+      : refreshBranchDiffPreview;
+  const isRefreshingSelectedDiff = isRecordedCheckpointScope
+    ? activeRecordedCheckpointDiff.isPending
+    : isLineUncommittedScope
+      ? activeLineUncommittedDiff.isPending
+      : branchDiffPreview.isPending;
   const activeThreadRefreshKey = activeThreadRef
     ? `${activeThreadRef.environmentId}:${activeThreadRef.threadId}`
     : null;
@@ -483,31 +551,42 @@ export default function DiffPanel({
   const isCheckpointScope = isSessionScope || selectedTurn !== undefined;
   const selectedPatch = memoryScope
     ? memoryComparisonResult?.patch
-    : isCheckpointScope
-      ? activeCheckpointDiff.data?.diff
-      : isLineUncommittedScope
-        ? activeLineUncommittedDiff.data?.diff
-        : gitDiff;
+    : isRecordedCheckpointScope
+      ? recordedCheckpointResult?.status === "ready"
+        ? recordedCheckpointResult.diff
+        : undefined
+      : isCheckpointScope
+        ? activeCheckpointDiff.data?.diff
+        : isLineUncommittedScope
+          ? activeLineUncommittedDiff.data?.diff
+          : gitDiff;
   const isSelectedPatchTruncated =
-    !memoryScope && !isCheckpointScope && selectedGitSource?.truncated === true;
+    !memoryScope &&
+    !isCheckpointScope &&
+    !isRecordedCheckpointScope &&
+    selectedGitSource?.truncated === true;
   const isLoadingSelectedPatch = memoryScope
     ? memoryComparison.kind === "loading"
-    : isCheckpointScope
-      ? activeCheckpointDiff.isPending
-      : isLineUncommittedScope
-        ? activeLineUncommittedDiff.isPending
-        : branchDiffPreview.isPending;
+    : isRecordedCheckpointScope
+      ? activeRecordedCheckpointDiff.isPending
+      : isCheckpointScope
+        ? activeCheckpointDiff.isPending
+        : isLineUncommittedScope
+          ? activeLineUncommittedDiff.isPending
+          : branchDiffPreview.isPending;
   const selectedPatchError = memoryScope
     ? memoryComparison.kind === "error"
       ? memoryComparison.message
       : memoryComparison.kind === "ready" && memoryComparison.result.kind === "unavailable"
         ? `This memory comparison is unavailable: ${memoryComparison.result.reason}.`
         : null
-    : isCheckpointScope
-      ? activeCheckpointDiff.error
-      : isLineUncommittedScope
-        ? activeLineUncommittedDiff.error
-        : branchDiffPreview.error;
+    : isRecordedCheckpointScope
+      ? activeRecordedCheckpointDiff.error
+      : isCheckpointScope
+        ? activeCheckpointDiff.error
+        : isLineUncommittedScope
+          ? activeLineUncommittedDiff.error
+          : branchDiffPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
   const renderablePatch = useMemo(
@@ -1029,7 +1108,7 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>
-      ) : !isGitRepo && memoryScope === null ? (
+      ) : !isGitRepo && memoryScope === null && !isRecordedCheckpointScope ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Turn diffs are unavailable because this project is not a git repository.
         </div>
@@ -1060,23 +1139,26 @@ export default function DiffPanel({
                   label={
                     memoryScope
                       ? "Loading memory comparison..."
-                      : selectedTurn
-                        ? "Loading checkpoint diff..."
-                        : isSessionScope
-                          ? "Loading whole session diff..."
-                          : isLineUncommittedScope
-                            ? "Loading uncommitted diff..."
-                            : selectedGitScope === "unstaged"
-                              ? "Loading working tree diff..."
-                              : "Loading branch diff..."
+                      : isRecordedCheckpointScope
+                        ? "Loading checkpoint changes..."
+                        : selectedTurn
+                          ? "Loading checkpoint diff..."
+                          : isSessionScope
+                            ? "Loading whole session diff..."
+                            : isLineUncommittedScope
+                              ? "Loading uncommitted diff..."
+                              : selectedGitScope === "unstaged"
+                                ? "Loading working tree diff..."
+                                : "Loading branch diff..."
                   }
                 />
               ) : (
                 <div className="flex h-full items-center justify-center px-3 py-2 text-xs text-muted-foreground/70">
                   <p>
-                    {hasNoNetChanges
-                      ? "No net changes in this selection."
-                      : "No patch available for this selection."}
+                    {recordedCheckpointUnavailable ??
+                      (hasNoNetChanges
+                        ? "No net changes in this selection."
+                        : "No patch available for this selection.")}
                   </p>
                 </div>
               )
@@ -1100,8 +1182,9 @@ export default function DiffPanel({
                     );
                     const filePath = title?.textContent?.trim();
                     // The filename remains the explicit "open in editor" affordance. Memory
-                    // paths name Git objects, not workspace files, so they only fold.
-                    if (filePath && memoryScope === null) {
+                    // paths name Git objects, not workspace files, and a saved repository diff
+                    // cannot open a file in the active line's workspace, so those only fold.
+                    if (filePath && memoryScope === null && !isRecordedCheckpointScope) {
                       openDiffFile(filePath);
                       return;
                     }

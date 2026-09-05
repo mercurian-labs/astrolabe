@@ -8,22 +8,29 @@
  * shapes it has to handle (forks, n-ary merges) are representable long before
  * anything can create them, and that is exactly what the tests pin.
  */
-import type { MercurianCommitId, PlanTimelineItem } from "@t3tools/contracts";
+import type { CheckpointEffect } from "@t3tools/client-runtime/state/mercurian-checkpoint-effects";
+import type { MercurianCommitId, PlanCheckpointRecord, PlanTimelineItem } from "@t3tools/contracts";
 import { graphStratify, grid, sugiyama, zherebko } from "d3-dag";
 
-export type PlanCheckpointEffect =
-  | "plan-updated"
-  | "spec-updated"
+export type { CheckpointEffect } from "@t3tools/client-runtime/state/mercurian-checkpoint-effects";
+
+/** Lifecycle and availability marks. Never a workspace effect. */
+export type PlanCheckpointStatus =
   | "interrupted"
   | "unanswered"
   | "partial"
-  | "departed";
+  | "departed"
+  | "saving"
+  | "failed"
+  | "unknown";
 
 export interface PlanCheckpoint {
   readonly query: PlanTimelineItem;
   readonly revisions: ReadonlyArray<PlanTimelineItem>;
   readonly response?: PlanTimelineItem;
-  readonly effects: ReadonlyArray<PlanCheckpointEffect>;
+  /** Workspace effects in glyph precedence: code, memory, plan, spec. */
+  readonly effects: ReadonlyArray<CheckpointEffect>;
+  readonly status: ReadonlyArray<PlanCheckpointStatus>;
 }
 
 export interface PlanGraphNode {
@@ -41,6 +48,8 @@ export interface PlanGraphNode {
   readonly isMerge: boolean;
   /** A settled assistant turn projected onto its continuable terminal commit. */
   readonly checkpoint?: PlanCheckpoint;
+  /** The durable capture record owned by this node's opening act, when one exists. */
+  readonly record?: PlanCheckpointRecord;
 }
 
 export interface PlanGraph {

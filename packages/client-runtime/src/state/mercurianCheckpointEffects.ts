@@ -115,6 +115,11 @@ export interface CheckpointDocumentChange {
  * Follow carrying (first-parent) ancestry through the selected position, stopping
  * at the line's fork boundary. Source parents of a merge contribute only its
  * recorded delta. Renames and deletions remain reviewable on that path.
+ *
+ * A record carries its effects at its response only when that response is on the
+ * selected path. A path that continues from the owner query itself, such as a
+ * fork chosen before a reply was attached, keeps the owner's recorded effects at
+ * the owner; a reply attached later never moves them off that path.
  */
 export function checkpointDocumentHistory(input: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
@@ -138,7 +143,10 @@ export function checkpointDocumentHistory(input: {
   const byCarrying = new Map<MercurianCommitId, PlanCheckpointRecord[]>();
   for (const record of input.records) {
     if (record.lineRootCommitId !== input.lineRootCommitId) continue;
-    const carrying = record.responseCommitId ?? record.ownerCommitId;
+    const carrying =
+      record.responseCommitId !== undefined && onPath.has(record.responseCommitId)
+        ? record.responseCommitId
+        : record.ownerCommitId;
     if (!onPath.has(carrying)) continue;
     const peers = byCarrying.get(carrying) ?? [];
     peers.push(record);

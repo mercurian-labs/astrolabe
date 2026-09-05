@@ -58,6 +58,8 @@ const renderContent = ({
       suppressUnanswered={false}
       onClose={vi.fn()}
       onEditAndBranch={vi.fn()}
+      onOpenChanges={vi.fn()}
+      onContinueFromCheckpoint={vi.fn()}
     />,
   );
 };

@@ -4,6 +4,7 @@ import {
   MercurianCommitId,
   MercurianProjectId,
   MercurianRepositoryId,
+  PlanId,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -171,6 +172,22 @@ describe("diffPanelStore", () => {
       filePath: "src/app.ts",
       repositoryId: null,
       revealRequestId: 1,
+    });
+  });
+  it("round-trips a recorded checkpoint selection and leaves it alone while reconciling turns", () => {
+    useDiffPanelStore.getState().selectCheckpoint(THREAD_REF, {
+      planId: PlanId.make("plan-1"),
+      ownerCommitId: MercurianCommitId.make("owner-1"),
+      repositoryId: "repo-web",
+    });
+    useDiffPanelStore.getState().reconcileTurnSelection(THREAD_REF, [TurnId.make("turn-latest")]);
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({
+      kind: "checkpoint",
+      planId: "plan-1",
+      ownerCommitId: "owner-1",
+      repositoryId: "repo-web",
     });
   });
 });

@@ -2,10 +2,15 @@ import { ProjectDocumentsPanel, useProjectDocumentsPanel } from "./ProjectDocume
 import { useStorageSources } from "../../state/mercurianStorage";
 /** Owned by the panel lane of M-197 (plan §6). Fills the right-panel surface slots of ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { MercurianCommitId, PlanDetail } from "@t3tools/contracts";
+import type {
+  MercurianCommitId,
+  PlanCheckpointRecord,
+  PlanDetail,
+} from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
+import { useDiffPanelStore } from "../../diffPanelStore";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMercurianTree } from "../../state/mercurian";
 import { usePlanningModel } from "../../state/mercurianWorkspace";
@@ -18,7 +23,7 @@ import { LATEST, positionAfterPick, resolveHead } from "./PlanPosition.logic";
 import { stalePlanLeafIds, staleSpecLeafIds } from "./SpecArtifact.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
 import { lineThreadIdForCommit, resolveLineTip } from "./planLineOwnership.logic";
-import { useForkHere } from "./useForkHere";
+import { useContinueFromCheckpoint, useForkHere } from "./useForkHere";
 import { useLineMemoryDashboard } from "./useLineMemoryDashboard";
 
 export type ThreadSpaceSurfaces = Readonly<{
@@ -32,6 +37,7 @@ export type ThreadSpaceSurfaces = Readonly<{
 
 const EMPTY_IN_FLIGHT_TURNS: PlanDetail["inFlightTurns"] = [];
 const EMPTY_CODING_SESSIONS: PlanDetail["codingSessions"] = [];
+const EMPTY_CHECKPOINT_RECORDS: ReadonlyArray<PlanCheckpointRecord> = [];
 
 export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   const { planId, projectId, threadId, environmentId, detail, graph, search } = useThreadSpace();
@@ -41,6 +47,7 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
   const planningModel = usePlanningModel();
   const { snapshot: tree } = useMercurianTree();
   const forkHere = useForkHere();
+  const continueFromCheckpoint = useContinueFromCheckpoint();
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -118,6 +125,24 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
       ? memory.state.dashboard.unreviewedCount
       : 0;
 
+  const openChanges = useCallback(
+    (record: PlanCheckpointRecord, repositoryId: string) => {
+      useDiffPanelStore.getState().selectCheckpoint(threadRef, {
+        planId: record.planId,
+        ownerCommitId: record.ownerCommitId,
+        repositoryId,
+      });
+      useRightPanelStore.getState().open(threadRef, "diff");
+    },
+    [threadRef],
+  );
+  const continueFrom = useCallback(
+    (record: PlanCheckpointRecord) => {
+      void continueFromCheckpoint(record);
+    },
+    [continueFromCheckpoint],
+  );
+
   const inFlightTurns = detail?.inFlightTurns ?? EMPTY_IN_FLIGHT_TURNS;
   const codingSessions = detail?.codingSessions ?? EMPTY_CODING_SESSIONS;
   return {
@@ -150,6 +175,9 @@ export function useThreadSpaceSurfaces(): ThreadSpaceSurfaces {
     memoryBadgeCount: memoryUnreviewedCount,
     checkpointsPanel: (
       <DagExplorer
+        checkpointRecords={detail?.checkpoints ?? EMPTY_CHECKPOINT_RECORDS}
+        onOpenChanges={openChanges}
+        onContinueFromCheckpoint={continueFrom}
         anchoredCommitId={head}
         codingSessions={codingSessions}
         graph={graph}

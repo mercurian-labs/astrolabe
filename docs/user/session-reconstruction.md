@@ -1,6 +1,6 @@
 # Inspecting a reply's session reconstruction
 
-Open a reply's checkpoint details to see **Session reconstruction**. It shows where the session began and where the conversation supplied to it began verbatim. **Start of history** means that reconstruction did not need a summary.
+Open a reply's checkpoint details to see **Session reconstruction**. It shows where the session began and where the conversation supplied to it began verbatim. **Start of history** means that reconstruction did not need a summary. Recorded workspace changes appear alongside this reconstruction.
 
 For a long history, expand **Summary used** to read the exact rendition the session received. Expanding it keeps you at the same checkpoint.
 

@@ -1,11 +1,23 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { MemoryComparisonSelection, ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import type {
+  MemoryComparisonSelection,
+  MercurianCommitId,
+  PlanId,
+  ScopedThreadRef,
+  TurnId,
+} from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "./lib/storage";
 
 export type DiffPanelSelection =
+  | {
+      kind: "checkpoint";
+      planId: PlanId;
+      ownerCommitId: MercurianCommitId;
+      repositoryId: string;
+    }
   | { kind: "branch"; baseRef: string | null }
   | { kind: "unstaged" }
   | { kind: "line-uncommitted" }
@@ -38,6 +50,15 @@ interface DiffPanelStoreState {
     label: string,
   ) => void;
   selectSessionScope: (ref: ScopedThreadRef) => void;
+  /** The saved diff of one recorded act in one repository; revision resolves from the live record. */
+  selectCheckpoint: (
+    ref: ScopedThreadRef,
+    target: {
+      readonly planId: PlanId;
+      readonly ownerCommitId: MercurianCommitId;
+      readonly repositoryId: string;
+    },
+  ) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
   selectTurn: (
     ref: ScopedThreadRef,
@@ -86,6 +107,13 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
           byThreadKey: {
             ...state.byThreadKey,
             [scopedThreadKey(ref)]: { kind: "session" },
+          },
+        })),
+      selectCheckpoint: (ref, target) =>
+        set((state) => ({
+          byThreadKey: {
+            ...state.byThreadKey,
+            [scopedThreadKey(ref)]: { kind: "checkpoint", ...target },
           },
         })),
       selectLineUncommittedScope: (ref) =>

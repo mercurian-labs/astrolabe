@@ -193,14 +193,19 @@ queries, direct artifact revisions, repository-specific Plan revisions, and hist
 coding-session leaves. Those leaves open read-only, and sending from them is declined. Revisions made
 inside one assistant turn stay inside that turn's checkpoint rather than appearing as separate
 places to continue. The history is a spatial graph with every connection visible and no text on the
-map itself. At a readable zoom, each node shows its kind glyph. Small colored dots at a node's
-top-right mark stale Spec or Plan status. Drag the map to move around it and scroll to
+map itself. At a readable zoom, a turn shows its strongest recorded effect: code, memory, Plan, then Spec.
+Status dots separately show saving, failed or unknown captures, interrupted or partial turns,
+and stale Spec or Plan status. Drag the map to move around it and scroll to
 zoom; where you are standing is ringed and comes to the middle.
 
 Work you have published reads solid; work still private to you reads muted.
 
-Choose a checkpoint to navigate to its line and viewing position. Checkpoint details record model
-facts, changes, and warnings, and offer **Fork here** or **Open line** when those acts apply. For a
+Choose a checkpoint to navigate to its line and viewing position. Checkpoint details show model
+facts, effects, warnings, and the saved changes in each repository, including file change kinds,
+renames, deletions, and recorded branch facts. **Open changes** opens that repository’s saved
+checkpoint diff. Missing snapshots show as unavailable. Coding-session pull request links are
+labelled as current lookups. Details offer **Fork here**, **Open line**, or
+**Continue from checkpoint** when those actions apply. For a
 historical coding-session leaf, **Open line** selects that leaf's line in the owning thread.
 
 After moving, the current line's conversation stays visible, Plan and Spec show what they said at
@@ -212,6 +217,11 @@ To branch from something you said, choose **Fork here** on that user message. As
 message's parent, creates a new line, puts the original message back into its composer, and leaves
 the original line untouched. The new line gains its history root and working slot only when you
 send its first turn.
+
+**Continue from checkpoint** creates a new line whose first turn restores the checkpoint’s saved
+files and reconstructs conversation through that checkpoint. Later work is excluded. Every
+repository must have a complete capture; an interrupted turn can qualify even without a saved reply.
+The server checks snapshot availability before creating the line and again before restoring files.
 
 ## The row menu
 

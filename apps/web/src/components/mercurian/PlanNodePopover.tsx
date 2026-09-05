@@ -3,11 +3,12 @@ import { SessionReconstruction } from "./SessionReconstruction";
  * One checkpoint reading shared by the explorer's three views.
  *
  * Rows and map nodes own only how the popover is summoned. Identity, recorded
- * model facts, effects, honesty warnings, and acts stay here so a
- * checkpoint cannot tell a different story when the explorer changes shape.
+ * model facts, effects, capture facts, honesty warnings, and acts stay here so
+ * a checkpoint cannot tell a different story when the explorer changes shape.
  */
 import type {
   MercurianCommitId,
+  PlanCheckpointRecord,
   PlanCodingSessionRecord,
   PlanTimelineItem,
   PlanningModelSelection,
@@ -36,9 +37,12 @@ import { PLAN_MAY_BE_STALE_DESCRIPTION, PLAN_MAY_BE_STALE_LABEL } from "./PlanFr
 import { planningModelOptionLabels, providerLabel } from "./PlanningModel.logic";
 import type { PlanGraph, PlanGraphNode } from "./PlanGraph.logic";
 import {
+  capturedRepositoryFactsLabel,
   derivePlanNodePopover,
+  documentRoleLabel,
   memoryAmendmentSelection,
   repositoryFactsLabel,
+  type PlanNodeCaptureFacts,
   type PlanNodePopoverAct,
 } from "./PlanNodePopover.logic";
 
@@ -57,6 +61,15 @@ export interface PlanNodePopoverController {
   readonly cancelClose: () => void;
   readonly scheduleClose: () => void;
   readonly close: () => void;
+}
+
+/** The three acts a checkpoint can offer; each view passes the same handlers through. */
+export interface PlanNodeActHandlers {
+  readonly onEditAndBranch: (
+    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
+  ) => void;
+  readonly onOpenChanges: (record: PlanCheckpointRecord, repositoryId: string) => void;
+  readonly onContinueFromCheckpoint: (record: PlanCheckpointRecord) => void;
 }
 
 /** A single timer pair keeps travel from an anchor into its popup stable. */
@@ -151,6 +164,8 @@ export function PlanNodePopover({
   staleSpec,
   suppressUnanswered,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
 }: {
   readonly controller: PlanNodePopoverController;
   readonly node: PlanGraphNode | undefined;
@@ -160,10 +175,7 @@ export function PlanNodePopover({
   readonly stalePlan: boolean;
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
-}) {
+} & PlanNodeActHandlers) {
   return (
     <Popover
       open={controller.state !== null && node !== undefined}
@@ -194,6 +206,8 @@ export function PlanNodePopover({
             suppressUnanswered={suppressUnanswered}
             onClose={controller.close}
             onEditAndBranch={onEditAndBranch}
+            onOpenChanges={onOpenChanges}
+            onContinueFromCheckpoint={onContinueFromCheckpoint}
           />
         )}
       </PopoverPopup>
@@ -211,6 +225,8 @@ export function PlanNodePopoverContent({
   suppressUnanswered,
   onClose,
   onEditAndBranch,
+  onOpenChanges,
+  onContinueFromCheckpoint,
 }: {
   readonly node: PlanGraphNode;
   readonly commitGraph: PlanGraph;
@@ -220,10 +236,7 @@ export function PlanNodePopoverContent({
   readonly staleSpec: boolean;
   readonly suppressUnanswered: boolean;
   readonly onClose: () => void;
-  readonly onEditAndBranch: (
-    query: Extract<PlanTimelineItem, { readonly _tag: "message" }>,
-  ) => void;
-}) {
+} & PlanNodeActHandlers) {
   const reading = derivePlanNodePopover({
     node,
     commitGraph,
@@ -232,6 +245,7 @@ export function PlanNodePopoverContent({
     staleSpec,
     suppressUnanswered,
   });
+  const record = node.record;
 
   return (
     <div className="flex flex-col gap-3 text-xs">
@@ -286,19 +300,31 @@ export function PlanNodePopoverContent({
             {reading.responseExcerpt}
           </p>
         )}
-        {reading.effects.length === 0 ? null : (
+        {reading.marks.length === 0 ? null : (
           <div className="flex flex-wrap gap-1">
-            {reading.effects.map((effect) => (
+            {reading.marks.map((mark) => (
               <span
-                className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                key={effect}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                  mark.kind === "effect"
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+                )}
+                key={mark.key}
               >
-                {effect}
+                {mark.label}
               </span>
             ))}
           </div>
         )}
       </section>
+
+      {reading.capture === undefined || record === undefined ? null : (
+        <CaptureSection
+          capture={reading.capture}
+          onOpenChanges={(repositoryId) => onOpenChanges(record, repositoryId)}
+        />
+      )}
 
       {reading.response?.reconstructionId === undefined ? null : (
         <SessionReconstruction
@@ -336,7 +362,7 @@ export function PlanNodePopoverContent({
               rel="noreferrer"
               target="_blank"
             >
-              Pull request
+              Pull request (current)
             </a>
           )}
           {reading.session.repositories?.map((repository) => (
@@ -346,7 +372,7 @@ export function PlanNodePopoverContent({
               </span>
               {repository.prUrl === null ? null : (
                 <a className="underline" href={repository.prUrl} rel="noreferrer" target="_blank">
-                  Pull request
+                  Pull request (current)
                 </a>
               )}
             </div>
@@ -372,25 +398,50 @@ export function PlanNodePopoverContent({
 
       {reading.acts.length === 0 ? null : (
         <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
-          {reading.acts.map((act) =>
-            act === "open-memory" ? (
-              <OpenInMemoryAct key={act} node={node} onClose={onClose} />
-            ) : act === "open-session" && reading.session?.threadId !== undefined ? (
+          {reading.acts.map((act) => {
+            if (act === "open-memory") {
+              return <OpenInMemoryAct key={act} node={node} onClose={onClose} />;
+            }
+            if (act === "open-session") {
+              return reading.session?.threadId === undefined ? null : (
+                <Button
+                  key={act}
+                  render={
+                    <Link
+                      to="/sessions/$threadId"
+                      params={{ threadId: reading.session.threadId }}
+                    />
+                  }
+                  size="sm"
+                  variant="outline"
+                  onClick={onClose}
+                >
+                  {actLabel(act)}
+                </Button>
+              );
+            }
+            if (act === "continue-from-checkpoint") {
+              return (
+                <Button
+                  key={act}
+                  size="sm"
+                  title="Start a new line from this checkpoint with its saved files restored"
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (record !== undefined) onContinueFromCheckpoint(record);
+                    onClose();
+                  }}
+                >
+                  {actLabel(act)}
+                </Button>
+              );
+            }
+            return (
               <Button
                 key={act}
-                render={
-                  <Link to="/sessions/$threadId" params={{ threadId: reading.session.threadId }} />
-                }
                 size="sm"
-                variant="outline"
-                onClick={onClose}
-              >
-                Open line
-              </Button>
-            ) : (
-              <Button
-                key={act}
-                size="sm"
+                title="Start a new line from this message's parent with its text in the composer"
                 type="button"
                 variant="outline"
                 onClick={() => {
@@ -400,8 +451,8 @@ export function PlanNodePopoverContent({
               >
                 {actLabel(act)}
               </Button>
-            ),
-          )}
+            );
+          })}
         </div>
       )}
     </div>
@@ -437,6 +488,109 @@ function OpenInMemoryAct({
     >
       {actLabel("open-memory")}
     </Button>
+  );
+}
+
+/** Recorded workspace facts, per repository, exactly as captured. */
+function CaptureSection({
+  capture,
+  onOpenChanges,
+}: {
+  readonly capture: PlanNodeCaptureFacts;
+  readonly onOpenChanges: (repositoryId: string) => void;
+}) {
+  return (
+    <section className="flex flex-col gap-1.5 border-t border-border pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+        Workspace
+      </p>
+      {capture.saving ? <p className="text-muted-foreground">Saving workspace changes…</p> : null}
+      {capture.failed ? (
+        <p className="text-amber-700 dark:text-amber-400">
+          {capture.partial
+            ? "Capture failed for some repositories. Recorded repositories are shown."
+            : "Capture failed."}
+        </p>
+      ) : null}
+      {capture.unknown ? (
+        <p className="text-muted-foreground">
+          Capture state is unknown. Changes were not recorded for this checkpoint.
+        </p>
+      ) : null}
+      {capture.plain ? (
+        <p className="text-muted-foreground">No workspace changes recorded.</p>
+      ) : null}
+      {capture.repositories.map((repository) => {
+        const facts = capturedRepositoryFactsLabel(repository);
+        return (
+          <div
+            className="flex flex-col gap-1"
+            key={repository.repositoryId || repository.repositoryName}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {repository.repositoryName}
+              </span>
+              {repository.changesAvailable ? (
+                <Button
+                  aria-label={`Open changes in ${repository.repositoryName}`}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onOpenChanges(repository.repositoryId)}
+                >
+                  Open changes
+                </Button>
+              ) : null}
+            </div>
+            {facts === null ? null : <p className="text-[11px] text-muted-foreground">{facts}</p>}
+            {repository.captureError === undefined ? null : (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Capture failed: {repository.captureError}
+              </p>
+            )}
+            {repository.summaryError === undefined ? null : (
+              <p className="text-[11px] text-muted-foreground">
+                File list unavailable: {repository.summaryError}
+              </p>
+            )}
+            {repository.files.length === 0 ? null : (
+              <ul className="max-h-40 overflow-auto rounded border border-border/60 px-1.5 py-1 font-mono text-[11px]">
+                {repository.files.map((file) => (
+                  <li
+                    className="flex items-baseline gap-1.5"
+                    key={`${file.previousPath ?? ""}\u0000${file.path}`}
+                  >
+                    {file.role === undefined ? null : (
+                      <span className="shrink-0 rounded bg-muted px-1 font-sans text-[10px] font-medium text-muted-foreground">
+                        {documentRoleLabel(file.role)}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 break-all whitespace-pre-wrap",
+                        file.deleted && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {file.previousPath === undefined
+                        ? file.path
+                        : `${file.previousPath} → ${file.path}`}
+                    </span>
+                    <span className="shrink-0 font-sans text-muted-foreground">{file.kind}</span>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        +{file.additions}
+                      </span>{" "}
+                      <span className="text-red-600 dark:text-red-400">−{file.deletions}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -545,9 +699,16 @@ function Warning({
 }
 
 function actLabel(act: PlanNodePopoverAct): string {
-  if (act === "edit-and-branch") return "Fork here";
-  if (act === "open-memory") return "Open in Memory";
-  return "Open line";
+  switch (act) {
+    case "edit-and-branch":
+      return "Fork here";
+    case "open-memory":
+      return "Open in Memory";
+    case "continue-from-checkpoint":
+      return "Continue from checkpoint";
+    case "open-session":
+      return "Open line";
+  }
 }
 
 function nodeAccessibleName(node: PlanGraphNode): string {

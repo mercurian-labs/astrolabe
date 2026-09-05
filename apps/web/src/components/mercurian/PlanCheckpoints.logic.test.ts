@@ -1,3 +1,10 @@
+import {
+  MercurianProjectId,
+  PlanId,
+  MessageId,
+  ThreadId,
+  type PlanCheckpointRecord,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -11,11 +18,12 @@ import {
 
 import { columnLayout, defaultBranchChoices } from "./PlanColumns.logic";
 import {
-  codingSessionEffects,
+  codingSessionStatusMarks,
+  checkpointGlyphEffect,
   condensePlanGraph,
   isUnansweredCheckpointInFlight,
   mapMarksToNodes,
-  planCheckpointEffectLabel,
+  planCheckpointStatusLabel,
   planNodeDetail,
   planNodeIdForCommit,
   planNodeStatusDots,
@@ -46,7 +54,7 @@ describe("condensePlanGraph", () => {
     expect(checkpoint?.query.commitId).toBe("query");
     expect(checkpoint?.revisions.map((revision) => revision.commitId)).toEqual(["plan", "spec"]);
     expect(checkpoint?.response?.commitId).toBe("response");
-    expect(checkpoint?.effects).toEqual(["plan-updated", "spec-updated"]);
+    expect(checkpoint?.effects).toEqual(["plan", "spec"]);
     expect(graph.byId.get("response")?.item).toMatchObject({
       commitId: "response",
       sequence: 4,
@@ -74,10 +82,8 @@ describe("condensePlanGraph", () => {
         }),
       ]),
     );
-    expect(revised.byId.get("response")?.checkpoint?.effects).toEqual([
-      "plan-updated",
-      "interrupted",
-    ]);
+    expect(revised.byId.get("response")?.checkpoint?.effects).toEqual(["plan"]);
+    expect(revised.byId.get("response")?.checkpoint?.status).toEqual(["interrupted"]);
 
     const bare = condensePlanGraph(
       buildPlanGraph([
@@ -95,7 +101,8 @@ describe("condensePlanGraph", () => {
     expect(bare.byId.get("bare-response")?.checkpoint).toMatchObject({
       query: { commitId: "bare-query" },
       response: { commitId: "bare-response", text: "", interrupted: true },
-      effects: ["interrupted"],
+      effects: [],
+      status: ["interrupted"],
     });
   });
 
@@ -107,7 +114,8 @@ describe("condensePlanGraph", () => {
     const graph = condensePlanGraph(commitGraph);
     const checkpoint = graph.byId.get("landed")!;
 
-    expect(checkpoint.checkpoint?.effects).toEqual(["plan-updated", "unanswered"]);
+    expect(checkpoint.checkpoint?.effects).toEqual(["plan"]);
+    expect(checkpoint.checkpoint?.status).toEqual(["unanswered"]);
     expect(planNodeDetail(checkpoint, true)).toContain("Plan updated");
     expect(planNodeDetail(checkpoint, true)).not.toContain("Unanswered");
     expect(isUnansweredCheckpointInFlight(checkpoint, commitGraph, [id("query")])).toBe(true);
@@ -203,7 +211,8 @@ describe("condensePlanGraph", () => {
       "spec",
     ]);
     expect(node?.checkpoint?.response).toBeUndefined();
-    expect(node?.checkpoint?.effects).toEqual(["plan-updated", "spec-updated", "unanswered"]);
+    expect(node?.checkpoint?.effects).toEqual(["plan", "spec"]);
+    expect(node?.checkpoint?.status).toEqual(["unanswered"]);
     expect([...graph.nodeIdByCommit]).toEqual([
       ["query", "spec"],
       ["plan", "spec"],
@@ -310,7 +319,7 @@ describe("condensePlanGraph", () => {
     const graph = condensePlanGraph(buildPlanGraph([message("query"), session]));
 
     expect(graph.nodes.map((node) => node.commitId)).toEqual(["query", "session"]);
-    expect(graph.byId.get("query")?.checkpoint?.effects).toEqual(["unanswered"]);
+    expect(graph.byId.get("query")?.checkpoint?.status).toEqual(["unanswered"]);
     expect(graph.byId.get("session")?.checkpoint).toBeUndefined();
   });
 });
@@ -318,21 +327,21 @@ describe("condensePlanGraph", () => {
 describe("coding-session checkpoint effects", () => {
   it("derives partial and departed marks only from the mutable session record", () => {
     expect(
-      codingSessionEffects(
+      codingSessionStatusMarks(
         planCodingSessionRecord("both", { partial: true, departedRef: "feature/detour" }),
       ),
     ).toEqual(["partial", "departed"]);
     expect(
-      codingSessionEffects(
+      codingSessionStatusMarks(
         planCodingSessionRecord("departed", { partial: false, departedRef: "feature/detour" }),
       ),
     ).toEqual(["departed"]);
     expect(
-      codingSessionEffects(
+      codingSessionStatusMarks(
         planCodingSessionRecord("neither", { partial: false, departedRef: null }),
       ),
     ).toEqual([]);
-    expect(planCheckpointEffectLabel("departed")).toBe("Departed");
+    expect(planCheckpointStatusLabel("departed")).toBe("Departed");
   });
 });
 
@@ -349,5 +358,96 @@ describe("planNodeStatusDots", () => {
       { key: "stale-spec", fillClass: "fill-amber-500" },
     ]);
     expect(planNodeStatusDots({ staleSpec: false, stalePlan: false })).toEqual([]);
+  });
+});
+
+const checkpointRecord = (
+  owner: string,
+  overrides: Partial<PlanCheckpointRecord> = {},
+): PlanCheckpointRecord => ({
+  ownerCommitId: id(owner),
+  planId: PlanId.make("plan"),
+  projectId: MercurianProjectId.make("project"),
+  lineRootCommitId: id("query"),
+  revision: 1,
+  updateSequence: 1,
+  capture: {
+    status: "ready",
+    terminal: true,
+    summaryStatus: "ready",
+    files: [],
+    repositories: [
+      {
+        repositoryId: "repo-web",
+        repositoryName: "web",
+        captureStatus: "ready",
+        summaryStatus: "ready",
+        afterSnapshotOid: "after",
+        branchTipOid: "tip",
+        files: [{ path: "src/app.ts", kind: "modified", additions: 1, deletions: 0 }],
+      },
+    ],
+  },
+  ...overrides,
+});
+
+describe("checkpoint records", () => {
+  const turn = buildPlanGraph([
+    message("query"),
+    planRevision("plan", { sequence: 2, parents: ["query"], authorKind: "assistant" }),
+    message("response", { sequence: 3, parents: ["plan"], authorKind: "assistant" }),
+  ]);
+
+  it("joins a record by its owner and uses its captured files instead of artifact revisions", () => {
+    const graph = condensePlanGraph(turn, [checkpointRecord("query")]);
+    const node = graph.byId.get("response")!;
+    expect(node.record?.ownerCommitId).toBe("query");
+    expect(node.checkpoint?.effects).toEqual(["code"]);
+    expect(node.checkpoint?.status).toEqual([]);
+    expect(checkpointGlyphEffect(node.checkpoint!.effects)).toBe("code");
+    expect(
+      condensePlanGraph(turn, [checkpointRecord("response")]).byId.get("response")?.record,
+    ).toBeUndefined();
+  });
+
+  it("keeps saving, failed, and unknown captures out of the plain reading", () => {
+    const saving = checkpointRecord("query", {
+      capture: undefined,
+      request: { threadId: ThreadId.make("t"), messageId: MessageId.make("m"), state: "submitted" },
+    });
+    const unknown = checkpointRecord("query", {
+      capture: undefined,
+      request: { threadId: ThreadId.make("t"), messageId: MessageId.make("m"), state: "unknown" },
+    });
+    expect(condensePlanGraph(turn, [saving]).byId.get("response")?.checkpoint?.status).toEqual([
+      "saving",
+    ]);
+    expect(condensePlanGraph(turn, [unknown]).byId.get("response")?.checkpoint?.status).toEqual([
+      "unknown",
+    ]);
+    expect(planNodeStatusDots({ staleSpec: false, stalePlan: false, status: ["saving"] })).toEqual([
+      { key: "saving", fillClass: "fill-sky-500" },
+    ]);
+    expect(planNodeDetail(condensePlanGraph(turn, [unknown]).byId.get("response")!)).toContain(
+      "Capture unknown",
+    );
+  });
+
+  it("marks a fully captured partial and blocks nothing it cannot prove", () => {
+    const base = checkpointRecord("query");
+    const partial = checkpointRecord("query", {
+      capture: { ...base.capture!, partial: true },
+    });
+    expect(condensePlanGraph(turn, [partial]).byId.get("response")?.checkpoint?.status).toEqual([
+      "partial",
+    ]);
+  });
+
+  it("attaches a standalone act's record to its own node", () => {
+    const graph = condensePlanGraph(buildPlanGraph([specRevision("import", { cause: "import" })]), [
+      checkpointRecord("import", { lineRootCommitId: id("import") }),
+    ]);
+    expect(graph.byId.get("import")?.record?.ownerCommitId).toBe("import");
+    expect(graph.byId.get("import")?.checkpoint).toBeUndefined();
   });
 });
