@@ -121,6 +121,7 @@ interface RightPanelTabsProps {
   diffAvailable: boolean;
   filesAvailable: boolean;
   planAvailable?: boolean | undefined;
+  planUnavailableReason?: string | undefined;
   specAvailable?: boolean | undefined;
   memoryAvailable?: boolean | undefined;
   pullRequestAvailable: boolean;
@@ -223,6 +224,7 @@ export function tabCloseContextMenuItems(input: {
 
 export function artifactSurfaceMenuActions(input: {
   planAvailable: boolean;
+  planUnavailableReason?: string | undefined;
   onAddPlan: () => void;
   specAvailable: boolean;
   onAddSpec: () => void;
@@ -234,11 +236,11 @@ export function artifactSurfaceMenuActions(input: {
       ? [
           {
             label: "Plan",
-            description: "Read the plan this session implements.",
+            description: "Plans and specs on this line.",
             icon: ScrollText,
             shortcut: null,
-            available: true,
-            disabledReason: "",
+            available: !input.planUnavailableReason,
+            disabledReason: input.planUnavailableReason ?? "",
             onClick: input.onAddPlan,
             badgeCount: 0,
           },
@@ -413,6 +415,7 @@ function RightPanelEmptyState(props: {
   diffAvailable: boolean;
   filesAvailable: boolean;
   planAvailable: boolean;
+  planUnavailableReason?: string | undefined;
   specAvailable: boolean;
   memoryAvailable: boolean;
   pullRequestAvailable: boolean;
@@ -466,6 +469,7 @@ function RightPanelEmptyState(props: {
     },
     ...artifactSurfaceMenuActions({
       planAvailable: props.planAvailable,
+      planUnavailableReason: props.planUnavailableReason,
       onAddPlan: props.onAddPlan,
       specAvailable: props.specAvailable,
       onAddSpec: props.onAddSpec,
@@ -945,6 +949,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     },
     ...artifactSurfaceMenuActions({
       planAvailable,
+      planUnavailableReason: props.planUnavailableReason,
       onAddPlan,
       specAvailable,
       onAddSpec,
@@ -1438,6 +1443,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}
             planAvailable={planAvailable}
+            planUnavailableReason={props.planUnavailableReason}
             specAvailable={specAvailable}
             memoryAvailable={memoryAvailable}
             pullRequestAvailable={props.pullRequestAvailable}

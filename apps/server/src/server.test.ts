@@ -1,3 +1,5 @@
+import { SnapshotChain } from "./mercurian/worktreeSlots/SnapshotChain.ts";
+import * as DocumentStore from "./mercurian/documents/DocumentStore.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
@@ -844,7 +846,10 @@ const buildAppUnderTest = (options?: {
       : LegacySessionStore.layer;
 
     const servedRoutesLayer = HttpRouter.serve(
-      makeRoutesLayer.pipe(Layer.provide(serviceLauncherClientLayer)),
+      makeRoutesLayer.pipe(
+        Layer.provide(serviceLauncherClientLayer),
+        Layer.provide(Layer.mock(SnapshotChain)({})),
+      ),
       {
         disableListenLog: true,
         disableLogger: true,
@@ -1132,7 +1137,7 @@ const buildAppUnderTest = (options?: {
     );
 
     const appLayer = servedRoutesLayer
-      .pipe(Layer.provide(resourceTelemetryLayer))
+      .pipe(Layer.provide(resourceTelemetryLayer), Layer.provide(Layer.mock(SnapshotChain)({})))
       .pipe(
         Layer.provide(UsageService.layerTest),
         Layer.provide(
@@ -1379,6 +1384,7 @@ const buildAppUnderTest = (options?: {
               ...options?.layers?.memoryDashboard,
             }),
             MemoryReviewStore.layer,
+            DocumentStore.layer,
             WorkspaceSettingsStore.layer,
             // Over a connector that reaches no network: the server suite is about
             // the wire, not about Linear.
@@ -1395,7 +1401,7 @@ const buildAppUnderTest = (options?: {
               Layer.provide(ServerSecretStore.layer),
             ),
           ).pipe(
-            Layer.provide(planTurnRegistryLayer),
+            Layer.provideMerge(planTurnRegistryLayer),
             Layer.provide(CommitStore.layer),
             Layer.provide(MercurianSqlite.layerMemory),
             Layer.provide(ProcessRunner.layer),

@@ -398,7 +398,7 @@ export const make = Effect.gen(function* () {
     if (Option.isSome(yield* lineRuntimes.getByThreadId(event.payload.threadId))) return;
     const owner = yield* planningStore.getProjectByOrchestrationProjectId(event.payload.projectId);
     if (Option.isNone(owner)) return;
-    const snapshot = yield* repositoryStore.getSnapshot;
+    const snapshot = yield* repositoryStore.getWorkingSnapshot;
     const linked = snapshot.projectRepositories
       .filter((link) => link.projectId === owner.value.projectId)
       .flatMap((link) => {

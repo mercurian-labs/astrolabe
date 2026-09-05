@@ -1,3 +1,5 @@
+import * as Path from "effect/Path";
+import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -22,6 +24,8 @@ import {
 } from "./PlanningPrompt.ts";
 
 export const make = Effect.gen(function* () {
+  const storage = yield* StorageSourceStore;
+  const path = yield* Path.Path;
   const lineRuntimes = yield* LineRuntimeStore;
   const planning = yield* PlanningStore;
   const commits = yield* CommitStore;
@@ -106,17 +110,6 @@ export const make = Effect.gen(function* () {
         }
         return [{ kind: item._tag, author: item.authorKind }];
       });
-      const planText =
-        parentCommitId === undefined
-          ? ""
-          : yield* planning.getPlanTextAt({
-              planId: runtime.value.planId,
-              commitId: parentCommitId,
-            });
-      const spec =
-        parentCommitId === undefined
-          ? null
-          : yield* planning.getSpecAt({ planId: runtime.value.planId, commitId: parentCommitId });
       const repositoryNames = new Map(
         (runtime.value.repositories ?? []).map((repository) => [
           String(repository.repositoryId),
@@ -142,20 +135,34 @@ export const make = Effect.gen(function* () {
               path: path.join(memoryMember.worktreePath, memorySource.value.subpath ?? ""),
             }
           : null;
+      const sources = (yield* storage.getSnapshot).filter(
+        (source) => source.projectId === detail.plan.projectId,
+      );
+      const roots = sources.flatMap((source) => {
+        const member = input.thread.workspaceMembers?.find(
+          (candidate) => candidate.repositoryId === source.repositoryId,
+        );
+        return member
+          ? [{ kind: source.kind, path: path.join(member.worktreePath, source.subpath ?? "") }]
+          : [];
+      });
       const appendix = planningSystemAppendix({
         planTitle: detail.plan.title,
         repositories,
         unreachableRepositories: runtime.value.unreachableRepositories,
         memoryRoot,
         memoryAmendmentsAvailable: memoryRoot !== null,
+        documentRoots: roots.flatMap((root) =>
+          root.kind === "memory" ? [] : [{ kind: root.kind, path: root.path }],
+        ),
       });
       const preamble =
         entries.length === 0
           ? null
           : transcriptPreamble({
               entries,
-              planText,
-              spec: spec?.document ?? null,
+              planText: "",
+              spec: null,
               reservedChars: appendix.length + input.message.text.length + (mention?.length ?? 0),
             });
       return {

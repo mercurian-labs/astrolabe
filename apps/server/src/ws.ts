@@ -1,4 +1,13 @@
 import { isMemoryReadUnavailableError } from "@t3tools/contracts";
+import * as NodeCrypto from "node:crypto";
+import { DocumentStore } from "./mercurian/documents/DocumentStore.ts";
+import * as SpecRefresh from "./mercurian/documents/SpecRefresh.ts";
+import * as FileSystem from "effect/FileSystem";
+import { importedSpecMarkdown, specRevision } from "./mercurian/documents/markdown.ts";
+import { SnapshotChain } from "./mercurian/worktreeSlots/SnapshotChain.ts";
+import { checkpointRefForThreadTurn } from "./checkpointing/Utils.ts";
+import { MERCURIAN_DOCUMENT_WS_METHODS } from "@t3tools/contracts";
+import * as ProjectDocuments from "./mercurian/documents/ProjectDocuments.ts";
 import { MERCURIAN_STORAGE_WS_METHODS, MercurianStorageError } from "@t3tools/contracts";
 import * as StorageSourceStore from "./mercurian/storage/StorageSourceStore.ts";
 import * as Cause from "effect/Cause";
@@ -335,17 +344,25 @@ function filesystemBrowseFailureContext(error: WorkspaceEntries.WorkspaceEntries
   }
 }
 
-function projectFileFailureContext(
-  error:
-    | WorkspaceFileSystem.WorkspaceFileSystemError
-    | WorkspacePaths.WorkspacePathOutsideRootError,
-): {
+function projectFileFailureContext(error: unknown): {
   readonly failure: ProjectFileFailure;
   readonly resolvedPath?: string;
   readonly resolvedWorkspaceRoot?: string;
   readonly operation?: ProjectFileOperation;
   readonly operationPath?: string;
 } {
+  if (
+    !Schema.is(
+      Schema.Union([
+        WorkspaceFileSystem.WorkspaceFileSystemOperationError,
+        WorkspaceFileSystem.WorkspaceFilePathEscapeError,
+        WorkspaceFileSystem.WorkspacePathNotFileError,
+        WorkspaceFileSystem.WorkspaceBinaryFileError,
+        WorkspacePaths.WorkspacePathOutsideRootError,
+      ]),
+    )(error)
+  )
+    return { failure: "operation_failed" };
   switch (error._tag) {
     case "WorkspacePathOutsideRootError":
       return { failure: "workspace_path_outside_root" };
@@ -689,6 +706,11 @@ const makeWsRpcLayer = (
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
       const storageSourceStore = yield* StorageSourceStore.StorageSourceStore;
+      const projectDocuments = yield* ProjectDocuments.make;
+      const documentStore = yield* DocumentStore;
+      const refreshProjectSpec = yield* SpecRefresh.make;
+      const documentFs = yield* FileSystem.FileSystem;
+      const documentSnapshots = yield* SnapshotChain;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
       const memoryDashboard = yield* MemoryDashboard.MemoryDashboard;
       const trackerStore = yield* TrackerStore.TrackerStore;
@@ -2457,17 +2479,123 @@ const makeWsRpcLayer = (
             MERCURIAN_WS_METHODS.importPlan,
             DateTime.now.pipe(
               Effect.flatMap((createdAt) =>
-                planningStore.importPlan({
-                  projectId: input.projectId,
-                  connectionId: input.connectionId,
-                  issueId: input.issue.id,
-                  issueUrl: input.issue.url,
-                  // The issue's content becomes the root commit. Its `status`
-                  // is deliberately not passed on: where an issue stands is a
-                  // live tracker fact, and import stores no copy of it.
-                  title: input.issue.title,
-                  description: input.issue.description,
-                  createdAt,
+                Effect.gen(function* () {
+                  const source = yield* storageSourceStore.getSource(input.projectId, "spec");
+                  if (Option.isNone(source))
+                    return yield* new MercurianStorageError({
+                      operation:
+                        "Choose a spec location in project settings before importing an issue",
+                    });
+                  const imported = yield* planningStore.importPlan({
+                    projectId: input.projectId,
+                    connectionId: input.connectionId,
+                    issueId: input.issue.id,
+                    issueUrl: input.issue.url,
+                    title: input.issue.title,
+                    description: input.issue.description,
+                    createdAt,
+                  });
+                  const documentId = NodeCrypto.createHash("sha256")
+                    .update(
+                      yield* Schema.encodeEffect(
+                        Schema.fromJsonString(Schema.Array(Schema.String)),
+                      )([input.connectionId, input.issue.id]),
+                    )
+                    .digest("hex");
+                  const slug =
+                    input.issue.title
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/gu, "-")
+                      .replace(/^-|-$/gu, "")
+                      .slice(0, 64) || "spec";
+                  const document = specDocumentFromIssue(
+                    input.issue.title,
+                    input.issue.description,
+                  );
+                  const origin = yield* documentStore.reserve({
+                    documentId,
+                    projectId: input.projectId,
+                    repositoryId: source.value.repositoryId,
+                    relativePath: [source.value.subpath, `${slug}-${documentId.slice(0, 8)}.md`]
+                      .filter(Boolean)
+                      .join("/"),
+                    connectionId: input.connectionId,
+                    issueId: input.issue.id,
+                    issueUrl: input.issue.url,
+                    imported: false,
+                    ...document,
+                  });
+                  if (origin.imported) return imported;
+                  const root = imported.detail.timeline[0];
+                  if (!root)
+                    return yield* new MercurianStorageError({
+                      operation: "import-root-unavailable",
+                    });
+                  const runtime = yield* lineRuntimeService.ensureThread({
+                    planId: imported.detail.plan.planId,
+                    lineRootCommitId: MercurianCommitId.make(root.commitId),
+                  });
+                  const ensured = yield* lineRuntimeService.ensureSlot({
+                    threadId: runtime.threadId,
+                    holder: { kind: "turn" },
+                  });
+                  yield* Effect.gen(function* () {
+                    const slot = Option.getOrThrow(yield* slotStore.get(ensured.slotId));
+                    const member = slot.members.find(
+                      (candidate) => candidate.repositoryId === origin.repositoryId,
+                    );
+                    if (!member?.currentBranch || !runtime.lineRootCommitId)
+                      return yield* new MercurianStorageError({
+                        operation: "spec-repository-unavailable",
+                      });
+                    const cwd = `${slot.path}/${member.relativePath}`;
+                    const contents = importedSpecMarkdown({
+                      id: documentId,
+                      url: origin.issueUrl,
+                      goal: origin.goal,
+                      acceptanceCriteria: origin.acceptanceCriteria,
+                    });
+                    const exists = yield* documentFs.exists(`${cwd}/${origin.relativePath}`);
+                    const existing = exists
+                      ? Option.some(
+                          yield* workspaceFileSystem.readFile({
+                            cwd,
+                            relativePath: origin.relativePath,
+                          }),
+                        )
+                      : Option.none();
+                    yield* documentStore.saveBaseline(
+                      documentId,
+                      specRevision(origin.goal, origin.acceptanceCriteria),
+                      { goal: origin.goal, acceptanceCriteria: origin.acceptanceCriteria },
+                    );
+                    if (Option.isSome(existing) && existing.value.contents !== contents)
+                      return yield* new MercurianStorageError({
+                        operation: "import-destination-already-exists",
+                      });
+                    if (Option.isNone(existing))
+                      yield* workspaceFileSystem.writeFile({
+                        cwd,
+                        relativePath: origin.relativePath,
+                        contents,
+                      });
+                    yield* documentSnapshots.capture({
+                      cwd,
+                      repositoryId: origin.repositoryId,
+                      lineRootCommitId: runtime.lineRootCommitId,
+                      lineBranch: member.currentBranch,
+                      kind: "external",
+                      ref: checkpointRefForThreadTurn(runtime.threadId, 0),
+                    });
+                    yield* documentStore.markImported(documentId);
+                  }).pipe(
+                    Effect.ensuring(
+                      slotService
+                        .release(ensured.slotId, { kind: "turn", threadId: runtime.threadId })
+                        .pipe(Effect.orDie),
+                    ),
+                  );
+                  return imported;
                 }),
               ),
               Effect.map(toWirePlanImport),
@@ -3085,6 +3213,9 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_DOCUMENT_WS_METHODS.refreshProjectSpec]: (input) => refreshProjectSpec(input),
+        [MERCURIAN_DOCUMENT_WS_METHODS.listProjectDocuments]: (input) =>
+          projectDocuments.list(input),
         [MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources]: (_input) =>
           observeRpcStreamEffect(
             MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources,
@@ -4012,7 +4143,28 @@ const makeWsRpcLayer = (
         [WS_METHODS.projectsReadFile]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsReadFile,
-            workspaceFileSystem.readFile(input).pipe(
+            Effect.gen(function* () {
+              if (input.snapshotOid !== undefined) {
+                const result = yield* gitDriver.execute({
+                  cwd: input.cwd,
+                  operation: "documents.readFile",
+                  args: ["show", `${input.snapshotOid}:${input.relativePath}`],
+                });
+                const contents = result.stdout.slice(0, 1024 * 1024);
+                return {
+                  relativePath: input.relativePath,
+                  contents,
+                  byteLength: new TextEncoder().encode(contents).byteLength,
+                  truncated: contents.length < result.stdout.length,
+                  readOnly: true,
+                };
+              }
+              const file = yield* workspaceFileSystem.readFile(input);
+              return {
+                ...file,
+                readOnly: yield* projectDocuments.isDocumentPath(input.cwd, input.relativePath),
+              };
+            }).pipe(
               Effect.mapError(
                 (cause) =>
                   new ProjectReadFileError({
@@ -4027,7 +4179,19 @@ const makeWsRpcLayer = (
         [WS_METHODS.projectsWriteFile]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsWriteFile,
-            workspaceFileSystem.writeFile(input).pipe(
+            Effect.gen(function* () {
+              if (yield* projectDocuments.isDocumentPath(input.cwd, input.relativePath)) {
+                return yield* new ProjectWriteFileError({
+                  cwd: input.cwd,
+                  relativePath: input.relativePath,
+                  failure: "operation_failed",
+                  cause: new Error(
+                    "Plans and specs are read-only in Files. Ask the agent to revise the document.",
+                  ),
+                });
+              }
+              return yield* workspaceFileSystem.writeFile(input);
+            }).pipe(
               Effect.mapError(
                 (cause) =>
                   new ProjectWriteFileError({

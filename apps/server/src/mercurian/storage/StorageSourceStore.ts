@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -48,6 +49,10 @@ export class StorageSourceStore extends Context.Service<
       projectId: MercurianProjectId,
       kind: ProjectStorageKind,
     ) => Effect.Effect<void, StorageSourceStoreError>;
+    readonly getDocumentLocations: Effect.Effect<
+      ReadonlyArray<StorageSource>,
+      StorageSourceStoreError
+    >;
     readonly getSnapshot: Effect.Effect<ReadonlyArray<StorageSource>, StorageSourceStoreError>;
     readonly getSource: (
       projectId: MercurianProjectId,
@@ -239,6 +244,8 @@ export const make = Effect.gen(function* () {
         createdAt: input.now,
         updatedAt: input.now,
       });
+      if (input.kind !== "memory")
+        yield* sql`INSERT INTO project_document_locations(project_id, kind, repository_id, subpath, created_at, updated_at) VALUES (${input.projectId}, ${input.kind}, ${input.repositoryId}, ${subpath ?? ""}, ${DateTime.formatIso(input.now)}, ${DateTime.formatIso(input.now)}) ON CONFLICT(project_id, kind, repository_id, subpath) DO NOTHING`;
       yield* announceChange;
     }).pipe(
       Effect.mapError(
@@ -266,6 +273,15 @@ export const make = Effect.gen(function* () {
     designate,
     remove,
     getSnapshot,
+    getDocumentLocations: SqlSchema.findAll({
+      Request: NoRequest,
+      Result: StorageSourceRow,
+      execute: () => sql`SELECT ${columns} FROM project_document_locations ORDER BY created_at ASC`,
+    })({}).pipe(
+      Effect.mapError(
+        toStoreError("StorageSourceStore.locations:query", "StorageSourceStore.locations:decode"),
+      ),
+    ),
     getSource,
     getResolvedSource,
     get changes() {

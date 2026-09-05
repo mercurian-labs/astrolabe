@@ -1,3 +1,4 @@
+import { MERCURIAN_DOCUMENT_WS_METHODS } from "@t3tools/contracts";
 import { MERCURIAN_STORAGE_WS_METHODS } from "@t3tools/contracts";
 import {
   AuthAccessReadScope,
@@ -70,6 +71,8 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  [MERCURIAN_DOCUMENT_WS_METHODS.refreshProjectSpec]: AuthOrchestrationOperateScope,
+  [MERCURIAN_DOCUMENT_WS_METHODS.listProjectDocuments]: AuthOrchestrationReadScope,
   [MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources]: AuthOrchestrationReadScope,
   [MERCURIAN_STORAGE_WS_METHODS.designateStorageSource]: AuthOrchestrationOperateScope,
   [MERCURIAN_STORAGE_WS_METHODS.removeStorageSource]: AuthOrchestrationOperateScope,

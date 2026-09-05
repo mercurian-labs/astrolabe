@@ -101,7 +101,7 @@ export const make = Effect.gen(function* () {
       const planTurns = current.get(turn.planId);
       if (planTurns !== undefined) {
         for (const existing of planTurns.values()) {
-          if (existing.chain.has(turn.parentCommitId)) {
+          if (existing.threadId === turn.threadId || existing.chain.has(turn.parentCommitId)) {
             return [false, current] as const;
           }
         }

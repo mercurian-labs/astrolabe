@@ -643,6 +643,7 @@ type ChatViewSlots = {
   workspaceCwdOverride?: string | null;
   mentionSources?: ChatComposerMentionSources;
   planPanel?: ReactNode;
+  planUnavailableReason?: string;
   specPanel?: ReactNode;
   memoryPanel?: ReactNode;
   /** Unreviewed memory changes; shown on the Memory tab even while its panel is unmounted. */
@@ -1382,6 +1383,7 @@ function ChatViewContent(props: ChatViewProps) {
     canForkHere,
     onForkHere,
     planPanel,
+    planUnavailableReason,
     specPanel,
     memoryPanel,
     memoryBadgeCount,
@@ -7567,7 +7569,19 @@ function ChatViewContent(props: ChatViewProps) {
                 : activeWorkspaceRoot
           }`}
           environmentId={activeThread.environmentId}
-          cwd={activeWorkspaceRoot ?? ""}
+          {...(renderedRightPanelSurface.kind === "file" &&
+          renderedRightPanelSurface.documentLocation
+            ? { documentLocation: renderedRightPanelSurface.documentLocation }
+            : {})}
+          cwd={
+            renderedRightPanelSurface.kind === "file"
+              ? (renderedRightPanelSurface.documentLocation?.cwd ?? activeWorkspaceRoot ?? "")
+              : (activeWorkspaceRoot ?? "")
+          }
+          {...(renderedRightPanelSurface.kind === "file" &&
+          renderedRightPanelSurface.documentLocation?.snapshotOid
+            ? { snapshotOid: renderedRightPanelSurface.documentLocation.snapshotOid }
+            : {})}
           projectName={activeProject?.title ?? ""}
           threadRef={activeThreadRef}
           composerDraftTarget={composerDraftTarget}
@@ -8113,6 +8127,7 @@ function ChatViewContent(props: ChatViewProps) {
           onAddMemory={addMemorySurface}
           workspaceReady={workspaceReady}
           planAvailable={planAvailable}
+          planUnavailableReason={planUnavailableReason}
           specAvailable={specAvailable}
           memoryAvailable={memoryAvailable}
           browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}
@@ -8172,6 +8187,7 @@ function ChatViewContent(props: ChatViewProps) {
             onAddMemory={addMemorySurface}
             workspaceReady={workspaceReady}
             planAvailable={planAvailable}
+            planUnavailableReason={planUnavailableReason}
             specAvailable={specAvailable}
             memoryAvailable={memoryAvailable}
             browserAvailable={workingSurfacesReady && isPreviewSupportedInRuntime()}

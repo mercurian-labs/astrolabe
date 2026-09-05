@@ -192,6 +192,7 @@ export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectList
 }
 
 export const ProjectReadFileInput = Schema.Struct({
+  snapshotOid: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{40,64}$/u))),
   cwd: TrimmedNonEmptyString,
   // Workspace-relative, or an absolute host path for a file outside the
   // workspace. Only workspace-relative paths can be written back.
@@ -200,6 +201,7 @@ export const ProjectReadFileInput = Schema.Struct({
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
 
 export const ProjectReadFileResult = Schema.Struct({
+  readOnly: Schema.optional(Schema.Boolean),
   relativePath: TrimmedNonEmptyString,
   contents: Schema.String,
   byteLength: NonNegativeInt,

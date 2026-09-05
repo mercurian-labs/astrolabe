@@ -1,3 +1,9 @@
+import { RefreshProjectSpecInput, RefreshProjectSpecResult } from "./mercurianDocuments.ts";
+import {
+  MERCURIAN_DOCUMENT_WS_METHODS,
+  ListProjectDocumentsInput,
+  ListProjectDocumentsResult,
+} from "./mercurianDocuments.ts";
 import {
   MemoryReadUnavailableError,
   MercurianReadMemoryCatalogInput,
@@ -1542,6 +1548,23 @@ export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
   },
 );
 
+export const WsMercurianRefreshProjectSpecRpc = Rpc.make(
+  MERCURIAN_DOCUMENT_WS_METHODS.refreshProjectSpec,
+  {
+    payload: RefreshProjectSpecInput,
+    success: RefreshProjectSpecResult,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsMercurianListProjectDocumentsRpc = Rpc.make(
+  MERCURIAN_DOCUMENT_WS_METHODS.listProjectDocuments,
+  {
+    payload: ListProjectDocumentsInput,
+    success: ListProjectDocumentsResult,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsMercurianSubscribeStorageSourcesRpc = Rpc.make(
   MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources,
   {
@@ -1963,6 +1986,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRemoveRepositoryRpc,
   WsMercurianSaveRepositoryScriptsRpc,
   WsMercurianSetProjectRepositoriesRpc,
+  WsMercurianRefreshProjectSpecRpc,
+  WsMercurianListProjectDocumentsRpc,
   WsMercurianSubscribeStorageSourcesRpc,
   WsMercurianDesignateStorageSourceRpc,
   WsMercurianRemoveStorageSourceRpc,

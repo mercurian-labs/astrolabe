@@ -125,10 +125,4 @@ export const ReadSpecTool = Tool.make("read_spec", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
-export const PlanningToolkit = Toolkit.make(
-  SavePlanRevisionTool,
-  SaveSpecRevisionTool,
-  ProposeMemoryAmendmentTool,
-  ReadPlanTool,
-  ReadSpecTool,
-);
+export const PlanningToolkit = Toolkit.make(ProposeMemoryAmendmentTool);

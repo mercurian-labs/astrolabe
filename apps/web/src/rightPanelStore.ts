@@ -55,6 +55,12 @@ export type RightPanelSurface =
       kind: "file";
       /** Workspace-relative, or absolute for a host file outside the workspace. */
       relativePath: string;
+      documentLocation?: {
+        cwd: string;
+        repositoryId: string;
+        documentId?: string;
+        snapshotOid?: string;
+      };
       revealLine: number | null;
       revealRequestId: number;
       /** Present when the file lives in the thread's attachment store rather
@@ -119,6 +125,18 @@ interface RightPanelStoreState {
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
+  openDocument: (
+    ref: ScopedThreadRef,
+    document: {
+      cwd: string;
+      repositoryId: string;
+      relativePath: string;
+      snapshotOid: string | null;
+      id?: string | null;
+      kind?: string;
+      originUrl?: string | null;
+    },
+  ) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
   openMemoryDocument: (ref: ScopedThreadRef, selection: MemoryDocumentSelection) => void;
@@ -471,6 +489,26 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             return upsertSurface(current, pullRequestSurface(target));
           }),
+        })),
+      openDocument: (ref, document) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, {
+              id: `file:${JSON.stringify([document.repositoryId, document.cwd, document.relativePath, document.snapshotOid])}`,
+              kind: "file",
+              relativePath: document.relativePath,
+              revealLine: null,
+              revealRequestId: 0,
+              documentLocation: {
+                cwd: document.cwd,
+                repositoryId: document.repositoryId,
+                ...(document.id && document.kind === "spec" && document.originUrl
+                  ? { documentId: document.id }
+                  : {}),
+                ...(document.snapshotOid ? { snapshotOid: document.snapshotOid } : {}),
+              },
+            }),
+          ),
         })),
       openFile: (ref, relativePath, line) =>
         set((state) => ({

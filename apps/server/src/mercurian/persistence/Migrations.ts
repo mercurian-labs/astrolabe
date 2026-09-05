@@ -34,6 +34,8 @@ import Migration0019 from "./Migrations/019_MemoryAmendmentReviewsCompatibility.
 
 import Migration0020 from "./Migrations/020_ProjectStorage.ts";
 
+import Migration0021 from "./Migrations/021_DocumentOrigins.ts";
+
 export const migrationEntries = [
   [1, "CommitGraph", Migration0001],
   [2, "ProjectsPlans", Migration0002],
@@ -55,6 +57,7 @@ export const migrationEntries = [
   [18, "LineRuntimeBirth", Migration0018],
   [19, "MemoryAmendmentReviewsCompatibility", Migration0019],
   [20, "ProjectStorage", Migration0020],
+  [21, "DocumentOrigins", Migration0021],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

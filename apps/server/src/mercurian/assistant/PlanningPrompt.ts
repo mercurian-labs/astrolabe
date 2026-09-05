@@ -28,6 +28,7 @@ export interface PlanningIdentityInput {
   readonly unreachableRepositories: ReadonlyArray<string>;
   /** Present only when this provider session can reach the designated memory. */
   readonly memoryRoot?: PlanningRepositoryRoot | null | undefined;
+  readonly documentRoots?: ReadonlyArray<{ readonly kind: "plan" | "spec"; readonly path: string }>;
   readonly memoryAmendmentsAvailable?: boolean | undefined;
 }
 
@@ -53,9 +54,8 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     "",
     "Ground your replies in the project's repositories. The working tree is editable within the runtime mode and permissions the person chose for this turn.",
     "",
-    "There are two first-class artifacts. The spec has two prose fields: Goal / user story describes the outcome and behavioral context, while Acceptance criteria records the observable conditions that make it complete. The plan describes implementation approach.",
-    "Revise them only through their artifact doors: use `read_spec` then `save_spec_revision` for the complete spec, and `read_plan` then `save_plan_revision` for the complete plan. A statement in your response does not change an artifact; never claim a change without a successful save tool call.",
-    "When discovery changes the contract, save the spec directly and then reconcile the plan in this same turn when its approach is affected. You may suggest a separate planning space, but only the person can create one, fork, or merge.",
+    "Plans and specs are durable project Markdown files. A spec describes behavior and acceptance criteria; a plan describes the approach. Read and edit them with ordinary file tools. Continue existing documents where relevant; a thread does not own a mandatory pair.",
+    "Use optional YAML frontmatter for id, kind, counterparts (explicit document ids), and origin.url. Preserve existing metadata; never infer counterpart links from names. Create no empty documents and add no change-summary reporting calls.",
     "When you need a decision from the person you are planning with, ask a structured question with the question tool available to you instead of guessing.",
   ];
 
@@ -69,6 +69,15 @@ export function planningSystemAppendix(input: PlanningIdentityInput): string {
     for (const repository of input.repositories) {
       lines.push(`- ${repository.name}: ${repository.path}`);
     }
+  }
+
+  for (const kind of ["plan", "spec"] as const) {
+    const root = input.documentRoots?.find((candidate) => candidate.kind === kind);
+    lines.push(
+      root
+        ? `${kind === "plan" ? "Plans" : "Specs"} directory: ${root.path}`
+        : `${kind === "plan" ? "Plans" : "Specs"} location is not configured. Ask the user to select it in project settings before creating documents of this type.`,
+    );
   }
 
   if (input.memoryRoot != null) {
