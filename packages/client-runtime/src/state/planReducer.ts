@@ -137,6 +137,55 @@ export function applyPlanStreamItem(
         memoryAmendmentFailure: null,
         memoryMergeHomeConflict: null,
       };
+    case "in-flight-turns":
+      return {
+        ...withInFlightTurns(state, item.turns),
+        turnRefusal: null,
+        memoryAmendmentFailure: null,
+        memoryMergeHomeConflict: null,
+      };
+    case "checkpoint-snapshot": {
+      if (state.detail === null || state.detail.plan.planId !== item.planId) return state;
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          checkpoints: item.records,
+          checkpointSequence: item.checkpointSequence,
+        },
+      };
+    }
+    case "checkpoint-update": {
+      if (state.detail === null || state.detail.plan.planId !== item.record.planId) return state;
+      const records = state.detail.checkpoints ?? [];
+      const old = records.find((record) => record.ownerCommitId === item.record.ownerCommitId);
+      if (old !== undefined && old.revision >= item.record.revision) return state;
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          checkpoints:
+            old === undefined
+              ? [...records, item.record]
+              : records.map((record) =>
+                  record.ownerCommitId === item.record.ownerCommitId ? item.record : record,
+                ),
+        },
+      };
+    }
+    case "checkpoint-synchronized": {
+      if (state.detail === null || state.detail.plan.planId !== item.planId) return state;
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          checkpointSequence: Math.max(
+            state.detail.checkpointSequence ?? 0,
+            item.checkpointSequence,
+          ),
+        },
+      };
+    }
     case "synchronized":
       return { ...state, synchronized: true };
     case "coding-sessions": {
@@ -195,6 +244,14 @@ export function applyPlanStreamItem(
       };
     }
     case "turn-started": {
+      const current = state.detail?.inFlightTurns.find((turn) => turn.turnId === item.turnId);
+      if (current !== undefined) {
+        // Start frames also carry the one-way waiting-to-running transition.
+        // Replay must retain snapshot text and never move a running turn back.
+        return item.phase === "running" && current.phase !== "running"
+          ? updateInFlightTurn(state, item.turnId, (turn) => ({ ...turn, phase: "running" }))
+          : state;
+      }
       const existing = state.detail?.inFlightTurns ?? [];
       return {
         ...withInFlightTurns(state, [

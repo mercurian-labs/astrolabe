@@ -155,6 +155,10 @@ The line's branch contains only commits made by a person or agent. The snapshot 
 
 Refs decide where a line stands. If the recorded branch name is gone and a named `HEAD` points at exactly the line's recorded commit, the branch was renamed by hand and the line-branch row, slot member, and orchestration thread adopt the new name for that repository. A new branch beside the surviving line branch, or a rename followed by another commit, is instead a departure. If a turn finishes with another branch or detached `HEAD` checked out, it is **departed**: the snapshot records that ref, the line branch stays put, and the next slot claim restores the line's latest snapshot over its own branch. If the recorded ref is gone and `HEAD` is elsewhere, the provider session stops and the thread offers to recreate the recorded branch at the chain's recorded commit. See [SlotService.ts][41].
 
+#### Checkpoint record
+
+Mercurian's durable link between an existing history act and its workspace capture facts. A turn is owned by its opening query and may later link its response; a standalone act needs no provider turn. Capture availability and response publication are independent. See [durable checkpoint history](checkpoint-history.md).
+
 #### Checkpoint ref
 
 The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed for ordinary turn checkpoints in [Utils.ts][22], and used by [CheckpointStore.ts][19]. Mercurian keeps turn snapshots at the existing turn refs, the latest snapshot for each line at a line-head ref, and named recovery or external snapshots below that line's ref namespace. [SnapshotChain.ts][40] constructs and advances the line refs.

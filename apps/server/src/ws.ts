@@ -1,3 +1,5 @@
+import { CheckpointRecordStore } from "./mercurian/planning/CheckpointRecordStore.ts";
+import { checkpointCatchUp } from "./mercurian/planning/checkpointSubscription.ts";
 import { isMemoryReadUnavailableError } from "@t3tools/contracts";
 import { readDocumentMarkdown } from "./mercurian/documents/markdown.ts";
 import * as IssueImport from "./mercurian/documents/IssueImport.ts";
@@ -683,6 +685,7 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const checkpointRecords = yield* CheckpointRecordStore;
       const reconstructionStore = yield* ReconstructionStore;
       const legacySessionStore = yield* LegacySessionStore.LegacySessionStore;
       const lineRuntimeStore = yield* LineRuntimeStore.LineRuntimeStore;
@@ -2643,6 +2646,14 @@ const makeWsRpcLayer = (
                 ),
                 { startImmediately: true },
               );
+              const checkpointChanges = yield* Queue.unbounded<void>();
+              const checkpointFeed = yield* checkpointRecords.subscribeChanges;
+              yield* Effect.forkScoped(
+                checkpointFeed.pipe(
+                  Stream.runForEach(() => Queue.offer(checkpointChanges, undefined)),
+                ),
+                { startImmediately: true },
+              );
               const sessionChanges = yield* Queue.unbounded<void>();
               yield* Effect.forkScoped(
                 lineRuntimeStore.changes.pipe(
@@ -2710,6 +2721,77 @@ const makeWsRpcLayer = (
                       items: resume.map(toWirePlanCommitEvent),
                     };
 
+              const openingTurns: ReadonlyArray<PlanStreamItem> =
+                resume === null
+                  ? []
+                  : [
+                      {
+                        kind: "in-flight-turns",
+                        turns: yield* lineTurnReactor.inFlightTurns(input.planId),
+                      },
+                    ];
+              const snapshotFrame = opening.items.find((item) => item.kind === "snapshot");
+              const checkpointCurrentHighWater = yield* checkpointRecords
+                .highWater(input.planId)
+                .pipe(Effect.mapError(toPlanStreamError));
+              const checkpointSnapshot =
+                snapshotFrame?.kind === "snapshot"
+                  ? {
+                      checkpoints: snapshotFrame.snapshot.checkpoints ?? [],
+                      checkpointSequence: snapshotFrame.snapshot.checkpointSequence ?? 0,
+                    }
+                  : input.afterCheckpointSequence === undefined ||
+                      input.afterCheckpointSequence > checkpointCurrentHighWater
+                    ? yield* checkpointRecords
+                        .snapshot(input.planId)
+                        .pipe(Effect.mapError(toPlanStreamError))
+                    : null;
+              const checkpointCursor = yield* Ref.make(
+                checkpointSnapshot?.checkpointSequence ?? input.afterCheckpointSequence ?? 0,
+              );
+              const checkpointHighWater =
+                checkpointSnapshot?.checkpointSequence ?? checkpointCurrentHighWater;
+              const openingCheckpoints =
+                checkpointSnapshot === null
+                  ? checkpointCatchUp(
+                      checkpointRecords,
+                      input.planId,
+                      input.afterCheckpointSequence ?? 0,
+                      checkpointHighWater,
+                    )
+                  : snapshotFrame === undefined
+                    ? Stream.fromIterable<PlanStreamItem>([
+                        {
+                          kind: "checkpoint-snapshot",
+                          planId: input.planId,
+                          records: checkpointSnapshot.checkpoints,
+                          checkpointSequence: checkpointSnapshot.checkpointSequence,
+                        },
+                      ])
+                    : Stream.empty;
+              const checkpointLive = Stream.fromQueue(checkpointChanges).pipe(
+                Stream.flatMap(() =>
+                  Stream.unwrap(
+                    Effect.gen(function* () {
+                      const after = yield* Ref.get(checkpointCursor);
+                      const through = yield* checkpointRecords.highWater(input.planId);
+                      return checkpointCatchUp(
+                        checkpointRecords,
+                        input.planId,
+                        after,
+                        through,
+                      ).pipe(
+                        Stream.tap((item) =>
+                          item.kind === "checkpoint-synchronized"
+                            ? Ref.set(checkpointCursor, item.checkpointSequence)
+                            : Effect.void,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                Stream.mapError(toPlanStreamError),
+              );
               const cursor = yield* Ref.make(opening.cursor);
               const readSessionFrame = legacySessionStore.listByPlan(input.planId).pipe(
                 Effect.map((sessions) => ({
@@ -2746,17 +2828,31 @@ const makeWsRpcLayer = (
               );
 
               return Stream.concat(
-                Stream.fromIterable<PlanStreamItem>([
-                  ...opening.items,
-                  openingSessionFrame,
-                  openingLineRuntimeFrame,
-                  { kind: "synchronized" as const },
-                ]),
+                Stream.concat(
+                  Stream.fromIterable<PlanStreamItem>([
+                    ...opening.items,
+                    ...openingTurns,
+                    openingSessionFrame,
+                    openingLineRuntimeFrame,
+                  ]),
+                  openingCheckpoints.pipe(
+                    Stream.mapError(toPlanStreamError),
+                    Stream.tap((item) =>
+                      item.kind === "checkpoint-synchronized"
+                        ? Ref.set(checkpointCursor, item.checkpointSequence)
+                        : Effect.void,
+                    ),
+                    Stream.concat(Stream.fromIterable<PlanStreamItem>([{ kind: "synchronized" }])),
+                  ),
+                ),
                 // Turn frames are transport beside the commit events: no
-                // sequence, never resumable, and `synchronized` keeps meaning
-                // caught-up-on-commits (ADR 002 §3).
+                // sequence and never resumable. Both durable opening cursors
+                // are caught up before `synchronized` (ADR 002 §3).
                 Stream.merge(
-                  Stream.merge(liveStream, Stream.fromQueue(turnFrames)),
+                  Stream.merge(
+                    Stream.merge(liveStream, checkpointLive),
+                    Stream.fromQueue(turnFrames),
+                  ),
                   Stream.fromQueue(sessionChanges).pipe(
                     Stream.mapEffect(() => Effect.all([readSessionFrame, readLineRuntimeFrame])),
                     Stream.flatMap(Stream.fromIterable),

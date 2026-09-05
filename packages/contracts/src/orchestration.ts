@@ -1207,6 +1207,10 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   turnId: TurnId,
+  /** Exact original query identity, frozen before mutable projections disappear. */
+  requestMessageId: Schema.optional(MessageId),
+  /** True for a finished capture attempt; absent on legacy and mid-turn placeholders. */
+  captureTerminal: Schema.optional(Schema.Boolean),
   completedAt: IsoDateTime,
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
@@ -1501,6 +1505,10 @@ export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
 export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   threadId: ThreadId,
   turnId: TurnId,
+  /** Exact original query identity, frozen before mutable projections disappear. */
+  requestMessageId: Schema.optional(MessageId),
+  /** True for a finished capture attempt; absent on legacy and mid-turn placeholders. */
+  captureTerminal: Schema.optional(Schema.Boolean),
   checkpointTurnCount: NonNegativeInt,
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,

@@ -1,3 +1,4 @@
+import { ProjectionTurnRepositoryLive } from "../persistence/Layers/ProjectionTurns.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 /* oxlint-disable t3code/no-manual-effect-runtime-in-tests -- This suite's existing harness owns a managed reactor runtime; phase A only relocated the suite unchanged. */
 import * as NodeFS from "node:fs";
@@ -561,6 +562,7 @@ describe("CheckpointReactor", () => {
     );
 
     const layer = CheckpointReactorLive.pipe(
+      Layer.provide(ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory))),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
@@ -699,6 +701,66 @@ describe("CheckpointReactor", () => {
       checkpointStore,
     };
   }
+
+  it("freezes exact query identity into the persisted terminal capture event", async () => {
+    const harness = await createHarness({ seedFilesystemCheckpoints: false });
+    const threadId = ThreadId.make("thread-1");
+    const turnId = asTurnId("exact-provider-turn");
+    const messageId = MessageId.make("exact-query");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("exact-start"),
+        threadId,
+        message: { messageId, role: "user", text: "Work", attachments: [] },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("exact-running"),
+        threadId,
+        session: {
+          threadId,
+          activeTurnId: turnId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "captured work\n", "utf8");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("exact-completion"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+      turnId,
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    const events = await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0, 100)));
+    const captured = events.find((event) => event.type === "thread.turn-diff-completed");
+    expect(
+      captured?.type === "thread.turn-diff-completed"
+        ? captured.payload.requestMessageId
+        : undefined,
+    ).toBe(messageId);
+    expect(
+      captured?.type === "thread.turn-diff-completed"
+        ? captured.payload.captureTerminal
+        : undefined,
+    ).toBe(true);
+  });
 
   it("captures pre-turn baseline on turn.started and post-turn checkpoint on turn.completed", async () => {
     const harness = await createHarness({ seedFilesystemCheckpoints: false });

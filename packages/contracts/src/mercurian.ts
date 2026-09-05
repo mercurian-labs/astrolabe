@@ -24,12 +24,26 @@
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 
-import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  ProjectId,
+  ThreadId,
+  MessageId,
+  TurnId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 // Import creates a plan, so it belongs to the planning surface — but the issue
 // it creates one from is the tracker surface's own shape, passed back verbatim.
 import { TrackerConnectionId, TrackerIssue } from "./mercurianTrackers.ts";
 import { PlanningModelSelection } from "./mercurianWorkspace.ts";
-import { BranchMovement, ChatAttachment, SnapshotKind } from "./orchestration.ts";
+import {
+  BranchMovement,
+  ChatAttachment,
+  SnapshotKind,
+  OrchestrationCheckpointFile,
+  OrchestrationCheckpointRepository,
+  OrchestrationCheckpointSummaryStatus,
+} from "./orchestration.ts";
 
 export const MERCURIAN_WS_METHODS = {
   subscribeTree: "mercurian.subscribeTree",
@@ -526,6 +540,49 @@ export const MemoryMapPlacement = Schema.Struct({
 });
 export type MemoryMapPlacement = typeof MemoryMapPlacement.Type;
 
+/** Durable facts owned by an existing history act; never a second history node. */
+export const PlanCheckpointCapture = Schema.Struct({
+  status: Schema.Literals(["ready", "missing", "error"]),
+  terminal: Schema.Boolean,
+  files: Schema.Array(OrchestrationCheckpointFile),
+  repositories: Schema.optional(Schema.Array(OrchestrationCheckpointRepository)),
+  summaryStatus: Schema.optional(OrchestrationCheckpointSummaryStatus),
+  summaryError: Schema.optional(Schema.String),
+  partial: Schema.optional(Schema.Boolean),
+  snapshotKind: Schema.optional(SnapshotKind),
+  departedRef: Schema.optional(Schema.String),
+  branchMovement: Schema.optional(BranchMovement),
+});
+export type PlanCheckpointCapture = typeof PlanCheckpointCapture.Type;
+
+export const PlanCheckpointRecord = Schema.Struct({
+  ownerCommitId: MercurianCommitId,
+  planId: PlanId,
+  projectId: MercurianProjectId,
+  lineRootCommitId: Schema.optional(MercurianCommitId),
+  responseCommitId: Schema.optional(MercurianCommitId),
+  request: Schema.optional(
+    Schema.Struct({
+      threadId: ThreadId,
+      messageId: MessageId,
+      turnId: Schema.optional(TurnId),
+      state: Schema.Literals([
+        "unanswered",
+        "preparing",
+        "submitted",
+        "completed",
+        "cancelled",
+        "interrupted",
+        "failed",
+        "unknown",
+      ]),
+    }),
+  ),
+  capture: Schema.optional(PlanCheckpointCapture),
+  revision: Schema.Int.check(Schema.isGreaterThan(0)),
+  updateSequence: Schema.Int.check(Schema.isGreaterThan(0)),
+});
+export type PlanCheckpointRecord = typeof PlanCheckpointRecord.Type;
 /**
  * A planning space: the plan artifact beside the history that evolves it.
  *
@@ -543,6 +600,8 @@ export const PlanDetail = Schema.Struct({
   timeline: Schema.Array(PlanTimelineItem),
   /** The highest commit sequence this snapshot accounts for — the resume cursor. */
   snapshotSequence: Schema.Number,
+  checkpoints: Schema.optional(Schema.Array(PlanCheckpointRecord)),
+  checkpointSequence: Schema.optional(Schema.Number),
   /** Mutable coding-session facts, keyed by their immutable leaf commits. */
   codingSessions: Schema.Array(PlanCodingSessionRecord),
   /** Working-state facts keyed by line root. */
@@ -575,16 +634,32 @@ export const PlanTurnRefusalReason = Schema.Literals([
 export type PlanTurnRefusalReason = typeof PlanTurnRefusalReason.Type;
 
 /**
- * The planning space's live read. The commit DAG is the durable log, so the
- * events are commits and the cursor is their sequence (ADR 002 §2).
+ * The planning space's live read. Commits use the history sequence (ADR 002 §2);
+ * checkpoint records have independent revisions and an update cursor.
  *
  * The `turn-*` members are transient frames (ADR 002 §3): transport, not
  * record. They carry no sequence and never resume — a reconnect re-subscribes
  * and the snapshot's `inFlightTurns` carries the partial turns. Only the
- * settling commit is durable, and it arrives as an ordinary `commit` event
+ * settling response is durable, and it arrives as an ordinary `commit` event
  * right after `turn-settled`.
  */
 export const PlanStreamItem = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("in-flight-turns"),
+    turns: Schema.Array(PlanInFlightTurn),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("checkpoint-snapshot"),
+    planId: PlanId,
+    records: Schema.Array(PlanCheckpointRecord),
+    checkpointSequence: Schema.Number,
+  }),
+  Schema.Struct({ kind: Schema.Literal("checkpoint-update"), record: PlanCheckpointRecord }),
+  Schema.Struct({
+    kind: Schema.Literal("checkpoint-synchronized"),
+    planId: PlanId,
+    checkpointSequence: Schema.Number,
+  }),
   Schema.Struct({ kind: Schema.Literal("snapshot"), snapshot: PlanDetail }),
   Schema.Struct({
     kind: Schema.Literal("commit"),
@@ -870,6 +945,7 @@ export const MercurianSubscribePlanInput = Schema.Struct({
   planId: PlanId,
   /** A cursor to resume from. Absent — or too far behind — means a fresh snapshot. */
   afterSequence: Schema.optional(Schema.Number),
+  afterCheckpointSequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export type MercurianSubscribePlanInput = typeof MercurianSubscribePlanInput.Type;
 

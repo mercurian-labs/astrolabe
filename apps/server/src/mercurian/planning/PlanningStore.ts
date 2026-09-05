@@ -1,3 +1,4 @@
+import * as CheckpointRecords from "./CheckpointRecordStore.ts";
 /**
  * PlanningStore — projects, plans, and the planning space over the commit DAG.
  *
@@ -81,7 +82,12 @@ import { MercurianProject, Plan } from "./schema.ts";
  * because every message written before images could ride one has to keep
  * decoding — the field's absence is not a different kind of message.
  */
+const CheckpointRequest = Schema.Struct({
+  threadId: ThreadId,
+  lineRootCommitId: MercurianCommitId,
+});
 export const MessageCommitPayload = Schema.Struct({
+  checkpointRequest: Schema.optional(CheckpointRequest),
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   /** The provider/model recorded on a human message that opened a turn. */
@@ -91,6 +97,7 @@ export const MessageCommitPayload = Schema.Struct({
   /** Exact human send shared with the orchestration turn; assistant IDs are independent. */
   sourceUserMessageId: Schema.optional(CommitId),
   reconstructionId: Schema.optional(Schema.String),
+  checkpointOwnerCommitId: Schema.optional(MercurianCommitId),
   /**
    * The planning turn's facts, present only on assistant replies and all
    * optional so every message written before turns existed keeps decoding:
@@ -300,6 +307,8 @@ export interface PlanDetail {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
   /** The highest commit sequence this snapshot accounts for; `0` for none. */
   readonly snapshotSequence: number;
+  readonly checkpoints?: ReadonlyArray<import("@t3tools/contracts").PlanCheckpointRecord>;
+  readonly checkpointSequence?: number;
   readonly codingSessions: ReadonlyArray<CodingSessionRecord>;
   readonly lineRuntimes: ReadonlyArray<LineRuntimeRecord>;
   readonly lastVisitedThreadId?: ThreadId;
@@ -425,6 +434,7 @@ export type ImportPlanInput = typeof ImportPlanInput.Type;
  * child is a fork, and appending is the only way to make one.
  */
 export const AppendMessageInput = Schema.Struct({
+  checkpointRequest: Schema.optional(CheckpointRequest),
   planId: PlanId,
   commitId: Schema.optional(CommitId),
   text: Schema.String,
@@ -483,6 +493,7 @@ export const AppendAssistantMessageInput = Schema.Struct({
   generatedBy: Schema.optional(PlanningModelSelection),
   sourceUserMessageId: Schema.optional(CommitId),
   reconstructionId: Schema.optional(Schema.String),
+  checkpointOwnerCommitId: Schema.optional(MercurianCommitId),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendAssistantMessageInput = typeof AppendAssistantMessageInput.Type;
@@ -982,6 +993,7 @@ function deriveSpec(events: ReadonlyArray<PlanTimelineEvent>): PlanSpecAt | null
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const checkpointRecords = yield* CheckpointRecords.CheckpointRecordStore;
   const commits = yield* CommitStore.CommitStore;
   const crypto = yield* Crypto.Crypto;
   const turnRegistry = yield* PlanTurnRegistry;
@@ -1886,6 +1898,9 @@ export const make = Effect.gen(function* () {
         kind: "message",
         payload: {
           text: input.text,
+          ...(input.checkpointRequest === undefined
+            ? {}
+            : { checkpointRequest: input.checkpointRequest }),
           ...(input.attachments === undefined || input.attachments.length === 0
             ? {}
             : { attachments: input.attachments }),
@@ -1897,6 +1912,9 @@ export const make = Effect.gen(function* () {
                 input.ranUnder ?? input.modelChoice ?? standing ?? input.lastUsed ?? undefined;
               return {
                 text: input.text,
+                ...(input.checkpointRequest === undefined
+                  ? {}
+                  : { checkpointRequest: input.checkpointRequest }),
                 ...(input.attachments === undefined || input.attachments.length === 0
                   ? {}
                   : { attachments: input.attachments }),
@@ -1907,6 +1925,11 @@ export const make = Effect.gen(function* () {
         createdAt: input.createdAt,
       });
 
+      if (input.checkpointRequest !== undefined)
+        yield* checkpointRecords.recordQuery(
+          MercurianCommitId.make(commitId),
+          input.checkpointRequest.threadId,
+        );
       yield* announceChange;
       return yield* toPlanMessage(appended);
     }).pipe(
@@ -2125,6 +2148,20 @@ export const make = Effect.gen(function* () {
   const appendAssistantMessage: PlanningStore["Service"]["appendAssistantMessage"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
+      if (input.checkpointOwnerCommitId !== undefined) {
+        const existing = yield* sql<{ commit_id: string }>`SELECT c.commit_id FROM commits c
+          JOIN plans p ON p.history_id = c.history_id
+          WHERE json_extract(c.payload_json, '$.checkpointOwnerCommitId') IS NOT NULL
+            AND json_extract(c.payload_json, '$.checkpointOwnerCommitId') = ${input.checkpointOwnerCommitId}
+            AND p.plan_id = ${input.planId}`;
+        if (existing[0] !== undefined) {
+          const recorded = yield* commits.getCommit({
+            commitId: CommitId.make(existing[0].commit_id),
+            visibility: "all",
+          });
+          if (Option.isSome(recorded)) return yield* toPlanMessage(recorded.value);
+        }
+      }
       const commitId = yield* mintId(CommitId);
       const appended = yield* appendAssistantAt({
         plan,
@@ -2133,6 +2170,9 @@ export const make = Effect.gen(function* () {
         kind: "message",
         payload: {
           text: input.text,
+          ...(input.checkpointOwnerCommitId === undefined
+            ? {}
+            : { checkpointOwnerCommitId: input.checkpointOwnerCommitId }),
           ...(input.interrupted === undefined ? {} : { interrupted: input.interrupted }),
           ...(input.grounding === undefined || input.grounding.length === 0
             ? {}
@@ -2150,6 +2190,14 @@ export const make = Effect.gen(function* () {
         createdAt: input.createdAt,
       });
 
+      if (input.checkpointOwnerCommitId !== undefined)
+        yield* checkpointRecords.response(input.checkpointOwnerCommitId).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("checkpoint response attachment deferred to durable repair", {
+              cause,
+            }),
+          ),
+        );
       yield* announceChange;
       return yield* toPlanMessage(appended);
     }).pipe(
@@ -2295,6 +2343,9 @@ export const make = Effect.gen(function* () {
           )`;
           yield* sql`DELETE FROM coding_sessions WHERE plan_id = ${input.planId}`;
           yield* deleteOriginRow({ planId: input.planId });
+          yield* sql`DELETE FROM checkpoint_unresolved WHERE thread_id IN (
+            SELECT thread_id FROM checkpoint_records WHERE plan_id = ${input.planId}
+          )`;
           yield* deletePlanRow({ planId: input.planId });
           yield* deleteCommitRows({ historyId: plan.historyId });
           yield* deleteHistoryRow({ historyId: plan.historyId });
@@ -2337,7 +2388,9 @@ export const make = Effect.gen(function* () {
             issueUrl: originRow.value.issueUrl,
           } satisfies PlanOrigin);
       const events = yield* projectCommits(path, origin);
+      const checkpointSnapshot = yield* checkpointRecords.snapshot(input.planId);
       return {
+        ...checkpointSnapshot,
         plan,
         planText: derivePlanText(events),
         spec: deriveSpec(events),
@@ -2562,4 +2615,6 @@ export const make = Effect.gen(function* () {
   } satisfies PlanningStore["Service"];
 });
 
-export const layer = Layer.effect(PlanningStore, make);
+export const layer = Layer.effect(PlanningStore, make).pipe(
+  Layer.provideMerge(CheckpointRecords.layer),
+);

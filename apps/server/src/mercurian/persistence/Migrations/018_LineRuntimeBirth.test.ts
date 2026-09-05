@@ -12,7 +12,7 @@ layer("018_LineRuntimeBirth", (it) => {
   it.effect("allows pending line runtimes and records project and visit ownership", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      assert.strictEqual(migrationEntries.length, 23);
+      assert.strictEqual(migrationEntries.length, 24);
       assert.strictEqual(migrationEntries.at(-1)?.[0], 23);
       yield* runMigrations({ toMigrationInclusive: 17 });
       yield* sql`

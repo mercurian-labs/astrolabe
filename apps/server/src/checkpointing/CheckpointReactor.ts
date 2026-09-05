@@ -1,3 +1,4 @@
+import { ProjectionTurnRepository } from "../persistence/Services/ProjectionTurns.ts";
 import {
   CommandId,
   type CheckpointRef,
@@ -95,6 +96,7 @@ const make = Effect.gen(function* () {
     randomUUID.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const projectionTurns = yield* ProjectionTurnRepository;
   const providerService = yield* ProviderService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
   const receiptBus = yield* RuntimeReceiptBus;
@@ -492,6 +494,7 @@ const make = Effect.gen(function* () {
   const captureAndDispatchCheckpoint = Effect.fn("captureAndDispatchCheckpoint")(function* (input: {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
+    readonly requestMessageId?: MessageId | null;
     readonly thread: {
       readonly messages: ReadonlyArray<{
         readonly id: MessageId;
@@ -520,6 +523,12 @@ const make = Effect.gen(function* () {
     /** The caller already captured and summarized repository members. */
     readonly prepared?: boolean;
   }) {
+    const projectedTurn =
+      input.requestMessageId === undefined
+        ? yield* projectionTurns.getByTurnId({ threadId: input.threadId, turnId: input.turnId })
+        : Option.none();
+    const requestMessageId =
+      input.requestMessageId ?? Option.getOrUndefined(projectedTurn)?.pendingMessageId;
     const fromTurnCount = Math.max(0, input.turnCount - 1);
     const fromCheckpointRef =
       input.fromCheckpointRef ?? checkpointRefForThreadTurn(input.threadId, fromTurnCount);
@@ -626,6 +635,8 @@ const make = Effect.gen(function* () {
       commandId: yield* serverCommandId("checkpoint-turn-diff-complete"),
       threadId: input.threadId,
       turnId: input.turnId,
+      ...(requestMessageId == null ? {} : { requestMessageId }),
+      captureTerminal: true,
       completedAt: input.createdAt,
       checkpointRef: targetCheckpointRef,
       status,
@@ -702,6 +713,11 @@ const make = Effect.gen(function* () {
       readonly assistantMessageId: MessageId | undefined;
       readonly createdAt: string;
     }) {
+      const projectedTurn = yield* projectionTurns.getByTurnId({
+        threadId: input.threadId,
+        turnId: input.turnId,
+      });
+      const requestMessageId = Option.getOrUndefined(projectedTurn)?.pendingMessageId ?? null;
       const session = yield* threadLines.resolve(input.threadId);
       const slot = Option.isSome(session)
         ? Option.getOrUndefined(yield* slotForSession(input.threadId, session.value))
@@ -837,6 +853,7 @@ const make = Effect.gen(function* () {
               const aggregateSummary = failedSummary ?? unavailableSummary;
               const dispatchCwd = home?.member.cwd ?? successful[0]?.member.cwd ?? input.cwd;
               yield* captureAndDispatchCheckpoint({
+                requestMessageId,
                 threadId: input.threadId,
                 turnId: input.turnId,
                 thread: input.thread,
@@ -860,6 +877,7 @@ const make = Effect.gen(function* () {
               });
             })
           : captureAndDispatchCheckpoint({
+              requestMessageId,
               threadId: input.threadId,
               turnId: input.turnId,
               thread: input.thread,
@@ -896,6 +914,34 @@ const make = Effect.gen(function* () {
             ),
           )
         : capture;
+    },
+  );
+
+  const recordTerminalCaptureFailure = Effect.fn("CheckpointReactor.recordTerminalCaptureFailure")(
+    function* (threadId: ThreadId, turnId: TurnId, detail: string, createdAt: string) {
+      const thread = yield* resolveThreadDetail(threadId);
+      if (thread === undefined || thread === null) return;
+      const existing = thread.checkpoints.find((checkpoint) => checkpoint.turnId === turnId);
+      yield* captureAndDispatchCheckpoint({
+        threadId,
+        turnId,
+        thread,
+        cwd: "",
+        turnCount:
+          existing?.checkpointTurnCount ??
+          thread.checkpoints.reduce(
+            (maximum, checkpoint) => Math.max(maximum, checkpoint.checkpointTurnCount),
+            0,
+          ) + 1,
+        status: "error",
+        assistantMessageId: undefined,
+        createdAt,
+        capture: false,
+        prepared: true,
+        files: [],
+        summaryStatus: "unavailable",
+        summaryError: detail,
+      });
     },
   );
 
@@ -1352,12 +1398,20 @@ const make = Effect.gen(function* () {
       yield* captureCheckpointFromTurnCompletion(event).pipe(
         Effect.catch((error) =>
           Effect.flatMap(nowIso, (createdAt) =>
-            appendCaptureFailureActivity({
-              threadId: event.threadId,
-              turnId,
-              detail: error.message,
-              createdAt,
-            }).pipe(Effect.catch(() => Effect.void)),
+            (turnId === null
+              ? Effect.void
+              : recordTerminalCaptureFailure(event.threadId, turnId, error.message, createdAt)
+            ).pipe(
+              Effect.andThen(
+                appendCaptureFailureActivity({
+                  threadId: event.threadId,
+                  turnId,
+                  detail: error.message,
+                  createdAt,
+                }),
+              ),
+              Effect.catch(() => Effect.void),
+            ),
           ),
         ),
       );

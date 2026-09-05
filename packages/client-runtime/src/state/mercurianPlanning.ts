@@ -1,4 +1,6 @@
-import { MERCURIAN_WS_METHODS } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import { subscribeDynamic } from "../rpc/client.ts";
+import { MERCURIAN_WS_METHODS, type MercurianSubscribePlanInput } from "@t3tools/contracts";
 import * as Stream from "effect/Stream";
 import type { Atom } from "effect/unstable/reactivity";
 
@@ -8,9 +10,36 @@ import { applyPlanStreamItem, EMPTY_PLAN_STATE } from "./planReducer.ts";
 export type { PlanSubscriptionState } from "./planReducer.ts";
 import {
   createAtomCommandScheduler,
+  createEnvironmentSubscriptionAtomFamily,
   createEnvironmentRpcCommand,
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
+
+export const subscribeMercurianPlan = (input: MercurianSubscribePlanInput) =>
+  Stream.suspend(() => {
+    // The cache lives in this environment/plan subscription, never across environments.
+    let state = EMPTY_PLAN_STATE;
+    return subscribeDynamic(MERCURIAN_WS_METHODS.subscribePlan, () =>
+      Effect.sync(() => {
+        const detail = state.detail;
+        state = { ...state, synchronized: false };
+        return detail === null
+          ? { planId: input.planId }
+          : {
+              planId: input.planId,
+              afterSequence: detail.snapshotSequence,
+              ...(detail.checkpointSequence === undefined
+                ? {}
+                : { afterCheckpointSequence: detail.checkpointSequence }),
+            };
+      }),
+    ).pipe(
+      Stream.map((item) => {
+        state = applyPlanStreamItem(state, item);
+        return state;
+      }),
+    );
+  });
 
 /** Messages and edits on one plan land in the order they were made. */
 const serialPerPlan = {
@@ -38,10 +67,9 @@ export function createMercurianPlanningAtoms<R, E>(
       label: "environment-data:mercurian:tree",
       tag: MERCURIAN_WS_METHODS.subscribeTree,
     }),
-    plan: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    plan: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:mercurian:plan",
-      tag: MERCURIAN_WS_METHODS.subscribePlan,
-      transform: Stream.scan(EMPTY_PLAN_STATE, applyPlanStreamItem),
+      subscribe: subscribeMercurianPlan,
     }),
     createProject: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:create-project",

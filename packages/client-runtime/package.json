@@ -111,6 +111,10 @@
       "types": "./src/state/models.ts",
       "default": "./src/state/models.ts"
     },
+    "./state/mercurian-checkpoint-effects": {
+      "types": "./src/state/mercurianCheckpointEffects.ts",
+      "default": "./src/state/mercurianCheckpointEffects.ts"
+    },
     "./state/mercurian-planning": {
       "types": "./src/state/mercurianPlanning.ts",
       "default": "./src/state/mercurianPlanning.ts"

@@ -1,5 +1,6 @@
 import * as MemoryRepositoryExitGate from "./mercurian/memory/MemoryRepositoryExitGate.ts";
 import * as DocumentStore from "./mercurian/documents/DocumentStore.ts";
+import * as CheckpointRecordReactor from "./mercurian/planning/CheckpointRecordReactor.ts";
 import * as ReconstructionStore from "./mercurian/assistant/ReconstructionStore.ts";
 import * as ReconstructionSummary from "./mercurian/assistant/ReconstructionSummary.ts";
 import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
@@ -648,6 +649,9 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 
 const RuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderCommandReactorLayerLive),
+  Layer.provideMerge(
+    CheckpointRecordReactor.layer.pipe(Layer.provideMerge(MercurianRuntimeCoreDependenciesLive)),
+  ),
   Layer.provideMerge(LineTurnReactorLayerLive),
   Layer.provideMerge(MemoryDashboardLayerLive),
   Layer.provideMerge(LineRuntimeServiceLayerLive),

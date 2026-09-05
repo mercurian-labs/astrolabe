@@ -1,3 +1,4 @@
+import { ProjectionTurnRepositoryLive } from "../src/persistence/Layers/ProjectionTurns.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
 
@@ -360,6 +361,7 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(serverSettingsLayer),
     );
     const checkpointReactorLayer = CheckpointReactorLive.pipe(
+      Layer.provide(ProjectionTurnRepositoryLive),
       Layer.provideMerge(
         Layer.mock(SnapshotChain.SnapshotChain)({
           capture: () => Effect.die("snapshot capture is not used by this harness"),
