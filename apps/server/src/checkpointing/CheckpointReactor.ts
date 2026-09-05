@@ -800,14 +800,10 @@ const make = Effect.gen(function* () {
     },
   );
 
-  // Captures a real git checkpoint when a placeholder checkpoint (status "missing")
-  // is detected via a domain event. This replaces the placeholder with a real
-  // git-ref-based checkpoint.
-  //
   // ProviderRuntimeIngestion creates placeholder checkpoints on turn.diff.updated
-  // events from the Codex runtime. This handler fires when the corresponding
-  // domain event arrives, allowing the reactor to capture the actual filesystem
-  // state into a git ref and dispatch a replacement checkpoint.
+  // events from the Codex runtime. Plain threads replace the placeholder with a
+  // real git checkpoint immediately; a thread on a line leaves it missing until
+  // the settled capture runs on turn completion.
   const captureCheckpointFromPlaceholder = Effect.fn("captureCheckpointFromPlaceholder")(function* (
     event: Extract<OrchestrationEvent, { type: "thread.turn-diff-completed" }>,
   ) {
@@ -823,6 +819,15 @@ const make = Effect.gen(function* () {
       yield* Effect.logWarning("checkpoint capture from placeholder skipped: thread not found", {
         threadId,
       });
+      return;
+    }
+
+    const line = yield* threadLines.resolve(threadId);
+    if (Option.isSome(line)) {
+      yield* Effect.logDebug(
+        "checkpoint placeholder left unsettled: a line's turn settles on turn completion",
+        { threadId, turnId },
+      );
       return;
     }
 
@@ -1150,11 +1155,8 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    // When ProviderRuntimeIngestion creates a placeholder checkpoint (status "missing")
-    // from a turn.diff.updated runtime event, capture the real git checkpoint to
-    // replace it. The providerService.streamEvents PubSub does not reliably deliver
-    // turn.completed runtime events to this reactor (shared subscription), so
-    // reacting to the domain event is the reliable path.
+    // A mid-turn provider diff creates a missing placeholder. Plain threads replace
+    // it immediately; a thread on a line keeps the marker and settles on turn.completed.
     if (event.type === "thread.turn-diff-completed") {
       yield* captureCheckpointFromPlaceholder(event).pipe(
         Effect.catch((error) =>

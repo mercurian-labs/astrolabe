@@ -1280,6 +1280,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             threadId: event.payload.threadId,
             turnId: event.payload.turnId,
           });
+          // A placeholder that lands after the real capture must not replace
+          // it: a coding session no longer re-captures over a placeholder, so
+          // the captured ref, files, and partial fact would otherwise be lost.
+          if (
+            Option.isSome(existingTurn) &&
+            ((existingTurn.value.checkpointStatus !== null &&
+              existingTurn.value.checkpointStatus !== "missing" &&
+              event.payload.status === "missing") ||
+              (existingTurn.value.checkpointPartial === true && event.payload.partial !== true))
+          ) {
+            return;
+          }
           const nextState = event.payload.status === "error" ? "error" : "completed";
           yield* projectionTurnRepository.clearCheckpointTurnConflict({
             threadId: event.payload.threadId,
