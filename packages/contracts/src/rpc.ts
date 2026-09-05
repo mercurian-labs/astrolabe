@@ -13,6 +13,14 @@ import {
   MemoryComparisonResult,
   MemoryInvalidation,
 } from "./mercurianMemory.ts";
+import {
+  MERCURIAN_STORAGE_WS_METHODS,
+  MercurianSubscribeStorageSourcesInput,
+  StorageSourcesStreamItem,
+  MercurianStorageError,
+  MercurianDesignateStorageSourceInput,
+  MercurianRemoveStorageSourceInput,
+} from "./mercurianStorage.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -1534,6 +1542,38 @@ export const WsMercurianSetProjectRepositoriesRpc = Rpc.make(
   },
 );
 
+export const WsMercurianSubscribeStorageSourcesRpc = Rpc.make(
+  MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources,
+  {
+    payload: MercurianSubscribeStorageSourcesInput,
+    success: StorageSourcesStreamItem,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
+export const WsMercurianDesignateStorageSourceRpc = Rpc.make(
+  MERCURIAN_STORAGE_WS_METHODS.designateStorageSource,
+  {
+    payload: MercurianDesignateStorageSourceInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemorySourceInvalidError,
+      MercurianStorageError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianRemoveStorageSourceRpc = Rpc.make(
+  MERCURIAN_STORAGE_WS_METHODS.removeStorageSource,
+  {
+    payload: MercurianRemoveStorageSourceInput,
+    success: Schema.Void,
+    error: Schema.Union([MercurianStorageError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsMercurianSubscribeMemorySourcesRpc = Rpc.make(
   MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources,
   {
@@ -1923,6 +1963,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianRemoveRepositoryRpc,
   WsMercurianSaveRepositoryScriptsRpc,
   WsMercurianSetProjectRepositoriesRpc,
+  WsMercurianSubscribeStorageSourcesRpc,
+  WsMercurianDesignateStorageSourceRpc,
+  WsMercurianRemoveStorageSourceRpc,
   WsMercurianSubscribeMemorySourcesRpc,
   WsMercurianDesignateMemorySourceRpc,
   WsMercurianRemoveMemorySourceRpc,

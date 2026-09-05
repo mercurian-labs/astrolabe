@@ -155,7 +155,7 @@ export const make = Effect.gen(function* () {
   const linkedRepositoriesFor = Effect.fn("LineRuntimeService.linkedRepositoriesFor")(function* (
     projectId: import("@t3tools/contracts").MercurianProjectId,
   ) {
-    const snapshot = yield* repositories.getSnapshot;
+    const snapshot = yield* repositories.getWorkingSnapshot;
     return snapshot.projectRepositories
       .filter((link) => link.projectId === projectId)
       .flatMap((link) => {

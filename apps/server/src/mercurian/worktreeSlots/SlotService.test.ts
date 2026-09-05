@@ -209,7 +209,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
         }),
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
-      getSnapshot: Effect.succeed({
+      getWorkingSnapshot: Effect.succeed({
         repositories: [
           {
             repositoryId: repositoryA,

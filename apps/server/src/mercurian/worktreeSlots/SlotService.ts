@@ -207,7 +207,7 @@ export const make = Effect.gen(function* () {
     projectId: MercurianProjectId,
     lineRootCommitId: MercurianCommitId,
   ) {
-    const snapshot = yield* repositories.getSnapshot;
+    const snapshot = yield* repositories.getWorkingSnapshot;
     const linkedIds = snapshot.projectRepositories
       .filter((link) => link.projectId === projectId)
       .map((link) => link.repositoryId);

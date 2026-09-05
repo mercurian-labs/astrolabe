@@ -230,6 +230,10 @@
     "./work-log/scroll-anchor": {
       "types": "./src/work-log/scrollAnchor.ts",
       "default": "./src/work-log/scrollAnchor.ts"
+    },
+    "./state/mercurian-storage": {
+      "types": "./src/state/mercurianStorage.ts",
+      "default": "./src/state/mercurianStorage.ts"
     }
   },
   "scripts": {

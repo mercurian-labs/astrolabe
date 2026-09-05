@@ -13,7 +13,7 @@ layer("011_MemorySources", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       assert.ok(migrationEntries.some(([id]) => id === 11));
-      yield* runMigrations();
+      yield* runMigrations({ toMigrationInclusive: 11 });
 
       const columns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info(project_memory_sources)
@@ -44,7 +44,7 @@ layer("011_MemorySources", (it) => {
   it.effect("cascades a designation when its repository is removed", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations();
+      yield* runMigrations({ toMigrationInclusive: 11 });
       yield* sql`
         INSERT INTO projects (project_id, name, created_at, updated_at)
         VALUES ('project', 'Project', '2026-08-27', '2026-08-27')
@@ -66,8 +66,8 @@ layer("011_MemorySources", (it) => {
 
   it.effect("is a no-op when run again", () =>
     Effect.gen(function* () {
-      yield* runMigrations();
-      const executed = yield* runMigrations();
+      yield* runMigrations({ toMigrationInclusive: 11 });
+      const executed = yield* runMigrations({ toMigrationInclusive: 11 });
       assert.deepStrictEqual(executed, []);
     }),
   );

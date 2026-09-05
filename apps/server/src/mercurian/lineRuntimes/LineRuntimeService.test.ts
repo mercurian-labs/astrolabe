@@ -94,7 +94,7 @@ const makeHarness = Effect.gen(function* () {
         }),
     }),
     Layer.mock(RepositoryStore.RepositoryStore)({
-      getSnapshot: Effect.succeed({
+      getWorkingSnapshot: Effect.succeed({
         repositories: [
           {
             repositoryId,

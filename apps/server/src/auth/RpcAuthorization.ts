@@ -1,3 +1,4 @@
+import { MERCURIAN_STORAGE_WS_METHODS } from "@t3tools/contracts";
 import {
   AuthAccessReadScope,
   AuthOrchestrationOperateScope,
@@ -69,6 +70,9 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_REPOSITORY_WS_METHODS.removeRepository]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.saveRepositoryScripts]: AuthOrchestrationOperateScope,
   [MERCURIAN_REPOSITORY_WS_METHODS.setProjectRepositories]: AuthOrchestrationOperateScope,
+  [MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources]: AuthOrchestrationReadScope,
+  [MERCURIAN_STORAGE_WS_METHODS.designateStorageSource]: AuthOrchestrationOperateScope,
+  [MERCURIAN_STORAGE_WS_METHODS.removeStorageSource]: AuthOrchestrationOperateScope,
   [MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources]: AuthOrchestrationReadScope,
   [MERCURIAN_MEMORY_WS_METHODS.designateMemorySource]: AuthOrchestrationOperateScope,
   [MERCURIAN_MEMORY_WS_METHODS.removeMemorySource]: AuthOrchestrationOperateScope,

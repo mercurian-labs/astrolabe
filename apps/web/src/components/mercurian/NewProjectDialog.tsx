@@ -1,3 +1,9 @@
+import { useDesignateStorageSource } from "../../state/mercurianStorage";
+import {
+  emptyStorageLocations,
+  ProjectDocumentLocationFields,
+  storageLabels,
+} from "./ProjectDocumentLocationFields";
 import type { MercurianProject, MercurianRepositoryId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
@@ -30,6 +36,8 @@ export function NewProjectDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const designateStorage = useDesignateStorageSource();
+  const [locations, setLocations] = useState(emptyStorageLocations);
   const createProject = useCreateMercurianProject();
   const setProjectRepositories = useSetProjectRepositories();
   const setProjectScope = useProjectScopeStore((state) => state.setProjectScope);
@@ -43,6 +51,7 @@ export function NewProjectDialog({
 
   const reset = useCallback(() => {
     setName("");
+    setLocations(emptyStorageLocations());
     setSelected(new Set());
     setIsSubmitting(false);
     setError(null);
@@ -72,6 +81,7 @@ export function NewProjectDialog({
       return;
     }
 
+    setCreatedProject(project);
     if (selected.size > 0) {
       // Create, then connect: if the second command fails, the named project
       // is harmless and the dialog can retry just this replacement command.
@@ -84,11 +94,32 @@ export function NewProjectDialog({
       }
     }
 
+    for (const kind of ["memory", "plan", "spec"] as const) {
+      const location = locations[kind];
+      if (!location.repositoryId) continue;
+      const saved = await designateStorage({
+        projectId: project.projectId,
+        kind,
+        repositoryId: location.repositoryId as MercurianRepositoryId,
+        subpath: location.subpath,
+      });
+      if (!saved.ok) {
+        setIsSubmitting(false);
+        setError(
+          saved.error instanceof Error
+            ? saved.error.message
+            : `Could not configure ${storageLabels[kind].toLowerCase()}. Try again.`,
+        );
+        return;
+      }
+    }
     setProjectScope(project.projectId);
     reset();
     onOpenChange(false);
   }, [
     createProject,
+    designateStorage,
+    locations,
     createdProject,
     isSubmitting,
     name,
@@ -186,6 +217,20 @@ export function NewProjectDialog({
             )}
             {error === null ? null : <p className="text-xs text-destructive">{error}</p>}
           </div>
+          {!isPending && repositories.length > 0 && (
+            <div className="space-y-4 border-t border-border pt-4">
+              {(["memory", "plan", "spec"] as const).map((kind) => (
+                <ProjectDocumentLocationFields
+                  key={kind}
+                  kind={kind}
+                  repositories={repositories}
+                  value={locations[kind]}
+                  disabled={isSubmitting}
+                  onChange={(value) => setLocations((current) => ({ ...current, [kind]: value }))}
+                />
+              ))}
+            </div>
+          )}
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
@@ -195,7 +240,7 @@ export function NewProjectDialog({
             disabled={(createdProject === null && name.trim().length === 0) || isSubmitting}
             onClick={() => void submit()}
           >
-            {createdProject === null ? "Create" : "Retry connection"}
+            {createdProject === null ? "Create" : "Retry setup"}
           </Button>
         </DialogFooter>
       </DialogPopup>

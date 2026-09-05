@@ -1,4 +1,6 @@
 import { isMemoryReadUnavailableError } from "@t3tools/contracts";
+import { MERCURIAN_STORAGE_WS_METHODS, MercurianStorageError } from "@t3tools/contracts";
+import * as StorageSourceStore from "./mercurian/storage/StorageSourceStore.ts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -686,6 +688,7 @@ const makeWsRpcLayer = (
       const lineRuntimeService = yield* LineRuntimeService.LineRuntimeService;
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
+      const storageSourceStore = yield* StorageSourceStore.StorageSourceStore;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
       const memoryDashboard = yield* MemoryDashboard.MemoryDashboard;
       const trackerStore = yield* TrackerStore.TrackerStore;
@@ -1799,6 +1802,22 @@ const makeWsRpcLayer = (
         ),
         Effect.mapError(
           (cause) => new MercurianRepositoryError({ operation: "subscribeRepositories", cause }),
+        ),
+      );
+
+      const loadStorageSourcesSnapshot = storageSourceStore.getSnapshot.pipe(
+        Effect.map((sources) => ({
+          sources: sources.map((source) => ({
+            ...source,
+            createdAt: DateTime.formatIso(source.createdAt),
+            updatedAt: DateTime.formatIso(source.updatedAt),
+          })),
+        })),
+        Effect.tapError((cause) =>
+          Effect.logError("mercurian memory sources snapshot load failed", { cause }),
+        ),
+        Effect.mapError(
+          (cause) => new MercurianStorageError({ operation: "subscribeStorageSources", cause }),
         ),
       );
 
@@ -3064,6 +3083,62 @@ const makeWsRpcLayer = (
                   : new MercurianRepositoryError({ operation: "setProjectRepositories", cause }),
               ),
             ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources]: (_input) =>
+          observeRpcStreamEffect(
+            MERCURIAN_STORAGE_WS_METHODS.subscribeStorageSources,
+            Effect.gen(function* () {
+              const changes = yield* Queue.unbounded<void>();
+              yield* Effect.forkScoped(
+                Stream.merge(storageSourceStore.changes, repositoryStore.changes).pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                ),
+                { startImmediately: true },
+              );
+              const snapshot = yield* loadStorageSourcesSnapshot;
+              return Stream.concat(
+                Stream.make({ kind: "snapshot" as const, snapshot }),
+                Stream.fromQueue(changes).pipe(
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.mapEffect(() => loadStorageSourcesSnapshot),
+                  Stream.map((next) => ({ kind: "snapshot" as const, snapshot: next })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_STORAGE_WS_METHODS.designateStorageSource]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_STORAGE_WS_METHODS.designateStorageSource,
+            DateTime.now.pipe(
+              Effect.flatMap((now) =>
+                storageSourceStore.designate({
+                  projectId: input.projectId,
+                  kind: input.kind,
+                  repositoryId: input.repositoryId,
+                  ...(input.subpath === undefined ? {} : { subpath: input.subpath }),
+                  now,
+                }),
+              ),
+              Effect.mapError((cause) =>
+                isMemorySourceInvalidError(cause)
+                  ? cause
+                  : new MercurianStorageError({ operation: "designateStorageSource", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_STORAGE_WS_METHODS.removeStorageSource]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_STORAGE_WS_METHODS.removeStorageSource,
+            storageSourceStore
+              .remove(input.projectId, input.kind)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new MercurianStorageError({ operation: "removeStorageSource", cause }),
+                ),
+              ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_MEMORY_WS_METHODS.subscribeMemorySources]: (_input) =>
