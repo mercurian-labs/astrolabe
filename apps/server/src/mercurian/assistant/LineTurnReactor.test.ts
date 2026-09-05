@@ -124,6 +124,7 @@ const makeHarness = (options?: {
   readonly memoryLandingFailure?: MemoryIndex.MemoryAmendmentValidationError;
 }) =>
   Effect.gen(function* () {
+    const turnRegistry = yield* PlanTurnRegistry.make;
     const domain = yield* PubSub.unbounded<OrchestrationEvent>();
     const provider = yield* PubSub.unbounded<ProviderRuntimeEvent>();
     const humanReceipts = yield* Queue.unbounded<PlanningStore.AppendMessageInput>();
@@ -388,11 +389,12 @@ const makeHarness = (options?: {
               ((_thread, messageId) => Effect.succeed(`reconstruction:${messageId}`)),
           })
         : Layer.succeed(ReconstructionStore, options.reconstructionStore),
-      PlanTurnRegistry.layer,
+      Layer.succeed(PlanTurnRegistry.PlanTurnRegistry, turnRegistry),
       NodeServices.layer,
     );
     return {
       state,
+      turnRegistry,
       layer: layer.pipe(Layer.provide(dependencies)),
       publishDomain: (event: OrchestrationEvent) => PubSub.publish(domain, event),
       publishProvider: (event: ProviderRuntimeEvent) => PubSub.publish(provider, event),
@@ -1070,7 +1072,13 @@ describe("LineTurnReactor", () => {
                   : Effect.void,
             ).pipe(Effect.forkScoped({ startImmediately: true }));
             yield* startTurn(harness, reactor);
-            yield* reactor.saveRevisionFromThread({ threadId, text: "Revision before completion" });
+            const claim = yield* harness.turnRegistry.getByThread(threadId);
+            assert.ok(Option.isSome(claim));
+            yield* harness.turnRegistry.advanceTip(
+              planId,
+              claim.value.turnId,
+              CommitId.make("intervening-commit"),
+            );
             harness.state.timeline.push({
               _tag: "message",
               commitId: MercurianCommitId.make(otherMessage),
@@ -1110,9 +1118,10 @@ describe("LineTurnReactor", () => {
               .pipe(Effect.andThen(Deferred.succeed(drained, undefined)), Effect.forkScoped);
 
             assert.strictEqual(
-              (yield* Effect.result(reactor.saveRevisionFromThread({ threadId, text: "Too late" })))
-                ._tag,
-              "Failure",
+              (yield* reactor.inFlightTurns(planId)).some(
+                (turn) => String(turn.parentCommitId) === messageId,
+              ),
+              false,
             );
             if (deleted)
               yield* harness.publishDomain({
@@ -1162,7 +1171,8 @@ describe("LineTurnReactor", () => {
             yield* Deferred.await(drained);
             const a = yield* Queue.take(harness.assistantReceipts);
             assert.strictEqual(a.text, "Captured A");
-            assert.strictEqual(a.parentCommitId, CommitId.make("plan-revision"));
+            assert.strictEqual(a.parentCommitId, CommitId.make("intervening-commit"));
+            assert.strictEqual(a.sourceUserMessageId, CommitId.make(messageId));
             assert.strictEqual(a.reconstructionId, "known-A");
             assert.strictEqual(a.interrupted, true);
             yield* Queue.take(settledFrames);

@@ -206,6 +206,7 @@ export const make = Effect.gen(function* () {
     turn.settling = true;
     const response = {
       planId: turn.planId,
+      sourceUserMessageId: turn.parentCommitId,
       text: turn.text,
       ...(options.interrupted ? { interrupted: true } : {}),
       ...(turn.grounding.length === 0 ? {} : { grounding: [...turn.grounding] }),

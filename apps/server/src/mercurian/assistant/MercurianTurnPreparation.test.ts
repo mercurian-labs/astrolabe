@@ -711,45 +711,45 @@ it.effect(
   },
 );
 
-it.effect(
-  "refuses oversized mandatory artifacts before making a summary or saving evidence",
-  () => {
-    const parent = CommitId.make("root");
-    const dependencies = Layer.mergeAll(
-      preparationDependencies({
-        parentCommitId: parent,
-        planText: "x".repeat(130_000),
-        ancestors: [],
-        timeline: [
-          {
-            _tag: "message",
-            commitId: parent,
-            parents: [],
-            authorKind: "human",
-            text: "Earlier question",
-          },
-        ],
-      }),
-      Layer.mock(ReconstructionStore)({ save: () => Effect.die("Must not record unsent context") }),
-      Layer.mock(ReconstructionSummary)({
-        summarize: () => Effect.die("Must reject before summarizing"),
+it.effect("refuses oversized mandatory input before making a summary or saving evidence", () => {
+  const parent = CommitId.make("root");
+  const dependencies = Layer.mergeAll(
+    preparationDependencies({
+      parentCommitId: parent,
+      ancestors: [],
+      timeline: [
+        {
+          _tag: "message",
+          commitId: parent,
+          parents: [],
+          authorKind: "human",
+          text: "Earlier question",
+        },
+      ],
+    }),
+    Layer.mock(ReconstructionStore)({ save: () => Effect.die("Must not record unsent context") }),
+    Layer.mock(ReconstructionSummary)({
+      summarize: () => Effect.die("Must reject before summarizing"),
+    }),
+  );
+  return Effect.gen(function* () {
+    const result = yield* Effect.result(
+      (yield* TurnPreparation).prepare({
+        thread,
+        message: { ...message, text: "x".repeat(130_000) },
+        sessionIsFresh: true,
       }),
     );
-    return Effect.gen(function* () {
-      const result = yield* Effect.result(
-        (yield* TurnPreparation).prepare({ thread, message, sessionIsFresh: true }),
-      );
-      assert.strictEqual(result._tag, "Failure");
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          MercurianTurnPreparationLive,
-          Layer.merge(reconstructionDependencies, dependencies),
-        ),
+    assert.strictEqual(result._tag, "Failure");
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        MercurianTurnPreparationLive,
+        Layer.merge(reconstructionDependencies, dependencies),
       ),
-    );
-  },
-);
+    ),
+  );
+});
 
 it.effect("native resume leaves unknown legacy provenance unknown", () => {
   const dependencies = Layer.mergeAll(
@@ -764,7 +764,11 @@ it.effect("native resume leaves unknown legacy provenance unknown", () => {
       sessionIsFresh: true,
       contextDisposition: "resume",
     });
-    assert.deepStrictEqual(prepared, { text: message.text, session: {} });
+    assert.ok(prepared.text.endsWith(message.text));
+    assert.ok(prepared.text.includes("Plans location is not configured"));
+    assert.deepStrictEqual(prepared.session, {});
+    assert.strictEqual(prepared.onSubmitted, undefined);
+    assert.strictEqual(prepared.onFailed, undefined);
   }).pipe(
     Effect.provide(
       MercurianTurnPreparationLive.pipe(

@@ -6,7 +6,7 @@ import { runMigrations } from "../Migrations.ts";
 
 it.effect("adds empty reconstruction storage without changing historical replies", () =>
   Effect.gen(function* () {
-    yield* runMigrations({ toMigrationInclusive: 18 });
+    yield* runMigrations({ toMigrationInclusive: 22 });
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO commit_histories (history_id, created_at) VALUES ('history', '')`;
     yield* sql`INSERT INTO commits (commit_id, history_id, kind, author_kind, published, created_at, payload_json) VALUES ('old-reply', 'history', 'message', 'assistant', 0, '', '{"text":"historical reply"}')`;
