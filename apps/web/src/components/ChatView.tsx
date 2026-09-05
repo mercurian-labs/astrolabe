@@ -298,6 +298,8 @@ import { createPageScrollController, type PageScrollKey } from "./chat/pageScrol
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
+import { mergeConversationPath } from "./chat/ConversationHistory.logic";
+import type { ConversationHistoryPage } from "./chat/ConversationHistory";
 import type { ConversationHistory } from "./chat/ConversationHistory";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
@@ -2915,7 +2917,7 @@ function ChatViewContent(props: ChatViewProps) {
     feedbackSubmissions,
     optimisticUserMessages,
   ]);
-  const timelineEntries = useMemo(
+  const liveTimelineEntries = useMemo(
     () =>
       deriveTimelineEntries(
         timelineMessages,
@@ -2925,6 +2927,41 @@ function ChatViewContent(props: ChatViewProps) {
       ),
     [activeThread?.proposedPlans, timelineMessages, turnPlans, workLogEntries],
   );
+  const historyKey =
+    conversationHistory === undefined ? null : `${routeThreadKey}:${conversationHistory.head}`;
+  const [olderHistory, setOlderHistory] = useState<{
+    key: string;
+    pages: ConversationHistoryPage[];
+  } | null>(null);
+  const firstHistoryPage = useMemo(
+    () => conversationHistory?.readPage(conversationHistory.head),
+    [conversationHistory],
+  );
+  const historyPages = olderHistory?.key === historyKey ? olderHistory.pages : [];
+  const nextHistoryCursor =
+    historyPages.at(-1)?.nextCursor ??
+    (historyPages.length === 0 ? firstHistoryPage?.nextCursor : null);
+  const historicalConversation = conversationHistory?.historical === true;
+  const timelineEntries = useMemo(
+    () =>
+      firstHistoryPage === undefined
+        ? liveTimelineEntries
+        : mergeConversationPath(
+            [
+              ...historyPages.toReversed().flatMap((page) => page.messages),
+              ...firstHistoryPage.messages,
+            ],
+            liveTimelineEntries,
+            historicalConversation,
+          ),
+    [firstHistoryPage, historicalConversation, historyPages, liveTimelineEntries],
+  );
+  const loadEarlierConversation = () => {
+    if (conversationHistory === undefined || historyKey === null || nextHistoryCursor == null)
+      return;
+    const page = conversationHistory.readPage(nextHistoryCursor);
+    setOlderHistory({ key: historyKey, pages: [...historyPages, page] });
+  };
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
@@ -5943,6 +5980,7 @@ function ChatViewContent(props: ChatViewProps) {
     },
   ) => {
     e?.preventDefault();
+    if (historicalConversation) return;
     const notifyDirectAnnotationAttached = () => {
       if (!directAnnotation) return;
       toastManager.add(
@@ -7644,20 +7682,19 @@ function ChatViewContent(props: ChatViewProps) {
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
               <MessagesTimeline
-                conversationHistory={conversationHistory}
                 citationRequest={citationRequest}
                 citationHistoryLoading={threadDetailLoading}
                 onCiteAssistantText={citeAssistantText}
                 agentPanelModel={agentPanelModel}
                 onOpenAgents={addAgentsSurface}
-                key={activeThread.id}
-                isWorking={isWorking}
+                key={`${activeThread.id}:${conversationHistory?.historical ? conversationHistory.head : "live"}`}
+                isWorking={historicalConversation ? false : isWorking}
                 isPreparingWorktree={isPreparingWorktree}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}
-                latestTurn={activeLatestTurn}
-                runningTurnId={activeRunningTurnId}
+                latestTurn={historicalConversation ? null : activeLatestTurn}
+                runningTurnId={historicalConversation ? null : activeRunningTurnId}
                 turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
                 activeThreadEnvironmentId={activeThread.environmentId}
                 routeThreadKey={routeThreadKey}
@@ -7683,7 +7720,16 @@ function ChatViewContent(props: ChatViewProps) {
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
-                loadEarlier={loadEarlierTurns}
+                loadEarlier={
+                  conversationHistory === undefined
+                    ? loadEarlierTurns
+                    : nextHistoryCursor == null
+                      ? null
+                      : {
+                          loading: false,
+                          onLoadEarlier: loadEarlierConversation,
+                        }
+                }
                 canForkHere={canForkHere}
                 onForkHere={onForkHere}
               />
@@ -7787,11 +7833,13 @@ function ChatViewContent(props: ChatViewProps) {
                             isConnecting={isConnecting}
                             isSendBusy={isSendBusy}
                             sendDisabledReason={
-                              feedbackUploading
-                                ? "Sending feedback"
-                                : threadDetailLoading
-                                  ? "Messages loading"
-                                  : null
+                              historicalConversation
+                                ? "Fork from this checkpoint to continue"
+                                : feedbackUploading
+                                  ? "Sending feedback"
+                                  : threadDetailLoading
+                                    ? "Messages loading"
+                                    : null
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             externalDrawerAttached={externalComposerDrawerAttached}

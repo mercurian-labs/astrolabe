@@ -104,7 +104,6 @@ import {
   buildExpandedImagePreview,
   ExpandedImagePreview,
 } from "./ExpandedImagePreview";
-import type { ConversationHistory, ConversationHistoryPage } from "./ConversationHistory";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
@@ -184,7 +183,6 @@ import {
 // ---------------------------------------------------------------------------
 
 interface TimelineRowSharedState {
-  readOnlyHistory?: boolean;
   citationRequest: AssistantCitationTarget | null;
   listRef: React.RefObject<LegendListRef | null>;
   timestampFormat: TimestampFormat;
@@ -288,7 +286,6 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
 // ---------------------------------------------------------------------------
 
 interface MessagesTimelineProps {
-  conversationHistory?: ConversationHistory | undefined;
   citationRequest?: AssistantCitationRequest | null;
   citationHistoryLoading?: boolean;
   onCiteAssistantText?: (
@@ -342,7 +339,6 @@ interface MessagesTimelineProps {
 // ---------------------------------------------------------------------------
 
 export const MessagesTimeline = memo(function MessagesTimeline({
-  conversationHistory,
   citationRequest = null,
   citationHistoryLoading = false,
   onCiteAssistantText,
@@ -706,7 +702,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
-  if (rows.length === 0 && !isWorking && conversationHistory === undefined) {
+  if (rows.length === 0 && !isWorking && loadEarlier === null) {
     if (hideEmptyPlaceholder) {
       return null;
     }
@@ -766,13 +762,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             )}
             ListHeaderComponent={
               <>
-                {conversationHistory === undefined ? null : (
-                  <EarlierConversation
-                    key={`${routeThreadKey}:${conversationHistory.origin}`}
-                    history={conversationHistory}
-                    onNavigate={onManualNavigation}
-                  />
-                )}
                 {loadEarlier !== null ? (
                   <TimelineLoadEarlierHeader
                     loading={loadEarlier.loading}
@@ -807,117 +796,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </TimelineRowCtx>
   );
 });
-
-function EarlierConversation({
-  history,
-  onNavigate,
-}: {
-  history: ConversationHistory;
-  onNavigate: () => void;
-}) {
-  const shared = use(TimelineRowCtx);
-  const [page, setPage] = useState<ConversationHistoryPage | null>(null);
-  const [cursors, setCursors] = useState<ReadonlyArray<string>>([]);
-  const [open, setOpen] = useState(false);
-  const readOnlyShared = useMemo(
-    () => ({
-      ...shared,
-      readOnlyHistory: true,
-      threadRef: null,
-      citationRequest: null,
-      // Relative links must not resolve against the descendant's working tree.
-      markdownCwd: undefined,
-      workspaceRoot: undefined,
-    }),
-    [shared],
-  );
-  const rows = useMemo(
-    () =>
-      page === null
-        ? []
-        : deriveMessagesTimelineRows({
-            timelineEntries: deriveTimelineEntries(page.messages, [], []),
-            latestTurn: null,
-            runningTurnId: null,
-            expandedTurnIds: new Set(),
-            expandedWorkGroupIds: new Set(),
-            isWorking: false,
-            activeTurnStartedAt: null,
-            turnDiffSummaryByAssistantMessageId: new Map(),
-          }),
-    [page],
-  );
-  const showPage = (nextCursors: ReadonlyArray<string>) => {
-    const cursor = nextCursors.at(-1);
-    if (cursor === undefined) return;
-    onNavigate();
-    setPage(history.readPage(cursor));
-    setCursors(nextCursors);
-  };
-  return (
-    <section aria-label="Earlier conversation" className="mx-auto w-full max-w-3xl pt-4">
-      <button
-        type="button"
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-left text-sm hover:bg-muted/50"
-        onClick={() => {
-          onNavigate();
-          if (!open && page === null) showPage([history.origin]);
-          setOpen(!open);
-        }}
-      >
-        {open ? (
-          <ChevronDownIcon className="size-4 shrink-0" />
-        ) : (
-          <ChevronRightIcon className="size-4 shrink-0" />
-        )}
-        <span>Earlier conversation</span>
-        <span className="ml-auto text-xs text-muted-foreground">Read-only</span>
-      </button>
-      {open ? (
-        <div className="mt-2 border-l-2 border-border pl-3" data-conversation-history="true">
-          <p className="mb-3 text-xs text-muted-foreground">Before the fork: {history.label}</p>
-          <div className="mb-3 flex gap-2">
-            {page?.nextCursor == null ? null : (
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => {
-                  if (page.nextCursor !== null) showPage([...cursors, page.nextCursor]);
-                }}
-              >
-                Older messages
-              </Button>
-            )}
-            {cursors.length > 1 ? (
-              <Button size="xs" variant="ghost" onClick={() => showPage(cursors.slice(0, -1))}>
-                Newer messages
-              </Button>
-            ) : null}
-          </div>
-          <TimelineRowCtx value={readOnlyShared}>
-            {rows.map((row) => (
-              <TimelineRowContent key={row.id} row={row} />
-            ))}
-          </TimelineRowCtx>
-          {page?.missing ? (
-            <p className="pb-3 text-sm text-muted-foreground">
-              Some earlier history is unavailable.
-            </p>
-          ) : null}
-          {page !== null && rows.length === 0 && !page.missing ? (
-            <p className="pb-3 text-sm text-muted-foreground">
-              No messages in this part of the history.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
-        This line continues below
-      </p>
-    </section>
-  );
-}
 
 function keyExtractor(item: MessagesTimelineRow) {
   return item.id;
@@ -1567,19 +1445,15 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
-        {ctx.readOnlyHistory ? (
-          content
-        ) : (
-          <AssistantCitationSource
-            messageId={row.message.id}
-            {...(ctx.threadRef ? { threadRef: ctx.threadRef } : {})}
-            itemKey={row.id}
-            request={ctx.citationRequest}
-            listRef={ctx.listRef}
-          >
-            {content}
-          </AssistantCitationSource>
-        )}
+        <AssistantCitationSource
+          messageId={row.message.id}
+          {...(ctx.threadRef ? { threadRef: ctx.threadRef } : {})}
+          itemKey={row.id}
+          request={ctx.citationRequest}
+          listRef={ctx.listRef}
+        >
+          {content}
+        </AssistantCitationSource>
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}

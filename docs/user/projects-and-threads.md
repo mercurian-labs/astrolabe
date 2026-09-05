@@ -43,14 +43,14 @@ and the thread you are looking at stays highlighted in the tree while you are an
 
 ### Where a fork came from
 
-A forked line includes an **Earlier conversation** section above its own messages. Expand it to
-read the messages leading up to the fork, with the same message formatting and attachments as the
-rest of the conversation. Earlier history is read-only and collapsed when you open a line.
+A forked line shows the messages leading up to the fork followed by its own messages in one
+continuous conversation. Messages from other branches after the fork are excluded. Use
+**Load earlier turns** to read more of a long history.
 
-Use **Older messages** and **Newer messages** to read a long history in small pages. Messages from
-other branches after the fork are excluded. **Fork here** on an earlier user message opens another
-line, leaving the original history intact. Expanding, folding, or paging earlier messages keeps your
-current line and composer draft in place.
+Selecting a checkpoint shows the conversation up to that point. **Back to latest** restores the
+line's full conversation; this control only appears when viewing an earlier checkpoint. To continue
+from an earlier point, choose **Fork from here**. **Fork here** on a user message also opens another
+line. Viewing history keeps your current draft and does not rewind the working tree.
 
 ## Status in the tree
 

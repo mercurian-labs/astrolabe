@@ -8,7 +8,7 @@ export type ConversationHistoryPage = {
 };
 
 export type ConversationHistory = {
-  readonly origin: string;
-  readonly label: string;
+  readonly head: string;
+  readonly historical: boolean;
   readonly readPage: (cursor: string) => ConversationHistoryPage;
 };
