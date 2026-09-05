@@ -44,6 +44,14 @@ describe("RPC authorization scopes", () => {
       AuthOrchestrationReadScope,
     );
     for (const method of [
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+      MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+      MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    for (const method of [
       MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
       MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
       MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome,

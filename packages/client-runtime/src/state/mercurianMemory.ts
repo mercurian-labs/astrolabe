@@ -28,6 +28,26 @@ export function createMercurianMemoryAtoms<R, E>(
       tag: MERCURIAN_MEMORY_WS_METHODS.removeMemorySource,
       scheduler: writeScheduler,
     }),
+    readMemoryCatalog: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:read-memory-catalog",
+      tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+    }),
+    readMemoryDashboard: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:readMemoryDashboard",
+      tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+    }),
+    readMemoryDocument: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:readMemoryDocument",
+      tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+    }),
+    readMemoryComparison: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:readMemoryComparison",
+      tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+    }),
+    subscribeMemoryInvalidations: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:mercurian:subscribeMemoryInvalidations",
+      tag: MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+    }),
     readMemoryIndex: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:mercurian:read-memory-index",
       tag: MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex,

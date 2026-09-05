@@ -23,5 +23,6 @@ export type MemoryTreeSource =
       readonly kind: "ref";
       readonly repositoryPath: string;
       readonly ref: string;
+      readonly treeOid?: string;
       readonly subpath: string;
     };

@@ -1,3 +1,6 @@
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
+import * as MemoryDashboard from "./MemoryDashboard.ts";
 import { assert, it } from "@effect/vitest";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
@@ -16,6 +19,10 @@ import {
   PlanId,
   PlanTurnId,
   ThreadId,
+  ProjectId,
+  TurnId,
+  MessageId,
+  type OrchestrationCheckpointSummary,
 } from "@t3tools/contracts";
 
 import * as ProcessRunner from "../../processRunner.ts";
@@ -50,6 +57,9 @@ const gitLayer = GitVcsDriver.layer.pipe(
   Layer.provideMerge(NodeServicesLayer),
 );
 const defaultLineServices = Layer.mergeAll(
+  Layer.mock(ProjectionSnapshotQuery)({
+    getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+  }),
   PlanTurnRegistry.layer,
   SlotRegistry.layer,
   Layer.mock(LineRuntimeStore.LineRuntimeStore)({
@@ -161,6 +171,7 @@ function lineServices(
   input: {
     readonly branch: string;
     readonly baseOid: string;
+    readonly checkpoints?: ReadonlyArray<OrchestrationCheckpointSummary>;
     readonly slotPath?: string;
     readonly appended?: Array<unknown>;
     readonly timeline?: ReadonlyArray<unknown>;
@@ -221,6 +232,18 @@ function lineServices(
           },
         ];
   return Layer.mergeAll(
+    Layer.mock(ProjectionSnapshotQuery)({
+      getThreadCheckpointContext: (threadId) =>
+        Effect.succeed(
+          Option.some({
+            threadId,
+            projectId: ProjectId.make("memory-test"),
+            workspaceRoot: fixture.root,
+            worktreePath: null,
+            checkpoints: input.checkpoints ?? [],
+          }),
+        ),
+    }),
     input.turns === undefined
       ? PlanTurnRegistry.layer
       : Layer.succeed(PlanTurnRegistry.PlanTurnRegistry, input.turns),
@@ -369,7 +392,12 @@ const makeLineIndex = Effect.fn("test.makeLineMemoryIndex")(function* (
     Effect.provideService(MemorySourceStore.MemorySourceStore, sourceStore),
     Effect.provideService(GitVcsDriver.GitVcsDriver, effectiveGit),
   );
-  return { index, turns, leases };
+  const dashboard = yield* MemoryDashboard.make.pipe(
+    Effect.provide(lineServices(fixture, configured)),
+    Effect.provideService(MemoryIndex.MemoryIndex, index),
+    Effect.provideService(GitVcsDriver.GitVcsDriver, effectiveGit),
+  );
+  return { index, turns, leases, dashboard };
 });
 
 layer("MemoryIndex", (it) => {
@@ -454,35 +482,45 @@ layer("MemoryIndex", (it) => {
     }),
   );
 
-  it.effect("reads a line from its branch and moving chain-head ref without stale cache", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const fixture = yield* makeFixture("ref-reads", { git: true });
-      const notePath = path.join(fixture.root, "Plans.md");
-      yield* fs.writeFileString(notePath, "Main\n");
-      yield* runGit(fixture.root, ["add", "Plans.md"]);
-      yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
-      const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
-      yield* runGit(fixture.root, ["checkout", "-b", "memory-line"]);
-      yield* fs.writeFileString(notePath, "Branch one\n");
-      yield* runGit(fixture.root, ["commit", "-am", "Branch one"]);
+  it.effect(
+    "resolves immutable line trees without letting an older capture hide later amendments",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const fixture = yield* makeFixture("ref-reads", { git: true });
+        const notePath = path.join(fixture.root, "Plans.md");
+        yield* fs.writeFileString(notePath, "Main\n");
+        yield* runGit(fixture.root, ["add", "Plans.md"]);
+        yield* runGit(fixture.root, ["commit", "-m", "Seed"]);
+        const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+        yield* runGit(fixture.root, ["checkout", "-b", "memory-line"]);
+        yield* fs.writeFileString(notePath, "Branch one\n");
+        yield* runGit(fixture.root, ["commit", "-am", "Branch one"]);
 
-      const { index } = yield* makeLineIndex(fixture, { branch: "memory-line", baseOid });
-      const first = yield* index.readNote(fixture.projectId, "Plans", lineRef);
-      assert.strictEqual(first.markdown, "Branch one\n");
-      yield* fs.writeFileString(notePath, "Branch two\n");
-      yield* runGit(fixture.root, ["commit", "-am", "Branch two"]);
-      const second = yield* index.readNote(fixture.projectId, "Plans", lineRef);
-      assert.strictEqual(second.markdown, "Branch two\n");
+        const { index } = yield* makeLineIndex(fixture, { branch: "memory-line", baseOid });
+        const first = yield* index.readNote(fixture.projectId, "Plans", lineRef);
+        assert.strictEqual(first.markdown, "Branch one\n");
+        yield* fs.writeFileString(notePath, "Branch two\n");
+        yield* runGit(fixture.root, ["commit", "-am", "Branch two"]);
+        const second = yield* index.readNote(fixture.projectId, "Plans", lineRef);
+        assert.strictEqual(second.markdown, "Branch two\n");
 
-      yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), baseOid]);
-      const chain = yield* index.readNote(fixture.projectId, "Plans", lineRef);
-      assert.strictEqual(chain.markdown, "Main\n");
-    }),
+        const captured = yield* runGit(fixture.root, [
+          "commit-tree",
+          `${baseOid}^{tree}`,
+          "-p",
+          baseOid,
+          "-m",
+          "t3 snapshot kind=settled",
+        ]);
+        yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), captured]);
+        const chain = yield* index.readNote(fixture.projectId, "Plans", lineRef);
+        assert.strictEqual(chain.markdown, "Branch two\n");
+      }),
   );
 
-  it.effect("reads an unminted line as the repository default with no changes", () =>
+  it.effect("refuses an unminted line while preserving explicit global reads", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -498,13 +536,137 @@ layer("MemoryIndex", (it) => {
         missingBranch: true,
       });
 
-      assert.deepStrictEqual(
-        yield* index.readLineChanges({ projectId: fixture.projectId, line: lineRef }),
-        { marked: [], hand: [], unmarked: null, unreviewedCount: 0 },
-      );
-      const note = yield* index.readNote(fixture.projectId, "Plans", lineRef);
+      for (const read of [
+        index.readLineChanges({ projectId: fixture.projectId, line: lineRef }).pipe(Effect.asVoid),
+        index.readNote(fixture.projectId, "Plans", lineRef).pipe(Effect.asVoid),
+        index.readIndex(fixture.projectId, lineRef).pipe(Effect.asVoid),
+      ]) {
+        const failure = yield* read.pipe(Effect.flip);
+        assert.equal(failure._tag, "MemoryReadUnavailableError");
+        assert("reason" in failure && failure.reason === "line-missing");
+      }
+      const note = yield* index.readNote(fixture.projectId, "Plans");
       assert.strictEqual(note.markdown, "Main\n");
     }),
+  );
+
+  it.effect(
+    "shares latest and explicit historical positions across index, notes, changes and dashboard",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const fixture = yield* makeFixture("shared-position", { git: true });
+        yield* fs.writeFileString(`${fixture.root}/Plans.md`, "Before\n");
+        yield* runGit(fixture.root, ["add", "."]);
+        yield* runGit(fixture.root, ["commit", "-m", "Base"]);
+        const baseOid = yield* runGit(fixture.root, ["rev-parse", "HEAD"]);
+        yield* runGit(fixture.root, ["checkout", "-b", "memory-line"]);
+        yield* fs.writeFileString(`${fixture.root}/Loose.md`, "Unmarked\n");
+        yield* runGit(fixture.root, ["add", "."]);
+        const tree = yield* runGit(fixture.root, ["write-tree"]);
+        const ref = checkpointRefForThreadTurn(lineThread, 1);
+        const snapshot = yield* runGit(fixture.root, [
+          "commit-tree",
+          tree,
+          "-p",
+          baseOid,
+          "-m",
+          `t3 snapshot kind=settled ref=${ref}`,
+        ]);
+        yield* runGit(fixture.root, ["update-ref", ref, snapshot]);
+        yield* runGit(fixture.root, ["update-ref", lineSnapshotRef(lineRoot), snapshot]);
+        yield* runGit(fixture.root, ["reset", "HEAD"]);
+        yield* fs.writeFileString(`${fixture.root}/Plans.md`, "After amendment\n");
+        yield* fs.writeFileString(`${fixture.root}/Later.md`, "New after capture\n");
+        yield* runGit(fixture.root, ["add", "Plans.md", "Later.md"]);
+        yield* runGit(fixture.root, [
+          "commit",
+          "-m",
+          "Marked\n\nAstrolabe-Amendment: after-capture",
+        ]);
+        const { index, dashboard } = yield* makeLineIndex(fixture, {
+          branch: "memory-line",
+          baseOid,
+          runtimes: [{ threadId: lineThread }],
+          checkpoints: [
+            {
+              turnId: TurnId.make("captured"),
+              checkpointTurnCount: 1,
+              checkpointRef: ref,
+              status: "ready",
+              files: [],
+              assistantMessageId: MessageId.make("captured-reply"),
+              completedAt: "2026-09-04T00:00:00Z",
+            },
+          ],
+        });
+        const overview = yield* dashboard.readDashboard({
+          projectId: fixture.projectId,
+          line: lineRef,
+          position: { kind: "latest" },
+        });
+        assert(overview.kind === "available");
+        const latest = yield* index.readNote(fixture.projectId, "Plans", lineRef);
+        assert.equal(latest.markdown, "After amendment\n");
+        assert.equal(
+          (yield* runGit(fixture.root, ["show", `${overview.position.treeOid}:Plans.md`])) + "\n",
+          latest.markdown,
+        );
+        assert.deepEqual(
+          (yield* index.readIndex(fixture.projectId, lineRef)).notes.map((n) => n.name),
+          ["Later", "Loose", "Plans"],
+        );
+        const at = { kind: "turn" as const, threadId: lineThread, turnCount: 1 };
+        assert.equal(
+          (yield* index.readNote(fixture.projectId, "Plans", lineRef, at)).markdown,
+          "Before\n",
+        );
+        assert.equal(
+          (yield* index.readNote(fixture.projectId, "Later", lineRef, at)).exists,
+          false,
+        );
+        assert.deepEqual(
+          (yield* index.readIndex(fixture.projectId, lineRef, at)).notes.map((n) => n.name),
+          ["Loose", "Plans"],
+        );
+        const changes = yield* index.readLineChanges({
+          projectId: fixture.projectId,
+          line: lineRef,
+          position: at,
+        });
+        assert.deepEqual(changes.marked, []);
+        assert(changes.unmarked?.diff.includes("Unmarked"));
+        const currentChanges = yield* index.readLineChanges({
+          projectId: fixture.projectId,
+          line: lineRef,
+        });
+        assert.equal(currentChanges.marked.length, 1);
+        assert(!currentChanges.unmarked?.diff.includes("After amendment"));
+        yield* runGit(fixture.root, ["update-ref", "-d", ref]);
+        const missing = yield* index
+          .readNote(fixture.projectId, "Later", lineRef, at)
+          .pipe(Effect.flip);
+        assert.equal(missing._tag, "MemoryReadUnavailableError");
+        assert("reason" in missing && missing.reason === "object-missing");
+        const noLine = yield* index
+          .readNote(fixture.projectId, "Plans", undefined, at)
+          .pipe(Effect.flip);
+        assert.equal(noLine._tag, "MemoryReadUnavailableError");
+        const sources = yield* MemorySourceStore.MemorySourceStore;
+        yield* sources.remove(fixture.projectId);
+        assert.deepEqual(
+          yield* dashboard.readDashboard({
+            projectId: fixture.projectId,
+            line: lineRef,
+            position: { kind: "latest" },
+          }),
+          { kind: "unavailable", reason: "not-designated" },
+        );
+        assert.equal(
+          (yield* index.readIndex(fixture.projectId).pipe(Effect.flip))._tag,
+          "MemoryNotDesignatedError",
+        );
+      }).pipe(Effect.scoped),
   );
 
   it.effect("lands a marked amendment in the held line member and leaves main untouched", () =>

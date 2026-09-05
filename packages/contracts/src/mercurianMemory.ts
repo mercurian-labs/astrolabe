@@ -1,7 +1,7 @@
 /** Project-memory designation and the fresh, disk-derived read model. */
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { MercurianCommitId, MercurianProjectId, PlanId } from "./mercurian.ts";
 import { MercurianRepositoryId } from "./mercurianRepositories.ts";
 
@@ -9,6 +9,11 @@ export const MERCURIAN_MEMORY_WS_METHODS = {
   subscribeMemorySources: "mercurian.subscribeMemorySources",
   designateMemorySource: "mercurian.designateMemorySource",
   removeMemorySource: "mercurian.removeMemorySource",
+  readMemoryCatalog: "mercurian.readMemoryCatalog",
+  readMemoryDashboard: "mercurian.readMemoryDashboard",
+  readMemoryDocument: "mercurian.readMemoryDocument",
+  readMemoryComparison: "mercurian.readMemoryComparison",
+  subscribeMemoryInvalidations: "mercurian.subscribeMemoryInvalidations",
   readMemoryIndex: "mercurian.readMemoryIndex",
   readMemoryNote: "mercurian.readMemoryNote",
   readLineMemoryChanges: "mercurian.readLineMemoryChanges",
@@ -100,15 +105,28 @@ export const MercurianDesignateMemorySourceInput = Schema.Struct({
 export type MercurianDesignateMemorySourceInput = typeof MercurianDesignateMemorySourceInput.Type;
 export const MercurianRemoveMemorySourceInput = Schema.Struct({ projectId: MercurianProjectId });
 export type MercurianRemoveMemorySourceInput = typeof MercurianRemoveMemorySourceInput.Type;
+export const MemoryReadingPosition = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("latest") }),
+  Schema.Struct({ kind: Schema.Literal("checkpoint"), commitId: MercurianCommitId }),
+  Schema.Struct({
+    kind: Schema.Literal("turn"),
+    threadId: ThreadId,
+    turnCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  }),
+]);
+export type MemoryReadingPosition = typeof MemoryReadingPosition.Type;
+
 export const MercurianReadMemoryIndexInput = Schema.Struct({
   projectId: MercurianProjectId,
   line: Schema.optional(MemoryLineRef),
+  position: Schema.optional(MemoryReadingPosition),
 });
 export type MercurianReadMemoryIndexInput = typeof MercurianReadMemoryIndexInput.Type;
 export const MercurianReadMemoryNoteInput = Schema.Struct({
   projectId: MercurianProjectId,
   name: TrimmedNonEmptyString,
   line: Schema.optional(MemoryLineRef),
+  position: Schema.optional(MemoryReadingPosition),
 });
 export type MercurianReadMemoryNoteInput = typeof MercurianReadMemoryNoteInput.Type;
 export const MemoryLineChange = Schema.Struct({
@@ -137,6 +155,7 @@ export const MercurianLineMemoryChanges = Schema.Struct({
 export type MercurianLineMemoryChanges = typeof MercurianLineMemoryChanges.Type;
 export const MercurianReadLineMemoryChangesInput = Schema.Struct({
   line: MemoryLineRef,
+  position: Schema.optional(MemoryReadingPosition),
 });
 export type MercurianReadLineMemoryChangesInput = typeof MercurianReadLineMemoryChangesInput.Type;
 export const MercurianMarkMemoryChangeReviewedInput = Schema.Struct({
@@ -226,6 +245,11 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
       "subscribeMemorySources",
       "designateMemorySource",
       "removeMemorySource",
+      "readMemoryCatalog",
+      "readMemoryDashboard",
+      "readMemoryDocument",
+      "readMemoryComparison",
+      "subscribeMemoryInvalidations",
       "readMemoryIndex",
       "readMemoryNote",
       "readLineMemoryChanges",
@@ -269,3 +293,195 @@ export class MergeMemoryHomeBlockedError extends Schema.TaggedErrorClass<MergeMe
       : "The local memory home branch does not exist";
   }
 }
+
+/** Resolved once; all subsequent reads use object IDs, never mutable refs. */
+export const MemoryObjectId = Schema.String.check(
+  Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u),
+);
+export const MemoryPosition = Schema.Struct({
+  projectId: MercurianProjectId,
+  repositoryId: MercurianRepositoryId,
+  memoryRoot: Schema.String,
+  lineRootCommitId: MercurianCommitId,
+  reading: MemoryReadingPosition,
+  baselineTreeOid: MemoryObjectId,
+  baselineSnapshotOid: Schema.NullOr(MemoryObjectId),
+  baseCommitOid: MemoryObjectId,
+  snapshotOid: Schema.NullOr(MemoryObjectId),
+  treeOid: MemoryObjectId,
+  recordedHeadOid: MemoryObjectId,
+  headOid: MemoryObjectId,
+  captureKind: Schema.NullOr(Schema.String),
+});
+export type MemoryPosition = typeof MemoryPosition.Type;
+export const MemoryUnavailable = Schema.Struct({
+  kind: Schema.Literal("unavailable"),
+  reason: Schema.Literals([
+    "not-designated",
+    "line-missing",
+    "checkpoint-missing",
+    "baseline-missing",
+    "object-missing",
+    "effective-tree-conflict",
+    "git-too-old",
+  ]),
+});
+export type MemoryUnavailable = typeof MemoryUnavailable.Type;
+/** The environment is the RPC envelope; UI tabs retain it alongside this target. */
+export const MemoryDocumentTarget = Schema.Struct({
+  position: MemoryPosition,
+  path: TrimmedNonEmptyString,
+  treeOid: MemoryObjectId,
+  blobOid: MemoryObjectId,
+  deleted: Schema.Boolean,
+});
+export type MemoryDocumentTarget = typeof MemoryDocumentTarget.Type;
+export const MemoryComparisonTarget = Schema.Struct({
+  position: MemoryPosition,
+  beforeTreeOid: MemoryObjectId,
+  afterTreeOid: MemoryObjectId,
+  paths: Schema.Array(TrimmedNonEmptyString),
+});
+export type MemoryComparisonTarget = typeof MemoryComparisonTarget.Type;
+export const MemoryDocumentKind = Schema.Literals(["note", "skill-map", "document"]);
+export type MemoryDocumentKind = typeof MemoryDocumentKind.Type;
+export const MemoryChangedDocument = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  previousPaths: Schema.Array(Schema.String),
+  kind: MemoryDocumentKind,
+  status: Schema.Literals(["added", "modified", "deleted", "renamed", "restored"]),
+  latestCheckpoint: Schema.NullOr(Schema.String),
+  amendmentIds: Schema.Array(Schema.String),
+  document: Schema.NullOr(MemoryDocumentTarget),
+  comparison: MemoryComparisonTarget,
+});
+export type MemoryChangedDocument = typeof MemoryChangedDocument.Type;
+export const MemoryAmendmentSummary = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.Literals(["marked", "hand", "unmarked"]),
+  title: Schema.String,
+  turnId: Schema.NullOr(Schema.String),
+  reviewed: Schema.Boolean,
+  documentIds: Schema.Array(Schema.String),
+  comparison: MemoryComparisonTarget,
+});
+export type MemoryAmendmentSummary = typeof MemoryAmendmentSummary.Type;
+export const MemoryLocalGraph = Schema.Struct({
+  nodes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  edges: Schema.Array(
+    Schema.Struct({
+      from: Schema.String,
+      to: Schema.String,
+      status: Schema.Literals(["added", "removed", "unchanged"]),
+    }),
+  ),
+  outsideReferences: Schema.Array(
+    Schema.Struct({
+      from: Schema.String,
+      name: Schema.String,
+      side: Schema.Literals(["baseline", "selected"]),
+    }),
+  ),
+});
+export type MemoryLocalGraph = typeof MemoryLocalGraph.Type;
+export const MemoryDashboard = Schema.Union([
+  MemoryUnavailable,
+  Schema.Struct({
+    kind: Schema.Literal("available"),
+    position: MemoryPosition,
+    documents: Schema.Array(MemoryChangedDocument),
+    amendments: Schema.Array(MemoryAmendmentSummary),
+    graph: MemoryLocalGraph,
+    unreviewedCount: Schema.Number,
+    limitations: Schema.Array(Schema.String),
+  }),
+]);
+export type MemoryDashboard = typeof MemoryDashboard.Type;
+export const MercurianReadMemoryDashboardInput = Schema.Struct({
+  projectId: MercurianProjectId,
+  line: MemoryLineRef,
+  position: MemoryReadingPosition,
+});
+export type MercurianReadMemoryDashboardInput = typeof MercurianReadMemoryDashboardInput.Type;
+export const MercurianReadMemoryDocumentInput = Schema.Struct({ target: MemoryDocumentTarget });
+export type MercurianReadMemoryDocumentInput = typeof MercurianReadMemoryDocumentInput.Type;
+export const MercurianReadMemoryComparisonInput = Schema.Struct({ target: MemoryComparisonTarget });
+export type MercurianReadMemoryComparisonInput = typeof MercurianReadMemoryComparisonInput.Type;
+export const MemoryDocumentResult = Schema.Union([
+  MemoryUnavailable,
+  Schema.Struct({
+    kind: Schema.Literal("available"),
+    target: MemoryDocumentTarget,
+    markdown: Schema.String,
+    links: Schema.Array(
+      Schema.Struct({ name: Schema.String, target: Schema.NullOr(MemoryDocumentTarget) }),
+    ),
+    map: Schema.NullOr(Schema.Union([MemoryMap, MemoryMapRefusal])),
+  }),
+]);
+export type MemoryDocumentResult = typeof MemoryDocumentResult.Type;
+export const MemoryComparisonResult = Schema.Union([
+  MemoryUnavailable,
+  Schema.Struct({
+    kind: Schema.Literal("available"),
+    target: MemoryComparisonTarget,
+    patch: Schema.String,
+    maps: Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        before: Schema.NullOr(Schema.Union([MemoryMap, MemoryMapRefusal])),
+        after: Schema.NullOr(Schema.Union([MemoryMap, MemoryMapRefusal])),
+        structureChanged: Schema.Boolean,
+        bodyChanged: Schema.Boolean,
+      }),
+    ),
+  }),
+]);
+export type MemoryComparisonResult = typeof MemoryComparisonResult.Type;
+export const MemoryInvalidation = Schema.Struct({ kind: Schema.Literal("invalidate") });
+export const MercurianSubscribeMemoryInvalidationsInput = Schema.Struct({});
+export const MemoryDocumentSelection = Schema.Struct({
+  environmentId: EnvironmentId,
+  target: MemoryDocumentTarget,
+});
+export type MemoryDocumentSelection = typeof MemoryDocumentSelection.Type;
+export const MemoryComparisonSelection = Schema.Struct({
+  environmentId: EnvironmentId,
+  target: MemoryComparisonTarget,
+});
+export type MemoryComparisonSelection = typeof MemoryComparisonSelection.Type;
+/** Retain this exact target in the composer's pending review context; never send automatically. */
+export const MemoryDocumentComment = Schema.Struct({
+  environmentId: EnvironmentId,
+  target: MemoryDocumentTarget,
+  startLine: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  endLine: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  text: Schema.String,
+});
+export type MemoryDocumentComment = typeof MemoryDocumentComment.Type;
+
+/** Legacy successful read shapes are unchanged; unavailable line positions use a typed error. */
+export class MemoryReadUnavailableError extends Schema.TaggedErrorClass<MemoryReadUnavailableError>()(
+  "MemoryReadUnavailableError",
+  { reason: MemoryUnavailable.fields.reason },
+) {
+  override get message(): string {
+    return `Memory content is unavailable: ${this.reason}`;
+  }
+}
+export const isMemoryReadUnavailableError = Schema.is(MemoryReadUnavailableError);
+export const MercurianReadMemoryCatalogInput = Schema.Struct({ position: MemoryPosition });
+export type MercurianReadMemoryCatalogInput = typeof MercurianReadMemoryCatalogInput.Type;
+/** Browse metadata shares one immutable position rather than repeating it for every file. */
+export const MemoryCatalog = Schema.Union([
+  MemoryUnavailable,
+  Schema.Struct({
+    kind: Schema.Literal("available"),
+    position: MemoryPosition,
+    entries: Schema.Array(
+      Schema.Struct({ path: Schema.String, blobOid: MemoryObjectId, kind: MemoryDocumentKind }),
+    ),
+  }),
+]);
+export type MemoryCatalog = typeof MemoryCatalog.Type;

@@ -1,3 +1,18 @@
+import {
+  MemoryReadUnavailableError,
+  MercurianReadMemoryCatalogInput,
+  MemoryCatalog,
+} from "./mercurianMemory.ts";
+import {
+  MercurianReadMemoryDashboardInput,
+  MercurianReadMemoryDocumentInput,
+  MercurianReadMemoryComparisonInput,
+  MercurianSubscribeMemoryInvalidationsInput,
+  MemoryDashboard,
+  MemoryDocumentResult,
+  MemoryComparisonResult,
+  MemoryInvalidation,
+} from "./mercurianMemory.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -1551,10 +1566,57 @@ export const WsMercurianRemoveMemorySourceRpc = Rpc.make(
   },
 );
 
+export const WsMercurianReadMemoryCatalogRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+  {
+    payload: MercurianReadMemoryCatalogInput,
+    success: MemoryCatalog,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryDashboardRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+  {
+    payload: MercurianReadMemoryDashboardInput,
+    success: MemoryDashboard,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryDocumentRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+  {
+    payload: MercurianReadMemoryDocumentInput,
+    success: MemoryDocumentResult,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryComparisonRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+  {
+    payload: MercurianReadMemoryComparisonInput,
+    success: MemoryComparisonResult,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianSubscribeMemoryInvalidationsRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+  {
+    payload: MercurianSubscribeMemoryInvalidationsInput,
+    success: MemoryInvalidation,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
 export const WsMercurianReadMemoryIndexRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex, {
   payload: MercurianReadMemoryIndexInput,
   success: MemoryIndex,
   error: Schema.Union([
+    MemoryReadUnavailableError,
     MemoryNotDesignatedError,
     MemorySourceInvalidError,
     MercurianMemoryError,
@@ -1566,6 +1628,7 @@ export const WsMercurianReadMemoryNoteRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS
   payload: MercurianReadMemoryNoteInput,
   success: MemoryNote,
   error: Schema.Union([
+    MemoryReadUnavailableError,
     MemoryNotDesignatedError,
     MemorySourceInvalidError,
     MercurianMemoryError,
@@ -1579,6 +1642,7 @@ export const WsMercurianReadLineMemoryChangesRpc = Rpc.make(
     payload: MercurianReadLineMemoryChangesInput,
     success: MercurianLineMemoryChanges,
     error: Schema.Union([
+      MemoryReadUnavailableError,
       MemoryNotDesignatedError,
       MemorySourceInvalidError,
       MercurianMemoryError,
@@ -1861,6 +1925,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSubscribeMemorySourcesRpc,
   WsMercurianDesignateMemorySourceRpc,
   WsMercurianRemoveMemorySourceRpc,
+  WsMercurianReadMemoryCatalogRpc,
+  WsMercurianReadMemoryDashboardRpc,
+  WsMercurianReadMemoryDocumentRpc,
+  WsMercurianReadMemoryComparisonRpc,
+  WsMercurianSubscribeMemoryInvalidationsRpc,
   WsMercurianReadMemoryIndexRpc,
   WsMercurianReadMemoryNoteRpc,
   WsMercurianReadLineMemoryChangesRpc,

@@ -127,6 +127,8 @@ import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
+import * as MemoryReviewStore from "./mercurian/memory/MemoryReviewStore.ts";
 import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
@@ -566,6 +568,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     memoryIndex?: Partial<MemoryIndex.MemoryIndex["Service"]>;
+    memoryDashboard?: Partial<MemoryDashboard.MemoryDashboard["Service"]>;
     lineTurnReactor?: Partial<LineTurnReactor.LineTurnReactor["Service"]>;
     trackerConnector?: TrackerConnector<"linear">;
     environmentTheme?: Partial<EnvironmentTheme.EnvironmentThemeService["Service"]>;
@@ -1364,6 +1367,17 @@ const buildAppUnderTest = (options?: {
               mergeHome: () => Effect.succeed({ kind: "deferred-to-push" as const }),
               ...options?.layers?.memoryIndex,
             }),
+            Layer.mock(MemoryDashboard.MemoryDashboard)({
+              readCatalog: () => Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
+              invalidate: Effect.void,
+              changes: Stream.empty,
+              readDashboard: () => Effect.succeed({ kind: "unavailable", reason: "line-missing" }),
+              readDocument: () => Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
+              readComparison: () =>
+                Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
+              ...options?.layers?.memoryDashboard,
+            }),
+            MemoryReviewStore.layer,
             WorkspaceSettingsStore.layer,
             // Over a connector that reaches no network: the server suite is about
             // the wire, not about Linear.
@@ -5229,6 +5243,80 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       ]);
       assert.deepEqual(ensuredProjects, [projectId]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "routes immutable memory dashboard and detail targets without changing their position",
+    () =>
+      Effect.gen(function* () {
+        const inputs = yield* Queue.unbounded<unknown>();
+        yield* buildAppUnderTest({
+          layers: {
+            memoryDashboard: {
+              readDashboard: (input) =>
+                Queue.offer(inputs, input).pipe(
+                  Effect.as({ kind: "unavailable" as const, reason: "line-missing" as const }),
+                ),
+              readDocument: (input) =>
+                Queue.offer(inputs, input).pipe(
+                  Effect.as({ kind: "unavailable" as const, reason: "object-missing" as const }),
+                ),
+              readComparison: (input) =>
+                Queue.offer(inputs, input).pipe(
+                  Effect.as({ kind: "unavailable" as const, reason: "object-missing" as const }),
+                ),
+            },
+          },
+        });
+        const projectId = MercurianProjectId.make("immutable-project");
+        const threadId = ThreadId.make("immutable-thread");
+        const request = {
+          projectId,
+          line: { threadId },
+          position: { kind: "turn" as const, threadId, turnCount: 2 },
+        };
+        const oid = "a".repeat(40);
+        const position = {
+          projectId,
+          repositoryId: MercurianRepositoryId.make("immutable-repository"),
+          memoryRoot: "memory",
+          lineRootCommitId: MercurianCommitId.make("immutable-root"),
+          reading: request.position,
+          baselineTreeOid: oid,
+          baselineSnapshotOid: null,
+          baseCommitOid: oid,
+          snapshotOid: oid,
+          treeOid: oid,
+          recordedHeadOid: oid,
+          headOid: oid,
+          captureKind: "settled",
+        };
+        const document = {
+          target: { position, path: "memory/A.md", treeOid: oid, blobOid: oid, deleted: true },
+        };
+        const comparison = {
+          target: {
+            position,
+            beforeTreeOid: oid,
+            afterTreeOid: "b".repeat(40),
+            paths: ["memory/A.md"],
+          },
+        };
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            assert.deepEqual(
+              yield* client[MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard](request),
+              { kind: "unavailable", reason: "line-missing" },
+            );
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument](document);
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison](comparison);
+          }),
+        );
+        assert.deepEqual(yield* Queue.take(inputs), request);
+        assert.deepEqual(yield* Queue.take(inputs), document);
+        assert.deepEqual(yield* Queue.take(inputs), comparison);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes memory review, revert, and merge through current plan ownership", () =>

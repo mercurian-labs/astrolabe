@@ -1,6 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createMercurianMemoryAtoms } from "@t3tools/client-runtime/state/mercurian-memory";
 import type {
+  MercurianReadMemoryDashboardInput,
+  MercurianReadMemoryCatalogInput,
+  MemoryReadingPosition,
+  MercurianReadMemoryDocumentInput,
+  MercurianReadMemoryComparisonInput,
   MemorySourcesSnapshot,
   EnvironmentId,
   MemoryLineRef,
@@ -74,17 +79,21 @@ export function useRemoveMemorySource() {
   return useCallback((projectId: MercurianProjectId) => run({ projectId }), [run]);
 }
 
-export function useReadMemoryIndex() {
-  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryIndex);
+export function useReadMemoryIndex(environmentId?: EnvironmentId | null) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryIndex, environmentId);
   return useCallback(
-    (projectId: MercurianProjectId, line?: MemoryLineRef) =>
-      run({ projectId, ...(line === undefined ? {} : { line }) }),
+    (projectId: MercurianProjectId, line?: MemoryLineRef, position?: MemoryReadingPosition) =>
+      run({
+        projectId,
+        ...(line === undefined ? {} : { line }),
+        ...(position === undefined ? {} : { position }),
+      }),
     [run],
   );
 }
 
-export function useReadMemoryNote() {
-  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryNote);
+export function useReadMemoryNote(environmentId?: EnvironmentId | null) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryNote, environmentId);
   return useCallback((input: MercurianReadMemoryNoteInput) => run(input), [run]);
 }
 
@@ -117,4 +126,29 @@ export function useMergeMemoryHome(environmentId?: EnvironmentId | null) {
 export function useGenerateProductMap() {
   const run = useEnvironmentBoundCommandResult(mercurianMemory.generateProductMap);
   return useCallback((projectId: MercurianProjectId) => run({ projectId }), [run]);
+}
+
+export function useReadMemoryDashboard(environmentId: EnvironmentId) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryDashboard, environmentId);
+  return useCallback((input: MercurianReadMemoryDashboardInput) => run(input), [run]);
+}
+
+export function useReadMemoryDocument(environmentId: EnvironmentId) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryDocument, environmentId);
+  return useCallback((input: MercurianReadMemoryDocumentInput) => run(input), [run]);
+}
+
+export function useReadMemoryComparison(environmentId: EnvironmentId) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryComparison, environmentId);
+  return useCallback((input: MercurianReadMemoryComparisonInput) => run(input), [run]);
+}
+
+/** Emits on reconnect, captures, review and curation across devices. Consumers refresh latest only. */
+export function useMemoryInvalidation(environmentId: EnvironmentId) {
+  return useAtomValue(mercurianMemory.subscribeMemoryInvalidations({ environmentId, input: {} }));
+}
+
+export function useReadMemoryCatalog(environmentId: EnvironmentId) {
+  const run = useEnvironmentBoundCommandResult(mercurianMemory.readMemoryCatalog, environmentId);
+  return useCallback((input: MercurianReadMemoryCatalogInput) => run(input), [run]);
 }

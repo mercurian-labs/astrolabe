@@ -1,3 +1,8 @@
+import {
+  makeMemoryLineIdentity,
+  makeMemoryPosition,
+  type MemoryLineContext,
+} from "./MemoryPosition.ts";
 import * as NodeCrypto from "node:crypto";
 
 import * as Context from "effect/Context";
@@ -13,6 +18,8 @@ import * as Schema from "effect/Schema";
 import {
   CheckpointRef,
   MemoryNotDesignatedError,
+  MemoryReadUnavailableError,
+  type MemoryReadingPosition,
   MemoryReviewBlockedError,
   MergeMemoryHomeBlockedError,
   type MemoryMapPlacement,
@@ -24,7 +31,6 @@ import {
   type MercurianCommitId,
   MercurianMemoryError,
   type MercurianProjectId,
-  type PlanId,
   type PlanTurnId,
   type ThreadId,
   ProductMapAlreadyExistsError,
@@ -38,10 +44,8 @@ import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { lineRootCommitIdFor } from "../commitTree/LineBranchReactor.ts";
 import { resolveRepositoryDefault } from "../commitTree/repositoryDefault.ts";
-import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { LegacySessionStore } from "../lineRuntimes/LegacySessionStore.ts";
 import { LineRuntimeStore } from "../lineRuntimes/LineRuntimeStore.ts";
-import { resolveThreadLine } from "../lineRuntimes/resolveThreadLine.ts";
 import { PlanningStore } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { PlanTurnRegistry } from "../planning/PlanTurnRegistry.ts";
@@ -69,6 +73,7 @@ export type MemoryIndexError =
   | PlatformError.PlatformError
   | ProcessRunner.ProcessRunError
   | MemoryNotDesignatedError
+  | MemoryReadUnavailableError
   | ProductMapAlreadyExistsError
   | ProductMapCycleError
   | MercurianMemoryError;
@@ -106,14 +111,20 @@ export interface PreparedMemoryAmendment {
 export class MemoryIndex extends Context.Service<
   MemoryIndex,
   {
+    readonly getLineContext: (input: {
+      readonly projectId: MercurianProjectId;
+      readonly line: MemoryLineRef;
+    }) => Effect.Effect<MemoryLineContext, MercurianMemoryError>;
     readonly readIndex: (
       projectId: MercurianProjectId,
       line?: MemoryLineRef,
+      position?: MemoryReadingPosition,
     ) => Effect.Effect<MemoryIndexValue, MemoryIndexError>;
     readonly readNote: (
       projectId: MercurianProjectId,
       name: string,
       line?: MemoryLineRef,
+      position?: MemoryReadingPosition,
     ) => Effect.Effect<MemoryNote, MemoryIndexError>;
     readonly generateProductMap: (
       projectId: MercurianProjectId,
@@ -126,6 +137,7 @@ export class MemoryIndex extends Context.Service<
     readonly resolveLineSource: (input: {
       readonly projectId: MercurianProjectId;
       readonly line: MemoryLineRef;
+      readonly position?: MemoryReadingPosition;
     }) => Effect.Effect<MemoryTreeSource, MemoryIndexError>;
     readonly landAmendment: (input: {
       readonly projectId: MercurianProjectId;
@@ -139,6 +151,7 @@ export class MemoryIndex extends Context.Service<
     readonly readLineChanges: (input: {
       readonly projectId: MercurianProjectId;
       readonly line: MemoryLineRef;
+      readonly position?: MemoryReadingPosition;
     }) => Effect.Effect<MercurianLineMemoryChanges, MemoryIndexError>;
     readonly markChangeReviewed: (input: {
       readonly projectId: MercurianProjectId;
@@ -170,13 +183,13 @@ export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const sourceStore = yield* MemorySourceStore.MemorySourceStore;
   const git = yield* GitVcsDriver;
+  const positions = yield* makeMemoryPosition;
   const lineRuntimes = yield* LineRuntimeStore;
   const legacySessions = yield* LegacySessionStore;
   const planning = yield* PlanningStore;
   const repositories = yield* RepositoryStore;
   const settings = yield* ServerSettingsService;
   const planTurns = yield* PlanTurnRegistry;
-  const branches = yield* LineBranchStore;
   const slots = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
   const checkpoints = yield* CheckpointStore;
@@ -189,9 +202,14 @@ export const make = Effect.gen(function* () {
         typeof cause === "object" &&
         cause !== null &&
         "_tag" in cause &&
-        (cause._tag === "MemoryNotDesignatedError" || cause._tag === "MemorySourceInvalidError")
+        (cause._tag === "MemoryNotDesignatedError" ||
+          cause._tag === "MemorySourceInvalidError" ||
+          cause._tag === "MemoryReadUnavailableError")
       ) {
-        return cause as MemoryNotDesignatedError | MemorySourceStore.MemorySourceStoreError;
+        return cause as
+          | MemoryNotDesignatedError
+          | MemoryReadUnavailableError
+          | MemorySourceStore.MemorySourceStoreError;
       }
       return new MercurianMemoryError({ operation, cause });
     };
@@ -428,12 +446,13 @@ export const make = Effect.gen(function* () {
   const loadRef = Effect.fn("MemoryIndex.loadRef")(function* (
     source: Extract<MemoryTreeSource, { readonly kind: "ref" }>,
   ) {
-    const resolved = yield* git.execute({
-      operation: "MemoryIndex.resolveRef",
-      cwd: source.repositoryPath,
-      args: ["rev-parse", "--verify", `${source.ref}^{commit}`],
-    });
-    const oid = resolved.stdout.trim();
+    const oid =
+      source.treeOid ??
+      (yield* git.execute({
+        operation: "MemoryIndex.resolveRef",
+        cwd: source.repositoryPath,
+        args: ["rev-parse", "--verify", `${source.ref}^{tree}`],
+      })).stdout.trim();
     const cacheKey = `ref:${source.repositoryPath}\0${oid}\0${source.subpath}`;
     const previous = cache.get(cacheKey);
     if (previous !== undefined) return previous;
@@ -502,53 +521,7 @@ export const make = Effect.gen(function* () {
     return next;
   });
 
-  const lineIdentity = Effect.fn("MemoryIndex.lineIdentity")(function* (input: {
-    readonly projectId: MercurianProjectId;
-    readonly line: MemoryLineRef;
-  }) {
-    let planId: PlanId;
-    let commitId: string;
-    if ("threadId" in input.line) {
-      const resolved = yield* resolveThreadLine(lineRuntimes, legacySessions, input.line.threadId);
-      if (Option.isSome(resolved) && resolved.value.lineRootCommitId !== null) {
-        planId = resolved.value.planId;
-        commitId = resolved.value.lineRootCommitId;
-      } else {
-        const active = yield* planTurns.getByThread(input.line.threadId);
-        if (Option.isNone(active)) {
-          return yield* new MercurianMemoryError({
-            operation: "readLineMemoryChanges",
-            cause: new Error(`Memory line thread ${input.line.threadId} is missing`),
-          });
-        }
-        planId = active.value.planId;
-        commitId = active.value.tipCommitId;
-      }
-    } else {
-      planId = input.line.planId;
-      commitId = input.line.commitId;
-    }
-    const detail = yield* planning.getPlanSnapshot({ planId });
-    if (detail.plan.projectId !== input.projectId) {
-      return yield* new MercurianMemoryError({
-        operation: "readLineMemoryChanges",
-        cause: new Error("The thread is not part of this project"),
-      });
-    }
-    const lineRootCommitId = lineRootCommitIdFor(detail, commitId);
-    const source = yield* requireSource(input.projectId);
-    const branch = yield* branches.get({
-      lineRootCommitId,
-      repositoryId: source.repositoryId,
-    });
-    return {
-      planId,
-      detail,
-      lineRootCommitId,
-      source,
-      branch: Option.getOrNull(branch),
-    };
-  });
+  const lineIdentity = yield* makeMemoryLineIdentity;
 
   const lineContext = Effect.fn("MemoryIndex.lineContext")(function* (input: {
     readonly projectId: MercurianProjectId;
@@ -567,32 +540,17 @@ export const make = Effect.gen(function* () {
   const resolveLineSource: MemoryIndex["Service"]["resolveLineSource"] = (input) =>
     Effect.gen(function* () {
       const context = yield* lineIdentity(input);
-      if (context.branch === null) {
-        const startFromOrigin = (yield* settings.getSettings).newWorktreesStartFromOrigin;
-        const repositoryDefault = yield* resolveRepositoryDefault({
-          git,
-          path: context.source.repositoryPath,
-          startFromOrigin,
-        });
-        return {
-          kind: "ref",
-          repositoryPath: context.source.repositoryPath,
-          ref: repositoryDefault.ref,
-          subpath: context.source.subpath ?? "",
-        } satisfies MemoryTreeSource;
-      }
-      const snapshotRef = lineSnapshotRef(context.lineRootCommitId);
-      const snapshot = yield* git.execute({
-        operation: "MemoryIndex.resolveLineSnapshot",
-        cwd: context.source.repositoryPath,
-        args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
-        allowNonZeroExit: true,
-      });
+      const position = yield* positions
+        .read(context, input.position ?? { kind: "latest" })
+        .pipe(Effect.scoped);
+      if ("kind" in position)
+        return yield* new MemoryReadUnavailableError({ reason: position.reason });
       return {
         kind: "ref",
         repositoryPath: context.source.repositoryPath,
-        ref: snapshot.exitCode === 0 ? snapshotRef : `refs/heads/${context.branch.branch}`,
-        subpath: context.source.subpath ?? "",
+        ref: position.treeOid,
+        treeOid: position.treeOid,
+        subpath: position.memoryRoot,
       } satisfies MemoryTreeSource;
     }).pipe(Effect.mapError(normalizeReadError("readMemoryIndex")));
 
@@ -601,19 +559,33 @@ export const make = Effect.gen(function* () {
       ? loadRef(source)
       : loadRoot(source as ResolvedMemorySource);
 
-  const readIndex: MemoryIndex["Service"]["readIndex"] = (projectId, line) =>
+  const readIndex: MemoryIndex["Service"]["readIndex"] = (projectId, line, position) =>
     Effect.gen(function* () {
-      const source = yield* requireSource(projectId);
+      if (line === undefined && position !== undefined && position.kind !== "latest")
+        return yield* new MemoryReadUnavailableError({ reason: "line-missing" });
       const treeSource =
-        line === undefined ? source : yield* resolveLineSource({ projectId, line });
+        line === undefined
+          ? yield* requireSource(projectId)
+          : yield* resolveLineSource({
+              projectId,
+              line,
+              ...(position === undefined ? {} : { position }),
+            });
       return (yield* loadSource(treeSource)).index;
     }).pipe(Effect.mapError(normalizeReadError("readMemoryIndex")));
 
-  const readNote: MemoryIndex["Service"]["readNote"] = (projectId, name, line) =>
+  const readNote: MemoryIndex["Service"]["readNote"] = (projectId, name, line, position) =>
     Effect.gen(function* () {
-      const source = yield* requireSource(projectId);
+      if (line === undefined && position !== undefined && position.kind !== "latest")
+        return yield* new MemoryReadUnavailableError({ reason: "line-missing" });
       const treeSource =
-        line === undefined ? source : yield* resolveLineSource({ projectId, line });
+        line === undefined
+          ? yield* requireSource(projectId)
+          : yield* resolveLineSource({
+              projectId,
+              line,
+              ...(position === undefined ? {} : { position }),
+            });
       const { graph } = yield* loadSource(treeSource);
       const selected = graph.noteByName.get(name);
       if (selected === undefined) {
@@ -894,16 +866,24 @@ export const make = Effect.gen(function* () {
     readonly cwd: string;
     readonly lineRootCommitId: MercurianCommitId;
     readonly scope: string;
+    readonly snapshotOid?: string | null;
   }) {
-    const snapshotRef = lineSnapshotRef(input.lineRootCommitId);
-    const resolvedSnapshot = yield* git.execute({
-      operation: "MemoryIndex.readUnmarkedSnapshot.resolveSnapshot",
-      cwd: input.cwd,
-      args: ["rev-parse", "--verify", "--quiet", `${snapshotRef}^{commit}`],
-      allowNonZeroExit: true,
-    });
-    if (resolvedSnapshot.exitCode !== 0) return null;
-    const chainHead = resolvedSnapshot.stdout.trim();
+    let chainHead = input.snapshotOid;
+    if (chainHead === undefined) {
+      const resolvedSnapshot = yield* git.execute({
+        operation: "MemoryIndex.readUnmarkedSnapshot.resolveSnapshot",
+        cwd: input.cwd,
+        args: [
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          `${lineSnapshotRef(input.lineRootCommitId)}^{commit}`,
+        ],
+        allowNonZeroExit: true,
+      });
+      chainHead = resolvedSnapshot.exitCode === 0 ? resolvedSnapshot.stdout.trim() : null;
+    }
+    if (chainHead === null) return null;
     const secondParent = yield* git.execute({
       operation: "MemoryIndex.readUnmarkedSnapshot.secondParent",
       cwd: input.cwd,
@@ -948,11 +928,12 @@ export const make = Effect.gen(function* () {
   const readLineChanges: MemoryIndex["Service"]["readLineChanges"] = (input) =>
     Effect.gen(function* () {
       const context = yield* lineIdentity(input);
-      if (context.branch === null) {
-        return { marked: [], hand: [], unmarked: null, unreviewedCount: 0 };
-      }
-      const scope = context.source.subpath ?? ".";
-      const branchRef = `refs/heads/${context.branch.branch}`;
+      const position = yield* positions
+        .read(context, input.position ?? { kind: "latest" })
+        .pipe(Effect.scoped);
+      if ("kind" in position)
+        return yield* new MemoryReadUnavailableError({ reason: position.reason });
+      const scope = position.memoryRoot || ".";
       const log = yield* git.execute({
         operation: "MemoryIndex.readLineChanges.log",
         cwd: context.source.repositoryPath,
@@ -960,7 +941,7 @@ export const make = Effect.gen(function* () {
           "log",
           "--first-parent",
           "--format=%H%x00%s%x00%(trailers:only,unfold)%x00%aI%x00%x1e",
-          `${context.branch.baseOid}..${branchRef}`,
+          `${position.baseCommitOid}..${position.headOid}`,
           "--",
           scope,
         ],
@@ -993,6 +974,7 @@ export const make = Effect.gen(function* () {
         cwd: context.source.repositoryPath,
         lineRootCommitId: context.lineRootCommitId,
         scope,
+        snapshotOid: position.snapshotOid,
       });
       return {
         marked: withDiff
@@ -1495,6 +1477,12 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.mapError(normalizeMergeHomeError));
 
   return {
+    getLineContext: (input) =>
+      lineIdentity(input).pipe(
+        Effect.mapError(
+          (cause) => new MercurianMemoryError({ operation: "readMemoryDashboard", cause }),
+        ),
+      ),
     readIndex,
     readNote,
     generateProductMap,

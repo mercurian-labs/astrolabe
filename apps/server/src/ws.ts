@@ -1,3 +1,4 @@
+import { isMemoryReadUnavailableError } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -160,6 +161,8 @@ import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import type { RepositoryView } from "./mercurian/repositories/schema.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
+import { MemoryReviewStore } from "./mercurian/memory/MemoryReviewStore.ts";
 import { toWireMemorySourcesSnapshot } from "./mercurian/memory/wire.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
@@ -684,6 +687,8 @@ const makeWsRpcLayer = (
       const repositoryStore = yield* RepositoryStore.RepositoryStore;
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
+      const memoryDashboard = yield* MemoryDashboard.MemoryDashboard;
+      const memoryReviews = yield* MemoryReviewStore;
       const trackerStore = yield* TrackerStore.TrackerStore;
       const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
@@ -3117,14 +3122,69 @@ const makeWsRpcLayer = (
               ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+            memoryDashboard.readCatalog(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+            memoryDashboard.readDashboard(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+            memoryDashboard.readDocument(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+            memoryDashboard.readComparison(input),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations]: () =>
+          observeRpcStreamEffect(
+            MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+            Effect.gen(function* () {
+              const changes = yield* Queue.sliding<void>(1);
+              yield* Effect.forkScoped(
+                Stream.mergeAll(
+                  [
+                    memoryReviews.changes,
+                    memorySourceStore.changes,
+                    repositoryStore.changes,
+                    lineRuntimeStore.changes.pipe(Stream.map(() => undefined)),
+                    planningStore.changes,
+                    memoryDashboard.changes,
+                  ],
+                  { concurrency: "unbounded" },
+                ).pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
+                { startImmediately: true },
+              );
+              return Stream.concat(
+                Stream.make({ kind: "invalidate" as const }),
+                Stream.fromQueue(changes).pipe(
+                  Stream.debounce(Duration.millis(50)),
+                  Stream.map(() => ({ kind: "invalidate" as const })),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex]: (input) =>
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex,
             memoryIndex
-              .readIndex(input.projectId, input.line)
+              .readIndex(input.projectId, input.line, input.position)
               .pipe(
                 Effect.mapError((cause) =>
-                  isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                  isMemoryNotDesignatedError(cause) ||
+                  isMemorySourceInvalidError(cause) ||
+                  isMemoryReadUnavailableError(cause)
                     ? cause
                     : new MercurianMemoryError({ operation: "readMemoryIndex", cause }),
                 ),
@@ -3135,10 +3195,12 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             MERCURIAN_MEMORY_WS_METHODS.readMemoryNote,
             memoryIndex
-              .readNote(input.projectId, input.name, input.line)
+              .readNote(input.projectId, input.name, input.line, input.position)
               .pipe(
                 Effect.mapError((cause) =>
-                  isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                  isMemoryNotDesignatedError(cause) ||
+                  isMemorySourceInvalidError(cause) ||
+                  isMemoryReadUnavailableError(cause)
                     ? cause
                     : new MercurianMemoryError({ operation: "readMemoryNote", cause }),
                 ),
@@ -3157,10 +3219,13 @@ const makeWsRpcLayer = (
               return yield* memoryIndex.readLineChanges({
                 projectId: detail.plan.projectId,
                 line,
+                ...(input.position === undefined ? {} : { position: input.position }),
               });
             }).pipe(
               Effect.mapError((cause) =>
-                isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                isMemoryReadUnavailableError(cause)
                   ? cause
                   : new MercurianMemoryError({ operation: "readLineMemoryChanges", cause }),
               ),
@@ -3200,6 +3265,7 @@ const makeWsRpcLayer = (
                 line,
                 target: input.target,
               });
+              yield* memoryDashboard.invalidate;
             }).pipe(
               Effect.mapError((cause) =>
                 isMemoryNotDesignatedError(cause) ||

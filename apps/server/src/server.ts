@@ -49,6 +49,7 @@ import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
 import * as MemoryReviewStore from "./mercurian/memory/MemoryReviewStore.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
@@ -585,6 +586,9 @@ const MemoryIndexLayerLive = MemoryIndex.layer.pipe(
   Layer.provide(ProcessRunner.layer),
   Layer.provideMerge(SnapshotChainDependenciesLive),
 );
+const MemoryDashboardLayerLive = MemoryDashboard.layer.pipe(
+  Layer.provideMerge(MemoryIndexLayerLive),
+);
 
 // Turn preparation reads line-grounded memory. Build the command reactor
 // after that index exists, but before the orchestration reactor that consumes
@@ -631,7 +635,7 @@ const LineBranchReactorLayerLive = LineBranchReactorLive.pipe(
 const RuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderCommandReactorLayerLive),
   Layer.provideMerge(LineTurnReactorLayerLive),
-  Layer.provideMerge(MemoryIndexLayerLive),
+  Layer.provideMerge(MemoryDashboardLayerLive),
   Layer.provideMerge(LineRuntimeServiceLayerLive),
   Layer.provideMerge(LineRuntimeRecordReactorLayerLive),
   Layer.provideMerge(LineBranchReactorLayerLive),
