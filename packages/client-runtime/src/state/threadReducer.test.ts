@@ -1288,6 +1288,8 @@ describe("applyThreadDetailEvent", () => {
           status: "ready",
           files: repositories[0]!.files,
           repositories,
+          summaryStatus: "error",
+          summaryError: "beta summary failed",
           assistantMessageId: MessageId.make("msg-3"),
           completedAt: "2026-04-01T12:00:00.000Z",
           snapshotKind: "settled",
@@ -1297,6 +1299,8 @@ describe("applyThreadDetailEvent", () => {
       expect(result.kind).toBe("updated");
       if (result.kind === "updated") {
         expect(result.thread.checkpoints[0]?.repositories).toEqual(repositories);
+        expect(result.thread.checkpoints[0]?.summaryStatus).toBe("error");
+        expect(result.thread.checkpoints[0]?.summaryError).toBe("beta summary failed");
       }
     });
 

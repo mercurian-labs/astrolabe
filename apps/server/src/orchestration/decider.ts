@@ -1370,6 +1370,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           status: command.status,
           files: command.files,
           ...(command.repositories === undefined ? {} : { repositories: command.repositories }),
+          ...(command.summaryStatus === undefined ? {} : { summaryStatus: command.summaryStatus }),
+          ...(command.summaryError === undefined ? {} : { summaryError: command.summaryError }),
           assistantMessageId: command.assistantMessageId ?? null,
           completedAt: command.completedAt,
           ...(command.partial === undefined ? {} : { partial: command.partial }),

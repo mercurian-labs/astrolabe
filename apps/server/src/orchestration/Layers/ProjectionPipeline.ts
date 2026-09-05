@@ -1335,6 +1335,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               ...(event.payload.repositories === undefined
                 ? {}
                 : { checkpointRepositories: event.payload.repositories }),
+              ...(event.payload.summaryStatus === undefined
+                ? {}
+                : { checkpointSummaryStatus: event.payload.summaryStatus }),
+              ...(event.payload.summaryError === undefined
+                ? {}
+                : { checkpointSummaryError: event.payload.summaryError }),
               ...(event.payload.partial === undefined
                 ? {}
                 : { checkpointPartial: event.payload.partial }),
@@ -1371,6 +1377,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.repositories === undefined
               ? {}
               : { checkpointRepositories: event.payload.repositories }),
+            ...(event.payload.summaryStatus === undefined
+              ? {}
+              : { checkpointSummaryStatus: event.payload.summaryStatus }),
+            ...(event.payload.summaryError === undefined
+              ? {}
+              : { checkpointSummaryError: event.payload.summaryError }),
             ...(event.payload.partial === undefined
               ? {}
               : { checkpointPartial: event.payload.partial }),

@@ -11,6 +11,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationCheckpointFile,
   type OrchestrationCheckpointRepository,
+  type OrchestrationCheckpointSummaryStatus,
   type ProviderRuntimeEvent,
   type SnapshotKind,
   type VcsStatusLocalResult,
@@ -22,12 +23,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 
-import { parseTurnDiffFilesFromUnifiedDiff } from "./Diffs.ts";
-import { checkpointRefForThreadTurn, chainParentRef, resolveThreadWorkspaceCwd } from "./Utils.ts";
+import { CheckpointChangesError, enumerateCheckpointChanges } from "./CheckpointChanges.ts";
+import { checkpointRefForThreadTurn, resolveThreadWorkspaceCwd } from "./Utils.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import {
@@ -359,7 +361,7 @@ const make = Effect.gen(function* () {
         branchMovement,
       };
       yield* threadLines.recordRepositorySnapshot(input.threadId, member.repositoryId, facts);
-      return { member, facts, previousOid: snapshot.previousOid };
+      return { member, facts, previousOid: snapshot.previousOid, branchName: standing.branch };
     },
   );
 
@@ -374,49 +376,78 @@ const make = Effect.gen(function* () {
 
   const isGitWorkspace = (cwd: string) => isGitRepository(cwd);
 
+  interface CheckpointFileSummary {
+    readonly files: ReadonlyArray<OrchestrationCheckpointFile>;
+    readonly status: OrchestrationCheckpointSummaryStatus;
+    readonly error?: string;
+  }
+
   const checkpointFiles = Effect.fn("CheckpointReactor.checkpointFiles")(function* (input: {
     readonly cwd: string;
-    readonly fromCheckpointRef: CheckpointRef;
-    readonly toCheckpointRef: CheckpointRef;
+    readonly beforeSnapshotOid: string;
+    readonly afterSnapshotOid: string;
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
     readonly turnCount: number;
     readonly createdAt: string;
-  }) {
-    return yield* checkpointStore
-      .diffCheckpoints({
+  }): Effect.fn.Return<CheckpointFileSummary> {
+    const summary = yield* Effect.result(
+      enumerateCheckpointChanges({
         cwd: input.cwd,
-        fromCheckpointRef: input.fromCheckpointRef,
-        toCheckpointRef: input.toCheckpointRef,
-        fallbackFromToHead: false,
-        ignoreWhitespace: false,
-      })
-      .pipe(
-        Effect.map((diff) =>
-          parseTurnDiffFilesFromUnifiedDiff(diff).map((file) => ({
-            path: file.path,
-            kind: "modified" as const,
-            additions: file.additions,
-            deletions: file.deletions,
-          })),
-        ),
-        Effect.tapError((error) =>
-          appendCaptureFailureActivity({
-            threadId: input.threadId,
-            turnId: input.turnId,
-            detail: `Checkpoint captured, but turn diff summary is unavailable: ${error.message}`,
-            createdAt: input.createdAt,
-          }),
-        ),
-        Effect.catch((error) =>
-          Effect.logWarning("failed to derive checkpoint file summary", {
-            threadId: input.threadId,
-            turnId: input.turnId,
-            turnCount: input.turnCount,
-            detail: error.message,
-          }).pipe(Effect.as([])),
-        ),
-      );
+        beforeSnapshotOid: input.beforeSnapshotOid,
+        afterSnapshotOid: input.afterSnapshotOid,
+      }).pipe(Effect.provideService(GitVcsDriver, gitDriver)),
+    );
+    if (Result.isSuccess(summary)) {
+      return { files: summary.success, status: "ready" };
+    }
+    const status =
+      summary.failure._tag === "CheckpointChangesError"
+        ? summary.failure.availability
+        : ("error" as const);
+    const detail =
+      summary.failure._tag === "CheckpointChangesError"
+        ? summary.failure.detail
+        : summary.failure.message;
+    yield* appendCaptureFailureActivity({
+      threadId: input.threadId,
+      turnId: input.turnId,
+      detail: `Checkpoint captured, but turn diff summary is unavailable: ${detail}`,
+      createdAt: input.createdAt,
+    }).pipe(Effect.catch(() => Effect.void));
+    yield* Effect.logWarning("failed to derive checkpoint file summary", {
+      threadId: input.threadId,
+      turnId: input.turnId,
+      turnCount: input.turnCount,
+      detail,
+    });
+    return { files: [], status, error: detail };
+  });
+
+  const resolveSnapshotOid = Effect.fn("CheckpointReactor.resolveSnapshotOid")(function* (input: {
+    readonly cwd: string;
+    readonly revision: string;
+  }) {
+    const result = yield* gitDriver.execute({
+      operation: "CheckpointReactor.resolveSnapshotOid",
+      cwd: input.cwd,
+      args: ["rev-parse", `${input.revision}^{commit}`],
+      appendTruncationMarker: false,
+    });
+    if (result.stdoutTruncated) {
+      return yield* new CheckpointChangesError({
+        availability: "unavailable",
+        detail: "Git truncated the resolved checkpoint snapshot OID.",
+      });
+    }
+    const oid = result.stdout.trim();
+    if (oid.length === 0) {
+      return yield* new CheckpointChangesError({
+        availability: "error",
+        detail: `Git did not resolve checkpoint revision ${input.revision}.`,
+      });
+    }
+    return oid;
   });
 
   // Resolves the workspace CWD for checkpoint operations, preferring the
@@ -484,46 +515,104 @@ const make = Effect.gen(function* () {
       | { readonly kind: "rewritten" };
     readonly repositories?: ReadonlyArray<OrchestrationCheckpointRepository>;
     readonly files?: ReadonlyArray<OrchestrationCheckpointFile>;
+    readonly summaryStatus?: OrchestrationCheckpointSummaryStatus;
+    readonly summaryError?: string;
+    /** The caller already captured and summarized repository members. */
+    readonly prepared?: boolean;
   }) {
     const fromTurnCount = Math.max(0, input.turnCount - 1);
     const fromCheckpointRef =
       input.fromCheckpointRef ?? checkpointRefForThreadTurn(input.threadId, fromTurnCount);
     const targetCheckpointRef = checkpointRefForThreadTurn(input.threadId, input.turnCount);
 
-    const fromCheckpointExists = yield* checkpointStore.hasCheckpointRef({
-      cwd: input.cwd,
-      checkpointRef: fromCheckpointRef,
-    });
-    if (!fromCheckpointExists) {
-      yield* Effect.logWarning("checkpoint capture missing pre-turn baseline", {
-        threadId: input.threadId,
-        turnId: input.turnId,
-        fromTurnCount,
-      });
+    let status = input.status;
+    let files = input.files ?? [];
+    let summaryStatus = input.summaryStatus;
+    let summaryError = input.summaryError;
+
+    if (input.prepared !== true) {
+      const fromCheckpointExists = yield* checkpointStore
+        .hasCheckpointRef({ cwd: input.cwd, checkpointRef: fromCheckpointRef })
+        .pipe(Effect.orElseSucceed(() => false));
+      if (!fromCheckpointExists) {
+        yield* Effect.logWarning("checkpoint capture missing pre-turn baseline", {
+          threadId: input.threadId,
+          turnId: input.turnId,
+          fromTurnCount,
+        });
+      }
+
+      let captured = input.capture === false;
+      if (input.capture !== false) {
+        const captureResult = yield* Effect.result(
+          checkpointStore.captureCheckpoint({
+            cwd: input.cwd,
+            checkpointRef: targetCheckpointRef,
+          }),
+        );
+        if (Result.isFailure(captureResult)) {
+          status = "error";
+          summaryStatus = "unavailable";
+          summaryError = captureResult.failure.message;
+          yield* appendCaptureFailureActivity({
+            threadId: input.threadId,
+            turnId: input.turnId,
+            detail: captureResult.failure.message,
+            createdAt: input.createdAt,
+          }).pipe(Effect.catch(() => Effect.void));
+        } else {
+          captured = true;
+        }
+      }
+      if (captured) {
+        // Refresh the workspace entry index so the @-mention file picker
+        // reflects files created or deleted during this turn.
+        yield* workspaceEntries.refresh(input.cwd);
+        if (input.files === undefined) {
+          const pair = yield* Effect.result(
+            Effect.all({
+              beforeSnapshotOid: resolveSnapshotOid({
+                cwd: input.cwd,
+                revision: fromCheckpointRef,
+              }),
+              afterSnapshotOid: resolveSnapshotOid({
+                cwd: input.cwd,
+                revision: targetCheckpointRef,
+              }),
+            }),
+          );
+          if (Result.isFailure(pair)) {
+            summaryStatus =
+              pair.failure._tag === "CheckpointChangesError" ? pair.failure.availability : "error";
+            summaryError =
+              pair.failure._tag === "CheckpointChangesError"
+                ? pair.failure.detail
+                : pair.failure.message;
+            yield* appendCaptureFailureActivity({
+              threadId: input.threadId,
+              turnId: input.turnId,
+              detail: `Checkpoint captured, but its snapshot pair is unavailable: ${summaryError}`,
+              createdAt: input.createdAt,
+            }).pipe(Effect.catch(() => Effect.void));
+          } else {
+            const summary = yield* checkpointFiles({
+              cwd: input.cwd,
+              beforeSnapshotOid: pair.success.beforeSnapshotOid,
+              afterSnapshotOid: pair.success.afterSnapshotOid,
+              threadId: input.threadId,
+              turnId: input.turnId,
+              turnCount: input.turnCount,
+              createdAt: input.createdAt,
+            });
+            files = summary.files;
+            summaryStatus = summary.status;
+            summaryError = summary.error;
+          }
+        }
+      }
     }
 
-    if (input.capture !== false) {
-      yield* checkpointStore.captureCheckpoint({
-        cwd: input.cwd,
-        checkpointRef: targetCheckpointRef,
-      });
-    }
-
-    // Refresh the workspace entry index so the @-mention file picker
-    // reflects files created or deleted during this turn.
-    yield* workspaceEntries.refresh(input.cwd);
-
-    const files =
-      input.files ??
-      (yield* checkpointFiles({
-        cwd: input.cwd,
-        fromCheckpointRef,
-        toCheckpointRef: targetCheckpointRef,
-        threadId: input.threadId,
-        turnId: input.turnId,
-        turnCount: input.turnCount,
-        createdAt: input.createdAt,
-      }));
+    summaryStatus ??= "ready";
 
     const assistantMessageId =
       input.assistantMessageId ??
@@ -539,9 +628,11 @@ const make = Effect.gen(function* () {
       turnId: input.turnId,
       completedAt: input.createdAt,
       checkpointRef: targetCheckpointRef,
-      status: input.status,
+      status,
       files,
       ...(input.repositories === undefined ? {} : { repositories: input.repositories }),
+      summaryStatus,
+      ...(summaryError === undefined ? {} : { summaryError }),
       assistantMessageId,
       checkpointTurnCount: input.turnCount,
       createdAt: input.createdAt,
@@ -556,7 +647,7 @@ const make = Effect.gen(function* () {
       turnId: input.turnId,
       checkpointTurnCount: input.turnCount,
       checkpointRef: targetCheckpointRef,
-      status: input.status,
+      status,
       createdAt: input.createdAt,
     });
     yield* receiptBus.publish({
@@ -578,7 +669,9 @@ const make = Effect.gen(function* () {
         summary: "Checkpoint captured",
         payload: {
           turnCount: input.turnCount,
-          status: input.status,
+          status,
+          summaryStatus,
+          ...(summaryError === undefined ? {} : { summaryError }),
           ...(input.partial === undefined ? {} : { partial: input.partial }),
           ...(input.snapshotKind === undefined ? {} : { snapshotKind: input.snapshotKind }),
           ...(input.departedRef === undefined ? {} : { departedRef: input.departedRef }),
@@ -621,76 +714,149 @@ const make = Effect.gen(function* () {
               const kind = input.settled ? "settled" : "partial";
               const lineRootCommitId = slot.currentLineRootCommitId!;
               const members = yield* sessionMembers(session.value, slot, input.cwd);
-              const results = yield* Effect.forEach(members, (member) =>
-                captureMemberSnapshot({
-                  threadId: input.threadId,
-                  lineRootCommitId,
-                  member,
-                  kind,
-                  ref: checkpointRef,
-                  createdAt: input.createdAt,
-                }),
+              const attempts = yield* Effect.forEach(members, (member) =>
+                Effect.result(
+                  captureMemberSnapshot({
+                    threadId: input.threadId,
+                    lineRootCommitId,
+                    member,
+                    kind,
+                    ref: checkpointRef,
+                    createdAt: input.createdAt,
+                  }),
+                ).pipe(Effect.map((result) => ({ member, result }))),
               );
-              const home = results.find((result) => result.member.home) ?? results[0]!;
+              const successful = attempts.flatMap((attempt) =>
+                Result.isSuccess(attempt.result) ? [attempt.result.success] : [],
+              );
+              const home = successful.find((result) => result.member.home);
               // The session row carries the home member's facts; a departure
               // anywhere marks the turn departed, naming the first place it went.
               const departedRef =
-                results.find((result) => result.facts.departedRef !== null)?.facts.departedRef ??
+                successful.find((result) => result.facts.departedRef !== null)?.facts.departedRef ??
                 null;
-              yield* threadLines.recordSnapshot(input.threadId, {
-                ...home.facts,
-                departedRef,
-              });
+              if (home !== undefined) {
+                yield* threadLines.recordSnapshot(input.threadId, {
+                  ...home.facts,
+                  departedRef,
+                });
+              }
               const previousTurnRef = checkpointRefForThreadTurn(
                 input.threadId,
                 Math.max(0, input.turnCount - 1),
               );
-              const groups = yield* Effect.forEach(results, (result) =>
+              const groups = yield* Effect.forEach(attempts, ({ member, result: attempt }) =>
                 Effect.gen(function* () {
-                  yield* workspaceEntries.refresh(result.member.cwd);
-                  const files = yield* checkpointFiles({
-                    cwd: result.member.cwd,
-                    fromCheckpointRef:
-                      result.previousOid === null ? previousTurnRef : chainParentRef(checkpointRef),
-                    toCheckpointRef: checkpointRef,
-                    threadId: input.threadId,
-                    turnId: input.turnId,
-                    turnCount: input.turnCount,
-                    createdAt: input.createdAt,
-                  });
+                  if (Result.isFailure(attempt)) {
+                    const detail = attempt.failure.message;
+                    yield* appendCaptureFailureActivity({
+                      threadId: input.threadId,
+                      turnId: input.turnId,
+                      detail: `Checkpoint capture failed in ${member.repositoryName}: ${detail}`,
+                      createdAt: input.createdAt,
+                    }).pipe(Effect.catch(() => Effect.void));
+                    return {
+                      repositoryId: member.repositoryId,
+                      repositoryName: member.repositoryName,
+                      files: [],
+                      captureStatus: "error",
+                      captureError: detail,
+                      summaryStatus: "unavailable",
+                      summaryError: "Snapshot unavailable; change summary was not attempted.",
+                    } satisfies OrchestrationCheckpointRepository;
+                  }
+                  const captured = attempt.success;
+                  yield* workspaceEntries.refresh(captured.member.cwd);
+                  const before =
+                    captured.previousOid === null
+                      ? yield* Effect.result(
+                          resolveSnapshotOid({
+                            cwd: captured.member.cwd,
+                            revision: previousTurnRef,
+                          }),
+                        )
+                      : Result.succeed(captured.previousOid);
+                  const summary = Result.isFailure(before)
+                    ? {
+                        files: [],
+                        status:
+                          before.failure._tag === "CheckpointChangesError"
+                            ? before.failure.availability
+                            : ("error" as const),
+                        error:
+                          before.failure._tag === "CheckpointChangesError"
+                            ? before.failure.detail
+                            : before.failure.message,
+                      }
+                    : yield* checkpointFiles({
+                        cwd: captured.member.cwd,
+                        beforeSnapshotOid: before.success,
+                        afterSnapshotOid: captured.facts.snapshotOid,
+                        threadId: input.threadId,
+                        turnId: input.turnId,
+                        turnCount: input.turnCount,
+                        createdAt: input.createdAt,
+                      });
+                  if (Result.isFailure(before)) {
+                    const detail =
+                      before.failure._tag === "CheckpointChangesError"
+                        ? before.failure.detail
+                        : before.failure.message;
+                    yield* appendCaptureFailureActivity({
+                      threadId: input.threadId,
+                      turnId: input.turnId,
+                      detail: `Checkpoint captured in ${captured.member.repositoryName}, but its before snapshot is unavailable: ${detail}`,
+                      createdAt: input.createdAt,
+                    }).pipe(Effect.catch(() => Effect.void));
+                  }
                   return {
-                    repositoryId: result.member.repositoryId,
-                    repositoryName: result.member.repositoryName,
-                    files,
-                    ...(result.facts.departedRef === null
+                    repositoryId: captured.member.repositoryId,
+                    repositoryName: captured.member.repositoryName,
+                    files: summary.files,
+                    ...(Result.isSuccess(before) ? { beforeSnapshotOid: before.success } : {}),
+                    afterSnapshotOid: captured.facts.snapshotOid,
+                    branchName: captured.branchName,
+                    branchTipOid: captured.facts.branchTipOid,
+                    captureStatus: "ready",
+                    summaryStatus: summary.status,
+                    ...(summary.error === undefined ? {} : { summaryError: summary.error }),
+                    ...(captured.facts.departedRef === null
                       ? {}
-                      : { departedRef: result.facts.departedRef }),
-                    branchMovement: result.facts.branchMovement,
+                      : { departedRef: captured.facts.departedRef }),
+                    branchMovement: captured.facts.branchMovement,
                   } satisfies OrchestrationCheckpointRepository;
                 }),
               );
               const homeGroup =
-                groups.find((group) => group.repositoryId === home.member.repositoryId) ??
+                groups.find((group) => group.repositoryId === session.value.homeRepositoryId) ??
                 groups[0]!;
+              const failedSummary = groups.find((group) => group.summaryStatus === "error");
+              const unavailableSummary = groups.find(
+                (group) => group.summaryStatus === "unavailable",
+              );
+              const aggregateSummary = failedSummary ?? unavailableSummary;
+              const dispatchCwd = home?.member.cwd ?? successful[0]?.member.cwd ?? input.cwd;
               yield* captureAndDispatchCheckpoint({
                 threadId: input.threadId,
                 turnId: input.turnId,
                 thread: input.thread,
-                cwd: home.member.cwd,
+                cwd: dispatchCwd,
                 turnCount: input.turnCount,
-                status: input.status,
+                status: homeGroup.captureStatus === "error" ? "error" : input.status,
                 assistantMessageId: input.assistantMessageId,
                 createdAt: input.createdAt,
                 capture: false,
                 files: homeGroup.files,
-                ...(groups.length > 1 ? { repositories: groups } : {}),
-                ...(home.previousOid === null
+                repositories: groups,
+                summaryStatus: aggregateSummary?.summaryStatus ?? "ready",
+                ...(aggregateSummary?.summaryError === undefined
                   ? {}
-                  : { fromCheckpointRef: chainParentRef(checkpointRef) }),
+                  : { summaryError: aggregateSummary.summaryError }),
+                prepared: true,
                 ...(kind === "partial" ? { partial: true } : {}),
                 snapshotKind: kind,
                 ...(departedRef === null ? {} : { departedRef }),
-                branchMovement: home.facts.branchMovement,
+                ...(home === undefined ? {} : { branchMovement: home.facts.branchMovement }),
               });
             })
           : captureAndDispatchCheckpoint({
