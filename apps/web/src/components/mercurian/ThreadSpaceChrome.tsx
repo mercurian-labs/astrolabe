@@ -1,6 +1,9 @@
 /** Owned by the header lane of M-197 (plan §7). Header actions, banners, and the overlays that wrap ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { PlanId } from "@t3tools/contracts";
+import { useRouter } from "@tanstack/react-router";
+import { navigateToThreadRoute } from "../../threadRoutes";
+import { resolveLineTip } from "./planLineOwnership.logic";
 import { XIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
@@ -10,6 +13,8 @@ import { useMercurianTree, usePlanDetail } from "../../state/mercurian";
 import type { ThreadSyncPhase } from "../../threadSync";
 import type { ChatMessage } from "../../types";
 import ChatView from "../ChatView";
+import type { ConversationHistory } from "../chat/ConversationHistory";
+import { readLineConversationHistory } from "./LineConversationHistory.logic";
 import type { ChatComposerMentionSources } from "../chat/ChatComposer";
 import type { ThreadActionMenuId } from "../threadActionMenu.logic";
 import { Button } from "../ui/button";
@@ -28,6 +33,7 @@ import { useForkHere } from "./useForkHere";
 
 export type ThreadSpaceChatViewChrome = Readonly<{
   headerBanner?: ReactNode;
+  conversationHistory?: ConversationHistory;
   headerProjectName?: string;
   hiddenThreadMenuActions?: ReadonlySet<ThreadActionMenuId>;
   workspaceReady?: boolean;
@@ -102,7 +108,8 @@ export function SlotWaitNotice() {
 }
 
 export function useThreadSpaceChrome(): ThreadSpaceChrome {
-  const { detail, environmentId, graph, planId, projectId, threadId } = useThreadSpace();
+  const { detail, environmentId, graph, planId, projectId, threadId, search } = useThreadSpace();
+  const router = useRouter();
   const thread = useThread(scopeThreadRef(environmentId, threadId));
   const { snapshot: treeSnapshot } = useMercurianTree();
   const headerProjectName = treeSnapshot.projects.find(
@@ -115,6 +122,16 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
     runtime,
     treeSnapshot.threadPlanLinks,
   );
+  const lineTip = resolveLineTip(detail, graph, runtime, treeSnapshot.threadPlanLinks);
+  const head = search.at ?? lineTip;
+  const conversationHistory: ConversationHistory | undefined =
+    head === null
+      ? undefined
+      : {
+          head,
+          historical: search.at !== undefined && search.at !== lineTip,
+          readPage: (cursor) => readLineConversationHistory(graph, cursor),
+        };
   const workspaceReady =
     planId !== null &&
     Boolean(thread && (thread.workspaceMembers != null || thread.worktreePath !== null));
@@ -159,11 +176,37 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
 
   return {
     chatView: {
+      ...(conversationHistory === undefined ? {} : { conversationHistory }),
       ...(planId === null
         ? {}
         : {
             headerBanner: (
               <>
+                {conversationHistory?.historical && head !== null ? (
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                    <span>Viewing an earlier checkpoint</span>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => void forkHere({ parentCommitId: head, seedText: "" })}
+                    >
+                      Fork from here
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={() =>
+                        void navigateToThreadRoute(router, {
+                          kind: "server",
+                          planId: planId!,
+                          threadRef: scopeThreadRef(environmentId, threadId),
+                        })
+                      }
+                    >
+                      Back to latest
+                    </Button>
+                  </div>
+                ) : null}
                 <LineBranchMissingBanner
                   threadId={threadId}
                   branch={runtime?.branch ?? thread?.branch ?? null}

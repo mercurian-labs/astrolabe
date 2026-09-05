@@ -41,6 +41,17 @@ the issue you choose rather than from a message you typed. See
 Opening a thread from the tree lands in its thread space. Each line of work has its own conversation,
 and the thread you are looking at stays highlighted in the tree while you are anywhere inside it.
 
+### Where a fork came from
+
+A forked line shows the messages leading up to the fork followed by its own messages in one
+continuous conversation. Messages from other branches after the fork are excluded. Use
+**Load earlier turns** to read more of a long history.
+
+Selecting a checkpoint shows the conversation up to that point. **Back to latest** restores the
+line's full conversation; this control only appears when viewing an earlier checkpoint. To continue
+from an earlier point, choose **Fork from here**. **Fork here** on a user message also opens another
+line. Viewing history keeps your current draft and does not rewind the working tree.
+
 ## Status in the tree
 
 A glance at the tree is a glance at where you are needed. A thread row carries a small

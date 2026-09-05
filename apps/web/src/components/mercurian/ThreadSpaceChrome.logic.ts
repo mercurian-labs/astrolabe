@@ -17,6 +17,17 @@ type LineInFlightDetail = Readonly<{
   inFlightTurns: PlanDetail["inFlightTurns"];
 }>;
 
+/** The provisional fork parent becomes the line root's parent after its first turn. */
+export function resolveLineOrigin(
+  graph: PlanGraph,
+  runtime: Pick<PlanLineRuntimeRecord, "lineRootCommitId" | "forkParentCommitId"> | null,
+): MercurianCommitId | null {
+  if (runtime === null) return null;
+  if (runtime.forkParentCommitId !== undefined) return runtime.forkParentCommitId;
+  if (runtime.lineRootCommitId === null) return null;
+  return graph.byId.get(runtime.lineRootCommitId)?.item.parents[0] ?? null;
+}
+
 export function resolveForkHereInput(
   graph: PlanGraph,
   message: Pick<ChatMessage, "id" | "text">,
