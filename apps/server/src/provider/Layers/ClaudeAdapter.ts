@@ -1730,11 +1730,6 @@ function previewUnknownSdkContent(message: unknown): string | undefined {
   return joined.length > 280 ? `${joined.slice(0, 279)}…` : joined;
 }
 
-function describeUnknownSdkMessage(kind: string, message: unknown): string {
-  const preview = previewUnknownSdkContent(message);
-  return preview ? `${kind} — ${preview}` : `${kind} (no displayable text content)`;
-}
-
 function sdkNativeItemId(message: SDKMessage): string | undefined {
   if (message.type === "assistant") {
     const maybeId = (message.message as { id?: unknown }).id;
@@ -3214,11 +3209,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     // request is the reconciliation source. `vcs_state_changed`
     // ({kind: commit|push|rebase}) and `code_change_published`
     // ({provider, url, repo}) are informational CLI notices; the work log
-    // already shows the underlying git/gh tool calls.
+    // already shows the underlying git/gh tool calls. `task_summary` and
+    // `post_turn_summary` are turn/task bookkeeping summaries the SDK forwards
+    // by name with no displayable scalar content; the native event log retains
+    // their raw payloads.
     switch (message.subtype as string) {
       case "background_tasks_changed":
       case "vcs_state_changed":
       case "code_change_published":
+      case "task_summary":
+      case "post_turn_summary":
         return;
     }
 
@@ -3558,14 +3558,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         // handled above, so `message` narrows to never here — a new SDK
         // release adding a subtype fails this typecheck instead of silently
         // warning at runtime. The runtime fallback still catches undeclared
-        // wire-only subtypes (like background_tasks_changed used to be).
+        // wire-only subtypes (like background_tasks_changed used to be), but
+        // only ones carrying human-readable content: content-less bookkeeping
+        // is consumed silently (the native event log keeps the raw payload)
+        // instead of surfacing as a spurious warning row.
         message satisfies never;
         const unknownMessage = message as never as { subtype: string };
-        yield* emitRuntimeWarning(
-          context,
-          describeUnknownSdkMessage(`Claude system message '${unknownMessage.subtype}'`, message),
-          message,
-        );
+        const preview = previewUnknownSdkContent(message);
+        if (preview) {
+          yield* emitRuntimeWarning(
+            context,
+            `Claude system message '${unknownMessage.subtype}' — ${preview}`,
+            message,
+          );
+        }
         return;
       }
     }
@@ -3692,13 +3698,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       default: {
         // Exhaustiveness guard (see handleSystemMessage): new SDK top-level
         // message types fail typecheck here instead of warning at runtime.
+        // Undeclared wire-only types warn only when they carry displayable
+        // content; content-less bookkeeping is consumed silently.
         message satisfies never;
         const unknownMessage = message as never as { type: string };
-        yield* emitRuntimeWarning(
-          context,
-          describeUnknownSdkMessage(`Claude SDK message '${unknownMessage.type}'`, message),
-          message,
-        );
+        const preview = previewUnknownSdkContent(message);
+        if (preview) {
+          yield* emitRuntimeWarning(
+            context,
+            `Claude SDK message '${unknownMessage.type}' — ${preview}`,
+            message,
+          );
+        }
         return;
       }
     }
