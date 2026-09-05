@@ -1,3 +1,4 @@
+import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 import * as NodePath from "@effect/platform-node/NodePath";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -7,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { GitCommandError, SourceControlProviderError } from "@t3tools/contracts";
+import { GitManagerError, GitCommandError, SourceControlProviderError } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -55,10 +56,22 @@ function processOutput(): GitVcsDriver.ExecuteGitResult {
 
 function makeLayer(input: {
   readonly provider?: SourceControlProvider.SourceControlProvider["Service"];
+  readonly memoryExit?: MemoryRepositoryExitGate["Service"];
   readonly git?: Partial<GitVcsDriver.GitVcsDriver["Service"]>;
   readonly fileSystem?: FileSystem.FileSystem;
 }) {
   const serviceLayer = SourceControlRepositoryService.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        MemoryRepositoryExitGate,
+        input.memoryExit ?? {
+          check: () => Effect.void,
+          checkRemoteAction: () => Effect.void,
+          withLock: (_cwd, effect) => effect,
+          withExit: (_cwd, effect) => effect,
+        },
+      ),
+    ),
     Layer.provide(
       Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
         get: () => Effect.succeed(input.provider ?? makeProvider()),
@@ -392,6 +405,49 @@ it.effect("publish succeeds with status remote_added when the local repo has no 
                 setUpstream: true,
               };
             }),
+        },
+      }),
+    ),
+  );
+});
+
+it.effect("refuses repository publishing before creating a remote when memory needs review", () => {
+  let creates = 0;
+  const blocked = Effect.fail(
+    new GitManagerError({
+      operation: "memoryRepositoryExit",
+      cwd: "/workspace",
+      detail: "Review required",
+    }),
+  );
+  return Effect.gen(function* () {
+    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
+    const error = yield* Effect.flip(
+      service.publishRepository({
+        cwd: "/workspace",
+        provider: "github",
+        repository: "octocat/t3code",
+        visibility: "private",
+        protocol: "ssh",
+      }),
+    );
+    assert.strictEqual(error._tag, "SourceControlRepositoryError");
+    assert.strictEqual(creates, 0);
+  }).pipe(
+    Effect.provide(
+      makeLayer({
+        provider: makeProvider({
+          createRepository: () =>
+            Effect.sync(() => {
+              creates++;
+              return CLONE_URLS;
+            }),
+        }),
+        memoryExit: {
+          check: () => blocked,
+          checkRemoteAction: () => blocked,
+          withLock: (_cwd, effect) => effect,
+          withExit: () => blocked,
         },
       }),
     ),

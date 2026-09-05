@@ -3243,10 +3243,17 @@ const makeWsRpcLayer = (
                 projectId: detail.plan.projectId,
                 line,
                 commitOid: input.commitOid,
+                ...(input.position ? { position: input.position } : {}),
               });
+              yield* memoryDashboard.invalidate;
             }).pipe(
               Effect.mapError((cause) =>
-                isMemoryNotDesignatedError(cause) || isMemorySourceInvalidError(cause)
+                isMemoryNotDesignatedError(cause) ||
+                isMemorySourceInvalidError(cause) ||
+                (typeof cause === "object" &&
+                  cause !== null &&
+                  "_tag" in cause &&
+                  cause._tag === "MemoryReviewBlockedError")
                   ? cause
                   : new MercurianMemoryError({ operation: "markMemoryChangeReviewed", cause }),
               ),
@@ -3264,6 +3271,8 @@ const makeWsRpcLayer = (
                 projectId: detail.plan.projectId,
                 line,
                 target: input.target,
+                ...(input.position ? { position: input.position } : {}),
+                ...(input.expectedVersion ? { expectedVersion: input.expectedVersion } : {}),
               });
               yield* memoryDashboard.invalidate;
             }).pipe(
@@ -3290,7 +3299,13 @@ const makeWsRpcLayer = (
               const result = yield* memoryIndex.mergeHome({
                 projectId: detail.plan.projectId,
                 line,
+                ...(input.position ? { position: input.position } : {}),
+                ...(input.expectedVersion ? { expectedVersion: input.expectedVersion } : {}),
+                ...(input.reviewedUnmarkedId !== undefined
+                  ? { reviewedUnmarkedId: input.reviewedUnmarkedId }
+                  : {}),
               });
+              yield* memoryDashboard.invalidate;
               return result;
             }).pipe(
               Effect.mapError((cause) =>

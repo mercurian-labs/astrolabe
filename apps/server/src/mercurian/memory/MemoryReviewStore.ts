@@ -38,6 +38,7 @@ export class MemoryReviewStore extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<MemoryReview>, MemoryReviewStoreError>;
     readonly markReviewed: (input: MemoryReview) => Effect.Effect<void, MemoryReviewStoreError>;
     readonly changes: Stream.Stream<void>;
+    readonly invalidate: Effect.Effect<void>;
   }
 >()("t3/mercurian/memory/MemoryReviewStore") {}
 
@@ -80,6 +81,7 @@ export const make = Effect.gen(function* () {
       sql
         .withTransaction(insert(input))
         .pipe(Effect.andThen(announce), Effect.mapError(toError("MemoryReviewStore.markReviewed"))),
+    invalidate: announce,
     get changes() {
       return Stream.fromPubSub(changes);
     },

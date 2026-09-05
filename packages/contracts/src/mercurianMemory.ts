@@ -161,22 +161,47 @@ export type MercurianReadLineMemoryChangesInput = typeof MercurianReadLineMemory
 export const MercurianMarkMemoryChangeReviewedInput = Schema.Struct({
   line: MemoryLineRef,
   commitOid: TrimmedNonEmptyString,
+  position: Schema.optional(MemoryReadingPosition),
 });
 export type MercurianMarkMemoryChangeReviewedInput =
   typeof MercurianMarkMemoryChangeReviewedInput.Type;
 export const MercurianRevertMemoryChangeInput = Schema.Struct({
   line: MemoryLineRef,
+  position: Schema.optional(MemoryReadingPosition),
+  expectedVersion: Schema.optional(TrimmedNonEmptyString),
   target: Schema.Union([
     Schema.Struct({ kind: Schema.Literal("commit"), commitOid: TrimmedNonEmptyString }),
     Schema.Struct({ kind: Schema.Literal("unmarked") }),
   ]),
 });
 export type MercurianRevertMemoryChangeInput = typeof MercurianRevertMemoryChangeInput.Type;
-export const MercurianMergeMemoryHomeInput = Schema.Struct({ line: MemoryLineRef });
+/** Resolved once; all subsequent reads use object IDs, never mutable refs. */
+export const MemoryObjectId = Schema.String.check(
+  Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u),
+);
+export const MemoryMergeReview = Schema.Struct({
+  version: TrimmedNonEmptyString,
+  headOid: MemoryObjectId,
+  snapshotOid: Schema.NullOr(MemoryObjectId),
+  treeOid: MemoryObjectId,
+  homeOid: MemoryObjectId,
+  homeRef: TrimmedNonEmptyString,
+  unmarkedId: Schema.NullOr(TrimmedNonEmptyString),
+  unreviewedIds: Schema.Array(Schema.String),
+  warnings: Schema.Array(Schema.String),
+});
+export type MemoryMergeReview = typeof MemoryMergeReview.Type;
+export const MercurianMergeMemoryHomeInput = Schema.Struct({
+  line: MemoryLineRef,
+  position: Schema.optional(MemoryReadingPosition),
+  expectedVersion: Schema.optional(TrimmedNonEmptyString),
+  reviewedUnmarkedId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
 export type MercurianMergeMemoryHomeInput = typeof MercurianMergeMemoryHomeInput.Type;
 export const MemoryMergeHomeConflict = Schema.Struct({ path: TrimmedNonEmptyString });
 export type MemoryMergeHomeConflict = typeof MemoryMergeHomeConflict.Type;
 export const MercurianMergeMemoryHomeResult = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("review-required"), review: MemoryMergeReview }),
   Schema.Struct({ kind: Schema.Literal("merged"), commitOid: TrimmedNonEmptyString }),
   Schema.Struct({ kind: Schema.Literal("deferred-to-push") }),
   Schema.Struct({
@@ -271,12 +296,37 @@ export class MercurianMemoryError extends Schema.TaggedErrorClass<MercurianMemor
 
 export class MemoryReviewBlockedError extends Schema.TaggedErrorClass<MemoryReviewBlockedError>()(
   "MemoryReviewBlockedError",
-  { reason: Schema.Literals(["turn-active", "not-on-line"]) },
+  {
+    reason: Schema.Literals([
+      "turn-active",
+      "slot-busy",
+      "slot-dirty",
+      "not-on-line",
+      "historical-position",
+      "stale-review",
+      "conflict",
+    ]),
+    paths: Schema.optional(Schema.Array(Schema.String)),
+    reconciliationSeed: Schema.optional(Schema.String),
+  },
 ) {
   override get message(): string {
-    return this.reason === "turn-active"
-      ? "Memory changes cannot be reverted while a turn is active on this line"
-      : "The selected commit is not part of this line's memory changes";
+    switch (this.reason) {
+      case "turn-active":
+        return "Wait for the active turn to finish before curating memory";
+      case "slot-busy":
+        return "Release the matching slot lease or assignment in the other project before curating memory";
+      case "slot-dirty":
+        return "The slot has uncaptured work or a different staged state; capture or reconcile it before curating memory";
+      case "historical-position":
+        return "Return to the latest position before curating memory";
+      case "stale-review":
+        return "Memory changed; refresh the review before continuing";
+      case "conflict":
+        return `The inverse overlaps later changes in ${(this.paths ?? []).join(", ")}`;
+      case "not-on-line":
+        return "The selected change is not part of this line's visible memory changes";
+    }
   }
 }
 
@@ -294,10 +344,6 @@ export class MergeMemoryHomeBlockedError extends Schema.TaggedErrorClass<MergeMe
   }
 }
 
-/** Resolved once; all subsequent reads use object IDs, never mutable refs. */
-export const MemoryObjectId = Schema.String.check(
-  Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u),
-);
 export const MemoryPosition = Schema.Struct({
   projectId: MercurianProjectId,
   repositoryId: MercurianRepositoryId,
@@ -360,6 +406,7 @@ export type MemoryChangedDocument = typeof MemoryChangedDocument.Type;
 export const MemoryAmendmentSummary = Schema.Struct({
   id: Schema.String,
   kind: Schema.Literals(["marked", "hand", "unmarked"]),
+  revertsAmendmentId: Schema.optional(MemoryObjectId),
   title: Schema.String,
   turnId: Schema.NullOr(Schema.String),
   reviewed: Schema.Boolean,

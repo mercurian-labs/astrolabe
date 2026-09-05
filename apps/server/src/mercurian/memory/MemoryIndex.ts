@@ -1,9 +1,12 @@
+import { repositoryExitApproval } from "./MemoryRepositoryExitGate.ts";
+import { makeWithLineIdentity as makeMemoryDashboard } from "./MemoryDashboard.ts";
+import { memoryReviewVersion, unmarkedReviewId } from "./memoryReviewIdentity.ts";
+import { makeMemoryGitTrees } from "./memoryGitTrees.ts";
 import {
   makeMemoryLineIdentity,
   makeMemoryPosition,
   type MemoryLineContext,
 } from "./MemoryPosition.ts";
-import * as NodeCrypto from "node:crypto";
 
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -20,6 +23,8 @@ import {
   MemoryNotDesignatedError,
   MemoryReadUnavailableError,
   type MemoryReadingPosition,
+  type MemoryPosition as MemoryPositionValue,
+  type MemoryMergeReview,
   MemoryReviewBlockedError,
   MergeMemoryHomeBlockedError,
   type MemoryMapPlacement,
@@ -157,8 +162,11 @@ export class MemoryIndex extends Context.Service<
       readonly projectId: MercurianProjectId;
       readonly line: MemoryLineRef;
       readonly commitOid: string;
-    }) => Effect.Effect<void, MemoryIndexError>;
+      readonly position?: MemoryReadingPosition;
+    }) => Effect.Effect<void, MemoryIndexError | MemoryReviewBlockedError>;
     readonly revertChange: (input: {
+      readonly position?: MemoryReadingPosition;
+      readonly expectedVersion?: string;
       readonly projectId: MercurianProjectId;
       readonly line: MemoryLineRef;
       readonly target:
@@ -166,6 +174,9 @@ export class MemoryIndex extends Context.Service<
         | { readonly kind: "unmarked" };
     }) => Effect.Effect<void, MemoryIndexError | MemoryReviewBlockedError>;
     readonly mergeHome: (input: {
+      readonly reviewedUnmarkedId?: string | null;
+      readonly position?: MemoryReadingPosition;
+      readonly expectedVersion?: string;
       readonly projectId: MercurianProjectId;
       readonly line: MemoryLineRef;
     }) => Effect.Effect<
@@ -195,6 +206,7 @@ export const make = Effect.gen(function* () {
   const checkpoints = yield* CheckpointStore;
   const reviews = yield* MemoryReviewStore;
   const snapshots = yield* SnapshotChain;
+  const trees = yield* makeMemoryGitTrees;
   const normalizeReadError =
     (operation: "readMemoryIndex" | "readMemoryNote" | "readLineMemoryChanges") =>
     (cause: unknown) => {
@@ -522,6 +534,13 @@ export const make = Effect.gen(function* () {
   });
 
   const lineIdentity = yield* makeMemoryLineIdentity;
+  const dashboard = yield* makeMemoryDashboard((input) =>
+    lineIdentity(input).pipe(
+      Effect.mapError(
+        (cause) => new MercurianMemoryError({ operation: "readMemoryDashboard", cause }),
+      ),
+    ),
+  );
 
   const lineContext = Effect.fn("MemoryIndex.lineContext")(function* (input: {
     readonly projectId: MercurianProjectId;
@@ -922,7 +941,13 @@ export const make = Effect.gen(function* () {
     })).stdout
       .split("\0")
       .filter(Boolean);
-    return { chainHead, recordedHead, diff, paths };
+    return {
+      chainHead,
+      recordedHead,
+      diff,
+      paths,
+      id: unmarkedReviewId(recordedHead, chainHead, paths),
+    };
   });
 
   const readLineChanges: MemoryIndex["Service"]["readLineChanges"] = (input) =>
@@ -988,493 +1013,517 @@ export const make = Effect.gen(function* () {
           })),
         unmarked: unmarked === null ? null : { diff: unmarked.diff },
         unreviewedCount:
-          withDiff.filter((entry) => !reviewed.has(entry.oid)).length + (unmarked === null ? 0 : 1),
+          withDiff.filter((entry) => !reviewed.has(entry.oid)).length +
+          (unmarked === null || reviewed.has(unmarked.id) ? 0 : 1),
       } satisfies MercurianLineMemoryChanges;
     }).pipe(Effect.mapError(normalizeReadError("readLineMemoryChanges")));
 
+  const ensureLatest = (position?: MemoryReadingPosition) =>
+    position && position.kind !== "latest"
+      ? Effect.fail(new MemoryReviewBlockedError({ reason: "historical-position" }))
+      : Effect.void;
+
+  const currentDashboard = Effect.fn("MemoryIndex.currentDashboard")(function* (input: {
+    readonly projectId: MercurianProjectId;
+    readonly line: MemoryLineRef;
+  }) {
+    const result = yield* dashboard.readDashboard({ ...input, position: { kind: "latest" } });
+    if (result.kind !== "available")
+      return yield* new MemoryReadUnavailableError({ reason: result.reason });
+    return result;
+  });
+
   const markChangeReviewed: MemoryIndex["Service"]["markChangeReviewed"] = (input) =>
-    Effect.gen(function* () {
-      const context = yield* lineContext(input);
-      yield* reviews.markReviewed({
-        lineRootCommitId: context.lineRootCommitId,
-        repositoryId: context.source.repositoryId,
-        commitOid: input.commitOid,
-        reviewedAt: yield* DateTime.now,
-      });
-    }).pipe(Effect.mapError(normalizeReadError("readLineMemoryChanges")));
+    slotRegistry
+      .withProjectLock(
+        input.projectId,
+        Effect.gen(function* () {
+          yield* ensureLatest(input.position);
+          const current = yield* currentDashboard(input);
+          if (!current.amendments.some((a) => a.id === input.commitOid))
+            return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
+          yield* reviews.markReviewed({
+            lineRootCommitId: current.position.lineRootCommitId,
+            repositoryId: current.position.repositoryId,
+            commitOid: input.commitOid,
+            reviewedAt: yield* DateTime.now,
+          });
+          yield* reviews.invalidate;
+        }),
+      )
+      .pipe(Effect.mapError(normalizeReviewError));
 
   const ensureNoActiveTurn = Effect.fn("MemoryIndex.ensureNoActiveTurn")(function* (
     lineRootCommitId: string,
   ) {
     const allSlots = yield* slots.listAll;
-    for (const slot of allSlots.filter(
-      (candidate) => candidate.currentLineRootCommitId === lineRootCommitId,
-    )) {
+    for (const slot of allSlots.filter((s) => s.currentLineRootCommitId === lineRootCommitId)) {
       const lease = yield* slotRegistry.lease(slot.slotId);
-      if (Option.isSome(lease) && lease.value.holders.some(({ kind }) => kind === "turn")) {
+      if (Option.isSome(lease) && lease.value.holders.some(({ kind }) => kind === "turn"))
         return yield* new MemoryReviewBlockedError({ reason: "turn-active" });
-      }
     }
     return allSlots;
   });
 
-  const revertChange: MemoryIndex["Service"]["revertChange"] = (input) =>
-    Effect.gen(function* () {
-      const context = yield* lineContext(input);
-      const allSlots = yield* ensureNoActiveTurn(context.lineRootCommitId);
-      const scope = context.source.subpath ?? ".";
-      const branchRef = `refs/heads/${context.branch.branch}`;
-      const tip = (yield* git.execute({
-        operation: "MemoryIndex.revertChange.tip",
-        cwd: context.source.repositoryPath,
-        args: ["rev-parse", `${branchRef}^{commit}`],
-      })).stdout.trim();
-      if (input.target.kind === "commit") {
-        const commit = input.target.commitOid;
-        const onLine = yield* git.execute({
-          operation: "MemoryIndex.revertChange.commitOnLine",
-          cwd: context.source.repositoryPath,
-          args: ["merge-base", "--is-ancestor", commit, tip],
-          allowNonZeroExit: true,
-        });
-        const atOrBeforeBase = yield* git.execute({
-          operation: "MemoryIndex.revertChange.commitAfterBase",
-          cwd: context.source.repositoryPath,
-          args: ["merge-base", "--is-ancestor", commit, context.branch.baseOid],
-          allowNonZeroExit: true,
-        });
-        if (onLine.exitCode !== 0 || atOrBeforeBase.exitCode === 0) {
-          return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
-        }
-      }
-      const unmarked =
-        input.target.kind === "unmarked"
-          ? yield* readUnmarkedSnapshot({
-              cwd: context.source.repositoryPath,
-              lineRootCommitId: context.lineRootCommitId,
-              scope,
-            })
-          : null;
-      if (input.target.kind === "unmarked" && unmarked === null) return;
-      const commonDir = (yield* git.execute({
-        operation: "MemoryIndex.revertChange.commonDir",
-        cwd: context.source.repositoryPath,
-        args: ["rev-parse", "--git-common-dir"],
-      })).stdout.trim();
-      const resolvedCommonDir = path.isAbsolute(commonDir)
-        ? commonDir
-        : path.resolve(context.source.repositoryPath, commonDir);
-      const tempIndex = path.join(
-        resolvedCommonDir,
-        `t3-memory-revert-index-${NodeCrypto.randomUUID()}`,
-      );
-      const env: NodeJS.ProcessEnv = { ...process.env, GIT_INDEX_FILE: tempIndex };
-      const cleanup = fs.remove(tempIndex, { force: true }).pipe(Effect.ignore);
-      yield* Effect.gen(function* () {
-        if (input.target.kind === "commit") {
-          const commit = input.target.commitOid;
-          const metadata = (yield* git.execute({
-            operation: "MemoryIndex.revertChange.metadata",
-            cwd: context.source.repositoryPath,
-            args: ["show", "-s", "--format=%s", commit],
-          })).stdout.trim();
-          const touched = (yield* git.execute({
-            operation: "MemoryIndex.revertChange.paths",
-            cwd: context.source.repositoryPath,
-            args: ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit, "--", scope],
-          })).stdout
-            .split("\0")
-            .filter(Boolean);
-          yield* git.execute({
-            operation: "MemoryIndex.revertChange.readTip",
-            cwd: context.source.repositoryPath,
-            args: ["read-tree", tip],
-            env,
-          });
-          const checkoutPaths: Array<string> = [];
-          const removedPaths: Array<string> = [];
-          for (const touchedPath of touched) {
-            const parentEntry = yield* git.execute({
-              operation: "MemoryIndex.revertChange.parentEntry",
-              cwd: context.source.repositoryPath,
-              args: ["ls-tree", `${commit}^`, "--", touchedPath],
-              allowNonZeroExit: true,
-            });
-            const match = /^(\d+)\s+\w+\s+([0-9a-f]+)\t/u.exec(parentEntry.stdout);
-            if (match === null) removedPaths.push(touchedPath);
-            else checkoutPaths.push(touchedPath);
-            yield* git.execute({
-              operation: "MemoryIndex.revertChange.updateIndex",
-              cwd: context.source.repositoryPath,
-              args:
-                match === null
-                  ? ["update-index", "--force-remove", "--", touchedPath]
-                  : [
-                      "update-index",
-                      "--add",
-                      "--cacheinfo",
-                      `${match[1]},${match[2]},${touchedPath}`,
-                    ],
-              env,
-            });
-          }
-          const tree = (yield* git.execute({
-            operation: "MemoryIndex.revertChange.writeTree",
-            cwd: context.source.repositoryPath,
-            args: ["write-tree"],
-            env,
-          })).stdout.trim();
-          const message = `Reverted: ${metadata}\n\nAstrolabe-Amendment: revert:${commit}\nAmended-from-plan: ${context.detail.plan.title} (${context.planId})`;
-          const reverted = (yield* git.execute({
-            operation: "MemoryIndex.revertChange.commit",
-            cwd: context.source.repositoryPath,
-            args: ["commit-tree", tree, "-p", tip, "-m", message],
-          })).stdout.trim();
-          yield* git.execute({
-            operation: "MemoryIndex.revertChange.moveBranch",
-            cwd: context.source.repositoryPath,
-            args: ["update-ref", branchRef, reverted, tip],
-          });
-          yield* reviews.markReviewed({
-            lineRootCommitId: context.lineRootCommitId,
-            repositoryId: context.source.repositoryId,
-            commitOid: reverted,
-            reviewedAt: yield* DateTime.now,
-          });
-          yield* Effect.forEach(
-            allSlots.flatMap((slot) => {
-              const member = slot.members.find(
-                (candidate) =>
-                  candidate.repositoryId === context.source.repositoryId &&
-                  candidate.currentBranch === context.branch.branch,
-              );
-              const cwd =
-                member === undefined
-                  ? null
-                  : slotMemberWorktreePath(path, slot, context.source.repositoryId);
-              return cwd === null ? [] : [cwd];
-            }),
-            (cwd) =>
-              Effect.gen(function* () {
-                if (removedPaths.length > 0) {
-                  yield* git.execute({
-                    operation: "MemoryIndex.revertChange.removeFromMember",
-                    cwd,
-                    args: ["rm", "-f", "--ignore-unmatch", "--", ...removedPaths],
-                  });
-                }
-                if (checkoutPaths.length > 0) {
-                  yield* git.execute({
-                    operation: "MemoryIndex.revertChange.refreshCommit",
-                    cwd,
-                    args: ["checkout", context.branch.branch, "--", ...checkoutPaths],
-                  });
-                }
-              }),
-            { discard: true },
-          );
-          return;
-        }
-        const chainHead = unmarked!.chainHead;
-        yield* git.execute({
-          operation: "MemoryIndex.revertChange.readChain",
-          cwd: context.source.repositoryPath,
-          args: ["read-tree", chainHead],
-          env,
-        });
-        if (context.source.subpath === null) {
-          yield* git.execute({
-            operation: "MemoryIndex.revertChange.readBranch",
-            cwd: context.source.repositoryPath,
-            args: ["read-tree", tip],
-            env,
-          });
-        } else {
-          yield* git.execute({
-            operation: "MemoryIndex.revertChange.removeMemory",
-            cwd: context.source.repositoryPath,
-            args: ["rm", "--cached", "-r", "-f", "--ignore-unmatch", "--", context.source.subpath],
-            env,
-          });
-          const branchMemory = yield* git.execute({
-            operation: "MemoryIndex.revertChange.resolveBranchMemory",
-            cwd: context.source.repositoryPath,
-            args: ["cat-file", "-e", `${tip}:${context.source.subpath}`],
-            allowNonZeroExit: true,
-          });
-          if (branchMemory.exitCode === 0) {
-            yield* git.execute({
-              operation: "MemoryIndex.revertChange.restoreMemory",
-              cwd: context.source.repositoryPath,
-              args: [
-                "read-tree",
-                `--prefix=${context.source.subpath}/`,
-                `${tip}:${context.source.subpath}`,
-              ],
-              env,
-            });
-          }
-        }
-        const treeOid = (yield* git.execute({
-          operation: "MemoryIndex.revertChange.writeSnapshotTree",
-          cwd: context.source.repositoryPath,
-          args: ["write-tree"],
-          env,
-        })).stdout.trim();
-        const snapshot = yield* snapshots.captureTree({
-          cwd: context.source.repositoryPath,
-          lineRootCommitId: context.lineRootCommitId,
-          repositoryId: context.source.repositoryId,
-          lineBranch: context.branch.branch,
-          kind: "curated",
-          treeOid,
-        });
-        yield* Effect.forEach(
-          allSlots.flatMap((slot) => {
-            const member = slot.members.find(
-              (candidate) =>
-                candidate.repositoryId === context.source.repositoryId &&
-                candidate.currentBranch === context.branch.branch,
-            );
-            const cwd =
-              member === undefined
-                ? null
-                : slotMemberWorktreePath(path, slot, context.source.repositoryId);
-            return cwd === null ? [] : [cwd];
+  const requireModernGit = Effect.gen(function* () {
+    const version = yield* git.gitVersion;
+    if (version.major < 2 || (version.major === 2 && version.minor < 38))
+      return yield* new MergeMemoryHomeBlockedError({ reason: "git-too-old" });
+  });
+  const requireMerged = (
+    result: { kind: "merged"; treeOid: string } | { kind: "conflict"; paths: string[] },
+    selected: string,
+  ) =>
+    result.kind === "merged"
+      ? Effect.succeed(result.treeOid)
+      : Effect.fail(
+          new MemoryReviewBlockedError({
+            reason: "conflict",
+            paths: result.paths,
+            reconciliationSeed: `Reconcile the inverse of memory amendment ${selected} against the current line. Preserve later work in ${result.paths.join(", ")}.`,
           }),
-          (cwd) =>
-            git.execute({
-              operation: "MemoryIndex.revertChange.refreshUnmarked",
-              cwd,
-              args: ["checkout", snapshot.oid, "--", scope],
-            }),
-          { discard: true },
         );
-      }).pipe(Effect.ensuring(cleanup));
-    }).pipe(Effect.mapError(normalizeReviewError));
 
-  const mergeHome: MemoryIndex["Service"]["mergeHome"] = (input) =>
-    Effect.gen(function* () {
-      const context = yield* lineContext(input);
-      yield* ensureNoActiveTurn(context.lineRootCommitId);
-      const scope = context.source.subpath ?? ".";
-      const branchRef = `refs/heads/${context.branch.branch}`;
-      let lineTip = (yield* git.execute({
-        operation: "MemoryIndex.mergeHome.lineTip",
-        cwd: context.source.repositoryPath,
-        args: ["rev-parse", `${branchRef}^{commit}`],
-      })).stdout.trim();
-      const unmarked = yield* readUnmarkedSnapshot({
-        cwd: context.source.repositoryPath,
-        lineRootCommitId: context.lineRootCommitId,
-        scope,
-      });
+  const effectiveTree = Effect.fn("MemoryIndex.effectiveTree")(function* (
+    cwd: string,
+    position: MemoryPositionValue,
+  ) {
+    if (!position.snapshotOid || position.recordedHeadOid === position.headOid)
+      return position.treeOid;
+    const headTree = (yield* trees.run(cwd, [
+      "rev-parse",
+      `${position.headOid}^{tree}`,
+    ])).stdout.trim();
+    const snapshotTree = (yield* trees.run(cwd, [
+      "rev-parse",
+      `${position.snapshotOid}^{tree}`,
+    ])).stdout.trim();
+    return yield* requireMerged(
+      yield* trees.merge(cwd, position.recordedHeadOid, headTree, snapshotTree),
+      "captured work",
+    );
+  });
 
-      if (unmarked !== null) {
-        const commonDir = (yield* git.execute({
-          operation: "MemoryIndex.mergeHome.commonDir",
-          cwd: context.source.repositoryPath,
-          args: ["rev-parse", "--git-common-dir"],
-        })).stdout.trim();
-        const resolvedCommonDir = path.isAbsolute(commonDir)
-          ? commonDir
-          : path.resolve(context.source.repositoryPath, commonDir);
-        const tempIndex = path.join(
-          resolvedCommonDir,
-          `t3-memory-merge-home-index-${NodeCrypto.randomUUID()}`,
+  const prepareMembers = Effect.fn("MemoryIndex.prepareMembers")(function* (
+    context: Effect.Success<ReturnType<typeof lineContext>>,
+    projectId: MercurianProjectId,
+    fullTree: string,
+    headOid: string,
+  ) {
+    const members: Array<{ cwd: string; indexOid: string; headTree: string }> = [];
+    const headTree = (yield* trees.run(context.source.repositoryPath, [
+      "rev-parse",
+      `${headOid}^{tree}`,
+    ])).stdout.trim();
+    for (const slot of yield* slots.listAll) {
+      const member = slot.members.find(
+        (m) =>
+          m.repositoryId === context.source.repositoryId &&
+          m.currentBranch === context.branch.branch,
+      );
+      if (!member) continue;
+      // A branch is shared even when another project's slot has a different line
+      // assignment. Its claim is not protected by this project's lock.
+      if (slot.projectId !== projectId || slot.currentLineRootCommitId !== context.lineRootCommitId)
+        return yield* new MemoryReviewBlockedError({ reason: "slot-busy" });
+      const lease = yield* slotRegistry.lease(slot.slotId);
+      if (Option.isSome(lease) && lease.value.holders.length)
+        return yield* new MemoryReviewBlockedError({
+          reason: lease.value.holders.some((h) => h.kind === "turn") ? "turn-active" : "slot-busy",
+        });
+      const cwd = slotMemberWorktreePath(path, slot, context.source.repositoryId);
+      if (cwd === null) continue;
+      const actual = yield* trees
+        .checkoutTrees(cwd)
+        .pipe(
+          Effect.catchTag("GitCommandError", () =>
+            Effect.fail(new MemoryReviewBlockedError({ reason: "slot-dirty" })),
+          ),
         );
-        const env: NodeJS.ProcessEnv = { ...process.env, GIT_INDEX_FILE: tempIndex };
-        yield* Effect.gen(function* () {
-          yield* git.execute({
-            operation: "MemoryIndex.mergeHome.readLineTip",
-            cwd: context.source.repositoryPath,
-            args: ["read-tree", lineTip],
-            env,
-          });
-          yield* git.execute({
-            operation: "MemoryIndex.mergeHome.removeChangedMemory",
-            cwd: context.source.repositoryPath,
-            args: ["update-index", "--force-remove", "--", ...unmarked.paths],
-            env,
-          });
-          const chainEntries = yield* git.execute({
-            operation: "MemoryIndex.mergeHome.readChangedMemory",
-            cwd: context.source.repositoryPath,
-            args: ["ls-tree", "-r", "-z", unmarked.chainHead, "--", ...unmarked.paths],
-          });
-          if (chainEntries.stdout.length > 0) {
-            yield* git.execute({
-              operation: "MemoryIndex.mergeHome.restoreChangedMemory",
-              cwd: context.source.repositoryPath,
-              args: ["update-index", "-z", "--index-info"],
-              stdin: chainEntries.stdout,
-              env,
-            });
+      if (
+        actual.worktreeOid !== fullTree ||
+        (actual.indexOid !== headTree && actual.indexOid !== fullTree)
+      ) {
+        const changed = yield* trees.run(cwd, [
+          "diff",
+          "--name-only",
+          "-z",
+          fullTree,
+          actual.worktreeOid,
+        ]);
+        const staged = yield* trees.run(cwd, [
+          "diff",
+          "--name-only",
+          "-z",
+          headTree,
+          actual.indexOid,
+        ]);
+        return yield* new MemoryReviewBlockedError({
+          reason: "slot-dirty",
+          paths: [
+            ...new Set(
+              [...changed.stdout.split("\0"), ...staged.stdout.split("\0")].filter(Boolean),
+            ),
+          ].sort(),
+        });
+      }
+      members.push({ cwd, indexOid: actual.indexOid, headTree });
+    }
+    return members;
+  });
+
+  const refreshMembers = Effect.fn("MemoryIndex.refreshMembers")(function* (
+    members: ReadonlyArray<{ cwd: string; indexOid: string; headTree: string }>,
+    beforeTree: string,
+    afterTree: string,
+    nextHeadOid: string,
+  ) {
+    for (const member of members) {
+      // Apply only the curation delta. Git apply refuses overlapping editor writes;
+      // it never resets unrelated files or cleans untracked files after the check.
+      const patch = yield* trees.run(member.cwd, [
+        "diff",
+        "--binary",
+        "--full-index",
+        beforeTree,
+        afterTree,
+      ]);
+      if (patch.stdout)
+        yield* git.execute({
+          operation: "MemoryIndex.refreshMembers.apply",
+          cwd: member.cwd,
+          args: ["apply", "--whitespace=nowarn"],
+          stdin: patch.stdout,
+        });
+      const nextIndex = member.indexOid === member.headTree ? nextHeadOid : afterTree;
+      yield* trees.run(member.cwd, ["read-tree", "-i", "-m", member.indexOid, nextIndex]);
+    }
+  });
+
+  const revertChange: MemoryIndex["Service"]["revertChange"] = (input) =>
+    slotRegistry
+      .withProjectLock(
+        input.projectId,
+        Effect.gen(function* () {
+          yield* ensureLatest(input.position);
+          const context = yield* lineContext(input);
+          yield* ensureNoActiveTurn(context.lineRootCommitId);
+          yield* requireModernGit;
+          const current = yield* currentDashboard(input);
+          const position = current.position;
+          const selected =
+            input.target.kind === "commit"
+              ? current.amendments.find(
+                  (a) =>
+                    input.target.kind === "commit" &&
+                    a.kind !== "unmarked" &&
+                    a.id === input.target.commitOid,
+                )
+              : current.amendments.find((a) => a.kind === "unmarked");
+          if (!selected) {
+            if (input.target.kind === "unmarked") {
+              yield* reviews.invalidate;
+              return;
+            }
+            return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
           }
-          const tree = (yield* git.execute({
-            operation: "MemoryIndex.mergeHome.writeUnmarkedTree",
-            cwd: context.source.repositoryPath,
-            args: ["write-tree"],
-            env,
-          })).stdout.trim();
-          const message = `Unmarked memory changes\n\nAstrolabe-Amendment: unmarked\nAmended-from-plan: ${context.detail.plan.title} (${context.planId})`;
-          const commit = (yield* git.execute({
-            operation: "MemoryIndex.mergeHome.commitUnmarked",
-            cwd: context.source.repositoryPath,
-            args: ["commit-tree", tree, "-p", lineTip, "-m", message],
-          })).stdout.trim();
-          yield* git.execute({
-            operation: "MemoryIndex.mergeHome.moveLineBranch",
-            cwd: context.source.repositoryPath,
-            args: ["update-ref", branchRef, commit, lineTip],
-          });
-          yield* reviews.markReviewed({
+          if (input.expectedVersion !== undefined) {
+            const prepared = yield* prepareMerge(input);
+            if (prepared.review.version !== input.expectedVersion)
+              return yield* new MemoryReviewBlockedError({ reason: "stale-review" });
+          } else if (input.target.kind === "unmarked") {
+            // Old clients have no exact unmarked target. Refuse rather than discard a newer capture.
+            return yield* new MemoryReviewBlockedError({ reason: "stale-review" });
+          }
+          const cwd = context.source.repositoryPath;
+          const fullTree = yield* effectiveTree(cwd, position);
+          const selectedBase = selected.kind === "unmarked" ? position.snapshotOid! : selected.id;
+          const inverseTree = yield* trees.overlay(
+            cwd,
+            selectedBase,
+            selected.comparison.beforeTreeOid,
+            selected.comparison.paths,
+          );
+          const curatedTree = yield* requireMerged(
+            yield* trees.merge(cwd, selectedBase, fullTree, inverseTree),
+            selected.id,
+          );
+          let nextHeadOid: string | undefined;
+          if (selected.kind !== "unmarked") {
+            const headTree = (yield* trees.run(cwd, [
+              "rev-parse",
+              `${position.headOid}^{tree}`,
+            ])).stdout.trim();
+            const revertedTree = yield* requireMerged(
+              yield* trees.merge(cwd, selectedBase, headTree, inverseTree),
+              selected.id,
+            );
+            nextHeadOid = yield* trees.commit(
+              cwd,
+              revertedTree,
+              [position.headOid],
+              `Reverted: ${selected.title}\n\nAstrolabe-Amendment: revert:${selected.id}\nReverts-Amendment: ${selected.id}`,
+            );
+          }
+          const members = yield* prepareMembers(
+            context,
+            input.projectId,
+            fullTree,
+            position.headOid,
+          );
+          yield* snapshots.captureTree({
+            cwd,
             lineRootCommitId: context.lineRootCommitId,
             repositoryId: context.source.repositoryId,
-            commitOid: commit,
-            reviewedAt: yield* DateTime.now,
+            lineBranch: context.branch.branch,
+            kind: "curated",
+            treeOid: curatedTree,
+            expected: {
+              headOid: position.headOid,
+              snapshotOid: position.snapshotOid,
+              ...(nextHeadOid ? { nextHeadOid } : {}),
+            },
           });
-          lineTip = commit;
-        }).pipe(Effect.ensuring(fs.remove(tempIndex, { force: true }).pipe(Effect.ignore)));
-      }
+          yield* reviews.invalidate;
+          if (nextHeadOid)
+            yield* reviews.markReviewed({
+              lineRootCommitId: context.lineRootCommitId,
+              repositoryId: context.source.repositoryId,
+              commitOid: nextHeadOid,
+              reviewedAt: yield* DateTime.now,
+            });
+          yield* refreshMembers(members, fullTree, curatedTree, nextHeadOid ?? position.headOid);
+          yield* reviews.invalidate;
+        }),
+      )
+      .pipe(Effect.mapError(normalizeReviewError));
 
-      const repositorySnapshot = yield* repositories.getSnapshot;
-      const memoryIsLinked = repositorySnapshot.projectRepositories.some(
+  const prepareMerge = Effect.fn("MemoryIndex.prepareMerge")(function* (input: {
+    readonly projectId: MercurianProjectId;
+    readonly line: MemoryLineRef;
+  }) {
+    const context = yield* lineContext(input);
+    const current = yield* currentDashboard(input);
+    const cwd = context.source.repositoryPath;
+    const startFromOrigin = (yield* settings.getSettings).newWorktreesStartFromOrigin;
+    const home = yield* resolveRepositoryDefault({ git, path: cwd, startFromOrigin });
+    const homeRef = `refs/heads/${home.branch}`;
+    const homeOid = yield* positions.resolve(cwd, `${homeRef}^{commit}`);
+    if (!homeOid) return yield* new MergeMemoryHomeBlockedError({ reason: "main-missing" });
+    const loaded = yield* loadRef({
+      kind: "ref",
+      repositoryPath: cwd,
+      subpath: context.source.subpath ?? "",
+      ref: current.position.treeOid,
+      treeOid: current.position.treeOid,
+    });
+    const warnings = [
+      ...new Set([
+        ...loaded.index.problems,
+        ...loaded.maps.flatMap((map) => ("refusal" in map ? [map.refusal] : [])),
+      ]),
+    ].sort();
+    const treeOid = yield* effectiveTree(cwd, current.position);
+    const identity = {
+      sourceUpdatedAt: DateTime.formatIso(context.source.updatedAt),
+      projectId: input.projectId,
+      repositoryId: current.position.repositoryId,
+      memoryRoot: current.position.memoryRoot,
+      lineRootCommitId: current.position.lineRootCommitId,
+      baseCommitOid: current.position.baseCommitOid,
+      baselineTreeOid: current.position.baselineTreeOid,
+      baselineSnapshotOid: current.position.baselineSnapshotOid,
+      headOid: current.position.headOid,
+      snapshotOid: current.position.snapshotOid,
+      treeOid,
+      homeOid,
+      homeRef,
+      amendments: current.amendments.map((a) => ({ id: a.id, reviewed: a.reviewed })),
+      warnings,
+    };
+    const review: MemoryMergeReview = {
+      version: memoryReviewVersion(identity),
+      headOid: identity.headOid,
+      snapshotOid: identity.snapshotOid,
+      treeOid,
+      homeOid,
+      homeRef,
+      unmarkedId: current.amendments.find((a) => a.kind === "unmarked")?.id ?? null,
+      unreviewedIds: current.amendments.filter((a) => !a.reviewed).map((a) => a.id),
+      warnings,
+    };
+    const repositorySnapshot = yield* repositories.getSnapshot;
+    const shared =
+      context.source.subpath !== null ||
+      repositorySnapshot.projectRepositories.some(
         (link) =>
           link.projectId === input.projectId && link.repositoryId === context.source.repositoryId,
       );
-      const lineSessions = context.detail.codingSessions.filter(
-        (session) =>
-          lineRootCommitIdFor(context.detail, session.commitId) === context.lineRootCommitId,
-      );
-      const lineRuntimeRecords = context.detail.lineRuntimes.filter(
-        (runtime) => runtime.lineRootCommitId === context.lineRootCommitId,
-      );
-      const recordMergedHome = Effect.fn("MemoryIndex.mergeHome.record")(function* () {
-        const now = yield* DateTime.now;
-        yield* Effect.all(
-          [
-            Effect.forEach(
-              lineRuntimeRecords,
-              (runtime) => lineRuntimes.recordMemoryMergedHome(runtime.threadId, now),
-              { discard: true },
-            ),
-            Effect.forEach(
-              lineSessions,
-              (session) => legacySessions.recordMemoryMergedHome(session.threadId, now),
-              { discard: true },
-            ),
-          ],
-          { concurrency: "unbounded", discard: true },
-        );
-      });
+    return { context, current, review, shared };
+  });
 
-      if (context.source.subpath !== null || memoryIsLinked) {
-        yield* recordMergedHome();
-        return { kind: "deferred-to-push" as const };
-      }
-
-      const version = yield* git.gitVersion;
-      if (version.major < 2 || (version.major === 2 && version.minor < 38)) {
-        return yield* new MergeMemoryHomeBlockedError({ reason: "git-too-old" });
-      }
-      const startFromOrigin = (yield* settings.getSettings).newWorktreesStartFromOrigin;
-      const home = yield* resolveRepositoryDefault({
-        git,
-        path: context.source.repositoryPath,
-        startFromOrigin,
-      });
-      const mainRef = `refs/heads/${home.branch}`;
-      const resolvedMain = yield* git.execute({
-        operation: "MemoryIndex.mergeHome.mainTip",
-        cwd: context.source.repositoryPath,
-        args: ["rev-parse", "--verify", `${mainRef}^{commit}`],
-        allowNonZeroExit: true,
-      });
-      if (resolvedMain.exitCode !== 0) {
-        return yield* new MergeMemoryHomeBlockedError({ reason: "main-missing" });
-      }
-      const mainOid = resolvedMain.stdout.trim();
-      const checkedOut = yield* git.execute({
-        operation: "MemoryIndex.mergeHome.checkedOutBranch",
-        cwd: context.source.repositoryPath,
-        args: ["symbolic-ref", "--quiet", "HEAD"],
-        allowNonZeroExit: true,
-      });
-      if (checkedOut.exitCode === 0 && checkedOut.stdout.trim() === mainRef) {
-        const dirty = yield* git.execute({
-          operation: "MemoryIndex.mergeHome.checkoutStatus",
-          cwd: context.source.repositoryPath,
-          args: ["status", "--porcelain", "--", scope],
-        });
-        if (dirty.stdout.trim().length > 0) {
-          return yield* new MergeMemoryHomeBlockedError({ reason: "checkout-dirty" });
-        }
-      }
-
-      const mergedTree = yield* git.execute({
-        operation: "MemoryIndex.mergeHome.mergeTree",
-        cwd: context.source.repositoryPath,
-        args: ["merge-tree", "--write-tree", "--messages", mainOid, lineTip],
-        allowNonZeroExit: true,
-      });
-      if (mergedTree.exitCode === 1) {
-        const paths = new Set<string>();
-        for (const line of `${mergedTree.stdout}\n${mergedTree.stderr}`.split("\n")) {
-          const stagedPath = /^\d+\s+\w+\s+[0-9a-f]+\t(.+)$/u.exec(line)?.[1];
-          const messagePath = /(?: in |modify\/delete:)\s*(.+)$/u.exec(line)?.[1];
-          const conflictPath = stagedPath ?? messagePath;
-          if (conflictPath !== undefined && conflictPath.trim().length > 0) {
-            paths.add(conflictPath.trim());
+  const mergeHome: MemoryIndex["Service"]["mergeHome"] = (input) =>
+    slotRegistry
+      .withProjectLock(
+        input.projectId,
+        Effect.gen(function* () {
+          yield* ensureLatest(input.position);
+          const context = yield* lineContext(input);
+          yield* ensureNoActiveTurn(context.lineRootCommitId);
+          yield* requireModernGit;
+          const prepared = yield* prepareMerge(input);
+          const { review, current, shared } = prepared;
+          const cwd = context.source.repositoryPath;
+          const checkedOut = yield* git.execute({
+            operation: "MemoryIndex.mergeHome.checkedOut",
+            cwd,
+            args: ["symbolic-ref", "--quiet", "HEAD"],
+            allowNonZeroExit: true,
+          });
+          if (!shared && checkedOut.stdout.trim() === review.homeRef) {
+            const dirty = yield* trees.run(cwd, ["status", "--porcelain", "--untracked-files=all"]);
+            if (dirty.stdout.length)
+              return yield* new MergeMemoryHomeBlockedError({ reason: "checkout-dirty" });
           }
-        }
-        return {
-          kind: "conflict" as const,
-          conflicts: [...paths].sort().map((conflictPath) => ({ path: conflictPath })),
-        };
-      }
-      if (mergedTree.exitCode !== 0) {
-        return yield* new MercurianMemoryError({
-          operation: "mergeMemoryHome",
-          cause: new Error(mergedTree.stderr || "git merge-tree failed"),
-        });
-      }
-      const tree = mergedTree.stdout.split("\n", 1)[0]?.trim();
-      if (!tree) {
-        return yield* new MercurianMemoryError({
-          operation: "mergeMemoryHome",
-          cause: new Error("git merge-tree did not return a tree"),
-        });
-      }
-      const commitOid = (yield* git.execute({
-        operation: "MemoryIndex.mergeHome.commit",
-        cwd: context.source.repositoryPath,
-        args: [
-          "commit-tree",
-          tree,
-          "-p",
-          mainOid,
-          "-p",
-          lineTip,
-          "-m",
-          `Merge memory from ${context.detail.plan.title}`,
-        ],
-      })).stdout.trim();
-      yield* git.execute({
-        operation: "MemoryIndex.mergeHome.moveMain",
-        cwd: context.source.repositoryPath,
-        args: ["update-ref", mainRef, commitOid, mainOid],
-      });
-      if (checkedOut.exitCode === 0 && checkedOut.stdout.trim() === mainRef) {
-        yield* git.execute({
-          operation: "MemoryIndex.mergeHome.refreshCheckout",
-          cwd: context.source.repositoryPath,
-          args: ["checkout", home.branch, "--", scope],
-        });
-      }
-      yield* recordMergedHome();
-      return { kind: "merged" as const, commitOid };
-    }).pipe(Effect.mapError(normalizeMergeHomeError));
+          if (
+            input.expectedVersion !== review.version ||
+            review.unreviewedIds.length ||
+            (input.reviewedUnmarkedId ?? null) !== review.unmarkedId
+          )
+            return { kind: "review-required" as const, review };
+          if (shared) {
+            yield* reviews.markReviewed({
+              lineRootCommitId: context.lineRootCommitId,
+              repositoryId: context.source.repositoryId,
+              commitOid: repositoryExitApproval({
+                sourceUpdatedAt: DateTime.formatIso(context.source.updatedAt),
+                baseOid: context.branch.baseOid,
+                projectId: input.projectId,
+                repositoryId: context.source.repositoryId,
+                lineRootCommitId: context.lineRootCommitId,
+                review,
+                memoryRoot: current.position.memoryRoot,
+                reviewIds: (yield* reviews.listReviewed({
+                  lineRootCommitId: context.lineRootCommitId,
+                  repositoryId: context.source.repositoryId,
+                }))
+                  .map((r) => r.commitOid)
+                  .filter((id) => !id.startsWith("exit:"))
+                  .sort(),
+              }),
+              reviewedAt: yield* DateTime.now,
+            });
+            yield* reviews.invalidate;
+            return { kind: "deferred-to-push" as const };
+          }
+          let lineTip = review.headOid;
+          const unmarked = current.amendments.find((a) => a.kind === "unmarked");
+          if (unmarked) {
+            const tree = yield* trees.overlay(
+              cwd,
+              lineTip,
+              review.treeOid,
+              unmarked.comparison.paths,
+            );
+            lineTip = yield* trees.commit(
+              cwd,
+              tree,
+              [lineTip],
+              "Unmarked memory changes\n\nAstrolabe-Amendment: unmarked",
+            );
+          }
+          const merged = yield* git.execute({
+            operation: "MemoryIndex.mergeHome.mergeTree",
+            cwd,
+            args: ["merge-tree", "--write-tree", "--name-only", "-z", review.homeOid, lineTip],
+            allowNonZeroExit: true,
+          });
+          if (merged.exitCode === 1) {
+            const fields = merged.stdout.split("\0");
+            return {
+              kind: "conflict" as const,
+              conflicts: fields.slice(1, fields.indexOf("", 1)).map((path) => ({ path })),
+            };
+          }
+          if (merged.exitCode !== 0)
+            return yield* new MercurianMemoryError({
+              operation: "mergeMemoryHome",
+              cause: merged.stderr,
+            });
+          const tree = merged.stdout.split("\0")[0]!.trim();
+          const commitOid = yield* trees.commit(
+            cwd,
+            tree,
+            [review.homeOid, lineTip],
+            `Merge memory from ${context.detail.plan.title}`,
+          );
+          // No ref moves until every review, conflict and checkout check has passed.
+          const members = yield* prepareMembers(
+            context,
+            input.projectId,
+            review.treeOid,
+            review.headOid,
+          );
+          const captured = yield* snapshots
+            .captureTree({
+              cwd,
+              lineRootCommitId: context.lineRootCommitId,
+              repositoryId: context.source.repositoryId,
+              lineBranch: context.branch.branch,
+              kind: "curated",
+              treeOid: review.treeOid,
+              expected: {
+                headOid: review.headOid,
+                snapshotOid: review.snapshotOid,
+                ...(lineTip !== review.headOid ? { nextHeadOid: lineTip } : {}),
+                refs: [{ ref: review.homeRef, expectedOid: review.homeOid, oid: commitOid }],
+              },
+            })
+            .pipe(
+              Effect.map((snapshot) => ({ kind: "captured" as const, snapshot })),
+              Effect.catchTag("GitCommandError", (cause) =>
+                Effect.gen(function* () {
+                  if (cause.operation !== "SnapshotChain.captureTree.transaction")
+                    return yield* cause;
+                  // A failed CAS has not promoted home. Do not hide an ambiguous transport
+                  // failure after a successful transaction behind a fresh review response.
+                  if ((yield* positions.resolve(cwd, review.homeRef)) === commitOid)
+                    return yield* cause;
+                  const fresh = yield* prepareMerge(input);
+                  if (fresh.review.version === review.version) return yield* cause;
+                  return { kind: "review-required" as const, review: fresh.review };
+                }),
+              ),
+            );
+          if (captured.kind === "review-required") {
+            yield* reviews.invalidate;
+            return captured;
+          }
+          yield* reviews.invalidate;
+          if (unmarked)
+            yield* reviews.markReviewed({
+              lineRootCommitId: context.lineRootCommitId,
+              repositoryId: context.source.repositoryId,
+              commitOid: lineTip,
+              reviewedAt: yield* DateTime.now,
+            });
+          yield* refreshMembers(members, review.treeOid, review.treeOid, lineTip);
+          if (checkedOut.stdout.trim() === review.homeRef)
+            yield* trees.run(cwd, ["read-tree", "-m", "-u", review.homeOid, commitOid]);
+          const now = yield* DateTime.now;
+          for (const runtime of context.detail.lineRuntimes.filter(
+            (r) => r.lineRootCommitId === context.lineRootCommitId,
+          ))
+            yield* lineRuntimes.recordMemoryMergedHome(runtime.threadId, now);
+          for (const session of context.detail.codingSessions.filter(
+            (s) => lineRootCommitIdFor(context.detail, s.commitId) === context.lineRootCommitId,
+          ))
+            yield* legacySessions.recordMemoryMergedHome(session.threadId, now);
+          yield* reviews.invalidate;
+          return { kind: "merged" as const, commitOid };
+        }),
+      )
+      .pipe(Effect.mapError(normalizeMergeHomeError));
 
   return {
     getLineContext: (input) =>

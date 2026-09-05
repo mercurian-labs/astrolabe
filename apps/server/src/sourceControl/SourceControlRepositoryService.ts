@@ -1,3 +1,4 @@
+import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -78,6 +79,7 @@ function selectRemoteUrl(
 }
 
 export const make = Effect.gen(function* () {
+  const memoryExit = yield* MemoryRepositoryExitGate;
   const config = yield* ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
   const git = yield* GitVcsDriver.GitVcsDriver;
@@ -252,6 +254,7 @@ export const make = Effect.gen(function* () {
         };
       }
 
+      yield* memoryExit.check(input.cwd);
       const pushResult = yield* git.pushCurrentBranch(input.cwd, null, { remoteName });
 
       return {
@@ -273,7 +276,9 @@ export const make = Effect.gen(function* () {
         mapRepositoryError("cloneRepository", input.provider ?? "unknown"),
       ),
     publishRepository: (input) =>
-      publishRepository(input).pipe(mapRepositoryError("publishRepository", input.provider)),
+      memoryExit
+        .withExit(input.cwd, publishRepository(input))
+        .pipe(mapRepositoryError("publishRepository", input.provider)),
   });
 });
 

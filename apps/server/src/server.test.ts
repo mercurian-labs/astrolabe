@@ -18,6 +18,7 @@ import {
   EnvironmentId,
   EventId,
   GitCommandError,
+  MemoryReviewBlockedError,
   KeybindingRule,
   MessageId,
   ExternalLauncherCommandNotFoundError,
@@ -5333,7 +5334,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["revertChange"]>[0]>();
       const memoryMerges =
         yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["mergeHome"]>[0]>();
+      const review = {
+        version: "exact-review-version",
+        headOid: "a".repeat(40),
+        snapshotOid: "b".repeat(40),
+        treeOid: "c".repeat(40),
+        homeOid: "d".repeat(40),
+        homeRef: "refs/heads/main",
+        unmarkedId: "unmarked:exact-capture",
+        unreviewedIds: ["unmarked:exact-capture"],
+        warnings: ["Current map warning"],
+      };
+      const conflict = new MemoryReviewBlockedError({
+        reason: "conflict",
+        paths: ["Plans.md"],
+        reconciliationSeed: "Reconcile the inverse; preserve later work in Plans.md.",
+      });
       const mergeResults = [
+        { kind: "review-required" as const, review },
         { kind: "deferred-to-push" as const },
         { kind: "merged" as const, commitOid: "merge-oid" },
         { kind: "conflict" as const, conflicts: [{ path: "Plans.md" }] },
@@ -5349,8 +5367,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 Effect.as({ marked: [], hand: [], unmarked: null, unreviewedCount: 0 }),
               ),
             markChangeReviewed: (input) =>
-              Queue.offer(memoryReviewMarks, input).pipe(Effect.asVoid),
-            revertChange: (input) => Queue.offer(memoryReverts, input).pipe(Effect.asVoid),
+              Queue.offer(memoryReviewMarks, input).pipe(
+                Effect.andThen(
+                  input.commitOid === "arbitrary-oid"
+                    ? Effect.fail(new MemoryReviewBlockedError({ reason: "not-on-line" }))
+                    : Effect.void,
+                ),
+              ),
+            revertChange: (input) =>
+              Queue.offer(memoryReverts, input).pipe(
+                Effect.andThen(
+                  input.target.kind === "unmarked" ? Effect.fail(conflict) : Effect.void,
+                ),
+              ),
             mergeHome: (input) =>
               Queue.offer(memoryMerges, input).pipe(Effect.as(mergeResults[mergeCall++]!)),
           },
@@ -5386,11 +5415,46 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             yield* client[MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]({
               line,
               target: { kind: "commit", commitOid: "reverted-oid" },
+              expectedVersion: review.version,
+              position: { kind: "latest" },
             });
-            const mergeOutcomes = yield* Effect.forEach(mergeResults, () =>
-              client[MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome]({ line }),
+            const badReview = yield* Effect.flip(
+              client[MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]({
+                line,
+                commitOid: "arbitrary-oid",
+                position: { kind: "latest" },
+              }),
             );
-            return { project, line, changes, mergeOutcomes };
+            assert.strictEqual(badReview._tag, "MemoryReviewBlockedError");
+            if (badReview._tag === "MemoryReviewBlockedError")
+              assert.strictEqual(badReview.reason, "not-on-line");
+            const badRevert = yield* Effect.flip(
+              client[MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]({
+                line,
+                target: { kind: "unmarked" },
+                expectedVersion: review.version,
+              }),
+            );
+            assert.strictEqual(badRevert._tag, "MemoryReviewBlockedError");
+            if (badRevert._tag === "MemoryReviewBlockedError") {
+              assert.strictEqual(badRevert.reason, "conflict");
+              assert.deepEqual(badRevert.paths, conflict.paths);
+              assert.strictEqual(badRevert.reconciliationSeed, conflict.reconciliationSeed);
+            }
+            const mergeInputs = mergeResults.map((_result, index) =>
+              index === 0
+                ? { line }
+                : {
+                    line,
+                    expectedVersion: review.version,
+                    reviewedUnmarkedId: index === 3 ? null : review.unmarkedId,
+                    position: { kind: "latest" as const },
+                  },
+            );
+            const mergeOutcomes = yield* Effect.forEach(mergeInputs, (input) =>
+              client[MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome](input),
+            );
+            return { project, line, changes, mergeOutcomes, mergeInputs };
           }),
         ),
       ).pipe(Effect.timeout("5 seconds"));
@@ -5414,11 +5478,25 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         projectId: result.project.projectId,
         line: result.line,
         target: { kind: "commit", commitOid: "reverted-oid" },
+        expectedVersion: review.version,
+        position: { kind: "latest" },
+      });
+      assert.deepEqual(yield* Queue.take(memoryReviewMarks), {
+        projectId: result.project.projectId,
+        line: result.line,
+        commitOid: "arbitrary-oid",
+        position: { kind: "latest" },
+      });
+      assert.deepEqual(yield* Queue.take(memoryReverts), {
+        projectId: result.project.projectId,
+        line: result.line,
+        target: { kind: "unmarked" },
+        expectedVersion: review.version,
       });
       assert.deepEqual(result.mergeOutcomes, mergeResults);
       assert.deepEqual(
         yield* Effect.forEach(mergeResults, () => Queue.take(memoryMerges)),
-        mergeResults.map(() => ({ projectId: result.project.projectId, line: result.line })),
+        result.mergeInputs.map((input) => ({ projectId: result.project.projectId, ...input })),
       );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );

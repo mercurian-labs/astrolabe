@@ -72,6 +72,17 @@ interface CaptureTreeInput {
   readonly lineBranch: string;
   readonly kind: "curated";
   readonly treeOid: string;
+  /** Curation holds the project lock and atomically compares every addressed ref. */
+  readonly expected?: {
+    readonly headOid: string;
+    readonly snapshotOid: string | null;
+    readonly nextHeadOid?: string;
+    readonly refs?: ReadonlyArray<{
+      readonly ref: string;
+      readonly expectedOid: string;
+      readonly oid: string;
+    }>;
+  };
 }
 
 interface StandingInput {
@@ -218,9 +229,13 @@ export const make = Effect.gen(function* () {
 
   const captureTree = Effect.fn("SnapshotChain.captureTree")(function* (input: CaptureTreeInput) {
     const snapshotRef = lineSnapshotRef(input.lineRootCommitId);
-    const previousOid = yield* resolve(input.cwd, `${snapshotRef}^{commit}`);
+    const previousOid = input.expected
+      ? input.expected.snapshotOid
+      : yield* resolve(input.cwd, `${snapshotRef}^{commit}`);
     const headRef = `refs/heads/${input.lineBranch}`;
-    const headOid = yield* resolve(input.cwd, `${headRef}^{commit}`);
+    const headOid = input.expected
+      ? (input.expected.nextHeadOid ?? input.expected.headOid)
+      : yield* resolve(input.cwd, `${headRef}^{commit}`);
     if (headOid === null) {
       return yield* new SnapshotChainError({
         operation: "captureTree:lineBranch",
@@ -228,7 +243,9 @@ export const make = Effect.gen(function* () {
       });
     }
     const now = yield* DateTime.now;
-    const ref = lineExtraSnapshotRef(input.lineRootCommitId, input.kind, now);
+    const ref = CheckpointRef.make(
+      `${lineExtraSnapshotRef(input.lineRootCommitId, input.kind, now)}-${NodeCrypto.randomUUID()}`,
+    );
     const parents = [previousOid, headOid].filter((oid): oid is string => oid !== null);
     const commit = yield* git.execute({
       operation: "SnapshotChain.captureTree.commit",
@@ -242,15 +259,24 @@ export const make = Effect.gen(function* () {
       ],
     });
     const oid = commit.stdout.trim();
+    const zero = "0".repeat(headOid.length);
+    const updates = [
+      "start",
+      `create ${ref} ${oid}`,
+      `update ${snapshotRef} ${oid} ${previousOid ?? zero}`,
+      input.expected?.nextHeadOid
+        ? `update ${headRef} ${headOid} ${input.expected.headOid}`
+        : `verify ${headRef} ${input.expected?.headOid ?? headOid}`,
+      ...(input.expected?.refs ?? []).map((r) => `update ${r.ref} ${r.oid} ${r.expectedOid}`),
+      "prepare",
+      "commit",
+      "",
+    ];
     yield* git.execute({
-      operation: "SnapshotChain.captureTree.record",
+      operation: "SnapshotChain.captureTree.transaction",
       cwd: input.cwd,
-      args: ["update-ref", ref, oid],
-    });
-    yield* git.execute({
-      operation: "SnapshotChain.captureTree.moveLineRef",
-      cwd: input.cwd,
-      args: ["update-ref", snapshotRef, oid],
+      args: ["update-ref", "--stdin"],
+      stdin: updates.join("\n"),
     });
     const line = yield* lineBranches.get({
       lineRootCommitId: input.lineRootCommitId,

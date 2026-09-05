@@ -49,6 +49,7 @@ it.effect("captures a parented snapshot chain and derives branch state", () =>
                 cwd: input.cwd,
                 encoding: "utf8",
                 env: input.env,
+                input: input.stdin,
               });
               if (result.status !== 0 && input.allowNonZeroExit !== true) {
                 throw new Error(result.stderr);

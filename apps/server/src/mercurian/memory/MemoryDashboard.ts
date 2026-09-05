@@ -33,6 +33,7 @@ import * as Layer from "effect/Layer";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import { MemoryIndex } from "./MemoryIndex.ts";
+import { unmarkedReviewId } from "./memoryReviewIdentity.ts";
 import { MemoryReviewStore } from "./MemoryReviewStore.ts";
 import { makeMemoryPosition } from "./MemoryPosition.ts";
 import {
@@ -79,9 +80,10 @@ const validPath = (path: string) =>
   !path.includes("\0") &&
   !path.split("/").some((p) => p === ".." || p === ".");
 
-export const make = Effect.gen(function* () {
+export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* (
+  lineIdentity: MemoryIndex["Service"]["getLineContext"],
+) {
   const git = yield* GitVcsDriver;
-  const index = yield* MemoryIndex;
   const sources = yield* MemorySourceStore;
   const repositories = yield* RepositoryStore;
   const reviews = yield* MemoryReviewStore;
@@ -112,7 +114,11 @@ export const make = Effect.gen(function* () {
     return cwd ? { cwd } : ({ kind: "unavailable", reason: "object-missing" } as const);
   });
   const run = (cwd: string, args: ReadonlyArray<string>) =>
-    git.execute({ operation: "MemoryDashboard.read", cwd, args: ["--literal-pathspecs", ...args] });
+    git.execute({
+      operation: "MemoryDashboard.read",
+      cwd,
+      args: ["--literal-pathspecs", ...args],
+    });
   const tree = Effect.fn("MemoryDashboard.tree")(function* (
     cwd: string,
     oid: string,
@@ -181,7 +187,11 @@ export const make = Effect.gen(function* () {
   > {
     if (Option.isNone(yield* sources.getSource(input.projectId)))
       return { kind: "unavailable", reason: "not-designated" };
-    const context = yield* index.getLineContext(input);
+    const context = yield* lineIdentity(input).pipe(
+      Effect.mapError(
+        (cause) => new MercurianMemoryError({ operation: "readMemoryDashboard", cause }),
+      ),
+    );
     const resolved = yield* positions.read(context, input.position).pipe(Effect.scoped);
     if ("kind" in resolved) return resolved;
     const position = resolved;
@@ -289,6 +299,9 @@ export const make = Effect.gen(function* () {
         title,
         turnId,
         reviewed: reviewed.has(oid),
+        ...(/^revert:(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(turnId ?? "")
+          ? { revertsAmendmentId: turnId!.slice(7) }
+          : {}),
         documentIds: [],
         comparison: comparison(
           position,
@@ -363,7 +376,14 @@ export const make = Effect.gen(function* () {
           .map((d) => d.path),
       );
       if (paths.size) {
-        const id = `unmarked:${position.recordedHeadOid}:${position.snapshotOid}`;
+        const deltaPaths = [
+          ...new Set(
+            delta
+              .filter((d) => paths.has(d.path))
+              .flatMap((d) => (d.previousPath ? [d.previousPath, d.path] : [d.path])),
+          ),
+        ];
+        const id = unmarkedReviewId(position.recordedHeadOid, position.snapshotOid, deltaPaths);
         for (const change of delta.filter((d) => paths.has(d.path))) {
           const doc = documents.get(
             atPath.get(change.path) ?? atPath.get(change.previousPath ?? change.path) ?? "",
@@ -375,9 +395,9 @@ export const make = Effect.gen(function* () {
           kind: "unmarked",
           title: "Unmarked memory changes",
           turnId: null,
-          reviewed: false,
+          reviewed: reviewed.has(id),
           documentIds: [],
-          comparison: comparison(position, recordedTree, snapshotTree, [...paths]),
+          comparison: comparison(position, recordedTree, snapshotTree, deltaPaths),
         });
       }
     }
@@ -600,6 +620,10 @@ export const make = Effect.gen(function* () {
         ),
       ),
   };
+});
+export const make = Effect.gen(function* () {
+  const index = yield* MemoryIndex;
+  return yield* makeWithLineIdentity(index.getLineContext);
 });
 export class MemoryDashboard extends Context.Service<
   MemoryDashboard,

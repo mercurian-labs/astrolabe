@@ -1,3 +1,4 @@
+import * as MemoryRepositoryExitGate from "./mercurian/memory/MemoryRepositoryExitGate.ts";
 import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -372,13 +373,22 @@ const SourceControlProviderRegistryLayerLive = SourceControlProviderRegistry.lay
   Layer.provideMerge(VcsDriverRegistryLayerLive),
 );
 
+const SlotRegistryLayerLive = SlotRegistry.layer;
+const MemoryRepositoryExitGateLive = MemoryRepositoryExitGate.layer.pipe(
+  Layer.provide(MercurianSqlite.layer),
+  Layer.provide(ProcessRunner.layer),
+  Layer.provide(SlotRegistryLayerLive),
+);
+
 const PullRequestServiceLive = PullRequestService.layer.pipe(
+  Layer.provide(MemoryRepositoryExitGateLive),
   Layer.provide(PullRequestProviderRegistry.layer),
   Layer.provide(SourceControlProviderRegistryLayerLive),
   Layer.provide(SourceControlRateLimit.layer),
 );
 
 const GitManagerLayerLive = GitManager.layer.pipe(
+  Layer.provide(MemoryRepositoryExitGateLive),
   Layer.provideMerge(ProjectSetupScriptRunner.layer),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
@@ -396,6 +406,7 @@ const GitWorkflowLayerLive = GitWorkflowService.layer.pipe(
 );
 
 const SourceControlRepositoryServiceLayerLive = SourceControlRepositoryService.layer.pipe(
+  Layer.provide(MemoryRepositoryExitGateLive),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
 );
@@ -567,8 +578,6 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
     ),
   ),
 );
-
-const SlotRegistryLayerLive = SlotRegistry.layer;
 
 // Checkpointing consumes slot leases while the slot service consumes the rest
 // of the runtime. Resolve that shared boundary once so both services observe

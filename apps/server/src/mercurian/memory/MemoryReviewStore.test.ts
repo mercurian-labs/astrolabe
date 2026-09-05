@@ -1,3 +1,5 @@
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -19,8 +21,14 @@ layer("MemoryReviewStore", (it) => {
         commitOid: "abc123",
         reviewedAt: DateTime.makeUnsafe("2026-09-04T00:00:00.000Z"),
       };
+      const pull = yield* Stream.toPull(store.changes);
+      const first = yield* pull.pipe(Effect.forkChild({ startImmediately: true }));
       yield* store.markReviewed(review);
+      assert.strictEqual((yield* Fiber.join(first)).length, 1);
       yield* store.markReviewed(review);
+      assert.strictEqual((yield* pull).length, 1);
+      yield* store.invalidate;
+      assert.strictEqual((yield* pull).length, 1);
       assert.deepStrictEqual(yield* store.listReviewed(review), [review]);
     }),
   );

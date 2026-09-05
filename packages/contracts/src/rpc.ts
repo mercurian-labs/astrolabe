@@ -1660,6 +1660,7 @@ export const WsMercurianMarkMemoryChangeReviewedRpc = Rpc.make(
       MemoryNotDesignatedError,
       MemorySourceInvalidError,
       MercurianMemoryError,
+      MemoryReviewBlockedError,
       EnvironmentAuthorizationError,
     ]),
   },

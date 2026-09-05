@@ -1,3 +1,4 @@
+import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 import * as Cache from "effect/Cache";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -530,6 +531,7 @@ export function repositoryIdentityOf(project: OrchestrationProjectShell): string
 }
 
 export const make = Effect.gen(function* () {
+  const memoryExit = yield* MemoryRepositoryExitGate;
   const mergedPullRequests = yield* PubSub.sliding<PullRequestMergeEvent>(64);
   const registry = yield* PullRequestProviderRegistry;
   const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
@@ -1467,7 +1469,23 @@ export const make = Effect.gen(function* () {
         // What the host can do and what this account may ask of it are two questions, and both
         // have to say yes. The second is asked last, because it costs a request and the checks
         // above do not.
-        return viewerPermissionsOf(project, input, "runAction").pipe(
+        const exitCheck =
+          input.action === "merge" ||
+          input.action === "enable-auto-merge" ||
+          input.action === "revert"
+            ? memoryExit.checkRemoteAction(project.project.workspaceRoot, input.action).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new PullRequestOperationError({
+                      operation: "runAction",
+                      detail: cause.detail,
+                      cause,
+                    }),
+                ),
+              )
+            : Effect.void;
+        return exitCheck.pipe(
+          Effect.andThen(viewerPermissionsOf(project, input, "runAction")),
           Effect.flatMap((viewer): Effect.Effect<string, PullRequestError> => {
             if (!viewer.actions.includes(input.action)) {
               return Effect.fail(

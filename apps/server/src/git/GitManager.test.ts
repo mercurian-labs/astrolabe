@@ -1,3 +1,4 @@
+import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -25,6 +26,7 @@ import type {
 import {
   DEFAULT_SERVER_SETTINGS,
   GitCommandError,
+  GitManagerError,
   ProviderDriverKind,
   ProviderInstanceId,
   TextGenerationError,
@@ -621,6 +623,7 @@ function makeManager(input?: {
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
   gitConfigReads?: string[];
+  memoryExit?: MemoryRepositoryExitGate["Service"];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -686,6 +689,15 @@ function makeManager(input?: {
 
   return GitManager.make.pipe(
     Effect.provide(managerLayer),
+    Effect.provideService(
+      MemoryRepositoryExitGate,
+      input?.memoryExit ?? {
+        check: () => Effect.void,
+        checkRemoteAction: () => Effect.void,
+        withLock: (_cwd, effect) => effect,
+        withExit: (_cwd, effect) => effect,
+      },
+    ),
     Effect.map((manager) => ({ manager, ghCalls })),
   );
 }
@@ -5324,5 +5336,73 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         }),
       ]);
     }),
+  );
+  it.effect("refuses every repository exit before an optional commit or PR side effect", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const cwd = yield* makeTempDir("memory-exit-manager-");
+      yield* initRepo(cwd);
+      yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "pending change\n");
+      const before = (yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout;
+      const refuse = Effect.fail(
+        new GitManagerError({ operation: "memoryRepositoryExit", cwd, detail: "Review required" }),
+      );
+      const { manager, ghCalls } = yield* makeManager({
+        memoryExit: {
+          check: () => refuse,
+          checkRemoteAction: () => refuse,
+          withLock: (_cwd, effect) => effect,
+          withExit: () => refuse,
+        },
+      });
+      for (const action of ["push", "create_pr", "commit_push", "commit_push_pr"] as const) {
+        const error = yield* Effect.flip(
+          runStackedAction(manager, { cwd, action, commitMessage: "pending" }),
+        );
+        expect(error.message).toContain("Review required");
+        expect((yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout).toBe(before);
+      }
+      expect(ghCalls).toEqual([]);
+    }),
+  );
+
+  it.effect(
+    "revalidates after the optional commit before pushing the changed approval target",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const cwd = yield* makeTempDir("memory-exit-revalidate-");
+        yield* initRepo(cwd);
+        const remote = yield* createBareRemote();
+        yield* runGit(cwd, ["remote", "add", "origin", remote]);
+        yield* runGit(cwd, ["checkout", "-b", "feature/revalidate"]);
+        yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "pending change\n");
+        const before = (yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout;
+        const refuse = Effect.fail(
+          new GitManagerError({
+            operation: "memoryRepositoryExit",
+            cwd,
+            detail: "Approval target changed",
+          }),
+        );
+        const { manager } = yield* makeManager({
+          memoryExit: {
+            check: () => refuse,
+            checkRemoteAction: () => refuse,
+            withLock: (_cwd, effect) => effect,
+            withExit: (_cwd, effect) => effect,
+          },
+        });
+        const error = yield* Effect.flip(
+          runStackedAction(manager, {
+            cwd,
+            action: "commit_push",
+            commitMessage: "commit pending",
+          }),
+        );
+        expect(error.message).toContain("Approval target changed");
+        expect((yield* runGit(cwd, ["rev-parse", "HEAD"])).stdout).not.toBe(before);
+        expect((yield* runGit(remote, ["for-each-ref", "--format=%(objectname)"])).stdout).toBe("");
+      }),
   );
 });

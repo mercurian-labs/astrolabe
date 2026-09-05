@@ -4,6 +4,9 @@ import {
   MercurianReadLineMemoryChangesInput,
   MemoryCatalog,
   MemoryReadUnavailableError,
+  MercurianMergeMemoryHomeInput,
+  MercurianMergeMemoryHomeResult,
+  MemoryReviewBlockedError,
 } from "./mercurianMemory.ts";
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
@@ -125,5 +128,51 @@ describe("immutable Memory wire contracts", () => {
       entries: [{ path: "memory/Note.md", blobOid: oid, kind: "note" }],
     };
     expect(decodeCatalog(value)).toEqual(value);
+  });
+});
+
+const decodeMergeInput = Schema.decodeUnknownSync(MercurianMergeMemoryHomeInput);
+const decodeMergeResult = Schema.decodeUnknownSync(MercurianMergeMemoryHomeResult);
+const decodeReviewBlocked = Schema.decodeUnknownSync(MemoryReviewBlockedError);
+
+describe("versioned memory curation contracts", () => {
+  it("preserves prepare and confirmation identities and typed inverse conflict context", () => {
+    const line = { threadId: "thread" };
+    const review = {
+      version: "v1",
+      headOid: oid,
+      snapshotOid: oid,
+      treeOid: oid,
+      homeOid: oid,
+      homeRef: "refs/heads/main",
+      unmarkedId: "unmarked:exact",
+      unreviewedIds: [],
+      warnings: ["Malformed map"],
+    };
+    const confirmation = {
+      line,
+      position: { kind: "latest" },
+      expectedVersion: review.version,
+      reviewedUnmarkedId: review.unmarkedId,
+    };
+    expect(decodeMergeInput(confirmation)).toEqual(confirmation);
+    expect(decodeMergeInput({ line })).toEqual({ line });
+    expect(decodeMergeResult({ kind: "review-required", review })).toEqual({
+      kind: "review-required",
+      review,
+    });
+    expect(() =>
+      decodeMergeResult({
+        kind: "review-required",
+        review: { ...review, headOid: "HEAD" },
+      }),
+    ).toThrow();
+    const conflict = {
+      _tag: "MemoryReviewBlockedError",
+      reason: "conflict",
+      paths: ["Note.md"],
+      reconciliationSeed: "Reconcile this exact inverse",
+    };
+    expect(decodeReviewBlocked(conflict)).toMatchObject(conflict);
   });
 });
