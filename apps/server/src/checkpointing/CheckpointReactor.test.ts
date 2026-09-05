@@ -76,9 +76,19 @@ import * as SlotStore from "../mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../mercurian/worktreeSlots/SlotRegistry.ts";
 import { WorktreeSlotId } from "../mercurian/worktreeSlots/schema.ts";
 import * as SnapshotChain from "../mercurian/worktreeSlots/SnapshotChain.ts";
+import * as StorageSourceStore from "../mercurian/storage/StorageSourceStore.ts";
+import type { StorageSource } from "../mercurian/storage/schema.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
+
+function storageSource(
+  input: Pick<StorageSource, "projectId" | "repositoryId" | "kind" | "subpath">,
+): StorageSource {
+  const timestamp = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
+  return { ...input, createdAt: timestamp, updatedAt: timestamp };
+}
 
 type LegacyProviderRuntimeEvent = {
   readonly type: string;
@@ -322,6 +332,9 @@ describe("CheckpointReactor", () => {
     readonly multiRepositorySlot?: boolean;
     readonly legacySessionWithoutRepositoryRows?: boolean;
     readonly threadLineResolveError?: () => Error | undefined;
+    readonly currentStorageSources?: ReadonlyArray<StorageSource>;
+    readonly retainedDocumentLocations?: ReadonlyArray<StorageSource>;
+    readonly storageLookupFails?: boolean;
   }) {
     const slotRoot = options?.multiRepositorySlot
       ? NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-checkpoint-slot-"))
@@ -410,6 +423,10 @@ describe("CheckpointReactor", () => {
     const builtLineRoots: MercurianCommitId[] = [];
     const updatedBranches: string[] = [];
     const builtRepositories: MercurianRepositoryId[] = [];
+    let currentStorageSources = [...(options?.currentStorageSources ?? [])];
+    let retainedDocumentLocations = [...(options?.retainedDocumentLocations ?? [])];
+    let storageSnapshotReads = 0;
+    let retainedLocationReads = 0;
     const emptyRepositoryFacts = {
       snapshotOid: null,
       snapshotKind: null,
@@ -526,6 +543,24 @@ describe("CheckpointReactor", () => {
       }),
       changes: Stream.empty,
     });
+    const storageSourceStoreLayer = Layer.mock(StorageSourceStore.StorageSourceStore)({
+      getSnapshot: Effect.suspend(() => {
+        storageSnapshotReads += 1;
+        return options?.storageLookupFails
+          ? Effect.fail(
+              new PersistenceSqlError({
+                operation: "CheckpointReactor.test.getSnapshot",
+                cause: new Error("storage unavailable"),
+              }),
+            )
+          : Effect.succeed(currentStorageSources);
+      }),
+      getDocumentLocations: Effect.sync(() => {
+        retainedLocationReads += 1;
+        return retainedDocumentLocations;
+      }),
+      changes: Stream.empty,
+    });
     const lineBranchStoreLayer = Layer.mock(LineBranchStore.LineBranchStore)({
       listAll: Effect.succeed([]),
       get: ({ lineRootCommitId, repositoryId: requestedRepositoryId }) =>
@@ -578,6 +613,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(threadLineServiceLayer),
       Layer.provideMerge(lineBranchStoreLayer),
       Layer.provideMerge(repositoryStoreLayer),
+      Layer.provideMerge(storageSourceStoreLayer),
       Layer.provideMerge(slotStoreLayer),
       Layer.provideMerge(SlotRegistry.layer),
       Layer.provideMerge(gitVcsDriverLayer),
@@ -708,6 +744,14 @@ describe("CheckpointReactor", () => {
       secondRepositoryId,
       checkpointStore,
       snapshotChain,
+      setStorageLocations(input: {
+        readonly current: ReadonlyArray<StorageSource>;
+        readonly retained: ReadonlyArray<StorageSource>;
+      }) {
+        currentStorageSources = [...input.current];
+        retainedDocumentLocations = [...input.retained];
+      },
+      storageReadCounts: () => ({ storageSnapshotReads, retainedLocationReads }),
     };
   }
 
@@ -989,6 +1033,267 @@ describe("CheckpointReactor", () => {
         "README.md",
       ),
     ).toBe("v2\n");
+  });
+
+  it("persists capture-time roles for renames, additions, and deletions without matching path siblings", async () => {
+    const projectId = MercurianProjectId.make("project-1");
+    const repositoryId = MercurianRepositoryId.make("repository-1");
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+      currentStorageSources: [
+        storageSource({ projectId, repositoryId, kind: "plan", subpath: "plans" }),
+        storageSource({ projectId, repositoryId, kind: "spec", subpath: "specs" }),
+        storageSource({ projectId, repositoryId, kind: "memory", subpath: "memory" }),
+      ],
+      retainedDocumentLocations: [
+        storageSource({ projectId, repositoryId, kind: "plan", subpath: "retired-plans" }),
+      ],
+    });
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "plans"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "specs"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "memory"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "plans-sibling"));
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "retired-plans"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans", "renamed.md"), "same\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans", "deleted.md"), "delete\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans-sibling", "source.ts"), "one\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "retired-plans", "old.md"), "old\n");
+    const lineRef = SnapshotChain.lineSnapshotRef(harness.lineRootCommitId);
+    await Effect.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: lineRef,
+        parents: [runGit(harness.cwd, ["rev-parse", "HEAD"]).trim()],
+      }),
+    );
+
+    NodeFS.renameSync(
+      NodePath.join(harness.cwd, "plans", "renamed.md"),
+      NodePath.join(harness.cwd, "specs", "renamed.md"),
+    );
+    NodeFS.rmSync(NodePath.join(harness.cwd, "plans", "deleted.md"));
+    NodeFS.rmSync(NodePath.join(harness.cwd, "retired-plans", "old.md"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "memory", "added.md"), "remember\n");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "plans-sibling", "source.ts"), "two\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-document-role-shapes"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-document-role-shapes"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const checkpoint = (await harness.readModel()).threads[0]?.checkpoints[0];
+    const files = new Map(checkpoint?.repositories?.[0]?.files.map((file) => [file.path, file]));
+    expect(files.get("specs/renamed.md")).toEqual(
+      expect.objectContaining({
+        previousPath: "plans/renamed.md",
+        kind: "renamed",
+        beforeDocumentRole: "plan",
+        afterDocumentRole: "spec",
+      }),
+    );
+    expect(files.get("plans/deleted.md")).toEqual(
+      expect.objectContaining({ kind: "deleted", beforeDocumentRole: "plan" }),
+    );
+    expect(files.get("plans/deleted.md")).not.toHaveProperty("afterDocumentRole");
+    expect(files.get("retired-plans/old.md")).toEqual(
+      expect.objectContaining({ kind: "deleted", beforeDocumentRole: "plan" }),
+    );
+    expect(files.get("memory/added.md")).toEqual(
+      expect.objectContaining({ kind: "added", afterDocumentRole: "memory" }),
+    );
+    expect(files.get("memory/added.md")).not.toHaveProperty("beforeDocumentRole");
+    expect(files.get("plans-sibling/source.ts")).not.toHaveProperty("beforeDocumentRole");
+    expect(files.get("plans-sibling/source.ts")).not.toHaveProperty("afterDocumentRole");
+  });
+
+  it("scopes one role snapshot across the actual project and repository members", async () => {
+    const projectId = MercurianProjectId.make("project-1");
+    const otherProjectId = MercurianProjectId.make("project-elsewhere");
+    const repositoryId = MercurianRepositoryId.make("repository-1");
+    const secondRepositoryId = MercurianRepositoryId.make("repository-2");
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+      currentStorageSources: [
+        storageSource({ projectId, repositoryId, kind: "plan", subpath: "docs" }),
+        storageSource({
+          projectId,
+          repositoryId: secondRepositoryId,
+          kind: "spec",
+          subpath: "docs",
+        }),
+        storageSource({
+          projectId: otherProjectId,
+          repositoryId,
+          kind: "memory",
+          subpath: "docs",
+        }),
+      ],
+    });
+    const secondCwd = harness.secondCwd!;
+    for (const cwd of [harness.cwd, secondCwd]) {
+      NodeFS.mkdirSync(NodePath.join(cwd, "docs"));
+      NodeFS.writeFileSync(NodePath.join(cwd, "docs", "shared.md"), "before\n");
+      await Effect.runPromise(
+        harness.checkpointStore.captureCheckpoint({
+          cwd,
+          checkpointRef: SnapshotChain.lineSnapshotRef(harness.lineRootCommitId),
+          parents: [runGit(cwd, ["rev-parse", "HEAD"]).trim()],
+        }),
+      );
+      NodeFS.writeFileSync(NodePath.join(cwd, "docs", "shared.md"), "after\n");
+    }
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-document-role-members"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-document-role-members"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const repositories = (await harness.readModel()).threads[0]?.checkpoints[0]?.repositories ?? [];
+    const first = repositories.find((repository) => repository.repositoryId === repositoryId);
+    const second = repositories.find(
+      (repository) => repository.repositoryId === secondRepositoryId,
+    );
+    expect(first?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "plan", afterDocumentRole: "plan" }),
+    );
+    expect(second?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "spec", afterDocumentRole: "spec" }),
+    );
+    expect(harness.storageReadCounts()).toEqual({
+      storageSnapshotReads: 1,
+      retainedLocationReads: 1,
+    });
+  });
+
+  it("keeps persisted roles immutable and avoids conflicting retained attribution", async () => {
+    const projectId = MercurianProjectId.make("project-1");
+    const repositoryId = MercurianRepositoryId.make("repository-1");
+    const plan = storageSource({ projectId, repositoryId, kind: "plan", subpath: "docs" });
+    const spec = storageSource({ projectId, repositoryId, kind: "spec", subpath: "docs" });
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      threadBranch: "mercurian/checkpoint-line",
+      currentStorageSources: [plan],
+      retainedDocumentLocations: [plan, spec],
+    });
+    NodeFS.mkdirSync(NodePath.join(harness.cwd, "docs"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "before\n");
+    await Effect.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: SnapshotChain.lineSnapshotRef(harness.lineRootCommitId),
+        parents: [runGit(harness.cwd, ["rev-parse", "HEAD"]).trim()],
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "plan edit\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-before-redesignation"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-before-redesignation"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    harness.setStorageLocations({ current: [spec], retained: [plan, spec] });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "spec edit\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-after-redesignation"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:02:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-after-redesignation"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    harness.setStorageLocations({ current: [], retained: [plan, spec] });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "docs", "decision.md"), "ambiguous edit\n");
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-after-removal"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:03:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-after-removal"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const checkpoints = (await harness.readModel()).threads[0]?.checkpoints ?? [];
+    expect(checkpoints[0]?.repositories?.[0]?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "plan", afterDocumentRole: "plan" }),
+    );
+    expect(checkpoints[1]?.repositories?.[0]?.files[0]).toEqual(
+      expect.objectContaining({ beforeDocumentRole: "spec", afterDocumentRole: "spec" }),
+    );
+    expect(checkpoints[2]?.repositories?.[0]?.summaryStatus).toBe("unavailable");
+    expect(checkpoints[2]?.repositories?.[0]?.files[0]).not.toHaveProperty("beforeDocumentRole");
+    expect(checkpoints[2]?.repositories?.[0]?.files[0]).not.toHaveProperty("afterDocumentRole");
+  });
+
+  it("retains successful repository captures when role location lookup fails", async () => {
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      slotBackedSession: true,
+      multiRepositorySlot: true,
+      threadBranch: "mercurian/checkpoint-line",
+      storageLookupFails: true,
+    });
+    for (const cwd of [harness.cwd, harness.secondCwd!]) {
+      await Effect.runPromise(
+        harness.checkpointStore.captureCheckpoint({
+          cwd,
+          checkpointRef: SnapshotChain.lineSnapshotRef(harness.lineRootCommitId),
+          parents: [runGit(cwd, ["rev-parse", "HEAD"]).trim()],
+        }),
+      );
+      NodeFS.writeFileSync(NodePath.join(cwd, "README.md"), "changed\n");
+    }
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-role-lookup-failed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:01:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-role-lookup-failed"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+
+    const checkpoint = (await harness.readModel()).threads[0]?.checkpoints[0];
+    expect(checkpoint?.status).toBe("ready");
+    expect(checkpoint?.summaryStatus).toBe("unavailable");
+    expect(checkpoint?.repositories).toHaveLength(2);
+    for (const repository of checkpoint?.repositories ?? []) {
+      expect(repository).toEqual(
+        expect.objectContaining({ captureStatus: "ready", summaryStatus: "unavailable" }),
+      );
+      expect(repository.files).toEqual([
+        expect.objectContaining({ path: "README.md", kind: "modified" }),
+      ]);
+      expect(repository.files[0]).not.toHaveProperty("beforeDocumentRole");
+      expect(repository.files[0]).not.toHaveProperty("afterDocumentRole");
+    }
   });
 
   it("captures a settled slot-backed turn without moving or cleaning its branch", async () => {

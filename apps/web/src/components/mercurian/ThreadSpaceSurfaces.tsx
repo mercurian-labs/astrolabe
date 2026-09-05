@@ -2,11 +2,7 @@ import { ProjectDocumentsPanel, useProjectDocumentsPanel } from "./ProjectDocume
 import { useStorageSources } from "../../state/mercurianStorage";
 /** Owned by the panel lane of M-197 (plan §6). Fills the right-panel surface slots of ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type {
-  MercurianCommitId,
-  PlanCheckpointRecord,
-  PlanDetail,
-} from "@t3tools/contracts";
+import type { MercurianCommitId, PlanCheckpointRecord, PlanDetail } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 

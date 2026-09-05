@@ -94,6 +94,7 @@ import * as RepositoryStore from "../src/mercurian/repositories/RepositoryStore.
 import * as SlotStore from "../src/mercurian/worktreeSlots/SlotStore.ts";
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 import * as SnapshotChain from "../src/mercurian/worktreeSlots/SnapshotChain.ts";
+import * as StorageSourceStore from "../src/mercurian/storage/StorageSourceStore.ts";
 import { ApprovalAutoResponderDefault } from "../src/orchestration/Services/ApprovalAutoResponder.ts";
 import { TurnPreparationDefault } from "../src/orchestration/Services/TurnPreparation.ts";
 
@@ -394,6 +395,13 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(
         Layer.mock(RepositoryStore.RepositoryStore)({
           getSnapshot: Effect.succeed({ repositories: [], projectRepositories: [] }),
+          changes: Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.mock(StorageSourceStore.StorageSourceStore)({
+          getSnapshot: Effect.succeed([]),
+          getDocumentLocations: Effect.succeed([]),
           changes: Stream.empty,
         }),
       ),

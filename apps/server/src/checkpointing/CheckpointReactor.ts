@@ -11,6 +11,7 @@ import {
   type MercurianRepositoryId,
   type OrchestrationEvent,
   type OrchestrationCheckpointFile,
+  type OrchestrationCheckpointDocumentRole,
   type OrchestrationCheckpointRepository,
   type OrchestrationCheckpointSummaryStatus,
   type ProviderRuntimeEvent,
@@ -52,6 +53,8 @@ import { SlotStore } from "../mercurian/worktreeSlots/SlotStore.ts";
 import { SlotRegistry } from "../mercurian/worktreeSlots/SlotRegistry.ts";
 import { lineExtraSnapshotRef, SnapshotChain } from "../mercurian/worktreeSlots/SnapshotChain.ts";
 import type { WorktreeSlot } from "../mercurian/worktreeSlots/schema.ts";
+import { StorageSourceStore } from "../mercurian/storage/StorageSourceStore.ts";
+import type { StorageSource } from "../mercurian/storage/schema.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -116,6 +119,65 @@ function checkpointFailureDetail(error: unknown, fallback: string): string {
   return fallback;
 }
 
+interface CheckpointDocumentLocations {
+  readonly current: ReadonlyArray<StorageSource>;
+  readonly retained: ReadonlyArray<StorageSource>;
+}
+
+type CheckpointDocumentLocationSnapshot =
+  | { readonly _tag: "Ready"; readonly locations: CheckpointDocumentLocations }
+  | { readonly _tag: "Unavailable"; readonly detail: string };
+
+type DocumentRoleMatch =
+  | { readonly _tag: "Ordinary" }
+  | { readonly _tag: "Role"; readonly role: OrchestrationCheckpointDocumentRole }
+  | { readonly _tag: "Ambiguous" };
+
+function storageLocationContainsGitPath(
+  location: StorageSource,
+  gitPath: string,
+  separator: string,
+): boolean {
+  const root = (location.subpath ?? "")
+    .split(separator)
+    .join("/")
+    .replace(/^\.\//u, "")
+    .replace(/\/+$/u, "");
+  return root.length === 0 || gitPath === root || gitPath.startsWith(`${root}/`);
+}
+
+function roleFromLocations(
+  locations: ReadonlyArray<StorageSource>,
+  repositoryId: MercurianRepositoryId,
+  gitPath: string,
+  separator: string,
+): DocumentRoleMatch {
+  const roles = new Set<OrchestrationCheckpointDocumentRole>();
+  for (const location of locations) {
+    if (
+      location.repositoryId === repositoryId &&
+      storageLocationContainsGitPath(location, gitPath, separator)
+    ) {
+      roles.add(location.kind);
+    }
+  }
+  if (roles.size === 0) return { _tag: "Ordinary" };
+  if (roles.size > 1) return { _tag: "Ambiguous" };
+  return { _tag: "Role", role: roles.values().next().value! };
+}
+
+function documentRoleAtPath(
+  snapshot: CheckpointDocumentLocations,
+  repositoryId: MercurianRepositoryId,
+  gitPath: string,
+  separator: string,
+): DocumentRoleMatch {
+  const current = roleFromLocations(snapshot.current, repositoryId, gitPath, separator);
+  return current._tag === "Ordinary"
+    ? roleFromLocations(snapshot.retained, repositoryId, gitPath, separator)
+    : current;
+}
+
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const randomUUID = crypto.randomUUIDv4;
@@ -136,6 +198,7 @@ const make = Effect.gen(function* () {
   const slots = yield* SlotStore;
   const slotRegistry = yield* SlotRegistry;
   const snapshotChain = yield* SnapshotChain;
+  const storageSources = yield* StorageSourceStore;
   const path = yield* Path.Path;
 
   // A hand rename is adopted for the repository it happened in. Only the home
@@ -412,6 +475,52 @@ const make = Effect.gen(function* () {
     readonly error?: string;
   }
 
+  const checkpointDocumentLocations = Effect.fn("CheckpointReactor.checkpointDocumentLocations")(
+    function* (input: {
+      readonly projectId: WorktreeSlot["projectId"];
+      readonly threadId: ThreadId;
+      readonly turnId: TurnId;
+      readonly createdAt: string;
+    }): Effect.fn.Return<CheckpointDocumentLocationSnapshot> {
+      const result = yield* Effect.result(
+        Effect.all({
+          current: storageSources.getSnapshot,
+          retained: storageSources.getDocumentLocations,
+        }),
+      );
+      if (Result.isSuccess(result)) {
+        return {
+          _tag: "Ready",
+          locations: {
+            current: result.success.current.filter(
+              (location) => location.projectId === input.projectId,
+            ),
+            retained: result.success.retained.filter(
+              (location) => location.projectId === input.projectId,
+            ),
+          },
+        };
+      }
+      const detail = checkpointFailureDetail(
+        result.failure,
+        "Project document locations could not be read.",
+      );
+      yield* appendCaptureFailureActivity({
+        threadId: input.threadId,
+        turnId: input.turnId,
+        detail: `Checkpoint captured, but document role classification is unavailable: ${detail}`,
+        createdAt: input.createdAt,
+      }).pipe(Effect.catch(() => Effect.void));
+      yield* Effect.logWarning("failed to read checkpoint document locations", {
+        threadId: input.threadId,
+        turnId: input.turnId,
+        projectId: input.projectId,
+        detail,
+      });
+      return { _tag: "Unavailable", detail };
+    },
+  );
+
   const checkpointFiles = Effect.fn("CheckpointReactor.checkpointFiles")(function* (input: {
     readonly cwd: string;
     readonly beforeSnapshotOid: string;
@@ -420,6 +529,8 @@ const make = Effect.gen(function* () {
     readonly turnId: TurnId;
     readonly turnCount: number;
     readonly createdAt: string;
+    readonly repositoryId?: MercurianRepositoryId;
+    readonly documentLocations?: CheckpointDocumentLocationSnapshot;
   }): Effect.fn.Return<CheckpointFileSummary> {
     const summary = yield* Effect.result(
       enumerateCheckpointChanges({
@@ -429,7 +540,47 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.provideService(GitVcsDriver, gitDriver)),
     );
     if (Result.isSuccess(summary)) {
-      return { files: summary.success, status: "ready" };
+      if (input.repositoryId === undefined || input.documentLocations === undefined) {
+        return { files: summary.success, status: "ready" };
+      }
+      if (input.documentLocations._tag === "Unavailable") {
+        return {
+          files: summary.success,
+          status: "unavailable",
+          error: input.documentLocations.detail,
+        };
+      }
+      const repositoryId = input.repositoryId;
+      const documentLocations = input.documentLocations.locations;
+      let ambiguous = false;
+      const files = summary.success.map((file) => {
+        const before =
+          file.kind === "added"
+            ? { _tag: "Ordinary" as const }
+            : documentRoleAtPath(
+                documentLocations,
+                repositoryId,
+                file.previousPath ?? file.path,
+                path.sep,
+              );
+        const after =
+          file.kind === "deleted"
+            ? { _tag: "Ordinary" as const }
+            : documentRoleAtPath(documentLocations, repositoryId, file.path, path.sep);
+        ambiguous ||= before._tag === "Ambiguous" || after._tag === "Ambiguous";
+        return {
+          ...file,
+          ...(before._tag === "Role" ? { beforeDocumentRole: before.role } : {}),
+          ...(after._tag === "Role" ? { afterDocumentRole: after.role } : {}),
+        } satisfies OrchestrationCheckpointFile;
+      });
+      return ambiguous
+        ? {
+            files,
+            status: "unavailable",
+            error: "Conflicting retained document locations made some file roles ambiguous.",
+          }
+        : { files, status: "ready" };
     }
     const status =
       summary.failure._tag === "CheckpointChangesError"
@@ -770,6 +921,12 @@ const make = Effect.gen(function* () {
               const kind = input.settled ? "settled" : "partial";
               const lineRootCommitId = slot.currentLineRootCommitId!;
               const members = yield* sessionMembers(session.value, slot, input.cwd);
+              const documentLocations = yield* checkpointDocumentLocations({
+                projectId: slot.projectId,
+                threadId: input.threadId,
+                turnId: input.turnId,
+                createdAt: input.createdAt,
+              });
               const attempts = yield* Effect.forEach(members, (member) =>
                 Effect.result(
                   captureMemberSnapshot({
@@ -858,6 +1015,8 @@ const make = Effect.gen(function* () {
                         turnId: input.turnId,
                         turnCount: input.turnCount,
                         createdAt: input.createdAt,
+                        repositoryId: captured.member.repositoryId,
+                        documentLocations,
                       });
                   if (Result.isFailure(before)) {
                     const detail =
