@@ -1492,6 +1492,34 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("discards persisted native context without recovering an inactive session", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("discard-unprimed-clean-start");
+      const initial = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      yield* routing.codex.stopSession(threadId);
+      const startsBeforeDiscard = routing.codex.startSession.mock.calls.length;
+      yield* provider.stopSession({ threadId }, { discardBinding: true });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, startsBeforeDiscard);
+      assert.ok(Option.isNone(yield* directory.getBinding(threadId)));
+      assert.equal(
+        yield* provider.getPersistedResumeCursor(
+          initial.threadId,
+          initial.providerInstanceId ?? codexInstanceId,
+        ),
+        undefined,
+      );
+    }),
+  );
+
   it.effect("stopping a missing binding does not recover and cleans a live partial start", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

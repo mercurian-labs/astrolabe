@@ -1038,7 +1038,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   });
 
   const stopSession: ProviderServiceMethod<"stopSession"> = Effect.fn("stopSession")(
-    function* (rawInput) {
+    function* (rawInput, options) {
       const input = yield* decodeInputOrValidationError({
         operation: "ProviderService.stopSession",
         schema: ProviderStopSessionInput,
@@ -1054,6 +1054,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
               yield* adapter.stopSession(input.threadId);
           }
           yield* clearMcpSession(input.threadId);
+          if (options?.discardBinding === true) yield* directory.delete(input.threadId);
           return;
         }
         const routed = yield* resolveRoutableSession({
@@ -1071,15 +1072,19 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           yield* routed.adapter.stopSession(routed.threadId);
         }
         yield* clearMcpSession(input.threadId);
-        yield* directory.upsert({
-          threadId: input.threadId,
-          provider: routed.adapter.provider,
-          providerInstanceId: routed.instanceId,
-          status: "stopped",
-          runtimePayload: {
-            activeTurnId: null,
-          },
-        });
+        if (options?.discardBinding === true) {
+          yield* directory.delete(input.threadId);
+        } else {
+          yield* directory.upsert({
+            threadId: input.threadId,
+            provider: routed.adapter.provider,
+            providerInstanceId: routed.instanceId,
+            status: "stopped",
+            runtimePayload: {
+              activeTurnId: null,
+            },
+          });
+        }
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
         });

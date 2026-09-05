@@ -91,6 +91,10 @@ export interface ProviderServiceShape {
    */
   readonly stopSession: (
     input: ProviderStopSessionInput,
+    options?: {
+      /** Remove persisted native context owned only by an unsubmitted clean start. */
+      readonly discardBinding?: boolean;
+    },
   ) => Effect.Effect<void, ProviderServiceError>;
 
   /**

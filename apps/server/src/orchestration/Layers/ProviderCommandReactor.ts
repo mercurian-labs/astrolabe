@@ -322,6 +322,7 @@ const make = Effect.gen(function* () {
     readonly sequence: number;
     cancelled: boolean;
     sendStarted: boolean;
+    startedSessionContextDisposition?: "clean-start" | "resume";
     fiber?: Fiber.Fiber<void>;
   }
   const pendingStarts = new Map<ThreadId, Set<PendingStart>>();
@@ -548,6 +549,7 @@ const make = Effect.gen(function* () {
       readonly modelSelection?: ModelSelection;
       readonly pendingTurnStart?: boolean;
       readonly message?: OrchestrationMessage;
+      readonly attempt?: PendingStart;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -730,25 +732,37 @@ const make = Effect.gen(function* () {
                 contextDisposition: resumeCursor == null ? "clean-start" : "resume",
                 modelSelection: desiredModelSelection,
               });
-        return yield* providerService.startSession(threadId, {
-          threadId,
-          ...(preferredProvider ? { provider: preferredProvider } : {}),
-          providerInstanceId: desiredInstanceId,
-          ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-          ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
-          ...(thread.title ? { title: thread.title } : {}),
-          modelSelection: desiredModelSelection,
-          ...(input?.skipResume === true || preparedTurn?.session.skipResume === true
-            ? { skipResume: true }
-            : {}),
-          ...(resumeCursor != null && preparedTurn?.session.skipResume !== true
-            ? { resumeCursor }
-            : {}),
-          ...(preparedTurn?.session.isolateProviderSettings === undefined
-            ? {}
-            : { isolateProviderSettings: preparedTurn.session.isolateProviderSettings }),
-          runtimeMode: desiredRuntimeMode,
-        });
+        const skipResume = input?.skipResume === true || preparedTurn?.session.skipResume === true;
+        const contextDisposition = skipResume || resumeCursor == null ? "clean-start" : "resume";
+        return yield* Effect.uninterruptibleMask((restore) =>
+          Effect.sync(() => {
+            if (options?.attempt !== undefined) {
+              options.attempt.startedSessionContextDisposition = contextDisposition;
+            }
+          }).pipe(
+            Effect.andThen(
+              restore(
+                providerService.startSession(threadId, {
+                  threadId,
+                  ...(preferredProvider ? { provider: preferredProvider } : {}),
+                  providerInstanceId: desiredInstanceId,
+                  ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+                  ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
+                  ...(thread.title ? { title: thread.title } : {}),
+                  modelSelection: desiredModelSelection,
+                  ...(skipResume ? { skipResume: true } : {}),
+                  ...(resumeCursor != null && !skipResume ? { resumeCursor } : {}),
+                  ...(preparedTurn?.session.isolateProviderSettings === undefined
+                    ? {}
+                    : {
+                        isolateProviderSettings: preparedTurn.session.isolateProviderSettings,
+                      }),
+                  runtimeMode: desiredRuntimeMode,
+                }),
+              ),
+            ),
+          ),
+        );
       }).pipe(Effect.tap(() => refreshWorkspaceSnapshot));
 
     const bindSessionToThread = (session: ProviderSession) =>
@@ -877,6 +891,7 @@ const make = Effect.gen(function* () {
     readonly modelSelection?: ModelSelection;
     readonly interactionMode?: "default" | "plan";
     readonly createdAt: string;
+    readonly attempt: PendingStart;
   }) {
     const thread = yield* resolveThread(input.threadId);
     if (!thread) {
@@ -888,6 +903,7 @@ const make = Effect.gen(function* () {
       ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
       pendingTurnStart: true,
       message: input.message,
+      attempt: input.attempt,
     });
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
@@ -1380,6 +1396,7 @@ const make = Effect.gen(function* () {
           : {}),
         interactionMode: event.payload.interactionMode,
         createdAt: event.payload.createdAt,
+        attempt,
       });
       yield* Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
@@ -1432,13 +1449,22 @@ const make = Effect.gen(function* () {
     const attempts = cancelledStarts.get(event.sequence);
     cancelledStarts.delete(event.sequence);
     if (attempts === undefined || attempts.some((attempt) => attempt.sendStarted)) return false;
+    const ownsUnprimedCleanSession = attempts.some(
+      (attempt) => attempt.startedSessionContextDisposition === "clean-start",
+    );
     const live = (yield* providerService.listSessions()).find(
       (session) => session.threadId === event.payload.threadId,
     );
     if (live?.status === "running" || live?.activeTurnId != null) return false;
     const stop = event.type !== "thread.turn-interrupt-requested";
-    if (live !== undefined && (stop || live.status !== "ready"))
+    if (ownsUnprimedCleanSession) {
+      yield* providerService.stopSession(
+        { threadId: event.payload.threadId },
+        { discardBinding: true },
+      );
+    } else if (live !== undefined && (stop || live.status !== "ready")) {
       yield* providerService.stopSession({ threadId: event.payload.threadId });
+    }
     const thread = yield* resolveThread(event.payload.threadId);
     if (thread === undefined || thread.deletedAt !== null) return true;
     const instanceId = live?.providerInstanceId ?? thread.session?.providerInstanceId;
@@ -1446,7 +1472,8 @@ const make = Effect.gen(function* () {
       threadId: thread.id,
       session: {
         threadId: thread.id,
-        status: !stop && live?.status === "ready" ? "ready" : "stopped",
+        status:
+          !ownsUnprimedCleanSession && !stop && live?.status === "ready" ? "ready" : "stopped",
         providerName: live?.provider ?? thread.session?.providerName ?? null,
         ...(instanceId === undefined ? {} : { providerInstanceId: instanceId }),
         runtimeMode: thread.runtimeMode,
