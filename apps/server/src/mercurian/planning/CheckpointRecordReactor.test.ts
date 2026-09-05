@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { OrchestrationEvent } from "@t3tools/contracts";
+import { MessageId, type OrchestrationEvent } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -19,12 +19,91 @@ import {
   planId,
   query,
   start,
+  sessionSet,
   interrupted,
   captured,
   appendResponse,
+  deleted,
+  removeCheckpointRequest,
+  threadId,
+  turnId,
 } from "./CheckpointRecordTestUtils.ts";
 
 const testLayer = storeLayer.pipe(Layer.provideMerge(NodeSqliteClient.layerMemory()));
+
+for (const projectionSurvives of [true, false])
+  it.effect(
+    `first-upgrade replay leaves legacy history untouched when its projection ${projectionSurvives ? "survives" : "was deleted"}`,
+    () =>
+      Effect.gen(function* () {
+        yield* seed;
+        yield* removeCheckpointRequest();
+        const store = yield* CheckpointRecordStore;
+        const legacyCapture = captured(3);
+        if (legacyCapture.type !== "thread.turn-diff-completed") return;
+        const {
+          requestMessageId: _requestMessageId,
+          captureTerminal: _captureTerminal,
+          repositories: _repositories,
+          ...legacyPayload
+        } = legacyCapture.payload;
+        const events: OrchestrationEvent[] = [
+          start(),
+          sessionSet(),
+          {
+            ...legacyCapture,
+            payload: {
+              ...legacyPayload,
+              repositories: [
+                {
+                  repositoryId: "legacy-repository",
+                  repositoryName: "Legacy repository",
+                  files: [],
+                },
+              ],
+            },
+          },
+          deleted(),
+        ];
+        const projection = {
+          threadId,
+          turnId,
+          pendingMessageId: MessageId.make(query),
+          state: "completed",
+        } as never;
+        const dependencies = Layer.mergeAll(
+          Layer.mock(OrchestrationEngineService)({
+            subscribeDomainEvents: Effect.succeed(Stream.never),
+            readEvents: (after) =>
+              Stream.fromIterable(events.filter((event) => event.sequence > after)),
+          }),
+          Layer.mock(ProjectionTurnRepository)({
+            getByTurnId: () =>
+              Effect.succeed(projectionSurvives ? Option.some(projection) : Option.none()),
+            listByThreadId: () => Effect.succeed(projectionSurvives ? [projection] : []),
+          }),
+        );
+        const reactorLayer = layer.pipe(Layer.provide(dependencies));
+        yield* CheckpointRecordReactor.pipe(
+          Effect.flatMap((reactor) => reactor.drainThrough(4)),
+          Effect.scoped,
+          Effect.provide(reactorLayer),
+        );
+        assert.strictEqual(yield* store.get(planId, query), null);
+        assert.deepStrictEqual((yield* store.snapshot(planId)).checkpoints, []);
+        assert.deepStrictEqual(yield* store.unresolved, []);
+        assert.strictEqual(yield* store.eventCursor, 4);
+
+        yield* CheckpointRecordReactor.pipe(
+          Effect.flatMap((reactor) => reactor.drainThrough(4)),
+          Effect.scoped,
+          Effect.provide(Layer.fresh(reactorLayer)),
+        );
+        assert.strictEqual(yield* store.get(planId, query), null);
+        assert.deepStrictEqual((yield* store.snapshot(planId)).checkpoints, []);
+        assert.deepStrictEqual(yield* store.unresolved, []);
+      }).pipe(Effect.scoped, Effect.provide(testLayer)),
+  );
 
 it.effect("drains replay only after startup reconciliation repairs the immutable response", () =>
   Effect.gen(function* () {

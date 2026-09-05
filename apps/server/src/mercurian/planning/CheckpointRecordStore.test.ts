@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { MercurianCommitId, MessageId, PlanId } from "@t3tools/contracts";
+import { MercurianCommitId, MessageId, PlanId, TurnId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -19,10 +19,21 @@ import {
   appendResponse,
   appendInterruptedResponse,
   addQuery,
+  removeCheckpointRequest,
 } from "./CheckpointRecordTestUtils.ts";
 
 const database = NodeSqliteClient.layerMemory();
 const testLayer = layer.pipe(Layer.provideMerge(database));
+
+it.effect("does not make a request record for a pre-checkpoint query", () =>
+  Effect.gen(function* () {
+    yield* seed;
+    yield* removeCheckpointRequest();
+    const store = yield* CheckpointRecordStore;
+    assert.strictEqual(yield* store.recordQuery(query, threadId), null);
+    assert.deepStrictEqual((yield* store.snapshot(planId)).checkpoints, []);
+  }).pipe(Effect.provide(testLayer)),
+);
 
 for (const state of ["completed", "interrupted"] as const)
   for (const attached of [true, false])
@@ -152,6 +163,142 @@ it.effect(
       }).pipe(Effect.provide(Layer.fresh(layer)));
     }).pipe(Effect.provide(testLayer)),
 );
+
+it.effect("drops an exact legacy capture while retaining unknown new-model correlations", () =>
+  Effect.gen(function* () {
+    yield* seed;
+    const store = yield* CheckpointRecordStore;
+    yield* store.recordQuery(query, threadId);
+    yield* addQuery("legacy-query");
+    yield* removeCheckpointRequest("legacy-query");
+    yield* store.consume(
+      captured(1, {
+        turnId: TurnId.make("legacy-turn"),
+        requestMessageId: MessageId.make("legacy-query"),
+      }),
+    );
+    assert.strictEqual(yield* store.get(planId, MercurianCommitId.make("legacy-query")), null);
+    assert.deepStrictEqual(yield* store.unresolved, []);
+
+    yield* store.consume(
+      captured(2, {
+        turnId: TurnId.make("unknown-turn"),
+        requestMessageId: MessageId.make("not-yet-recorded"),
+      }),
+    );
+    assert.deepStrictEqual(yield* store.unresolved, [
+      { thread_id: threadId, turn_id: TurnId.make("unknown-turn") },
+    ]);
+  }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect("settles a bound request despite a later update to an older completed request", () =>
+  Effect.gen(function* () {
+    yield* seed;
+    const store = yield* CheckpointRecordStore;
+    const olderOwner = MercurianCommitId.make("older-query");
+    const olderMessage = MessageId.make(olderOwner);
+    const olderTurn = TurnId.make("older-turn");
+    yield* addQuery("older-query");
+    yield* store.recordQuery(olderOwner, threadId);
+    const olderStart = start();
+    if (olderStart.type !== "thread.turn-start-requested") return;
+    yield* store.consume({
+      ...olderStart,
+      payload: { ...olderStart.payload, messageId: olderMessage },
+    });
+    yield* store.consume(sessionSet(2, { activeTurnId: olderTurn }), olderMessage);
+    yield* store.consume(captured(3, { turnId: olderTurn, requestMessageId: olderMessage }));
+    yield* store.consume(start(4));
+    yield* store.consume(sessionSet(5), MessageId.make(query));
+    yield* store.consume(
+      captured(6, {
+        turnId: olderTurn,
+        requestMessageId: olderMessage,
+        files: [{ path: "late.txt", kind: "modified", additions: 1, deletions: 0 }],
+      }),
+    );
+    const olderBeforeError = yield* store.get(planId, olderOwner);
+    const activeBeforeError = yield* store.get(planId, query);
+    assert.ok(olderBeforeError);
+    assert.ok(activeBeforeError);
+    assert.ok(olderBeforeError.updateSequence > activeBeforeError.updateSequence);
+
+    yield* store.consume(
+      sessionSet(7, { status: "error", activeTurnId: null, lastError: "provider failed" }),
+    );
+    const olderAfterError = yield* store.get(planId, olderOwner);
+    assert.strictEqual(olderAfterError?.request?.state, "completed");
+    assert.strictEqual(olderAfterError?.capture?.status, "ready");
+    assert.strictEqual(olderAfterError?.capture?.terminal, true);
+    assert.strictEqual((yield* store.get(planId, query))?.request?.state, "unknown");
+  }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect("a newer queued request cannot mask an unfinished bound request", () =>
+  Effect.gen(function* () {
+    yield* seed;
+    const store = yield* CheckpointRecordStore;
+    yield* store.consume(start());
+    yield* store.consume(sessionSet(), MessageId.make(query));
+    const queuedOwner = MercurianCommitId.make("queued-query");
+    yield* addQuery(queuedOwner);
+    yield* store.recordQuery(queuedOwner, threadId);
+
+    yield* store.consume(
+      sessionSet(3, { status: "error", activeTurnId: null, lastError: "provider failed" }),
+    );
+    assert.strictEqual((yield* store.get(planId, query))?.request?.state, "unknown");
+    const queued = yield* store.get(planId, queuedOwner);
+    assert.strictEqual(queued?.request?.state, "unanswered");
+    assert.strictEqual(queued?.request?.turnId, undefined);
+  }).pipe(Effect.provide(testLayer)),
+);
+
+for (const status of ["error", "stopped"] as const)
+  it.effect(`marks unfinished bound requests unknown on terminal session ${status}`, () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const store = yield* CheckpointRecordStore;
+      const olderOwner = MercurianCommitId.make("older-query");
+      const olderMessage = MessageId.make(olderOwner);
+      const olderTurn = TurnId.make("older-turn");
+      yield* addQuery("older-query");
+      yield* store.recordQuery(olderOwner, threadId);
+      const olderStart = start();
+      if (olderStart.type !== "thread.turn-start-requested") return;
+      yield* store.consume({
+        ...olderStart,
+        payload: { ...olderStart.payload, messageId: olderMessage },
+      });
+      yield* store.consume(sessionSet(2, { activeTurnId: olderTurn }), olderMessage);
+      yield* store.consume(start(3));
+      yield* store.consume(sessionSet(4), MessageId.make(query));
+      yield* store.consume(
+        sessionSet(5, {
+          status,
+          activeTurnId: null,
+          lastError: status === "error" ? "provider failed" : null,
+        }),
+      );
+      const current = yield* store.get(planId, query);
+      const older = yield* store.get(planId, olderOwner);
+      assert.strictEqual(current?.request?.state, "unknown");
+      assert.strictEqual(current?.capture, undefined);
+      assert.strictEqual(older?.request?.state, "unknown");
+      assert.strictEqual(older?.capture, undefined);
+
+      yield* store.consume(captured(6));
+      const recovered = yield* store.get(planId, query);
+      assert.strictEqual(recovered?.request?.state, "completed");
+      assert.strictEqual(recovered?.capture?.terminal, true);
+      yield* store.consume(
+        sessionSet(7, { status: "error", activeTurnId: null, lastError: "late error" }),
+      );
+      assert.strictEqual((yield* store.get(planId, query))?.request?.state, "completed");
+      assert.strictEqual((yield* store.get(planId, olderOwner))?.request?.state, "unknown");
+    }).pipe(Effect.provide(testLayer)),
+  );
 
 it.effect(
   "preserves successful repositories and partial facts against weaker late placeholders",

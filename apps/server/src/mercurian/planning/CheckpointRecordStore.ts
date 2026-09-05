@@ -165,12 +165,7 @@ export const make = Effect.gen(function* () {
     if (threadId !== undefined && (row.kind !== "message" || row.author_kind !== "human"))
       return null;
     const payload = yield* decodeQuery(row.payload_json);
-    if (
-      threadId !== undefined &&
-      payload.checkpointRequest !== undefined &&
-      payload.checkpointRequest.threadId !== threadId
-    )
-      return null;
+    if (threadId !== undefined && payload.checkpointRequest?.threadId !== threadId) return null;
     return yield* write({
       ownerCommitId,
       planId: PlanId.make(row.plan_id),
@@ -284,6 +279,23 @@ export const make = Effect.gen(function* () {
       record.request.threadId !== threadId ||
       (record.request.turnId !== undefined && record.request.turnId !== turnId)
     ) {
+      if (requestMessageId !== undefined) {
+        const owners = yield* sql<{
+          payload_json: string;
+          kind: string;
+          author_kind: string;
+        }>`SELECT payload_json, kind, author_kind FROM commits WHERE commit_id = ${requestMessageId}`;
+        const knownOwner = owners[0];
+        if (knownOwner !== undefined) {
+          const payload = yield* decodeQuery(knownOwner.payload_json);
+          if (
+            knownOwner.kind !== "message" ||
+            knownOwner.author_kind !== "human" ||
+            payload.checkpointRequest?.threadId !== threadId
+          )
+            return;
+        }
+      }
       const knownThread =
         yield* sql`SELECT owner_commit_id FROM checkpoint_records WHERE thread_id = ${threadId} LIMIT 1`;
       if (knownThread.length === 0) return;
@@ -402,8 +414,12 @@ export const make = Effect.gen(function* () {
           const rows = yield* sql<{
             record_json: string;
           }>`SELECT record_json FROM checkpoint_records WHERE thread_id = ${event.payload.threadId}`;
-          for (const row of rows) {
-            const record = yield* decodeRecord(row.record_json);
+          const records = yield* Effect.forEach(rows, (row) => decodeRecord(row.record_json));
+          const sessionHasNoActiveTurn =
+            event.type === "thread.session-set" &&
+            event.payload.session.activeTurnId === null &&
+            ["error", "stopped"].includes(event.payload.session.status);
+          for (const record of records) {
             if (
               event.type === "thread.turn-interrupt-requested" &&
               event.payload.turnId !== undefined
@@ -423,6 +439,21 @@ export const make = Effect.gen(function* () {
               record.request.turnId !== undefined
             ) {
               yield* write({ ...record, request: { ...record.request, state: "unknown" } });
+              continue;
+            }
+            if (
+              sessionHasNoActiveTurn &&
+              record.request?.state === "submitted" &&
+              record.request.turnId !== undefined &&
+              record.capture?.terminal !== true
+            ) {
+              yield* write({
+                ...record,
+                request: {
+                  ...record.request,
+                  state: "unknown",
+                },
+              });
               continue;
             }
             if (

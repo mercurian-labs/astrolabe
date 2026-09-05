@@ -333,8 +333,8 @@ for (const { laterB, cleanup, replyTiming, emptyState, standaloneMemory } of [
                   const sql = yield* SqlClient.SqlClient;
                   yield* sql`DELETE FROM checkpoint_records WHERE owner_commit_id = ${emptyOwner}`;
                   yield* sql`UPDATE commits SET payload_json = json_remove(payload_json, '$.checkpointRequest') WHERE commit_id = ${emptyOwner}`;
-                  const lazy = yield* records.recordQuery(emptyOwner, originalThread);
-                  assert.strictEqual(lazy?.lineRootCommitId, undefined);
+                  const legacy = yield* records.recordQuery(emptyOwner, originalThread);
+                  assert.strictEqual(legacy, null);
                 } else if (emptyState !== "unanswered") {
                   const started = start(1);
                   assert.ok(started.type === "thread.turn-start-requested");
@@ -372,13 +372,18 @@ for (const { laterB, cleanup, replyTiming, emptyState, standaloneMemory } of [
                     });
                   }
                 }
-                const emptyRecord = (yield* records.get(planId, emptyOwner))!;
-                assert.strictEqual(emptyRecord.capture?.terminal === true, false);
-                assert.strictEqual(
-                  (yield* checkpointForkParent(emptyRecord, emptyRecord.revision).pipe(Effect.flip))
-                    ._tag,
-                  "HistoricalCheckpointUnavailable",
-                );
+                const emptyRecord = yield* records.get(planId, emptyOwner);
+                if (emptyState === "lazy") assert.strictEqual(emptyRecord, null);
+                else {
+                  assert.ok(emptyRecord);
+                  assert.strictEqual(emptyRecord?.capture?.terminal === true, false);
+                  assert.strictEqual(
+                    (yield* checkpointForkParent(emptyRecord, emptyRecord.revision).pipe(
+                      Effect.flip,
+                    ))._tag,
+                    "HistoricalCheckpointUnavailable",
+                  );
+                }
                 const qa = yield* send(originalThread, "query-A", "Request A");
                 const appendReplyA = () =>
                   planning.appendAssistantMessage({
@@ -629,6 +634,7 @@ for (const { laterB, cleanup, replyTiming, emptyState, standaloneMemory } of [
                   }
                 for (const target of [empty, ...(gap === undefined ? [] : [gap])]) {
                   const expectsA = target === gap;
+                  const expectsLegacyLatest = emptyState === "lazy" && target === empty;
                   const queryFork = yield* runtimeService.ensureThread({
                     planId,
                     forkParentCommitId: MercurianCommitId.make(target.commitId),
@@ -650,16 +656,24 @@ for (const { laterB, cleanup, replyTiming, emptyState, standaloneMemory } of [
                     const cwd = NodePath.join(editSlot.path, member.relativePath);
                     assert.strictEqual(
                       NodeFS.readFileSync(NodePath.join(cwd, "file.txt"), "utf8"),
-                      expectsA ? "captured A\n" : "base\n",
+                      expectsLegacyLatest ? "captured B\n" : expectsA ? "captured A\n" : "base\n",
                     );
                     assert.strictEqual(
                       NodeFS.existsSync(NodePath.join(cwd, "new-A.txt")),
-                      expectsA,
+                      expectsA || expectsLegacyLatest,
                     );
-                    assert.ok(!NodeFS.existsSync(NodePath.join(cwd, "new-B.txt")));
+                    assert.strictEqual(
+                      NodeFS.existsSync(NodePath.join(cwd, "new-B.txt")),
+                      expectsLegacyLatest,
+                    );
                     assert.strictEqual(
                       runGit(cwd, ["rev-parse", "HEAD"]),
-                      repos.find((repo) => repo.repositoryId === member.repositoryId)!.head,
+                      expectsLegacyLatest
+                        ? runGit(
+                            repos.find((repo) => repo.repositoryId === member.repositoryId)!.path,
+                            ["rev-parse", "HEAD"],
+                          )
+                        : repos.find((repo) => repo.repositoryId === member.repositoryId)!.head,
                     );
                   }
                   const forkDetail = yield* planning.getPlanSnapshot({ planId });

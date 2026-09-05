@@ -62,6 +62,11 @@ export const interrupted = (sequence = 2): OrchestrationEvent => ({
   type: "thread.turn-interrupt-requested",
   payload: { threadId, createdAt: now },
 });
+export const deleted = (sequence = 4): OrchestrationEvent => ({
+  ...base(sequence),
+  type: "thread.deleted",
+  payload: { threadId, deletedAt: now },
+});
 export const sessionSet = (
   sequence = 2,
   overrides: Partial<OrchestrationSession> = {},
@@ -133,6 +138,11 @@ export const addQuery = (id: string) =>
       checkpointRequest: { threadId, lineRootCommitId: "query" },
     });
     yield* sql`INSERT INTO commits (commit_id, history_id, kind, author_kind, created_at, payload_json) VALUES (${id}, 'history', 'message', 'human', '', ${json})`;
+  });
+export const removeCheckpointRequest = (id = String(query)) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE commits SET payload_json = json_remove(payload_json, '$.checkpointRequest') WHERE commit_id = ${id}`;
   });
 const appendReply = Effect.fn("test.appendReply")(function* (interrupted: boolean) {
   const sql = yield* SqlClient.SqlClient;
