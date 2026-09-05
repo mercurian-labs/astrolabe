@@ -113,6 +113,9 @@ layer("019_MemoryAmendmentReviewsCompatibility", (it) => {
         { migrationId: 17, name: "MemoryAmendmentReviews" },
         { migrationId: 18, name: "LineRuntimeBirth" },
         { migrationId: 19, name: "MemoryAmendmentReviewsCompatibility" },
+        { migrationId: 20, name: "ProjectStorage" },
+        { migrationId: 21, name: "DocumentOrigins" },
+        { migrationId: 22, name: "DocumentOperations" },
       ]);
     }),
   );

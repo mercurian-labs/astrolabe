@@ -40,6 +40,7 @@ export const make = Effect.gen(function* () {
   const slotService = yield* SlotService;
   const turns = yield* PlanTurnRegistry;
   return Effect.fn("IssueImport.import")(function* (input: MercurianImportPlanInput) {
+    yield* planningStore.getProject(input.projectId);
     const createdAt = yield* DateTime.now;
     const documentId = NodeCrypto.createHash("sha256")
       .update(yield* encodeOriginKey([input.connectionId, input.issue.id]))

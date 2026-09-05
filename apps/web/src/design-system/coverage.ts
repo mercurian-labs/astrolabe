@@ -18,6 +18,21 @@ const UI_SOURCE_PREFIX = "src/components/ui/";
 export const MERCURIAN_CLASSIFICATIONS: Readonly<
   Record<string, ModuleClassification<MercurianClassificationCategory>>
 > = {
+  "src/components/mercurian/ProjectDocumentLocationFields.tsx": {
+    category: "deferred",
+    reason:
+      "Repository and directory fields need catalog states for configured, unconfigured, and disabled locations.",
+  },
+  "src/components/mercurian/ProjectDocumentsPanel.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Document discovery and checkpoint navigation depend on the active line, storage designations, and environment RPC.",
+  },
+  "src/components/mercurian/ProjectStorageSettings.tsx": {
+    category: "requires-live-workspace",
+    reason:
+      "Loads and saves storage designations through the active environment and reports server validation.",
+  },
   "src/components/mercurian/AddRepositoryDialog.tsx": {
     category: "requires-live-workspace",
     reason:

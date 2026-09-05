@@ -141,7 +141,7 @@ it.effect(
                 ),
             }),
             Layer.mock(RepositoryStore.RepositoryStore)({
-              getSnapshot: Effect.succeed({
+              getWorkingSnapshot: Effect.succeed({
                 repositories: repositoryPaths.map((repositoryPath, index) => ({
                   repositoryId: repositoryIds[index]!,
                   name: `repository-${index}`,

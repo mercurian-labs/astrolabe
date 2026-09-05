@@ -7435,6 +7435,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.isTrue(response.listing.entries.some((entry) => entry.path === "src/index.ts"));
       assert.deepEqual(response.file, {
+        readOnly: false,
         relativePath: "src/index.ts",
         contents: "export const answer = 42;\n",
         byteLength: 26,

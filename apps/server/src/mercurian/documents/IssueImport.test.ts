@@ -43,6 +43,7 @@ it.effect(
           ),
       }),
       Layer.mock(PlanningStore)({
+        getProject: () => Effect.succeed({ projectId } as never),
         importPlan: () =>
           Effect.succeed({
             outcome: "created",
