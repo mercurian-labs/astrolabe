@@ -33,6 +33,7 @@ export interface VcsDiffCheckpointsInput {
   readonly toCheckpointRef: CheckpointRef;
   readonly fallbackFromToHead?: boolean;
   readonly ignoreWhitespace: boolean;
+  readonly paths?: ReadonlyArray<string>;
 }
 
 export interface VcsDeleteCheckpointRefsInput {

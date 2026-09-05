@@ -1,3 +1,18 @@
+import {
+  MemoryReadUnavailableError,
+  MercurianReadMemoryCatalogInput,
+  MemoryCatalog,
+} from "./mercurianMemory.ts";
+import {
+  MercurianReadMemoryDashboardInput,
+  MercurianReadMemoryDocumentInput,
+  MercurianReadMemoryComparisonInput,
+  MercurianSubscribeMemoryInvalidationsInput,
+  MemoryDashboard,
+  MemoryDocumentResult,
+  MemoryComparisonResult,
+  MemoryInvalidation,
+} from "./mercurianMemory.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -85,11 +100,8 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
-  ConfirmMemoryAmendmentBlockedError,
   MERCURIAN_WS_METHODS,
   MercurianArchivePlanInput,
-  MercurianCancelMemoryAmendmentInput,
-  MercurianConfirmMemoryAmendmentInput,
   MercurianCreateProjectInput,
   MercurianDeletePlanInput,
   MercurianEnsureProjectRuntimeInput,
@@ -131,7 +143,6 @@ import {
   SpecRefreshUnavailableError,
   PlanTextAt,
   PlanTurnActiveError,
-  MercurianCommitId,
 } from "./mercurian.ts";
 import {
   MERCURIAN_REPOSITORY_WS_METHODS,
@@ -155,12 +166,20 @@ import {
   MemorySourceInvalidError,
   MemorySourcesStreamItem,
   MemoryIndex,
+  MercurianLineMemoryChanges,
   MemoryNote,
   MercurianDesignateMemorySourceInput,
   MercurianGenerateProductMapInput,
   MercurianMemoryError,
   MercurianReadMemoryIndexInput,
   MercurianReadMemoryNoteInput,
+  MercurianReadLineMemoryChangesInput,
+  MercurianMarkMemoryChangeReviewedInput,
+  MercurianRevertMemoryChangeInput,
+  MercurianMergeMemoryHomeInput,
+  MercurianMergeMemoryHomeResult,
+  MemoryReviewBlockedError,
+  MergeMemoryHomeBlockedError,
   MercurianRemoveMemorySourceInput,
   MercurianSubscribeMemorySourcesInput,
   ProductMapAlreadyExistsError,
@@ -1373,31 +1392,6 @@ export const WsMercurianRefreshSpecRpc = Rpc.make(MERCURIAN_WS_METHODS.refreshSp
   ]),
 });
 
-export const WsMercurianConfirmMemoryAmendmentRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.confirmMemoryAmendment,
-  {
-    payload: MercurianConfirmMemoryAmendmentInput,
-    success: MercurianCommitId,
-    error: Schema.Union([
-      PlanNotFoundError,
-      PlanTurnActiveError,
-      ConfirmMemoryAmendmentBlockedError,
-      MercurianPlanningError,
-      MercurianMemoryError,
-      EnvironmentAuthorizationError,
-    ]),
-  },
-);
-
-export const WsMercurianCancelMemoryAmendmentRpc = Rpc.make(
-  MERCURIAN_WS_METHODS.cancelMemoryAmendment,
-  {
-    payload: MercurianCancelMemoryAmendmentInput,
-    success: MercurianPlanAcknowledged,
-    error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
-  },
-);
-
 // Attention, recorded. Both write one plan's visited-at and answer with
 // nothing: the change they made comes back on the tree subscription, where
 // every other row fact already lives. Neither joins the environment
@@ -1572,10 +1566,57 @@ export const WsMercurianRemoveMemorySourceRpc = Rpc.make(
   },
 );
 
+export const WsMercurianReadMemoryCatalogRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryCatalog,
+  {
+    payload: MercurianReadMemoryCatalogInput,
+    success: MemoryCatalog,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryDashboardRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard,
+  {
+    payload: MercurianReadMemoryDashboardInput,
+    success: MemoryDashboard,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryDocumentRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument,
+  {
+    payload: MercurianReadMemoryDocumentInput,
+    success: MemoryDocumentResult,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianReadMemoryComparisonRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison,
+  {
+    payload: MercurianReadMemoryComparisonInput,
+    success: MemoryComparisonResult,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsMercurianSubscribeMemoryInvalidationsRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
+  {
+    payload: MercurianSubscribeMemoryInvalidationsInput,
+    success: MemoryInvalidation,
+    error: Schema.Union([MercurianMemoryError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
 export const WsMercurianReadMemoryIndexRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex, {
   payload: MercurianReadMemoryIndexInput,
   success: MemoryIndex,
   error: Schema.Union([
+    MemoryReadUnavailableError,
     MemoryNotDesignatedError,
     MemorySourceInvalidError,
     MercurianMemoryError,
@@ -1587,8 +1628,67 @@ export const WsMercurianReadMemoryNoteRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS
   payload: MercurianReadMemoryNoteInput,
   success: MemoryNote,
   error: Schema.Union([
+    MemoryReadUnavailableError,
     MemoryNotDesignatedError,
     MemorySourceInvalidError,
+    MercurianMemoryError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMercurianReadLineMemoryChangesRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges,
+  {
+    payload: MercurianReadLineMemoryChangesInput,
+    success: MercurianLineMemoryChanges,
+    error: Schema.Union([
+      MemoryReadUnavailableError,
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianMarkMemoryChangeReviewedRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed,
+  {
+    payload: MercurianMarkMemoryChangeReviewedInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      MercurianMemoryError,
+      MemoryReviewBlockedError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianRevertMemoryChangeRpc = Rpc.make(
+  MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange,
+  {
+    payload: MercurianRevertMemoryChangeInput,
+    success: Schema.Void,
+    error: Schema.Union([
+      MemoryNotDesignatedError,
+      MemorySourceInvalidError,
+      MemoryReviewBlockedError,
+      MercurianMemoryError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsMercurianMergeMemoryHomeRpc = Rpc.make(MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome, {
+  payload: MercurianMergeMemoryHomeInput,
+  success: MercurianMergeMemoryHomeResult,
+  error: Schema.Union([
+    MemoryNotDesignatedError,
+    MemorySourceInvalidError,
+    MemoryReviewBlockedError,
+    MergeMemoryHomeBlockedError,
     MercurianMemoryError,
     EnvironmentAuthorizationError,
   ]),
@@ -1809,8 +1909,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSavePlanRevisionRpc,
   WsMercurianSaveSpecRevisionRpc,
   WsMercurianRefreshSpecRpc,
-  WsMercurianConfirmMemoryAmendmentRpc,
-  WsMercurianCancelMemoryAmendmentRpc,
   WsMercurianVisitPlanRpc,
   WsMercurianMarkPlanUnreadRpc,
   WsMercurianArchivePlanRpc,
@@ -1828,8 +1926,17 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianSubscribeMemorySourcesRpc,
   WsMercurianDesignateMemorySourceRpc,
   WsMercurianRemoveMemorySourceRpc,
+  WsMercurianReadMemoryCatalogRpc,
+  WsMercurianReadMemoryDashboardRpc,
+  WsMercurianReadMemoryDocumentRpc,
+  WsMercurianReadMemoryComparisonRpc,
+  WsMercurianSubscribeMemoryInvalidationsRpc,
   WsMercurianReadMemoryIndexRpc,
   WsMercurianReadMemoryNoteRpc,
+  WsMercurianReadLineMemoryChangesRpc,
+  WsMercurianMarkMemoryChangeReviewedRpc,
+  WsMercurianRevertMemoryChangeRpc,
+  WsMercurianMergeMemoryHomeRpc,
   WsMercurianGenerateProductMapRpc,
   WsMercurianSubscribeWorkspaceSettingsRpc,
   WsMercurianSubscribeTrackersRpc,

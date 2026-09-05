@@ -18,6 +18,7 @@ import {
   EnvironmentId,
   EventId,
   GitCommandError,
+  MemoryReviewBlockedError,
   KeybindingRule,
   MessageId,
   ExternalLauncherCommandNotFoundError,
@@ -44,6 +45,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   MERCURIAN_WS_METHODS,
+  MERCURIAN_MEMORY_WS_METHODS,
   MERCURIAN_REPOSITORY_WS_METHODS,
   MERCURIAN_TRACKER_WS_METHODS,
   MercurianCommitId,
@@ -126,6 +128,8 @@ import * as PlanTurnRegistry from "./mercurian/planning/PlanTurnRegistry.ts";
 import * as RepositoryStore from "./mercurian/repositories/RepositoryStore.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
+import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
+import * as MemoryReviewStore from "./mercurian/memory/MemoryReviewStore.ts";
 import type { TrackerConnector } from "./mercurian/trackers/connector.ts";
 import * as TrackerConnectorRegistry from "./mercurian/trackers/connectors/registry.ts";
 import * as TrackerStore from "./mercurian/trackers/TrackerStore.ts";
@@ -134,7 +138,6 @@ import * as ProcessRunner from "./processRunner.ts";
 import {
   codingSessionStatusChanges,
   isThreadDetailEvent,
-  memoryAmendmentNoteNames,
   resolveAvailableEditorsForConfig,
   resolveFileManagerRevealKindForConfig,
 } from "./ws.ts";
@@ -565,6 +568,8 @@ const buildAppUnderTest = (options?: {
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
+    memoryIndex?: Partial<MemoryIndex.MemoryIndex["Service"]>;
+    memoryDashboard?: Partial<MemoryDashboard.MemoryDashboard["Service"]>;
     lineTurnReactor?: Partial<LineTurnReactor.LineTurnReactor["Service"]>;
     trackerConnector?: TrackerConnector<"linear">;
     environmentTheme?: Partial<EnvironmentTheme.EnvironmentThemeService["Service"]>;
@@ -751,6 +756,7 @@ const buildAppUnderTest = (options?: {
       execute: () => Effect.die("GitVcsDriver.execute not stubbed in this test"),
       ...options?.layers?.gitVcsDriver,
     });
+    const planTurnRegistryLayer = PlanTurnRegistry.layer;
     const gitManagerLayer = Layer.mock(GitManager.GitManager)({
       ...options?.layers?.gitManager,
     });
@@ -820,6 +826,8 @@ const buildAppUnderTest = (options?: {
           recordRepositorySnapshot: () => Effect.void,
           recordLineBranchMissing: () => Effect.void,
           attachPullRequest: () => Effect.void,
+          recordPullRequestState: () => Effect.void,
+          recordMemoryMergedHome: () => Effect.void,
           changes: Stream.empty,
           ...options.layers.lineRuntimeStore,
         })
@@ -829,6 +837,8 @@ const buildAppUnderTest = (options?: {
           listByPlan: () => Effect.succeed([]),
           getByThreadId: () => Effect.succeed(Option.none()),
           getByBranch: () => Effect.succeed(Option.none()),
+          recordPullRequestState: () => Effect.void,
+          recordMemoryMergedHome: () => Effect.void,
           ...options.layers.legacySessionStore,
         })
       : LegacySessionStore.layer;
@@ -1291,9 +1301,6 @@ const buildAppUnderTest = (options?: {
               }),
             drainThrough: () => Effect.void,
             inFlightTurns: () => Effect.succeed([]),
-            memoryAmendmentProposal: () => Effect.succeed(undefined),
-            cancelMemoryAmendment: () => Effect.void,
-            clearMemoryAmendment: () => Effect.void,
             teardownPlan: () => Effect.void,
             ...options?.layers?.lineTurnReactor,
           }),
@@ -1317,7 +1324,7 @@ const buildAppUnderTest = (options?: {
             }),
             SlotRegistry.layer,
             Layer.mock(SlotService.SlotService)({
-              claim: () => Effect.die("SlotService.claim not stubbed in this test"),
+              claim: (_input) => Effect.die("SlotService.claim not stubbed in this test"),
               release: () => Effect.succeed(false),
               retain: () => Effect.void,
             }),
@@ -1352,7 +1359,26 @@ const buildAppUnderTest = (options?: {
                     ),
               ),
             ),
-            MemoryIndex.layer.pipe(Layer.provideMerge(MemorySourceStore.layer)),
+            MemorySourceStore.layer.pipe(Layer.provide(gitVcsDriverLayer)),
+            Layer.mock(MemoryIndex.MemoryIndex)({
+              readLineChanges: () =>
+                Effect.succeed({ marked: [], hand: [], unmarked: null, unreviewedCount: 0 }),
+              markChangeReviewed: () => Effect.void,
+              revertChange: () => Effect.void,
+              mergeHome: () => Effect.succeed({ kind: "deferred-to-push" as const }),
+              ...options?.layers?.memoryIndex,
+            }),
+            Layer.mock(MemoryDashboard.MemoryDashboard)({
+              readCatalog: () => Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
+              invalidate: () => Effect.void,
+              changes: Stream.empty,
+              readDashboard: () => Effect.succeed({ kind: "unavailable", reason: "line-missing" }),
+              readDocument: () => Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
+              readComparison: () =>
+                Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
+              ...options?.layers?.memoryDashboard,
+            }),
+            MemoryReviewStore.layer,
             WorkspaceSettingsStore.layer,
             // Over a connector that reaches no network: the server suite is about
             // the wire, not about Linear.
@@ -1369,14 +1395,14 @@ const buildAppUnderTest = (options?: {
               Layer.provide(ServerSecretStore.layer),
             ),
           ).pipe(
-            Layer.provide(PlanTurnRegistry.layer),
+            Layer.provide(planTurnRegistryLayer),
             Layer.provide(CommitStore.layer),
             Layer.provide(MercurianSqlite.layerMemory),
             Layer.provide(ProcessRunner.layer),
           ),
         ),
       )
-      .pipe(Layer.provide(layerConfig));
+      .pipe(Layer.provideMerge(planTurnRegistryLayer), Layer.provide(layerConfig));
 
     yield* Layer.build(appLayer);
     return config;
@@ -1919,18 +1945,6 @@ it.effect("filters coding-session tree invalidations and excludes message deltas
 );
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
-  it("does not stamp skill-map amendment paths as note names", () => {
-    assert.deepEqual(
-      memoryAmendmentNoteNames([
-        { path: "Composer.md" },
-        { path: "Product.skillmap.md" },
-        { path: "nested/Plans.md" },
-        { path: "maps/legacy.md" },
-      ]),
-      ["Composer", "Plans"],
-    );
-  });
-
   it.effect("parks HTTP ingress until command readiness", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -5230,6 +5244,348 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       ]);
       assert.deepEqual(ensuredProjects, [projectId]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "routes immutable memory dashboard and detail targets without changing their position",
+    () =>
+      Effect.gen(function* () {
+        const inputs = yield* Queue.unbounded<unknown>();
+        const projectId = MercurianProjectId.make("immutable-project");
+        const threadId = ThreadId.make("immutable-thread");
+        const request = {
+          projectId,
+          line: { threadId },
+          position: { kind: "turn" as const, threadId, turnCount: 2 },
+        };
+        const oid = "a".repeat(40);
+        const position = {
+          projectId,
+          repositoryId: MercurianRepositoryId.make("immutable-repository"),
+          memoryRoot: "memory",
+          lineRootCommitId: MercurianCommitId.make("immutable-root"),
+          reading: request.position,
+          baselineTreeOid: oid,
+          baselineSnapshotOid: null,
+          baseCommitOid: oid,
+          snapshotOid: oid,
+          treeOid: oid,
+          recordedHeadOid: oid,
+          headOid: oid,
+          captureKind: "settled",
+        };
+        const overview = {
+          kind: "available" as const,
+          position,
+          curationVersion: "displayed-curation-version",
+          documents: [],
+          amendments: [],
+          graph: { nodes: [], edges: [], outsideReferences: [] },
+          unreviewedCount: 0,
+          limitations: [],
+        };
+        yield* buildAppUnderTest({
+          layers: {
+            memoryDashboard: {
+              readDashboard: (input) => Queue.offer(inputs, input).pipe(Effect.as(overview)),
+              readDocument: (input) =>
+                Queue.offer(inputs, input).pipe(
+                  Effect.as({ kind: "unavailable" as const, reason: "object-missing" as const }),
+                ),
+              readComparison: (input) =>
+                Queue.offer(inputs, input).pipe(
+                  Effect.as({ kind: "unavailable" as const, reason: "object-missing" as const }),
+                ),
+            },
+          },
+        });
+        const document = {
+          target: { position, path: "memory/A.md", treeOid: oid, blobOid: oid, deleted: true },
+        };
+        const comparison = {
+          target: {
+            position,
+            beforeTreeOid: oid,
+            afterTreeOid: "b".repeat(40),
+            paths: ["memory/A.md"],
+          },
+        };
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            assert.deepEqual(
+              yield* client[MERCURIAN_MEMORY_WS_METHODS.readMemoryDashboard](request),
+              overview,
+            );
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.readMemoryDocument](document);
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.readMemoryComparison](comparison);
+          }),
+        );
+        assert.deepEqual(yield* Queue.take(inputs), request);
+        assert.deepEqual(yield* Queue.take(inputs), document);
+        assert.deepEqual(yield* Queue.take(inputs), comparison);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes memory review, revert, and merge through current plan ownership", () =>
+    Effect.gen(function* () {
+      const memoryLineReads =
+        yield* Queue.unbounded<
+          Parameters<MemoryIndex.MemoryIndex["Service"]["readLineChanges"]>[0]
+        >();
+      const memoryReviewMarks =
+        yield* Queue.unbounded<
+          Parameters<MemoryIndex.MemoryIndex["Service"]["markChangeReviewed"]>[0]
+        >();
+      const memoryReverts =
+        yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["revertChange"]>[0]>();
+      const memoryMerges =
+        yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["mergeHome"]>[0]>();
+      const invalidations =
+        yield* PubSub.unbounded<
+          Parameters<MemoryDashboard.MemoryDashboard["Service"]["invalidate"]>[0]
+        >();
+      const invalidationCount = yield* Ref.make(0);
+      const curationVersion = "displayed-curation-version";
+      const review = {
+        version: "exact-review-version",
+        headOid: "a".repeat(40),
+        snapshotOid: "b".repeat(40),
+        treeOid: "c".repeat(40),
+        homeOid: "d".repeat(40),
+        homeRef: "refs/heads/main",
+        unmarkedId: "unmarked:exact-capture",
+        unreviewedIds: ["unmarked:exact-capture"],
+        warnings: ["Current map warning"],
+      };
+      const conflict = new MemoryReviewBlockedError({
+        reason: "conflict",
+        paths: ["Plans.md"],
+        reconciliationSeed: "Reconcile the inverse; preserve later work in Plans.md.",
+      });
+      const mergeResults = [
+        { kind: "review-required" as const, review },
+        { kind: "review-required" as const, review },
+        { kind: "deferred-to-push" as const },
+        { kind: "merged" as const, commitOid: "merge-oid" },
+        { kind: "conflict" as const, conflicts: [{ path: "Plans.md" }] },
+      ];
+      let mergeCall = 0;
+      let planning: PlanningStore.PlanningStore["Service"] | undefined;
+      yield* buildAppUnderTest({
+        onPlanningStoreReady: (store) => void (planning = store),
+        layers: {
+          memoryDashboard: {
+            changes: Stream.fromPubSub(invalidations),
+            invalidate: (projectId) =>
+              Ref.update(invalidationCount, (count) => count + 1).pipe(
+                Effect.andThen(PubSub.publish(invalidations, projectId)),
+                Effect.asVoid,
+              ),
+          },
+          memoryIndex: {
+            readLineChanges: (input) =>
+              Queue.offer(memoryLineReads, input).pipe(
+                Effect.as({
+                  marked: [],
+                  hand: [],
+                  unmarked: { id: review.unmarkedId, diff: "memory patch" },
+                  unreviewedCount: 1,
+                }),
+              ),
+            markChangeReviewed: (input) =>
+              Queue.offer(memoryReviewMarks, input).pipe(
+                Effect.andThen(
+                  input.commitOid === "arbitrary-oid"
+                    ? Effect.fail(new MemoryReviewBlockedError({ reason: "not-on-line" }))
+                    : Effect.void,
+                ),
+              ),
+            revertChange: (input) =>
+              Queue.offer(memoryReverts, input).pipe(
+                Effect.andThen(
+                  input.target.kind === "unmarked" ? Effect.fail(conflict) : Effect.void,
+                ),
+              ),
+            mergeHome: (input) =>
+              Queue.offer(memoryMerges, input).pipe(
+                Effect.andThen(
+                  Effect.suspend(() =>
+                    input.expectedVersion === "refused"
+                      ? Effect.fail(conflict)
+                      : Effect.succeed(mergeResults[mergeCall++]!),
+                  ),
+                ),
+              ),
+          },
+        },
+      });
+      if (planning === undefined) return yield* Effect.die("planning store was not captured");
+      const planningStore = planning;
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const project = yield* client[MERCURIAN_WS_METHODS.createProject]({
+              name: "Astrolabe",
+            });
+            const created = yield* planningStore.createPlan({
+              projectId: project.projectId,
+              message: "Review memory on this line",
+              lastUsed: null,
+              createdAt: TEST_EPOCH,
+            });
+            const line = {
+              planId: created.plan.planId,
+              commitId: MercurianCommitId.make(created.timeline[0]!.commitId),
+            };
+            const received = yield* Queue.unbounded<{ readonly kind: "invalidate" }>();
+            const subscription = yield* client[
+              MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations
+            ]({ scope: { projectId: project.projectId, line } }).pipe(
+              Stream.runForEach((event) => Queue.offer(received, event)),
+              Effect.forkChild,
+            );
+            assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
+            const changes = yield* client[MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges]({
+              line,
+            });
+            // A second device writes while this client's Memory tab may be unmounted.
+            yield* withWsRpcClient(wsUrl, (otherClient) =>
+              otherClient[MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]({
+                line,
+                commitOid: "reviewed-oid",
+              }),
+            );
+            assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
+            assert.strictEqual(yield* Ref.get(invalidationCount), 1);
+            yield* client[MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]({
+              line,
+              target: { kind: "commit", commitOid: "reverted-oid" },
+              expectedVersion: curationVersion,
+              position: { kind: "latest" },
+            });
+            assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
+            assert.strictEqual(yield* Ref.get(invalidationCount), 2);
+            const badReview = yield* Effect.flip(
+              client[MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]({
+                line,
+                commitOid: "arbitrary-oid",
+                position: { kind: "latest" },
+              }),
+            );
+            assert.strictEqual(badReview._tag, "MemoryReviewBlockedError");
+            if (badReview._tag === "MemoryReviewBlockedError")
+              assert.strictEqual(badReview.reason, "not-on-line");
+            const badRevert = yield* Effect.flip(
+              client[MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]({
+                line,
+                target: { kind: "unmarked" },
+                expectedVersion: curationVersion,
+              }),
+            );
+            assert.strictEqual(badRevert._tag, "MemoryReviewBlockedError");
+            if (badRevert._tag === "MemoryReviewBlockedError") {
+              assert.strictEqual(badRevert.reason, "conflict");
+              assert.deepEqual(badRevert.paths, conflict.paths);
+              assert.strictEqual(badRevert.reconciliationSeed, conflict.reconciliationSeed);
+            }
+            assert.strictEqual(yield* Ref.get(invalidationCount), 2);
+            const mergeInputs = mergeResults.map((_result, index) =>
+              index === 0
+                ? { line }
+                : {
+                    line,
+                    expectedVersion: review.version,
+                    reviewedUnmarkedId: index === 4 ? null : review.unmarkedId,
+                    position: { kind: "latest" as const },
+                  },
+            );
+            let expectedInvalidations = 2;
+            const mergeOutcomes = yield* Effect.forEach(
+              mergeInputs,
+              Effect.fn(function* (input) {
+                const outcome = yield* client[MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome](input);
+                if (outcome.kind === "merged" || outcome.kind === "deferred-to-push") {
+                  expectedInvalidations += 1;
+                  assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
+                }
+                // The completed RPC includes its final invalidation, so this proves
+                // read-only outcomes emit none without waiting for an absent event.
+                assert.strictEqual(yield* Ref.get(invalidationCount), expectedInvalidations);
+                if (outcome.kind === "review-required") {
+                  yield* PubSub.publish(invalidations, { projectId: project.projectId });
+                  assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
+                  assert.strictEqual(yield* Ref.get(invalidationCount), expectedInvalidations);
+                }
+                return outcome;
+              }),
+            );
+            const refused = yield* Effect.flip(
+              client[MERCURIAN_MEMORY_WS_METHODS.mergeMemoryHome]({
+                line,
+                expectedVersion: "refused",
+              }),
+            );
+            assert.strictEqual(refused._tag, "MemoryReviewBlockedError");
+            assert.strictEqual(yield* Ref.get(invalidationCount), expectedInvalidations);
+            yield* Fiber.interrupt(subscription);
+            // Re-subscribing still emits the initial refresh used after reconnect.
+            const reconnect = yield* client[
+              MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations
+            ]({ scope: { projectId: project.projectId, line } }).pipe(Stream.runHead);
+            assert.deepEqual(Option.getOrNull(reconnect), { kind: "invalidate" });
+            return { project, line, changes, mergeOutcomes, mergeInputs };
+          }),
+        ),
+      ).pipe(Effect.timeout("5 seconds"));
+
+      assert.deepEqual(result.changes, {
+        marked: [],
+        hand: [],
+        unmarked: { id: review.unmarkedId, diff: "memory patch" },
+        unreviewedCount: 1,
+      });
+      assert.deepEqual(yield* Queue.take(memoryLineReads), {
+        projectId: result.project.projectId,
+        line: result.line,
+      });
+      assert.deepEqual(yield* Queue.take(memoryReviewMarks), {
+        projectId: result.project.projectId,
+        line: result.line,
+        commitOid: "reviewed-oid",
+      });
+      assert.deepEqual(yield* Queue.take(memoryReverts), {
+        projectId: result.project.projectId,
+        line: result.line,
+        target: { kind: "commit", commitOid: "reverted-oid" },
+        expectedVersion: curationVersion,
+        position: { kind: "latest" },
+      });
+      assert.deepEqual(yield* Queue.take(memoryReviewMarks), {
+        projectId: result.project.projectId,
+        line: result.line,
+        commitOid: "arbitrary-oid",
+        position: { kind: "latest" },
+      });
+      assert.deepEqual(yield* Queue.take(memoryReverts), {
+        projectId: result.project.projectId,
+        line: result.line,
+        target: { kind: "unmarked" },
+        expectedVersion: curationVersion,
+      });
+      assert.deepEqual(result.mergeOutcomes, mergeResults);
+      assert.deepEqual(
+        yield* Effect.forEach(mergeResults, () => Queue.take(memoryMerges)),
+        result.mergeInputs.map((input) => ({ projectId: result.project.projectId, ...input })),
+      );
+      assert.deepEqual(yield* Queue.take(memoryMerges), {
+        projectId: result.project.projectId,
+        line: result.line,
+        expectedVersion: "refused",
+      });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
   it.effect("routes websocket rpc mercurian visits, and carries status facts on tree rows", () =>

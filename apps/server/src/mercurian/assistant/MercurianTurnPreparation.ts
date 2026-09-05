@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 
@@ -26,10 +27,15 @@ export const make = Effect.gen(function* () {
   const commits = yield* CommitStore;
   const memorySources = yield* MemorySourceStore;
   const memoryIndex = yield* MemoryIndex;
+  const path = yield* Path.Path;
 
   const resolveMemoryMentionStanza = Effect.fn(
     "MercurianTurnPreparation.resolveMemoryMentionStanza",
-  )(function* (projectId: import("@t3tools/contracts").MercurianProjectId, text: string) {
+  )(function* (
+    projectId: import("@t3tools/contracts").MercurianProjectId,
+    text: string,
+    line: import("@t3tools/contracts").MemoryLineRef,
+  ) {
     const names = [
       ...new Set(
         collectComposerInlineTokens(text, { includeNotes: true })
@@ -44,7 +50,7 @@ export const make = Effect.gen(function* () {
     if (Option.isNone(source)) return null;
     const resolutions = [];
     for (const name of names) {
-      const result = yield* memoryIndex.readNote(projectId, name).pipe(Effect.option);
+      const result = yield* memoryIndex.readNote(projectId, name, line).pipe(Effect.option);
       if (Option.isNone(result)) continue;
       const note = result.value;
       if (note.exists && note.path !== undefined) resolutions.push({ name, path: note.path });
@@ -58,7 +64,12 @@ export const make = Effect.gen(function* () {
       const runtime = yield* lineRuntimes.getByThreadId(input.thread.id);
       if (Option.isNone(runtime)) return { text: input.message.text, session: {} };
       const detail = yield* planning.getPlanSnapshot({ planId: runtime.value.planId });
-      const mention = yield* resolveMemoryMentionStanza(detail.plan.projectId, input.message.text);
+      const memoryLine = { threadId: input.thread.id } as const;
+      const mention = yield* resolveMemoryMentionStanza(
+        detail.plan.projectId,
+        input.message.text,
+        memoryLine,
+      );
       const isFirstLineTurn = input.sessionIsFresh && input.thread.messages.length === 1;
       if (!isFirstLineTurn) {
         return {
@@ -119,14 +130,24 @@ export const make = Effect.gen(function* () {
       const memorySource = yield* memorySources
         .getResolvedSource(detail.plan.projectId)
         .pipe(Effect.orElseSucceed(() => Option.none()));
+      const memoryMember = Option.isNone(memorySource)
+        ? undefined
+        : input.thread.workspaceMembers?.find(
+            (member) => member.repositoryId === memorySource.value.repositoryId,
+          );
+      const memoryRoot =
+        Option.isSome(memorySource) && memoryMember !== undefined
+          ? {
+              name: memorySource.value.repositoryName,
+              path: path.join(memoryMember.worktreePath, memorySource.value.subpath ?? ""),
+            }
+          : null;
       const appendix = planningSystemAppendix({
         planTitle: detail.plan.title,
         repositories,
         unreachableRepositories: runtime.value.unreachableRepositories,
-        memoryRoot: Option.isSome(memorySource)
-          ? { name: memorySource.value.repositoryName, path: memorySource.value.rootPath }
-          : null,
-        memoryAmendmentsAvailable: Option.isSome(memorySource),
+        memoryRoot,
+        memoryAmendmentsAvailable: memoryRoot !== null,
       });
       const preamble =
         entries.length === 0

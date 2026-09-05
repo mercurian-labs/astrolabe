@@ -1,3 +1,14 @@
+import * as NodeCrypto from "node:crypto";
+import * as FileSystem from "effect/FileSystem";
+import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as VcsProcess from "../../vcs/VcsProcess.ts";
+import { ServerConfig } from "../../config.ts";
+import { CheckpointStore } from "../../checkpointing/CheckpointStore.ts";
+import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
+import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { make as makeSnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
+import { makeMemoryPosition, type MemoryLineContext } from "../memory/MemoryPosition.ts";
+import { TurnId, type OrchestrationCheckpointSummary } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -96,10 +107,12 @@ interface HarnessState {
 }
 
 const makeHarness = (options?: {
+  readonly persistReplies?: boolean;
   readonly upstream?: boolean;
   readonly pending?: boolean;
   readonly forkParent?: CommitId;
   readonly unreachableRepositories?: ReadonlyArray<string>;
+  readonly memoryLandingFailure?: MemoryIndex.MemoryAmendmentValidationError;
 }) =>
   Effect.gen(function* () {
     const domain = yield* PubSub.unbounded<OrchestrationEvent>();
@@ -108,6 +121,8 @@ const makeHarness = (options?: {
     const assistantReceipts = yield* Queue.unbounded<PlanningStore.AppendAssistantMessageInput>();
     const birthReceipts = yield* Queue.unbounded<void>();
     const runtimeReads = yield* Queue.unbounded<void>();
+    const memoryLandings =
+      yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["landAmendment"]>[0]>();
     const root = options?.forkParent ?? rootId;
     const state: HarnessState = {
       runtime:
@@ -208,7 +223,19 @@ const makeHarness = (options?: {
         appendAssistantMessage: (input) =>
           Effect.sync(() => {
             state.assistantCommits.push(input);
-            return { commitId: CommitId.make("assistant") } as never;
+            const commitId = CommitId.make(
+              options?.persistReplies ? NodeCrypto.randomUUID() : "assistant",
+            );
+            if (options?.persistReplies)
+              state.timeline.push({
+                _tag: "message",
+                ...input,
+                commitId,
+                authorKind: "assistant",
+                parents: [input.parentCommitId],
+                sequence: state.timeline.length + 1,
+              });
+            return { commitId } as never;
           }).pipe(Effect.tap(() => Queue.offer(assistantReceipts, input))),
         saveAssistantPlanRevision: () =>
           Effect.succeed({ commitId: CommitId.make("plan-revision") } as never),
@@ -309,8 +336,17 @@ const makeHarness = (options?: {
         } as never),
       }),
       Layer.mock(MemoryIndex.MemoryIndex)({
-        prepareAmendment: ({ turnId }) =>
-          Effect.succeed({ turnId, title: "Memory", notes: [], placements: [] } as never),
+        landAmendment: (input) =>
+          Queue.offer(memoryLandings, input).pipe(
+            Effect.andThen(
+              options?.memoryLandingFailure === undefined
+                ? Effect.succeed({
+                    memoryCommitSha: "memory-commit",
+                    branch: "mercurian/memory",
+                  })
+                : Effect.fail(options.memoryLandingFailure),
+            ),
+          ),
       }),
       Layer.mock(SlotStore.SlotStore)({ listAll: Effect.succeed([]) }),
       Layer.mock(SlotRegistry.SlotRegistry)({ lease: () => Effect.succeed(Option.none()) }),
@@ -328,6 +364,7 @@ const makeHarness = (options?: {
       assistantReceipts,
       birthReceipts,
       runtimeReads,
+      memoryLandings,
     };
   });
 
@@ -351,6 +388,230 @@ const startTurn = (
   });
 
 describe("LineTurnReactor", () => {
+  for (const fork of [false, true])
+    it.effect(
+      `resolves ${fork ? "fork" : "first-line"} settled reply IDs through captures, followups and interruption`,
+      () =>
+        Effect.gen(function* () {
+          const harness = yield* makeHarness({
+            pending: true,
+            ...(fork ? { forkParent: rootId } : {}),
+            persistReplies: true,
+          });
+          if (fork)
+            harness.state.timeline.push(
+              { _tag: "message", commitId: rootId, parents: [], sequence: 1, authorKind: "human" },
+              {
+                _tag: "message",
+                commitId: CommitId.make("original-line-reply"),
+                parents: [rootId],
+                sequence: 2,
+                authorKind: "assistant",
+              },
+            );
+          yield* Effect.gen(function* () {
+            const reactor = yield* LineTurnReactor;
+            const git = yield* GitVcsDriver.GitVcsDriver;
+            const fs = yield* FileSystem.FileSystem;
+            const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "line-memory-integration-" });
+            const run = Effect.fn(function* (args: readonly string[]) {
+              return (yield* git.execute({ cwd, args, operation: "test" })).stdout.trim();
+            });
+            yield* run(["init", "-b", "main"]);
+            yield* run(["config", "user.name", "Memory Test"]);
+            yield* run(["config", "user.email", "memory@example.com"]);
+            yield* fs.writeFileString(`${cwd}/Base.md`, "baseline\n");
+            yield* run(["add", "."]);
+            yield* run(["commit", "-m", "base"]);
+            const baseOid = yield* run(["rev-parse", "HEAD"]);
+            yield* run(["checkout", "-b", "memory-line"]);
+            const repositoryId = MercurianRepositoryId.make("repository");
+            const lineRootCommitId = MercurianCommitId.make(messageId);
+            const branch = {
+              repositoryId,
+              lineRootCommitId,
+              branch: "memory-line",
+              baseOid,
+              built: true,
+              repointHold: null,
+              createdAt: DateTime.makeUnsafe(now),
+            };
+            const driver = yield* GitVcsDriver.makeVcsDriverShape();
+            const chain = yield* makeSnapshotChain.pipe(
+              Effect.provideService(
+                CheckpointStore,
+                CheckpointStore.of({
+                  ...driver.checkpoints,
+                  isGitRepository: () => Effect.succeed(true),
+                }),
+              ),
+              Effect.provide(
+                Layer.mergeAll(
+                  Layer.mock(LineBranchStore)({ get: () => Effect.succeed(Option.some(branch)) }),
+                  Layer.mock(SlotStore.SlotStore)({ listAll: Effect.succeed([]) }),
+                ),
+              ),
+            );
+            const checkpoints: OrchestrationCheckpointSummary[] = [];
+            const positions = yield* makeMemoryPosition.pipe(
+              Effect.provide(
+                Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
+                  getThreadCheckpointContext: () =>
+                    Effect.succeed(
+                      Option.some({
+                        threadId,
+                        projectId: orchestrationProjectId,
+                        workspaceRoot: cwd,
+                        worktreePath: cwd,
+                        checkpoints,
+                      }),
+                    ),
+                }),
+              ),
+            );
+            const context = (): MemoryLineContext => ({
+              planId,
+              lineRootCommitId,
+              branch,
+              source: {
+                projectId: mercurianProjectId,
+                repositoryId,
+                repositoryName: "memory",
+                repositoryPath: cwd,
+                rootPath: cwd,
+                subpath: null,
+                createdAt: DateTime.makeUnsafe(now),
+                updatedAt: DateTime.makeUnsafe(now),
+              },
+              detail: {
+                plan: { planId, projectId: mercurianProjectId },
+                timeline: harness.state.timeline,
+                codingSessions: [],
+                lineRuntimes: [harness.state.runtime],
+              } as unknown as MemoryLineContext["detail"],
+            });
+            const replies: string[] = [];
+            for (let turn = 1; turn <= 3; turn++) {
+              const user = turn === 1 ? messageId : MessageId.make(`followup-${turn}`);
+              yield* reactor.recordSend({
+                threadId,
+                messageId: user,
+                text: `Turn ${turn}`,
+                attachments: [],
+                createdAt: now,
+              });
+              const event = turnStarted();
+              yield* harness.publishDomain({
+                ...event,
+                sequence: turn,
+                payload: { ...event.payload, messageId: user },
+              } as OrchestrationEvent);
+              yield* reactor.drainThrough(turn);
+              yield* fs.writeFileString(`${cwd}/Turn-${turn}.md`, `captured ${turn}\n`);
+              yield* harness.publishProvider(
+                runtimeEvent({
+                  type: "turn.completed",
+                  payload: { state: turn === 3 ? "interrupted" : "completed" },
+                }),
+              );
+              const settled = yield* Queue.take(harness.assistantReceipts);
+              assert.strictEqual(settled.sourceUserMessageId, CommitId.make(user));
+              const reply = harness.state.timeline.at(-1)!;
+              replies.push(String(reply.commitId));
+              const reading = {
+                kind: "checkpoint" as const,
+                commitId: MercurianCommitId.make(String(reply.commitId)),
+              };
+              // The provider's settle can precede the checkpoint receipt. Never show a false baseline.
+              assert.deepStrictEqual(yield* positions.read(context(), reading), {
+                kind: "unavailable",
+                reason: "checkpoint-missing",
+              });
+              const ref = checkpointRefForThreadTurn(threadId, turn);
+              const capture = yield* chain.capture({
+                cwd,
+                lineRootCommitId,
+                repositoryId,
+                lineBranch: "memory-line",
+                kind: "settled",
+                ref,
+              });
+              const providerAssistantId = MessageId.make(`assistant:runtime-turn-${turn}`);
+              assert.notStrictEqual(providerAssistantId, reply.commitId);
+              checkpoints.push({
+                userMessageId: user,
+                assistantMessageId: providerAssistantId,
+                turnId: TurnId.make(`runtime-turn-${turn}`),
+                checkpointTurnCount: turn,
+                checkpointRef: ref,
+                status: "ready",
+                files: [],
+                completedAt: now,
+              });
+              const selected = yield* positions.read(context(), reading);
+              assert(!("kind" in selected));
+              assert.strictEqual(selected.snapshotOid, capture.oid);
+              assert.strictEqual(
+                yield* run(["show", `${selected.treeOid}:Turn-${turn}.md`]),
+                `captured ${turn}`,
+              );
+              // Existing unified records use the persisted human parent rather than equal assistant IDs.
+              delete reply.sourceUserMessageId;
+              assert.deepStrictEqual(yield* positions.read(context(), reading), selected);
+            }
+            const first = yield* positions.read(context(), {
+              kind: "checkpoint",
+              commitId: MercurianCommitId.make(replies[0]!),
+            });
+            assert(!("kind" in first));
+            assert.notInclude(
+              yield* run(["ls-tree", "-r", "--name-only", first.treeOid]),
+              "Turn-3.md",
+            );
+            const last = harness.state.timeline.at(-1)!;
+            assert.strictEqual(last.interrupted, true);
+            // A non-capture descendant inherits the preceding exact checkpoint.
+            harness.state.timeline.push({
+              _tag: "plan-revision",
+              commitId: CommitId.make("no-capture"),
+              parents: [last.commitId],
+              sequence: harness.state.timeline.length + 1,
+            });
+            const inherited = yield* positions.read(context(), {
+              kind: "checkpoint",
+              commitId: MercurianCommitId.make("no-capture"),
+            });
+            assert(!("kind" in inherited));
+            assert.strictEqual(
+              yield* run(["show", `${inherited.treeOid}:Turn-3.md`]),
+              "captured 3",
+            );
+            checkpoints[2] = { ...checkpoints[2]!, userMessageId: MessageId.make("unknown-send") };
+            assert.deepStrictEqual(
+              yield* positions.read(context(), {
+                kind: "checkpoint",
+                commitId: MercurianCommitId.make(replies[2]!),
+              }),
+              { kind: "unavailable", reason: "checkpoint-missing" },
+            );
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(
+              Layer.mergeAll(
+                harness.layer,
+                GitVcsDriver.layer.pipe(
+                  Layer.provide(
+                    ServerConfig.layerTest(process.cwd(), { prefix: "line-memory-integration-" }),
+                  ),
+                  Layer.provideMerge(VcsProcess.layer),
+                  Layer.provideMerge(NodeServices.layer),
+                ),
+              ),
+            ),
+          );
+        }),
+    );
+
   it.effect("thread.created births a plan and pending line runtime", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ pending: true });
@@ -545,7 +806,7 @@ describe("LineTurnReactor", () => {
     }),
   );
 
-  it.effect("stages a memory amendment and publishes it when the turn completes", () =>
+  it.effect("lands a memory amendment directly under the active line turn", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
       yield* Effect.gen(function* () {
@@ -557,12 +818,56 @@ describe("LineTurnReactor", () => {
           notes: [{ name: "Line runtime", markdown: "# Line runtime" }],
           placements: [],
         });
+        const landing = yield* Queue.take(harness.memoryLandings);
+        const [turn] = yield* reactor.inFlightTurns(planId);
+        assert.isDefined(turn);
+        assert.strictEqual(landing.projectId, mercurianProjectId);
+        assert.strictEqual(landing.threadId, threadId);
+        assert.strictEqual(landing.turnId, turn?.turnId);
+        assert.deepStrictEqual(landing.amendment, {
+          title: "Memory",
+          notes: [{ name: "Line runtime", markdown: "# Line runtime" }],
+          placements: [],
+        });
         yield* harness.publishProvider(
           runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
         );
         yield* Queue.take(harness.assistantReceipts);
-        const proposal = yield* reactor.memoryAmendmentProposal(planId);
-        assert.strictEqual(proposal?.title, "Memory");
+      }).pipe(Effect.scoped, Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect("returns a direct landing refusal without losing the real turn claim", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        memoryLandingFailure: new MemoryIndex.MemoryAmendmentValidationError({
+          reason: "memory-changed",
+        }),
+      });
+      yield* Effect.gen(function* () {
+        const reactor = yield* LineTurnReactor;
+        yield* startTurn(harness, reactor);
+        const refusal = yield* Effect.flip(
+          reactor.proposeMemoryAmendmentFromThread({
+            threadId,
+            title: "Memory",
+            notes: [{ name: "Line runtime", markdown: "# Line runtime" }],
+            placements: [],
+          }),
+        );
+        assert.strictEqual(refusal._tag, "MemoryAmendmentValidationError");
+        if (refusal._tag === "MemoryAmendmentValidationError") {
+          assert.strictEqual(refusal.reason, "memory-changed");
+        }
+        const landing = yield* Queue.take(harness.memoryLandings);
+        const [turn] = yield* reactor.inFlightTurns(planId);
+        assert.isDefined(turn);
+        assert.strictEqual(landing.turnId, turn?.turnId);
+
+        yield* harness.publishProvider(
+          runtimeEvent({ type: "turn.completed", payload: { state: "completed" } }),
+        );
+        yield* Queue.take(harness.assistantReceipts);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
   );

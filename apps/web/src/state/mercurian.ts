@@ -7,8 +7,6 @@ import type {
   MercurianForkLineInput,
   MercurianImportPlanInput,
   MercurianOpenLineInput,
-  MercurianCancelMemoryAmendmentInput,
-  MercurianConfirmMemoryAmendmentInput,
   MercurianRecreateLineBranchInput,
   PlanDetail,
   PlanId,
@@ -26,10 +24,7 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "./environments";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
-import {
-  useEnvironmentBoundCommand,
-  useEnvironmentBoundCommandResult,
-} from "./useEnvironmentBoundCommand";
+import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 
@@ -61,6 +56,10 @@ const EMPTY_PLAN_ATOM = Atom.make(
       readonly memoryAmendmentFailure: Extract<
         PlanStreamItem,
         { readonly kind: "memory-amendment-failed" }
+      > | null;
+      readonly memoryMergeHomeConflict: Extract<
+        PlanStreamItem,
+        { readonly kind: "memory-merge-home-conflict" }
       > | null;
     },
     never
@@ -141,6 +140,10 @@ export interface PlanDetailState {
     PlanStreamItem,
     { readonly kind: "memory-amendment-failed" }
   > | null;
+  readonly memoryMergeHomeConflict: Extract<
+    PlanStreamItem,
+    { readonly kind: "memory-merge-home-conflict" }
+  > | null;
 }
 
 /**
@@ -166,6 +169,7 @@ export function usePlanDetail(planId: PlanId | null): PlanDetailState {
     error: errorMessage(result, "Could not load this thread."),
     turnRefusal: state?.turnRefusal ?? null,
     memoryAmendmentFailure: state?.memoryAmendmentFailure ?? null,
+    memoryMergeHomeConflict: state?.memoryMergeHomeConflict ?? null,
   };
 }
 
@@ -208,16 +212,6 @@ export function useForkLine() {
 export function useImportPlan() {
   const run = useEnvironmentBoundCommand(mercurianPlanning.importPlan);
   return useCallback((input: MercurianImportPlanInput) => run(input), [run]);
-}
-
-export function useConfirmMemoryAmendment() {
-  const run = useEnvironmentBoundCommandResult(mercurianPlanning.confirmMemoryAmendment);
-  return useCallback((input: MercurianConfirmMemoryAmendmentInput) => run(input), [run]);
-}
-
-export function useCancelMemoryAmendment() {
-  const run = useEnvironmentBoundCommand(mercurianPlanning.cancelMemoryAmendment);
-  return useCallback((input: MercurianCancelMemoryAmendmentInput) => run(input), [run]);
 }
 
 export function useRecreateLineBranch() {

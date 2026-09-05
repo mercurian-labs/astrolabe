@@ -26,6 +26,8 @@ export const LineRuntimeRecord = Schema.Struct({
   departedRef: Schema.NullOr(Schema.String),
   branchMovement: Schema.NullOr(BranchMovement),
   lineBranchMissingOid: Schema.NullOr(TrimmedNonEmptyString),
+  prState: Schema.optional(Schema.NullOr(Schema.Literals(["open", "closed", "merged"]))),
+  memoryMergedHomeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString,
   repositories: Schema.optional(Schema.Array(CodingSessionRepositoryRecord)),

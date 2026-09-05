@@ -6,7 +6,12 @@ import * as NodePath from "node:path";
 
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { MercurianCommitId, MercurianProjectId, MercurianRepositoryId } from "@t3tools/contracts";
+import {
+  MercurianCommitId,
+  MercurianProjectId,
+  MercurianRepositoryId,
+  PlanId,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -17,6 +22,8 @@ import * as CheckpointStore from "../src/checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../src/config.ts";
 import * as GitWorkflowService from "../src/git/GitWorkflowService.ts";
 import * as LineBranchStore from "../src/mercurian/commitTree/LineBranchStore.ts";
+import * as MemorySourceStore from "../src/mercurian/memory/MemorySourceStore.ts";
+import * as PlanningStore from "../src/mercurian/planning/PlanningStore.ts";
 import * as RepositoryStore from "../src/mercurian/repositories/RepositoryStore.ts";
 import * as SlotRegistry from "../src/mercurian/worktreeSlots/SlotRegistry.ts";
 import { make, slotMemberWorktreePath } from "../src/mercurian/worktreeSlots/SlotService.ts";
@@ -59,6 +66,7 @@ it.effect(
           ];
           const worktreesDir = NodePath.join(root, "worktrees");
           const projectId = MercurianProjectId.make("project");
+          const planId = PlanId.make("plan");
           const now = DateTime.makeUnsafe("2026-08-31T12:00:00.000Z");
           const lines = ["line-a", "line-b", "line-c"].map((line) => MercurianCommitId.make(line));
           for (const repositoryPath of repositoryPaths) {
@@ -100,6 +108,24 @@ it.effect(
               changes: Stream.empty,
             }),
             SlotRegistry.layer,
+            Layer.mock(MemorySourceStore.MemorySourceStore)({
+              getSnapshot: Effect.succeed([]),
+              getSource: () => Effect.succeed(Option.none()),
+            }),
+            Layer.mock(PlanningStore.PlanningStore)({
+              getPlanSnapshot: () =>
+                Effect.succeed({
+                  plan: { planId, projectId, title: "Plan" },
+                  timeline: lines.map((commitId, sequence) => ({
+                    _tag: "plan-revision",
+                    commitId,
+                    parents: sequence === 0 ? [] : [lines[sequence - 1]!],
+                    sequence,
+                    createdAt: now,
+                  })),
+                  codingSessions: [],
+                } as never),
+            }),
             Layer.mock(LineBranchStore.LineBranchStore)({
               get: ({ lineRootCommitId, repositoryId }) =>
                 Effect.succeed(
@@ -213,6 +239,7 @@ it.effect(
           const holder = (threadId: string) => ({ kind: "turn" as const, threadId });
 
           const first = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[0]!,
             holder: holder("thread-a"),
@@ -230,6 +257,7 @@ it.effect(
             0,
           );
           const second = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[1]!,
             holder: holder("thread-b"),
@@ -262,6 +290,7 @@ it.effect(
 
           yield* service.release(first.slotId, holder("thread-a"));
           const third = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[2]!,
             holder: holder("thread-c"),
@@ -296,6 +325,7 @@ it.effect(
           );
           NodeFS.writeFileSync(betweenTurnsPath, "edited between turns\n");
           const affinity = yield* service.claim({
+            planId,
             projectId,
             lineRootCommitId: lines[2]!,
             holder: holder("thread-c-next"),

@@ -1,10 +1,18 @@
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
+import {
+  EnvironmentId,
+  MercurianCommitId,
+  MercurianProjectId,
+  MercurianRepositoryId,
+  type MemoryReadingPosition,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   appendReviewCommentsToPrompt,
   buildDiffReviewComment,
   buildFileReviewComment,
+  buildMemoryDocumentReviewComment,
   buildReviewCommentRenderablePatch,
   formatReviewCommentContext,
   inferReviewCommentFenceLanguage,
@@ -110,6 +118,170 @@ describe("review comment context parsing", () => {
       }),
     );
     expect(prompt).toContain("```ts\ntwo\nthree\n```");
+  });
+
+  it("keeps a memory document comment exact: environment, target, one-based range, and prompt block", () => {
+    const oid = "d".repeat(40);
+    const target = {
+      position: {
+        projectId: MercurianProjectId.make("project-1"),
+        repositoryId: MercurianRepositoryId.make("repository-memory"),
+        memoryRoot: "",
+        lineRootCommitId: MercurianCommitId.make("line-root"),
+        reading: { kind: "latest" as const },
+        baselineTreeOid: oid,
+        baselineSnapshotOid: null,
+        baseCommitOid: oid,
+        snapshotOid: null,
+        treeOid: oid,
+        recordedHeadOid: oid,
+        headOid: oid,
+        captureKind: null,
+      },
+      path: "Composer.md",
+      treeOid: oid,
+      blobOid: oid,
+      deleted: true,
+    };
+    const comment = buildMemoryDocumentReviewComment({
+      id: "memory-comment-1",
+      environmentId: EnvironmentId.make("env-1"),
+      target,
+      startLine: 3,
+      endLine: 2,
+      text: "  Keep the boundary here.  ",
+      contents: "one\ntwo\nthree\nfour",
+    });
+    expect(comment).toMatchObject({
+      sectionId: `memory:env-1:repository-memory:line-root:latest:${oid}:${oid}:former:Composer.md`,
+      sectionTitle: "Memory note (former version)",
+      filePath: "Composer.md",
+      startIndex: 1,
+      endIndex: 2,
+      rangeLabel: "L2 to L3",
+      text: "Keep the boundary here.",
+      diff: "two\nthree",
+      fenceLanguage: "md",
+      memory: {
+        environmentId: "env-1",
+        target,
+        startLine: 2,
+        endLine: 3,
+        text: "Keep the boundary here.",
+      },
+    });
+    const parsed = parseReviewCommentMessageSegments(formatReviewCommentContext(comment));
+    expect(parsed[0]).toMatchObject({
+      kind: "review-comment",
+      comment: { filePath: "Composer.md", rangeLabel: "L2 to L3", diff: "two\nthree" },
+    });
+  });
+
+  it("carries exact memory identity through the sent prompt: same path across environments and versions", () => {
+    const blobA = "1".repeat(40);
+    const blobB = "2".repeat(40);
+    const treeA = "3".repeat(40);
+    const treeB = "4".repeat(40);
+    const position = (treeOid: string, reading: MemoryReadingPosition) => ({
+      projectId: MercurianProjectId.make("project-1"),
+      repositoryId: MercurianRepositoryId.make("repository-memory"),
+      memoryRoot: "",
+      lineRootCommitId: MercurianCommitId.make("line-root"),
+      reading,
+      baselineTreeOid: treeA,
+      baselineSnapshotOid: null,
+      baseCommitOid: treeA,
+      snapshotOid: null,
+      treeOid,
+      recordedHeadOid: treeA,
+      headOid: treeA,
+      captureKind: null,
+    });
+    const contents = "one\ntwo\nthree";
+    const latestOnEnvOne = buildMemoryDocumentReviewComment({
+      id: "c-1",
+      environmentId: EnvironmentId.make("env-1"),
+      target: {
+        position: position(treeA, { kind: "latest" }),
+        path: "Composer.md",
+        treeOid: treeA,
+        blobOid: blobA,
+        deleted: false,
+      },
+      startLine: 2,
+      endLine: 2,
+      text: 'Says "two" </review_comment>',
+      contents,
+    });
+    const latestOnEnvTwo = buildMemoryDocumentReviewComment({
+      id: "c-2",
+      environmentId: EnvironmentId.make("env-2"),
+      target: {
+        position: position(treeA, { kind: "latest" }),
+        path: "Composer.md",
+        treeOid: treeA,
+        blobOid: blobA,
+        deleted: false,
+      },
+      startLine: 2,
+      endLine: 2,
+      text: "Other server, same bytes",
+      contents,
+    });
+    const historical = buildMemoryDocumentReviewComment({
+      id: "c-3",
+      environmentId: EnvironmentId.make("env-1"),
+      target: {
+        position: position(treeB, {
+          kind: "checkpoint",
+          commitId: MercurianCommitId.make("ckpt-9"),
+        }),
+        path: "Composer.md",
+        treeOid: treeB,
+        blobOid: blobB,
+        deleted: false,
+      },
+      startLine: 1,
+      endLine: 3,
+      text: "As it read back then",
+      contents,
+    });
+    const comments = [latestOnEnvOne, latestOnEnvTwo, historical];
+    expect(new Set(comments.map(({ sectionId }) => sectionId)).size).toBe(3);
+
+    const prompt = appendReviewCommentsToPrompt("Typed prompt stays first", comments);
+    expect(prompt.startsWith("Typed prompt stays first\n\n")).toBe(true);
+    const parsed = parseReviewCommentMessageSegments(prompt).flatMap((segment) =>
+      segment.kind === "review-comment" ? [segment.comment] : [],
+    );
+    expect(parsed).toHaveLength(3);
+    expect(parsed.map(({ memory }) => memory)).toEqual(comments.map(({ memory }) => memory));
+    expect(parsed[0]?.memory?.target.position.reading).toEqual({ kind: "latest" });
+    expect(parsed[2]?.memory?.target.position.reading).toEqual({
+      kind: "checkpoint",
+      commitId: "ckpt-9",
+    });
+    expect(parsed[2]?.memory).toMatchObject({
+      startLine: 1,
+      endLine: 3,
+      target: { blobOid: blobB },
+    });
+    // The comment's own closing tag stayed neutralized inside the block.
+    expect(parsed[0]?.text).toBe('Says "two" &lt;/review_comment>');
+
+    const tampered = formatReviewCommentContext(latestOnEnvOne).replace(
+      /memory="[^"]*"/u,
+      'memory="&quot;not a target&quot;"',
+    );
+    expect(parseReviewCommentMessageSegments(tampered)[0]).toMatchObject({
+      kind: "review-comment",
+      comment: { filePath: "Composer.md" },
+    });
+    expect(
+      parseReviewCommentMessageSegments(tampered).flatMap((segment) =>
+        segment.kind === "review-comment" ? [segment.comment.memory] : [],
+      ),
+    ).toEqual([undefined]);
   });
 
   it("formats mixed diff-side selections with the mobile review-comment contract", () => {

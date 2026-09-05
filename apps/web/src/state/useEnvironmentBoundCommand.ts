@@ -47,15 +47,18 @@ export type EnvironmentBoundCommandResult<Output> =
   | { readonly ok: false; readonly error: unknown };
 
 /**
- * The same bind, for acts whose refusals are part of the surface: registering
- * a path that is already registered, removing a repository the app still holds
- * worktrees on. Failures are reported here rather than by a toast, so the
- * dialog that asked can answer in place.
+ * The same bind, for acts whose refusals are part of the surface. Thread-scoped
+ * surfaces may supply their route environment explicitly; global settings
+ * surfaces continue to use the primary environment. Failures are reported here
+ * rather than by a toast, so the surface that asked can answer in place.
  */
 export function useEnvironmentBoundCommandResult<Input, Output>(
   command: BoundCommand<Input, Output>,
+  explicitEnvironmentId?: EnvironmentId | null,
 ) {
-  const environmentId = usePrimaryEnvironmentId();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const environmentId =
+    explicitEnvironmentId === undefined ? primaryEnvironmentId : explicitEnvironmentId;
   const run = useAtomCommand(command, { reportFailure: false });
   return useCallback(
     async (input: Input): Promise<EnvironmentBoundCommandResult<Output>> => {

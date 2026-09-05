@@ -21,18 +21,21 @@ describe("Mercurian panel surfaces", () => {
     );
   });
 
-  it("offers Plan and Spec as addable artifacts, but never Checkpoints", () => {
+  it("offers Plan, Spec, and Memory as addable artifacts, but never Checkpoints", () => {
     const actions = artifactSurfaceMenuActions({
       planAvailable: true,
       onAddPlan: () => undefined,
       specAvailable: true,
       onAddSpec: () => undefined,
+      memoryAvailable: true,
+      onAddMemory: () => undefined,
     });
 
-    expect(actions.map((action) => action.label)).toEqual(["Plan", "Spec"]);
+    expect(actions.map((action) => action.label)).toEqual(["Plan", "Spec", "Memory"]);
     expect(actions.map((action) => action.description)).toEqual([
       "Read the plan this session implements.",
       "Read the spec this session implements.",
+      "Review this line's memory changes.",
     ]);
   });
 });

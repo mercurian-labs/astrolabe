@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
+  BookOpenIcon,
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
@@ -90,6 +91,8 @@ import { MediaVideoPlayer } from "./media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
+import { memoryNoteNameFromHref, remarkMemoryWikilinks } from "./mercurian/memoryMarkdown";
+import { revealMemorySelection } from "../memoryPanelStore";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import {
   revealInFileExplorerLabelForKind,
@@ -398,6 +401,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkCodexDirectives,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
+  remarkMemoryWikilinks,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
@@ -408,7 +412,39 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkBreaks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
+  remarkMemoryWikilinks,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
+
+/** A `[[Note]]` mention: opens the line's Memory tab addressed at that note, never a second reader. */
+function MemoryNoteMentionChip({
+  name,
+  threadRef,
+  children,
+}: {
+  readonly name: string;
+  readonly threadRef: ScopedThreadRef | undefined;
+  readonly children: ReactNode;
+}) {
+  if (threadRef === undefined) {
+    return <span className={CHAT_FILE_TAG_CHIP_CLASS_NAME}>{children}</span>;
+  }
+  return (
+    <button
+      type="button"
+      className={cn(CHAT_FILE_TAG_CHIP_CLASS_NAME, "cursor-pointer")}
+      aria-label={`Open memory note ${name}`}
+      data-markdown-copy={`[[${name}]]`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        revealMemorySelection(threadRef, { kind: "note", name });
+      }}
+    >
+      <BookOpenIcon aria-hidden className="size-3 shrink-0" />
+      {children}
+    </button>
+  );
+}
 
 const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeRaw,
@@ -2425,6 +2461,14 @@ function ChatMarkdown({
       a({ node, href, children, title: _title, ...props }) {
         const citation = href ? parseAssistantCitationHref(href) : null;
         if (citation) return <AssistantCitationChip citation={citation} />;
+        const memoryNoteName = href ? memoryNoteNameFromHref(href) : null;
+        if (memoryNoteName !== null) {
+          return (
+            <MemoryNoteMentionChip name={memoryNoteName} threadRef={threadRef}>
+              {children}
+            </MemoryNoteMentionChip>
+          );
+        }
         const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
         const fileLinkMeta = normalizedHref
           ? (markdownFileLinkMetaByHref.get(normalizedHref) ??

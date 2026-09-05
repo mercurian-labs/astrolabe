@@ -553,6 +553,7 @@ export const make = Effect.gen(function* () {
       }
     }
     const claimed = yield* slotService.claim({
+      planId: record.planId,
       projectId: detail.plan.projectId,
       lineRootCommitId: record.lineRootCommitId,
       holder: leaseHolder,

@@ -12,8 +12,9 @@ describe("PlanningToolkit", () => {
       "save_spec_revision",
     ]);
     expect(PlanningToolkit.tools.propose_memory_amendment.description).toContain(
-      "the person must confirm",
+      "One call creates one memory-only commit",
     );
+    expect(PlanningToolkit.tools.propose_memory_amendment.description).not.toContain("confirm");
     expect(PlanningToolkit.tools.save_plan_revision.description).toContain("whole text");
     expect(PlanningToolkit.tools.read_plan.description).toContain("current text");
     expect(PlanningToolkit.tools.save_spec_revision.description).toContain(

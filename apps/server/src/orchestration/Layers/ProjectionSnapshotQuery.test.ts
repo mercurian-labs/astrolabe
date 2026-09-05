@@ -1091,6 +1091,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           )
       `;
 
+      yield* sql`UPDATE projection_turns SET pending_message_id = 'original-human-send' WHERE thread_id = 'thread-context' AND turn_id = 'turn-1'`;
       const context = yield* snapshotQuery.getThreadCheckpointContext(
         ThreadId.make("thread-context"),
       );
@@ -1103,6 +1104,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           worktreePath: "/tmp/context-worktree",
           checkpoints: [
             {
+              userMessageId: asMessageId("original-human-send"),
               turnId: asTurnId("turn-1"),
               checkpointTurnCount: 1,
               checkpointRef: asCheckpointRef("checkpoint-a"),

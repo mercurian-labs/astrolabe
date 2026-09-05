@@ -88,6 +88,8 @@ export const MessageCommitPayload = Schema.Struct({
   ranUnder: Schema.optional(PlanningModelSelection),
   /** The provider/model captured when an assistant reply's turn started. */
   generatedBy: Schema.optional(PlanningModelSelection),
+  /** Exact human send shared with the orchestration turn; assistant IDs are independent. */
+  sourceUserMessageId: Schema.optional(CommitId),
   /**
    * The planning turn's facts, present only on assistant replies and all
    * optional so every message written before turns existed keeps decoding:
@@ -102,6 +104,7 @@ export const MessageCommitPayload = Schema.Struct({
     Schema.Struct({
       title: TrimmedNonEmptyString,
       memoryCommitSha: Schema.NullOr(Schema.String),
+      branch: TrimmedNonEmptyString,
       notes: Schema.Array(TrimmedNonEmptyString),
     }),
   ),
@@ -208,6 +211,7 @@ export const PlanMessage = Schema.Struct({
   question: Schema.optional(PlanQuestionRecord),
   ranUnder: Schema.optional(PlanningModelSelection),
   generatedBy: Schema.optional(PlanningModelSelection),
+  sourceUserMessageId: Schema.optional(CommitId),
   memoryAmendment: MessageCommitPayload.fields.memoryAmendment,
 });
 export type PlanMessage = typeof PlanMessage.Type;
@@ -436,6 +440,7 @@ export const AppendMemoryAmendmentInput = Schema.Struct({
   parentCommitId: CommitId,
   title: TrimmedNonEmptyString,
   memoryCommitSha: Schema.NullOr(Schema.String),
+  branch: TrimmedNonEmptyString,
   notes: Schema.Array(TrimmedNonEmptyString),
   createdAt: Schema.DateTimeUtcFromString,
 });
@@ -474,6 +479,7 @@ export const AppendAssistantMessageInput = Schema.Struct({
   groundingScope: Schema.optional(PlanGroundingScope),
   question: Schema.optional(PlanQuestionRecord),
   generatedBy: Schema.optional(PlanningModelSelection),
+  sourceUserMessageId: Schema.optional(CommitId),
   createdAt: Schema.DateTimeUtcFromString,
 });
 export type AppendAssistantMessageInput = typeof AppendAssistantMessageInput.Type;
@@ -776,6 +782,11 @@ export class PlanningStore extends Context.Service<
     ) => Effect.Effect<void, PlanningStoreError>;
     /** Fires once per mutation. What keeps a subscribed tree and plan fresh. */
     readonly changes: Stream.Stream<void>;
+    /** Memory amendments and removal only; visits and ordinary conversation are not memory edits. */
+    readonly memoryChanges: Stream.Stream<{
+      readonly planId: PlanId;
+      readonly commitId: CommitId | null;
+    }>;
   }
 >()("t3/mercurian/planning/PlanningStore") {}
 
@@ -974,6 +985,10 @@ export const make = Effect.gen(function* () {
   const legacySessions = yield* LegacySessionStore;
   const lineRuntimes = yield* LineRuntimeStore;
   const changesPubSub = yield* PubSub.unbounded<void>();
+  const memoryChanges = yield* PubSub.unbounded<{
+    readonly planId: PlanId;
+    readonly commitId: CommitId | null;
+  }>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
 
@@ -1288,6 +1303,9 @@ export const make = Effect.gen(function* () {
       ...(payload.question === undefined ? {} : { question: payload.question }),
       ...(payload.ranUnder === undefined ? {} : { ranUnder: payload.ranUnder }),
       ...(payload.generatedBy === undefined ? {} : { generatedBy: payload.generatedBy }),
+      ...(payload.sourceUserMessageId === undefined
+        ? {}
+        : { sourceUserMessageId: payload.sourceUserMessageId }),
       ...(payload.memoryAmendment === undefined
         ? {}
         : { memoryAmendment: payload.memoryAmendment }),
@@ -1895,34 +1913,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const appendMemoryAmendment: PlanningStore["Service"]["appendMemoryAmendment"] = (input) =>
-    Effect.gen(function* () {
-      const plan = yield* requirePlan(input.planId);
-      const commitId = yield* mintId(CommitId);
-      const memoryAmendment = {
-        title: input.title,
-        memoryCommitSha: input.memoryCommitSha,
-        notes: input.notes,
-      };
-      const appended = yield* appendAt({
-        plan,
-        parentCommitId: input.parentCommitId,
-        commitId,
-        kind: "message",
-        payload: { text: input.title, memoryAmendment } satisfies MessageCommitPayload,
-        createdAt: input.createdAt,
-      });
-      yield* announceChange;
-      return yield* toPlanMessage(appended);
-    }).pipe(
-      Effect.mapError(
-        toPlanningStoreError(
-          "PlanningStore.appendMemoryAmendment:query",
-          "PlanningStore.appendMemoryAmendment:encodeRequest",
-        ),
-      ),
-    );
-
   const assertNoActiveTurn: PlanningStore["Service"]["assertNoActiveTurn"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
@@ -2097,6 +2087,36 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const appendMemoryAmendment: PlanningStore["Service"]["appendMemoryAmendment"] = (input) =>
+    Effect.gen(function* () {
+      const plan = yield* requirePlan(input.planId);
+      const commitId = yield* mintId(CommitId);
+      const memoryAmendment = {
+        title: input.title,
+        memoryCommitSha: input.memoryCommitSha,
+        branch: input.branch,
+        notes: input.notes,
+      };
+      const appended = yield* appendAssistantAt({
+        plan,
+        parentCommitId: input.parentCommitId,
+        commitId,
+        kind: "message",
+        payload: { text: input.title, memoryAmendment } satisfies MessageCommitPayload,
+        createdAt: input.createdAt,
+      });
+      yield* announceChange;
+      yield* PubSub.publish(memoryChanges, { planId: input.planId, commitId: appended.commitId });
+      return yield* toPlanMessage(appended);
+    }).pipe(
+      Effect.mapError(
+        toPlanningStoreError(
+          "PlanningStore.appendMemoryAmendment:query",
+          "PlanningStore.appendMemoryAmendment:encodeRequest",
+        ),
+      ),
+    );
+
   const appendAssistantMessage: PlanningStore["Service"]["appendAssistantMessage"] = (input) =>
     Effect.gen(function* () {
       const plan = yield* requirePlan(input.planId);
@@ -2115,6 +2135,9 @@ export const make = Effect.gen(function* () {
           ...(input.groundingScope === undefined ? {} : { groundingScope: input.groundingScope }),
           ...(input.question === undefined ? {} : { question: input.question }),
           ...(input.generatedBy === undefined ? {} : { generatedBy: input.generatedBy }),
+          ...(input.sourceUserMessageId === undefined
+            ? {}
+            : { sourceUserMessageId: input.sourceUserMessageId }),
         } satisfies MessageCommitPayload,
         createdAt: input.createdAt,
       });
@@ -2273,6 +2296,7 @@ export const make = Effect.gen(function* () {
       );
 
       yield* announceChange;
+      yield* PubSub.publish(memoryChanges, { planId: input.planId, commitId: null });
       return deletion;
     }).pipe(
       Effect.mapError(
@@ -2523,6 +2547,7 @@ export const make = Effect.gen(function* () {
     standingModelChoice,
     recordPlanVisit,
     markPlanUnread,
+    memoryChanges: Stream.fromPubSub(memoryChanges),
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

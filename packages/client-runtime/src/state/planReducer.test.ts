@@ -545,69 +545,42 @@ describe("applyPlanStreamItem historical split revisions", () => {
 });
 
 describe("applyPlanStreamItem memory amendments", () => {
-  const amendment = {
-    turnId,
-    title: "Record the composer boundary",
-    changes: [{ path: "Composer.md", before: null, after: "# Composer\n" }],
-    patch: "diff --git a/Composer.md b/Composer.md",
-    placements: [],
-  };
-
-  it("folds only the live reply's proposal and clears it on a newer turn", () => {
-    const proposed = fold([
-      { kind: "snapshot", snapshot },
-      started,
-      { kind: "memory-amendment-proposed", proposal: amendment },
-    ]);
-    expect(proposed.detail?.memoryAmendmentProposal).toEqual(amendment);
-    expect(
-      applyPlanStreamItem(proposed, {
-        kind: "turn-started",
-        turnId: PlanTurnId.make("newer-turn"),
-        parentCommitId: MercurianCommitId.make("commit-1"),
-      }).detail?.memoryAmendmentProposal,
-    ).toBeUndefined();
-
-    const stale = fold([
-      { kind: "snapshot", snapshot },
-      { kind: "memory-amendment-proposed", proposal: amendment },
-    ]);
-    expect(stale.detail?.memoryAmendmentProposal).toBeUndefined();
-  });
-
-  it("clears only a turn-matched cancellation", () => {
-    const joined = fold([
-      { kind: "snapshot", snapshot: { ...snapshot, memoryAmendmentProposal: amendment } },
-    ]);
-    const stale = applyPlanStreamItem(joined, {
-      kind: "memory-amendment-cancelled",
-      turnId: PlanTurnId.make("other-turn"),
-    });
-    expect(stale.detail?.memoryAmendmentProposal).toEqual(amendment);
-    expect(
-      applyPlanStreamItem(stale, { kind: "memory-amendment-cancelled", turnId }).detail
-        ?.memoryAmendmentProposal,
-    ).toBeUndefined();
-  });
-
-  it("closes a standing proposal when its stamped human commit lands", () => {
+  it("folds a landed amendment as an ordinary message commit", () => {
     const state = fold([
-      { kind: "snapshot", snapshot: { ...snapshot, memoryAmendmentProposal: amendment } },
+      { kind: "snapshot", snapshot },
       {
         kind: "commit",
         sequence: 2,
         item: {
           _tag: "message",
           ...commitFields("commit-2", 2, ["commit-1"]),
-          text: amendment.title,
+          text: "Record the composer boundary",
           memoryAmendment: {
-            title: amendment.title,
+            title: "Record the composer boundary",
             memoryCommitSha: "abc123",
+            branch: "mercurian/composer",
             notes: ["Composer"],
           },
         },
       },
     ]);
-    expect(state.detail?.memoryAmendmentProposal).toBeUndefined();
+    const landed = state.detail?.timeline.at(-1);
+    expect(landed?._tag === "message" ? landed.memoryAmendment?.branch : null).toBe(
+      "mercurian/composer",
+    );
+  });
+
+  it("stores a merge-home conflict and clears it when a turn starts", () => {
+    const conflicted = applyPlanStreamItem(fold([{ kind: "snapshot", snapshot }]), {
+      kind: "memory-merge-home-conflict",
+      conflicts: [{ path: "Memory.md" }],
+    });
+    expect(conflicted.memoryMergeHomeConflict?.conflicts).toEqual([{ path: "Memory.md" }]);
+    const cleared = applyPlanStreamItem(conflicted, {
+      kind: "turn-started",
+      turnId: PlanTurnId.make("turn-conflict"),
+      parentCommitId: MercurianCommitId.make("commit-1"),
+    });
+    expect(cleared.memoryMergeHomeConflict).toBeNull();
   });
 });

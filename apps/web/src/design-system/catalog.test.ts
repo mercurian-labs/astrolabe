@@ -22,8 +22,13 @@ const MIGRATED_STORY_TITLES = [
   "Earlier checkpoint",
   "Memory note with links",
   "Memory note not yet written",
-  "Memory amendment proposal",
-  "Memory amendment blocked",
+  "Memory needs review",
+  "Memory merge review prepared",
+  "Memory at an earlier checkpoint",
+  "Memory map-only change",
+  "Memory asset-only amendment",
+  "Memory with nothing changed",
+  "Memory not designated",
   "Imported from an issue",
   "No spec yet",
   "Turn with a model switch",
@@ -115,7 +120,7 @@ describe("design-system catalog registry", () => {
     );
 
     expect(migratedEntries.map(({ title }) => title)).toEqual(MIGRATED_STORY_TITLES);
-    expect(migratedEntries).toHaveLength(19);
+    expect(migratedEntries).toHaveLength(24);
     for (const migratedEntry of migratedEntries) {
       expect(resolveCatalogPage(migratedEntry.id)).toBe(migratedEntry);
     }

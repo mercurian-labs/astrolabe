@@ -1,3 +1,5 @@
+import { GitManagerError } from "@t3tools/contracts";
+import { MemoryRepositoryExitGate } from "../mercurian/memory/MemoryRepositoryExitGate.ts";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -175,11 +177,21 @@ function fakeProvider(
 }
 
 function makeService(input: {
+  readonly memoryExit?: MemoryRepositoryExitGate["Service"];
   readonly projects: ReadonlyArray<OrchestrationProjectShell>;
   readonly providers: ReadonlyArray<PullRequestProviderApi>;
   readonly resolveHandle?: SourceControlProviderRegistry.SourceControlProviderRegistry["Service"]["resolveHandle"];
 }) {
   return PullRequestService.make.pipe(
+    Effect.provideService(
+      MemoryRepositoryExitGate,
+      input.memoryExit ?? {
+        check: () => Effect.void,
+        checkRemoteAction: () => Effect.void,
+        withLock: (_cwd, effect) => effect,
+        withExit: (_cwd, effect) => effect,
+      },
+    ),
     Effect.provide(
       Layer.mergeAll(
         Layer.succeed(PullRequestProviderRegistry, fromProviders(input.providers)),
@@ -1003,6 +1015,108 @@ it.effect("refuses an action the host never claimed it could run", () =>
     assert.strictEqual(error._tag, "PullRequestOperationError");
     assert.isFalse(ran);
   }),
+);
+
+it.effect(
+  "limits shared memory host refusals to merge and PR creation and leaves status transitions and unrelated host actions available",
+  () =>
+    Effect.gen(function* () {
+      const actions = [
+        "merge",
+        "enable-auto-merge",
+        "ready",
+        "revert",
+        "close",
+        "draft",
+        "disable-auto-merge",
+      ] as const;
+      const calls: Array<{ cwd: string; action: string }> = [];
+      const checked: string[] = [];
+      const provider = fakeProvider("github");
+      const service = yield* makeService({
+        projects: [
+          project({
+            id: "shared",
+            title: "shared",
+            workspaceRoot: "/shared",
+            repository: "acme/shared",
+          }),
+          project({
+            id: "unrelated",
+            title: "other",
+            workspaceRoot: "/other",
+            repository: "acme/other",
+          }),
+        ],
+        memoryExit: {
+          check: () => Effect.void,
+          withLock: (_cwd, effect) => effect,
+          withExit: (_cwd, effect) => effect,
+          checkRemoteAction: (cwd) =>
+            Effect.gen(function* () {
+              checked.push(cwd);
+              if (cwd === "/shared")
+                return yield* new GitManagerError({
+                  operation: "memoryRepositoryExit",
+                  cwd,
+                  detail: "Remote expected head is unavailable",
+                });
+            }),
+        },
+        providers: [
+          fakeProvider("github", {
+            capabilities: { ...provider.capabilities, actions },
+            getViewerPermissions: () =>
+              Effect.succeed({
+                actions,
+                comment: true,
+                resolve: true,
+                verdicts: ["comment", "approve", "request-changes"],
+                requestReviewers: true,
+              }),
+            runAction: (input) =>
+              Effect.sync(() => {
+                calls.push({ cwd: input.cwd, action: input.action });
+              }),
+          }),
+        ],
+      });
+      for (const action of actions) {
+        const input = {
+          projectId: "shared" as ProjectId,
+          repository: "acme/shared",
+          number: 1,
+          action,
+        };
+        if (action === "merge" || action === "enable-auto-merge" || action === "revert") {
+          const result = yield* Effect.flip(service.runAction(input));
+          assert.strictEqual(result._tag, "PullRequestOperationError");
+        } else yield* service.runAction(input);
+        yield* service.runAction({
+          ...input,
+          projectId: "unrelated" as ProjectId,
+          repository: "acme/other",
+        });
+      }
+      assert.deepStrictEqual(
+        calls.filter((c) => c.cwd === "/shared").map((c) => c.action),
+        actions.filter(
+          (action) => action !== "merge" && action !== "enable-auto-merge" && action !== "revert",
+        ),
+      );
+      assert.deepStrictEqual(
+        calls.filter((c) => c.cwd === "/other").map((c) => c.action),
+        [...actions],
+      );
+      assert.deepStrictEqual(checked, [
+        "/shared",
+        "/other",
+        "/shared",
+        "/other",
+        "/shared",
+        "/other",
+      ]);
+    }),
 );
 
 it.effect("publishes a successful merge for immediate settlement", () =>

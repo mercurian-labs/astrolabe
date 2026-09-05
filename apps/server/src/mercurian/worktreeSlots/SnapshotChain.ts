@@ -47,7 +47,7 @@ export function lineSnapshotRef(lineRootCommitId: MercurianCommitId): Checkpoint
 
 export function lineExtraSnapshotRef(
   lineRootCommitId: MercurianCommitId,
-  kind: "recovery" | "external",
+  kind: "recovery" | "external" | "curated",
   timestamp: DateTime.Utc,
 ): CheckpointRef {
   const compact = DateTime.formatIso(timestamp).replaceAll(/[-:.]/gu, "");
@@ -63,6 +63,26 @@ interface CaptureInput {
   readonly lineBranch: string;
   readonly kind: SnapshotKind;
   readonly ref: CheckpointRef;
+}
+
+interface CaptureTreeInput {
+  readonly cwd: string;
+  readonly lineRootCommitId: MercurianCommitId;
+  readonly repositoryId: MercurianRepositoryId;
+  readonly lineBranch: string;
+  readonly kind: "curated";
+  readonly treeOid: string;
+  /** Curation holds the project lock and atomically compares every addressed ref. */
+  readonly expected?: {
+    readonly headOid: string;
+    readonly snapshotOid: string | null;
+    readonly nextHeadOid?: string;
+    readonly refs?: ReadonlyArray<{
+      readonly ref: string;
+      readonly expectedOid: string;
+      readonly oid: string;
+    }>;
+  };
 }
 
 interface StandingInput {
@@ -103,6 +123,16 @@ export class SnapshotChain extends Context.Service<
         readonly built: boolean;
       },
       VcsError | GitCommandError | LineBranchStoreError | SnapshotChainError
+    >;
+    readonly captureTree: (input: CaptureTreeInput) => Effect.Effect<
+      {
+        readonly oid: string;
+        readonly previousOid: string | null;
+        readonly headOid: string;
+        readonly headRef: string;
+        readonly built: boolean;
+      },
+      GitCommandError | LineBranchStoreError | SnapshotChainError
     >;
     readonly branchMovement: (
       input: BranchMovementInput,
@@ -188,6 +218,78 @@ export const make = Effect.gen(function* () {
       resolve(input.cwd, `refs/heads/${input.lineBranch}^{commit}`),
     ]);
     const changed = snapshotTree !== baseTree || branchTip !== line.value.baseOid;
+    if (changed && !line.value.built) {
+      yield* lineBranches.markBuilt({
+        lineRootCommitId: input.lineRootCommitId,
+        repositoryId: input.repositoryId,
+      });
+    }
+    return { oid, previousOid, headOid, headRef, built: line.value.built || changed };
+  });
+
+  const captureTree = Effect.fn("SnapshotChain.captureTree")(function* (input: CaptureTreeInput) {
+    const snapshotRef = lineSnapshotRef(input.lineRootCommitId);
+    const previousOid = input.expected
+      ? input.expected.snapshotOid
+      : yield* resolve(input.cwd, `${snapshotRef}^{commit}`);
+    const headRef = `refs/heads/${input.lineBranch}`;
+    const headOid = input.expected
+      ? (input.expected.nextHeadOid ?? input.expected.headOid)
+      : yield* resolve(input.cwd, `${headRef}^{commit}`);
+    if (headOid === null) {
+      return yield* new SnapshotChainError({
+        operation: "captureTree:lineBranch",
+        cause: new Error(`Line branch ${input.lineBranch} is missing`),
+      });
+    }
+    const now = yield* DateTime.now;
+    const ref = CheckpointRef.make(
+      `${lineExtraSnapshotRef(input.lineRootCommitId, input.kind, now)}-${NodeCrypto.randomUUID()}`,
+    );
+    const parents = [previousOid, headOid].filter((oid): oid is string => oid !== null);
+    const commit = yield* git.execute({
+      operation: "SnapshotChain.captureTree.commit",
+      cwd: input.cwd,
+      args: [
+        "commit-tree",
+        input.treeOid,
+        ...parents.flatMap((parent) => ["-p", parent]),
+        "-m",
+        `t3 snapshot kind=${input.kind} ref=${ref}`,
+      ],
+    });
+    const oid = commit.stdout.trim();
+    const zero = "0".repeat(headOid.length);
+    const updates = [
+      "start",
+      `create ${ref} ${oid}`,
+      `update ${snapshotRef} ${oid} ${previousOid ?? zero}`,
+      input.expected?.nextHeadOid
+        ? `update ${headRef} ${headOid} ${input.expected.headOid}`
+        : `verify ${headRef} ${input.expected?.headOid ?? headOid}`,
+      ...(input.expected?.refs ?? []).map((r) => `update ${r.ref} ${r.oid} ${r.expectedOid}`),
+      "prepare",
+      "commit",
+      "",
+    ];
+    yield* git.execute({
+      operation: "SnapshotChain.captureTree.transaction",
+      cwd: input.cwd,
+      args: ["update-ref", "--stdin"],
+      stdin: updates.join("\n"),
+    });
+    const line = yield* lineBranches.get({
+      lineRootCommitId: input.lineRootCommitId,
+      repositoryId: input.repositoryId,
+    });
+    if (Option.isNone(line)) {
+      return yield* new SnapshotChainError({
+        operation: "captureTree:lineBranch",
+        cause: new Error(`Line branch ${input.lineRootCommitId} is missing`),
+      });
+    }
+    const baseTree = yield* resolve(input.cwd, `${line.value.baseOid}^{tree}`);
+    const changed = input.treeOid !== baseTree || headOid !== line.value.baseOid;
     if (changed && !line.value.built) {
       yield* lineBranches.markBuilt({
         lineRootCommitId: input.lineRootCommitId,
@@ -368,6 +470,7 @@ export const make = Effect.gen(function* () {
 
   return SnapshotChain.of({
     capture,
+    captureTree,
     branchMovement,
     readStanding,
     lineCommit,

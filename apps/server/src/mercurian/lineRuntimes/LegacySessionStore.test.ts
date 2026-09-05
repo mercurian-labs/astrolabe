@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import { PlanId, ThreadId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -34,6 +35,12 @@ layer("LegacySessionStore", (it) => {
       assert.strictEqual(byThread.value.repositories?.[0]?.repositoryName, "server");
       assert.ok(Option.isSome(yield* store.getByBranch("mercurian/legacy")));
       assert.strictEqual((yield* store.listByPlan(PlanId.make("plan"))).length, 1);
+      yield* store.recordPullRequestState(ThreadId.make("legacy-thread"), "merged");
+      const mergedAt = DateTime.makeUnsafe("2026-09-03T13:00:00.000Z");
+      yield* store.recordMemoryMergedHome(ThreadId.make("legacy-thread"), mergedAt);
+      const updated = Option.getOrThrow(yield* store.getByThreadId(ThreadId.make("legacy-thread")));
+      assert.strictEqual(updated.prState, "merged");
+      assert.deepStrictEqual(updated.memoryMergedHomeAt, mergedAt);
     }),
   );
 });

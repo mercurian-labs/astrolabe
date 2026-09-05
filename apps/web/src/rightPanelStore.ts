@@ -8,11 +8,17 @@
  * workspace paths, and diff/files remain singleton surfaces.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ChatFileAttachment, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  MemoryDocumentSelection,
+  type ChatFileAttachment,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "./lib/storage";
+import { memoryDocumentIdentity } from "./memoryIdentity";
 
 export const RIGHT_PANEL_KINDS = [
   "diff",
@@ -24,6 +30,7 @@ export const RIGHT_PANEL_KINDS = [
   "agents",
   "plan",
   "spec",
+  "memory",
   "checkpoints",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
@@ -44,7 +51,7 @@ export type RightPanelSurface =
   | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
   | {
-      id: `file:${string}` | `attachment:${string}`;
+      id: `file:${string}` | `attachment:${string}` | `memory:${string}`;
       kind: "file";
       /** Workspace-relative, or absolute for a host file outside the workspace. */
       relativePath: string;
@@ -53,23 +60,12 @@ export type RightPanelSurface =
       /** Present when the file lives in the thread's attachment store rather
           than at a workspace or host path. */
       attachment?: ChatFileAttachment;
-    }
-  | {
       /**
-       * A change request opened beside a thread or in the pull-request list's shared panel.
-       * The reference lives in the id so several pull requests can remain open as peer tabs.
+       * Present for an immutable memory document. The environment and Git
+       * objects travel with the tab, so a header repository switch or a
+       * restart never reinterprets which version it shows.
        */
-      id: `pull-request:${string}`;
-      kind: "pull-request";
-      /**
-       * Which server the change request was read from. The list spans every connected one, so
-       * two of them can hold the same project id; a panel beside a thread leaves this out and
-       * takes the environment from its own ref.
-       */
-      environmentId?: string;
-      projectId: string;
-      repository: string;
-      number: number;
+      memory?: MemoryDocumentSelection;
     }
   | {
       /**
@@ -91,6 +87,7 @@ export type RightPanelSurface =
   | { id: "agents"; kind: "agents" }
   | { id: "plan"; kind: "plan" }
   | { id: "spec"; kind: "spec" }
+  | { id: "memory"; kind: "memory" }
   | { id: "checkpoints"; kind: "checkpoints" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
@@ -98,7 +95,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
 // v12 adds the Mercurian Spec and Checkpoints singleton surfaces.
-const RIGHT_PANEL_STORAGE_VERSION = 12;
+// v13 adds Memory as a line-scoped singleton surface.
+const RIGHT_PANEL_STORAGE_VERSION = 13;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -123,6 +121,7 @@ interface RightPanelStoreState {
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
+  openMemoryDocument: (ref: ScopedThreadRef, selection: MemoryDocumentSelection) => void;
   openPullRequest: (
     ref: ScopedThreadRef,
     target: { environmentId?: string; projectId: string; repository: string; number: number },
@@ -174,6 +173,8 @@ const singletonSurface = (
       return { id: "plan", kind };
     case "spec":
       return { id: "spec", kind };
+    case "memory":
+      return { id: "memory", kind };
     case "checkpoints":
       return { id: "checkpoints", kind };
   }
@@ -216,6 +217,22 @@ const attachmentSurface = (attachment: ChatFileAttachment): RightPanelSurface =>
   revealLine: null,
   revealRequestId: 0,
   attachment,
+});
+
+const isMemoryDocumentSelection = Schema.is(MemoryDocumentSelection);
+
+/** Identity is the exact reading, not the path: two versions or two positions of one note are two tabs. */
+export function memoryDocumentSurfaceId(selection: MemoryDocumentSelection): `memory:${string}` {
+  return `memory:${memoryDocumentIdentity(selection.environmentId, selection.target)}`;
+}
+
+const memoryDocumentSurface = (selection: MemoryDocumentSelection): RightPanelSurface => ({
+  id: memoryDocumentSurfaceId(selection),
+  kind: "file",
+  relativePath: selection.target.path,
+  revealLine: null,
+  revealRequestId: 0,
+  memory: selection,
 });
 
 const terminalSurface = (terminalId: string): RightPanelSurface => ({
@@ -312,6 +329,13 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                     if (!surface || typeof surface !== "object") return [];
                     if (!(RIGHT_PANEL_KINDS as readonly string[]).includes(surface.kind)) return [];
                     if (surface.kind === "file") {
+                      if ("memory" in surface && surface.memory !== undefined) {
+                        // The stored target must still decode, or the tab would
+                        // reopen pointing at nothing it can read.
+                        return isMemoryDocumentSelection(surface.memory)
+                          ? [memoryDocumentSurface(surface.memory)]
+                          : [];
+                      }
                       const revealLine =
                         typeof surface.revealLine === "number" &&
                         Number.isFinite(surface.revealLine)
@@ -487,6 +511,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               attachmentSurface(attachment),
             );
           }),
+        })),
+      openMemoryDocument: (ref, selection) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, memoryDocumentSurface(selection)),
+          ),
         })),
       openTerminal: (ref, terminalId) =>
         set((state) => ({
@@ -692,7 +722,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             const surfaces = current.surfaces.filter(
               (surface) =>
                 surface.kind !== "files" &&
-                (surface.kind !== "file" || surface.attachment !== undefined),
+                (surface.kind !== "file" ||
+                  surface.attachment !== undefined ||
+                  surface.memory !== undefined),
             );
             if (surfaces.length === current.surfaces.length) return current;
             const activeStillExists = surfaces.some(

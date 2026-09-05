@@ -86,7 +86,20 @@ export class LineRuntimeStore extends Context.Service<
     readonly attachPullRequest: (
       input: typeof AttachPullRequestInput.Type,
     ) => Effect.Effect<void, LineRuntimeStoreError>;
+    readonly recordPullRequestState: (
+      threadId: ThreadId,
+      state: "open" | "closed" | "merged" | null,
+    ) => Effect.Effect<void, LineRuntimeStoreError>;
+    readonly recordMemoryMergedHome: (
+      threadId: ThreadId,
+      mergedAt: DateTime.Utc,
+    ) => Effect.Effect<void, LineRuntimeStoreError>;
     readonly changes: Stream.Stream<PlanId>;
+    readonly memoryChanges: Stream.Stream<{
+      readonly planId: PlanId;
+      readonly threadId: ThreadId;
+      readonly lineRootCommitId: MercurianCommitId | null;
+    }>;
   }
 >()("t3/mercurian/lineRuntimes/LineRuntimeStore") {}
 
@@ -102,6 +115,14 @@ const WorkspaceRequest = Schema.Struct({
 const MissingRequest = Schema.Struct({
   threadId: ThreadId,
   oid: Schema.NullOr(TrimmedNonEmptyString),
+});
+const PullRequestStateRequest = Schema.Struct({
+  threadId: ThreadId,
+  state: Schema.NullOr(Schema.Literals(["open", "closed", "merged"])),
+});
+const MemoryMergedHomeRequest = Schema.Struct({
+  threadId: ThreadId,
+  mergedAt: Schema.DateTimeUtcFromString,
 });
 const SnapshotRequest = Schema.Struct({ threadId: ThreadId, ...RecordSnapshotInput.fields });
 const RepositorySnapshotRequest = Schema.Struct({
@@ -135,6 +156,11 @@ const toStoreError =
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const changesPubSub = yield* PubSub.unbounded<PlanId>();
+  const memoryChanges = yield* PubSub.unbounded<{
+    readonly planId: PlanId;
+    readonly threadId: ThreadId;
+    readonly lineRootCommitId: MercurianCommitId | null;
+  }>();
   const columns = sql`
     plan_id AS "planId", line_root_commit_id AS "lineRootCommitId",
     fork_parent_commit_id AS "forkParentCommitId", thread_id AS "threadId",
@@ -142,6 +168,7 @@ export const make = Effect.gen(function* () {
     unreachable_repositories_json AS "unreachableRepositories", snapshot_oid AS "snapshotOid",
     snapshot_kind AS "snapshotKind", departed_ref AS "departedRef",
     branch_movement AS "branchMovement", line_branch_missing_oid AS "lineBranchMissingOid",
+    pr_state AS "prState", memory_merged_home_at AS "memoryMergedHomeAt",
     created_at AS "createdAt", updated_at AS "updatedAt"
   `;
   const findLine = SqlSchema.findOneOption({
@@ -254,6 +281,20 @@ export const make = Effect.gen(function* () {
       ON CONFLICT(thread_id, repository_id) DO UPDATE SET pr_url = excluded.pr_url
     `,
   });
+  const recordPrState = SqlSchema.void({
+    Request: PullRequestStateRequest,
+    execute: ({ threadId, state }) => sql`
+      UPDATE line_runtimes SET pr_state = ${state}, updated_at = CURRENT_TIMESTAMP
+      WHERE thread_id = ${threadId}
+    `,
+  });
+  const recordMergedHome = SqlSchema.void({
+    Request: MemoryMergedHomeRequest,
+    execute: ({ threadId, mergedAt }) => sql`
+      UPDATE line_runtimes SET memory_merged_home_at = ${mergedAt},
+        updated_at = CURRENT_TIMESTAMP WHERE thread_id = ${threadId}
+    `,
+  });
   const mapError = <A, E, R>(effect: Effect.Effect<A, E, R>, operation: string) =>
     effect.pipe(Effect.mapError(toStoreError(operation)));
   const hydrate = (row: typeof LineRuntimeRow.Type) => {
@@ -278,9 +319,18 @@ export const make = Effect.gen(function* () {
       : hydrate(record.value).pipe(Effect.map(Option.some));
   const announceThread = Effect.fn("LineRuntimeStore.announceThread")(function* (
     threadId: ThreadId,
+    memory = true,
   ) {
     const record = yield* findThread({ threadId });
-    if (Option.isSome(record)) yield* PubSub.publish(changesPubSub, record.value.planId);
+    if (Option.isSome(record)) {
+      yield* PubSub.publish(changesPubSub, record.value.planId);
+      if (memory)
+        yield* PubSub.publish(memoryChanges, {
+          planId: record.value.planId,
+          threadId,
+          lineRootCommitId: record.value.lineRootCommitId,
+        });
+    }
   });
 
   return LineRuntimeStore.of({
@@ -326,7 +376,7 @@ export const make = Effect.gen(function* () {
               );
             }),
           )
-          .pipe(Effect.andThen(PubSub.publish(changesPubSub, input.planId)), Effect.asVoid),
+          .pipe(Effect.andThen(announceThread(input.threadId)), Effect.asVoid),
         "LineRuntimeStore.create",
       ),
     rootPending: (threadId, lineRootCommitId) =>
@@ -355,7 +405,9 @@ export const make = Effect.gen(function* () {
       ),
     recordRepositorySnapshot: (threadId, repositoryId, input) =>
       mapError(
-        repositorySnapshot({ threadId, repositoryId, ...input }),
+        repositorySnapshot({ threadId, repositoryId, ...input }).pipe(
+          Effect.andThen(announceThread(threadId)),
+        ),
         "LineRuntimeStore.recordRepositorySnapshot",
       ),
     recordLineBranchMissing: (threadId, oid) =>
@@ -365,9 +417,20 @@ export const make = Effect.gen(function* () {
       ),
     attachPullRequest: (input) =>
       mapError(
-        attachPr(input).pipe(Effect.andThen(announceThread(input.threadId))),
+        attachPr(input).pipe(Effect.andThen(announceThread(input.threadId, false))),
         "LineRuntimeStore.attachPullRequest",
       ),
+    recordPullRequestState: (threadId, state) =>
+      mapError(
+        recordPrState({ threadId, state }).pipe(Effect.andThen(announceThread(threadId, false))),
+        "LineRuntimeStore.recordPullRequestState",
+      ),
+    recordMemoryMergedHome: (threadId, mergedAt) =>
+      mapError(
+        recordMergedHome({ threadId, mergedAt }).pipe(Effect.andThen(announceThread(threadId))),
+        "LineRuntimeStore.recordMemoryMergedHome",
+      ),
+    memoryChanges: Stream.fromPubSub(memoryChanges),
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

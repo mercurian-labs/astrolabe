@@ -82,6 +82,11 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
 import { usePlanDetail } from "../state/mercurian";
 import { lineUncommittedDiff } from "../state/mercurianDiff";
+import { memoryComparisonReviewSectionId } from "../reviewCommentContext";
+import {
+  MemoryMapComparisonSummary,
+  useMemoryComparisonRead,
+} from "./mercurian/MemoryComparisonScope";
 import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
 import { buildBaseRefChoices, filterBaseRefChoices } from "../lib/baseRefChoices";
@@ -222,6 +227,12 @@ export default function DiffPanel({
 
   const isSessionScope = diffSelection.kind === "session";
   const isLineUncommittedScope = diffSelection.kind === "line-uncommitted";
+  const memoryScope = diffSelection.kind === "memory-comparison" ? diffSelection : null;
+  const memoryComparison = useMemoryComparisonRead(memoryScope?.selection ?? null);
+  const memoryComparisonResult =
+    memoryComparison.kind === "ready" && memoryComparison.result.kind === "available"
+      ? memoryComparison.result
+      : null;
   const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
   const selectedGitScope =
     diffSelection.kind === "unstaged"
@@ -246,24 +257,31 @@ export default function DiffPanel({
   const latestCheckpointTurnCount =
     latestTurn &&
     (latestTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[latestTurn.turnId]);
-  const selectedScopeLabel = isLineUncommittedScope
-    ? "Uncommitted"
-    : isSessionScope
-      ? "Whole session"
-      : selectedTurnId === null
-        ? selectedGitScope === "unstaged"
-          ? "Working tree"
-          : "Branch changes"
-        : selectedTurn?.turnId === latestTurn?.turnId
-          ? "Latest turn"
-          : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
-  const reviewSectionId = isLineUncommittedScope
-    ? "line-uncommitted"
-    : isSessionScope
-      ? "session"
-      : selectedTurn
-        ? `turn:${selectedTurn.turnId}`
-        : (selectedGitScope ?? "branch");
+  const selectedScopeLabel = memoryScope
+    ? `Memory · ${memoryScope.label}`
+    : isLineUncommittedScope
+      ? "Uncommitted"
+      : isSessionScope
+        ? "Whole session"
+        : selectedTurnId === null
+          ? selectedGitScope === "unstaged"
+            ? "Working tree"
+            : "Branch changes"
+          : selectedTurn?.turnId === latestTurn?.turnId
+            ? "Latest turn"
+            : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
+  const reviewSectionId = memoryScope
+    ? memoryComparisonReviewSectionId(
+        memoryScope.selection.environmentId,
+        memoryScope.selection.target,
+      )
+    : isLineUncommittedScope
+      ? "line-uncommitted"
+      : isSessionScope
+        ? "session"
+        : selectedTurn
+          ? `turn:${selectedTurn.turnId}`
+          : (selectedGitScope ?? "branch");
   const collapseScopeKey = activeThreadRef
     ? `${activeThreadRef.environmentId}:${activeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -272,15 +290,17 @@ export default function DiffPanel({
     collapsedDiffFiles.scopeKey === collapseScopeKey
       ? collapsedDiffFiles.fileKeys
       : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
-  const reviewSectionTitle = selectedTurn
-    ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
-    : isLineUncommittedScope
-      ? "Uncommitted"
-      : isSessionScope
-        ? "Whole session"
-        : selectedGitScope === "unstaged"
-          ? "Working tree"
-          : "Branch changes";
+  const reviewSectionTitle = memoryScope
+    ? `Memory · ${memoryScope.label}`
+    : selectedTurn
+      ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
+      : isLineUncommittedScope
+        ? "Uncommitted"
+        : isSessionScope
+          ? "Whole session"
+          : selectedGitScope === "unstaged"
+            ? "Working tree"
+            : "Branch changes";
   const selectedCheckpointRange = useMemo(() => {
     if (isSessionScope) {
       return typeof latestCheckpointTurnCount === "number"
@@ -461,22 +481,33 @@ export default function DiffPanel({
   const gitDiff = selectedGitSource?.diff;
 
   const isCheckpointScope = isSessionScope || selectedTurn !== undefined;
-  const selectedPatch = isCheckpointScope
-    ? activeCheckpointDiff.data?.diff
-    : isLineUncommittedScope
-      ? activeLineUncommittedDiff.data?.diff
-      : gitDiff;
-  const isSelectedPatchTruncated = !isCheckpointScope && selectedGitSource?.truncated === true;
-  const isLoadingSelectedPatch = isCheckpointScope
-    ? activeCheckpointDiff.isPending
-    : isLineUncommittedScope
-      ? activeLineUncommittedDiff.isPending
-      : branchDiffPreview.isPending;
-  const selectedPatchError = isCheckpointScope
-    ? activeCheckpointDiff.error
-    : isLineUncommittedScope
-      ? activeLineUncommittedDiff.error
-      : branchDiffPreview.error;
+  const selectedPatch = memoryScope
+    ? memoryComparisonResult?.patch
+    : isCheckpointScope
+      ? activeCheckpointDiff.data?.diff
+      : isLineUncommittedScope
+        ? activeLineUncommittedDiff.data?.diff
+        : gitDiff;
+  const isSelectedPatchTruncated =
+    !memoryScope && !isCheckpointScope && selectedGitSource?.truncated === true;
+  const isLoadingSelectedPatch = memoryScope
+    ? memoryComparison.kind === "loading"
+    : isCheckpointScope
+      ? activeCheckpointDiff.isPending
+      : isLineUncommittedScope
+        ? activeLineUncommittedDiff.isPending
+        : branchDiffPreview.isPending;
+  const selectedPatchError = memoryScope
+    ? memoryComparison.kind === "error"
+      ? memoryComparison.message
+      : memoryComparison.kind === "ready" && memoryComparison.result.kind === "unavailable"
+        ? `This memory comparison is unavailable: ${memoryComparison.result.reason}.`
+        : null
+    : isCheckpointScope
+      ? activeCheckpointDiff.error
+      : isLineUncommittedScope
+        ? activeLineUncommittedDiff.error
+        : branchDiffPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
   const renderablePatch = useMemo(
@@ -644,6 +675,11 @@ export default function DiffPanel({
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-60">
+            {memoryScope ? (
+              <DropdownMenuItem className="bg-foreground/[0.08]">
+                <span className="truncate">Memory · {memoryScope.label}</span>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem
               className={
                 selectedTurnId === null && selectedGitScope === "unstaged"
@@ -993,7 +1029,7 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>
-      ) : !isGitRepo ? (
+      ) : !isGitRepo && memoryScope === null ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Turn diffs are unavailable because this project is not a git repository.
         </div>
@@ -1004,6 +1040,9 @@ export default function DiffPanel({
       ) : (
         <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+            {memoryComparisonResult ? (
+              <MemoryMapComparisonSummary maps={memoryComparisonResult.maps} />
+            ) : null}
             {isSelectedPatchTruncated && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
                 This diff was truncated because it exceeded the preview limit. The changes shown are
@@ -1019,15 +1058,17 @@ export default function DiffPanel({
               isLoadingSelectedPatch ? (
                 <DiffPanelLoadingState
                   label={
-                    selectedTurn
-                      ? "Loading checkpoint diff..."
-                      : isSessionScope
-                        ? "Loading whole session diff..."
-                        : isLineUncommittedScope
-                          ? "Loading uncommitted diff..."
-                          : selectedGitScope === "unstaged"
-                            ? "Loading working tree diff..."
-                            : "Loading branch diff..."
+                    memoryScope
+                      ? "Loading memory comparison..."
+                      : selectedTurn
+                        ? "Loading checkpoint diff..."
+                        : isSessionScope
+                          ? "Loading whole session diff..."
+                          : isLineUncommittedScope
+                            ? "Loading uncommitted diff..."
+                            : selectedGitScope === "unstaged"
+                              ? "Loading working tree diff..."
+                              : "Loading branch diff..."
                   }
                 />
               ) : (
@@ -1058,8 +1099,9 @@ export default function DiffPanel({
                         node instanceof HTMLElement && node.hasAttribute("data-title"),
                     );
                     const filePath = title?.textContent?.trim();
-                    // The filename remains the explicit "open in editor" affordance.
-                    if (filePath) {
+                    // The filename remains the explicit "open in editor" affordance. Memory
+                    // paths name Git objects, not workspace files, so they only fold.
+                    if (filePath && memoryScope === null) {
                       openDiffFile(filePath);
                       return;
                     }

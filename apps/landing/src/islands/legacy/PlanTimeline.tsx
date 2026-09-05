@@ -72,6 +72,7 @@ export function PlanTimeline({
   skills = EMPTY_SKILLS,
   onAnswerQuestion,
   onOpenNote,
+  onOpenMemoryChanges,
   codingSessions = EMPTY_CODING_SESSIONS,
 }: {
   readonly timeline: ReadonlyArray<PlanTimelineItem>;
@@ -81,6 +82,7 @@ export function PlanTimeline({
   readonly skills?: ReadonlyArray<ServerProviderSkill> | undefined;
   readonly onAnswerQuestion?: (answers: Readonly<Record<string, unknown>>) => void;
   readonly onOpenNote?: ((name: string) => void) | undefined;
+  readonly onOpenMemoryChanges?: (() => void) | undefined;
   readonly codingSessions?: ReadonlyArray<PlanCodingSessionRecord> | undefined;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -108,7 +110,13 @@ export function PlanTimeline({
                   className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/70"
                 >
                   <BookOpenCheckIcon className="size-3.5 shrink-0" />
-                  <span>You amended the memory: &quot;{item.memoryAmendment.title}&quot;</span>
+                  <button
+                    type="button"
+                    className="underline-offset-2 hover:underline"
+                    onClick={onOpenMemoryChanges}
+                  >
+                    You amended the memory: &quot;{item.memoryAmendment.title}&quot;
+                  </button>
                   <span>{formatRelativeTimeLabel(item.createdAt)}</span>
                 </li>
               );

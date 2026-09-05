@@ -21,6 +21,7 @@ import {
   minimapSize,
   visibleWorldRect,
   type MapBounds,
+  type MapFitOptions,
   type MapFrameSize,
   type MapPoint,
   type MapTransform,
@@ -29,6 +30,8 @@ import {
 } from "./DagExplorer.logic";
 import {
   fitSpatialMap,
+  openingSpatialMapTransform,
+  pointWithinBounds,
   spatialMapChromeVisibility,
   spatialMapViewBox,
   spatialMapWheelTransform,
@@ -64,12 +67,27 @@ export function SpatialMapCanvas({
   className,
   edges,
   nodes,
+  fit,
+  minOpeningZoom,
+  showMinimap = true,
+  focus = null,
 }: {
   readonly ariaLabel: string;
   readonly bounds: MapBounds;
   readonly className?: string;
   readonly edges: ReadonlyArray<SpatialMapCanvasEdge>;
   readonly nodes: ReadonlyArray<SpatialMapCanvasNode>;
+  /** Opt-in fit padding and zoom ceiling for small, label-heavy graphs. */
+  readonly fit?: MapFitOptions;
+  /**
+   * The graph never opens below this zoom: a narrow frame shows part of the
+   * graph at reading size, panned to its center, and Fit still gives the overview.
+   */
+  readonly minOpeningZoom?: number;
+  /** A tiny graph gains nothing from an overview that covers its nodes. */
+  readonly showMinimap?: boolean;
+  /** When the id changes and the point is out of view, the camera pans to it without rezooming. */
+  readonly focus?: { readonly id: string; readonly point: MapPoint } | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -105,11 +123,55 @@ export function SpatialMapCanvas({
     return () => observer.disconnect();
   }, []);
 
+  const fitPadding = fit?.padding;
+  const fitMaxZoom = fit?.maxZoom;
+  const fitOptions = useMemo<MapFitOptions>(
+    () => ({
+      ...(fitPadding === undefined ? {} : { padding: fitPadding }),
+      ...(fitMaxZoom === undefined ? {} : { maxZoom: fitMaxZoom }),
+    }),
+    [fitMaxZoom, fitPadding],
+  );
+
   useEffect(() => {
     if (frame.width <= 0 || frame.height <= 0) return;
     cancelTween();
-    applyTransform(fitSpatialMap(bounds, frame));
-  }, [applyTransform, bounds.maxX, bounds.maxY, bounds.minX, bounds.minY, cancelTween, frame]);
+    applyTransform(openingSpatialMapTransform(bounds, frame, fitOptions, minOpeningZoom));
+  }, [
+    applyTransform,
+    bounds.maxX,
+    bounds.maxY,
+    bounds.minX,
+    bounds.minY,
+    cancelTween,
+    fitOptions,
+    frame,
+    minOpeningZoom,
+  ]);
+
+  // Pans to a world point only when it is out of view, keeping the zoom, so the
+  // picture stays put while the point is already on screen.
+  const reveal = useCallback(
+    (point: MapPoint) => {
+      if (frame.width <= 0 || frame.height <= 0) return;
+      const from = transformRef.current;
+      if (pointWithinBounds(point, visibleWorldRect(from, viewBox, frame))) return;
+      const tween = cameraTween(from, centerOn(point, from, viewBox), viewBox);
+      startTween((progress) => applyTransform(tween(progress)));
+    },
+    [applyTransform, frame, startTween, viewBox],
+  );
+
+  const focusId = focus?.id ?? null;
+  const focusRef = useRef(focus);
+  useEffect(() => {
+    focusRef.current = focus;
+  }, [focus]);
+  useEffect(() => {
+    const target = focusRef.current;
+    if (focusId === null || target === null) return;
+    reveal(target.point);
+  }, [focusId, reveal]);
 
   const unitsPerPixel = useCallback(() => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -212,13 +274,16 @@ export function SpatialMapCanvas({
 
   const fitToView = () => {
     const from = transformRef.current;
-    const tween = cameraTween(from, fitSpatialMap(bounds, frame), viewBox);
+    const tween = cameraTween(from, fitSpatialMap(bounds, frame, fitOptions), viewBox);
     startTween((progress) => applyTransform(tween(progress)));
   };
 
   const overviewSize = useMemo(() => minimapSize(frame.width, frame.height), [frame]);
   const renderContext = useMemo<SpatialMapRenderContext>(() => ({ markerId }), [markerId]);
-  const chrome = spatialMapChromeVisibility(transform, bounds, frame);
+  const chrome = spatialMapChromeVisibility(transform, bounds, frame, undefined, {
+    ...fitOptions,
+    minimap: showMinimap,
+  });
 
   return (
     <div
@@ -256,10 +321,12 @@ export function SpatialMapCanvas({
           {edges.map((edge) => (
             <g key={edge.id}>{edge.render(renderContext)}</g>
           ))}
+          {/* Keyboard focus can land on a node the opening view left off screen; reveal it. */}
           {nodes.map((node) => (
             <g
               key={node.id}
               transform={`translate(${node.x - node.width / 2} ${node.y - node.height / 2})`}
+              onFocus={() => reveal({ x: node.x, y: node.y })}
             >
               {node.render(renderContext)}
             </g>

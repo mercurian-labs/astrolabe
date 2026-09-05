@@ -476,7 +476,7 @@ const make = Effect.gen(function* () {
     readonly capture?: boolean;
     readonly partial?: boolean;
     readonly fromCheckpointRef?: CheckpointRef;
-    readonly snapshotKind?: "settled" | "partial" | "recovery" | "external";
+    readonly snapshotKind?: "settled" | "partial" | "recovery" | "external" | "curated";
     readonly departedRef?: string;
     readonly branchMovement?:
       | { readonly kind: "unchanged" }

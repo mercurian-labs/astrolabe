@@ -1120,6 +1120,89 @@ describe("composerDraftStore review comments", () => {
       comment,
     ]);
   });
+
+  it("stages a memory document comment beside typed text and persists its exact target", () => {
+    const oid = "e".repeat(40);
+    const memoryComment = {
+      ...comment,
+      id: "memory-comment-1",
+      sectionId: `memory:repository-memory:${oid}`,
+      sectionTitle: "Memory note",
+      filePath: "Composer.md",
+      fenceLanguage: "md",
+      memory: {
+        environmentId: TEST_ENVIRONMENT_ID,
+        target: {
+          position: {
+            projectId: "project-1",
+            repositoryId: "repository-memory",
+            memoryRoot: "",
+            lineRootCommitId: "line-root",
+            reading: { kind: "latest" as const },
+            baselineTreeOid: oid,
+            baselineSnapshotOid: null,
+            baseCommitOid: oid,
+            snapshotOid: null,
+            treeOid: oid,
+            recordedHeadOid: oid,
+            headOid: oid,
+            captureKind: null,
+          },
+          path: "Composer.md",
+          treeOid: oid,
+          blobOid: oid,
+          deleted: false,
+        },
+        startLine: 2,
+        endLine: 3,
+        text: "Keep this configurable.",
+      },
+    };
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "Typed so far");
+    store.addReviewComment(threadRef, memoryComment as never);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.prompt).toBe("Typed so far");
+    expect(draft?.reviewComments).toEqual([memoryComment]);
+
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
+      };
+    };
+    const persisted = persistApi.getOptions().partialize(useComposerDraftStore.getState()) as {
+      draftsByThreadKey?: Record<string, { reviewComments?: Array<Record<string, unknown>> }>;
+    };
+    expect(
+      persisted.draftsByThreadKey?.[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]
+        ?.reviewComments?.[0],
+    ).toMatchObject({ memory: { target: { blobOid: oid }, startLine: 2, endLine: 3 } });
+
+    // The same range on the same bytes read at an earlier checkpoint is another reading,
+    // so it joins the draft beside the first instead of replacing it.
+    const historical = {
+      ...memoryComment,
+      id: "memory-comment-2",
+      sectionId: `memory:${oid}:checkpoint`,
+      memory: {
+        ...memoryComment.memory,
+        target: {
+          ...memoryComment.memory.target,
+          position: {
+            ...memoryComment.memory.target.position,
+            reading: { kind: "checkpoint" as const, commitId: "ckpt-a" },
+          },
+        },
+      },
+    };
+    store.addReviewComment(threadRef, historical as never);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments.map(({ id }) => id)).toEqual([
+      "memory-comment-1",
+      "memory-comment-2",
+    ]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("Typed so far");
+  });
 });
 
 describe("composerDraftStore project draft thread mapping", () => {

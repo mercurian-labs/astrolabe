@@ -59,6 +59,11 @@ export interface ExecuteGitResult {
   readonly stderrTruncated: boolean;
 }
 
+export interface GitVersion {
+  readonly major: number;
+  readonly minor: number;
+}
+
 export interface GitStatusDetails {
   isRepo: boolean;
   sourceControlProvider?: VcsStatusResult["sourceControlProvider"];
@@ -238,6 +243,7 @@ export class GitVcsDriver extends Context.Service<
   GitVcsDriver,
   {
     readonly execute: (input: ExecuteGitInput) => Effect.Effect<ExecuteGitResult, GitCommandError>;
+    readonly gitVersion: Effect.Effect<GitVersion, GitCommandError>;
     readonly status: (input: VcsStatusInput) => Effect.Effect<VcsStatusResult, GitCommandError>;
     readonly statusDetails: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
     readonly statusDetailsLocal: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
@@ -883,6 +889,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
           `${fromRevision}^{commit}`,
           `${input.toCheckpointRef}^{commit}`,
+          ...(input.paths === undefined || input.paths.length === 0 ? [] : ["--", ...input.paths]),
         ],
         allowNonZeroExit: true,
         maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,

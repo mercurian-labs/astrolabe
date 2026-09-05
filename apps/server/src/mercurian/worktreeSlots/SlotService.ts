@@ -1,4 +1,9 @@
-import { MercurianCommitId, MercurianProjectId, MercurianRepositoryId } from "@t3tools/contracts";
+import {
+  MercurianCommitId,
+  MercurianProjectId,
+  MercurianRepositoryId,
+  type PlanId,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -13,12 +18,15 @@ import { ServerConfig } from "../../config.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
-import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
+import { makeLineBranchEnsurer } from "../commitTree/ensureLineBranch.ts";
+import { MemorySourceStore } from "../memory/MemorySourceStore.ts";
+import { PlanningStore } from "../planning/PlanningStore.ts";
 import { RepositoryStore } from "../repositories/RepositoryStore.ts";
 import type { RepositoryView } from "../repositories/schema.ts";
 import { SlotRegistry } from "./SlotRegistry.ts";
 import { lineExtraSnapshotRef, lineSnapshotRef, SnapshotChain } from "./SnapshotChain.ts";
 import { SlotStore } from "./SlotStore.ts";
+import { projectWorkingRepositories } from "./projectWorkingRepositories.ts";
 import {
   type SlotLeaseHolder,
   type WorktreeSlot,
@@ -55,6 +63,7 @@ export const isLineBranchMissingError = Schema.is(LineBranchMissingError);
 const isSlotServiceError = Schema.is(SlotServiceError);
 
 export interface ClaimSlotInput {
+  readonly planId: PlanId;
   readonly projectId: MercurianProjectId;
   readonly lineRootCommitId: MercurianCommitId;
   readonly holder: SlotLeaseHolder;
@@ -150,8 +159,8 @@ export class SlotService extends Context.Service<
 export const make = Effect.gen(function* () {
   const slots = yield* SlotStore;
   const registry = yield* SlotRegistry;
-  const branches = yield* LineBranchStore;
   const repositories = yield* RepositoryStore;
+  const planning = yield* PlanningStore;
   const settings = yield* ServerSettingsService;
   const config = yield* ServerConfig;
   const path = yield* Path.Path;
@@ -159,6 +168,8 @@ export const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver;
   const checkpoints = yield* CheckpointStore;
   const snapshotChain = yield* SnapshotChain;
+  const memorySources = yield* MemorySourceStore;
+  const lineBranchEnsurer = yield* makeLineBranchEnsurer;
 
   const memberPath = (slot: WorktreeSlot, member: WorktreeSlotMember) =>
     path.join(slot.path, member.relativePath);
@@ -192,6 +203,7 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.asVoid);
 
   const projectMembers = Effect.fn("SlotService.projectMembers")(function* (
+    planId: PlanId,
     projectId: MercurianProjectId,
     lineRootCommitId: MercurianCommitId,
   ) {
@@ -205,34 +217,39 @@ export const make = Effect.gen(function* () {
         cause: new Error(`Project ${projectId} has no linked repositories`),
       });
     }
-    const linked = linkedIds.map((repositoryId) =>
-      snapshot.repositories.find((candidate) => candidate.repositoryId === repositoryId),
-    );
-    if (linked.some((repository) => repository === undefined || !repository.hasGit)) {
+    const source = (yield* memorySources.getSource(projectId)).pipe(Option.getOrNull);
+    const linked = projectWorkingRepositories(snapshot, projectId, source);
+    if (
+      linked.length < new Set(linkedIds.concat(source?.repositoryId ?? [])).size ||
+      linked.some((repository) => !repository.hasGit)
+    ) {
       return yield* new SlotServiceError({
         operation: "claim:projectRepositories",
         cause: new Error(`Project ${projectId} has a missing or non-git repository`),
       });
     }
-    const layout = layoutProjectRepositories(path, linked as ReadonlyArray<RepositoryView>);
+    const detail = yield* planning.getPlanSnapshot({ planId });
+    if (
+      detail.plan.projectId !== projectId ||
+      !detail.timeline.some((item) => String(item.commitId) === String(lineRootCommitId))
+    ) {
+      return yield* new SlotServiceError({
+        operation: "claim:lineBranch",
+        cause: new Error(`Line ${lineRootCommitId} is not part of plan ${planId}`),
+      });
+    }
+    const layout = layoutProjectRepositories(path, linked);
     return yield* Effect.forEach(layout, (entry) =>
       Effect.gen(function* () {
-        const branch = yield* branches.get({
+        const branch = yield* lineBranchEnsurer.ensureLineBranch({
+          detail,
           lineRootCommitId,
-          repositoryId: entry.repository.repositoryId,
+          repository: entry.repository,
         });
-        if (Option.isNone(branch)) {
-          return yield* new SlotServiceError({
-            operation: "claim:lineBranch",
-            cause: new Error(
-              `Line branch ${lineRootCommitId} is missing for ${entry.repository.repositoryId}`,
-            ),
-          });
-        }
         const namedRef = yield* gitDriver.execute({
           operation: "SlotService.projectMembers.verifyBranch",
           cwd: entry.repository.path,
-          args: ["rev-parse", "--verify", "--quiet", `refs/heads/${branch.value.branch}`],
+          args: ["rev-parse", "--verify", "--quiet", `refs/heads/${branch.branch}`],
           allowNonZeroExit: true,
         });
         if (namedRef.exitCode !== 0) {
@@ -240,16 +257,16 @@ export const make = Effect.gen(function* () {
             cwd: entry.repository.path,
             lineRootCommitId,
             repositoryId: entry.repository.repositoryId,
-            lineBranch: branch.value.branch,
+            lineBranch: branch.branch,
           });
           return yield* new LineBranchMissingError({
             lineRootCommitId,
             repositoryId: entry.repository.repositoryId,
-            branch: branch.value.branch,
+            branch: branch.branch,
             commitOid,
           });
         }
-        return { ...entry, branch: branch.value.branch };
+        return { ...entry, branch: branch.branch };
       }),
     );
   });
@@ -506,14 +523,22 @@ export const make = Effect.gen(function* () {
               }
               claimed = { ...reusable, members };
             } else {
-              const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
+              const desired = yield* projectMembers(
+                input.planId,
+                input.projectId,
+                input.lineRootCommitId,
+              );
               claimed = yield* switchSlot(reusable, input.lineRootCommitId, desired, now);
             }
           } else {
             if (existing.length >= poolSize) {
               return yield* new SlotPoolAtCapacityError({ projectId: input.projectId, poolSize });
             }
-            const desired = yield* projectMembers(input.projectId, input.lineRootCommitId);
+            const desired = yield* projectMembers(
+              input.planId,
+              input.projectId,
+              input.lineRootCommitId,
+            );
             claimed = yield* materialize(
               input.projectId,
               input.lineRootCommitId,
