@@ -178,6 +178,10 @@ export function PlanNodePopover({
         viewportClassName="p-3"
         onPointerEnter={controller.cancelClose}
         onPointerLeave={controller.scheduleClose}
+        onFocus={controller.cancelClose}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) controller.scheduleClose();
+        }}
       >
         {node === undefined ? null : (
           <PlanNodePopoverContent
