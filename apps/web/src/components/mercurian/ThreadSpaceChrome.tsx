@@ -1,10 +1,13 @@
 /** Owned by the header lane of M-197 (plan §7). Header actions, banners, and the overlays that wrap ChatView for a plan line. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { MemoryNote, PlanId } from "@t3tools/contracts";
+import { useRouter } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
+import { useRightPanelStore } from "../../rightPanelStore";
+import { navigateToThreadRoute } from "../../threadRoutes";
 import { useThread } from "../../state/entities";
 import { useMercurianTree, usePlanDetail } from "../../state/mercurian";
 import { useReadMemoryNote } from "../../state/mercurianMemory";
@@ -14,16 +17,19 @@ import ChatView from "../ChatView";
 import type { ChatComposerMentionSources } from "../chat/ChatComposer";
 import type { ThreadActionMenuId } from "../threadActionMenu.logic";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { LineBranchMissingBanner } from "./LineBranchMissingBanner";
 import { MemoryAmendmentSheet } from "./MemoryAmendmentSheet";
 import { MemoryNoteReader } from "./MemoryNoteReader";
 import { NarrowedGroundingNotice } from "./NarrowedGroundingNotice";
 import { usePlanMentionCandidates } from "./PlanMentionSources";
+import { planCommitSummary } from "./PlanGraph.logic";
 import { formatMentionCandidate } from "./planMentions.logic";
 import {
   memoryAmendmentFailureNotice,
   resolveForkHereInput,
   resolveLineInFlightTurn,
+  resolveLineOrigin,
 } from "./ThreadSpaceChrome.logic";
 import { useThreadSpace } from "./ThreadSpaceContext";
 import { useThreadSpaceSurfaces } from "./ThreadSpaceSurfaces";
@@ -106,13 +112,32 @@ export function SlotWaitNotice() {
 }
 
 export function useThreadSpaceChrome(): ThreadSpaceChrome {
-  const { detail, environmentId, graph, planId, projectId, threadId } = useThreadSpace();
+  const { detail, environmentId, graph, planId, projectId, threadId, search } = useThreadSpace();
+  const router = useRouter();
   const thread = useThread(scopeThreadRef(environmentId, threadId));
   const { snapshot: treeSnapshot } = useMercurianTree();
   const headerProjectName = treeSnapshot.projects.find(
     (project) => project.projectId === projectId,
   )?.name;
   const runtime = detail?.lineRuntimes.find((candidate) => candidate.threadId === threadId) ?? null;
+  const origin = resolveLineOrigin(graph, runtime);
+  const originItem = origin === null ? undefined : graph.byId.get(origin)?.item;
+  const originLabel =
+    originItem === undefined ? "Earlier checkpoint" : planCommitSummary(originItem);
+  const inspectOrigin = () => {
+    if (planId === null || origin === null) return;
+    const threadRef = scopeThreadRef(environmentId, threadId);
+    useRightPanelStore.getState().activateSurface(threadRef, "checkpoints");
+    void navigateToThreadRoute(router, { kind: "server", threadRef, planId, at: origin });
+  };
+  const returnToLatest = () => {
+    if (planId === null) return;
+    void navigateToThreadRoute(router, {
+      kind: "server",
+      threadRef: scopeThreadRef(environmentId, threadId),
+      planId,
+    });
+  };
   const inFlightTurn = resolveLineInFlightTurn(
     detail,
     graph,
@@ -169,6 +194,36 @@ export function useThreadSpaceChrome(): ThreadSpaceChrome {
         : {
             headerBanner: (
               <>
+                {origin === null ? null : (
+                  <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="shrink-0">Forked from</span>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="min-w-0 truncate text-left underline underline-offset-2 hover:text-foreground"
+                            aria-label={`Open fork origin: ${originLabel}`}
+                            onClick={inspectOrigin}
+                          />
+                        }
+                      >
+                        {originLabel}
+                      </TooltipTrigger>
+                      <TooltipPopup>{originLabel}</TooltipPopup>
+                    </Tooltip>
+                    {search.at === undefined ? null : (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="ml-auto shrink-0"
+                        onClick={returnToLatest}
+                      >
+                        Return to latest
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <LineBranchMissingBanner
                   threadId={threadId}
                   branch={runtime?.branch ?? thread?.branch ?? null}

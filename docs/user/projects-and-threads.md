@@ -41,6 +41,14 @@ the issue you choose rather than from a message you typed. See
 Opening a thread from the tree lands in its thread space. Each line of work has its own conversation,
 and the thread you are looking at stays highlighted in the tree while you are anywhere inside it.
 
+### Where a fork came from
+
+A forked line shows **Forked from** above its conversation, naming the checkpoint where it began.
+Select that checkpoint to open **Checkpoints** at its origin. Your current line and composer draft
+stay in place while you inspect the earlier history. **Return to latest** ends that inspection.
+The conversation itself shows this line's messages; earlier turns remain in Checkpoints.
+The origin stays visible after you send messages on the new line.
+
 ## Status in the tree
 
 A glance at the tree is a glance at where you are needed. A thread row carries a small
