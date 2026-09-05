@@ -7,6 +7,7 @@ import {
   ThreadId,
   TurnId,
   type OrchestrationEvent,
+  type OrchestrationSession,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -46,6 +47,26 @@ export const interrupted = (sequence = 2): OrchestrationEvent => ({
   ...base(sequence),
   type: "thread.turn-interrupt-requested",
   payload: { threadId, createdAt: now },
+});
+export const sessionSet = (
+  sequence = 2,
+  overrides: Partial<OrchestrationSession> = {},
+): OrchestrationEvent => ({
+  ...base(sequence),
+  type: "thread.session-set",
+  payload: {
+    threadId,
+    session: {
+      threadId,
+      status: "running",
+      providerName: "codex",
+      runtimeMode: "approval-required",
+      activeTurnId: turnId,
+      lastError: null,
+      updatedAt: now,
+      ...overrides,
+    },
+  },
 });
 export const captured = (
   sequence = 2,
@@ -99,12 +120,15 @@ export const addQuery = (id: string) =>
     });
     yield* sql`INSERT INTO commits (commit_id, history_id, kind, author_kind, created_at, payload_json) VALUES (${id}, 'history', 'message', 'human', '', ${json})`;
   });
-export const appendResponse = Effect.gen(function* () {
+const appendReply = Effect.fn("test.appendReply")(function* (interrupted: boolean) {
   const sql = yield* SqlClient.SqlClient;
   const json = yield* encodeJson({
     text: "Reply",
     checkpointOwnerCommitId: query,
     reconstructionId: "exact-reconstruction",
+    interrupted,
   });
   yield* sql`INSERT INTO commits (commit_id, history_id, kind, author_kind, created_at, payload_json) VALUES ('response', 'history', 'message', 'assistant', '', ${json})`;
 });
+export const appendResponse = appendReply(false);
+export const appendInterruptedResponse = appendReply(true);

@@ -372,7 +372,12 @@ export const make = Effect.gen(function* () {
               request: {
                 ...record.request,
                 turnId: event.payload.session.activeTurnId,
-                state: "submitted",
+                state:
+                  record.request.state === "unanswered" ||
+                  record.request.state === "preparing" ||
+                  record.request.state === "unknown"
+                    ? "submitted"
+                    : record.request.state,
               },
             });
         } else if (

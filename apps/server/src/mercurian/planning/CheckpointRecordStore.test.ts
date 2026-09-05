@@ -12,14 +12,77 @@ import {
   turnId,
   query,
   start,
+  sessionSet,
   interrupted,
   captured,
   appendResponse,
+  appendInterruptedResponse,
   addQuery,
 } from "./CheckpointRecordTestUtils.ts";
 
 const database = NodeSqliteClient.layerMemory();
 const testLayer = layer.pipe(Layer.provideMerge(database));
+
+for (const state of ["completed", "interrupted"] as const)
+  for (const attached of [true, false])
+    it.effect(
+      `preserves ${state} response ${attached ? "attachment" : "append repair"} before replayed start and session`,
+      () =>
+        Effect.gen(function* () {
+          yield* seed;
+          const store = yield* CheckpointRecordStore;
+          yield* store.recordQuery(query, threadId);
+          yield* state === "interrupted" ? appendInterruptedResponse : appendResponse;
+          if (attached) yield* store.response(query);
+
+          yield* store.consume(start());
+          const before = yield* store.get(planId, query);
+          assert.strictEqual(before?.request?.state, state);
+          assert.strictEqual(before?.responseCommitId, "response");
+          assert.strictEqual(before?.request?.turnId, undefined);
+
+          yield* store.consume(sessionSet(), MessageId.make(query));
+          const after = yield* store.get(planId, query);
+          assert.strictEqual(after?.request?.state, state);
+          assert.strictEqual(after?.request?.turnId, turnId);
+          assert.strictEqual(after?.request?.messageId, MessageId.make(query));
+          assert.strictEqual(after?.responseCommitId, "response");
+        }).pipe(Effect.provide(testLayer)),
+    );
+
+for (const state of ["unanswered", "preparing", "unknown"] as const)
+  it.effect(`binds the exact provider turn and submits a ${state} request`, () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const store = yield* CheckpointRecordStore;
+      yield* store.recordQuery(query, threadId);
+      if (state === "preparing") yield* store.consume(start());
+      if (state === "unknown") yield* store.recoverRequest(query, undefined, false);
+      yield* store.consume(sessionSet(), MessageId.make(query));
+      const record = yield* store.get(planId, query);
+      assert.strictEqual(record?.request?.state, "submitted");
+      assert.strictEqual(record?.request?.turnId, turnId);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+for (const state of ["cancelled", "failed"] as const)
+  it.effect(`preserves a ${state} request while binding a replayed exact provider turn`, () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const store = yield* CheckpointRecordStore;
+      yield* store.consume(start());
+      yield* store.consume(
+        state === "cancelled"
+          ? interrupted()
+          : sessionSet(2, { status: "error", activeTurnId: null, lastError: "failed" }),
+      );
+      assert.strictEqual((yield* store.get(planId, query))?.request?.state, state);
+      yield* store.consume(sessionSet(3), MessageId.make(query));
+      const record = yield* store.get(planId, query);
+      assert.strictEqual(record?.request?.state, state);
+      assert.strictEqual(record?.request?.turnId, turnId);
+    }).pipe(Effect.provide(testLayer)),
+  );
 
 it.effect(
   "records a raw send as unanswered, accepts by exact query, and settles unsent cancellation",
@@ -134,6 +197,8 @@ it.effect(
       assert.deepStrictEqual(after?.capture, before?.capture);
       assert.strictEqual(after?.capture?.repositories?.[0]?.files.length, 1);
       assert.strictEqual(after?.capture?.partial, true);
+      assert.strictEqual(after?.request?.state, "interrupted");
+      assert.strictEqual(after?.request?.turnId, turnId);
     }).pipe(Effect.provide(testLayer)),
 );
 

@@ -1,5 +1,6 @@
 import type { OrchestrationEvent } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -15,6 +16,7 @@ export const make = Effect.gen(function* () {
   const records = yield* CheckpointRecordStore;
   const turns = yield* ProjectionTurnRepository;
   const seen = yield* SubscriptionRef.make(0);
+  const reconciled = yield* Deferred.make<void>();
   const consume = Effect.fn("CheckpointRecordReactor.consume")(function* (
     event: OrchestrationEvent,
   ) {
@@ -73,6 +75,7 @@ export const make = Effect.gen(function* () {
       }
       yield* reconcile;
       yield* SubscriptionRef.set(seen, cursor);
+      yield* Deferred.succeed(reconciled, undefined);
       yield* Stream.runForEach(live, (event) => consume(event));
     }).pipe(
       Effect.catchCause((cause) =>
@@ -81,12 +84,14 @@ export const make = Effect.gen(function* () {
     ),
   );
   return {
-    drainThrough: (sequence: number) =>
-      SubscriptionRef.changes(seen).pipe(
+    drainThrough: Effect.fn("CheckpointRecordReactor.drainThrough")(function* (sequence: number) {
+      // Replayed events can reach the cursor before startup repairs have completed.
+      yield* Deferred.await(reconciled);
+      yield* SubscriptionRef.changes(seen).pipe(
         Stream.filter((value) => value >= sequence),
         Stream.runHead,
-        Effect.asVoid,
-      ),
+      );
+    }),
   };
 });
 export class CheckpointRecordReactor extends Context.Service<
