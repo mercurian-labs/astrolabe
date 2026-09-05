@@ -18,6 +18,13 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
 
+/** Import/refresh/merge owners attach capture facts from the existing snapshot path. */
+export interface AttachCheckpointInput {
+  readonly ownerCommitId: MercurianCommitId;
+  readonly lineRootCommitId: MercurianCommitId;
+  readonly capture: PlanCheckpointCapture;
+}
+
 const recordJson = Schema.fromJsonString(PlanCheckpointRecord);
 const captureJson = Schema.fromJsonString(PlanCheckpointCapture);
 const decodeRecord = Schema.decodeUnknownEffect(recordJson);
@@ -222,11 +229,7 @@ export const make = Effect.gen(function* () {
         if (record !== null) yield* repairResponse(record);
       }),
     );
-  const attach = (input: {
-    readonly ownerCommitId: MercurianCommitId;
-    readonly lineRootCommitId: MercurianCommitId;
-    readonly capture: PlanCheckpointCapture;
-  }) =>
+  const attach = (input: AttachCheckpointInput) =>
     transaction(
       Effect.gen(function* () {
         const record = yield* owner(input.ownerCommitId);

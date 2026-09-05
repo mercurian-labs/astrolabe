@@ -61,6 +61,7 @@ export const MERCURIAN_WS_METHODS = {
   deletePlan: "mercurian.deletePlan",
   subscribeWorktreeSlots: "mercurian.subscribeWorktreeSlots",
   readLineUncommittedDiff: "mercurian.readLineUncommittedDiff",
+  readCheckpointDiff: "mercurian.readCheckpointDiff",
   recreateLineBranch: "mercurian.recreateLineBranch",
 } as const;
 
@@ -583,6 +584,41 @@ export const PlanCheckpointRecord = Schema.Struct({
   updateSequence: Schema.Int.check(Schema.isGreaterThan(0)),
 });
 export type PlanCheckpointRecord = typeof PlanCheckpointRecord.Type;
+
+/** Stable act/repository identity; revision zero represents a record not yet available. */
+export const MercurianReadCheckpointDiffInput = Schema.Struct({
+  planId: PlanId,
+  ownerCommitId: MercurianCommitId,
+  repositoryId: MercurianRepositoryId,
+  checkpointRevision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  ignoreWhitespace: Schema.optional(Schema.Boolean),
+});
+export type MercurianReadCheckpointDiffInput = typeof MercurianReadCheckpointDiffInput.Type;
+
+export const MercurianReadCheckpointDiffResult = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    planId: PlanId,
+    ownerCommitId: MercurianCommitId,
+    repositoryId: MercurianRepositoryId,
+    checkpointRevision: Schema.Int,
+    diff: Schema.String,
+  }),
+  Schema.Struct({
+    status: Schema.Literal("unavailable"),
+    checkpointRevision: Schema.Int,
+    reason: Schema.Literals([
+      "record-missing",
+      "record-changed",
+      "capture-pending",
+      "snapshot-missing",
+      "repository-not-recorded",
+      "repository-unavailable",
+    ]),
+  }),
+]);
+export type MercurianReadCheckpointDiffResult = typeof MercurianReadCheckpointDiffResult.Type;
+
 /**
  * A planning space: the plan artifact beside the history that evolves it.
  *
@@ -786,19 +822,17 @@ export const PlanImportResult = Schema.Struct({
 });
 export type PlanImportResult = typeof PlanImportResult.Type;
 
-/**
- * `parentCommitId` is where the sender stood: the composer acts from wherever
- * you are, so the act names its own point of departure rather than trusting
- * the server to guess. Naming a commit that already has a child is how a fork
- * is made, and the only way one can be — forks are human acts.
- *
- * Absent means the space's tip, which keeps the input honest for a caller with
- * no position of its own.
- */
-export const MercurianForkLineInput = Schema.Struct({
-  planId: PlanId,
-  parentCommitId: MercurianCommitId,
-});
+/** Fork from an exact parent, or continue through a saved terminal checkpoint. */
+export const MercurianForkLineInput = Schema.Union([
+  // Query editing preserves its exact parent, including legacy behavior.
+  Schema.Struct({ planId: PlanId, parentCommitId: MercurianCommitId }),
+  // Code continuation includes the recorded terminal reply in carrying history.
+  Schema.Struct({
+    planId: PlanId,
+    checkpointOwnerCommitId: MercurianCommitId,
+    checkpointRevision: Schema.Int.check(Schema.isGreaterThan(0)),
+  }),
+]);
 export type MercurianForkLineInput = typeof MercurianForkLineInput.Type;
 
 export const MercurianOpenLineInput = Schema.Struct({
@@ -1083,6 +1117,7 @@ export class MercurianPlanningError extends Schema.TaggedErrorClass<MercurianPla
       "deletePlan",
       "subscribeWorktreeSlots",
       "readLineUncommittedDiff",
+      "readCheckpointDiff",
       "recreateLineBranch",
     ]),
     cause: Schema.optional(Schema.Defect()),

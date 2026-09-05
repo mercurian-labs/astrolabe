@@ -133,6 +133,7 @@ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngi
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as LineTurnReactor from "./mercurian/assistant/LineTurnReactor.ts";
 import { CommitId } from "./mercurian/commitTree/schema.ts";
+import { checkpointForkParent } from "./mercurian/planning/checkpointTargets.ts";
 import { lineRootCommitIdFor } from "./mercurian/commitTree/LineBranchReactor.ts";
 import { removePlanAttachments } from "./mercurian/planning/attachments.ts";
 import * as PlanningStore from "./mercurian/planning/PlanningStore.ts";
@@ -2326,6 +2327,18 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "mercurian" },
           ),
+        [MERCURIAN_WS_METHODS.readCheckpointDiff]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.readCheckpointDiff,
+            checkpointDiffQuery
+              .getCheckpointDiff(input)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new MercurianPlanningError({ operation: "readCheckpointDiff", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "mercurian" },
+          ),
         [MERCURIAN_WS_METHODS.readLineUncommittedDiff]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.readLineUncommittedDiff,
@@ -2491,17 +2504,27 @@ const makeWsRpcLayer = (
         [MERCURIAN_WS_METHODS.forkLine]: (input) =>
           observeRpcEffect(
             MERCURIAN_WS_METHODS.forkLine,
-            lineRuntimeService
-              .ensureThread({
+            Effect.gen(function* () {
+              let parentCommitId;
+              if ("parentCommitId" in input) {
+                parentCommitId = input.parentCommitId;
+              } else {
+                const record = yield* checkpointRecords.get(
+                  input.planId,
+                  input.checkpointOwnerCommitId,
+                );
+                parentCommitId = yield* checkpointForkParent(record, input.checkpointRevision);
+              }
+              return yield* lineRuntimeService.ensureThread({
                 planId: input.planId,
-                forkParentCommitId: input.parentCommitId,
-              })
-              .pipe(
-                Effect.map(({ threadId }) => ({ threadId })),
-                Effect.mapError(
-                  (cause) => new MercurianPlanningError({ operation: "forkLine", cause }),
-                ),
+                forkParentCommitId: parentCommitId,
+              });
+            }).pipe(
+              Effect.map(({ threadId }) => ({ threadId })),
+              Effect.mapError(
+                (cause) => new MercurianPlanningError({ operation: "forkLine", cause }),
               ),
+            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_WS_METHODS.openLine]: (input) =>

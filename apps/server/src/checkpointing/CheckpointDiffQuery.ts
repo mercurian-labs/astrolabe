@@ -8,6 +8,8 @@
  */
 import {
   CheckpointRef,
+  type MercurianReadCheckpointDiffInput,
+  type MercurianReadCheckpointDiffResult,
   OrchestrationGetTurnDiffResult,
   type OrchestrationGetFullThreadDiffInput,
   type OrchestrationGetFullThreadDiffResult,
@@ -51,12 +53,22 @@ import {
   RepositoryStore,
   type RepositoryStoreError,
 } from "../mercurian/repositories/RepositoryStore.ts";
+import { CheckpointRecordStore } from "../mercurian/planning/CheckpointRecordStore.ts";
+import { isSnapshotOid } from "../mercurian/planning/checkpointTargets.ts";
+import type { PersistenceSqlError } from "../persistence/Errors.ts";
 import { lineSnapshotRef } from "../mercurian/worktreeSlots/SnapshotChain.ts";
 
 /** Service tag for checkpoint diff queries. */
 export class CheckpointDiffQuery extends Context.Service<
   CheckpointDiffQuery,
   {
+    /** Read an act-owned exact snapshot pair without requiring a live runtime. */
+    readonly getCheckpointDiff: (
+      input: MercurianReadCheckpointDiffInput,
+    ) => Effect.Effect<
+      MercurianReadCheckpointDiffResult,
+      CheckpointServiceError | PersistenceSqlError | RepositoryStoreError
+    >;
     /**
      * Read the patch diff for a single turn checkpoint transition.
      *
@@ -112,6 +124,61 @@ export const make = Effect.gen(function* () {
   const legacySessions = yield* LegacySessionStore;
   const lineBranches = yield* LineBranchStore;
   const repositories = yield* RepositoryStore;
+  const records = yield* CheckpointRecordStore;
+
+  const getCheckpointDiff: CheckpointDiffQuery["Service"]["getCheckpointDiff"] = Effect.fn(
+    "CheckpointDiffQuery.getCheckpointDiff",
+  )(function* (input) {
+    const record = yield* records.get(input.planId, input.ownerCommitId);
+    const unavailable = (
+      reason: Extract<MercurianReadCheckpointDiffResult, { status: "unavailable" }>["reason"],
+    ) => ({
+      status: "unavailable" as const,
+      checkpointRevision: record?.revision ?? 0,
+      reason,
+    });
+    if (record === null) return unavailable("record-missing");
+    if (record.revision !== input.checkpointRevision) return unavailable("record-changed");
+    if (record.capture === undefined) return unavailable("capture-pending");
+    const member = record.capture.repositories?.find(
+      (candidate) => candidate.repositoryId === input.repositoryId,
+    );
+    if (member === undefined) return unavailable("repository-not-recorded");
+    if (
+      member.captureStatus !== "ready" ||
+      !isSnapshotOid(member.beforeSnapshotOid) ||
+      !isSnapshotOid(member.afterSnapshotOid)
+    ) {
+      return unavailable("snapshot-missing");
+    }
+    // Membership comes from the saved act; current project/header selection cannot retarget it.
+    const repository = (yield* repositories.getSnapshot).repositories.find(
+      (candidate) => candidate.repositoryId === member.repositoryId,
+    );
+    if (repository === undefined || !repository.hasGit)
+      return unavailable("repository-unavailable");
+    const fromCheckpointRef = CheckpointRef.make(member.beforeSnapshotOid);
+    const toCheckpointRef = CheckpointRef.make(member.afterSnapshotOid);
+    const available = yield* Effect.forEach([fromCheckpointRef, toCheckpointRef], (checkpointRef) =>
+      checkpointStore.hasCheckpointRef({ cwd: repository.path, checkpointRef }),
+    );
+    if (!available.every(Boolean)) return unavailable("snapshot-missing");
+    const diff = yield* checkpointStore.diffCheckpoints({
+      cwd: repository.path,
+      fromCheckpointRef,
+      toCheckpointRef,
+      fallbackFromToHead: false,
+      ignoreWhitespace: input.ignoreWhitespace ?? false,
+    });
+    return {
+      status: "ready",
+      planId: record.planId,
+      ownerCommitId: record.ownerCommitId,
+      repositoryId: input.repositoryId,
+      checkpointRevision: record.revision,
+      diff,
+    };
+  });
 
   const getTurnDiff: CheckpointDiffQuery["Service"]["getTurnDiff"] = Effect.fn("getTurnDiff")(
     function* (input) {
@@ -385,6 +452,7 @@ export const make = Effect.gen(function* () {
     });
 
   return CheckpointDiffQuery.of({
+    getCheckpointDiff,
     getTurnDiff,
     getFullThreadDiff,
     getLineUncommittedDiff,

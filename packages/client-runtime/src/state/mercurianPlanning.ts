@@ -12,6 +12,7 @@ import {
   createAtomCommandScheduler,
   createEnvironmentSubscriptionAtomFamily,
   createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
 
@@ -63,6 +64,12 @@ export function createMercurianPlanningAtoms<R, E>(
 ) {
   const writeScheduler = createAtomCommandScheduler();
   return {
+    checkpointDiff: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:mercurian:checkpoint-diff",
+      tag: MERCURIAN_WS_METHODS.readCheckpointDiff,
+      // Physical repository availability can recover without a record update.
+      staleTimeMs: 5_000,
+    }),
     tree: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:mercurian:tree",
       tag: MERCURIAN_WS_METHODS.subscribeTree,

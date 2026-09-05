@@ -1,4 +1,10 @@
-import { MercurianSubscribePlanInput, PlanCheckpointRecord } from "./mercurian.ts";
+import {
+  MercurianForkLineInput,
+  MercurianReadCheckpointDiffInput,
+  MercurianReadCheckpointDiffResult,
+  MercurianSubscribePlanInput,
+  PlanCheckpointRecord,
+} from "./mercurian.ts";
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
@@ -258,5 +264,45 @@ describe("durable checkpoint contracts", () => {
         .afterCheckpointSequence,
     ).toBe(7);
     expect(() => decode({ planId: "plan", afterCheckpointSequence: -1 })).toThrow();
+  });
+});
+
+const decodeCheckpointDiffInput = Schema.decodeUnknownSync(MercurianReadCheckpointDiffInput);
+const decodeCheckpointDiffResult = Schema.decodeUnknownSync(MercurianReadCheckpointDiffResult);
+const decodeCheckpointFork = Schema.decodeUnknownSync(MercurianForkLineInput);
+
+describe("saved checkpoint action contracts", () => {
+  it("accepts standalone act diff identity and rejects a negative capture revision", () => {
+    const input = {
+      planId: "plan",
+      ownerCommitId: "import-act",
+      repositoryId: "repo",
+      checkpointRevision: 1,
+    };
+    expect(decodeCheckpointDiffInput(input)).toEqual(input);
+    expect(() =>
+      decodeCheckpointDiffInput({
+        ...input,
+        checkpointRevision: -1,
+      }),
+    ).toThrow();
+    expect(
+      decodeCheckpointDiffResult({
+        status: "unavailable",
+        checkpointRevision: 0,
+        reason: "record-missing",
+      }),
+    ).toEqual({ status: "unavailable", checkpointRevision: 0, reason: "record-missing" });
+  });
+  it("separates exact-parent query editing from recorded terminal checkpoint continuation", () => {
+    const decode = decodeCheckpointFork;
+    expect(decode({ planId: "plan", parentCommitId: "before-query" })).toEqual({
+      planId: "plan",
+      parentCommitId: "before-query",
+    });
+    expect(
+      decode({ planId: "plan", checkpointOwnerCommitId: "query", checkpointRevision: 2 }),
+    ).toEqual({ planId: "plan", checkpointOwnerCommitId: "query", checkpointRevision: 2 });
+    expect(() => decode({ planId: "plan", checkpointOwnerCommitId: "query" })).toThrow();
   });
 });

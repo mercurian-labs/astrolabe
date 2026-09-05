@@ -133,6 +133,8 @@ import {
   MercurianSubscribePlanInput,
   MercurianSubscribeTreeInput,
   MercurianSubscribeWorktreeSlotsInput,
+  MercurianReadCheckpointDiffInput,
+  MercurianReadCheckpointDiffResult,
   MercurianReadLineUncommittedDiffInput,
   MercurianReadLineUncommittedDiffResult,
   MercurianRecreateLineBranchInput,
@@ -1297,6 +1299,12 @@ export const WsMercurianSubscribeWorktreeSlotsRpc = Rpc.make(
   },
 );
 
+export const WsMercurianReadCheckpointDiffRpc = Rpc.make(MERCURIAN_WS_METHODS.readCheckpointDiff, {
+  payload: MercurianReadCheckpointDiffInput,
+  success: MercurianReadCheckpointDiffResult,
+  error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
 export const WsMercurianReadLineUncommittedDiffRpc = Rpc.make(
   MERCURIAN_WS_METHODS.readLineUncommittedDiff,
   {
@@ -1903,6 +1911,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationSubscribeThreadRpc,
   WsMercurianSubscribeTreeRpc,
   WsMercurianSubscribeWorktreeSlotsRpc,
+  WsMercurianReadCheckpointDiffRpc,
   WsMercurianReadLineUncommittedDiffRpc,
   WsMercurianRecreateLineBranchRpc,
   WsMercurianCreateProjectRpc,

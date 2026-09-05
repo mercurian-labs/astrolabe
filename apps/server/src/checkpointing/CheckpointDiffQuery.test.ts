@@ -17,6 +17,7 @@ import { describe, expect } from "vite-plus/test";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { chainParentRef, checkpointRefForThreadTurn } from "./Utils.ts";
+import { CheckpointRecordStore } from "../mercurian/planning/CheckpointRecordStore.ts";
 import * as CheckpointDiffQuery from "./CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 import { CheckpointRefUnavailableError, CheckpointThreadNotFoundError } from "./Errors.ts";
@@ -78,6 +79,7 @@ describe("CheckpointDiffQuery.layer", () => {
         readonly ignoreWhitespace: boolean;
       }> = [];
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(
           Layer.mock(LineRuntimeStore.LineRuntimeStore)({
             getByThreadId: () => Effect.succeed(Option.none()),
@@ -177,6 +179,7 @@ describe("CheckpointDiffQuery.layer", () => {
       const threadId = ThreadId.make("thread-missing-line");
       const repositoryId = MercurianRepositoryId.make("repository-missing-line");
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(
           Layer.mock(LineRuntimeStore.LineRuntimeStore)({
             getByThreadId: () => Effect.succeed(Option.none()),
@@ -272,6 +275,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(
           Layer.mock(LineRuntimeStore.LineRuntimeStore)({
             getByThreadId: () => Effect.succeed(Option.none()),
@@ -389,6 +393,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
@@ -475,6 +480,7 @@ describe("CheckpointDiffQuery.layer", () => {
         checkpointRef: toCheckpointRef,
       });
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(
           Layer.mock(LineRuntimeStore.LineRuntimeStore)({
             getByThreadId: () => Effect.succeed(Option.none()),
@@ -585,6 +591,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
@@ -662,6 +669,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
@@ -720,6 +728,7 @@ describe("CheckpointDiffQuery.layer", () => {
       };
 
       const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provide(Layer.mock(CheckpointRecordStore)({ get: () => Effect.succeed(null) })),
         Layer.provideMerge(lineDiffDependencies),
         Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
         Layer.provideMerge(
