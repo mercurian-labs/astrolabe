@@ -95,6 +95,11 @@ export class LineRuntimeStore extends Context.Service<
       mergedAt: DateTime.Utc,
     ) => Effect.Effect<void, LineRuntimeStoreError>;
     readonly changes: Stream.Stream<PlanId>;
+    readonly memoryChanges: Stream.Stream<{
+      readonly planId: PlanId;
+      readonly threadId: ThreadId;
+      readonly lineRootCommitId: MercurianCommitId | null;
+    }>;
   }
 >()("t3/mercurian/lineRuntimes/LineRuntimeStore") {}
 
@@ -151,6 +156,11 @@ const toStoreError =
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const changesPubSub = yield* PubSub.unbounded<PlanId>();
+  const memoryChanges = yield* PubSub.unbounded<{
+    readonly planId: PlanId;
+    readonly threadId: ThreadId;
+    readonly lineRootCommitId: MercurianCommitId | null;
+  }>();
   const columns = sql`
     plan_id AS "planId", line_root_commit_id AS "lineRootCommitId",
     fork_parent_commit_id AS "forkParentCommitId", thread_id AS "threadId",
@@ -309,9 +319,18 @@ export const make = Effect.gen(function* () {
       : hydrate(record.value).pipe(Effect.map(Option.some));
   const announceThread = Effect.fn("LineRuntimeStore.announceThread")(function* (
     threadId: ThreadId,
+    memory = true,
   ) {
     const record = yield* findThread({ threadId });
-    if (Option.isSome(record)) yield* PubSub.publish(changesPubSub, record.value.planId);
+    if (Option.isSome(record)) {
+      yield* PubSub.publish(changesPubSub, record.value.planId);
+      if (memory)
+        yield* PubSub.publish(memoryChanges, {
+          planId: record.value.planId,
+          threadId,
+          lineRootCommitId: record.value.lineRootCommitId,
+        });
+    }
   });
 
   return LineRuntimeStore.of({
@@ -357,7 +376,7 @@ export const make = Effect.gen(function* () {
               );
             }),
           )
-          .pipe(Effect.andThen(PubSub.publish(changesPubSub, input.planId)), Effect.asVoid),
+          .pipe(Effect.andThen(announceThread(input.threadId)), Effect.asVoid),
         "LineRuntimeStore.create",
       ),
     rootPending: (threadId, lineRootCommitId) =>
@@ -386,7 +405,9 @@ export const make = Effect.gen(function* () {
       ),
     recordRepositorySnapshot: (threadId, repositoryId, input) =>
       mapError(
-        repositorySnapshot({ threadId, repositoryId, ...input }),
+        repositorySnapshot({ threadId, repositoryId, ...input }).pipe(
+          Effect.andThen(announceThread(threadId)),
+        ),
         "LineRuntimeStore.recordRepositorySnapshot",
       ),
     recordLineBranchMissing: (threadId, oid) =>
@@ -396,12 +417,12 @@ export const make = Effect.gen(function* () {
       ),
     attachPullRequest: (input) =>
       mapError(
-        attachPr(input).pipe(Effect.andThen(announceThread(input.threadId))),
+        attachPr(input).pipe(Effect.andThen(announceThread(input.threadId, false))),
         "LineRuntimeStore.attachPullRequest",
       ),
     recordPullRequestState: (threadId, state) =>
       mapError(
-        recordPrState({ threadId, state }).pipe(Effect.andThen(announceThread(threadId))),
+        recordPrState({ threadId, state }).pipe(Effect.andThen(announceThread(threadId, false))),
         "LineRuntimeStore.recordPullRequestState",
       ),
     recordMemoryMergedHome: (threadId, mergedAt) =>
@@ -409,6 +430,7 @@ export const make = Effect.gen(function* () {
         recordMergedHome({ threadId, mergedAt }).pipe(Effect.andThen(announceThread(threadId))),
         "LineRuntimeStore.recordMemoryMergedHome",
       ),
+    memoryChanges: Stream.fromPubSub(memoryChanges),
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

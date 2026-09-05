@@ -28,6 +28,11 @@ const Review = Schema.Struct({
   reviewedAt: Schema.DateTimeUtcFromString,
 });
 export type MemoryReview = typeof Review.Type;
+export interface MemoryReviewInvalidation {
+  readonly repositoryId: MercurianRepositoryId;
+  /** Absent when shared memory home moved for every line using this repository. */
+  readonly lineRootCommitId?: MercurianCommitId;
+}
 export type MemoryReviewStoreError = PersistenceSqlError | PersistenceDecodeError;
 
 export class MemoryReviewStore extends Context.Service<
@@ -37,8 +42,8 @@ export class MemoryReviewStore extends Context.Service<
       input: typeof Key.Type,
     ) => Effect.Effect<ReadonlyArray<MemoryReview>, MemoryReviewStoreError>;
     readonly markReviewed: (input: MemoryReview) => Effect.Effect<void, MemoryReviewStoreError>;
-    readonly changes: Stream.Stream<void>;
-    readonly invalidate: Effect.Effect<void>;
+    readonly changes: Stream.Stream<MemoryReviewInvalidation>;
+    readonly invalidate: (input: MemoryReviewInvalidation) => Effect.Effect<void>;
   }
 >()("t3/mercurian/memory/MemoryReviewStore") {}
 
@@ -53,7 +58,7 @@ const toError =
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const changes = yield* PubSub.unbounded<void>();
+  const changes = yield* PubSub.unbounded<MemoryReviewInvalidation>();
   const listRows = SqlSchema.findAll({
     Request: Key,
     Result: Review,
@@ -73,14 +78,21 @@ export const make = Effect.gen(function* () {
       ON CONFLICT(line_root_commit_id, repository_id, commit_oid) DO NOTHING
     `,
   });
-  const announce = PubSub.publish(changes, undefined).pipe(Effect.asVoid);
+  const announce = (input: MemoryReviewInvalidation) =>
+    PubSub.publish(changes, {
+      repositoryId: input.repositoryId,
+      ...(input.lineRootCommitId === undefined ? {} : { lineRootCommitId: input.lineRootCommitId }),
+    }).pipe(Effect.asVoid);
   return MemoryReviewStore.of({
     listReviewed: (input) =>
       listRows(input).pipe(Effect.mapError(toError("MemoryReviewStore.listReviewed"))),
     markReviewed: (input) =>
       sql
         .withTransaction(insert(input))
-        .pipe(Effect.andThen(announce), Effect.mapError(toError("MemoryReviewStore.markReviewed"))),
+        .pipe(
+          Effect.andThen(announce(input)),
+          Effect.mapError(toError("MemoryReviewStore.markReviewed")),
+        ),
     invalidate: announce,
     get changes() {
       return Stream.fromPubSub(changes);

@@ -1370,7 +1370,7 @@ const buildAppUnderTest = (options?: {
             }),
             Layer.mock(MemoryDashboard.MemoryDashboard)({
               readCatalog: () => Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
-              invalidate: Effect.void,
+              invalidate: () => Effect.void,
               changes: Stream.empty,
               readDashboard: () => Effect.succeed({ kind: "unavailable", reason: "line-missing" }),
               readDocument: () => Effect.succeed({ kind: "unavailable", reason: "object-missing" }),
@@ -5341,7 +5341,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["revertChange"]>[0]>();
       const memoryMerges =
         yield* Queue.unbounded<Parameters<MemoryIndex.MemoryIndex["Service"]["mergeHome"]>[0]>();
-      const invalidations = yield* PubSub.unbounded<void>();
+      const invalidations =
+        yield* PubSub.unbounded<
+          Parameters<MemoryDashboard.MemoryDashboard["Service"]["invalidate"]>[0]
+        >();
       const invalidationCount = yield* Ref.make(0);
       const curationVersion = "displayed-curation-version";
       const review = {
@@ -5374,10 +5377,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         layers: {
           memoryDashboard: {
             changes: Stream.fromPubSub(invalidations),
-            invalidate: Ref.update(invalidationCount, (count) => count + 1).pipe(
-              Effect.andThen(PubSub.publish(invalidations, undefined)),
-              Effect.asVoid,
-            ),
+            invalidate: (projectId) =>
+              Ref.update(invalidationCount, (count) => count + 1).pipe(
+                Effect.andThen(PubSub.publish(invalidations, projectId)),
+                Effect.asVoid,
+              ),
           },
           memoryIndex: {
             readLineChanges: (input) =>
@@ -5439,7 +5443,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const received = yield* Queue.unbounded<{ readonly kind: "invalidate" }>();
             const subscription = yield* client[
               MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations
-            ]({}).pipe(
+            ]({ scope: { projectId: project.projectId, line } }).pipe(
               Stream.runForEach((event) => Queue.offer(received, event)),
               Effect.forkChild,
             );
@@ -5447,10 +5451,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             const changes = yield* client[MERCURIAN_MEMORY_WS_METHODS.readLineMemoryChanges]({
               line,
             });
-            yield* client[MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]({
-              line,
-              commitOid: "reviewed-oid",
-            });
+            // A second device writes while this client's Memory tab may be unmounted.
+            yield* withWsRpcClient(wsUrl, (otherClient) =>
+              otherClient[MERCURIAN_MEMORY_WS_METHODS.markMemoryChangeReviewed]({
+                line,
+                commitOid: "reviewed-oid",
+              }),
+            );
             assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
             assert.strictEqual(yield* Ref.get(invalidationCount), 1);
             yield* client[MERCURIAN_MEMORY_WS_METHODS.revertMemoryChange]({
@@ -5508,7 +5515,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 // read-only outcomes emit none without waiting for an absent event.
                 assert.strictEqual(yield* Ref.get(invalidationCount), expectedInvalidations);
                 if (outcome.kind === "review-required") {
-                  yield* PubSub.publish(invalidations, undefined);
+                  yield* PubSub.publish(invalidations, { projectId: project.projectId });
                   assert.deepEqual(yield* Queue.take(received), { kind: "invalidate" });
                   assert.strictEqual(yield* Ref.get(invalidationCount), expectedInvalidations);
                 }
@@ -5527,7 +5534,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             // Re-subscribing still emits the initial refresh used after reconnect.
             const reconnect = yield* client[
               MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations
-            ]({}).pipe(Stream.runHead);
+            ]({ scope: { projectId: project.projectId, line } }).pipe(Stream.runHead);
             assert.deepEqual(Option.getOrNull(reconnect), { kind: "invalidate" });
             return { project, line, changes, mergeOutcomes, mergeInputs };
           }),

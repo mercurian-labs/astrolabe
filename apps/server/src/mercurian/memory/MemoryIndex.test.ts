@@ -84,7 +84,7 @@ const defaultLineServices = Layer.mergeAll(
   Layer.mock(MemoryReviewStore.MemoryReviewStore)({
     listReviewed: () => Effect.succeed([]),
     markReviewed: () => Effect.void,
-    invalidate: Effect.void,
+    invalidate: () => Effect.void,
   }),
   Layer.mock(SnapshotChain)({ captureTree: () => Effect.die("not used") }),
   Layer.mock(RepositoryStore.RepositoryStore)({
@@ -184,6 +184,7 @@ function lineServices(
     readonly turns?: PlanTurnRegistry.PlanTurnRegistry["Service"];
     readonly leases?: SlotRegistry.SlotRegistry["Service"];
     readonly reviewed?: Set<string>;
+    readonly invalidations?: Array<MemoryReviewStore.MemoryReviewInvalidation>;
     readonly reviewStore?: MemoryReviewStore.MemoryReviewStore["Service"];
     readonly beforeCapture?: Effect.Effect<void, import("@t3tools/contracts").GitCommandError>;
     readonly captureTree?: SnapshotChain["Service"]["captureTree"];
@@ -335,7 +336,10 @@ function lineServices(
     input.reviewStore
       ? Layer.succeed(MemoryReviewStore.MemoryReviewStore, input.reviewStore)
       : Layer.mock(MemoryReviewStore.MemoryReviewStore)({
-          invalidate: Effect.void,
+          invalidate: (change) =>
+            Effect.sync(() => {
+              input.invalidations?.push(change);
+            }),
           listReviewed: () =>
             Effect.sync(() =>
               [...(input.reviewed ?? [])].map((commitOid) => ({
@@ -1221,16 +1225,26 @@ layer("MemoryIndex", (it) => {
       yield* runGit(fixture.root, ["update-ref", String(lineSnapshotRef(lineRoot)), snapshotOid]);
       yield* runGit(fixture.root, ["checkout", "main"]);
       const reviewed = new Set<string>();
+      const invalidations: Array<MemoryReviewStore.MemoryReviewInvalidation> = [];
       const recordedMergedHome: Array<ThreadId> = [];
       const { index } = yield* makeLineIndex(fixture, {
         branch: "memory-line",
         baseOid: mainBefore,
         reviewed,
+        invalidations,
         recordedMergedHome,
         runtimes: [{ threadId: lineSessionThread }],
       });
 
+      // Preparation is read-only, including repeated review of the same exact state.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const prepared = yield* index.mergeHome({ projectId: fixture.projectId, line: lineRef });
+        assert.strictEqual(prepared.kind, "review-required");
+        assert.deepStrictEqual(invalidations, []);
+      }
       const result = yield* reviewAndMerge(index, fixture.projectId);
+      assert.isTrue(invalidations.some((change) => change.lineRootCommitId === lineRoot));
+      assert.deepStrictEqual(invalidations.at(-1), { repositoryId: fixture.repositoryId });
       assert.strictEqual(result.kind, "merged");
       if (result.kind !== "merged") return;
       assert.strictEqual(yield* runGit(fixture.root, ["rev-parse", "main"]), result.commitOid);

@@ -782,6 +782,11 @@ export class PlanningStore extends Context.Service<
     ) => Effect.Effect<void, PlanningStoreError>;
     /** Fires once per mutation. What keeps a subscribed tree and plan fresh. */
     readonly changes: Stream.Stream<void>;
+    /** Memory amendments and removal only; visits and ordinary conversation are not memory edits. */
+    readonly memoryChanges: Stream.Stream<{
+      readonly planId: PlanId;
+      readonly commitId: CommitId | null;
+    }>;
   }
 >()("t3/mercurian/planning/PlanningStore") {}
 
@@ -980,6 +985,10 @@ export const make = Effect.gen(function* () {
   const legacySessions = yield* LegacySessionStore;
   const lineRuntimes = yield* LineRuntimeStore;
   const changesPubSub = yield* PubSub.unbounded<void>();
+  const memoryChanges = yield* PubSub.unbounded<{
+    readonly planId: PlanId;
+    readonly commitId: CommitId | null;
+  }>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
 
@@ -2097,6 +2106,7 @@ export const make = Effect.gen(function* () {
         createdAt: input.createdAt,
       });
       yield* announceChange;
+      yield* PubSub.publish(memoryChanges, { planId: input.planId, commitId: appended.commitId });
       return yield* toPlanMessage(appended);
     }).pipe(
       Effect.mapError(
@@ -2286,6 +2296,7 @@ export const make = Effect.gen(function* () {
       );
 
       yield* announceChange;
+      yield* PubSub.publish(memoryChanges, { planId: input.planId, commitId: null });
       return deletion;
     }).pipe(
       Effect.mapError(
@@ -2536,6 +2547,7 @@ export const make = Effect.gen(function* () {
     standingModelChoice,
     recordPlanVisit,
     markPlanUnread,
+    memoryChanges: Stream.fromPubSub(memoryChanges),
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

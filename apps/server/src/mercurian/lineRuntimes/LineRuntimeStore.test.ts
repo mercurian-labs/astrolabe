@@ -3,6 +3,8 @@ import { MercurianCommitId, MercurianRepositoryId, PlanId, ThreadId } from "@t3t
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -45,6 +47,15 @@ layer("LineRuntimeStore", (it) => {
         createdAt: at("2026-08-14T12:00:00.000Z"),
       });
 
+      const pullMemory = yield* Stream.toPull(store.memoryChanges);
+      const nextMemory = yield* pullMemory.pipe(Effect.forkChild({ startImmediately: true }));
+      yield* store.attachPullRequest({
+        threadId,
+        repositoryId,
+        prUrl: "https://example.test/pr/0",
+      });
+      yield* store.recordPullRequestState(threadId, "open");
+
       const byLine = yield* store.getOrNone(planId, lineRootCommitId);
       assert.ok(Option.isSome(byLine));
       assert.strictEqual(byLine.value.threadId, threadId);
@@ -54,6 +65,9 @@ layer("LineRuntimeStore", (it) => {
         branch: "mercurian/renamed",
         worktreePath: "/tmp/renamed-worktree",
       });
+      assert.deepStrictEqual(yield* Fiber.join(nextMemory), [
+        { planId, threadId, lineRootCommitId },
+      ]);
       yield* store.recordSnapshot(threadId, {
         snapshotOid: "snapshot",
         kind: "settled",
@@ -68,6 +82,10 @@ layer("LineRuntimeStore", (it) => {
         departedRef: null,
         branchMovement: { kind: "unchanged" },
       });
+      assert.deepStrictEqual(yield* pullMemory, [
+        { planId, threadId, lineRootCommitId },
+        { planId, threadId, lineRootCommitId },
+      ]);
       yield* store.attachPullRequest({
         threadId,
         repositoryId,

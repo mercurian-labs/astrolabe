@@ -1,4 +1,5 @@
 import {
+  MercurianSubscribeMemoryInvalidationsInput,
   MercurianReadMemoryIndexInput,
   MercurianReadMemoryNoteInput,
   MercurianReadLineMemoryChangesInput,
@@ -186,5 +187,19 @@ describe("versioned memory curation contracts", () => {
       reconciliationSeed: "Reconcile this exact inverse",
     };
     expect(decodeReviewBlocked(conflict)).toMatchObject(conflict);
+  });
+});
+
+describe("memory invalidation subscription scope", () => {
+  const decode = Schema.decodeUnknownSync(MercurianSubscribeMemoryInvalidationsInput);
+  it("keeps old clients valid and accepts stable line scopes without a route position", () => {
+    expect(decode({})).toEqual({});
+    expect(decode({ scope: { projectId: "project", line: { threadId: "thread" } } })).toEqual({
+      scope: { projectId: "project", line: { threadId: "thread" } },
+    });
+    expect(
+      decode({ scope: { projectId: "project", line: { planId: "plan", commitId: "root" } } }),
+    ).toEqual({ scope: { projectId: "project", line: { planId: "plan", commitId: "root" } } });
+    expect(() => decode({ scope: { projectId: "project" } })).toThrow();
   });
 });

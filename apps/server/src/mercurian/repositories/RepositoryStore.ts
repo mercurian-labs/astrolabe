@@ -163,6 +163,8 @@ export class RepositoryStore extends Context.Service<
     ) => Effect.Effect<void, RepositoryStoreError>;
     /** Fires once per mutation. What keeps a subscribed registry fresh. */
     readonly changes: Stream.Stream<void>;
+    /** Removal or explicit disk refresh; scripts and project membership do not change memory. */
+    readonly memoryChanges: Stream.Stream<MercurianRepositoryId | null>;
   }
 >()("t3/mercurian/repositories/RepositoryStore") {}
 
@@ -327,6 +329,7 @@ export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const { worktreesDir } = yield* ServerConfig;
   const changesPubSub = yield* PubSub.unbounded<void>();
+  const memoryChanges = yield* PubSub.unbounded<MercurianRepositoryId | null>();
 
   const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
 
@@ -717,6 +720,7 @@ export const make = Effect.gen(function* () {
       yield* Cache.invalidateAll(gitProbeCache);
       yield* Cache.invalidateAll(hostingProbeCache);
       yield* announceChange;
+      yield* PubSub.publish(memoryChanges, null);
     },
   );
 
@@ -745,6 +749,7 @@ export const make = Effect.gen(function* () {
         }),
       );
       yield* announceChange;
+      yield* PubSub.publish(memoryChanges, input.repositoryId);
     }).pipe(
       Effect.mapError(
         toRepositoryStoreError(
@@ -852,6 +857,7 @@ export const make = Effect.gen(function* () {
     removeRepository,
     saveScripts,
     setProjectRepositories,
+    memoryChanges: Stream.fromPubSub(memoryChanges),
     get changes() {
       return Stream.fromPubSub(changesPubSub);
     },

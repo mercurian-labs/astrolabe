@@ -162,7 +162,7 @@ import type { RepositoryView } from "./mercurian/repositories/schema.ts";
 import * as MemorySourceStore from "./mercurian/memory/MemorySourceStore.ts";
 import * as MemoryIndex from "./mercurian/memory/MemoryIndex.ts";
 import * as MemoryDashboard from "./mercurian/memory/MemoryDashboard.ts";
-import { MemoryReviewStore } from "./mercurian/memory/MemoryReviewStore.ts";
+import { memoryInvalidations } from "./mercurian/memory/MemoryInvalidations.ts";
 import { toWireMemorySourcesSnapshot } from "./mercurian/memory/wire.ts";
 import * as WorkspaceSettingsStore from "./mercurian/workspace/WorkspaceSettingsStore.ts";
 import { toWireRepositoriesSnapshot, toWireRepository } from "./mercurian/repositories/wire.ts";
@@ -688,7 +688,6 @@ const makeWsRpcLayer = (
       const memorySourceStore = yield* MemorySourceStore.MemorySourceStore;
       const memoryIndex = yield* MemoryIndex.MemoryIndex;
       const memoryDashboard = yield* MemoryDashboard.MemoryDashboard;
-      const memoryReviews = yield* MemoryReviewStore;
       const trackerStore = yield* TrackerStore.TrackerStore;
       const workspaceSettingsStore = yield* WorkspaceSettingsStore.WorkspaceSettingsStore;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
@@ -3146,23 +3145,17 @@ const makeWsRpcLayer = (
             memoryDashboard.readComparison(input),
             { "rpc.aggregate": "mercurian" },
           ),
-        [MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations]: () =>
+        [MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations]: (input) =>
           observeRpcStreamEffect(
             MERCURIAN_MEMORY_WS_METHODS.subscribeMemoryInvalidations,
             Effect.gen(function* () {
-              const changes = yield* Queue.sliding<void>(1);
+              const changes = yield* Queue.sliding<void, MercurianMemoryError>(1);
+              const relevant = yield* memoryInvalidations(input.scope);
               yield* Effect.forkScoped(
-                Stream.mergeAll(
-                  [
-                    memoryReviews.changes,
-                    memorySourceStore.changes,
-                    repositoryStore.changes,
-                    lineRuntimeStore.changes.pipe(Stream.map(() => undefined)),
-                    planningStore.changes,
-                    memoryDashboard.changes,
-                  ],
-                  { concurrency: "unbounded" },
-                ).pipe(Stream.runForEach(() => Queue.offer(changes, undefined))),
+                relevant.pipe(
+                  Stream.runForEach(() => Queue.offer(changes, undefined)),
+                  Effect.catch((error) => Queue.fail(changes, error)),
+                ),
                 { startImmediately: true },
               );
               return Stream.concat(
@@ -3172,7 +3165,12 @@ const makeWsRpcLayer = (
                   Stream.map(() => ({ kind: "invalidate" as const })),
                 ),
               );
-            }),
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new MercurianMemoryError({ operation: "subscribeMemoryInvalidations", cause }),
+              ),
+            ),
             { "rpc.aggregate": "mercurian" },
           ),
         [MERCURIAN_MEMORY_WS_METHODS.readMemoryIndex]: (input) =>
@@ -3245,7 +3243,7 @@ const makeWsRpcLayer = (
                 commitOid: input.commitOid,
                 ...(input.position ? { position: input.position } : {}),
               });
-              yield* memoryDashboard.invalidate;
+              yield* memoryDashboard.invalidate({ projectId: detail.plan.projectId, line });
             }).pipe(
               Effect.mapError((cause) =>
                 isMemoryNotDesignatedError(cause) ||
@@ -3274,7 +3272,7 @@ const makeWsRpcLayer = (
                 ...(input.position ? { position: input.position } : {}),
                 ...(input.expectedVersion ? { expectedVersion: input.expectedVersion } : {}),
               });
-              yield* memoryDashboard.invalidate;
+              yield* memoryDashboard.invalidate({ projectId: detail.plan.projectId, line });
             }).pipe(
               Effect.mapError((cause) =>
                 isMemoryNotDesignatedError(cause) ||
@@ -3306,7 +3304,7 @@ const makeWsRpcLayer = (
                   : {}),
               });
               if (result.kind === "merged" || result.kind === "deferred-to-push")
-                yield* memoryDashboard.invalidate;
+                yield* memoryDashboard.invalidate({ projectId: detail.plan.projectId, line });
               return result;
             }).pipe(
               Effect.mapError((cause) =>

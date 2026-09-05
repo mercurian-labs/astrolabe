@@ -489,7 +489,12 @@ export const MemoryComparisonResult = Schema.Union([
 ]);
 export type MemoryComparisonResult = typeof MemoryComparisonResult.Type;
 export const MemoryInvalidation = Schema.Struct({ kind: Schema.Literal("invalidate") });
-export const MercurianSubscribeMemoryInvalidationsInput = Schema.Struct({});
+export const MercurianSubscribeMemoryInvalidationsInput = Schema.Struct({
+  /** Omitted by older clients subscribing to all memory changes. */
+  scope: Schema.optional(Schema.Struct({ projectId: MercurianProjectId, line: MemoryLineRef })),
+});
+export type MercurianSubscribeMemoryInvalidationsInput =
+  typeof MercurianSubscribeMemoryInvalidationsInput.Type;
 export const MemoryDocumentSelection = Schema.Struct({
   environmentId: EnvironmentId,
   target: MemoryDocumentTarget,

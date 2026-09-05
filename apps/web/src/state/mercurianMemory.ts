@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createMercurianMemoryAtoms } from "@t3tools/client-runtime/state/mercurian-memory";
 import type {
   MercurianReadMemoryDashboardInput,
+  MercurianSubscribeMemoryInvalidationsInput,
   MercurianReadMemoryCatalogInput,
   MemoryReadingPosition,
   MercurianReadMemoryDocumentInput,
@@ -144,8 +145,13 @@ export function useReadMemoryComparison(environmentId: EnvironmentId) {
 }
 
 /** Emits on reconnect, captures, review and curation across devices. Consumers refresh latest only. */
-export function useMemoryInvalidation(environmentId: EnvironmentId) {
-  return useAtomValue(mercurianMemory.subscribeMemoryInvalidations({ environmentId, input: {} }));
+export function useMemoryInvalidation(
+  environmentId: EnvironmentId,
+  scope: MercurianSubscribeMemoryInvalidationsInput["scope"],
+) {
+  return useAtomValue(
+    mercurianMemory.subscribeMemoryInvalidations({ environmentId, input: scope ? { scope } : {} }),
+  );
 }
 
 export function useReadMemoryCatalog(environmentId: EnvironmentId) {

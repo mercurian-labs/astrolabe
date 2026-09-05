@@ -27,6 +27,8 @@ import {
   type MemoryChangedDocument,
   type MercurianReadMemoryDashboardInput,
   type MercurianRepositoryId,
+  type MercurianProjectId,
+  type MemoryLineRef,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -89,7 +91,10 @@ export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* 
   const repositories = yield* RepositoryStore;
   const reviews = yield* MemoryReviewStore;
   const positions = yield* makeMemoryPosition;
-  const invalidations = yield* PubSub.sliding<void>(1);
+  const invalidations = yield* PubSub.unbounded<{
+    readonly projectId: MercurianProjectId;
+    readonly line?: MemoryLineRef;
+  }>();
   // Bodies only, bounded by both entry count and total UTF-16 bytes.
   const bodies = new Map<string, string>();
   let bodyBytes = 0;
@@ -597,7 +602,10 @@ export const makeWithLineIdentity = Effect.fn("MemoryDashboard.make")(function* 
     return { kind: "available", target: t, patch, maps };
   });
   return {
-    invalidate: PubSub.publish(invalidations, undefined).pipe(Effect.asVoid),
+    invalidate: (input: {
+      readonly projectId: MercurianProjectId;
+      readonly line?: MemoryLineRef;
+    }) => PubSub.publish(invalidations, input).pipe(Effect.asVoid),
     changes: Stream.fromPubSub(invalidations),
     readDashboard: (input: MercurianReadMemoryDashboardInput) =>
       readDashboard(input).pipe(

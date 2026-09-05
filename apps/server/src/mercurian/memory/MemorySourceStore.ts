@@ -51,7 +51,7 @@ export class MemorySourceStore extends Context.Service<
     readonly getResolvedSource: (
       projectId: MercurianProjectId,
     ) => Effect.Effect<Option.Option<ResolvedMemorySource>, MemorySourceStoreError>;
-    readonly changes: Stream.Stream<void>;
+    readonly changes: Stream.Stream<MercurianProjectId>;
   }
 >()("t3/mercurian/memory/MemorySourceStore") {}
 
@@ -87,8 +87,9 @@ export const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const git = yield* GitVcsDriver;
-  const changesPubSub = yield* PubSub.unbounded<void>();
-  const announceChange = PubSub.publish(changesPubSub, undefined).pipe(Effect.asVoid);
+  const changesPubSub = yield* PubSub.unbounded<MercurianProjectId>();
+  const announceChange = (projectId: MercurianProjectId) =>
+    PubSub.publish(changesPubSub, projectId).pipe(Effect.asVoid);
 
   const columns = sql`
     project_id AS "projectId",
@@ -242,7 +243,7 @@ export const make = Effect.gen(function* () {
         createdAt: input.now,
         updatedAt: input.now,
       });
-      yield* announceChange;
+      yield* announceChange(input.projectId);
     }).pipe(
       Effect.mapError(
         toStoreError("MemorySourceStore.designate:query", "MemorySourceStore.designate:decode"),
@@ -252,7 +253,7 @@ export const make = Effect.gen(function* () {
   const remove: MemorySourceStore["Service"]["remove"] = (projectId) =>
     Effect.gen(function* () {
       yield* deleteRow({ projectId });
-      yield* announceChange;
+      yield* announceChange(projectId);
     }).pipe(
       Effect.mapError(
         toStoreError("MemorySourceStore.remove:query", "MemorySourceStore.remove:decode"),

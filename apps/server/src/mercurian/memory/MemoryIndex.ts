@@ -999,7 +999,7 @@ export const make = Effect.gen(function* () {
             commitOid: input.commitOid,
             reviewedAt: yield* DateTime.now,
           });
-          yield* reviews.invalidate;
+          yield* reviews.invalidate(current.position);
         }),
       )
       .pipe(Effect.mapError(normalizeReviewError));
@@ -1178,7 +1178,10 @@ export const make = Effect.gen(function* () {
               : current.amendments.find((a) => a.kind === "unmarked");
           if (!selected) {
             if (input.target.kind === "unmarked") {
-              yield* reviews.invalidate;
+              yield* reviews.invalidate({
+                repositoryId: context.source.repositoryId,
+                lineRootCommitId: context.lineRootCommitId,
+              });
               return;
             }
             return yield* new MemoryReviewBlockedError({ reason: "not-on-line" });
@@ -1232,7 +1235,10 @@ export const make = Effect.gen(function* () {
               ...(nextHeadOid ? { nextHeadOid } : {}),
             },
           });
-          yield* reviews.invalidate;
+          yield* reviews.invalidate({
+            repositoryId: context.source.repositoryId,
+            lineRootCommitId: context.lineRootCommitId,
+          });
           if (nextHeadOid)
             yield* reviews.markReviewed({
               lineRootCommitId: context.lineRootCommitId,
@@ -1241,7 +1247,10 @@ export const make = Effect.gen(function* () {
               reviewedAt: yield* DateTime.now,
             });
           yield* refreshMembers(members, fullTree, curatedTree, nextHeadOid ?? position.headOid);
-          yield* reviews.invalidate;
+          yield* reviews.invalidate({
+            repositoryId: context.source.repositoryId,
+            lineRootCommitId: context.lineRootCommitId,
+          });
         }),
       )
       .pipe(Effect.mapError(normalizeReviewError));
@@ -1361,7 +1370,10 @@ export const make = Effect.gen(function* () {
               }),
               reviewedAt: yield* DateTime.now,
             });
-            yield* reviews.invalidate;
+            yield* reviews.invalidate({
+              repositoryId: context.source.repositoryId,
+              lineRootCommitId: context.lineRootCommitId,
+            });
             return { kind: "deferred-to-push" as const };
           }
           let lineTip = review.headOid;
@@ -1444,10 +1456,13 @@ export const make = Effect.gen(function* () {
               ),
             );
           if (captured.kind === "review-required") {
-            yield* reviews.invalidate;
+            yield* reviews.invalidate({
+              repositoryId: context.source.repositoryId,
+              lineRootCommitId: context.lineRootCommitId,
+            });
             return captured;
           }
-          yield* reviews.invalidate;
+          yield* reviews.invalidate({ repositoryId: context.source.repositoryId });
           if (unmarked)
             yield* reviews.markReviewed({
               lineRootCommitId: context.lineRootCommitId,
@@ -1467,7 +1482,7 @@ export const make = Effect.gen(function* () {
             (s) => lineRootCommitIdFor(context.detail, s.commitId) === context.lineRootCommitId,
           ))
             yield* legacySessions.recordMemoryMergedHome(session.threadId, now);
-          yield* reviews.invalidate;
+          yield* reviews.invalidate({ repositoryId: context.source.repositoryId });
           return { kind: "merged" as const, commitOid };
         }),
       )

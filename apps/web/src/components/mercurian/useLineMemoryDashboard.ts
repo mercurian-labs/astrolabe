@@ -4,9 +4,10 @@ import type {
   MercurianProjectId,
   ThreadId,
 } from "@t3tools/contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { useMemoryInvalidation, useReadMemoryDashboard } from "../../state/mercurianMemory";
+import { advanceLineMemoryRefresh, type LineMemoryRefreshCursor } from "./lineMemoryRefresh";
 import type { MemoryDashboardState } from "./MemoryTab.logic";
 
 export interface LineMemoryDashboard {
@@ -57,26 +58,36 @@ export function useLineMemoryDashboard(input: {
     });
   }, [key, projectId, readDashboard, reading, threadId]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const invalidation = useMemoryInvalidation(environmentId);
+  const invalidation = useMemoryInvalidation(
+    environmentId,
+    projectId === null ? undefined : { projectId, line: { threadId } },
+  );
+  const emission = invalidation._tag === "Success" ? invalidation.value : undefined;
+  const subscriptionKey = `${environmentId}\0${projectId ?? ""}\0${threadId}`;
   const [invalidationTick, setInvalidationTick] = useState(0);
-  const sawSubscriptionEmission = useRef(false);
+  const cursor = useRef<LineMemoryRefreshCursor | undefined>(undefined);
+  const readLatest = useEffectEvent(() => {
+    void refresh();
+  });
   useEffect(() => {
-    if (invalidation._tag !== "Success") return;
-    // The subscription's own first emission is covered by the initial read.
-    if (!sawSubscriptionEmission.current) {
-      sawSubscriptionEmission.current = true;
-      return;
-    }
-    setInvalidationTick((tick) => tick + 1);
-    if (reading.kind === "latest") void refresh();
-  }, [invalidation, reading.kind, refresh]);
+    const next = advanceLineMemoryRefresh(cursor.current, {
+      key,
+      subscriptionKey,
+      emission,
+      latest: reading.kind === "latest",
+    });
+    cursor.current = next.cursor;
+    if (next.invalidate) setInvalidationTick((tick) => tick + 1);
+    if (next.read) readLatest();
+  }, [key, subscriptionKey, emission, reading.kind]);
 
   return {
-    state: result?.key === key ? result.state : { kind: "loading" },
+    state:
+      result?.key === key
+        ? result.state
+        : invalidation._tag === "Failure"
+          ? { kind: "error", message: "Could not subscribe to this line's memory." }
+          : { kind: "loading" },
     refresh,
     invalidationTick,
   };

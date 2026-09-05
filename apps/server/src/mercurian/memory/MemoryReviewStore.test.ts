@@ -23,11 +23,16 @@ layer("MemoryReviewStore", (it) => {
       };
       const pull = yield* Stream.toPull(store.changes);
       const first = yield* pull.pipe(Effect.forkChild({ startImmediately: true }));
+      const otherClientPull = yield* Stream.toPull(store.changes);
+      const otherClient = yield* otherClientPull.pipe(Effect.forkChild({ startImmediately: true }));
       yield* store.markReviewed(review);
+      assert.deepStrictEqual(yield* Fiber.join(otherClient), [
+        { repositoryId: review.repositoryId, lineRootCommitId: review.lineRootCommitId },
+      ]);
       assert.strictEqual((yield* Fiber.join(first)).length, 1);
       yield* store.markReviewed(review);
       assert.strictEqual((yield* pull).length, 1);
-      yield* store.invalidate;
+      yield* store.invalidate(review);
       assert.strictEqual((yield* pull).length, 1);
       assert.deepStrictEqual(yield* store.listReviewed(review), [review]);
     }),
