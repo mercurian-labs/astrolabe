@@ -398,6 +398,7 @@ describe("ProviderCommandReactor", () => {
       },
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
+      subscribeEvents: Effect.succeed(Stream.empty),
       get streamEvents() {
         return Stream.fromPubSub(runtimeEventPubSub);
       },
@@ -859,11 +860,26 @@ describe("ProviderCommandReactor", () => {
   });
 
   it("prepares fresh and continued turns and can suppress resume on restart", async () => {
+    const dispositions: string[] = [];
+    const submitted: string[] = [];
+    const submittedThird = Effect.runSync(Deferred.make<void>());
     const harness = await createHarness({
-      prepareTurn: ({ message, sessionIsFresh }) =>
-        Effect.succeed({
-          text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
-          session: { skipResume: true },
+      prepareTurn: ({ message, sessionIsFresh, contextDisposition }) =>
+        Effect.sync(() => {
+          dispositions.push(contextDisposition ?? "missing");
+          return {
+            onSubmitted: Effect.sync(() => {
+              submitted.push(message.text);
+            }).pipe(
+              Effect.andThen(
+                message.text === "three"
+                  ? Deferred.succeed(submittedThird, undefined).pipe(Effect.asVoid)
+                  : Effect.void,
+              ),
+            ),
+            text: `${sessionIsFresh ? "fresh" : "continued"}:${message.text}`,
+            session: { skipResume: true },
+          };
         }),
     });
     const startTurn = (suffix: string) =>
@@ -901,6 +917,10 @@ describe("ProviderCommandReactor", () => {
     await Effect.runPromise(startTurn("three"));
     await waitFor(() => harness.sendTurn.mock.calls.length === 3);
 
+    await harness.drain();
+    expect(dispositions).toEqual(["clean-start", "continuation", "resume"]);
+    await Effect.runPromise(Deferred.await(submittedThird));
+    expect(submitted).toEqual(["one", "two", "three"]);
     expect(harness.startSession).toHaveBeenCalledTimes(2);
     expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
     expect(harness.sendTurn.mock.calls[2]?.[0]).toMatchObject({ input: "fresh:three" });

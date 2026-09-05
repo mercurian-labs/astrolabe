@@ -1946,6 +1946,7 @@ layer("PlanningStore", (it) => {
       const message = yield* store.appendAssistantMessage({
         planId: created.plan.planId,
         parentCommitId: root.commitId,
+        reconstructionId: "recorded-input",
         text: "Here is how I would shape it",
         interrupted: true,
         grounding: [{ kind: "file-read", label: "apps/web/src/sidebar.tsx" }],
@@ -1972,6 +1973,7 @@ layer("PlanningStore", (it) => {
       const landed = snapshot.timeline.at(-1);
       assert.ok(landed !== undefined && landed._tag === "message");
       assert.strictEqual(landed.interrupted, true);
+      assert.strictEqual(landed.reconstructionId, "recorded-input");
       assert.deepStrictEqual(landed.grounding?.[0]?.label, "apps/web/src/sidebar.tsx");
       assert.deepStrictEqual(landed.groundingScope?.unreachableRepositories, ["almagest"]);
       assert.deepStrictEqual(landed.question?.answers, { q1: "Yes" });

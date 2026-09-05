@@ -44,6 +44,7 @@ export const RPC_REQUIRED_SCOPES = {
   [MERCURIAN_WS_METHODS.readLineUncommittedDiff]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.recreateLineBranch]: AuthOrchestrationOperateScope,
   [MERCURIAN_WS_METHODS.subscribePlan]: AuthOrchestrationReadScope,
+  [MERCURIAN_WS_METHODS.getReconstruction]: AuthOrchestrationReadScope,
   [MERCURIAN_WS_METHODS.createProject]: AuthOrchestrationOperateScope,
   // Importing an issue creates a plan, so it is an operation on the same
   // footing as creating one from a blank draft.

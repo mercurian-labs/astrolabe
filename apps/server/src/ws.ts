@@ -6,6 +6,7 @@ import { MERCURIAN_DOCUMENT_WS_METHODS } from "@t3tools/contracts";
 import * as ProjectDocuments from "./mercurian/documents/ProjectDocuments.ts";
 import { MERCURIAN_STORAGE_WS_METHODS, MercurianStorageError } from "@t3tools/contracts";
 import * as StorageSourceStore from "./mercurian/storage/StorageSourceStore.ts";
+import { ReconstructionStore } from "./mercurian/assistant/ReconstructionStore.ts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -682,6 +683,7 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const planningStore = yield* PlanningStore.PlanningStore;
+      const reconstructionStore = yield* ReconstructionStore;
       const legacySessionStore = yield* LegacySessionStore.LegacySessionStore;
       const lineRuntimeStore = yield* LineRuntimeStore.LineRuntimeStore;
       const lineBranchStore = yield* LineBranchStore.LineBranchStore;
@@ -2607,6 +2609,17 @@ const makeWsRpcLayer = (
                 isPlanNotFoundError(cause) || isPlanDeleteBlockedError(cause)
                   ? cause
                   : new MercurianPlanningError({ operation: "deletePlan", cause }),
+              ),
+            ),
+            { "rpc.aggregate": "mercurian" },
+          ),
+        [MERCURIAN_WS_METHODS.getReconstruction]: (input) =>
+          observeRpcEffect(
+            MERCURIAN_WS_METHODS.getReconstruction,
+            reconstructionStore.get(input.planId, input.reconstructionId).pipe(
+              Effect.map((reconstruction) => ({ reconstruction })),
+              Effect.mapError(
+                (cause) => new MercurianPlanningError({ operation: "getReconstruction", cause }),
               ),
             ),
             { "rpc.aggregate": "mercurian" },

@@ -1,4 +1,10 @@
 import { StorageSourceStore } from "../storage/StorageSourceStore.ts";
+import {
+  MercurianCommitId,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
+  type PlanReconstruction,
+} from "@t3tools/contracts";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -19,12 +25,22 @@ import {
   composeFirstTurnInput,
   memoryMentionResolutionStanza,
   planningSystemAppendix,
-  transcriptPreamble,
+  partitionReconstruction,
   type TranscriptEntry,
 } from "./PlanningPrompt.ts";
 
+import { ReconstructionStore } from "./ReconstructionStore.ts";
+import {
+  ReconstructionSummary,
+  ReconstructionError,
+  SUMMARY_MAX_CHARS,
+} from "./ReconstructionSummary.ts";
+
 export const make = Effect.gen(function* () {
   const storage = yield* StorageSourceStore;
+  const reconstructions = yield* ReconstructionStore;
+  const summaries = yield* ReconstructionSummary;
+  const crypto = yield* Crypto.Crypto;
   const lineRuntimes = yield* LineRuntimeStore;
   const planning = yield* PlanningStore;
   const commits = yield* CommitStore;
@@ -67,10 +83,10 @@ export const make = Effect.gen(function* () {
       const runtime = yield* lineRuntimes.getByThreadId(input.thread.id);
       if (Option.isNone(runtime)) return { text: input.message.text, session: {} };
       const detail = yield* planning.getPlanSnapshot({ planId: runtime.value.planId });
-      const sources = (yield* storage.getSnapshot).filter(
+      const storageSources = (yield* storage.getSnapshot).filter(
         (source) => source.projectId === detail.plan.projectId,
       );
-      const roots = sources.flatMap((source) => {
+      const roots = storageSources.flatMap((source) => {
         const member = input.thread.workspaceMembers?.find(
           (candidate) => candidate.repositoryId === source.repositoryId,
         );
@@ -78,7 +94,7 @@ export const make = Effect.gen(function* () {
           ? [{ kind: source.kind, path: path.join(member.worktreePath, source.subpath ?? "") }]
           : [];
       });
-      const documentRoots = sources
+      const documentRoots = storageSources
         .filter((source) => source.kind !== "memory")
         .map((source) => ({
           kind: source.kind === "plan" ? ("plan" as const) : ("spec" as const),
@@ -90,11 +106,25 @@ export const make = Effect.gen(function* () {
         input.message.text,
         memoryLine,
       );
-      const isFirstLineTurn = input.sessionIsFresh && input.thread.messages.length === 1;
-      if (!isFirstLineTurn) {
+      const disposition =
+        input.contextDisposition ?? (input.sessionIsFresh ? "clean-start" : "continuation");
+      const isForkStart =
+        input.sessionIsFresh &&
+        input.thread.messages.length === 1 &&
+        runtime.value.forkParentCommitId !== undefined;
+      const attach = Effect.fn("MercurianTurnPreparation.attach")(function* (id: string | null) {
+        if (id === null) return {};
+        yield* reconstructions.prepare(input.thread.id, input.message.id, id);
+        return {
+          onSubmitted: reconstructions.finish(input.thread.id, input.message.id, true),
+          onFailed: reconstructions.finish(input.thread.id, input.message.id, false),
+        };
+      });
+      if (disposition !== "clean-start" && !isForkStart) {
         return {
           text: `${documentLocationStanza(documentRoots)}\n\n${appendMemoryMentionStanza(input.message.text, mention)}`,
           session: {},
+          ...(yield* attach(yield* reconstructions.current(input.thread.id))),
         };
       }
       const messageCommit = yield* commits.getCommit({
@@ -106,26 +136,46 @@ export const make = Effect.gen(function* () {
         (runtime.value.forkParentCommitId === undefined
           ? undefined
           : CommitId.make(runtime.value.forkParentCommitId));
-      const ancestors =
-        parentCommitId === undefined
-          ? []
-          : yield* commits.ancestors({ commitId: parentCommitId, visibility: "all" });
       const timelineById = new Map(detail.timeline.map((item) => [String(item.commitId), item]));
-      const entries = ancestors.flatMap((commit): ReadonlyArray<TranscriptEntry> => {
-        const item = timelineById.get(String(commit.commitId));
-        if (item === undefined || item._tag === "coding-session") return [];
-        if (item._tag === "message") {
+      const historyPath = [];
+      let cursor: string | undefined = parentCommitId;
+      const visited = new Set<string>();
+      while (cursor !== undefined) {
+        if (visited.has(cursor))
+          return yield* new ReconstructionError({ message: "History contains a cycle." });
+        visited.add(cursor);
+        const item = timelineById.get(cursor);
+        if (item === undefined)
+          return yield* new ReconstructionError({
+            message: "The history needed to reconstruct this session is unavailable.",
+          });
+        if (item.parents.length > 1)
+          return yield* new ReconstructionError({
+            message: "This merged history has no recorded reconstruction rendition.",
+          });
+        historyPath.unshift(item);
+        cursor = item.parents[0];
+      }
+      const sources = historyPath.flatMap(
+        (item): ReadonlyArray<{ commitId: MercurianCommitId; entry: TranscriptEntry }> => {
+          if (item._tag === "coding-session") return [];
           return [
             {
-              kind: "message",
-              author: item.authorKind,
-              text: item.text,
-              ...(item.interrupted === undefined ? {} : { interrupted: item.interrupted }),
+              commitId: MercurianCommitId.make(item.commitId),
+              entry:
+                item._tag === "message"
+                  ? {
+                      kind: "message",
+                      author: item.authorKind,
+                      text: item.text,
+                      ...(item.interrupted === undefined ? {} : { interrupted: item.interrupted }),
+                    }
+                  : { kind: item._tag, author: item.authorKind },
             },
           ];
-        }
-        return [{ kind: item._tag, author: item.authorKind }];
-      });
+        },
+      );
+      const entries = sources.map((source) => source.entry);
       const repositoryNames = new Map(
         (runtime.value.repositories ?? []).map((repository) => [
           String(repository.repositoryId),
@@ -159,22 +209,53 @@ export const make = Effect.gen(function* () {
         memoryAmendmentsAvailable: memoryRoot !== null,
         documentRoots,
       });
-      const preamble =
-        entries.length === 0
+      const partition = partitionReconstruction({
+        entries,
+        reservedChars: appendix.length + input.message.text.length + (mention?.length ?? 0),
+        summaryChars: SUMMARY_MAX_CHARS,
+        maxChars: PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
+      });
+      const mandatoryInput = composeFirstTurnInput({
+        appendix,
+        preamble: partition.render(null),
+        message: input.message.text,
+        memoryMentionStanza: mention,
+      });
+      if (mandatoryInput.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS)
+        return yield* new ReconstructionError({
+          message: "The current message and artifacts exceed the reconstruction input budget.",
+        });
+      const modelSelection = input.modelSelection ?? input.thread.modelSelection;
+      const summary =
+        partition.firstKept === 0
           ? null
-          : transcriptPreamble({
-              entries,
-              reservedChars: appendix.length + input.message.text.length + (mention?.length ?? 0),
-            });
-      return {
-        text: composeFirstTurnInput({
-          appendix,
-          preamble,
-          message: input.message.text,
-          memoryMentionStanza: mention,
-        }),
-        session: parentCommitId === undefined ? {} : { skipResume: true },
+          : yield* summaries.summarize(partition.olderText, modelSelection);
+      const text = composeFirstTurnInput({
+        appendix,
+        preamble: partition.render(summary),
+        message: input.message.text,
+        memoryMentionStanza: mention,
+      });
+      if (text.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS)
+        return yield* new ReconstructionError({
+          message: "The current message and artifacts exceed the reconstruction input budget.",
+        });
+      const record: PlanReconstruction = {
+        id: yield* crypto.randomUUIDv4,
+        planId: runtime.value.planId,
+        sessionStartMessageCommitId: MercurianCommitId.make(input.message.id),
+        throughCommitId:
+          parentCommitId === undefined ? null : MercurianCommitId.make(parentCommitId),
+        verbatimFromCommitId:
+          sources[partition.firstKept]?.commitId ?? MercurianCommitId.make(input.message.id),
+        version: 1,
+        compacted:
+          summary === null
+            ? null
+            : { summary, throughCommitId: sources[partition.firstKept - 1]!.commitId },
       };
+      yield* reconstructions.save(record);
+      return { text, session: { skipResume: true }, ...(yield* attach(record.id)) };
     }),
   });
 });

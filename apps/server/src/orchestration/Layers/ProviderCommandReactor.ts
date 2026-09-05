@@ -1,3 +1,4 @@
+import * as Fiber from "effect/Fiber";
 import {
   type ChatAttachment,
   CommandId,
@@ -314,6 +315,7 @@ const make = Effect.gen(function* () {
   const providerAuthService = yield* ProviderAuthService;
   const providerService = yield* ProviderService;
   const turnPreparation = yield* TurnPreparation;
+  const pendingPreparations = new Map<ThreadId, Fiber.Fiber<unknown, unknown>>();
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -689,23 +691,32 @@ const make = Effect.gen(function* () {
                 thread,
                 message: options.message,
                 sessionIsFresh: true,
+                contextDisposition: input?.resumeCursor === undefined ? "clean-start" : "resume",
+                modelSelection: desiredModelSelection,
               });
-        return yield* providerService.startSession(threadId, {
-          threadId,
-          ...(preferredProvider ? { provider: preferredProvider } : {}),
-          providerInstanceId: desiredInstanceId,
-          ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-          ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
-          ...(thread.title ? { title: thread.title } : {}),
-          modelSelection: desiredModelSelection,
-          ...(input?.resumeCursor !== undefined && preparedTurn?.session.skipResume !== true
-            ? { resumeCursor: input.resumeCursor }
-            : {}),
-          ...(preparedTurn?.session.isolateProviderSettings === undefined
-            ? {}
-            : { isolateProviderSettings: preparedTurn.session.isolateProviderSettings }),
-          runtimeMode: desiredRuntimeMode,
-        });
+        return yield* providerService
+          .startSession(threadId, {
+            threadId,
+            ...(preferredProvider ? { provider: preferredProvider } : {}),
+            providerInstanceId: desiredInstanceId,
+            ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+            ...(additionalDirectories.length === 0 ? {} : { additionalDirectories }),
+            ...(thread.title ? { title: thread.title } : {}),
+            modelSelection: desiredModelSelection,
+            ...(preparedTurn?.session.skipResume === true ? { skipResume: true } : {}),
+            ...(input?.resumeCursor !== undefined && preparedTurn?.session.skipResume !== true
+              ? { resumeCursor: input.resumeCursor }
+              : {}),
+            ...(preparedTurn?.session.isolateProviderSettings === undefined
+              ? {}
+              : { isolateProviderSettings: preparedTurn.session.isolateProviderSettings }),
+            runtimeMode: desiredRuntimeMode,
+          })
+          .pipe(
+            Effect.onError(() =>
+              (preparedTurn?.onFailed ?? Effect.void).pipe(Effect.ignoreCause()),
+            ),
+          );
       }).pipe(Effect.tap(() => refreshWorkspaceSnapshot));
 
     const bindSessionToThread = (session: ProviderSession) =>
@@ -771,6 +782,8 @@ const make = Effect.gen(function* () {
                 thread,
                 message: options.message,
                 sessionIsFresh: false,
+                contextDisposition: "continuation",
+                modelSelection: desiredModelSelection,
               });
         return { sessionThreadId: existingSessionThreadId, preparedTurn };
       }
@@ -812,7 +825,11 @@ const make = Effect.gen(function* () {
       return { sessionThreadId: restartedSession.threadId, preparedTurn };
     }
 
-    const startedSession = yield* startProviderSession(undefined);
+    const startedSession = yield* startProviderSession(
+      activeSession?.resumeCursor === undefined
+        ? undefined
+        : { resumeCursor: activeSession.resumeCursor },
+    );
     yield* bindSessionToThread(startedSession);
     return { sessionThreadId: startedSession.threadId, preparedTurn };
   });
@@ -872,11 +889,14 @@ const make = Effect.gen(function* () {
         : input.modelSelection;
 
     return {
-      threadId: input.threadId,
-      ...(normalizedInput ? { input: normalizedInput } : {}),
-      ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
-      ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
-      ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+      preparedTurn: ensured.preparedTurn,
+      request: {
+        threadId: input.threadId,
+        ...(normalizedInput ? { input: normalizedInput } : {}),
+        ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
+        ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
+        ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+      },
     };
   });
 
@@ -1309,7 +1329,7 @@ const make = Effect.gen(function* () {
       }
     }
 
-    const sendTurnRequest = yield* buildSendTurnRequestForThread({
+    const preparationFiber = yield* buildSendTurnRequestForThread({
       threadId: event.payload.threadId,
       message,
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
@@ -1321,15 +1341,26 @@ const make = Effect.gen(function* () {
     }).pipe(
       Effect.map(Option.some),
       Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      Effect.forkScoped,
+    );
+    pendingPreparations.set(event.payload.threadId, preparationFiber);
+    const sendTurnRequest = yield* Fiber.join(preparationFiber).pipe(
+      Effect.catchCause(() => Effect.succeed(Option.none())),
+      Effect.ensuring(Effect.sync(() => pendingPreparations.delete(event.payload.threadId))),
     );
 
     if (Option.isNone(sendTurnRequest)) {
       return;
     }
 
-    yield* providerService
-      .sendTurn(sendTurnRequest.value)
-      .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+    yield* providerService.sendTurn(sendTurnRequest.value.request).pipe(
+      Effect.tap(() => sendTurnRequest.value.preparedTurn?.onSubmitted ?? Effect.void),
+      Effect.onError(() =>
+        (sendTurnRequest.value.preparedTurn?.onFailed ?? Effect.void).pipe(Effect.ignoreCause()),
+      ),
+      Effect.catchCause(recoverTurnStartFailure),
+      Effect.forkScoped,
+    );
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -1638,6 +1669,14 @@ const make = Effect.gen(function* () {
       }),
     );
     const processEvent = Effect.fn("processEvent")(function* (event: OrchestrationEvent) {
+      if (
+        event.type === "thread.turn-interrupt-requested" ||
+        event.type === "thread.session-stop-requested" ||
+        event.type === "thread.deleted"
+      ) {
+        const preparation = pendingPreparations.get(event.payload.threadId);
+        if (preparation !== undefined) yield* Fiber.interrupt(preparation);
+      }
       if (
         (event.type === "thread.meta-updated" && event.payload.regenerateTitle === true) ||
         event.type === "thread.runtime-mode-set" ||

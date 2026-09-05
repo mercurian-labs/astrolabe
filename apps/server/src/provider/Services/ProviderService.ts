@@ -1,3 +1,4 @@
+import type * as Scope from "effect/Scope";
 /**
  * ProviderService - Service interface for provider sessions, turns, and checkpoints.
  *
@@ -127,6 +128,8 @@ export interface ProviderServiceShape {
    * Fan-out is owned by ProviderService (not by a standalone event-bus service).
    */
   readonly streamEvents: Stream.Stream<ProviderRuntimeEvent>;
+  /** Acquire a subscription before issuing a request that can emit immediately. */
+  readonly subscribeEvents: Effect.Effect<Stream.Stream<ProviderRuntimeEvent>, never, Scope.Scope>;
 }
 
 /**

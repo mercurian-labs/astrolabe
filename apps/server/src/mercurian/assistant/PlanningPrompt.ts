@@ -274,3 +274,52 @@ export function memoryMentionResolutionStanza(
 export function appendMemoryMentionStanza(input: string, stanza: string | null): string {
   return stanza === null ? input : `${input}\n\n---\n\n${stanza}`;
 }
+
+/** Keeps a chronological suffix; its index travels with the input as evidence. */
+export function partitionReconstruction(input: {
+  readonly entries: ReadonlyArray<TranscriptEntry>;
+  readonly planText?: string;
+  readonly spec?: SpecDocument | null;
+  readonly reservedChars: number;
+  readonly summaryChars: number;
+  readonly maxChars: number;
+}) {
+  const { renderedEntries, planSection, specSection } = renderTranscript(input);
+  const available =
+    input.maxChars -
+    input.reservedChars -
+    planSection.length -
+    specSection.length -
+    TRANSCRIPT_FRAMING_MARGIN;
+  const all = renderedEntries.join("\n\n");
+  let firstKept = 0;
+  if (all.length > available) {
+    let used = 0;
+    firstKept = renderedEntries.length;
+    for (let index = renderedEntries.length - 1; index >= 0; index--) {
+      const size = renderedEntries[index]!.length + 2;
+      if (used + size > available - input.summaryChars) break;
+      firstKept = index;
+      used += size;
+    }
+    // An answer without its opening query is not a verbatim turn.
+    while (firstKept < input.entries.length) {
+      const entry = input.entries[firstKept]!;
+      if (entry.kind === "message" && entry.author === "human") break;
+      firstKept++;
+    }
+  }
+  return {
+    firstKept,
+    olderText: renderedEntries.slice(0, firstKept).join("\n\n"),
+    render: (summary: string | null) =>
+      [
+        "This session starts with the following recorded conversation.",
+        ...(summary === null ? [] : ["Older history, summarized:", summary]),
+        "Recent conversation, verbatim:",
+        renderedEntries.slice(firstKept).join("\n\n"),
+        specSection,
+        planSection,
+      ].join("\n\n"),
+  };
+}

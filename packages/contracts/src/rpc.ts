@@ -123,6 +123,8 @@ import {
   MercurianForkLineInput,
   MercurianOpenLineInput,
   MercurianLineResult,
+  MercurianGetReconstructionInput,
+  PlanReconstructionResult,
   MercurianImportPlanInput,
   MercurianMarkPlanUnreadInput,
   MercurianPlanningError,
@@ -1406,6 +1408,12 @@ export const WsMercurianSubscribePlanRpc = Rpc.make(MERCURIAN_WS_METHODS.subscri
   stream: true,
 });
 
+export const WsMercurianGetReconstructionRpc = Rpc.make(MERCURIAN_WS_METHODS.getReconstruction, {
+  payload: MercurianGetReconstructionInput,
+  success: PlanReconstructionResult,
+  error: Schema.Union([MercurianPlanningError, EnvironmentAuthorizationError]),
+});
+
 // Mercurian repositories. Same snapshot-re-emit shape as the tree, and for the
 // same reason: a repository set moves when a person adds, removes, or
 // reassigns one. Project sets ride this snapshot rather than the tree's —
@@ -1908,6 +1916,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMercurianUnarchivePlanRpc,
   WsMercurianDeletePlanRpc,
   WsMercurianSubscribePlanRpc,
+  WsMercurianGetReconstructionRpc,
   WsMercurianSubscribeRepositoriesRpc,
   WsMercurianRefreshRepositoriesRpc,
   WsMercurianAddRepositoryRpc,

@@ -65,6 +65,8 @@ export const ProviderSessionStartInput = Schema.Struct({
   title: Schema.optional(TrimmedNonEmptyString),
   modelSelection: Schema.optional(ModelSelection),
   resumeCursor: Schema.optional(Schema.Unknown),
+  /** Explicit clean start; suppresses a persisted provider cursor too. */
+  skipResume: Schema.optional(Schema.Boolean),
   approvalPolicy: Schema.optional(ProviderApprovalPolicy),
   sandboxMode: Schema.optional(ProviderSandboxMode),
   /** Start without loading provider user, project, or local settings when supported. */

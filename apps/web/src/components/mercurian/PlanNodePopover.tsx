@@ -1,3 +1,4 @@
+import { SessionReconstruction } from "./SessionReconstruction";
 /**
  * One checkpoint reading shared by the explorer's three views.
  *
@@ -294,6 +295,14 @@ export function PlanNodePopoverContent({
           </div>
         )}
       </section>
+
+      {reading.response?.reconstructionId === undefined ? null : (
+        <SessionReconstruction
+          key={reading.response.reconstructionId}
+          reconstructionId={reading.response.reconstructionId}
+          graph={commitGraph}
+        />
+      )}
 
       {reading.session === undefined ? null : (
         <section className="flex flex-col gap-1.5 border-t border-border pt-3">

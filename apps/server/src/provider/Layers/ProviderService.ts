@@ -665,10 +665,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           }
         }
         const effectiveResumeCursor =
-          input.resumeCursor ??
-          (persistedBinding?.providerInstanceId === resolvedInstanceId
-            ? persistedBinding.resumeCursor
-            : undefined);
+          input.skipResume === true
+            ? undefined
+            : (input.resumeCursor ??
+              (persistedBinding?.providerInstanceId === resolvedInstanceId
+                ? persistedBinding.resumeCursor
+                : undefined));
         const effectiveCwd =
           input.cwd ??
           (persistedBinding?.providerInstanceId === resolvedInstanceId
@@ -704,6 +706,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         const session = yield* adapter
           .startSession({
             ...input,
+            ...(input.skipResume === true ? { resumeCursor: undefined } : {}),
             providerInstanceId: resolvedInstanceId,
             ...(effectiveCwd !== undefined ? { cwd: effectiveCwd } : {}),
             ...(effectiveAdditionalDirectories !== undefined
@@ -1331,6 +1334,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     assertConversationRollbackSupported,
     rollbackConversation,
     uploadFeedback,
+    subscribeEvents: PubSub.subscribe(runtimeEventPubSub).pipe(Effect.map(Stream.fromSubscription)),
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each
     // independently receive all runtime events.

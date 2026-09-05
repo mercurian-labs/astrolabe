@@ -1488,6 +1488,27 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("a clean start suppresses both requested and persisted resume cursors", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-clean-reconstruction");
+      const input = {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: "/tmp/clean-reconstruction",
+        runtimeMode: "full-access" as const,
+      };
+      const previous = yield* provider.startSession(threadId, input);
+      yield* provider.startSession(threadId, {
+        ...input,
+        resumeCursor: previous.resumeCursor,
+        skipResume: true,
+      });
+      assert.equal(routing.codex.startSession.mock.calls.at(-1)?.[0].resumeCursor, undefined);
+    }),
+  );
+
   it.effect("routes explicit claudeAgent provider session starts to the claude adapter", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

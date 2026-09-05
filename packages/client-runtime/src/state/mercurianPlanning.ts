@@ -125,5 +125,9 @@ export function createMercurianPlanningAtoms<R, E>(
      * above a commit is frozen, so there is nothing to order it against and no
      * concurrency key to give it.
      */
+    getReconstruction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:mercurian:get-reconstruction",
+      tag: MERCURIAN_WS_METHODS.getReconstruction,
+    }),
   };
 }

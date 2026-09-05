@@ -51,6 +51,7 @@ import { SlotRegistry } from "../worktreeSlots/SlotRegistry.ts";
 import { SlotService } from "../worktreeSlots/SlotService.ts";
 import { SlotStore } from "../worktreeSlots/SlotStore.ts";
 import type { LineRuntimeRecord } from "../lineRuntimes/schema.ts";
+import { ReconstructionStore } from "./ReconstructionStore.ts";
 import { foldGroundingEvent } from "./GroundingFold.ts";
 
 export interface PlanTurnStatus {
@@ -157,6 +158,7 @@ const MAX_GROUNDING_ITEMS = 200;
 const INTERRUPT_SETTLE_GRACE = Duration.seconds(5);
 
 export const make = Effect.gen(function* () {
+  const reconstructionStore = yield* ReconstructionStore;
   const planningStore = yield* PlanningStore;
   const commitStore = yield* CommitStore.CommitStore;
   const registry = yield* PlanTurnRegistry;
@@ -203,12 +205,17 @@ export const make = Effect.gen(function* () {
             questions: [...turn.askedQuestions],
             ...(turn.answers === undefined ? {} : { answers: turn.answers }),
           };
+    const reconstructionId = yield* reconstructionStore.forMessage(
+      turn.threadId,
+      turn.parentCommitId,
+    );
     const appended = yield* planningStore
       .appendAssistantMessage({
         planId: turn.planId,
         parentCommitId: claimed?.tipCommitId ?? turn.parentCommitId,
         sourceUserMessageId: turn.parentCommitId,
         text: turn.text,
+        ...(reconstructionId === null ? {} : { reconstructionId }),
         ...(options.interrupted ? { interrupted: true } : {}),
         ...(turn.grounding.length === 0 ? {} : { grounding: turn.grounding }),
         ...(turn.groundingScope === undefined ? {} : { groundingScope: turn.groundingScope }),

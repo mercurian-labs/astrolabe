@@ -1,5 +1,6 @@
 import { SnapshotChain } from "./mercurian/worktreeSlots/SnapshotChain.ts";
 import * as DocumentStore from "./mercurian/documents/DocumentStore.ts";
+import { ReconstructionStore } from "./mercurian/assistant/ReconstructionStore.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
@@ -1136,6 +1137,7 @@ const buildAppUnderTest = (options?: {
     );
 
     const appLayer = servedRoutesLayer
+      .pipe(Layer.provide(Layer.mock(ReconstructionStore)({ get: () => Effect.succeed(null) })))
       .pipe(Layer.provide(resourceTelemetryLayer), Layer.provide(Layer.mock(SnapshotChain)({})))
       .pipe(
         Layer.provide(UsageService.layerTest),

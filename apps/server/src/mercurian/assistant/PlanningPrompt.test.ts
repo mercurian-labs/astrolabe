@@ -4,6 +4,7 @@ import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 
 import {
   composeFirstTurnInput,
+  partitionReconstruction,
   appendMemoryMentionStanza,
   measureTranscript,
   memoryMentionResolutionStanza,
@@ -226,5 +227,48 @@ describe("composeFirstTurnInput", () => {
 
   it("leaves continuation text unchanged without mentioned-note context", () => {
     expect(appendMemoryMentionStanza("plain text", null)).toBe("plain text");
+  });
+});
+
+describe("partitionReconstruction", () => {
+  it("keeps a complete short history and does not invent a summary", () => {
+    const result = partitionReconstruction({
+      entries: [
+        { kind: "message", author: "human", text: "question" },
+        { kind: "message", author: "assistant", text: "answer" },
+      ],
+      planText: "plan",
+      spec: null,
+      reservedChars: 0,
+      summaryChars: 8000,
+      maxChars: 120000,
+    });
+    expect(result.firstKept).toBe(0);
+    expect(result.olderText).toBe("");
+    expect(result.render(null)).toContain("Person:\nquestion\n\nYou:\nanswer");
+    expect(result.render(null)).not.toContain("Older history, summarized:");
+  });
+
+  it("keeps complete recent turns and inserts the summary without changing it", () => {
+    const result = partitionReconstruction({
+      entries: [
+        { kind: "message", author: "human", text: "old".repeat(2000) },
+        { kind: "message", author: "assistant", text: "old answer" },
+        { kind: "message", author: "human", text: "recent question" },
+        { kind: "message", author: "assistant", text: "recent answer" },
+      ],
+      planText: "",
+      spec: null,
+      reservedChars: 0,
+      summaryChars: 500,
+      maxChars: 3000,
+    });
+    expect(result.firstKept).toBe(2);
+    expect(result.olderText).toContain("old answer");
+    const summary = "\n Exact summary. \n";
+    expect(result.render(summary)).toContain(
+      `Older history, summarized:\n\n${summary}\n\nRecent conversation`,
+    );
+    expect(result.render(summary)).toContain("recent answer");
   });
 });

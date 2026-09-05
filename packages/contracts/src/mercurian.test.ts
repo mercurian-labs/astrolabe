@@ -7,6 +7,7 @@ import {
   MercurianProjectId,
   MercurianRepositoryId,
   PlanStreamItem,
+  PlanReconstruction,
   type PlanTimelineItem,
   WorktreeSlotStreamItem,
 } from "./index.ts";
@@ -158,5 +159,35 @@ describe("coding-session contracts", () => {
       phase: "waiting-for-slot" as const,
     };
     expect(decodePlanStreamItem(started)).toEqual(started);
+  });
+});
+
+describe("session reconstruction evidence", () => {
+  const record = {
+    id: "record",
+    planId: "plan",
+    sessionStartMessageCommitId: "query",
+    throughCommitId: "parent",
+    verbatimFromCommitId: "query",
+    version: 1,
+    compacted: { throughCommitId: "parent", summary: "\n Exact rendition. \n" },
+  };
+  it("preserves summary whitespace through encoding and decoding", () => {
+    const decoded = Schema.decodeUnknownSync(PlanReconstruction)(record);
+    expect(Schema.encodeSync(PlanReconstruction)(decoded)).toEqual(record);
+  });
+  it("requires both the rendition and its historical endpoint", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(PlanReconstruction)({
+        ...record,
+        compacted: { summary: "summary" },
+      }),
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(PlanReconstruction)({
+        ...record,
+        compacted: { throughCommitId: "parent" },
+      }),
+    ).toThrow();
   });
 });

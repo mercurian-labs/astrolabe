@@ -24,7 +24,10 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "./environments";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
-import { useEnvironmentBoundCommand } from "./useEnvironmentBoundCommand";
+import {
+  useEnvironmentBoundCommand,
+  useEnvironmentBoundCommandResult,
+} from "./useEnvironmentBoundCommand";
 
 export const mercurianPlanning = createMercurianPlanningAtoms(connectionAtomRuntime);
 
@@ -245,3 +248,6 @@ export function useMarkPlanUnread() {
  * The partial lands as a commit marked interrupted, arriving on the same
  * subscription as everything else.
  */
+export function useGetReconstruction() {
+  return useEnvironmentBoundCommandResult(mercurianPlanning.getReconstruction);
+}

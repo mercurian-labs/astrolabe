@@ -9,6 +9,7 @@ import { LineBranchStore } from "../commitTree/LineBranchStore.ts";
 import { make as makeSnapshotChain } from "../worktreeSlots/SnapshotChain.ts";
 import { makeMemoryPosition, type MemoryLineContext } from "../memory/MemoryPosition.ts";
 import { TurnId, type OrchestrationCheckpointSummary } from "@t3tools/contracts";
+import { ReconstructionStore } from "./ReconstructionStore.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -352,6 +353,9 @@ const makeHarness = (options?: {
       Layer.mock(SlotRegistry.SlotRegistry)({ lease: () => Effect.succeed(Option.none()) }),
       Layer.mock(SlotService.SlotService)({ release: () => Effect.succeed(false) }),
       Layer.mock(ThreadDeletionReactor.ThreadDeletionReactor)({ drainThrough: () => Effect.void }),
+      Layer.mock(ReconstructionStore)({
+        forMessage: (_thread, messageId) => Effect.succeed(`reconstruction:${messageId}`),
+      }),
       PlanTurnRegistry.layer,
       NodeServices.layer,
     );
@@ -736,6 +740,7 @@ describe("LineTurnReactor", () => {
         const settled = yield* Queue.take(harness.assistantReceipts);
         assert.strictEqual(settled.parentCommitId, CommitId.make(messageId));
         assert.strictEqual(settled.text, "Done");
+        assert.strictEqual(settled.reconstructionId, `reconstruction:${messageId}`);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
   );
@@ -901,6 +906,7 @@ describe("LineTurnReactor", () => {
         );
         const settled = yield* Queue.take(harness.assistantReceipts);
         assert.strictEqual(settled.text, "Partial");
+        assert.strictEqual(settled.reconstructionId, `reconstruction:${messageId}`);
         assert.strictEqual(settled.interrupted, true);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),
@@ -927,6 +933,7 @@ describe("LineTurnReactor", () => {
         yield* TestClock.adjust("5 seconds");
         const settled = yield* Queue.take(harness.assistantReceipts);
         assert.strictEqual(settled.text, "Partial");
+        assert.strictEqual(settled.reconstructionId, `reconstruction:${messageId}`);
         assert.strictEqual(settled.interrupted, true);
       }).pipe(Effect.scoped, Effect.provide(harness.layer));
     }),

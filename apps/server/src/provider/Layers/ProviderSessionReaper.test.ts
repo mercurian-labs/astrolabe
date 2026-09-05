@@ -187,6 +187,7 @@ describe("ProviderSessionReaper", () => {
       },
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
+      subscribeEvents: Effect.succeed(Stream.empty),
       streamEvents: Stream.empty,
     };
 
