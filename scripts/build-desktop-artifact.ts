@@ -2832,7 +2832,7 @@ export const stageWslRuntimeArchive = Effect.fn("stageWslRuntimeArchive")(functi
 // this module, so it cannot be imported here). WSL runs the same CPU arch as
 // the Windows host.
 export const wslRuntimeArchiveStem = (version: string, arch: typeof BuildArch.Type): string =>
-  `t3-${version}-linux-${arch}`;
+  `astrolabe-${version}-linux-${arch}`;
 
 export const parseWslRuntimeArchiveMembers = (listing: string): ReadonlyArray<string> =>
   listing
@@ -3277,7 +3277,7 @@ export const validateWindowsPackagedPayload = Effect.fn(
       );
     }
     const requiredMembers = [
-      `${stem}/t3`,
+      `${stem}/astrolabe`,
       `${stem}/client`,
       `${stem}/node_modules`,
       `${stem}/node_modules/node-pty/build/Release/pty.node`,
