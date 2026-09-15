@@ -26,8 +26,8 @@ const status = {
   supported: true,
   installed: true,
   current: true,
-  unitPath: "/home/me/.config/systemd/user/t3code.service",
-  logPath: "/home/me/.t3/userdata/logs/boot-service.log",
+  unitPath: "/home/me/.config/systemd/user/astrolabe.service",
+  logPath: "/home/me/.astrolabe/userdata/logs/boot-service.log",
 } as const;
 
 it("reports the installed service version and host paths", () => {
@@ -35,9 +35,9 @@ it("reports the installed service version and host paths", () => {
     formatServiceStatus(status, "0.0.29"),
     [
       "T3 Code service",
-      "  Status: installed · t3@0.0.29",
-      "  Unit: /home/me/.config/systemd/user/t3code.service",
-      "  Logs: /home/me/.t3/userdata/logs/boot-service.log",
+      "  Status: installed · astrolabe@0.0.29",
+      "  Unit: /home/me/.config/systemd/user/astrolabe.service",
+      "  Logs: /home/me/.astrolabe/userdata/logs/boot-service.log",
     ].join("\n"),
   );
 });
@@ -45,7 +45,7 @@ it("reports the installed service version and host paths", () => {
 it("gives a direct repair command for a stale service", () => {
   assert.include(
     formatServiceStatus({ ...status, current: false }, "0.0.29"),
-    "Next: Run `t3 service install` to repair it.",
+    "Next: Run `astrolabe service install` to repair it.",
   );
 });
 
@@ -64,7 +64,7 @@ it("explains an incomplete nightly installation and keeps repair on its installe
   expect(output).toContain("last login session ends");
   expect(output).toContain('sudo loginctl enable-linger "$(id -un)"');
   expect(output).toContain("[service-stopped]");
-  expect(output).toContain("Run `t3 service install` to repair it.");
+  expect(output).toContain("Run `astrolabe service install` to repair it.");
   expect(output).not.toContain("npx");
 });
 
@@ -73,7 +73,7 @@ it("points an older service at a repair, never at npx", () => {
     { ...status, current: false, installedVersion: "0.0.28" },
     "0.0.29",
   );
-  expect(output).toContain("Run `t3 service install` to repair it.");
+  expect(output).toContain("Run `astrolabe service install` to repair it.");
   expect(output).not.toContain("npx");
 });
 
@@ -90,8 +90,8 @@ it("reports a newer installed service and tells the CLI to catch up to it", () =
     "0.0.31",
   );
 
-  assert.include(output, "t3@0.0.32-nightly.1 (newer than this t3@0.0.31 CLI)");
-  assert.include(output, "Run `t3 update 0.0.32-nightly.1` to match it");
+  assert.include(output, "astrolabe@0.0.32-nightly.1 (newer than this astrolabe@0.0.31 CLI)");
+  assert.include(output, "Run `astrolabe update 0.0.32-nightly.1` to match it");
   assert.notInclude(output, "npx");
 });
 
@@ -110,8 +110,8 @@ function makeTestService(serviceStatus: BootService.BootServiceStatus) {
       Effect.sync(() => {
         installOptions.push(options);
         return {
-          program: ["/test/t3/runtime/versions/1.0.0/t3", "__service-launcher"],
-          baseDir: "/test/t3",
+          program: ["/test/t3/runtime/versions/1.0.0/astrolabe", "__service-launcher"],
+          baseDir: "/test/astrolabe",
           unitPath: serviceStatus.unitPath,
           logPath: serviceStatus.logPath,
         };

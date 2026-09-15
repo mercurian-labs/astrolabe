@@ -55,7 +55,7 @@ export const HostProcessArguments = Context.Reference<ReadonlyArray<string>>(
 
 /**
  * The command the shell was given, before Node resolved it to the binary:
- * `t3` for a PATH lookup, `./t3` or the launcher symlink for an explicit
+ * `astrolabe` for a PATH lookup, `./astrolabe` or the launcher symlink for an explicit
  * path. `process.argv[0]` and `execPath` are always the resolved binary.
  */
 export const HostProcessInvokedAs = Context.Reference<string>(

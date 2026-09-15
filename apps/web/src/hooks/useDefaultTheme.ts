@@ -8,7 +8,7 @@ import { useEnvironmentThemeDefinitions } from "./useEnvironmentTheme";
 import { useTheme } from "./useTheme";
 
 /**
- * Scoped per environment: each machine's `t3 theme set` is its own act, so
+ * Scoped per environment: each machine's `astrolabe theme set` is its own act, so
  * hopping between primary environments neither replays one environment's
  * theme over the user's pick nor swallows another's.
  */
@@ -63,7 +63,7 @@ function writeAppliedGeneration(storageKey: string, generation: string): void {
 }
 
 /**
- * Applies the environment's theme (`t3 theme set <id>`). Each set switches
+ * Applies the environment's theme (`astrolabe theme set <id>`). Each set switches
  * this client once — live when connected, on the next connect otherwise —
  * and then steps aside: a theme the user picks in Settings afterwards wins
  * until the environment's theme is set again. The environment's own published

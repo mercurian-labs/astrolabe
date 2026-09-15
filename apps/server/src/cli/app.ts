@@ -36,7 +36,7 @@ export class DesktopAppSshUnsupportedError extends Schema.TaggedError<DesktopApp
   {},
 ) {
   override get message(): string {
-    return "`t3 app` only controls a desktop app on the same machine. It cannot run over SSH.";
+    return "`astrolabe app` only controls a desktop app on the same machine. It cannot run over SSH.";
   }
 }
 
@@ -45,7 +45,7 @@ export class DesktopAppPlatformUnsupportedError extends Schema.TaggedError<Deskt
   { platform: Schema.String },
 ) {
   override get message(): string {
-    return `\`t3 app\` is not supported on ${this.platform}.`;
+    return `\`astrolabe app\` is not supported on ${this.platform}.`;
   }
 }
 
@@ -59,7 +59,7 @@ export class DesktopAppUnreachableError extends Schema.TaggedError<DesktopAppUnr
   },
 ) {
   override get message(): string {
-    return "Could not reach the T3 Code desktop app. Start or update the desktop app on this machine, then run `t3 app` again. A running T3 Code server is not enough.";
+    return "Could not reach the T3 Code desktop app. Start or update the desktop app on this machine, then run `astrolabe app` again. A running T3 Code server is not enough.";
   }
 }
 
