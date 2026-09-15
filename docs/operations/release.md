@@ -371,6 +371,10 @@ platform artifacts unsigned; it does not prevent publication.
 
 ## 2) Apple signing + notarization setup (macOS)
 
+Astrolabe signs and notarizes on a Developer ID certificate alone. T3 Connect is parked, so the
+passkey entitlements (a team-bound provisioning profile with Associated Domains) are opt-in and
+nothing below requires Clerk, the relay, or an App ID capability beyond the default.
+
 Required secrets used by the workflow:
 
 - `CSC_LINK`
@@ -378,44 +382,42 @@ Required secrets used by the workflow:
 - `APPLE_API_KEY`
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
-- `MACOS_PROVISIONING_PROFILE` (base64-encoded provisioning profile with Associated Domains)
 
-Required repository variables:
+Optional, only for T3 Connect passkey signing (set both or neither):
 
-- `APPLE_TEAM_ID`
-
-Optional repository variables:
-
-- `CLERK_PASSKEY_RP_DOMAINS`: comma-separated RP-domain override. By default, the build derives the
-  domain from the production Clerk publishable key.
+- `MACOS_PROVISIONING_PROFILE` secret (base64-encoded provisioning profile with Associated Domains)
+- `APPLE_TEAM_ID` repository variable
+- `CLERK_PASSKEY_RP_DOMAINS` repository variable: comma-separated RP-domain override. By default,
+  the build derives the domain from the Clerk publishable key.
 
 Checklist:
 
 1. Apple Developer account access:
    - Team has rights to create Developer ID certificates.
-2. Create an explicit App ID for `com.mercurian.astrolabe` and enable Associated Domains.
-3. Create a `Developer ID Application` certificate and a compatible provisioning profile for that
-   App ID with Associated Domains enabled.
-4. Export the certificate + private key as `.p12` from Keychain.
-5. Base64-encode the `.p12` and store as `CSC_LINK`.
-6. Base64-encode the provisioning profile and store it as `MACOS_PROVISIONING_PROFILE`.
-7. Store the `.p12` export password as `CSC_KEY_PASSWORD`, and set `APPLE_TEAM_ID` to the
-   10-character Apple Developer Team ID.
-8. In App Store Connect, create an API key (Team key).
-9. Add API key values:
+2. Create a `Developer ID Application` certificate.
+3. Export the certificate + private key as `.p12` from Keychain.
+4. Base64-encode the `.p12` and store as `CSC_LINK`; store the export password as
+   `CSC_KEY_PASSWORD`.
+5. In App Store Connect, create an API key (Team key).
+6. Add API key values:
    - `APPLE_API_KEY`: contents of the downloaded `.p8`
    - `APPLE_API_KEY_ID`: Key ID
    - `APPLE_API_ISSUER`: Issuer ID
-10. Complete the Clerk Native API and AASA setup in [T3 Connect setup](./connect-setup.md#desktop-passkeys).
-11. Re-run a tag release and confirm macOS artifacts are signed/notarized and contain the expected
-    `com.apple.developer.associated-domains` entitlement.
+7. Dispatch a `preview` release and confirm the macOS artifacts are signed and notarized: the
+   downloaded app opens on a clean Mac without a Gatekeeper warning.
+
+Reviving passkey signing later means registering an explicit App ID for the desktop bundle
+identifier with Associated Domains, creating a provisioning profile for it, storing it as
+`MACOS_PROVISIONING_PROFILE` with `APPLE_TEAM_ID`, and completing the Clerk Native API and AASA
+setup in [T3 Connect setup](./connect-setup.md#desktop-passkeys). Signed artifacts then carry the
+`com.apple.developer.associated-domains` entitlement.
 
 Notes:
 
 - `APPLE_API_KEY` is stored as raw key text in secrets.
 - The workflow writes it to a temporary `AuthKey_<id>.p8` file at runtime.
-- The workflow decodes `MACOS_PROVISIONING_PROFILE`, validates it with `security cms`, and passes it
-  to the desktop packager.
+- When set, the workflow decodes `MACOS_PROVISIONING_PROFILE`, validates it with `security cms`,
+  and passes it to the desktop packager.
 
 ## 3) Azure Trusted Signing setup (Windows)
 
@@ -462,8 +464,8 @@ Checklist:
 ## 5) Troubleshooting
 
 - macOS build unsigned when expected signed:
-  - Check all Apple secrets plus `APPLE_TEAM_ID` are populated and non-empty.
-  - Confirm the provisioning profile belongs to `APPLE_TEAM_ID.com.mercurian.astrolabe` and includes
+  - Check all five Apple secrets are populated and non-empty.
+  - If passkey signing is enabled, confirm `APPLE_TEAM_ID` and `MACOS_PROVISIONING_PROFILE` are both set and the profile includes
     Associated Domains.
 - Windows build unsigned when expected signed:
   - Check all Azure ATS and auth secrets are populated and non-empty.

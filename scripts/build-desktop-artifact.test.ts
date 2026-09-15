@@ -43,6 +43,8 @@ import {
   preflightLinuxDesktopBuild,
   preflightMacDesktopBuild,
   preflightWindowsDesktopBuild,
+  isMacPasskeySigningConfigured,
+  renderMacBaseEntitlements,
   renderMacPasskeyEntitlements,
   resolveClerkPasskeyNativeArtifacts,
   resolveMacPasskeySigningConfiguration,
@@ -1880,6 +1882,31 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ]);
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
+
+  it.effect(
+    "signs macOS builds without a provisioning profile when passkeys are not configured",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* createBuildConfig("mac", "dmg", "1.2.3", true, false, undefined, {
+          entitlementsPath: "/tmp/entitlements.mac.plist",
+        });
+
+        const mac = config.mac as Record<string, unknown>;
+        assert.equal(mac.entitlements, "/tmp/entitlements.mac.plist");
+        assert.notProperty(mac, "provisioningProfile");
+        assert.match(String(mac.sign), /[\\\/]scripts[\\\/]sign-macos\.ts$/);
+      }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  it("renders hardened-runtime entitlements without team or domain bindings when passkeys are off", () => {
+    const plist = renderMacBaseEntitlements();
+    assert.include(plist, "com.apple.security.cs.allow-jit");
+    assert.include(plist, "com.apple.security.cs.disable-library-validation");
+    assert.notInclude(plist, "associated-domains");
+    assert.notInclude(plist, "application-identifier");
+    assert.isFalse(isMacPasskeySigningConfigured({}));
+    assert.isTrue(isMacPasskeySigningConfigured({ T3CODE_APPLE_TEAM_ID: "ABC1234567" }));
+  });
 
   it.effect("uses the nightly DMG background for nightly macOS builds", () =>
     Effect.gen(function* () {
