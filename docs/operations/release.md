@@ -3,7 +3,8 @@
 > For maintainers. Using T3 Code? See [docs/user](../user/).
 >
 > Which destinations Astrolabe can ship to today, and what blocks the rest, is tracked in
-> [release-destinations.md](./release-destinations.md).
+> [release-destinations.md](./release-destinations.md). Credentials, their owners, and rotation are in
+> [credentials.md](./credentials.md).
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 

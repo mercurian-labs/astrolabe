@@ -3,7 +3,9 @@
 > For maintainers. Status of each place an Astrolabe build can ship to, and what unblocks the
 > ones that cannot yet. The mechanics live in [release.md](./release.md).
 
-Last reviewed: 2026-09-15, against `main` after the reset to upstream T3 Code.
+Last reviewed: 2026-09-16. `main` is based on upstream T3 Code at `2a264adc6f` (pingdotgg/t3code,
+2026-09-15), reset on 2026-09-15 with zero divergence at that point; the previous fork line is the
+`old` branch and the `old-main` tag. Credentials are inventoried in [credentials.md](./credentials.md).
 
 | Destination                              | Status                     | What is in place                                                                                                               | What unblocks it                                                                                                                                           |
 | ---------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
