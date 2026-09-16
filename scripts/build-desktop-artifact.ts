@@ -1276,6 +1276,40 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
+/**
+ * Hardened-runtime entitlements every signed macOS build needs: Electron's
+ * JIT and unsigned-memory exceptions, and library validation off for the
+ * native addons. The passkey variant below adds the team-bound identifiers
+ * and associated domains on top.
+ */
+const MAC_HARDENED_RUNTIME_ENTITLEMENTS = `    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>`;
+
+function renderMacEntitlementsPlist(entries: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+${entries}
+  </dict>
+</plist>
+`;
+}
+
+/**
+ * Entitlements for a signed build without T3 Connect passkeys: no
+ * provisioning profile, no associated domains, so notarization needs only the
+ * Developer ID certificate. This is the Astrolabe default while Connect is
+ * parked.
+ */
+export function renderMacBaseEntitlements(): string {
+  return renderMacEntitlementsPlist(MAC_HARDENED_RUNTIME_ENTITLEMENTS);
+}
+
 export function renderMacPasskeyEntitlements(
   configuration: MacPasskeySigningConfiguration,
 ): string {
@@ -1283,11 +1317,7 @@ export function renderMacPasskeyEntitlements(
     .map((domain) => `      <string>webcredentials:${escapeXml(domain)}</string>`)
     .join("\n");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>com.apple.application-identifier</key>
+  return renderMacEntitlementsPlist(`    <key>com.apple.application-identifier</key>
     <string>${escapeXml(`${configuration.teamId}.${configuration.appId}`)}</string>
     <key>com.apple.developer.team-identifier</key>
     <string>${escapeXml(configuration.teamId)}</string>
@@ -1295,15 +1325,17 @@ export function renderMacPasskeyEntitlements(
     <array>
 ${associatedDomains}
     </array>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
-  </dict>
-</plist>
-`;
+${MAC_HARDENED_RUNTIME_ENTITLEMENTS}`);
+}
+
+/**
+ * Passkey signing is opted into by naming a provisioning profile or team id;
+ * a signed build with neither uses the base entitlements above.
+ */
+export function isMacPasskeySigningConfigured(
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  return Boolean(env.T3CODE_MACOS_PROVISIONING_PROFILE?.trim() || env.T3CODE_APPLE_TEAM_ID?.trim());
 }
 
 export function resolveFffNativeDependencies(
@@ -2625,10 +2657,12 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   signed: boolean,
   mockUpdates: boolean,
   mockUpdateServerPort: number | undefined,
+  // Signed macOS builds always get an entitlements file; the provisioning
+  // profile is only present when T3 Connect passkey signing is configured.
   macPasskeySigning:
     | {
         readonly entitlementsPath: string;
-        readonly provisioningProfilePath: string;
+        readonly provisioningProfilePath?: string | undefined;
       }
     | undefined,
   // Windows only, and false when no Linux CLI archive was handed to the build:
@@ -2700,11 +2734,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
-      ...(macPasskeySigning
-        ? {
-            entitlements: macPasskeySigning.entitlementsPath,
-            provisioningProfile: macPasskeySigning.provisioningProfilePath,
-          }
+      ...(macPasskeySigning ? { entitlements: macPasskeySigning.entitlementsPath } : {}),
+      ...(macPasskeySigning?.provisioningProfilePath
+        ? { provisioningProfile: macPasskeySigning.provisioningProfilePath }
         : {}),
     };
   }
@@ -3593,10 +3625,15 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
+  // T3 Connect is parked, so passkey signing (provisioning profile plus
+  // associated-domains entitlement) is opt-in. A signed build without it is
+  // notarized on the Developer ID certificate alone.
+  const macSigningEnv =
+    options.platform === "mac" && options.signed ? loadRepoEnv({ repoRoot }) : undefined;
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    macSigningEnv && isMacPasskeySigningConfigured(macSigningEnv)
       ? yield* Effect.try({
-          try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
+          try: () => resolveMacPasskeySigningConfiguration(macSigningEnv),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
         })
       : undefined;
@@ -3609,16 +3646,23 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
         ),
       }
     : undefined;
-  const macEntitlementsPath = macPasskeySigning
+  const macEntitlementsPath = macSigningEnv
     ? path.join(stageAppDir, "entitlements.mac.plist")
     : undefined;
-  if (macPasskeySigning && macEntitlementsPath) {
-    if (!(yield* fs.exists(macPasskeySigning.provisioningProfilePath))) {
-      return yield* new MacProvisioningProfileNotFoundError({
-        provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
-      });
+  if (macEntitlementsPath) {
+    if (macPasskeySigning) {
+      if (!(yield* fs.exists(macPasskeySigning.provisioningProfilePath))) {
+        return yield* new MacProvisioningProfileNotFoundError({
+          provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
+        });
+      }
+      yield* fs.writeFileString(
+        macEntitlementsPath,
+        renderMacPasskeyEntitlements(macPasskeySigning),
+      );
+    } else {
+      yield* fs.writeFileString(macEntitlementsPath, renderMacBaseEntitlements());
     }
-    yield* fs.writeFileString(macEntitlementsPath, renderMacPasskeyEntitlements(macPasskeySigning));
   }
 
   // Windows splits dependencies per process: app.asar carries only the
@@ -3660,10 +3704,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
-      macPasskeySigning && macEntitlementsPath
+      macEntitlementsPath
         ? {
             entitlementsPath: macEntitlementsPath,
-            provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
+            provisioningProfilePath: macPasskeySigning?.provisioningProfilePath,
           }
         : undefined,
       bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime }),
