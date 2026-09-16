@@ -61,7 +61,7 @@ vi.mock("electron", async () => {
   }
   return {
     app: {
-      getPath: () => "/Applications/T3 Code (Nightly).app/Contents/MacOS/T3 Code",
+      getPath: () => "/Applications/Astrolabe (Nightly).app/Contents/MacOS/T3 Code",
     },
     nativeImage: { createFromPath: mocks.createFromPath },
     BrowserWindow: class extends MockWindow {},
@@ -138,11 +138,11 @@ it("drags the running app bundle only for the helper's own renderer", async () =
   send("drag");
   expect(mocks.createFromPath).toHaveBeenCalledWith("/bundle/prod-resources/icon.png");
   expect(mocks.startDrag).toHaveBeenCalledWith({
-    file: "/Applications/T3 Code (Nightly).app",
+    file: "/Applications/Astrolabe (Nightly).app",
     icon: mocks.createFromPath.mock.results[0]!.value.resize(),
   });
   send("finder");
-  expect(mocks.showItemInFolder).toHaveBeenCalledWith("/Applications/T3 Code (Nightly).app");
+  expect(mocks.showItemInFolder).toHaveBeenCalledWith("/Applications/Astrolabe (Nightly).app");
 });
 it("rechecks permissions and releases resources when granted", async () => {
   await open();
@@ -184,7 +184,7 @@ it("offers the Finder fallback when native dragging fails", async () => {
     throw new Error("drag failed");
   });
   send("drag");
-  expect(mocks.showItemInFolder).toHaveBeenCalledWith("/Applications/T3 Code (Nightly).app");
+  expect(mocks.showItemInFolder).toHaveBeenCalledWith("/Applications/Astrolabe (Nightly).app");
   expect(windows[0]!.destroyed).toBe(false);
 });
 
