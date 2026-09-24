@@ -1,3 +1,19 @@
+# Astrolabe
+
+This checkout is Astrolabe, Mercurian's sidecar on T3 Code. Main is upstream T3 Code (currently the `t3code/codex-turn-mapping` branch) plus Mercurian's own additions. Everything below the next heading is upstream's AGENTS.md, unedited: there, "we" and "maintainers" mean the T3 Code team, and its rules apply to the upstream code you build on.
+
+- **Mercurian code lives under `apps/mercurian/`, and Mercurian docs under `docs/mercurian/`.** Start with [docs/mercurian/README.md](docs/mercurian/README.md).
+- **Never edit an upstream file.** Import and compose upstream code from our directories instead. The only exceptions:
+  - `LICENSE`: Mercurian's copyright line.
+  - `AGENTS.md`: this section.
+  - `pnpm-workspace.yaml`: the glob that registers Mercurian packages.
+  - `pnpm-lock.yaml`: regenerated with `pnpm install`, never edited or merged by hand.
+
+  If a task seems to need any other upstream edit, stop and ask a Mercurian maintainer.
+
+- **Main moves onto upstream by rebase, never by merging upstream in.** Upstream force-pushes this branch often. See [Moving onto upstream](docs/mercurian/README.md#moving-onto-upstream).
+- **Pull requests and issues go to `mercurian-labs/astrolabe` and Mercurian's Linear.** Never to `pingdotgg/t3code`.
+
 # T3 Code
 
 T3 Code is a minimal GUI for coding agents. A Node WebSocket server wraps provider CLIs and agents (Codex, Claude Code, Cursor, Grok, OpenCode, Antigravity) and serves web, desktop, and mobile clients.
