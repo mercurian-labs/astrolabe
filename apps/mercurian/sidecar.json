@@ -1,0 +1,15 @@
+{
+  "upstream": {
+    "repository": "https://github.com/pingdotgg/t3code.git",
+    "branch": "t3code/codex-turn-mapping",
+    "base": "692ad0a8fd0fa56fe95ba257ad08a078606a32ab"
+  },
+  "allowedChangesOutsideMercurian": [
+    ".github/workflows/mercurian-sidecar.yml",
+    "AGENTS.md",
+    "LICENSE",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml"
+  ],
+  "importableUpstreamPackages": ["@t3tools/contracts"]
+}

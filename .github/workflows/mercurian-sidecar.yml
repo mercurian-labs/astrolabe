@@ -1,0 +1,54 @@
+name: Mercurian sidecar
+
+# Enforces the sidecar rules in AGENTS.md: no upstream edits outside the allowed
+# list, no upstream imports beyond the allowed packages, and no upstream merges.
+# The rules and the recorded upstream base live in apps/mercurian/sidecar.json.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mercurian-sidecar-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sidecar:
+    name: Sidecar rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The pull request's own commits rather than GitHub's merge commit, so
+          # the history rules see exactly what would land.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Fetch upstream
+        run: |
+          repository="$(node -p 'require("./apps/mercurian/sidecar.json").upstream.repository')"
+          branch="$(node -p 'require("./apps/mercurian/sidecar.json").upstream.branch')"
+          git fetch --no-tags --filter=blob:none "${repository}" "+refs/heads/${branch}:refs/remotes/upstream/sidecar"
+
+      - name: Test the check
+        run: node --test apps/mercurian/scripts/sidecar-check.test.ts
+
+      - name: Check sidecar rules
+        run: node apps/mercurian/scripts/sidecar-check.ts --upstream-ref refs/remotes/upstream/sidecar
