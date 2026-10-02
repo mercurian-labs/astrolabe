@@ -531,6 +531,7 @@ import {
 } from "../lib/attachmentUploadQueue";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
+import { PaneSurfaceTabs, usePaneSurfaceHost } from "../panes/PaneSurfaceHost";
 import { previewEnvironment } from "../state/preview";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -2270,7 +2271,11 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     panelAnimationDurationMs,
   );
-  const rightPanelPresent = rightPanelPresence.present;
+  // Astrolabe: inside the panes, the panes draw the surfaces as tabs, so the panel stays out of
+  // this layout and its strip renders as the panes' host instead.
+  const paneSurfaceHost = usePaneSurfaceHost();
+  const RightPanelTabsOrHost = paneSurfaceHost ? PaneSurfaceTabs : RightPanelTabs;
+  const rightPanelPresent = rightPanelPresence.present && !paneSurfaceHost;
   const rightPanelControlsInPanel =
     shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
@@ -2280,10 +2285,11 @@ export default function ChatView(props: ChatViewProps) {
     activePreviewMiniPlayer?.source ?? null,
     renderedRightPanelSurface,
   );
-  const canMaximizeRightPanel = rightPanelOpen && !shouldUsePlanSidebarSheet;
+  const canMaximizeRightPanel = rightPanelOpen && !shouldUsePlanSidebarSheet && !paneSurfaceHost;
   const rightPanelMaximized =
     canMaximizeRightPanel && maximizedRightPanelThreadKey === routeThreadKey;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
+  const inlineRightPanelOwnsTitleBar =
+    rightPanelOpen && !shouldUsePlanSidebarSheet && !paneSurfaceHost;
   const [threadPanelPresentation, setThreadPanelPresentation] =
     useState<ThreadPanelPresentation>("inline");
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
@@ -11135,8 +11141,8 @@ export default function ChatView(props: ChatViewProps) {
         ))}
       </div>
 
-      {rightPanelPresent && !shouldUsePlanSidebarSheet && activeThreadRef ? (
-        <RightPanelTabs
+      {(rightPanelPresent || paneSurfaceHost) && !shouldUsePlanSidebarSheet && activeThreadRef ? (
+        <RightPanelTabsOrHost
           mode="inline"
           open={rightPanelOpen}
           maximized={rightPanelMaximized}
@@ -11175,7 +11181,7 @@ export default function ChatView(props: ChatViewProps) {
           deviceAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}
-        </RightPanelTabs>
+        </RightPanelTabsOrHost>
       ) : null}
       {rightPanelPresent && shouldUsePlanSidebarSheet && activeThreadRef ? (
         <RightPanelSheet
