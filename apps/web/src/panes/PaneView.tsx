@@ -17,7 +17,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type DragEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -613,11 +612,74 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null) {
 }
 
 /**
+ * Where a tab dragged over `pane` at (clientX, clientY) would land: over the strip it joins the
+ * pane's tabs at the insertion line, over the content it divides the pane on the nearest half.
+ * Null while no tab is dragged, or for a pane's only tab over its own pane.
+ */
+function dropTargetAt(
+  pane: HTMLElement,
+  leaf: Leaf,
+  clientX: number,
+  clientY: number,
+): DropTarget | null {
+  const item = currentDrag();
+  if (!item) return null;
+  if (leaf.tabs.length === 1 && leaf.tabs[0] === item.key) return null;
+  const rect = pane.getBoundingClientRect();
+  const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
+  const zone = paneDropZone(
+    clientX - rect.left,
+    clientY - rect.top,
+    rect.width,
+    rect.height,
+    stripSize,
+  );
+  if (zone === "center") return stripTargetAt(pane, rect, clientX);
+  const halfWidth = Math.round(rect.width / 2);
+  const content = rect.height - stripSize;
+  const halfHeight = Math.round(content / 2);
+  return {
+    zone,
+    index: leaf.tabs.length,
+    top: zone === "bottom" ? stripSize + halfHeight : stripSize,
+    left: zone === "right" ? halfWidth : 0,
+    width: zone === "left" || zone === "right" ? halfWidth : rect.width,
+    height: zone === "top" || zone === "bottom" ? halfHeight : content,
+  };
+}
+
+/** Joining the strip: the index among its tabs, and the insertion line in the gap before it. */
+function stripTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropTarget | null {
+  const list = pane.querySelector<HTMLElement>("[data-pane-tabs]");
+  if (!list) return null;
+  const listRect = list.getBoundingClientRect();
+  const tabs = [...list.querySelectorAll(":scope > [data-pane-tab]")].map((tab) =>
+    tab.getBoundingClientRect(),
+  );
+  const index = insertIndex(
+    tabs.map((box) => box.left + box.width / 2),
+    clientX,
+  );
+  const gap = Number.parseFloat(getComputedStyle(list).gap) || 0;
+  const before = tabs[index];
+  const last = tabs.at(-1);
+  const near = before ?? last;
+  const at = before ? before.left - gap / 2 : last ? last.right + gap / 2 : listRect.left;
+  return {
+    zone: "center",
+    index,
+    top: Math.round((near?.top ?? listRect.top) - rect.top),
+    left: Math.round(at - rect.left - 1),
+    width: 2,
+    height: Math.round(near?.height ?? listRect.height),
+  };
+}
+
+/**
  * One pane: its strip of tabs across the top and its active tab's content beneath. The
  * conversation and the active surface render once each into containers that move into the pane
  * showing them (see `PanesHost`), so a tab moving between panes never remounts them. Dragging a
- * tab over the pane shows where it would land: over the strip it joins the pane's tabs at the
- * insertion line, over the content it divides the pane on the half nearest the pointer.
+ * tab over the pane shows where it would land (see `dropTargetAt`).
  */
 export const PaneView = memo(function PaneView({
   leaf,
@@ -666,61 +728,63 @@ export const PaneView = memo(function PaneView({
     };
   }, [dragging]);
 
-  const targetFor = (event: DragEvent<HTMLElement>): DropTarget | null => {
-    const item = currentDrag();
-    if (!item) return null;
-    // A pane's only tab has nowhere to go within its own pane.
-    if (leaf.tabs.length === 1 && leaf.tabs[0] === item.key) return null;
-    const pane = event.currentTarget;
-    const rect = pane.getBoundingClientRect();
-    const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const zone = paneDropZone(x, y, rect.width, rect.height, stripSize);
-    if (zone === "center") return stripTarget(pane, rect, event);
-    const halfWidth = Math.round(rect.width / 2);
-    const content = rect.height - stripSize;
-    const halfHeight = Math.round(content / 2);
-    return {
-      zone,
-      index: leaf.tabs.length,
-      top: zone === "bottom" ? stripSize + halfHeight : stripSize,
-      left: zone === "right" ? halfWidth : 0,
-      width: zone === "left" || zone === "right" ? halfWidth : rect.width,
-      height: zone === "top" || zone === "bottom" ? halfHeight : content,
+  // The conversation and the active surface render through portals, so React's drag events
+  // from them follow the React tree and never reach this pane. Native listeners see the drag
+  // where it happens in the DOM, and capturing it here keeps a dragged tab from reaching the
+  // conversation's file drop.
+  const section = useRef<HTMLElement>(null);
+  const latest = useRef({ leaf, target });
+  useLayoutEffect(() => {
+    latest.current = { leaf, target };
+  });
+  useEffect(() => {
+    const pane = section.current;
+    if (!pane) return;
+    const onDragEnter = (event: globalThis.DragEvent) => {
+      if (currentDrag()) event.stopPropagation();
     };
-  };
-
-  /** Joining the strip: the index among its tabs, and the insertion line in the gap before it. */
-  const stripTarget = (
-    pane: HTMLElement,
-    rect: DOMRect,
-    event: DragEvent<HTMLElement>,
-  ): DropTarget | null => {
-    const list = pane.querySelector<HTMLElement>("[data-pane-tabs]");
-    if (!list) return null;
-    const listRect = list.getBoundingClientRect();
-    const tabs = [...list.querySelectorAll(":scope > [data-pane-tab]")].map((tab) =>
-      tab.getBoundingClientRect(),
-    );
-    const index = insertIndex(
-      tabs.map((box) => box.left + box.width / 2),
-      event.clientX,
-    );
-    const gap = Number.parseFloat(getComputedStyle(list).gap) || 0;
-    const before = tabs[index];
-    const last = tabs.at(-1);
-    const near = before ?? last;
-    const at = before ? before.left - gap / 2 : last ? last.right + gap / 2 : listRect.left;
-    return {
-      zone: "center",
-      index,
-      top: Math.round((near?.top ?? listRect.top) - rect.top),
-      left: Math.round(at - rect.left - 1),
-      width: 2,
-      height: Math.round(near?.height ?? listRect.height),
+    const onDragOver = (event: globalThis.DragEvent) => {
+      if (!currentDrag()) return;
+      event.stopPropagation();
+      const next = dropTargetAt(pane, latest.current.leaf, event.clientX, event.clientY);
+      if (!next) {
+        if (latest.current.target) setTarget(null);
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      if (!sameTarget(latest.current.target, next)) setTarget(next);
     };
-  };
+    const onDragLeave = (event: globalThis.DragEvent) => {
+      if (!pane.contains(event.relatedTarget as Node | null)) setTarget(null);
+    };
+    const onDrop = (event: globalThis.DragEvent) => {
+      const item = currentDrag();
+      if (!item) return;
+      event.stopPropagation();
+      const { leaf: current } = latest.current;
+      const drop = dropTargetAt(pane, current, event.clientX, event.clientY);
+      setTarget(null);
+      if (!drop) return;
+      event.preventDefault();
+      endDrag();
+      controller.update((arrangement) =>
+        drop.zone === "center"
+          ? moveTab(arrangement, item.key, current.id, drop.index)
+          : splitWithTab(arrangement, item.key, current.id, drop.zone),
+      );
+    };
+    pane.addEventListener("dragenter", onDragEnter, true);
+    pane.addEventListener("dragover", onDragOver, true);
+    pane.addEventListener("dragleave", onDragLeave);
+    pane.addEventListener("drop", onDrop, true);
+    return () => {
+      pane.removeEventListener("dragenter", onDragEnter, true);
+      pane.removeEventListener("dragover", onDragOver, true);
+      pane.removeEventListener("dragleave", onDragLeave);
+      pane.removeEventListener("drop", onDrop, true);
+    };
+  }, [controller]);
 
   const surfaceId = surfaceIdOf(leaf.active);
   const content = isEmptyTab(leaf.active) ? (
@@ -731,6 +795,7 @@ export const PaneView = memo(function PaneView({
 
   return (
     <section
+      ref={section}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
       style={{ minWidth }}
       data-pane-id={leaf.id}
@@ -740,40 +805,6 @@ export const PaneView = memo(function PaneView({
       }}
       onFocusCapture={() => {
         if (!focused) controller.update((arrangement) => focusPane(arrangement, leaf.id));
-      }}
-      // Capture, so a tab dragged over the conversation never reaches its file drop.
-      onDragOverCapture={(event) => {
-        if (!currentDrag()) return;
-        event.stopPropagation();
-        const next = targetFor(event);
-        if (!next) {
-          if (target) setTarget(null);
-          return;
-        }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        if (!sameTarget(target, next)) setTarget(next);
-      }}
-      onDragEnterCapture={(event) => {
-        if (currentDrag()) event.stopPropagation();
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTarget(null);
-      }}
-      onDropCapture={(event) => {
-        const item = currentDrag();
-        if (!item) return;
-        event.stopPropagation();
-        const drop = targetFor(event);
-        setTarget(null);
-        if (!drop) return;
-        event.preventDefault();
-        endDrag();
-        controller.update((arrangement) =>
-          drop.zone === "center"
-            ? moveTab(arrangement, item.key, leaf.id, drop.index)
-            : splitWithTab(arrangement, item.key, leaf.id, drop.zone),
-        );
       }}
     >
       <TabStrip leaf={leaf} focused={focused} atTop={atTop} atLeft={atLeft} atRight={atRight} />
