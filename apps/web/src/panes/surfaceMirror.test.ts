@@ -91,6 +91,24 @@ describe("T3 Code opening surfaces", () => {
     expect(actives(next.arrangement)).toEqual([CONVERSATION, surfaceKey("diff")]);
   });
 
+  it("puts a surface that replaces another in its place, as a file replaces the Files explorer", () => {
+    const opened = follow(start, record("files", ["files"]));
+    const resized = {
+      ...opened,
+      arrangement: { ...opened.arrangement, root: { ...opened.arrangement.root, weights: [3, 1] } },
+    } as MirrorState;
+    const next = followRecord(
+      resized,
+      record("files", ["files"]),
+      record("file:a.md", ["file:a.md"]),
+    );
+    expect(panes(next.arrangement)).toEqual([[CONVERSATION], [surfaceKey("file:a.md")]]);
+    expect(next.arrangement.root).toMatchObject({
+      id: resized.arrangement.root.id,
+      weights: [3, 1],
+    });
+  });
+
   it("closes the tab of a surface gone from the record, and its pane with it", () => {
     const opened = follow(start, record("diff", ["diff"]));
     const next = followRecord(opened, record("diff", ["diff"]), closed);

@@ -69,17 +69,16 @@ import {
 } from "./arrangement";
 import { currentDrag, endDrag, insertIndex, paneDropZone, startDrag, type DropZone } from "./drag";
 import type { PanelProps, PanesController } from "./panesController";
-import { usePanesHost } from "./PaneSurfaceHost";
+import { usePanesHost, usePanesThreadRef } from "./PaneSurfaceHost";
 import type { Leaf } from "./tree";
 
 /** Re-renders when what the strip draws from ChatView's panel props changes. */
 function usePanel(controller: PanesController): PanelProps | null {
-  useSyncExternalStore(controller.subscribePanel, controller.getPanelVersion);
-  return controller.getPanel();
+  return useSyncExternalStore(controller.subscribePanel, controller.getPanelSnapshot);
 }
 
-function useSurface(controller: PanesController, surfaceId: string | null) {
-  const ref = controller.threadRef();
+function useSurface(surfaceId: string | null) {
+  const ref = usePanesThreadRef();
   return useRightPanelStore((state) =>
     surfaceId === null || ref === null
       ? null
@@ -93,7 +92,7 @@ function useSurface(controller: PanesController, surfaceId: string | null) {
 function useTabLabel(tabKey: string): { title: string; icon: ReactNode } {
   const { controller } = usePanesHost();
   const panel = usePanel(controller);
-  const surface = useSurface(controller, surfaceIdOf(tabKey));
+  const surface = useSurface(surfaceIdOf(tabKey));
   const { resolvedTheme } = useTheme();
   if (tabKey === CONVERSATION) {
     return { title: "Conversation", icon: <MessageSquareText className="size-3 shrink-0" /> };
@@ -146,7 +145,8 @@ interface AddAction {
   readonly available: boolean;
   /** The surface this opens when the record already holds it, which then moves here instead. */
   readonly singleton: RightPanelSurface["id"] | null;
-  readonly onClick: () => void;
+  /** Adds the surface through ChatView, given its current panel props. */
+  readonly invoke: (panel: PanelProps) => void;
 }
 
 /** The surfaces a pane can open, as ChatView offers them in its panel's New tab menu. */
@@ -159,7 +159,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "B",
       available: panel.browserAvailable,
       singleton: null,
-      onClick: panel.onAddBrowser,
+      invoke: (current) => current.onAddBrowser(),
     },
     {
       label: "Terminal",
@@ -167,7 +167,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "T",
       available: panel.terminalAvailable,
       singleton: null,
-      onClick: panel.onAddTerminal,
+      invoke: (current) => current.onAddTerminal(),
     },
     {
       label: "Files",
@@ -175,7 +175,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "F",
       available: panel.filesAvailable,
       singleton: "files",
-      onClick: panel.onAddFiles,
+      invoke: (current) => current.onAddFiles(),
     },
     {
       label: "Diff",
@@ -183,7 +183,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "D",
       available: panel.diffAvailable,
       singleton: "diff",
-      onClick: panel.onAddDiff,
+      invoke: (current) => current.onAddDiff(),
     },
     {
       label: "Pull request",
@@ -191,7 +191,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "P",
       available: panel.pullRequestAvailable,
       singleton: null,
-      onClick: panel.onAddPullRequest,
+      invoke: (current) => current.onAddPullRequest(),
     },
     {
       label: "Linked pull requests",
@@ -199,7 +199,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "L",
       available: panel.pullRequestsAvailable,
       singleton: "pull-requests",
-      onClick: panel.onAddPullRequests,
+      invoke: (current) => current.onAddPullRequests(),
     },
     {
       label: "Device",
@@ -207,7 +207,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       shortcut: "M",
       available: panel.deviceAvailable,
       singleton: null,
-      onClick: panel.onAddDevice,
+      invoke: (current) => current.onAddDevice(),
     },
   ];
 }
@@ -229,8 +229,10 @@ function runAddAction(controller: PanesController, paneId: string, action: AddAc
     controller.update((arrangement) => openTab(arrangement, key, paneId));
     return;
   }
+  const panel = controller.getPanel();
+  if (!panel) return;
   controller.targetPane(paneId);
-  action.onClick();
+  action.invoke(panel);
 }
 
 function NewTabMenu({ paneId }: { paneId: string }) {
@@ -239,7 +241,7 @@ function NewTabMenu({ paneId }: { paneId: string }) {
   const [open, setOpen] = useState(false);
   const profiles = useBrowserDefaults().profiles;
   const actions = addActions(panel);
-  const ref = controller.threadRef();
+  const ref = usePanesThreadRef();
   const hiddenCount = useRightPanelStore((state) => {
     if (!ref) return 0;
     const record = selectThreadRightPanelState(state.byThreadKey, ref);
@@ -272,7 +274,7 @@ function NewTabMenu({ paneId }: { paneId: string }) {
       >
         {actions.map((action) => {
           const Icon = action.icon;
-          if (action.label === "Browser" && action.available && profiles.length > 1 && panel) {
+          if (action.label === "Browser" && action.available && profiles.length > 1) {
             return (
               <MenuSub key={action.label}>
                 <MenuSubTrigger className="[&>svg:last-child]:ms-0" onClick={() => run(action)}>
@@ -286,8 +288,10 @@ function NewTabMenu({ paneId }: { paneId: string }) {
                       key={profile.id}
                       onClick={() => {
                         setOpen(false);
+                        const current = controller.getPanel();
+                        if (!current) return;
                         controller.targetPane(paneId);
-                        panel.onAddBrowserInProfile(profile.id);
+                        current.onAddBrowserInProfile(profile.id);
                       }}
                     >
                       <span className="min-w-0 truncate">{profile.name}</span>

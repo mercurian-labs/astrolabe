@@ -22,6 +22,7 @@ import { CONVERSATION, resizePanes } from "./arrangement";
 import {
   PaneSurfaceHostProvider,
   PanesHostContext,
+  PanesThreadContext,
   createPanesHost,
   usePanesHost,
   type PanesHost,
@@ -96,12 +97,16 @@ function PanesRoot({
     controller.load(threadRef, threadKey);
   }, [controller, threadKey, threadRef]);
 
+  // Declared after the load so it subscribes once the thread is loaded, and pairs its own
+  // cleanup, as StrictMode's remount checks.
+  useLayoutEffect(() => controller.follow(), [controller]);
+
   useEffect(() => {
     const save = () => controller.flush();
     window.addEventListener("pagehide", save);
     return () => {
       window.removeEventListener("pagehide", save);
-      controller.dispose();
+      save();
     };
   }, [controller]);
 
@@ -116,12 +121,14 @@ function PanesRoot({
 
   return (
     <PanesHostContext.Provider value={host}>
-      <PaneSurfaceHostProvider>
-        <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
-          {current ? <PaneRoot snapshot={current} /> : null}
-        </SidebarInset>
-        {current ? createPortal(<ThreadRouteView target={target} />, host.conversation) : null}
-      </PaneSurfaceHostProvider>
+      <PanesThreadContext.Provider value={threadRef}>
+        <PaneSurfaceHostProvider>
+          <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
+            {current ? <PaneRoot snapshot={current} /> : null}
+          </SidebarInset>
+          {current ? createPortal(<ThreadRouteView target={target} />, host.conversation) : null}
+        </PaneSurfaceHostProvider>
+      </PanesThreadContext.Provider>
     </PanesHostContext.Provider>
   );
 }

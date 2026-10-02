@@ -10469,7 +10469,7 @@ export default function ChatView(props: ChatViewProps) {
       )}
       data-workspace-titlebar-controls
     >
-      {!shouldUsePlanSidebarSheet ? (
+      {!shouldUsePlanSidebarSheet && !paneSurfaceHost ? (
         <span
           aria-hidden={!rightPanelOpen}
           className={cn(

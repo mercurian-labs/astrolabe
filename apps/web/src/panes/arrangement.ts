@@ -240,6 +240,20 @@ function detachTab(arrangement: Arrangement, key: string, keepPaneId?: string): 
   };
 }
 
+/** Puts `next` in `key`'s place in its pane, active where `key` was. */
+export function replaceTab(arrangement: Arrangement, key: string, next: string): Arrangement {
+  const leaf = leafWithTab(arrangement.root, key);
+  if (!leaf || leafWithTab(arrangement.root, next)) return arrangement;
+  return {
+    ...arrangement,
+    root: mapLeaf(arrangement.root, leaf.id, (pane) => ({
+      ...pane,
+      tabs: pane.tabs.map((tab) => (tab === key ? next : tab)),
+      active: pane.active === key ? next : pane.active,
+    })),
+  };
+}
+
 /**
  * Closes a tab. Closing a pane's last tab closes the pane and its neighbours take its room; the
  * last pane stays and gets an empty tab. The conversation is never closed: it holds the

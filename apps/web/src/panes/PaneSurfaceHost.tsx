@@ -1,5 +1,6 @@
 import { createContext, useContext, useLayoutEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import type { PanelProps, PanesController } from "./panesController";
 
@@ -49,6 +50,13 @@ export function createPanesHost(controller: PanesController): PanesHost {
 }
 
 export const PanesHostContext = createContext<PanesHost | null>(null);
+
+/** The thread the panes show; render reads it here rather than from the controller. */
+export const PanesThreadContext = createContext<ScopedThreadRef | null>(null);
+
+export function usePanesThreadRef(): ScopedThreadRef | null {
+  return useContext(PanesThreadContext);
+}
 
 export function usePanesHost(): PanesHost {
   const host = useContext(PanesHostContext);

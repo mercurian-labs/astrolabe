@@ -71,16 +71,16 @@ function surfaceOf(ref: ScopedThreadRef, surfaceId: string): RightPanelSurface |
  */
 export interface PanesController {
   load(ref: ScopedThreadRef, threadKey: string): void;
+  follow(): () => void;
   update(change: (arrangement: Arrangement) => Arrangement): void;
   targetPane(paneId: string): void;
   getSnapshot(): PanesSnapshot | null;
   subscribe(listener: () => void): () => void;
   getPanel(): PanelProps | null;
   setPanel(next: PanelProps): void;
-  getPanelVersion(): number;
+  getPanelSnapshot(): PanelProps | null;
   subscribePanel(listener: () => void): () => void;
   threadRef(): ScopedThreadRef | null;
-  dispose(): void;
   flush(): void;
 }
 
@@ -93,9 +93,8 @@ export function createPanesController(storage: StorageLike | null): PanesControl
   let writing = false;
   let target: { paneId: string; until: number } | null = null;
   let pending: ReturnType<typeof setTimeout> | null = null;
-  let unsubscribe: (() => void) | null = null;
   let panel: PanelProps | null = null;
-  let panelVersion = 0;
+  let panelSnapshot: PanelProps | null = null;
   const listeners = new Set<() => void>();
   const panelListeners = new Set<() => void>();
 
@@ -176,11 +175,9 @@ export function createPanesController(storage: StorageLike | null): PanesControl
     load(nextRef: ScopedThreadRef, nextKey: string) {
       if (nextKey === threadKey && mirror) return;
       flush();
-      unsubscribe?.();
       ref = nextRef;
       threadKey = nextKey;
       target = null;
-      previous = null;
       mirror = { arrangement: loadArrangement(storage, nextKey), hidden: null };
       // First load: the record as it stands, against no earlier record.
       const record = recordOf(nextRef);
@@ -189,7 +186,14 @@ export function createPanesController(storage: StorageLike | null): PanesControl
       previous = record;
       writeRecord();
       publish();
-      unsubscribe = useRightPanelStore.subscribe((state) => {
+    },
+    /**
+     * Follows T3 Code's changes to the record until the returned function is called, first
+     * taking in any made since the thread loaded.
+     */
+    follow() {
+      if (ref) takeRecord(recordOf(ref));
+      return useRightPanelStore.subscribe((state) => {
         if (!ref) return;
         const current = selectThreadRightPanelState(state.byThreadKey, ref);
         takeRecord({
@@ -247,11 +251,14 @@ export function createPanesController(storage: StorageLike | null): PanesControl
       ) {
         return;
       }
-      panelVersion += 1;
+      panelSnapshot = next;
       for (const listener of panelListeners) listener();
     },
-    /** Counts the changes to what the strip draws from ChatView's panel props. */
-    getPanelVersion: () => panelVersion,
+    /**
+     * ChatView's panel props as of the last change to anything the strip draws. Render reads
+     * this; handlers read `getPanel`, whose callbacks are current.
+     */
+    getPanelSnapshot: () => panelSnapshot,
     subscribePanel(listener: () => void) {
       panelListeners.add(listener);
       return () => {
@@ -259,12 +266,6 @@ export function createPanesController(storage: StorageLike | null): PanesControl
       };
     },
     threadRef: () => ref,
-    /** Saves now and stops following the record, as the panes unmounting do. */
-    dispose() {
-      flush();
-      unsubscribe?.();
-      unsubscribe = null;
-    },
     flush,
   };
 }

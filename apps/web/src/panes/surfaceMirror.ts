@@ -6,6 +6,7 @@ import {
   focusedPane,
   openBeside,
   openTab,
+  replaceTab,
   restoreTabs,
   surfaceIdOf,
   surfaceKey,
@@ -69,7 +70,8 @@ function surfacePane(
  * Brings the panes in line with the record after T3 Code changed it, from `previous` (null on
  * first load) to `record`:
  *
- * - A surface gone from the record closes its tab.
+ * - A surface gone from the record closes its tab; one that arrives in the same change takes its
+ *   place, as a file opened from the Files explorer replaces it.
  * - The panel hiding takes every surface tab away, remembered in `hidden`; showing it again puts
  *   them back. Unchanged since, the arrangement returns exactly as it was.
  * - While the panel shows, every surface in the record has a tab. A new one opens in the pane
@@ -115,6 +117,19 @@ export function followRecord(
         : restoreTabs(arrangement, hidden.before, hidden.after, null);
     hidden = null;
   }
+  // A surface that replaces another in one change, as opening a file replaces the Files
+  // explorer, takes its place.
+  const gone = allTabs(arrangement).filter((key) => {
+    const id = surfaceIdOf(key);
+    return id !== null && !present.has(id);
+  });
+  const arriving = record.surfaceIds.filter((id) => !leafWithTab(arrangement.root, surfaceKey(id)));
+  if (targetPaneId === null) {
+    gone.forEach((key, index) => {
+      const id = arriving[index];
+      if (id !== undefined) arrangement = replaceTab(arrangement, key, surfaceKey(id));
+    });
+  }
   arrangement = dropGone(arrangement);
 
   let consumedTarget = false;
@@ -139,7 +154,7 @@ export function followRecord(
   if (
     active !== null &&
     present.has(active) &&
-    (opening || previous?.activeSurfaceId !== active || missing.includes(active))
+    (opening || previous?.activeSurfaceId !== active || arriving.includes(active))
   ) {
     arrangement = activateTab(arrangement, surfaceKey(active), consumedTarget);
   }
