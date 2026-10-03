@@ -89,10 +89,7 @@ export function parseArrangement(value: unknown): Arrangement | null {
 }
 
 /** The arrangement a thread was last left in on this device; null when it has none. */
-export function readArrangement(
-  storage: StorageLike | null,
-  threadKey: string,
-): Arrangement | null {
+function readArrangement(storage: StorageLike | null, threadKey: string): Arrangement | null {
   try {
     const raw = storage?.getItem(arrangementStorageKey(threadKey));
     return raw ? parseArrangement(JSON.parse(raw)) : null;

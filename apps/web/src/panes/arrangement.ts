@@ -375,10 +375,7 @@ export function splitTab(arrangement: Arrangement, key: string, side: Side): Arr
 }
 
 /** Opens an empty tab at the end of a pane's tabs (the focused one by default). */
-export function newTab(
-  arrangement: Arrangement,
-  paneId: string = arrangement.focused,
-): Arrangement {
+function newTab(arrangement: Arrangement, paneId: string = arrangement.focused): Arrangement {
   const target = findLeaf(arrangement.root, paneId) ?? focusedPane(arrangement);
   const opened = insertTab(arrangement, emptyKey(arrangement.seq), target.id, target.tabs.length);
   return { ...opened, seq: arrangement.seq + 1 };

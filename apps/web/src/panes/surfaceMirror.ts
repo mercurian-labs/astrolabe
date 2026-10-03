@@ -182,7 +182,7 @@ export function followRecord(
 }
 
 /** The surfaces shown: the active tabs of their panes, in reading order. */
-export function visibleSurfaces(arrangement: Arrangement, record: PanelRecord): string[] {
+function visibleSurfaces(arrangement: Arrangement, record: PanelRecord): string[] {
   const present = new Set(record.surfaceIds);
   return leaves(arrangement.root).flatMap((leaf) => {
     const id = surfaceIdOf(leaf.active);
