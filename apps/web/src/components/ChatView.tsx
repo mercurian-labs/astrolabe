@@ -10448,6 +10448,7 @@ export default function ChatView(props: ChatViewProps) {
       {...panelToggleControlProps}
       showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
       showTerminalControl={!paneSurfaceHost}
+      showRightPanelControl={!paneSurfaceHost}
     />
   );
   const threadPanelHeaderControl = (
