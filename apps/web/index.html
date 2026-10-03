@@ -474,14 +474,70 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 96px;
-        height: 96px;
       }
 
-      #boot-shell-logo {
-        width: 64px;
-        height: 64px;
-        object-fit: contain;
+      /* The loading wordmark at the approved 224px, its full three-dot canvas reserved: masks
+         over one canvas, the lettering in the splash text color and the pivot and dots in the
+         theme accent. Dots two and three keep the approved 1.6s rhythm, still under reduced
+         motion. */
+      .boot-shell-wordmark {
+        position: relative;
+        width: 224px;
+        aspect-ratio: 417.5245 / 59.7363;
+      }
+
+      .boot-shell-wordmark > span {
+        position: absolute;
+        inset: 0;
+        -webkit-mask: var(--boot-mask) center / contain no-repeat;
+        mask: var(--boot-mask) center / contain no-repeat;
+        background: var(--boot-accent, #a0492a);
+      }
+
+      .boot-shell-wordmark > .boot-shell-wordmark-ink {
+        background: currentColor;
+      }
+
+      @keyframes boot-shell-dot-2 {
+        0%,
+        25% {
+          opacity: 0;
+        }
+        32.5%,
+        92.5% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      @keyframes boot-shell-dot-3 {
+        0%,
+        50% {
+          opacity: 0;
+        }
+        57.5%,
+        92.5% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      .boot-shell-wordmark-dot-2 {
+        animation: boot-shell-dot-2 1600ms linear infinite;
+      }
+
+      .boot-shell-wordmark-dot-3 {
+        animation: boot-shell-dot-3 1600ms linear infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-shell-wordmark > span {
+          animation: none;
+        }
       }
 
       #boot-error {
@@ -513,8 +569,22 @@
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" role="status" aria-label="Loading Astrolabe">
+          <div class="boot-shell-wordmark" aria-hidden="true">
+            <span
+              class="boot-shell-wordmark-ink"
+              style="--boot-mask: url(/brand/wordmark-loading-ink.svg)"
+            ></span>
+            <span style="--boot-mask: url(/brand/wordmark-loading-dots-1.svg)"></span>
+            <span
+              class="boot-shell-wordmark-dot-2"
+              style="--boot-mask: url(/brand/wordmark-loading-dot-2.svg)"
+            ></span>
+            <span
+              class="boot-shell-wordmark-dot-3"
+              style="--boot-mask: url(/brand/wordmark-loading-dot-3.svg)"
+            ></span>
+          </div>
         </div>
       </div>
     </div>
