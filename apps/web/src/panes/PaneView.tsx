@@ -8,6 +8,7 @@ import {
   Smartphone,
   SquareDashed,
   TerminalSquare,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -40,7 +41,6 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "~/components/ui/menu";
-import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
@@ -254,10 +254,10 @@ function NewTabMenu({ paneId }: { paneId: string }) {
     <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger
         render={
-          <Button aria-label="New tab" className="shrink-0" size="icon-xs" variant="ghost-muted" />
+          <Button aria-label="New tab" className="shrink-0" size="icon-sm" variant="ghost-muted" />
         }
       >
-        <Plus className="size-3.5" />
+        <Plus className="size-4" />
       </MenuTrigger>
       <MenuPopup
         align="start"
@@ -400,13 +400,16 @@ const TabPill = memo(function TabPill({
       data-pane-tab
       data-key={tabKey}
       className={cn(
-        "group/tab flex h-6 max-w-44 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-md pr-2 pl-1.5 text-xs select-none",
+        // A pill as wide as its title up to 260px; short of room the pills shrink together to
+        // 96px, then the strip scrolls. `--pill` is its fill, which the close control fades to.
+        "group/tab relative flex h-7 max-w-[260px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
         draggableInTitlebar && "[-webkit-app-region:no-drag]",
         active
-          ? paneFocused
-            ? "bg-accent text-foreground"
-            : "bg-accent/50 text-foreground/80"
-          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+          ? cn(
+              "border-border shadow-xs/5 [--pill:var(--card)]",
+              paneFocused ? "text-foreground" : "text-muted-foreground",
+            )
+          : "text-muted-foreground [--pill:color-mix(in_oklch,var(--muted),black_4%)] hover:text-foreground hover:[--pill:color-mix(in_oklch,var(--muted),var(--foreground)_7%)] dark:[--pill:color-mix(in_oklch,var(--muted),black_22%)] dark:hover:[--pill:color-mix(in_oklch,var(--muted),var(--foreground)_7%)]",
         dragging && "opacity-50",
       )}
       onClick={activate}
@@ -435,20 +438,38 @@ const TabPill = memo(function TabPill({
         setDragging(false);
       }}
     >
-      {closable ? (
-        <PanelTabCloseButton
-          label={`Close ${title}`}
-          onClick={() => closeTabOf(controller, tabKey)}
-        >
-          {icon}
-        </PanelTabCloseButton>
-      ) : (
-        <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
-      )}
+      <span
+        className={cn(
+          "flex size-4 shrink-0 items-center justify-center",
+          active ? "opacity-100" : "opacity-85 group-hover/tab:opacity-100",
+        )}
+      >
+        {icon}
+      </span>
       <Tooltip>
         <TooltipTrigger render={<span className="min-w-0 truncate">{title}</span>} />
         <TooltipPopup>{title}</TooltipPopup>
       </Tooltip>
+      {closable ? (
+        // Over the pill's end while it is hovered, on a backdrop that fades the title out
+        // before it, so the pill keeps its width. Only the 16px ✕ takes clicks.
+        <span className="pointer-events-none absolute inset-y-0 end-0 hidden items-center group-focus-within/tab:flex group-hover/tab:flex">
+          <span className="h-full w-6 bg-linear-to-r from-transparent to-(--pill)" />
+          <span className="flex h-full items-center rounded-e-md bg-(--pill) pe-1.5">
+            <button
+              type="button"
+              aria-label={`Close ${title}`}
+              className="pointer-events-auto flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
+              onClick={(event) => {
+                event.stopPropagation();
+                closeTabOf(controller, tabKey);
+              }}
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        </span>
+      ) : null}
     </div>
   );
 });
@@ -505,7 +526,7 @@ function TabStrip({
     <div
       data-pane-strip
       className={cn(
-        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 border-b border-border px-2",
+        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1.5 border-b border-border bg-muted px-2",
         titlebar && "drag-region",
         titlebar && atRight && "wco:pr-(--workspace-native-controls-inset)",
         atTop && atLeft && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
@@ -516,7 +537,8 @@ function TabStrip({
         role="tablist"
         aria-orientation="horizontal"
         data-pane-tabs
-        className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // 2px past the strip's box on each side, so a pill's shadow and focus ring stay whole.
+        className="-mx-0.5 flex min-w-0 items-center gap-1.5 overflow-x-auto px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onWheel={(event) => {
           // A vertical wheel scrolls the tabs sideways.
           if (event.deltaX === 0 && event.deltaY !== 0) {
@@ -547,23 +569,21 @@ function EmptyTab({ paneId }: { paneId: string }) {
   const panel = usePanel(controller);
   const actions = addActions(panel).filter((action) => action.available);
   return (
-    <div className="flex h-full items-center justify-center p-6">
-      <div className="flex w-56 flex-col gap-1">
-        <div className="px-2.5 pb-2 text-sm font-medium text-foreground">Open a tab</div>
-        {actions.map((action) => {
-          const Icon = action.icon;
-          return (
+    <div className="flex h-full items-center justify-center p-5">
+      <div className="max-w-[480px] text-center">
+        <div className="text-xl leading-tight font-semibold text-foreground">Open a tab</div>
+        <div className="mt-5 flex flex-col items-center">
+          {actions.map((action) => (
             <button
               key={action.label}
               type="button"
-              className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-(--control-radius) px-2.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="cursor-pointer text-base leading-9 text-primary outline-none hover:text-primary/80 focus-visible:underline"
               onClick={() => runAddAction(controller, paneId, action)}
             >
-              <Icon className="size-4" />
-              <span className="min-w-0 flex-1 truncate">{action.label}</span>
+              {action.label}
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -825,7 +845,7 @@ export const PaneView = memo(function PaneView({
           )}
           style={{ top: target.top, left: target.left, width: target.width, height: target.height }}
         >
-          {target.zone === "center" ? null : <div className="size-full rounded-lg bg-primary/40" />}
+          {target.zone === "center" ? null : <div className="size-full rounded-md bg-primary/50" />}
         </div>
       ) : null}
     </section>
