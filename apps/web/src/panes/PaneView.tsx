@@ -451,15 +451,16 @@ const TabPill = memo(function TabPill({
         <TooltipPopup>{title}</TooltipPopup>
       </Tooltip>
       {closable ? (
-        // Over the pill's end while it is hovered, on a backdrop that fades the title out
-        // before it, so the pill keeps its width. Only the 16px ✕ takes clicks.
-        <span className="pointer-events-none absolute inset-y-0 end-0 hidden items-center group-focus-within/tab:flex group-hover/tab:flex">
+        // Over the pill's end while it is hovered or focus is inside it, on a backdrop that fades
+        // the title out before it, so the pill keeps its width. Only the 16px ✕ takes clicks.
+        // Transparent rather than hidden at rest, so the ✕ stays in the keyboard's Tab order.
+        <span className="pointer-events-none absolute inset-y-0 end-0 flex items-center opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100">
           <span className="h-full w-6 bg-linear-to-r from-transparent to-(--pill)" />
           <span className="flex h-full items-center rounded-e-md bg-(--pill) pe-1.5">
             <button
               type="button"
               aria-label={`Close ${title}`}
-              className="pointer-events-auto flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
+              className="pointer-events-auto flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/8 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               onClick={(event) => {
                 event.stopPropagation();
                 closeTabOf(controller, tabKey);

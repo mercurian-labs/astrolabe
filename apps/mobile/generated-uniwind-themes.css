@@ -361,7 +361,7 @@
       --color-switch-inactive-track: #f0f0f0;
       --color-switch-inactive-thumb: #666666;
       --color-warning: #fbf3e0;
-      --color-warning-border: rgba(203, 144, 0, 0.32);
+      --color-warning-border: rgba(149, 104, 0, 0.32);
       --color-warning-foreground: #855c00;
       --color-danger: #fbeae9;
       --color-danger-border: rgba(170, 55, 49, 0.32);
@@ -523,7 +523,7 @@
       --color-warning-border: rgba(205, 151, 75, 0.32);
       --color-warning-foreground: #cd974b;
       --color-danger: #2b1d1e;
-      --color-danger-border: rgba(204, 51, 51, 0.32);
+      --color-danger-border: rgba(235, 82, 76, 0.32);
       --color-danger-foreground: #e06c66;
       --color-update: #15232e;
       --color-update-foreground: #71ade7;

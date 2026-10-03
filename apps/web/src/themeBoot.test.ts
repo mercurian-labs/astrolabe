@@ -133,6 +133,47 @@ function runtimeResolvedAppearance(
   }
 }
 
+/** Loads the real runtime against throwing storage and reports what it painted on load. */
+async function runRuntimeWithThrowingStorage(
+  prefersDark: boolean,
+): Promise<{ themeId: string | undefined; isDark: boolean }> {
+  const classes = new Set<string>();
+  const documentElement = {
+    dataset: {} as Record<string, string | undefined>,
+    classList: {
+      add: (name: string) => void classes.add(name),
+      remove: (name: string) => void classes.delete(name),
+      toggle: (name: string, force?: boolean) => {
+        const next = force ?? !classes.has(name);
+        if (next) classes.add(name);
+        else classes.delete(name);
+        return next;
+      },
+    },
+    style: { setProperty: () => undefined, removeProperty: () => undefined },
+  };
+  vi.resetModules();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.stubGlobal("document", { documentElement });
+  vi.stubGlobal("window", {
+    localStorage: {
+      getItem: () => {
+        throw new Error("storage blocked");
+      },
+    },
+    matchMedia: () => ({ matches: prefersDark }),
+  });
+  try {
+    await import("./hooks/useTheme");
+    return { themeId: documentElement.dataset.themeId, isDark: classes.has("dark") };
+  } finally {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.resetModules();
+    invalidateCustomThemes();
+  }
+}
+
 const AURORA_DUAL = {
   id: "aurora",
   label: "Aurora",
@@ -516,12 +557,25 @@ describe("index.html boot script", () => {
     expect(boot.isDark).toBe(true);
   });
 
-  it("follows the OS appearance when storage is unavailable", () => {
-    const light = runBootScript({ storageThrows: true, prefersDark: false });
-    expect(light.isDark).toBe(false);
-    expect(light.themeId).toBeUndefined();
+  it.each([
+    { mode: "light", prefersDark: false },
+    { mode: "dark", prefersDark: true },
+  ] as const)(
+    "paints Mercurian in the $mode system appearance when storage is unavailable, like the runtime",
+    async ({ mode, prefersDark }) => {
+      const colors = getThemeColorsForMode(MERCURIAN_THEME, mode)!;
+      const boot = runBootScript({ storageThrows: true, prefersDark });
+      const runtime = await runRuntimeWithThrowingStorage(prefersDark);
 
-    const dark = runBootScript({ storageThrows: true, prefersDark: true });
-    expect(dark.isDark).toBe(true);
-  });
+      expect(runtime).toEqual({ themeId: MERCURIAN_THEME.id, isDark: prefersDark });
+      expect(boot.themeId).toBe(runtime.themeId);
+      expect(boot.isDark).toBe(runtime.isDark);
+      expect(boot.themeSelected).toBe("true");
+      expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
+      expect(boot.bootVariables["--boot-foreground"]).toBe(colors.text);
+      expect(boot.bootVariables["--boot-accent"]).toBe(colors.accent);
+      expect(boot.backgroundColor).toBe(colors.chrome);
+      expect(boot.metaContent).toBe(colors.chrome);
+    },
+  );
 });

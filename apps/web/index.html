@@ -416,19 +416,24 @@
           }
           setThemeColor(chromeColor);
         } catch {
-          // Mirror the runtime's storage-failure fallback: follow the OS.
+          // Mirror the runtime's storage-failure fallback: the default theme,
+          // following the OS appearance.
           let prefersDark = true;
           try {
             prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           } catch {
             // Keep the dark default when even matchMedia is unavailable.
           }
-          delete document.documentElement.dataset.themeId;
-          delete document.documentElement.dataset.themeSelected;
+          const defaultSplash =
+            BUILT_IN_THEME_PALETTES[DEFAULT_THEME_ID][prefersDark ? "dark" : "light"];
+          document.documentElement.dataset.themeId = DEFAULT_THEME_ID;
+          document.documentElement.dataset.themeSelected = "true";
           document.documentElement.classList.toggle("dark", prefersDark);
-          const fallbackColor = prefersDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
-          document.documentElement.style.backgroundColor = fallbackColor;
-          setThemeColor(fallbackColor);
+          document.documentElement.style.backgroundColor = defaultSplash.chrome;
+          for (const [name, value] of Object.entries(defaultSplash)) {
+            document.documentElement.style.setProperty(`--boot-${name}`, value);
+          }
+          setThemeColor(defaultSplash.chrome);
         }
       })();
     </script>

@@ -460,6 +460,12 @@ describe("theme files", () => {
         ["errorForeground", "errorSurface"],
         ["warningForeground", "warningSurface"],
         ["updateForeground", "updateSurface"],
+        // Status roles double as text colors (text-destructive, text-warning).
+        ...(["error", "warning", "update"] as const).flatMap((status) =>
+          (["canvas", "surface", "surfaceOverlay"] as const).map(
+            (background) => [status, background] as const,
+          ),
+        ),
         ["sidebarForeground", "sidebar"],
         ["sidebarMutedForeground", "sidebar"],
         ["sidebarMutedForeground", "sidebarRowActive"],
