@@ -1956,13 +1956,15 @@ export default function ChatView(props: ChatViewProps) {
     [draftThreadsByThreadKey],
   );
   const [mountedTerminalThreadKeys, setMountedTerminalThreadKeys] = useState<string[]>([]);
+  // Astrolabe: the panes show terminals as panel terminals, with no drawer.
+  const paneSurfaceHost = usePaneSurfaceHost();
   const mountedTerminalThreadRefs = useMemo(
     () =>
-      mountedTerminalThreadKeys.flatMap((mountedThreadKey) => {
+      (paneSurfaceHost ? [] : mountedTerminalThreadKeys).flatMap((mountedThreadKey) => {
         const mountedThreadRef = parseScopedThreadKey(mountedThreadKey);
         return mountedThreadRef ? [{ key: mountedThreadKey, threadRef: mountedThreadRef }] : [];
       }),
-    [mountedTerminalThreadKeys],
+    [mountedTerminalThreadKeys, paneSurfaceHost],
   );
 
   const fallbackDraftProjectRef = draftThread
@@ -2273,7 +2275,6 @@ export default function ChatView(props: ChatViewProps) {
   );
   // Astrolabe: inside the panes, the panes draw the surfaces as tabs, so the panel stays out of
   // this layout and its strip renders as the panes' host instead.
-  const paneSurfaceHost = usePaneSurfaceHost();
   const RightPanelTabsOrHost = paneSurfaceHost ? PaneSurfaceTabs : RightPanelTabs;
   const rightPanelPresent = rightPanelPresence.present && !paneSurfaceHost;
   const rightPanelControlsInPanel =
@@ -10446,6 +10447,7 @@ export default function ChatView(props: ChatViewProps) {
     <PanelLayoutControls
       {...panelToggleControlProps}
       showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      showTerminalControl={!paneSurfaceHost}
     />
   );
   const threadPanelHeaderControl = (

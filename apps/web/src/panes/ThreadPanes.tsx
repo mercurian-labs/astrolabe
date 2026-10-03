@@ -12,11 +12,20 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { useAtomValue } from "@effect/atom-react";
+
+import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { ThreadRouteView } from "../components/ThreadRouteView";
 import { SidebarInset } from "../components/ui/sidebar";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { resolveShortcutCommand } from "../keybindings";
+import { isEditableFocused } from "../lib/editableFocus";
+import { isPreviewFocused } from "../lib/previewFocus";
+import { isTerminalFocused } from "../lib/terminalFocus";
+import { isModelPickerOpen } from "../modelPickerVisibility";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
+import { primaryServerKeybindingsAtom } from "../state/server";
 import type { ThreadRouteTarget } from "../threadRoutes";
 import { CONVERSATION, resizePanes } from "./arrangement";
 import {
@@ -38,6 +47,16 @@ import {
   type Leaf,
   type SplitNode,
 } from "./tree";
+
+/**
+ * The panes' handler for the terminal shortcut, while panes show a thread. Its window listener
+ * is added when this module loads, before ChatView mounts and adds its own capture handler, so
+ * it runs first and can keep ChatView from toggling the drawer the panes replace.
+ */
+let terminalShortcut: ((event: KeyboardEvent) => void) | null = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (event) => terminalShortcut?.(event), true);
+}
 
 /** The narrowest the conversation's pane goes: room for the composer and its controls. */
 const CONVERSATION_MIN_PX = 320;
@@ -100,6 +119,36 @@ function PanesRoot({
   // Declared after the load so it subscribes once the thread is loaded, and pairs its own
   // cleanup, as StrictMode's remount checks.
   useLayoutEffect(() => controller.follow(), [controller]);
+
+  // The terminal shortcut opens or goes to a panel terminal: the panes have no drawer.
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  useEffect(() => {
+    const handle = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isCommandPaletteOpen()) return;
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: isTerminalFocused(),
+          terminalOpen: false,
+          previewFocus: isPreviewFocused(),
+          editableFocus: isEditableFocused(event.target),
+          modelPickerOpen: isModelPickerOpen(),
+        },
+      });
+      if (command !== "terminal.toggle") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.repeat) return;
+      if (controller.toggleTerminal() !== "conversation") return;
+      // The conversation shows once the panes re-render; its composer takes focus then.
+      requestAnimationFrame(() => {
+        host.conversation.querySelector<HTMLElement>('[contenteditable="true"], textarea')?.focus();
+      });
+    };
+    terminalShortcut = handle;
+    return () => {
+      if (terminalShortcut === handle) terminalShortcut = null;
+    };
+  }, [controller, host, keybindings]);
 
   useEffect(() => {
     const save = () => controller.flush();

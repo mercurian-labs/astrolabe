@@ -4,6 +4,7 @@ import {
   allTabs,
   closeTabs,
   focusedPane,
+  openAtEdge,
   openBeside,
   openTab,
   replaceTab,
@@ -41,6 +42,12 @@ export interface MirrorState {
 
 /** The share of the conversation's pane a surface takes when it first opens beside it. */
 const SURFACE_PANE_WEIGHT = 0.42;
+/** The share of the main area a terminal pane takes when it first opens across the bottom. */
+const TERMINAL_PANE_WEIGHT = 0.32;
+
+export function isTerminalSurface(surfaceId: string) {
+  return surfaceId.startsWith("terminal:");
+}
 
 function surfaceTabs(arrangement: Arrangement) {
   return allTabs(arrangement).filter((key) => surfaceIdOf(key) !== null);
@@ -72,6 +79,8 @@ function surfacePane(
  *
  * - A surface gone from the record closes its tab; one that arrives in the same change takes its
  *   place, as a file opened from the Files explorer replaces it.
+ * - A new terminal joins a pane already holding one, else opens in a new pane across the
+ *   bottom of the main area, unless a pane asked for it.
  * - The panel hiding takes every surface tab away, remembered in `hidden`; showing it again puts
  *   them back. Unchanged since, the arrangement returns exactly as it was.
  * - While the panel shows, every surface in the record has a tab. A new one opens in the pane
@@ -136,7 +145,18 @@ export function followRecord(
   const missing = record.surfaceIds.filter((id) => !leafWithTab(arrangement.root, surfaceKey(id)));
   for (const id of missing) {
     const key = surfaceKey(id);
-    const home = surfacePane(arrangement, previous, consumedTarget ? null : targetPaneId);
+    const asking = consumedTarget ? null : targetPaneId;
+    if (isTerminalSurface(id) && (asking === null || !findLeaf(arrangement.root, asking))) {
+      // Terminals keep to themselves, across the bottom as a terminal panel sits.
+      const terminals = leaves(arrangement.root).find((leaf) =>
+        leaf.tabs.some((tab) => isTerminalSurface(surfaceIdOf(tab) ?? "")),
+      );
+      arrangement = terminals
+        ? openTab(arrangement, key, terminals.id, false)
+        : openAtEdge(arrangement, key, "bottom", { focus: false, weight: TERMINAL_PANE_WEIGHT });
+      continue;
+    }
+    const home = surfacePane(arrangement, previous, asking);
     const asked = home !== null && home === targetPaneId;
     if (home !== null) {
       arrangement = openTab(arrangement, key, home, asked);

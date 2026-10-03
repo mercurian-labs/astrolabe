@@ -178,6 +178,44 @@ export function openBeside(
   };
 }
 
+/**
+ * Opens a tab in a new pane along one whole edge of the main area, as a terminal opens across
+ * the bottom. A tab open elsewhere moves. `weight` is the new pane's share of the main area,
+ * out of 1; the pane takes focus unless `focus` is false.
+ */
+export function openAtEdge(
+  arrangement: Arrangement,
+  key: string,
+  side: Side,
+  { focus = true, weight = 0.3 }: { focus?: boolean; weight?: number } = {},
+): Arrangement {
+  const source = leafWithTab(arrangement.root, key);
+  const from = source ? detachTab(arrangement, key) : arrangement;
+  const leaf = paneLeaf(`p${from.seq}`, [key]);
+  const direction = side === "left" || side === "right" ? "row" : "column";
+  const before = side === "left" || side === "top";
+  const { root } = from;
+  let next: SplitNode;
+  if (root.type === "branch" && root.direction === direction) {
+    const total = root.weights.reduce((sum, w) => sum + w, 0) || 1;
+    const added = (total * weight) / (1 - weight);
+    next = {
+      ...root,
+      children: before ? [leaf, ...root.children] : [...root.children, leaf],
+      weights: before ? [added, ...root.weights] : [...root.weights, added],
+    };
+  } else {
+    next = {
+      type: "branch",
+      id: `p${from.seq + 1}`,
+      direction,
+      children: before ? [leaf, root] : [root, leaf],
+      weights: before ? [weight, 1 - weight] : [1 - weight, weight],
+    };
+  }
+  return { ...from, root: next, focused: focus ? leaf.id : from.focused, seq: from.seq + 2 };
+}
+
 function reweighPair(root: SplitNode, targetId: string, newId: string, weight: number): SplitNode {
   if (weight === 0.5 || root.type === "leaf") return root;
   const visit = (node: SplitNode): SplitNode => {

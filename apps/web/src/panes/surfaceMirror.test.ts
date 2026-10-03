@@ -109,6 +109,21 @@ describe("T3 Code opening surfaces", () => {
     });
   });
 
+  it("opens a terminal across the bottom, and later terminals beside it", () => {
+    const opened = follow(
+      start,
+      record("diff", ["diff"]),
+      record("terminal:a", ["diff", "terminal:a"]),
+      record("terminal:b", ["diff", "terminal:a", "terminal:b"]),
+    );
+    expect(opened.arrangement.root).toMatchObject({ type: "branch", direction: "column" });
+    expect(panes(opened.arrangement)).toEqual([
+      [CONVERSATION],
+      [surfaceKey("diff")],
+      [surfaceKey("terminal:a"), surfaceKey("terminal:b")],
+    ]);
+  });
+
   it("closes the tab of a surface gone from the record, and its pane with it", () => {
     const opened = follow(start, record("diff", ["diff"]));
     const next = followRecord(opened, record("diff", ["diff"]), closed);

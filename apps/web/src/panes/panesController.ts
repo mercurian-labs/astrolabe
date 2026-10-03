@@ -7,11 +7,21 @@ import {
   useRightPanelStore,
   type RightPanelSurface,
 } from "../rightPanelStore";
-import type { Arrangement } from "./arrangement";
+import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
+import {
+  CONVERSATION,
+  activateTab,
+  focusedPane,
+  surfaceIdOf,
+  surfaceKey,
+  type Arrangement,
+} from "./arrangement";
 import { loadArrangement, writeArrangement, type StorageLike } from "./persistence";
+import { leaves } from "./tree";
 import {
   followRecord,
   hostPaneId,
+  isTerminalSurface,
   recordFor,
   type MirrorState,
   type PanelRecord,
@@ -81,6 +91,12 @@ export interface PanesController {
   getPanelSnapshot(): PanelProps | null;
   subscribePanel(listener: () => void): () => void;
   threadRef(): ScopedThreadRef | null;
+  /**
+   * What the terminal shortcut does inside the panes: from a terminal, back to the conversation;
+   * else to an open terminal, or a new one across the bottom when none is open. Says where focus
+   * should go.
+   */
+  toggleTerminal(): "conversation" | "terminal" | null;
   flush(): void;
 }
 
@@ -170,6 +186,53 @@ export function createPanesController(storage: StorageLike | null): PanesControl
     publish();
   };
 
+  /** Applies a change the panes made; the record follows (see `writeRecord`). */
+  const update = (change: (arrangement: Arrangement) => Arrangement) => {
+    if (!mirror) return;
+    const arrangement = change(mirror.arrangement);
+    if (arrangement === mirror.arrangement) return;
+    mirror = { ...mirror, arrangement };
+    schedulePersist();
+    writeRecord();
+    publish();
+  };
+
+  /** Brings a surface's tab forward in its pane and focuses it, as ChatView's strip does. */
+  const showSurface = (surfaceId: string) => {
+    if (!ref) return;
+    const surface = surfaceOf(ref, surfaceId);
+    if (!surface) return;
+    // Not a write of the panes' own: a hidden panel showing again brings its tabs back.
+    if (panel) panel.onActivate(surface);
+    else useRightPanelStore.getState().activateSurface(ref, surface.id);
+    update((arrangement) => activateTab(arrangement, surfaceKey(surface.id)));
+  };
+
+  /**
+   * The panes have no terminal drawer: whatever opens it (a project script, a setup terminal,
+   * T3 Code's own toggle) shows that terminal as a panel terminal instead, and the drawer stays
+   * shut. The terminal session is the same one, by its id, so nothing restarts.
+   */
+  const takeDrawer = () => {
+    if (!ref) return;
+    const drawer = selectThreadTerminalUiState(
+      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+      ref,
+    );
+    if (!drawer.terminalOpen) return;
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, false);
+    const terminalId = drawer.activeTerminalId || drawer.terminalIds[0];
+    if (!terminalId) return;
+    const holding = selectThreadRightPanelState(
+      useRightPanelStore.getState().byThreadKey,
+      ref,
+    ).surfaces.find(
+      (surface) => surface.kind === "terminal" && surface.terminalIds.includes(terminalId),
+    );
+    if (!holding) useRightPanelStore.getState().openTerminal(ref, terminalId);
+    showSurface(holding?.id ?? `terminal:${terminalId}`);
+  };
+
   return {
     /** Shows a thread's panes: as last left on this device, brought in line with its record. */
     load(nextRef: ScopedThreadRef, nextKey: string) {
@@ -193,7 +256,7 @@ export function createPanesController(storage: StorageLike | null): PanesControl
      */
     follow() {
       if (ref) takeRecord(recordOf(ref));
-      return useRightPanelStore.subscribe((state) => {
+      const stopRecord = useRightPanelStore.subscribe((state) => {
         if (!ref) return;
         const current = selectThreadRightPanelState(state.byThreadKey, ref);
         takeRecord({
@@ -202,17 +265,39 @@ export function createPanesController(storage: StorageLike | null): PanesControl
           surfaceIds: current.surfaces.map((surface) => surface.id),
         });
       });
+      takeDrawer();
+      const stopDrawer = useTerminalUiStateStore.subscribe(takeDrawer);
+      return () => {
+        stopRecord();
+        stopDrawer();
+      };
     },
-    /** Applies a change the panes made; the record follows (see `writeRecord`). */
-    update(change: (arrangement: Arrangement) => Arrangement) {
-      if (!mirror) return;
-      const arrangement = change(mirror.arrangement);
-      if (arrangement === mirror.arrangement) return;
-      mirror = { ...mirror, arrangement };
-      schedulePersist();
-      writeRecord();
-      publish();
+    toggleTerminal() {
+      if (!ref || !mirror || !previous) return null;
+      const { arrangement } = mirror;
+      const front = surfaceIdOf(focusedPane(arrangement).active);
+      if (front !== null && isTerminalSurface(front)) {
+        update((current) => activateTab(current, CONVERSATION));
+        return "conversation";
+      }
+      const open = previous.surfaceIds.filter(isTerminalSurface);
+      const shown = open.find((id) =>
+        leaves(arrangement.root).some((leaf) => leaf.active === surfaceKey(id)),
+      );
+      const choice = shown ?? open.at(-1);
+      if (choice) {
+        showSurface(choice);
+        return "terminal";
+      }
+      if (!panel?.terminalAvailable) return null;
+      panel.onAddTerminal();
+      const added = recordOf(ref).activeSurfaceId;
+      if (added !== null && isTerminalSurface(added)) {
+        update((current) => activateTab(current, surfaceKey(added)));
+      }
+      return "terminal";
     },
+    update,
     /** The next surface the record gains within a few seconds opens in this pane. */
     targetPane(paneId: string) {
       target = { paneId, until: Date.now() + TARGET_WINDOW_MS };
