@@ -88,7 +88,11 @@ import { useClientSettings } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import {
+  BUILT_IN_THEMES,
+  MERCURIAN_THEME,
+  PICKER_HIDDEN_THEME_IDS,
+} from "@t3tools/shared/themePalettes";
 import { getThemeDefinition } from "../themePalette";
 import {
   STANDARD_THEME_CARDS,
@@ -786,8 +790,10 @@ function OpenCommandPaletteDialog(props: {
   const customThemes = useCustomThemes();
   const environmentThemes = useEnvironmentThemeDefinitions();
   const themeCards = useMemo(() => {
-    const seen = new Set<string>();
+    // Mercurian leads, ahead of the standard T3 Code card, as in Settings.
+    const seen = new Set<string>([MERCURIAN_THEME.id, ...PICKER_HIDDEN_THEME_IDS]);
     return [
+      getThemeCardDefinition(MERCURIAN_THEME),
       ...STANDARD_THEME_CARDS.map((card) => ({ ...card, id: null })),
       ...[...BUILT_IN_THEMES, ...customThemes, ...environmentThemes]
         .filter((definition) => {

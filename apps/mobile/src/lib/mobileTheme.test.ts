@@ -21,6 +21,7 @@ import {
   getMobileThemeVariables,
   normalizeMobileThemeId,
   normalizeMobileThemeMode,
+  MOBILE_THEME_OPTIONS,
   resolveMobileThemeIds,
   themeColorWithAlpha,
   themeColorToNativeColor,
@@ -256,6 +257,17 @@ describe("mobile themes", () => {
       light: DEFAULT_MOBILE_THEME_ID,
       dark: "grove",
     });
+  });
+
+  it("lists Mercurian first and leaves out themes hidden from pickers", () => {
+    const ids = MOBILE_THEME_OPTIONS.map((option) => option.id);
+    expect(ids.slice(0, 2)).toEqual(["mercurian", DEFAULT_MOBILE_THEME_ID]);
+    expect(ids).not.toContain("iris");
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("opens a fresh install in Mercurian for both appearances", () => {
+    expect(resolveMobileThemeIds({})).toEqual({ light: "mercurian", dark: "mercurian" });
   });
 
   it("changes either theme without switching the active appearance", () => {

@@ -25,9 +25,9 @@ import {
   T3_CHAT_THEME,
   EMBER_THEME,
   GROVE_THEME,
-  IRIS_THEME,
   OCEAN_THEME,
 } from "../../themePalette";
+import { MERCURIAN_THEME } from "@t3tools/shared/themePalettes";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -54,12 +54,13 @@ import {
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
 
+// Mercurian leads, ahead of the standard T3 Code card; the rest follow it.
+const LEADING_THEMES: ReadonlyArray<ThemeDefinition> = [MERCURIAN_THEME];
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,
   EMBER_THEME,
-  IRIS_THEME,
 ];
 
 function collectionVariantLabels(themes: ReadonlyArray<ThemeDefinition>): ReadonlyArray<string> {
@@ -765,6 +766,25 @@ export function ThemeLibrary({
       .entries(),
   ];
 
+  const renderMaintainerCard = (maintainerTheme: ThemeDefinition) => (
+    <ThemeLibraryCard
+      activeModes={pickedModesFor(maintainerTheme.id)}
+      isActive={false}
+      key={maintainerTheme.id}
+      onDuplicate={() =>
+        openThemeEditor({
+          editingThemeId: null,
+          seedThemeId: maintainerTheme.id,
+          seedName: `${maintainerTheme.label} copy`,
+          initialAppearance,
+        })
+      }
+      onUse={() => persistTheme(maintainerTheme.id)}
+      onUseMode={handlePairPick(maintainerTheme.id)}
+      theme={getThemeCardDefinition(maintainerTheme)}
+    />
+  );
+
   const renderPairGrid = () => (
     // One shared provider so every tooltip in the grid hands off instantly to
     // the next hovered trigger instead of stacking on top of it. The card
@@ -775,6 +795,7 @@ export function ThemeLibrary({
         className="grid w-full gap-2"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))" }}
       >
+        {LEADING_THEMES.map(renderMaintainerCard)}
         {STANDARD_THEME_CARDS.map((standardTheme) => (
           <ThemeLibraryCard
             activeModes={pickedModesFor(null)}
@@ -793,27 +814,7 @@ export function ThemeLibrary({
             theme={standardTheme}
           />
         ))}
-        {MAINTAINER_THEMES.map((maintainerTheme) => {
-          const card = getThemeCardDefinition(maintainerTheme);
-          return (
-            <ThemeLibraryCard
-              activeModes={pickedModesFor(maintainerTheme.id)}
-              isActive={false}
-              key={maintainerTheme.id}
-              onDuplicate={() =>
-                openThemeEditor({
-                  editingThemeId: null,
-                  seedThemeId: maintainerTheme.id,
-                  seedName: `${maintainerTheme.label} copy`,
-                  initialAppearance,
-                })
-              }
-              onUse={() => persistTheme(maintainerTheme.id)}
-              onUseMode={handlePairPick(maintainerTheme.id)}
-              theme={card}
-            />
-          );
-        })}
+        {MAINTAINER_THEMES.map(renderMaintainerCard)}
         {environmentThemes
           .filter(
             // A saved theme with the same id wins resolution, so its card is

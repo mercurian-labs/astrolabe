@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { BUILT_IN_THEMES, MERCURIAN_THEME } from "@t3tools/shared/themePalettes";
+
 import indexHtml from "../index.html?raw";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
@@ -9,10 +11,7 @@ import {
   isKnownThemePreference,
   resolveThemeAppearance,
   T3_CHAT_THEME,
-  EMBER_THEME,
   GROVE_THEME,
-  IRIS_THEME,
-  OCEAN_THEME,
   THEME_APPEARANCE_MODE_STORAGE_KEY,
   THEME_FOLLOW_SYSTEM_STORAGE_KEY,
   toCanonicalThemeColor,
@@ -113,7 +112,7 @@ function runtimeResolvedAppearance(
   invalidateCustomThemes();
   try {
     const raw = storage[THEME_STORAGE_KEY] ?? null;
-    const theme = raw !== null && isKnownThemePreference(raw) ? raw : "system";
+    const theme = raw !== null && isKnownThemePreference(raw) ? raw : MERCURIAN_THEME.id;
     const followRaw = storage[THEME_FOLLOW_SYSTEM_STORAGE_KEY] ?? null;
     const appearanceRaw = storage[THEME_APPEARANCE_MODE_STORAGE_KEY] ?? null;
     const appearanceMode =
@@ -123,7 +122,7 @@ function runtimeResolvedAppearance(
           ? "system"
           : followRaw === "false"
             ? null
-            : theme === "system"
+            : theme === "system" || theme === MERCURIAN_THEME.id
               ? "system"
               : null;
     const followSystem = appearanceMode === "system";
@@ -226,7 +225,7 @@ describe("index.html boot script", () => {
       prefersDark: true,
     },
     {
-      name: "a removed custom theme falls back to system",
+      name: "a removed custom theme falls back to the default theme",
       storage: { [THEME_STORAGE_KEY]: "gone-theme" },
       prefersDark: true,
     },
@@ -342,7 +341,7 @@ describe("index.html boot script", () => {
   // boot script's hand-maintained copy into a CI-enforced contract: any
   // palette change breaks this test until the copy in index.html is updated.
   it("keeps every built-in boot splash in sync with the real palettes", () => {
-    for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
+    for (const theme of BUILT_IN_THEMES) {
       // The boot script resolves every built-in from a light base appearance.
       expect(theme.appearance).toBe("light");
       for (const mode of ["light", "dark"] as const) {
@@ -363,6 +362,17 @@ describe("index.html boot script", () => {
         expect(boot.backgroundColor).toBe(colors!.chrome);
         expect(boot.metaContent).toBe(colors!.chrome);
       }
+    }
+  });
+
+  it("opens a fresh install in Mercurian, following the system appearance", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const colors = getThemeColorsForMode(MERCURIAN_THEME, mode)!;
+      const boot = runBootScript({ prefersDark: mode === "dark" });
+      expect(boot.themeId).toBe(MERCURIAN_THEME.id);
+      expect(boot.isDark).toBe(mode === "dark");
+      expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
+      expect(boot.metaContent).toBe(colors.chrome);
     }
   });
 
@@ -491,19 +501,18 @@ describe("index.html boot script", () => {
       prefersDark: false,
     });
 
-    expect(boot.themeId).toBeUndefined();
-    expect(boot.themeSelected).toBeUndefined();
-    expect(boot.backgroundColor).toBe("#ffffff");
-    expect(boot.metaContent).toBe("#ffffff");
+    const chrome = getThemeColorsForMode(MERCURIAN_THEME, "light")!.chrome;
+    expect(boot.themeId).toBe(MERCURIAN_THEME.id);
+    expect(boot.backgroundColor).toBe(chrome);
+    expect(boot.metaContent).toBe(chrome);
   });
 
-  it("leaves unknown preferences unthemed so the runtime default applies", () => {
+  it("opens unknown preferences in the runtime's default theme", () => {
     const boot = runBootScript({
       storage: { [THEME_STORAGE_KEY]: "gone-theme" },
       prefersDark: true,
     });
-    expect(boot.themeId).toBeUndefined();
-    expect(boot.themeSelected).toBeUndefined();
+    expect(boot.themeId).toBe(MERCURIAN_THEME.id);
     expect(boot.isDark).toBe(true);
   });
 
