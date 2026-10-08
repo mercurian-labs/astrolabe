@@ -13,8 +13,6 @@ import type {
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  ChevronsDownUpIcon,
-  ChevronsUpDownIcon,
   Columns2Icon,
   FolderTreeIcon,
   InfoIcon,
@@ -24,6 +22,7 @@ import {
   TextWrapIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from "lucide";
 import { useAtomRefresh } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -64,6 +63,7 @@ import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
 import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
 import { Button } from "../ui/button";
+import { MorphIcon } from "~/components/MorphIcon";
 import { Checkbox } from "../ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -254,7 +254,9 @@ function PullRequestCodeTab({
     readonly slices: ReadonlyArray<DiffSlice>;
   }>({ key: "", cursor: null, slices: NO_SLICES });
   const parseCache = useRef(new Map<string, RenderablePatch>());
-  const [viewer, setViewer] = useState<CodeViewHandle<ReviewAnnotationGroup> | null>(null);
+  const [viewer, setViewer] = useState<CodeViewHandle<ReviewAnnotationGroup, undefined> | null>(
+    null,
+  );
 
   const referenceKey = pullRequestReviewKey(reference);
   const commit = selectedCommitOid;
@@ -791,11 +793,7 @@ function PullRequestCodeTab({
             toggleFile(item.id);
           }}
         >
-          {collapsed ? (
-            <ChevronRightIcon className="size-4" />
-          ) : (
-            <ChevronDownIcon className="size-4" />
-          )}
+          <MorphIcon className="size-4" icon={collapsed ? ChevronRight : ChevronDown} />
         </Button>
       );
     },
@@ -860,7 +858,7 @@ function PullRequestCodeTab({
                 </TooltipPopup>
               </Tooltip>
             ) : (
-              "Viewed"
+              <span className="@max-xs:hidden">Viewed</span>
             )}
           </label>
         </span>
@@ -1249,11 +1247,10 @@ function PullRequestCodeTab({
                 />
               }
             >
-              {allFilesCollapsed ? (
-                <ChevronsUpDownIcon className="size-3.5" />
-              ) : (
-                <ChevronsDownUpIcon className="size-3.5" />
-              )}
+              <MorphIcon
+                className="size-3.5"
+                icon={allFilesCollapsed ? ChevronsUpDown : ChevronsDownUp}
+              />
             </TooltipTrigger>
             <TooltipPopup side="top">
               {allFilesCollapsed ? "Expand all files" : "Collapse all files"}
@@ -1506,7 +1503,7 @@ function PullRequestCodeTab({
             // diff crosses the overflow boundary. The viewer is itself focusable for keyboard
             // interaction, but its native host outline clips and competes with the focus
             // indicators on its actual controls.
-            className="h-full overflow-auto [scrollbar-gutter:stable]"
+            className="@container h-full overflow-auto [scrollbar-gutter:stable]"
             viewerRef={setViewer}
             items={items}
             selectedLines={selectedLines}
@@ -1519,6 +1516,12 @@ function PullRequestCodeTab({
             renderHeaderPrefix={renderHeaderPrefix}
             renderHeaderMetadata={renderHeaderMetadata}
             renderAnnotation={renderAnnotation}
+            // Find can ask again before the unfolded file arrives, so this unfolds and never folds.
+            onRevealSearchMatch={(item) =>
+              setToggledFiles((current) =>
+                toggleFileDiffFoldForViewed(item.id, false, effectiveFoldOverride, current),
+              )
+            }
             unsafeCSSExtra={REPLACE_FILE_COUNTS_CSS}
           />
         </div>
