@@ -1,14 +1,15 @@
 import { LegendList } from "@legendapp/list/react-native";
 import type { ProjectEntry } from "@t3tools/contracts";
+import { AppActivityIndicator } from "../../components/AppActivityIndicator";
 import { SymbolView } from "../../components/AppSymbol";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, RefreshControl, View } from "react-native";
+import { Platform, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { cn } from "../../lib/cn";
-import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
+import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import {
   buildFileTree,
   flattenFileTree,
@@ -42,7 +43,6 @@ const FileTreeRow = memo(function FileTreeRow(props: {
   readonly item: VisibleFileTreeNode;
   readonly selected: boolean;
   readonly expanded: boolean;
-  readonly loaded: boolean;
   readonly loading: boolean;
   readonly onPressDirectory: (path: string, expand: boolean) => void;
   readonly onPreviewFile?: (path: string) => void;
@@ -97,11 +97,7 @@ const FileTreeRow = memo(function FileTreeRow(props: {
         {node.name}
       </Text>
       {node.kind === "directory" && props.expanded && props.loading ? (
-        <ActivityIndicator size="small" accessibilityLabel={`Loading ${node.name}`} />
-      ) : node.kind === "directory" && props.loaded ? (
-        <Text className="text-2xs font-t3-medium text-foreground-tertiary">
-          {node.children.length}
-        </Text>
+        <AppActivityIndicator size="small" accessibilityLabel={`Loading ${node.name}`} />
       ) : null}
     </Pressable>
   );
@@ -115,7 +111,6 @@ export function FileTreeBrowser(props: {
   readonly searchQuery: string;
   readonly searchTruncated: boolean;
   readonly selectedPath: string | null;
-  readonly loadedDirectories: ReadonlySet<string>;
   readonly loadingDirectories: ReadonlySet<string>;
   readonly onLoadDirectory: (path: string) => void;
   readonly onPreviewFile?: (path: string) => void;
@@ -128,14 +123,12 @@ export function FileTreeBrowser(props: {
     readonly selectedPathAtPress: string | null;
   } | null>(null);
   const insets = useSafeAreaInsets();
-  // Native transparent-header height ≈ safe-area top + nav bar (~44). Matches the
-  // observed adjustedContentInset bottom (~102) seen in the native trace.
-  const headerInset = Platform.OS === "ios" ? insets.top + IOS_NAV_BAR_HEIGHT : 0;
+  const columnMetrics = useNativeColumnLayoutMetrics();
+  const headerInset = Platform.OS === "ios" ? (columnMetrics?.safeArea.top ?? insets.top) : 0;
   const {
     onLoadDirectory,
     onPreviewFile,
     onSelectFile,
-    loadedDirectories,
     loadingDirectories,
     selectedPath: controlledSelectedPath,
   } = props;
@@ -226,7 +219,6 @@ export function FileTreeBrowser(props: {
         item={item}
         selected={item.node.kind === "file" && item.node.path === selectedPath}
         expanded={expandedPaths.has(item.node.path)}
-        loaded={loadedDirectories.has(item.node.path)}
         loading={loadingDirectories.has(item.node.path)}
         onPressDirectory={toggleDirectory}
         onPreviewFile={onPreviewFile}
@@ -237,7 +229,6 @@ export function FileTreeBrowser(props: {
       expandedPaths,
       handleSelectFile,
       onPreviewFile,
-      loadedDirectories,
       loadingDirectories,
       selectedPath,
       toggleDirectory,
@@ -245,8 +236,8 @@ export function FileTreeBrowser(props: {
   );
 
   const extraData = useMemo(
-    () => ({ expandedPaths, loadedDirectories, loadingDirectories, selectedPath }),
-    [expandedPaths, loadedDirectories, loadingDirectories, selectedPath],
+    () => ({ expandedPaths, loadingDirectories, selectedPath }),
+    [expandedPaths, loadingDirectories, selectedPath],
   );
 
   // UIKit owns the header inset on every supported iOS version. Keep the
@@ -259,9 +250,7 @@ export function FileTreeBrowser(props: {
       data={visibleNodes}
       keyExtractor={(item) => item.node.path}
       contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
-      scrollIndicatorInsets={
-        Platform.OS === "ios" ? { top: headerInset, left: 0, right: 0, bottom: 0 } : undefined
-      }
+      automaticallyAdjustsScrollIndicatorInsets={Platform.OS === "ios"}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       estimatedItemSize={42}
@@ -308,7 +297,7 @@ export function FileTreeBrowser(props: {
               </Pressable>
             </>
           ) : props.isPending ? (
-            <ActivityIndicator size="small" />
+            <AppActivityIndicator size="small" />
           ) : (
             <>
               <Text className="text-sm font-t3-bold text-foreground">No files found</Text>
