@@ -5,7 +5,7 @@
  * reachable from inside its network. Exit code 0 lets the deploy continue.
  *
  * Each folder keeps its own ledger table, so the relay's upstream migrations
- * merge in unchanged next to ours.
+ * merge in unchanged next to ours. The auth folder comes from apps/cloud.
  */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -18,7 +18,11 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schedule from "effect/Schedule";
 
-const FOLDERS = [{ name: "relay", table: "relay_migrations" }] as const;
+// Order matters: later folders may reference earlier ones' tables.
+const FOLDERS = [
+  { name: "auth", table: "auth_migrations" },
+  { name: "relay", table: "relay_migrations" },
+] as const;
 
 const main = Effect.gen(function* () {
   const path = yield* Path.Path;

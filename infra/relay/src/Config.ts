@@ -54,9 +54,8 @@ export class RelayConfiguration extends Context.Service<
     readonly relayIssuer: string;
     readonly apns: ApnsCredentials | null;
     readonly fcmServiceAccount?: Redacted.Redacted<string>;
-    readonly clerkSecretKey: Redacted.Redacted<string>;
-    readonly clerkPublishableKey: string;
-    readonly clerkJwtAudience: string;
+    /** Sign in with Mercurian's origin; client tokens must come from it. */
+    readonly accountJwtIssuer: string;
     readonly apnsDeliveryJobSigningSecret: Redacted.Redacted<string>;
     readonly cloudMintPrivateKey: Redacted.Redacted<string>;
     readonly cloudMintPublicKey: string;

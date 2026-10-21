@@ -125,8 +125,8 @@ Required `production` environment variables:
 
 - `RELAY_API_ZONE_NAME`
 - `RELAY_TUNNEL_ZONE_NAME`
+- `ACCOUNT_JWT_ISSUER`
 - `CLERK_PUBLISHABLE_KEY`
-- `CLERK_JWT_AUDIENCE`
 - `CLERK_JWT_TEMPLATE`
 - `CLERK_CLI_OAUTH_CLIENT_ID`
 - `APNS_ENVIRONMENT`
@@ -144,7 +144,6 @@ Optional `production` environment variables:
 
 Required `production` environment secrets:
 
-- `CLERK_SECRET_KEY`
 - `APNS_PRIVATE_KEY`
 
 After changing a variable or secret, run the **Deploy T3 Connect relay** workflow manually from

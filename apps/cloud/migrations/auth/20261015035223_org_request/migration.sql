@@ -1,0 +1,1 @@
+ALTER TABLE "auth"."user" ADD COLUMN "org_requested_at" timestamp;

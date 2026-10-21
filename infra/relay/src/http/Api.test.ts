@@ -9,7 +9,7 @@ import * as RelayTokens from "../auth/RelayTokens.ts";
 import * as Devices from "../agentActivity/Devices.ts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no generateKeyPairSync.
 import * as NodeCrypto from "node:crypto";
-import { createClerkClient, verifyToken } from "@clerk/backend";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
@@ -73,11 +73,6 @@ import * as ManagedEndpointProvider from "../environments/ManagedEndpointProvide
 import * as AgentActivityPublisher from "../agentActivity/AgentActivityPublisher.ts";
 import * as EnvironmentPublishSignatures from "../environments/EnvironmentPublishSignatures.ts";
 
-vi.mock("@clerk/backend", () => ({
-  createClerkClient: vi.fn(),
-  verifyToken: vi.fn(),
-}));
-
 const relaySettings: RelayConfiguration.RelayConfiguration["Service"] = {
   relayIssuer: "https://relay.example.test",
   apns: {
@@ -87,9 +82,7 @@ const relaySettings: RelayConfiguration.RelayConfiguration["Service"] = {
     bundleId: "com.example.t3",
     environment: "sandbox",
   },
-  clerkSecretKey: Redacted.make("clerk-secret-key"),
-  clerkPublishableKey: "pk_test_test",
-  clerkJwtAudience: "t3-code-relay",
+  accountJwtIssuer: "https://auth.example.test",
   apnsDeliveryJobSigningSecret: Redacted.make("apns-delivery-secret"),
   cloudMintPrivateKey: Redacted.make("cloud-mint-private-key"),
   cloudMintPublicKey: "cloud-mint-public-key",
@@ -385,57 +378,65 @@ describe("Cloudflare rate-limit retry hint", () => {
 });
 
 describe("relay client authentication", () => {
-  it.effect("preserves the existing Clerk session JWT path", () =>
-    Effect.gen(function* () {
-      vi.mocked(verifyToken).mockResolvedValue({
-        sub: "user_session",
-        aud: relaySettings.clerkJwtAudience,
-      } as never);
+  const accountKeys = Effect.promise(async () => {
+    const { privateKey, publicKey } = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+    const jwk = { ...(await exportJWK(publicKey)), kid: "account-key", alg: "EdDSA" };
+    return { privateKey, jwks: { keys: [jwk] } };
+  }).pipe(Effect.cached, Effect.runSync);
 
-      expect(yield* verifyRelayClientBearerToken(relaySettings, "session-token")).toEqual({
-        sub: "user_session",
-        mode: "clerk_session_bearer",
+  const signAccountToken = (claims: { iss?: string; aud?: string; sub?: string }) =>
+    Effect.gen(function* () {
+      const { privateKey } = yield* accountKeys;
+      const jwt = new SignJWT({})
+        .setProtectedHeader({ alg: "EdDSA", kid: "account-key" })
+        .setIssuer(claims.iss ?? relaySettings.accountJwtIssuer)
+        .setAudience(claims.aud ?? relaySettings.relayIssuer)
+        .setIssuedAt()
+        .setExpirationTime("15m");
+      if (claims.sub !== undefined) jwt.setSubject(claims.sub);
+      return yield* Effect.promise(() => jwt.sign(privateKey));
+    });
+
+  // Sign in with Mercurian publishes its keys at <issuer>/api/auth/jwks.
+  const withAccountJwks = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const { jwks } = yield* accountKeys;
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return url === `${relaySettings.accountJwtIssuer}/api/auth/jwks`
+          ? Response.json(jwks)
+          : new Response("not found", { status: 404 });
       });
-      expect(verifyToken).toHaveBeenCalledWith("session-token", {
-        secretKey: "clerk-secret-key",
-        audience: relaySettings.clerkJwtAudience,
-      });
-      expect(createClerkClient).not.toHaveBeenCalled();
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          vi.mocked(verifyToken).mockReset();
-          vi.mocked(createClerkClient).mockReset();
-        }),
-      ),
+      return yield* effect.pipe(Effect.ensuring(Effect.sync(() => fetchSpy.mockRestore())));
+    });
+
+  it.effect("accepts an account token issued for this relay", () =>
+    withAccountJwks(
+      Effect.gen(function* () {
+        const token = yield* signAccountToken({ sub: "user_1" });
+        expect(yield* verifyRelayClientBearerToken(relaySettings, token)).toEqual({
+          sub: "user_1",
+          mode: "account_bearer",
+        });
+      }),
     ),
   );
 
-  it.effect("falls back to Clerk OAuth token verification for the headless CLI", () =>
-    Effect.gen(function* () {
-      vi.mocked(verifyToken).mockRejectedValue(new Error("not a session JWT"));
-      vi.mocked(createClerkClient).mockReturnValue({
-        authenticateRequest: vi.fn().mockResolvedValue({
-          isAuthenticated: true,
-          toAuth: () => ({ userId: "user_oauth" }),
-        }),
-      } as never);
-
-      expect(yield* verifyRelayClientBearerToken(relaySettings, "oauth-token")).toEqual({
-        sub: "user_oauth",
-        mode: "clerk_oauth_bearer",
-      });
-      expect(createClerkClient).toHaveBeenCalledWith({
-        secretKey: "clerk-secret-key",
-        publishableKey: "pk_test_test",
-      });
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          vi.mocked(verifyToken).mockReset();
-          vi.mocked(createClerkClient).mockReset();
-        }),
-      ),
+  it.effect("rejects tokens for another audience, from another issuer, or without a subject", () =>
+    withAccountJwks(
+      Effect.gen(function* () {
+        for (const claims of [
+          { sub: "user_1", aud: "https://other-relay.example.test" },
+          { sub: "user_1", iss: "https://impostor.example.test" },
+          {},
+        ]) {
+          const token = yield* signAccountToken(claims);
+          const result = yield* verifyRelayClientBearerToken(relaySettings, token).pipe(
+            Effect.flip,
+          );
+          expect(result._tag).toBe("AccountTokenVerificationFailed");
+        }
+      }),
     ),
   );
 });
