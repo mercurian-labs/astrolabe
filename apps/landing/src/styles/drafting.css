@@ -4559,14 +4559,79 @@ html:not(.js) .hover-only {
   }
 }
 
-/* ───────────────────────────────────────── Footer */
+/* ───────────────────────────────────────── Footer: the night band, printed on Beethoven basin
+   The matrix sits on a wash (night at 78% with a 6px blur), as terrain may only sit under the wash or
+   an opaque surface; the stage below it is open print, where the naming lens reads the ground. With
+   JavaScript the shader (footer.js) prints the ground and the raised wordmark; without it, or without
+   WebGL2, the static print (two grain masks) and the plain wordmark show. */
 
 .foot {
-  border-top: 1px solid var(--rule);
+  --foot-night: #1e1c1a;
+  --foot-ivory: #eaddc7;
+  --foot-olive: #8d8455;
+  --ink: var(--foot-ivory);
+  --ink-2: #bdb29f;
+  --ink-3: #958c7c;
+  --rule: rgb(234 221 199 / 0.14);
+  --wash: color-mix(in srgb, var(--foot-night) 78%, transparent);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--foot-night);
+  /* Vertical swipes scroll the page; taps and sideways drags move the lens. */
+  touch-action: pan-y;
 }
+.foot__ground {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+.foot__ground i,
+.foot__ground canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.foot__ground i {
+  -webkit-mask: var(--art) center / cover no-repeat;
+  mask: var(--art) center / cover no-repeat;
+}
+.foot__olive {
+  --art: url("/assets/footer/terrain-olive.webp");
+  background: var(--foot-olive);
+  opacity: 0.5;
+}
+.foot__ivory {
+  --art: url("/assets/footer/terrain-light.webp");
+  background: var(--foot-ivory);
+  opacity: 0.78;
+}
+/* With JavaScript the static print waits for the shader to fail, so a WebGL browser never fetches it. */
+.js .foot:not(.is-static) .foot__ground i {
+  display: none;
+}
+.foot__ground canvas {
+  display: block;
+  opacity: 0;
+}
+.foot.is-live .foot__ground canvas {
+  opacity: 1;
+}
+.foot.is-static .foot__ground canvas {
+  display: none;
+}
+
 .foot__matrix {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  border-bottom: 1px solid var(--rule);
+}
+.foot__matrix > * {
+  background: var(--wash);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 .foot__prop {
   grid-column: span 4;
@@ -4592,6 +4657,9 @@ html:not(.js) .hover-only {
   padding: var(--pad);
   border-left: 1px solid var(--rule);
 }
+.foot__group .tag {
+  color: var(--ink-3);
+}
 .foot__group ul {
   display: flex;
   flex-direction: column;
@@ -4604,6 +4672,10 @@ html:not(.js) .hover-only {
 }
 .foot__group a:is(:hover, :focus-visible) {
   background-size: 100% 1px;
+}
+.foot__group a:focus-visible {
+  outline: 1px solid var(--ink-3);
+  outline-offset: 3px;
 }
 .foot__symbol {
   grid-column: span 4;
@@ -4627,58 +4699,114 @@ html:not(.js) .hover-only {
   grid-column: span 4;
   border-left: 1px solid var(--rule);
 }
-.foot__mark {
-  padding: clamp(1rem, 2vw, 2rem) var(--pad) clamp(1.25rem, 2.5vw, 2.5rem);
-  border-top: 1px solid var(--rule);
+
+/* The stage: open print, then the wordmark set across the band. The image fixes the mark's place and
+   is what shows without WebGL; with it, the shader prints the letters as a raised plate. */
+.foot__stage {
+  position: relative;
+  padding: clamp(5rem, 11vw, 13rem) var(--pad) clamp(1.75rem, 3.2vw, 4rem);
 }
-.mark {
+.foot__mark {
+  position: relative;
+  z-index: 1;
+}
+.foot__mark img {
+  display: block;
   width: 100%;
   height: auto;
-  overflow: visible;
 }
-.mark__outline {
-  --wm-fill: none;
-  --wm-stroke: var(--ink);
-  --wm-rust: none;
-  --wm-rstroke: var(--rust);
-  stroke-width: 1;
+.foot.is-live .foot__mark img {
+  visibility: hidden;
 }
-.mark__solid use {
-  --wm-fill: var(--ink);
-  --wm-stroke: none;
-  --wm-rust: var(--rust);
-  --wm-rstroke: none;
-}
-.mark__build path {
-  fill: none;
-  stroke: var(--rule);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-.mark__build .mark__dash {
-  stroke-dasharray: 3 5;
-}
-.mark__build text {
-  font: 500 8px var(--mono);
+.foot__plate,
+.foot__readout {
+  font: 500 0.6875rem/1.4 var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  fill: var(--ink-3);
 }
-/* Without a hovering pointer the solid mark shows whole. */
-@media (hover: none) {
-  .mark__solid {
-    mask: none;
-  }
-  .mark__outline {
-    display: none;
-  }
+.foot__plate {
+  position: absolute;
+  top: 1.25rem;
+  left: var(--pad);
+  padding: 0.3rem 0.55rem;
+  color: var(--ink-2);
+  background: var(--wash);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
+/* The naming lens: leader lines and rims in an SVG over the print, the readout beside the pointer.
+   The SVG clips to the stage, so a feature under the links shows only as a leader toward it. */
+.foot__names {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.foot__names line,
+.foot__names circle {
+  fill: none;
+  stroke: var(--ink);
+  vector-effect: non-scaling-stroke;
+}
+.foot__names .rim {
+  stroke-opacity: 0.32;
+  stroke-width: 1;
+}
+.foot__names .lead {
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+}
+.foot__names .dot {
+  fill: var(--ink);
+  stroke: none;
+}
+.foot__names .num {
+  fill: var(--ink);
+  font: 500 10px var(--mono);
+}
+.foot__readout {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  min-width: 15rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--ink-2);
+  background: var(--wash);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 0 6px var(--foot-night),
+    0 0 2px var(--foot-night);
+}
+.foot__readout[hidden] {
+  display: none;
+}
+.foot__readout b {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--ink);
+  font-weight: 500;
+}
+.foot__readout span {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5em;
+}
+.foot__readout em {
+  font-style: normal;
+  color: var(--ink-3);
+}
+
 @media (max-width: 900px) {
   .foot__matrix {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .foot__prop,
-  .foot__symbol,
   .foot__fine,
   .foot__fine--end {
     grid-column: 1 / -1;
@@ -4687,13 +4815,13 @@ html:not(.js) .hover-only {
   .foot__group {
     border-top: 1px solid var(--rule);
   }
-  .foot__group:nth-of-type(1) {
+  .foot__group:first-of-type {
     border-left: 0;
   }
-  .foot__symbol {
-    display: none;
+  .foot__stage {
+    padding-top: 10rem;
   }
-  .mark__build text {
+  .foot__symbol {
     display: none;
   }
 }

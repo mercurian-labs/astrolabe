@@ -18,7 +18,8 @@ vp run --filter @mercurian/landing typecheck # astro check
 - `src/scripts/` holds the page's vanilla modules. `drafting.js` runs the page's motion (loaded by the
   layout); `relight.js` and `instrument.js` run the closing astrolabe and its relit ground (loaded by
   `Close.astro`, in that order, because the ground listens for the instrument's `astrolabe:time` events).
-  `sky.js`, `places.js` and `twilight.js` are the maths they import.
+  `sky.js`, `places.js` and `twilight.js` are the maths they import. `footer.js` prints the footer's
+  night band and runs its naming lens (loaded by `Footer.astro`).
 - `src/pages/relight-test.astro` is the closing section's test bench (`/relight-test/`).
 - Everything in `public/` is copied from astrolabe-site under the same names, so a new render drops in
   by copying the file over.
@@ -43,6 +44,23 @@ Mercury DEM from the branding repository or `MERCURY_DEM`). Regenerate there, th
 SITE=~/dev/mercurian/astrolabe-site
 cp $SITE/assets/art/print-{wide,tall}-{light,olive}.webp apps/landing/public/assets/art/
 ```
+
+The footer's ground (`public/assets/footer/`) is the footer lab's (astrolabe-site `lab/footer/`, variant 4,
+the naming lens, at `4aedcc0`): Beethoven basin cut from the MESSENGER DEM, and the named features
+around it from the IAU Gazetteer of Planetary Nomenclature.
+
+| File in `public/assets/footer/` | Made by                                                                                                                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `terrain.webp`, `terrain.json`  | `python scripts/lab/render-footer-terrain.py` (the height as 16 bits, and the view that turns a pixel into latitude and longitude)                                                                                             |
+| `terrain-{light,olive}.webp`    | the same script (the static print's grain masks, fetched only without WebGL)                                                                                                                                                   |
+| `features.json`                 | `python3 -I scripts/lab/gazetteer.py MERCURY_nomenclature_center_pts.dbf lab/footer/terrain.json lab/footer/features.json`, from the gazetteer's shapefile attribute table at https://planetarynames.wr.usgs.gov/GIS_Downloads |
+
+```sh
+cp $SITE/lab/footer/{terrain,features}.json $SITE/lab/footer/assets/terrain{,-light,-olive}.webp apps/landing/public/assets/footer/
+```
+
+Re-cutting the crop (`SPEC` in the terrain script) needs `features.json` regenerated against the new
+`terrain.json`, and a new sun there needs `SUN` in `footer.js` to match its `REST_SUN`.
 
 Brand marks (`public/assets/brand/`) come from the branding repository's `identity/`, and the fonts
 (`public/assets/fonts/`, with their SIL Open Font License texts) from astrolabe-site's `assets/fonts/`.
