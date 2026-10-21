@@ -1,7 +1,7 @@
 # @mercurian/landing
 
 The Astrolabe landing page, an Astro app. It is the `drafting/` page of the
-`astrolabe-site` repository (`~/dev/mercurian/astrolabe-site`, ported at `86f2338`), rebuilt one to one:
+`astrolabe-site` repository (`~/dev/mercurian/astrolabe-site`, ported at `86f2338`, with the hero print from `25861ca`), rebuilt one to one:
 the same markup, styles and scripts, split into a layout and one component per section.
 
 ```sh
