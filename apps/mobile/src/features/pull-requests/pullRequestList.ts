@@ -1,28 +1,36 @@
-import type {
-  EnvironmentId,
-  PullRequestListEntry,
-  PullRequestListFilters,
-  PullRequestListInput,
-  PullRequestListResult,
-  PullRequestInvolvement,
-  PullRequestListState,
+import { parsePullRequestQuery } from "@t3tools/client-runtime/pull-request-query";
+import {
+  ProjectId,
+  resolvePullRequestAuthorFilter,
+  type EnvironmentId,
+  type PullRequestListEntry,
+  type PullRequestListInput,
+  type PullRequestListResult,
 } from "@t3tools/contracts";
+import type { PullRequestListControls } from "../../persistence/mobile-preferences";
 
 export const PR_LIST_PAGE_SIZE = 30;
-export interface PullRequestListControls {
-  readonly state: PullRequestListState;
-  readonly involvement: PullRequestInvolvement;
-  readonly filters: PullRequestListFilters;
-  readonly projectId?: string;
-  readonly projectEnvironmentId?: string;
-  readonly sort: "updated" | "created" | "oldest";
-}
+export type { PullRequestListControls } from "../../persistence/mobile-preferences";
 export const DEFAULT_PR_LIST_CONTROLS: PullRequestListControls = {
   state: "open",
   involvement: "all",
   filters: {},
   sort: "updated",
 };
+
+export function withoutScratchProjectScope(
+  controls: PullRequestListControls,
+  projects: readonly { id: string; environmentId: string; isScratch?: true }[],
+): PullRequestListControls {
+  return projects.some(
+    (project) =>
+      project.isScratch &&
+      project.id === controls.projectId &&
+      project.environmentId === controls.projectEnvironmentId,
+  )
+    ? { ...controls, projectId: undefined, projectEnvironmentId: undefined }
+    : controls;
+}
 
 export function pullRequestListKey(
   item: Pick<PullRequestListEntry, "host" | "repository" | "number">,
@@ -37,7 +45,6 @@ export type EnvironmentPullRequestListEntry = PullRequestListEntry & {
 export const scopedPullRequestListKey = (entry: EnvironmentPullRequestListEntry) =>
   `${entry.environmentId}:${pullRequestListKey(entry)}`;
 
-/** Provider refreshes and diff-count batches recreate entries; unchanged rows can stay mounted. */
 export function pullRequestListRowsAreEqual(
   previous: EnvironmentPullRequestListEntry,
   next: EnvironmentPullRequestListEntry,
@@ -53,6 +60,8 @@ export function pullRequestListRowsAreEqual(
       previous.url === next.url &&
       previous.state === next.state &&
       previous.isDraft === next.isDraft &&
+      previous.mergeability === next.mergeability &&
+      previous.baseBranch === next.baseBranch &&
       previous.updatedAt === next.updatedAt &&
       previous.additions === next.additions &&
       previous.deletions === next.deletions &&
@@ -71,7 +80,6 @@ export function pullRequestListRowsAreEqual(
   );
 }
 
-/** Keep cursors and viewer identities with the environment that issued them. */
 export function mergeEnvironmentPullRequestPages(
   sources: readonly { environmentId: EnvironmentId; pages: PullRequestListPages }[],
 ) {
@@ -135,6 +143,21 @@ export function pullRequestListHead(
       };
 }
 
+export function pullRequestListInput(
+  controls: PullRequestListControls,
+  query: string,
+): PullRequestListInput {
+  const parsed = parsePullRequestQuery(query);
+  return {
+    state: controls.state,
+    involvement: controls.involvement,
+    filters: { ...controls.filters, ...parsed.filters },
+    limit: PR_LIST_PAGE_SIZE,
+    ...(controls.projectId ? { projectId: ProjectId.make(controls.projectId) } : {}),
+    ...(parsed.text ? { query: parsed.text } : {}),
+  };
+}
+
 export function nextPullRequestListInput(
   pages: PullRequestListPages,
   input: PullRequestListInput,
@@ -180,10 +203,12 @@ export function filterPullRequestList<
   viewers: PullRequestListResult["viewers"],
   query: string,
   localSearchHosts: ReadonlySet<string>,
+  connectedEnvironmentIds?: ReadonlySet<string>,
 ) {
   const normalize = (value: string) => value.toLowerCase();
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const { filters } = controls;
+  const parsed = parsePullRequestQuery(query);
+  const words = parsed.text.toLowerCase().split(/\s+/).filter(Boolean);
+  const filters = { ...controls.filters, ...parsed.filters };
   const filtered = entries.filter((entry) => {
     if (controls.state !== "all" && entry.state !== controls.state) return false;
     if (controls.projectId && entry.projectId !== controls.projectId) return false;
@@ -200,10 +225,9 @@ export function filterPullRequestList<
     if ((filters.draft === "only" && !entry.isDraft) || (filters.draft === "hide" && entry.isDraft))
       return false;
     if (filters.author) {
-      const author = filters.author === "me" ? viewer : filters.author;
-      if (!author || normalize(entry.author?.login ?? "") !== normalize(author)) return false;
+      const author = resolvePullRequestAuthorFilter(filters.author, viewer);
+      if (normalize(entry.author?.login ?? "") !== normalize(author)) return false;
     }
-    // Hosts without a review rollup still perform their own review filtering.
     if (filters.review && entry.reviewDecision && entry.reviewDecision !== filters.review)
       return false;
     if (filters.review === "none" && entry.reviewDecision) return false;
@@ -219,11 +243,14 @@ export function filterPullRequestList<
     }
     return true;
   });
-  // The same repository can be available on multiple machines. Pick its first matching source.
+  const reachable = (entry: Entry) =>
+    !connectedEnvironmentIds ||
+    (entry.environmentId !== undefined && connectedEnvironmentIds.has(entry.environmentId));
   const unique = new Map<string, Entry>();
   for (const entry of filtered) {
     const key = pullRequestListKey(entry);
-    if (!unique.has(key)) unique.set(key, entry);
+    const held = unique.get(key);
+    if (!held || (!reachable(held) && reachable(entry))) unique.set(key, entry);
   }
   return [...unique.values()].sort((a, b) =>
     controls.sort === "created"
