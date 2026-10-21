@@ -618,6 +618,7 @@ class Foot {
     if (lens.r < 1) {
       readout.hidden = true;
       svg.replaceChildren();
+      this.stage.style.removeProperty("--reading");
       return;
     }
     const top = this.stage.offsetTop;
@@ -696,6 +697,8 @@ class Foot {
         .join("");
     readout.hidden = false;
     readout.style.opacity = fade;
+    // The readout gives the coordinates now, so the place label steps back out of its way.
+    this.stage.style.setProperty("--reading", fade.toFixed(3));
     // The chip takes the first place beside the pointer that keeps clear of the letters and the stage's edges.
     const w = readout.offsetWidth;
     const h = readout.offsetHeight;

@@ -1278,6 +1278,11 @@ section {
   flex: none;
   color: var(--ink-3);
 }
+/* The closing text slides in from the right edge; clip keeps it from widening the page (and, unlike
+   hidden, leaves the sticky stage working). */
+.story {
+  overflow-x: clip;
+}
 .story__text {
   display: flex;
   flex-direction: column;
@@ -4728,6 +4733,7 @@ html:not(.js) .hover-only {
   position: absolute;
   top: 1.25rem;
   left: var(--pad);
+  opacity: calc(1 - var(--reading, 0));
   padding: 0.3rem 0.55rem;
   color: var(--ink-2);
   background: var(--wash);
