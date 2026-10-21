@@ -35,9 +35,15 @@ import {
 } from "~/state/server";
 import { appCommand, isAppCommand, type AppCommandContext } from "./commands";
 import { handleLeaderRequests, openExLine, type KeyOrigin } from "./doors";
-import { appCommandsSlot, chatTabsSlot, panesSlot, sidebarSectionSlot } from "./handles";
+import {
+  appCommandsSlot,
+  chatTabsSlot,
+  panesSlot,
+  sidebarSectionSlot,
+  tabHistorySlot,
+} from "./handles";
 import { isSyntheticKeybinding } from "./keybindingCommands";
-import { isInDialog, isLeaderKey, leaderKeyLabel, menuKeyOf, takesTyping } from "./leader";
+import { isInDialog, isLeaderKey, leaderKeyLabel, menuKeyOf } from "./leader";
 import {
   menuTrail,
   shortTrail,
@@ -100,7 +106,7 @@ function menuAnchor() {
  * by its key (the focus moves' arrows and h/j/k/l) leaves the menu armed for the device's repeat
  * window (`menuRepeatWindowMs`): its key runs it again without the menu showing, each run
  * restarting the window, until another key (which the page then gets, Escape aside), a click,
- * focus landing in a text field, or the window passing.
+ * or the window passing.
  */
 export function WhichKey() {
   const [menu] = useState(createWhichKeyMenu<KeyOrigin>);
@@ -124,6 +130,7 @@ export function WhichKey() {
     section: sidebarSectionSlot.get(),
     chatTabs: chatTabsSlot.get(),
     panes: panesSlot.get(),
+    tabHistory: tabHistorySlot.get(),
     sections,
     keybindings,
     origin,
@@ -237,14 +244,10 @@ export function WhichKey() {
   useEffect(() => {
     const capture = (event: KeyboardEvent) => onOpenKeyDown(event);
     const bubble = (event: KeyboardEvent) => onDoorKeyDown(event);
-    // A move landing in a text field (the composer, a note, a terminal) ends the repeat window,
-    // so the next key types there. Listening throughout, as the move lands a frame after its key.
-    const onFocusIn = (event: FocusEvent) => {
-      if (menu.isArmed() && takesTyping(event.target)) menu.close();
-    };
+    // The repeat window outlives a move landing in a text field (the composer, a note), so a run
+    // of moves passes through it; the first key that does not repeat reaches the field.
     window.addEventListener("keydown", capture, true);
     window.addEventListener("keydown", bubble);
-    document.addEventListener("focusin", onFocusIn);
     const stop = handleLeaderRequests({
       open: (from) => onLeaderRequest(from),
       key: () => currentLeaderKey(),
@@ -252,7 +255,6 @@ export function WhichKey() {
     return () => {
       window.removeEventListener("keydown", capture, true);
       window.removeEventListener("keydown", bubble);
-      document.removeEventListener("focusin", onFocusIn);
       stop();
     };
   }, [menu]);

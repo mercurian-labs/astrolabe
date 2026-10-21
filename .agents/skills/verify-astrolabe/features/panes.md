@@ -16,16 +16,33 @@ resize and maximize still drive the panel itself.
 - **Pane actions** (`⋯`): Split right, Split down (both disabled for a pane's only
   tab), Close pane (disabled for a lone pane holding only an empty tab). The same
   actions are commands (`pane.splitRight`, `pane.splitDown`, `pane.close`,
-  `pane.toggleMaximized`): the keyboard menu's `p` group (`v`, `s`, `c`, and `m` for
-  maximize), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
+  `pane.toggleMaximized`, `pane.toggleFullScreen`): the keyboard menu's `p` group
+  (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `r` for upstream's
+  `rightPanel.toggle`, faint with no chat on screen), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` with focus in the panes closes the focused pane's active tab, not the chat tab.
 - **Tab context menu** (right-click): Close, Close others, Close tabs to the
   right, Split right, Split down. A lone tab cannot split.
 - **Maximize pane** / **Restore pane**: fills the panel, shown only beside other
   panes. Separate from T3 Code's **Maximize panel**, which fills the main area.
+- **Full screen** (`p f`, `pane.toggleFullScreen`, label "Full screen pane" /
+  "Exit full screen"): the focused pane takes the whole content area: it maximizes
+  the pane (unless alone) and, in a thread's right panel, the panel too, so the chat
+  column hides (`[data-chat-column-maximized-away=true]`); pressed again it restores
+  both. In Wikis and Pull Requests it is maximizing the pane, faint for a lone pane.
+- **Chrome tabs**: tabs are drawn as Chrome's (`index.css`, `TabParts.tsx`): 240px
+  wide, shrinking together to 96px; the title fades out before an always-shown ✕. The
+  tab in front is outlined as Obsidian's: the content background (`--tab-join`), rounded
+  top corners, no bottom edge over a break in the strip's bottom border, and outward
+  curves with a border ring at its feet (`[data-pane-tab][aria-selected=true]::before/::after`). Other tabs are bare until hovered, with a 1px rule
+  between two at rest (`::before`). The focused pane marks its tab in front with a 2px
+  bar along the tab's top edge. The view header below (a wiki note's, a chat's) has no
+  bottom border and the strip's height, so tab and header read as one surface.
 - **Drag a tab** to another strip or a pane edge. Cmd/Ctrl-click and
-  Shift-click select several tabs, which drag together.
+  Shift-click select several tabs, which drag together. The page draws the drag's
+  preview, a pill under the pointer (`body > [aria-hidden=true].fixed`, with a count
+  for several), in place of the browser's snapshot; the insertion line is 20px tall,
+  centred on the strip, midway between the two tabs either side.
 - **One live surface**: only the record's active surface renders. Another
   pane's shown tab reads "Click to show" until its pane takes focus.
 - **Persistence**: each thread's arrangement survives a reload, per device.

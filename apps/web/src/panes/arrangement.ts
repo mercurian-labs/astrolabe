@@ -332,6 +332,37 @@ export function moveTabs(
 }
 
 /**
+ * Astrolabe: places `keys`, in order, as a drop from outside the panes (a sidebar row) on
+ * `paneId` asks: into its tabs at `index` (counted as the insertion line shows it), or in a new
+ * pane on `side`. A key not open yet opens there; one open elsewhere moves. `activeKey` (the
+ * first by default) is active.
+ */
+export function placeTabs(
+  arrangement: Arrangement,
+  keys: readonly string[],
+  paneId: string,
+  drop: { readonly side: Side | null; readonly index: number },
+  activeKey?: string,
+): Arrangement {
+  const [first] = keys;
+  const target = findLeaf(arrangement.root, paneId);
+  if (first === undefined || !target) return arrangement;
+  // A pane showing only an empty tab takes the drop in its place.
+  const [only, ...rest] = target.tabs;
+  const lone = drop.side === null && rest.length === 0 && only !== undefined && isEmptyTab(only);
+  // Not open yet: opened at the pane's end, from where the move below puts them in place.
+  const opened = keys.reduce((next, key) => {
+    if (leafWithTab(next.root, key)) return next;
+    const pane = findLeaf(next.root, paneId);
+    return pane ? insertTab(next, key, paneId, pane.tabs.length) : next;
+  }, arrangement);
+  const active = activeKey !== undefined && keys.includes(activeKey) ? activeKey : first;
+  if (drop.side !== null) return splitWithTabs(opened, keys, paneId, drop.side, active);
+  const placed = moveTabs(opened, keys, paneId, drop.index, active);
+  return lone ? closeTab(placed, only) : placed;
+}
+
+/**
  * Divides a pane on one side and moves several tabs, in order, into the new pane there, as
  * dropping a selection of tabs on a pane's content does. `activeKey` (the first by default)
  * becomes active; the new pane takes focus.

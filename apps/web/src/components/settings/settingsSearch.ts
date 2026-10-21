@@ -441,6 +441,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["vim vi modal normal insert mode keys composer editor notes wiki"],
   },
   {
+    id: "vim-screen-lines",
+    title: "Move by screen line",
+    to: "/settings/keybindings",
+    searchTerms: ["vim j k gj gk wrap wrapped long lines display visual screen line motion"],
+  },
+  {
     id: "leader-key",
     title: "Leader key",
     to: "/settings/keybindings",

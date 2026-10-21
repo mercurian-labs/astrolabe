@@ -35,8 +35,12 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   A prefix the user added with no built-in name shows as `+N` (its entry count).
 - **Groups** (defaults): `g` t Threads, w Wikis, p Pull Requests, u Usage, s
   Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
-  browser tabs, not chat tabs; see chat-tabs.md). `p` `v` split right, `s` split
-  down, `c` close pane, `m` maximize/restore (the focus moves left Panes for the root).
+  browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
+  `navigation.back`/`forward` through their shortcuts: in Threads and Wikis they walk
+  the tab in front's history and are faint at either end; elsewhere the route
+  history). `p` `v` split right, `s` split down, `c` close pane, `m`
+  maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
+  right panel (faint with no chat on screen) (the focus moves left Panes for the root).
   `s` `s` toggle sidebar. `w` `w` open
   Wikis, `f` find or create a document.
 - **Search** (the palette's plain mode, dialog name `Search`): empty, it lists

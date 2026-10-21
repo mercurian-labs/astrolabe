@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { isLeaderKey, menuKeyOf, takesTyping } from "./leader";
+import { isLeaderKey, menuKeyOf } from "./leader";
 import { CHORD, CURSOR_DOWN, CURSOR_UP } from "./menu";
 
 afterEach(() => document.body.replaceChildren());
@@ -59,31 +59,6 @@ describe("Space as the leader key", () => {
     expect(isLeaderKey(space({ ctrlKey: true }), document.body, on)).toBe(false);
     expect(isLeaderKey(space({ repeat: true }), document.body, on)).toBe(false);
     expect(isLeaderKey(space({ key: "a" }), document.body, on)).toBe(false);
-  });
-});
-
-describe("where focus takes typing, which ends the repeat window", () => {
-  it("is a text field, an editor, or a terminal", () => {
-    for (const html of [
-      "<input />",
-      "<textarea></textarea>",
-      '<div class="cm-editor"><div class="cm-content" contenteditable="true" data-target></div></div>',
-      '<div data-terminal-owner="right-panel"><canvas data-target></canvas></div>',
-    ]) {
-      expect(takesTyping(element(html)), html).toBe(true);
-    }
-  });
-
-  it("is not a sidebar row, a pane's tab, a rail button, or the page", () => {
-    for (const html of [
-      '<div role="button" tabindex="0" data-testid="sidebar-row-card">row</div>',
-      '<div role="tab" tabindex="0" data-pane-tab>tab</div>',
-      '<nav data-app-rail><button data-target aria-current="page">Threads</button></nav>',
-    ]) {
-      expect(takesTyping(element(html)), html).toBe(false);
-    }
-    expect(takesTyping(document.body)).toBe(false);
-    expect(takesTyping(null)).toBe(false);
   });
 });
 

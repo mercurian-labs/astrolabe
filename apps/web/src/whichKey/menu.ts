@@ -8,7 +8,7 @@ import type { KeybindingCommand } from "@t3tools/contracts";
  * cursor keys, the arrows where the group does not bind them, Enter), as does the mouse. A
  * repeatable command run from the menu by its key arms a repeat window after it, as tmux's
  * `bind -r`: its group's repeatable keys keep running without the menu until any other key, a
- * click, focus landing in a text field, or the window passing. See `WhichKey.tsx` for the doors.
+ * click, or the window passing. See `WhichKey.tsx` for the doors.
  */
 
 /** The menu's own chord (⌘K, Ctrl+K) as a row's key. */

@@ -270,6 +270,29 @@ describe("settle thread shortcut", () => {
   });
 });
 
+describe("search shortcut", () => {
+  it("opens Search on Cmd+/ and Ctrl+/, but not over the terminal", () => {
+    for (const [platform, modifier] of [
+      ["MacIntel", { metaKey: true }],
+      ["Win32", { ctrlKey: true }],
+    ] as const) {
+      assert.equal(
+        resolveShortcutCommand(event({ key: "/", ...modifier }), DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: false },
+        }),
+        "commandPalette.toggle",
+      );
+    }
+    assert.isNull(
+      resolveShortcutCommand(event({ key: "/", metaKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+  });
+});
+
 describe("thread undo shortcut", () => {
   it("resolves mod+z with nothing editable focused", () => {
     assert.equal(

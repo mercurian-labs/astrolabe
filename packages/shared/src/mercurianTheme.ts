@@ -38,6 +38,8 @@ export const MERCURIAN_THEME: ThemeDefinition = {
     border: "oklch(0.897547 0 0)",
     input: "oklch(0.845222 0 0)",
     focus: "oklch(0.273776 0.006186 78.224)",
+    // The focused place's tab in front wears the brand's rust (see `index.css`).
+    focusBar: "oklch(0.51156 0.12411 39.604)",
     accent: "oklch(0.273776 0.006186 78.224)",
     accentForeground: "oklch(1 0 0)",
     secondary: "oklch(0.95514 0 0)",
@@ -102,6 +104,7 @@ export const MERCURIAN_THEME: ThemeDefinition = {
       border: "oklch(0.271895 0.014041 203.882)",
       input: "oklch(0.327121 0.014841 203.237)",
       focus: "oklch(0.902134 0.032641 80.987)",
+      focusBar: "oklch(0.664604 0.128607 43.379)",
       accent: "oklch(0.902134 0.032641 80.987)",
       accentForeground: "oklch(0.185441 0.009432 208.772)",
       secondary: "oklch(0.252061 0.012914 204.709)",

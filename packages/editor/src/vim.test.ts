@@ -11,6 +11,7 @@ import { caret, destroyViews, finishParse, mount } from "./markdown/testSupport.
 import {
   enterInsertMode,
   runVimEx,
+  setVimScreenLineMotion,
   vimAtRest,
   vimConfiguration,
   vimExLine,
@@ -605,6 +606,71 @@ describe("Vim mode", () => {
       expect(after && mode(after)).toBe("normal");
       expect(cellEditor(view)).toBe(after);
     });
+  });
+});
+
+/**
+ * Lays lines out `width` characters to a row for Vim's vertical moves, as a narrow editor wraps
+ * them: happy-dom draws nothing for CodeMirror to measure. The column within a row carries over.
+ */
+function wrapAt(view: EditorView, width: number) {
+  const cm = getCM(view);
+  if (!cm) throw new Error("no Vim on this view");
+  const rows = (line: number) => Math.max(1, Math.ceil(cm.getLine(line).length / width));
+  Reflect.set(cm, "findPosV", (pos: { line: number; ch: number }, amount: number) => {
+    let { line } = pos;
+    let row = Math.floor(pos.ch / width);
+    const column = pos.ch % width;
+    for (let step = 0; step < Math.abs(amount); step++) {
+      if (amount > 0 && row + 1 < rows(line)) row++;
+      else if (amount > 0 && line < cm.lastLine()) [line, row] = [line + 1, 0];
+      else if (amount < 0 && row > 0) row--;
+      else if (amount < 0 && line > cm.firstLine()) [line, row] = [line - 1, rows(line - 1) - 1];
+      else return { line, ch: pos.ch, hitSide: true };
+    }
+    return { line, ch: Math.min(row * width + column, cm.getLine(line).length) };
+  });
+}
+
+describe("j and k by screen line", () => {
+  afterEach(() => setVimScreenLineMotion(false));
+  const long = "a".repeat(25);
+
+  it("move by lines of text while off, keeping the column across a shorter line", () => {
+    const view = vimEditor(`${long}\nb\n`, 3);
+    wrapAt(view, 10);
+    press(view, "j");
+    expect(caret(view)).toBe(`${long}\n`.length);
+
+    const columns = vimEditor("abcdef\nab\nabcdef\n", 4);
+    wrapAt(columns, 100);
+    press(columns, "j");
+    press(columns, "j");
+    expect(caret(columns)).toBe("abcdef\nab\nabcd".length);
+  });
+
+  it("move a row at a time through a wrapped line while on", () => {
+    setVimScreenLineMotion(true);
+    const view = vimEditor(`${long}\nb\n`, 3);
+    wrapAt(view, 10);
+    const steps: number[] = [];
+    for (const key of "jjjkk") {
+      press(view, key);
+      steps.push(caret(view));
+    }
+    // Back up from `b`'s first column: the fake layout carries the column, not Vim's goal.
+    expect(steps).toEqual([13, 23, `${long}\n`.length, 20, 10]);
+  });
+
+  it("still move by lines of text with a count, and act on whole lines after an operator", () => {
+    setVimScreenLineMotion(true);
+    const view = vimEditor(`${long}\nb\nc\n`, 3);
+    wrapAt(view, 10);
+    keys(view, "2j");
+    expect(caret(view)).toBe(`${long}\nb\n`.length);
+    keys(view, "gg");
+    keys(view, "dj");
+    expect(view.state.doc.toString()).toBe("c\n");
   });
 });
 

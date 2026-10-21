@@ -1,5 +1,6 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
 
+import type { HistoryDirection } from "~/tabNavigation.logic";
 import type { PaneArrangementStore, PaneTabs } from "~/panes/panesHost";
 import type { AppCommand } from "./commands";
 import type { KeyOrigin } from "./doors";
@@ -11,13 +12,27 @@ import type { KeyOrigin } from "./doors";
  */
 function createHandleSlot<T>() {
   let current: T | null = null;
+  const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
   return {
     get: () => current,
     /** Lends `handle` until the returned function is called. */
     register(handle: T) {
       current = handle;
+      notify();
       return () => {
-        if (current === handle) current = null;
+        if (current !== handle) return;
+        current = null;
+        notify();
+      };
+    },
+    /** For a control that shows what the handle on loan says (`useSyncExternalStore`). */
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
       };
     },
   };
@@ -43,6 +58,19 @@ export interface ChatTabsHandle {
 }
 
 export const chatTabsSlot = createHandleSlot<ChatTabsHandle>();
+
+/**
+ * The back and forward of the section's tab in front: the chat tab in front in Threads, the
+ * focused pane's tab in Wikis. The sidebar header's arrows and `navigation.back`/`forward` walk
+ * it while one is on loan, and the app's route history otherwise.
+ */
+export interface TabHistoryHandle {
+  readonly canGoBack: boolean;
+  readonly canGoForward: boolean;
+  readonly go: (direction: HistoryDirection) => void;
+}
+
+export const tabHistorySlot = createHandleSlot<TabHistoryHandle>();
 
 /** The panes on screen: the right panel's, or the Wikis area's. */
 export interface PanesHandle {

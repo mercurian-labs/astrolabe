@@ -6,13 +6,13 @@ import {
   SettingsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { memo } from "react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
-import { AstrolabeMarkSmall, AstrolabeWordmark } from "../brand/AstrolabeMarks";
+import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -36,6 +36,7 @@ import {
   isWikisPath,
   useNavigateToMainApp,
 } from "./mainAppLocation";
+import { SidebarTabHistory } from "./SidebarTabHistory";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -57,8 +58,6 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     environmentIdentificationMode === "pill"
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
       : null;
-  const [brandRow, setBrandRow] = useState<HTMLDivElement | null>(null);
-  const wordmarkFits = useWordmarkFits(brandRow, pillLabel);
 
   return (
     // The titlebar row, not a padded SidebarHeader: it aligns to the window controls.
@@ -80,14 +79,10 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         />
       </div>
       {/* One visible line: the pill wraps onto the clipped second line once it no longer fits.
-          The padding keeps the brand's focus ring inside the clip, and clears the window's own
-          controls (beside the icon rail, the sidebar toggle is the rail's).
-          The wordmark shows while it fits beside the pill, the monogram after. */}
-      <div
-        ref={setBrandRow}
-        className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5 md:pl-(--workspace-titlebar-content-left)"
-      >
-        <SidebarBrand onBackdrop={backdropVariant !== null} wordmark={wordmarkFits} />
+          The padding clears the window's own controls (beside the icon rail, the sidebar toggle
+          is the rail's). Astrolabe: the rail's monogram stands for the brand, so the row holds
+          no wordmark. */}
+      <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5 md:pl-(--workspace-titlebar-content-left)">
         {pillLabel ? (
           <div data-environment-pill className="flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">
@@ -96,39 +91,11 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           </div>
         ) : null}
       </div>
+      {/* Astrolabe: back and forward for the section's tab in front. */}
+      <SidebarTabHistory />
     </div>
   );
 });
-
-// The wordmark's width at the header's 0.75rem height, from its canvas.
-const WORDMARK_ASPECT = 373.52 / 59.74;
-const WORDMARK_HEIGHT_REM = 0.75;
-
-/** Whether the wordmark fits the brand row beside the environment pill, from measured widths. */
-function useWordmarkFits(row: HTMLDivElement | null, pillLabel: string | null): boolean {
-  const [fits, setFits] = useState(true);
-  useEffect(() => {
-    if (!row) return;
-    const measure = () => {
-      const style = getComputedStyle(row);
-      const available =
-        row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-      const pill = pillLabel ? row.querySelector<HTMLElement>("[data-environment-pill]") : null;
-      const needed =
-        WORDMARK_HEIGHT_REM * rem * WORDMARK_ASPECT +
-        (pill ? parseFloat(style.columnGap) + pill.offsetWidth : 0);
-      setFits(available >= needed);
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(row);
-    // The pill changes width with its label, without resizing the row.
-    const pill = pillLabel ? row.querySelector("[data-environment-pill]") : null;
-    if (pill) observer.observe(pill);
-    return () => observer.disconnect();
-  }, [row, pillLabel]);
-  return fits;
-}
 
 export function SidebarBrandWidthProbe({
   onWidthChange,
@@ -153,26 +120,6 @@ export function SidebarBrandWidthProbe({
         <div className="w-21 shrink-0" />
       </div>
     </div>
-  );
-}
-
-function SidebarBrand({ onBackdrop, wordmark }: { onBackdrop: boolean; wordmark: boolean }) {
-  return (
-    <Link
-      aria-label="Go to threads"
-      className={cn(
-        "relative z-10 hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
-        onBackdrop ? "text-white" : "text-foreground",
-      )}
-      to="/"
-    >
-      {/* As tall as the drawn sidebar toggle icon beside it. */}
-      {wordmark ? (
-        <AstrolabeWordmark small label="Astrolabe" onDark={onBackdrop} className="h-3 shrink-0" />
-      ) : (
-        <AstrolabeMarkSmall label="Astrolabe" onDark={onBackdrop} className="h-3 shrink-0" />
-      )}
-    </Link>
   );
 }
 
@@ -246,15 +193,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigateToMainApp();
   };
 
-  // Astrolabe: on desktop the icon rail holds Wikis, Settings, Pull Requests and Usage, and its Threads
-  // icon is the way back from them; the footer keeps only the update pill.
-  if (!isMobile) {
-    return (
-      <SidebarMenu className="flex-row items-center">
-        <SidebarUpdatePill />
-      </SidebarMenu>
-    );
-  }
+  // Astrolabe: on desktop the icon rail holds the sections, Threads among them as the way back,
+  // and the update control above Settings, so the footer has no utility row.
+  if (!isMobile) return null;
 
   return (
     <SidebarMenu className="flex-row items-center">

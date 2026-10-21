@@ -11,6 +11,7 @@ import type { ClientSettings } from "@t3tools/contracts";
 import { useLayoutEffect, useMemo, useRef } from "react";
 
 import { useMarkdownEditorKeys } from "~/editorKeybindings";
+import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import { appVimKeys } from "~/whichKey/doors";
 
@@ -104,6 +105,7 @@ export function WikiNoteEditor({
     [],
   );
   const vim = useClientSettings(selectVimModeEnabled);
+  useVimScreenLines();
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
   const keys = useMarkdownEditorKeys(NOTE_EDITOR);
   const livePreview = useMemo<LivePreviewOptions>(

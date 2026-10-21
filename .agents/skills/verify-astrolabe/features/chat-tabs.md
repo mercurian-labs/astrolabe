@@ -1,23 +1,59 @@
 # Chat tabs
 
 The open chats show as tabs across the top of the chat column. The route's
-thread is the tab in front. Opening a thread anywhere (the sidebar, the command
-palette, a fork) adds its tab at the end and brings it up front. Beneath the
-strip, the chat in front keeps T3 Code's own header, conversation and bottom
-terminal drawer. Its right panel runs the full height beside it (see panes.md).
+thread is the tab in front. Showing a thread anywhere (a sidebar row's plain
+click, Search, `:b`, a fork, a new thread) replaces what the tab in front shows,
+as a browser tab follows a link; a thread already open in another tab brings that
+tab forward instead (no duplicates). A new tab opens only on Option/Alt-click,
+middle-click, the row menu's **Open in new tab**, or Alt+Enter on a focused row.
+Each tab keeps its own back/forward history. Beneath the strip, the chat in front
+keeps T3 Code's own header (one borderless line as tall as the strip), conversation
+and bottom terminal drawer. Its right panel runs the full height beside it (see
+panes.md).
 
 ## Sub-features
 
-- **Open**: clicking a sidebar thread adds its tab, or brings up its existing tab.
+- **Replace**: a plain click on a sidebar thread (or draft) shows it in the tab
+  in front: the strip keeps its count, the front tab's title changes. A thread open
+  in another tab brings that tab forward instead. Cmd/Ctrl-click and Shift-click stay
+  upstream's multi-select and range select, opening nothing.
+- **New tab**: Option-click (Alt-click), middle-click, right-click › **Open in new
+  tab** (first item of the thread and draft row menus), or Alt+Enter on a focused
+  row, open it in a new tab right after the one in front.
   A draft has a "New thread" tab that keeps its place when the draft is sent.
+- **History**: each tab remembers what it showed (thread keys, last 50 each way).
+  The sidebar title-bar row's **Back**/**Forward** buttons (`[data-tab-history]`),
+  `mod+[`/`mod+]`, and Space `t h`/`t l` walk the tab in front; they are faint at
+  either end. A replace clears the tab's forward history. Stepping to a thread
+  open in another tab brings that tab forward and leaves this tab as it was; a
+  deleted thread or discarded draft in the history is skipped and forgotten.
+- **Chrome tabs**: drawn as a pane's tabs are (panes.md): the tab in front in the
+  toolbar background (`--tab-join`), outlined over a break in the strip's bottom border,
+  with curved feet, the others bare until hovered
+  with rules between them, a fading title and an always-shown ✕. The focused place's
+  mark is a 2px bar along the top edge of the tab in front (a background-image).
+- **Harness icon**: before the title, the thread's provider icon, the same one
+  its sidebar row shows (running instance, else the selected one), dimmed on
+  inactive tabs until hovered. A "New thread" tab shows the provider its
+  composer has picked, else the one the composer would fall back to. The chat
+  glyph shows only while no provider resolves (e.g. before the environment's
+  config loads). No instance badge: at tab size it would cover the glyph.
 - **Switch**: clicking a tab navigates to its thread, or to its draft.
 - **Close**: the ✕ on hover or keyboard focus, or a middle-click. Closing the tab
   in front shows the tab after it, else the one before it, else `/` (also when the
   neighbour's route is not known yet). Clicking a tab whose thread is gone closes
   it.
 - **Reorder**: dragging a tab along the strip.
-- **Persistence**: the list survives a reload, per device
-  (`localStorage['t3code:chat-tabs:v1']`).
+- **Drag from the sidebar**: a thread row dragged past the sidebar onto the strip shows the
+  insertion line and opens there as a tab, in front (`chatTabs/threadTabDrop.ts`, fed by the
+  sidebar's drag past its list, as the composer's context drop is). A Cmd/Shift selection
+  that includes the row opens together, in sidebar order; one already open moves to the line;
+  the pin order is untouched. Only rows the sidebar lets you drag (pin-reorderable servers, not
+  the Working shelf). The rows use pointer events, not HTML5 drag: walk it with CDP
+  `Input.dispatchMouseEvent` press/moves/release (`preview_drag` sends HTML5 drags).
+- **Persistence**: the list, the tab in front and the histories survive a reload,
+  per device (`localStorage['t3code:chat-tabs:v1']`, `state.keys`, `state.active`,
+  `state.histories`); a stored value with only `keys` (older builds) still loads.
 - **Pruning**: a tab whose thread was deleted or whose draft was discarded
   closes once its environment's threads have loaded.
 - **The chat's controls end the strip**: Toggle thread details panel, then
@@ -51,6 +87,9 @@ preview_click  [data-testid=sidebar-row-card] >> nth=1          # a sidebar row
 preview_wait_for  locator=role=tab[name='<title>'][selected]
 preview_click  role=tab[name='<other title>']
 preview_click  role=button[name='Close <title>']
+preview_click  [data-testid=sidebar-row-card] >> nth=2  modifiers=["Alt"]   # new tab
+preview_click  role=button[name='Back']                 # the tab in front's history
+preview_click  role=button[name='Forward']
 ```
 
 Read the strip (`*` marks the tab in front):
@@ -80,6 +119,11 @@ and the panel (`[data-preview-panel-mode]`) starts at the top of the window.
   because the sidebar's resize rail overlaps the strip's first 8px.
 - With nothing open (`/`), there is no strip: ChatView draws it.
 - The stored value is zustand's wrapper: read
-  `JSON.parse(localStorage['t3code:chat-tabs:v1']).state.keys`.
+  `JSON.parse(localStorage['t3code:chat-tabs:v1']).state` (`keys`, `active`,
+  `histories[<key in front>]`).
+- Middle-click needs a real `auxclick` (button 1); if `preview_click` cannot send
+  one, dispatch `new MouseEvent('auxclick', {button: 1, bubbles: true})` on the row.
+- The tab in front's curves are visual: screenshot the strip, and
+  read `getComputedStyle(tab, '::before').backgroundImage` for the gradient.
 - Opening a chat focuses its composer. Keys sent "to the page" afterwards type into
   the draft (and with Vim on, in insert mode). Move focus first; see which-key.md.

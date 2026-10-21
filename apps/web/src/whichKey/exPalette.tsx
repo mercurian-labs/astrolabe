@@ -28,7 +28,7 @@ import {
 import { isWikisPath } from "~/components/sidebar/mainAppLocation";
 import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
 import { finderGroups } from "~/components/wiki/WikiFinder";
-import { openWikiTab } from "~/components/wiki/wikiPanes";
+import { showWikiTab } from "~/components/wiki/wikiPanes";
 import { primaryServerKeybindingTriggersAtom } from "~/state/server";
 import { inEditor, type AppCommand } from "./commands";
 import { pendingExOrigin, releaseExOrigin, type KeyOrigin } from "./doors";
@@ -156,7 +156,7 @@ function commandGroups(
         mode: "find",
         query: parsed.argument,
         onPick: (tab) => {
-          openWikiTab(tab);
+          showWikiTab(tab);
           context.showWikis();
         },
       });

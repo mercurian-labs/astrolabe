@@ -1129,6 +1129,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --border: var(--color-zinc-200);
   --input: var(--color-zinc-300);
   --ring: var(--primary);
+  /* Astrolabe: the focused place's mark on its tab in front (see below). */
+  --focus-bar: var(--ring);
   --destructive-foreground: var(--error-foreground);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
@@ -1303,6 +1305,7 @@ html[data-theme-id]:not([data-theme-id=""]) {
   --border: var(--app-theme-border);
   --input: var(--app-theme-input);
   --ring: var(--app-theme-focus);
+  --focus-bar: var(--app-theme-focus-bar);
   --sidebar: var(--app-theme-sidebar);
   --sidebar-foreground: var(--app-theme-sidebar-foreground);
   --sidebar-muted-foreground: var(--app-theme-sidebar-muted-foreground);
@@ -2464,12 +2467,87 @@ code {
   --pivot: var(--brand-rust);
 }
 
+/* Astrolabe: a strip's tabs (a pane's, the chat tabs') are drawn as Chrome's, with the tab in
+   front outlined as Obsidian's. That tab is the content's background (`--tab-join`, set by its
+   strip) with rounded top corners and no bottom edge, over a break in the strip's bottom border,
+   and where its sides meet that border they curve outward into it, at the top corners' radius
+   flipped. Each curve is a static radial gradient in a pseudo-element just outside the tab's
+   foot: inside the circle the strip shows, a 1px ring in the border colour carries the tab's side
+   into the strip's bottom border, and outside it the content's background fills the join. The
+   other tabs are bare until hovered, with a rule between two at rest, centred in the strip's gap
+   (`gap-1`). */
+:is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
+  --tab-ear: var(--radius-md);
+}
+
+:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::before,
+:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: calc(var(--tab-ear) + 1px);
+  height: calc(var(--tab-ear) + 1px);
+  pointer-events: none;
+}
+
+:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::before {
+  left: calc(-1px - var(--tab-ear));
+  background: radial-gradient(
+    circle at 0 0,
+    transparent calc(var(--tab-ear) - 0.5px),
+    var(--border) calc(var(--tab-ear) + 0.25px),
+    var(--border) calc(var(--tab-ear) + 0.75px),
+    var(--tab-join) calc(var(--tab-ear) + 1.5px)
+  );
+}
+
+:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
+  right: calc(-1px - var(--tab-ear));
+  background: radial-gradient(
+    circle at 100% 0,
+    transparent calc(var(--tab-ear) - 0.5px),
+    var(--border) calc(var(--tab-ear) + 0.25px),
+    var(--border) calc(var(--tab-ear) + 0.75px),
+    var(--tab-join) calc(var(--tab-ear) + 1.5px)
+  );
+}
+
+[data-pane-tab]:not([aria-selected="true"], :hover, [data-selected])
+  + [data-pane-tab]:not([aria-selected="true"], :hover, [data-selected])::before,
+[data-chat-tab]:not([aria-selected="true"], :hover)
+  + [data-chat-tab]:not([aria-selected="true"], :hover)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  /* The gap's middle, past the tab's 1px border. */
+  left: -3.5px;
+  width: 1px;
+  height: 1rem;
+  translate: 0 -50%;
+  background: var(--border);
+  pointer-events: none;
+}
+
+/* Astrolabe: with the sidebar collapsed, the content's top-left corner beside the icon rail (see
+   `AppIconRail`), at the tab's radius: transparent within the circle, a 1px ring in the border
+   colour joining the rail's edge to the title bar's bottom border, the rail's colour outside. */
+[data-app-rail-corner="collapsed"] {
+  background: radial-gradient(
+    circle at 100% 100%,
+    transparent calc(var(--radius-md) - 0.5px),
+    var(--border) calc(var(--radius-md) + 0.25px),
+    var(--border) calc(var(--radius-md) + 0.75px),
+    var(--sidebar) calc(var(--radius-md) + 1.5px)
+  );
+}
+
 /* Astrolabe: the place keys act from (see `keyboardNav/regions.ts`). The pane or chat column
-   last focused or pressed in marks its tab in front with a bar in the focus color along the
-   pill's foot, as an editor marks the active tab of its focused group; the sidebar shows its
-   focused row's own ring instead. Static, with no transition. */
-/* Astrolabe: the focused place's tab in front already wears the bar below, so its own focus
-   ring would only repeat it; a tab elsewhere in the strip keeps the ring. */
+   last focused or pressed in marks its tab in front with a bar in the theme's focus bar color
+   (`--focus-bar`, the `focusBar` role: rust in Mercurian) along the
+   tab's top edge, as an editor marks the active tab of its focused group (its foot is the join
+   to the content); the sidebar shows its focused row's own ring instead. Static, with no
+   transition. The tab's own focus ring would only repeat the bar, so it drops there; a tab
+   elsewhere in the strip keeps the ring. */
 :is([data-pane-id], [data-chat-column-maximized-away])[data-focused-place]
   :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]:focus-visible {
   --tw-ring-shadow: 0 0 #0000;
@@ -2477,15 +2555,11 @@ code {
 }
 
 :is([data-pane-id], [data-chat-column-maximized-away])[data-focused-place]
-  :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
-  content: "";
-  position: absolute;
-  inset-inline: 0.5rem;
-  bottom: 0;
-  height: 2px;
-  border-radius: 1px;
-  background-color: var(--ring);
-  pointer-events: none;
+  :is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
+  background-image: linear-gradient(var(--focus-bar), var(--focus-bar));
+  background-size: calc(100% - 1rem) 2px;
+  background-position: center top;
+  background-repeat: no-repeat;
 }
 
 /* Astrolabe: beside the icon rail, the sidebar's body wears the main area's background (the

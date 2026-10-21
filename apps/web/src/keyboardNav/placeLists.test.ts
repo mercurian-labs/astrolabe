@@ -31,9 +31,14 @@ afterEach(() => {
 });
 
 /** Presses `key` on `element` with the lists reading it; what Escape handed on, if anything. */
-function press(element: HTMLElement, key: string) {
+function press(element: HTMLElement, key: string, modifiers: KeyboardEventInit = {}) {
   const escaped: HTMLElement[] = [];
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...modifiers,
+  });
   element.addEventListener(
     "keydown",
     (keydown) => handleListKey(keydown, { onEscape: (row) => void escaped.push(row) }),
@@ -103,6 +108,18 @@ describe("Enter on a sidebar row", () => {
     row.focus();
     forgetEnteredRow();
     expect(keepsListFocus()).toBe(false);
+  });
+  it("clicks with Alt held for Alt+Enter, which opens the row in a new tab", () => {
+    document.body.innerHTML = SIDEBAR;
+    const row = byId("a");
+    const clicks: boolean[] = [];
+    row.addEventListener("click", (event) => clicks.push(event.altKey));
+    row.focus();
+    press(row, "Enter");
+    expect(press(row, "Enter", { altKey: true }).taken).toBe(true);
+    // Any other Alt chord stays the page's.
+    expect(press(row, "j", { altKey: true }).taken).toBe(false);
+    expect(clicks).toEqual([false, true]);
   });
 });
 

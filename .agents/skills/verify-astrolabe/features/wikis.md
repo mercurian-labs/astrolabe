@@ -23,10 +23,28 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
 - **Main area**: one arrangement on the device (localStorage
-  `astrolabe:wiki-panes:v1`). Clicking a row opens or brings forward its tab;
-  Mod-click (Cmd on macOS, Ctrl elsewhere) opens it in a new pane to the right; a
-  document already open moves there instead (nothing happens when it is the focused
-  pane's only tab). A pane's `+` opens an empty tab
+  `astrolabe:wiki-panes:v1`). A plain click on a row (or Enter on a focused row)
+  replaces what the focused pane's tab in front shows; a document already open in
+  another tab comes forward there instead (no duplicates); an empty tab, or a note
+  with unsaved edits, makes way for a new tab. Option/Alt-click, middle-click, the
+  row's right-click **Open in new tab**, or Alt+Enter open a new tab after the one in
+  front. Mod-click (Cmd on macOS, Ctrl elsewhere) and Shift-click select rows
+  (`sidebarRowSelection.ts`, `data-selected` with the selected fill; Escape clears);
+  a selected row's right-click is **Open N in new tabs**. Rows are `draggable`: dropped on
+  a pane's strip they open at the insertion line, on its content in a new pane
+  (`placeWikiTabs` → `placeTabs`), the selection with them. Right-click **Open to the
+  right** opens it in a new pane to the right; a document already open moves there
+  instead (nothing happens when it is the focused pane's only tab).
+- **History**: each tab remembers what it showed (localStorage
+  `astrolabe:wiki-tab-history:v1`, keyed by the tab key it shows now, last 50 each
+  way). Clicks, Search, `:e`, deep links and followed wikilinks push onto it and clear
+  its forward history; saving a note into a change request keeps it. The sidebar
+  title-bar row's **Back**/**Forward**, `mod+[`/`mod+]` and Space `t h`/`t l` walk
+  the focused pane's tab in front (faint at either end); a step to a document open in
+  another tab brings that tab forward, and with unsaved edits it opens in a new tab.
+- **Pane header**: a note's header (title · Main or the change request, its
+  buttons) is one line as tall as the tab strip, with no bottom border; the strip's
+  joined tab in front (panes.md) reads continuous with it. A pane's `+` opens an empty tab
   with one button, **Find or create a document** (only once a wiki exists; the
   finder lists documents and open changes, and offers Write "…" for a new name).
   Mod-click on a wikilink follows it in the same tab, unless the target is open in
@@ -36,12 +54,12 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   request (vim-mode.md). The keyboard menu's `w` group opens Wikis and the finder,
   and `:e <name>` in the Command Palette opens a document.
 - **Search**: the Search palette (Cmd+K twice) finds every wiki's documents from
-  anywhere in a Documents group; a pick opens it as a tab in the focused pane (or
-  brings an open copy forward) and goes to `/wikis`.
+  anywhere in a Documents group; a pick shows it in the focused pane's tab in front,
+  as a click does (or brings an open copy forward), and goes to `/wikis`.
 - **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
   files that open inside the change request).
-- **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) open
-  that document as a tab; `changeRequest=…` alone opens the change request, and
+- **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
+  that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Threads as the way back. Splits stay at every width.
@@ -57,8 +75,10 @@ must be registered first (the filter's **Add a folder**).
 
 ```
 preview_click     role=navigation[name='Sections'] >> role=button[name='Wikis']
-preview_click     role=button[name='<document>, <wiki>']        # opens a tab
+preview_click     role=button[name='<document>, <wiki>']        # replaces the tab in front
+preview_evaluate  dispatch a click with altKey on a row          # new tab
 preview_evaluate  dispatch a click with metaKey on a row         # opens beside
+preview_click     role=button[name='Back']                      # the focused tab's history
 preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
 preview_click     role=combobox[name='Filter documents by wiki']
 preview_click     role=button[name='Find or create a document']  # in an empty tab
@@ -67,7 +87,7 @@ preview_click     role=button[name='Find or create a document']  # in an empty t
 **Proof:** read the arrangement from the DOM
 (`[data-pane-id]` → its `[data-pane-tab]` labels, `aria-selected`), and the lit row
 (`[data-testid^=wiki-sidebar-row][aria-current=page]`); `location.reload()` keeps the
-arrangement. Save a screenshot of the section.
+arrangement and the histories (`JSON.parse(localStorage['astrolabe:wiki-tab-history:v1'])`). Save a screenshot of the section.
 
 ## Gotchas
 

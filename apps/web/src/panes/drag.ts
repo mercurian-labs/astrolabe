@@ -10,6 +10,12 @@ import type { Side } from "./tree";
 export interface DragItem {
   readonly key: string;
   readonly keys: readonly string[];
+  /**
+   * Astrolabe: for what is dragged from outside the panes (a sidebar's rows, with no tabs yet:
+   * `keys` is empty), what dropping it does: open it on `paneId`, at `index` of its strip or in
+   * a new pane on `side`.
+   */
+  readonly place?: (paneId: string, drop: { side: Side | null; index: number }) => void;
 }
 
 let current: DragItem | null = null;
@@ -20,21 +26,26 @@ function changed() {
 }
 
 /**
- * Starts dragging `item`, `label` naming it. Several tabs travel under one preview: the grabbed
- * pill's title on a stack of cards, with how many there are, so the drag shows it carries them
- * all; one tab keeps the browser's snapshot of its pill.
+ * Starts dragging `item`, named `label`. The preview is `startTabDragPreview`'s pill, with how
+ * many travel (`count`, the tabs by default) when several do.
  */
-export function startDrag(event: DragEvent, item: DragItem, label: string) {
+export function startDrag(
+  event: DragEvent<HTMLElement>,
+  item: DragItem,
+  label: string,
+  count = item.keys.length,
+) {
   current = item;
   event.dataTransfer.effectAllowed = "move";
   // Firefox only starts a drag that carries data.
   event.dataTransfer.setData("text/plain", label);
-  if (item.keys.length > 1) setStackedPreview(event, label, item.keys.length);
-  // After the browser has taken its snapshot, so the pills restyle without changing it.
+  startTabDragPreview(event, count);
+  // After the drag has started, so the pills restyle without disturbing it.
   setTimeout(changed);
 }
 
 export function endDrag() {
+  stopTabDragPreview();
   if (current === null) return;
   current = null;
   changed();
@@ -53,51 +64,81 @@ export function useDragging(key: string): boolean {
   );
 }
 
-/** The preview for several tabs: a card with the grabbed tab's title and the count, stacked. */
-function setStackedPreview(event: DragEvent, title: string, count: number) {
-  const card = document.createElement("div");
-  // Off screen but rendered, as the browser needs to draw it; drawn in the theme's tokens.
-  Object.assign(card.style, {
-    position: "fixed",
-    top: "-1000px",
-    left: "0",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    maxWidth: "240px",
-    height: "28px",
-    padding: "0 6px 0 10px",
-    borderRadius: "6px",
-    border: "1px solid var(--border)",
-    background: "var(--card)",
-    color: "var(--foreground)",
-    font: "500 12px/1 var(--font-sans, system-ui)",
-    // Two cards behind it, offset down and right.
-    boxShadow:
-      "3px 3px 0 -1px var(--card), 3px 3px 0 0 var(--border), 6px 6px 0 -1px var(--card), 6px 6px 0 0 var(--border)",
-  } satisfies Partial<CSSStyleDeclaration>);
-  const name = document.createElement("span");
-  name.textContent = title;
-  Object.assign(name.style, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
-  const badge = document.createElement("span");
-  badge.textContent = String(count);
-  Object.assign(badge.style, {
-    flexShrink: "0",
-    minWidth: "18px",
-    height: "18px",
-    padding: "0 5px",
-    borderRadius: "9px",
-    background: "var(--primary)",
-    color: "var(--primary-foreground)",
-    fontSize: "11px",
-    lineHeight: "18px",
-    textAlign: "center",
-  } satisfies Partial<CSSStyleDeclaration>);
-  card.append(name, badge);
-  document.body.append(card);
-  event.dataTransfer.setDragImage(card, 16, 14);
-  // The browser copies the image as the drag starts; the card is not needed after.
-  setTimeout(() => card.remove());
+/** Stands in for the browser's own drag image, which the page draws instead. */
+const BLANK =
+  typeof Image === "undefined"
+    ? null
+    : Object.assign(new Image(), {
+        src: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+      });
+
+let preview: { readonly element: HTMLElement; readonly stop: () => void } | null = null;
+
+/**
+ * Draws a tab's drag preview in the page: a pill with the tab's icon and title, held under the
+ * pointer where it grabbed the tab, with a count and stacked cards behind it when `count` tabs
+ * travel. The browser's own snapshot of a tab takes the strip around it (square corners, the
+ * tab in front's feet), so it is replaced by a blank image. Ends on drop, on the drag's end, or
+ * with `stopTabDragPreview`.
+ */
+export function startTabDragPreview(event: DragEvent<HTMLElement>, count = 1) {
+  stopTabDragPreview();
+  const tab = event.currentTarget;
+  const box = tab.getBoundingClientRect();
+  const grab = { x: event.clientX - box.left, y: Math.min(event.clientY - box.top, 28) };
+  const element = document.createElement("div");
+  element.setAttribute("aria-hidden", "true");
+  element.className =
+    // Its icon at full strength, as the tab in front draws it.
+    "pointer-events-none fixed top-0 left-0 z-[100] flex h-7 items-center gap-1.5 rounded-md border border-border bg-popover px-2.25 text-xs font-medium text-foreground shadow-md [&_img]:opacity-100 [&_svg]:opacity-100 [&>[data-tab-icon]]:opacity-100";
+  element.style.width = `${Math.min(box.width, 240)}px`;
+  // Two cards behind it, offset down and right.
+  if (count > 1) {
+    element.style.boxShadow =
+      "3px 3px 0 -1px var(--popover), 3px 3px 0 0 var(--border), 6px 6px 0 -1px var(--popover), 6px 6px 0 0 var(--border)";
+  }
+  const icon = tab.querySelector("[data-tab-icon]");
+  if (icon) element.append(icon.cloneNode(true));
+  const title = document.createElement("span");
+  title.className = "min-w-0 flex-1 truncate";
+  title.textContent = tab.getAttribute("aria-label");
+  element.append(title);
+  if (count > 1) {
+    const badge = document.createElement("span");
+    badge.className =
+      "flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-primary px-1.25 text-[11px] text-primary-foreground";
+    badge.textContent = String(count);
+    element.append(badge);
+  }
+  const place = (x: number, y: number) => {
+    element.style.translate = `${x - grab.x}px ${y - grab.y}px`;
+  };
+  place(event.clientX, event.clientY);
+  document.body.append(element);
+  if (BLANK) event.dataTransfer.setDragImage(BLANK, 0, 0);
+
+  // Every dragover in the page, wherever it lands; capturing on the window, ahead of the
+  // targets that stop it.
+  const follow = (moved: globalThis.DragEvent) => place(moved.clientX, moved.clientY);
+  const stop = () => stopTabDragPreview();
+  window.addEventListener("dragover", follow, true);
+  window.addEventListener("drop", stop, true);
+  window.addEventListener("dragend", stop, true);
+  preview = {
+    element,
+    stop: () => {
+      window.removeEventListener("dragover", follow, true);
+      window.removeEventListener("drop", stop, true);
+      window.removeEventListener("dragend", stop, true);
+      element.remove();
+    },
+  };
+}
+
+/** Removes the drag preview, as a drop that moved the dragged tab elsewhere does. */
+export function stopTabDragPreview() {
+  preview?.stop();
+  preview = null;
 }
 
 export function currentDrag() {
@@ -155,4 +196,22 @@ export function paneDropZone(
 export function insertIndex(midpoints: readonly number[], at: number) {
   const index = midpoints.findIndex((middle) => at < middle);
   return index === -1 ? midpoints.length : index;
+}
+
+/**
+ * Where the insertion line for `index` goes along a strip whose tabs are `boxes`, in order: midway
+ * between the tabs either side of it, or `gap / 2` past the end tab; `start` with no tabs.
+ */
+export function insertionLineX(
+  boxes: readonly { readonly left: number; readonly right: number }[],
+  index: number,
+  gap: number,
+  start: number,
+) {
+  const before = boxes[index - 1];
+  const after = boxes[index];
+  if (before && after) return (before.right + after.left) / 2;
+  if (after) return after.left - gap / 2;
+  if (before) return before.right + gap / 2;
+  return start;
 }

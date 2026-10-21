@@ -48,6 +48,8 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -107,6 +109,17 @@ import { pullRequestFilterProjects } from "../components/pullRequest/pullRequest
 import { environmentMachineIcon } from "../components/EnvironmentMachineIcon";
 import { PullRequestDetailPanel } from "../components/pullRequest/PullRequestDetailPanel";
 import { PullRequestPanes } from "../components/pullRequest/PullRequestPanes";
+import { placePullRequests, showPullRequest } from "../components/pullRequest/pullRequestTabs";
+import { startDrag } from "../panes/drag";
+import { readLocalApi } from "../localApi";
+import {
+  anchorRow,
+  rangeToRow,
+  rowsActedOn,
+  toggleRow,
+  useRowSelectionStore,
+} from "../sidebarRowSelection";
+import { rowClickIntent, type RowClick } from "../tabNavigation.logic";
 import { PullRequestsSidebarPortal } from "../components/pullRequest/PullRequestsSidebar";
 import {
   PullRequestFiltersMenu,
@@ -160,7 +173,7 @@ import {
   type EnvironmentQueryTarget,
 } from "../state/pullRequests";
 import { useAtomCommand } from "../state/use-atom-command";
-import { cn } from "~/lib/utils";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { Separator } from "~/components/ui/separator";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
@@ -247,6 +260,9 @@ const EMPTY_VIEWERS: PullRequestListResult["viewers"] = {};
 const EMPTY_PARTITIONS: PullRequestPartitionsSnapshot = { authored: [], reviewing: [] };
 const NO_LIST_TARGETS: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput>> = [];
 const MAX_SEARCH_LABEL_CANDIDATES = 100;
+/** The pull request rows' share of the sidebars' row selection (`sidebarRowSelection`). */
+const PULL_REQUEST_SELECTION = "pull-requests";
+const NO_ROW_KEYS: readonly string[] = [];
 
 const pullRequestListEntryId = (target: Parameters<typeof pullRequestSurfaceId>[0]) =>
   pullRequestSurfaceId({ ...target, repository: target.repository.toLowerCase() });
@@ -1201,9 +1217,71 @@ function PullRequestsRouteView() {
     ),
   );
 
-  const selectEntry = (entry: PullRequestRowTarget) => {
+  // Astrolabe: Cmd/Ctrl-click and Shift-click select rows, as in Threads; a drag or the menu on a
+  // selected row carries the selection, in the list's order. The rows' handlers read the list as
+  // it is now, and stay stable so a list change does not re-render every memoized row.
+  const selectedRowKeys = useRowSelectionStore((store) =>
+    store.selection.section === PULL_REQUEST_SELECTION ? store.selection.keys : NO_ROW_KEYS,
+  );
+  const rowsFrom = (entry: PullRequestRowTarget) => {
+    const keys = rowsActedOn(
+      useRowSelectionStore.getState().selection,
+      PULL_REQUEST_SELECTION,
+      pullRequestEntryKey(entry),
+      [...entriesByStatsKey.keys()],
+    );
+    return keys.map((key) => entriesByStatsKey.get(key) ?? entry);
+  };
+  const dragRow = useStableCallback(
+    (entry: EnvironmentPullRequestEntry, event: DragEvent<HTMLElement>) => {
+      const carried = rowsFrom(entry);
+      startDrag(
+        event,
+        {
+          key: pullRequestEntryKey(entry),
+          keys: [],
+          place: (paneId, drop) => placePullRequests(carried, entry, paneId, drop),
+        },
+        event.currentTarget.getAttribute("aria-label") ?? "",
+        carried.length > 1 ? carried.length : 0,
+      );
+    },
+  );
+  const showRowMenu = useStableCallback(
+    (entry: EnvironmentPullRequestEntry, event: ReactMouseEvent<HTMLElement>) => {
+      const api = readLocalApi();
+      if (!api) return;
+      const carried = rowsFrom(entry);
+      const label = carried.length > 1 ? `Open ${carried.length} in new tabs` : "Open in new tab";
+      void api.contextMenu
+        .show([{ id: "new-tab" as const, label, icon: "square-plus" }], {
+          x: event.clientX,
+          y: event.clientY,
+        })
+        .then((picked) => {
+          if (picked !== "new-tab") return;
+          for (const each of carried) showPullRequest(each, "new-tab");
+        });
+    },
+  );
+
+  const selectEntry = useStableCallback((entry: PullRequestRowTarget, click?: RowClick) => {
     if (rightPanelRef === null) return;
-    useRightPanelStore.getState().openPullRequest(rightPanelRef, entry);
+    const intent = click ? rowClickIntent(click, isMacPlatform(navigator.platform)) : "replace";
+    const key = pullRequestEntryKey(entry);
+    const { change } = useRowSelectionStore.getState();
+    if (intent === "mod") {
+      change((now) => toggleRow(now, PULL_REQUEST_SELECTION, key));
+      return;
+    }
+    if (intent === "range") {
+      const ordered = [...entriesByStatsKey.keys()];
+      change((now) => rangeToRow(now, PULL_REQUEST_SELECTION, key, ordered));
+      return;
+    }
+    change(() => anchorRow(PULL_REQUEST_SELECTION, key));
+    // Astrolabe: in the tab in front, or as the click asks (see `pullRequestTabs`).
+    showPullRequest(entry, intent);
     updateSearch({
       repository: entry.repository,
       number: entry.number,
@@ -1211,7 +1289,7 @@ function PullRequestsRouteView() {
       selectedEnvironmentId: entry.environmentId,
       selectedHost: entry.host,
     });
-  };
+  });
 
   const searchInput = (
     <PullRequestSearchInput
@@ -1292,6 +1370,9 @@ function PullRequestsRouteView() {
                       selected.number === entry.number
                     }
                     onSelect={selectEntry}
+                    inSelection={selectedRowKeys.includes(entryKey)}
+                    onDragRow={dragRow}
+                    onRowMenu={showRowMenu}
                     speedMode={speedMode}
                     hostActions={hostActionsOf(entry)}
                     onActed={onSpeedAction}
@@ -1499,13 +1580,17 @@ function PullRequestsRouteView() {
         environmentId={environmentId}
         onSelectPullRequest={(reference) => {
           if (rightPanelRef === null) return;
-          useRightPanelStore.getState().openPullRequest(rightPanelRef, {
-            projectId: reference.projectId,
-            repository: reference.repository,
-            number: reference.number,
-            ...(reference.host ? { host: reference.host } : {}),
-            environmentId,
-          });
+          // Astrolabe: a pull request picked from within a review replaces that review's tab.
+          showPullRequest(
+            {
+              projectId: reference.projectId,
+              repository: reference.repository,
+              number: reference.number,
+              ...(reference.host ? { host: reference.host } : {}),
+              environmentId,
+            },
+            "replace",
+          );
           updateSearch({
             repository: reference.repository,
             number: reference.number,

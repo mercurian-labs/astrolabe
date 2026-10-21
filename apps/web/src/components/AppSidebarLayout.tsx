@@ -38,11 +38,13 @@ import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
+import { SidebarTabHistory } from "./sidebar/SidebarTabHistory";
 import { isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { WikiSidebar } from "./wiki/WikiSidebar";
 import { PullRequestsSidebar } from "./pullRequest/PullRequestsSidebar";
 import { KeyboardNavigation } from "../keyboardNav/KeyboardNavigation";
 import { WhichKey } from "../whichKey/WhichKey";
+import { tabHistorySlot } from "../whichKey/handles";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
 import {
@@ -189,14 +191,19 @@ function SidebarControl() {
   }, [keybindings, toggleSidebar, usagePageOpen]);
 
   // Astrolabe: beside the icon rail the toggle is the rail's (`AppIconRail`); the title bar keeps
-  // only the collapsed sidebar's actions, where the main area's title bar content starts.
+  // only the section's back and forward while the sidebar is collapsed (the sidebar's header holds
+  // them while it is open), where the main area's title bar content starts.
   if (!isMobile) {
     return (
       <div
         className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-[calc(2.75rem+var(--workspace-titlebar-content-left))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
         data-sidebar-control=""
       >
-        {isSidebarVisible ? null : <SidebarCollapsedActionsSlot gap />}
+        {isSidebarVisible ? null : (
+          <SidebarCollapsedActionsSlot gap>
+            <SidebarTabHistory />
+          </SidebarCollapsedActionsSlot>
+        )}
       </div>
     );
   }
@@ -226,7 +233,6 @@ function SidebarControl() {
           Toggle main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
         </TooltipPopup>
       </Tooltip>
-      {isSidebarVisible ? null : <SidebarCollapsedActionsSlot />}
     </div>
   );
 }
@@ -266,6 +272,12 @@ function NavigationHistoryShortcuts() {
 
       event.preventDefault();
       event.stopPropagation();
+      // Astrolabe: in a section with tabs (Threads, Wikis), the tab in front's own history.
+      const tabHistory = tabHistorySlot.get();
+      if (tabHistory) {
+        if (!event.repeat) tabHistory.go(command === "navigation.back" ? "back" : "forward");
+        return;
+      }
       if (command === "navigation.back") window.history.back();
       else window.history.forward();
     };
@@ -299,6 +311,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const isOnWikis = isWikisPath(pathname);
   // Astrolabe: so is Pull Requests, whose page fills its sidebar with the list.
   const isOnPullRequests = pathname === "/pull-requests";
+  // Astrolabe: Usage has no sidebar. It shows collapsed there, and the toggle is gone, while the
+  // other sections keep the open state the user left it in.
+  const isOnUsage = pathname === "/usage";
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const hasIconRail = !useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
@@ -368,7 +384,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        defaultOpen
+        open={sidebarOpen && !isOnUsage}
+        onOpenChange={(open) => {
+          if (!isOnUsage) setSidebarOpen(open);
+        }}
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />

@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
+  DEFAULT_CLIENT_SETTINGS,
   DEFAULT_MENU_REPEAT_WINDOW_MS,
   MAX_MENU_REPEAT_WINDOW_MS,
   resolveLeaderKey,
@@ -14,6 +15,7 @@ import { Input } from "../ui/input";
 import { Kbd } from "../ui/kbd";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { VimModeSettingsRow } from "./VimModeSetting";
@@ -107,6 +109,38 @@ function LeaderKeySettingsRow() {
   );
 }
 
+/** Whether Vim's j and k move by screen line, a line that wraps being as many as it shows. */
+function ScreenLinesSettingsRow() {
+  const on = useClientSettings((settings) => settings.vimScreenLinesEnabled);
+  const vim = useClientSettings((settings) => settings.vimModeEnabled);
+  return (
+    <SettingsRow
+      {...searchableSetting("vim-screen-lines")}
+      description="With Vim on, j and k move one line as it shows on screen, so a long line that wraps takes as many presses as the lines it shows, as gj and gk do. With a count, or after an operator such as d, they still move by lines of text."
+      resetAction={
+        on !== DEFAULT_CLIENT_SETTINGS.vimScreenLinesEnabled ? (
+          <SettingResetButton
+            label="screen line movement"
+            onClick={() =>
+              updateClientSettings({
+                vimScreenLinesEnabled: DEFAULT_CLIENT_SETTINGS.vimScreenLinesEnabled,
+              })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={on}
+          disabled={!vim}
+          onCheckedChange={(checked) => updateClientSettings({ vimScreenLinesEnabled: checked })}
+          aria-label="Move by screen line"
+        />
+      }
+    />
+  );
+}
+
 /** Raw milliseconds; grouping would show "1,000". */
 const NO_GROUPING = { useGrouping: false } as const;
 
@@ -116,7 +150,7 @@ function RepeatWindowSettingsRow() {
   return (
     <SettingsRow
       {...searchableSetting("menu-repeat-window")}
-      description="After a focus move or a scroll from the keyboard menu, its keys (the arrows, h, j, k, l, d and u) keep working for this long without opening the menu again. Each one restarts it, landing in a text field ends it, and 0 turns it off."
+      description="After a focus move or a scroll from the keyboard menu, its keys (the arrows, h, j, k, l, d and u) keep working for this long without opening the menu again. Each one restarts it, any other key ends it, and 0 turns it off."
       resetAction={
         windowMs !== DEFAULT_MENU_REPEAT_WINDOW_MS ? (
           <SettingResetButton
@@ -158,6 +192,7 @@ export function KeybindingsDeviceSection() {
   return (
     <SettingsSection title="This device">
       <VimModeSettingsRow />
+      <ScreenLinesSettingsRow />
       <LeaderKeySettingsRow />
       <RepeatWindowSettingsRow />
     </SettingsSection>

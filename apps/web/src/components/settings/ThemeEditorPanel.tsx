@@ -136,6 +136,13 @@ const THEME_EDITOR_ROLE_GROUPS: ReadonlyArray<{
           "terminalCursor",
         ],
       },
+      // Astrolabe: the focused place's mark on its tab in front.
+      {
+        id: "focus-bar",
+        label: "Focus bar",
+        role: "focusBar",
+        roles: ["focusBar"],
+      },
       {
         id: "action",
         label: "Action",

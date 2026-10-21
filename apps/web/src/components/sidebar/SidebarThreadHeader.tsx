@@ -5,10 +5,6 @@
  * field stays while it has focus or holds a query; Escape on an empty field, leaving it empty, or
  * picking a result puts the name back.
  *
- * While the sidebar is collapsed, search and the scope filter follow the toggle into the main
- * area's titlebar through `SidebarCollapsedActionsSlot`. Search there opens the sidebar with its
- * field ready, since the results are the sidebar's list.
- *
  * The scope picker itself is passed in: its combobox state lives with the rest of the sidebar's
  * scope logic. The scope icon swaps to the project favicon while a project is selected, so the
  * header still names the scope.
@@ -25,10 +21,8 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
-import { useLocation } from "@tanstack/react-router";
-import { createPortal } from "react-dom";
+import { observeResize } from "~/lib/observeResize";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -36,7 +30,6 @@ import { SidebarInput, SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { focusListRow, listDefaultRow } from "../../keyboardNav/placeLists";
 import { sidebarSectionSlot } from "../../whichKey/handles";
-import { isSidebarUtilityPage } from "./mainAppLocation";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -88,7 +81,6 @@ export function SidebarThreadHeader({
   // Astrolabe: the field shows from the search button until it loses focus, and while it holds a
   // query, so picking a result or leaving it empty puts the section's name back.
   const { isMobile, open, setOpen } = useSidebar();
-  const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchFocusRequest, setSearchFocusRequest] = useState(0);
   const fieldShown = searchOpen || isSearching;
@@ -121,18 +113,6 @@ export function SidebarThreadHeader({
       }),
     [newItemLabel, newThreadDisabled],
   );
-  if (collapsed && slot) {
-    return createPortal(
-      <SidebarCollapsedActions
-        hasProjects={hasProjects}
-        projectScope={projectScope}
-        searchLabel={searchLabel}
-        onSearch={openSearch}
-      />,
-      slot,
-    );
-  }
-
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
   // list; pointing aria-activedescendant at a removed option strands the
@@ -252,33 +232,6 @@ export function SidebarSectionTitle({
   );
 }
 
-/** Astrolabe: what follows the toggle into the main area's titlebar while the sidebar is collapsed. */
-function SidebarCollapsedActions({
-  hasProjects,
-  projectScope,
-  searchLabel,
-  onSearch,
-}: {
-  hasProjects: boolean;
-  projectScope: ReactNode;
-  searchLabel: string;
-  onSearch: () => void;
-}) {
-  // In the title bar of a page that lists no threads (Settings, Usage, Pull Requests, Wikis),
-  // the project filter has nothing to filter, so the collapsed actions leave it out.
-  const onUtilityPage = useLocation({
-    select: (location) => isSidebarUtilityPage(location.pathname),
-  });
-  return (
-    <div className="flex shrink-0 items-center">
-      <SidebarHeaderIconButton label={searchLabel} onClick={onSearch}>
-        <SearchIcon />
-      </SidebarHeaderIconButton>
-      {hasProjects && !onUtilityPage ? projectScope : null}
-    </div>
-  );
-}
-
 /** The project picker's last row: adding a project, which used to be its own header button. */
 export function SidebarNewProjectRow({ onClick }: { onClick: () => void }) {
   return (
@@ -316,43 +269,30 @@ export function SidebarPickerAction({
   );
 }
 
-// Where the sidebar's actions land while it is collapsed: beside the toggle in the main area's
-// titlebar. One slot per window, registered by the toggle's container.
-let slotElement: HTMLElement | null = null;
-const slotListeners = new Set<() => void>();
-function subscribeSlot(listener: () => void) {
-  slotListeners.add(listener);
-  return () => slotListeners.delete(listener);
-}
-function getSlot() {
-  return slotElement;
-}
-function setSlot(element: HTMLElement | null) {
-  slotElement = element;
-  for (const listener of slotListeners) listener();
-}
-
 /**
- * Sits after the sidebar toggle while the sidebar is collapsed (beside the icon rail, where the
- * toggle is the rail's, at the start of the title bar instead). It publishes its width as
- * `--workspace-collapsed-sidebar-actions`, so titlebars that inset for the toggle clear the
- * actions too; `gap` includes the room after them, which the toggle's inset otherwise gives.
+ * Astrolabe: what the title bar holds after the window's own controls while the sidebar is
+ * collapsed (the section's back and forward, see `SidebarTabHistory`). It publishes its width as
+ * `--workspace-collapsed-sidebar-actions`, so titlebars that inset for the window's controls clear
+ * it too; `gap` includes the room after it.
  */
-export function SidebarCollapsedActionsSlot({ gap = false }: { gap?: boolean }) {
+export function SidebarCollapsedActionsSlot({
+  gap = false,
+  children,
+}: {
+  gap?: boolean;
+  children: ReactNode;
+}) {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!element) return;
-    setSlot(element);
     const root = document.documentElement;
-    const observer = new ResizeObserver(([entry]) => {
-      const width = entry?.borderBoxSize[0]?.inlineSize ?? element.offsetWidth;
-      root.style.setProperty("--workspace-collapsed-sidebar-actions", `${width}px`);
-    });
-    observer.observe(element);
+    const publish = () =>
+      root.style.setProperty("--workspace-collapsed-sidebar-actions", `${element.offsetWidth}px`);
+    publish();
+    const stop = observeResize(element, publish);
     return () => {
-      observer.disconnect();
+      stop();
       root.style.removeProperty("--workspace-collapsed-sidebar-actions");
-      if (slotElement === element) setSlot(null);
     };
   }, [element]);
   return (
@@ -362,7 +302,9 @@ export function SidebarCollapsedActionsSlot({ gap = false }: { gap?: boolean }) 
         "pointer-events-auto flex items-center empty:hidden [-webkit-app-region:no-drag]",
         gap && "pe-(--workspace-titlebar-control-gap)",
       )}
-    />
+    >
+      {children}
+    </div>
   );
 }
 

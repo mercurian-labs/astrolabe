@@ -8,7 +8,8 @@ import { listMoveForKey, moveListCursor } from "./listCursor.logic";
  * Astrolabe: moving through a place's list from the keyboard: the sidebar's rows (the Threads,
  * Wikis and Pull Requests sidebars draw them) and the icon rail's buttons. While a row has focus:
  * `j`/`k` (and the arrows) step to the next or previous row, `gg`/`G` (and Home/End) jump to
- * the ends, Enter does what a click does and Mod+Enter what a Mod-click does, `/` opens the
+ * the ends, Enter does what a click does (shows the row in the tab in front), Alt+Enter what an
+ * Option-click does (opens it in a new tab) and Mod+Enter what a Mod-click does, `/` opens the
  * sidebar's search, and Escape hands focus to the place on the right. Group headers, folded rows
  * and controls inside a row are passed over. Each list is a roving tab stop: the row last focused
  * is its one stop in the tab order. The row reached by a key shows its focus ring
@@ -149,8 +150,8 @@ export function listDefaultRow(place: Element): HTMLElement | null {
   );
 }
 
-/** Presses `row` as a click would, with Mod held for Mod+Enter. */
-function activate(row: HTMLElement, withMod: boolean) {
+/** Presses `row` as a click would, with Mod held for Mod+Enter and Alt for Alt+Enter. */
+function activate(row: HTMLElement, withMod: boolean, withAlt: boolean) {
   const mac = isMacPlatform(navigator.platform);
   row.dispatchEvent(
     new MouseEvent("click", {
@@ -158,6 +159,7 @@ function activate(row: HTMLElement, withMod: boolean) {
       cancelable: true,
       metaKey: withMod && mac,
       ctrlKey: withMod && !mac,
+      altKey: withAlt,
     }),
   );
 }
@@ -172,7 +174,8 @@ export function handleListKey(
 ): boolean {
   const row = event.target;
   const found = row instanceof HTMLElement ? listOf(row) : null;
-  if (!(row instanceof HTMLElement) || !found || event.isComposing || event.altKey) {
+  const altEnter = event.altKey && event.key === "Enter";
+  if (!(row instanceof HTMLElement) || !found || event.isComposing || (event.altKey && !altEnter)) {
     pendingG = false;
     return false;
   }
@@ -186,7 +189,7 @@ export function handleListKey(
     pendingG = false;
     if (event.repeat) return take();
     entered = row;
-    activate(row, mod);
+    activate(row, mod, event.altKey);
     return take();
   }
   // Every other chord stays the app's (Ctrl+H/J/K/L move between places).

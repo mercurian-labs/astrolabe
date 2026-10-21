@@ -179,6 +179,12 @@ interface RightPanelStoreState {
   closeTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
+  /**
+   * Astrolabe: shows `surface` in `surfaceId`'s place, in front, in one change, so the panes put
+   * its tab where the old one stood (see `followRecord`). Opens it as `upsertSurface` does when
+   * `surfaceId` is not open.
+   */
+  replaceSurface: (ref: ScopedThreadRef, surfaceId: string, surface: RightPanelSurface) => void;
   closeOtherSurfaces: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
@@ -905,6 +911,21 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               ? { ...current, isOpen: true, activeSurfaceId: surfaceId }
               : current,
           ),
+        ),
+      replaceSurface: (ref, surfaceId, surface) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => {
+            const index = current.surfaces.findIndex((entry) => entry.id === surfaceId);
+            if (index < 0 || current.surfaces.some((entry) => entry.id === surface.id)) {
+              return upsertSurface(current, surface);
+            }
+            return {
+              ...current,
+              isOpen: true,
+              surfaces: current.surfaces.map((entry, at) => (at === index ? surface : entry)),
+              activeSurfaceId: surface.id,
+            };
+          }),
         ),
       closeSurface: (ref, surfaceId) =>
         set((state) =>

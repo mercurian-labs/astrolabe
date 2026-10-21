@@ -8,20 +8,36 @@ import {
   isEmptyTab,
   openBeside,
   openTab,
+  placeTabs,
   replaceTab,
   startingArrangement,
   type Arrangement,
 } from "~/panes/arrangement";
+import type { Side } from "~/panes/tree";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "~/panes/panesHost";
 import { isStarting, parseArrangement } from "~/panes/persistence";
+import {
+  dropHistoryTarget,
+  historyTarget,
+  keepHistories,
+  parseHistories,
+  rekeyHistory,
+  replaceInHistory,
+  stepHistory,
+  type HistoryDirection,
+  type TabHistories,
+} from "~/tabNavigation.logic";
 import { parseWikiTabKey, sameWikiTab, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 /**
  * The Wikis area's tabs and splits: one arrangement on the device, as Obsidian keeps one
  * workspace, holding documents from every server and wiki. It lives outside React so the
- * sidebar, links and deep links can open documents into it.
+ * sidebar, links and deep links can open documents into it. Each tab walks back and forward
+ * through what it showed, as Obsidian's do (its history, under the key it shows now, is kept
+ * beside the arrangement).
  */
 const STORAGE_KEY = "astrolabe:wiki-panes:v1";
+const HISTORY_STORAGE_KEY = "astrolabe:wiki-tab-history:v1";
 const PERSIST_DELAY_MS = 150;
 
 const isWikiPaneKey = (key: string) => isEmptyTab(key) || parseWikiTabKey(key) !== null;
@@ -43,16 +59,28 @@ function load(): Arrangement {
   }
 }
 
-function save(arrangement: Arrangement) {
+function save(arrangement: Arrangement, tabHistories: TabHistories) {
   try {
     if (isStarting(arrangement)) storage()?.removeItem(STORAGE_KEY);
     else storage()?.setItem(STORAGE_KEY, JSON.stringify(arrangement));
+    if (Object.keys(tabHistories).length === 0) storage()?.removeItem(HISTORY_STORAGE_KEY);
+    else storage()?.setItem(HISTORY_STORAGE_KEY, JSON.stringify(tabHistories));
   } catch {
     // Storage full or blocked: the panes still work until the page goes away.
   }
 }
 
+function loadHistories(arrangement: Arrangement): TabHistories {
+  try {
+    const raw = storage()?.getItem(HISTORY_STORAGE_KEY);
+    return raw ? keepHistories(parseHistories(JSON.parse(raw)), allTabs(arrangement)) : {};
+  } catch {
+    return {};
+  }
+}
+
 let snapshot: PaneArrangementSnapshot | null = null;
+let histories: TabHistories | null = null;
 let pending: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
 
@@ -61,20 +89,42 @@ function current(): PaneArrangementSnapshot {
   return snapshot;
 }
 
+function currentHistories(): TabHistories {
+  histories ??= loadHistories(current().arrangement);
+  return histories;
+}
+
 function flush() {
   if (pending) clearTimeout(pending);
   pending = null;
-  if (snapshot) save(snapshot.arrangement);
+  if (snapshot) save(snapshot.arrangement, currentHistories());
+}
+
+/**
+ * Changes the arrangement and, with `history`, the tabs' histories with it; a tab that closes
+ * forgets its history.
+ */
+function updateWithHistory(
+  change: (arrangement: Arrangement) => Arrangement,
+  history?: (histories: TabHistories) => TabHistories,
+) {
+  const before = current().arrangement;
+  const beforeHistories = currentHistories();
+  const next = change(before);
+  const nextHistories = keepHistories(
+    history ? history(beforeHistories) : beforeHistories,
+    allTabs(next),
+  );
+  if (next === before && nextHistories === beforeHistories) return;
+  snapshot = { arrangement: next, hostPaneId: null };
+  histories = nextHistories;
+  pending ??= setTimeout(flush, PERSIST_DELAY_MS);
+  for (const listener of listeners) listener();
 }
 
 export const wikiPanes: PaneArrangementStore & { flush(): void } = {
   update(change) {
-    const before = current().arrangement;
-    const next = change(before);
-    if (next === before) return;
-    snapshot = { arrangement: next, hostPaneId: null };
-    pending ??= setTimeout(flush, PERSIST_DELAY_MS);
-    for (const listener of listeners) listener();
+    updateWithHistory(change);
   },
   getSnapshot: current,
   subscribe(listener) {
@@ -114,15 +164,111 @@ export function openWikiTab(tab: WikiTab, placement: OpenPlacement = "tab", pane
 }
 
 /**
- * Shows `next` in `from`'s tab, as following a link does in Obsidian. When `next` is open in
- * another tab already, that tab comes to the front instead.
+ * Astrolabe: opens documents dragged from the sidebar where they land on `paneId`, in order,
+ * the one dragged (`front`) in front (see `placeTabs`); one open already moves there.
  */
-export function replaceWikiTab(from: string, next: WikiTab) {
+export function placeWikiTabs(
+  tabs: readonly WikiTab[],
+  front: WikiTab,
+  paneId: string,
+  drop: { readonly side: Side | null; readonly index: number },
+) {
   wikiPanes.update((arrangement) => {
-    const open = openKeyFor(arrangement, next);
-    if (open !== null) return activateTab(arrangement, open);
-    return replaceTab(arrangement, from, wikiTabKey(next));
+    const keyOf = (tab: WikiTab) => openKeyFor(arrangement, tab) ?? wikiTabKey(tab);
+    return placeTabs(arrangement, tabs.map(keyOf), paneId, drop, keyOf(front));
   });
+}
+
+/**
+ * Shows `next` in `from`'s tab, as following a link does in Obsidian: `from` joins the tab's back
+ * history. `rekey` keeps the history as it is instead, for the same page under a new key (a note
+ * saved into a change request). When `next` is open in another tab already, that tab comes to
+ * the front instead.
+ */
+export function replaceWikiTab(from: string, next: WikiTab, { rekey = false } = {}) {
+  const key = wikiTabKey(next);
+  let replaced = false;
+  updateWithHistory(
+    (arrangement) => {
+      const open = openKeyFor(arrangement, next);
+      if (open !== null) return activateTab(arrangement, open);
+      replaced = true;
+      return replaceTab(arrangement, from, key);
+    },
+    (tabHistories) =>
+      !replaced
+        ? tabHistories
+        : rekey
+          ? rekeyHistory(tabHistories, from, key)
+          : replaceInHistory(tabHistories, from, key),
+  );
+}
+
+/**
+ * Shows a document as a click on its sidebar row does, in the focused pane's tab in front, which
+ * remembers what it showed (see `replaceWikiTab`). One open already comes to the front where it
+ * is; an empty tab, or one with unsaved edits, makes way for a new tab instead.
+ */
+export function showWikiTab(tab: WikiTab) {
+  const arrangement = current().arrangement;
+  const active = focusedPane(arrangement).active;
+  if (openKeyFor(arrangement, tab) !== null || isEmptyTab(active) || hasUnsavedEdits(active)) {
+    openWikiTab(tab);
+    return;
+  }
+  replaceWikiTab(active, tab);
+}
+
+/**
+ * Steps the focused pane's tab in front back or forward through what it showed. A document open
+ * in another tab comes to the front there; with unsaved edits in the tab, the step opens in a new
+ * tab rather than drop them, as following a link does.
+ */
+export function stepWikiTab(direction: HistoryDirection) {
+  const arrangement = current().arrangement;
+  const active = focusedPane(arrangement).active;
+  let tabHistories = currentHistories();
+  let target = historyTarget(tabHistories, active, direction);
+  // An entry that no longer reads as a wiki tab is passed over and forgotten.
+  while (target !== null && parseWikiTabKey(target) === null) {
+    tabHistories = dropHistoryTarget(tabHistories, active, direction);
+    target = historyTarget(tabHistories, active, direction);
+  }
+  const tab = target === null ? null : parseWikiTabKey(target);
+  if (target === null || tab === null || hasUnsavedEdits(active) || openKeyFor(arrangement, tab)) {
+    const pruned = tabHistories;
+    updateWithHistory(
+      (before) => (tab ? openTabOrFront(before, tab) : before),
+      () => pruned,
+    );
+    return;
+  }
+  const stepped = stepHistory(tabHistories, active, direction);
+  if (!stepped) return;
+  updateWithHistory(
+    (before) => replaceTab(before, active, target),
+    () => stepped.histories,
+  );
+}
+
+function openTabOrFront(arrangement: Arrangement, tab: WikiTab): Arrangement {
+  const open = openKeyFor(arrangement, tab);
+  return open !== null
+    ? activateTab(arrangement, open)
+    : openTab(arrangement, wikiTabKey(tab), arrangement.focused);
+}
+
+/** Whether the focused pane's tab in front has anything back (or forward) to show. */
+export function useWikiTabHistory(): {
+  readonly canGoBack: boolean;
+  readonly canGoForward: boolean;
+} {
+  const read = (direction: HistoryDirection) => () =>
+    historyTarget(currentHistories(), focusedPane(current().arrangement).active, direction) !==
+    null;
+  const canGoBack = useSyncExternalStore(wikiPanes.subscribe, read("back"));
+  const canGoForward = useSyncExternalStore(wikiPanes.subscribe, read("forward"));
+  return { canGoBack, canGoForward };
 }
 
 /** Closes the tabs showing anything of a wiki, as when it is removed. */

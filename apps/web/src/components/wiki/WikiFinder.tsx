@@ -15,7 +15,7 @@ import { CommandDialog, CommandDialogPopup } from "../ui/command";
 import { isWikisPath } from "../sidebar/mainAppLocation";
 import { noteKey } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
-import { openWikiTab } from "./wikiPanes";
+import { openWikiTab, showWikiTab } from "./wikiPanes";
 import { wikiScopeKey, wikiSidebarItems, type WikiDocumentItem, type WikiTab } from "./wikiTabs";
 
 const RESULT_LIMIT = 60;
@@ -57,7 +57,10 @@ export function WikiFinder({
             mode={mode}
             onPick={(tab) => {
               onOpenChange(false);
-              openWikiTab(tab, "tab", paneId);
+              // An empty pane's finder fills that pane; elsewhere a pick shows in the focused
+              // pane's tab in front, as a sidebar row's click does.
+              if (paneId === undefined) showWikiTab(tab);
+              else openWikiTab(tab, "tab", paneId);
             }}
           />
         </CommandDialogPopup>
@@ -159,7 +162,8 @@ function documentRow(
 
 /**
  * Astrolabe: every wiki's documents as the Search Palette's rows, newest first, for it to match
- * as it matches threads; a pick opens the document as a tab in the Wikis section, as `:e` does.
+ * as it matches threads; a pick shows the document in the Wikis section's tab in front, as `:e`
+ * and a sidebar row's click do.
  * Asks for the wikis only while `enabled`, and builds the rows only when they change, not per
  * keystroke.
  */
@@ -170,7 +174,7 @@ export function useDocumentSearchRows(enabled: boolean): ReadonlyArray<CommandPa
   return useMemo(() => {
     const { documents } = wikiSidebarItems(overviews, null);
     const onPick = (tab: WikiTab) => {
-      openWikiTab(tab);
+      showWikiTab(tab);
       if (!onWikis) void navigate({ to: "/wikis" });
     };
     return documents.map((document) => documentRow(document, overviews.length > 1, onPick));

@@ -26,6 +26,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import { isConnectedWithConfig } from "../components/settings/scopedSettings";
 import { environmentCatalog } from "../connection/catalog";
+import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentAtomList } from "./environmentAtomList";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
@@ -52,6 +53,17 @@ export const environmentServerConfigsAtom = createEnvironmentServerConfigsAtom({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   serverConfigValueAtom: serverEnvironment.configValueAtom,
 });
+/**
+ * Each environment's provider instance entries, by instance id, for surfaces that draw a
+ * thread's provider (sidebar rows, chat tabs). Derived once here so they share one lookup.
+ */
+export const providerEntriesByEnvironmentAtom = Atom.make((get) =>
+  deriveProviderEntriesByEnvironment(
+    [...get(environmentServerConfigsAtom)].map(
+      ([environmentId, config]) => [environmentId, config.providers, config.settings] as const,
+    ),
+  ),
+).pipe(Atom.withLabel("web-provider-entries-by-environment"));
 
 interface PrimaryServerState {
   readonly config: ServerConfig | null;

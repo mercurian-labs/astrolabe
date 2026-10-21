@@ -133,6 +133,8 @@ export function lenientThemeColorOverrides(
       overrides[role as ThemeColorRole] = normalized;
     }
   }
+  // Astrolabe: a theme from before the focus bar had its own role draws it in its focus color.
+  if (overrides.focus && !overrides.focusBar) overrides.focusBar = overrides.focus;
   return overrides;
 }
 
@@ -702,6 +704,7 @@ export function createVividThemeColors(
     border: themeColor(border),
     input: themeColor(input),
     focus: themeRgbToThemeColor(accentRgb),
+    focusBar: themeRgbToThemeColor(accentRgb),
     accent: themeRgbToThemeColor(accentRgb),
     accentForeground: themeRgbToThemeColor(accentForeground),
     secondary: themeColor(secondary),
@@ -1377,6 +1380,7 @@ const APP_THEME_VARIABLES: Readonly<Record<ThemeColorRole, string>> = {
   border: "--app-theme-border",
   input: "--app-theme-input",
   focus: "--app-theme-focus",
+  focusBar: "--app-theme-focus-bar",
   accent: "--app-theme-accent",
   accentForeground: "--app-theme-accent-foreground",
   secondary: "--app-theme-secondary",

@@ -1,5 +1,5 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
-import { Columns2, Maximize2, Minimize2, MoreHorizontal, Rows2, SquareX, X } from "lucide-react";
+import { Columns2, Maximize2, Minimize2, MoreHorizontal, Rows2, SquareX } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -32,6 +32,7 @@ import {
   currentDrag,
   endDrag,
   insertIndex,
+  insertionLineX,
   paneDropZone,
   startDrag,
   useDragging,
@@ -58,6 +59,7 @@ import {
   toggleTab,
   useTabSelectionStore,
 } from "./tabSelection";
+import { TabCloseButton, TabTitle } from "./TabParts";
 import { findLeaf, leaves, type Leaf } from "./tree";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -203,19 +205,20 @@ const TabPill = memo(function TabPill({
       data-pane-tab
       data-key={tabKey}
       className={cn(
-        // A pill as wide as its title up to 260px; short of room the pills shrink together to
-        // 96px, then the strip scrolls. `--pill` is its fill, which the close control fades to.
-        "group/tab relative flex h-7 max-w-[260px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
+        // Astrolabe: Chrome's tabs. 240px wide, and short of room they shrink together to 96px,
+        // then the strip scrolls. The tab in front, outlined as Obsidian's, joins the pane below
+        // from the others' top to the strip's foot (its curved feet and the rules between tabs
+        // are `index.css`'s); the others are bare until hovered.
+        "group/tab relative flex w-60 min-w-24 shrink cursor-pointer items-center gap-1.5 border border-transparent ps-2.25 pe-1.5 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
         draggableInTitlebar && "[-webkit-app-region:no-drag]",
         active
           ? cn(
-              "border-border shadow-xs/5 [--pill:var(--card)]",
+              "z-10 mt-1.5 self-stretch rounded-t-md border-border border-b-0 bg-(--tab-join)",
               paneFocused ? "text-foreground" : "text-muted-foreground",
             )
           : selected
-            ? "text-foreground [--pill:color-mix(in_oklch,var(--muted),var(--primary)_14%)]"
-            : "text-muted-foreground [--pill:color-mix(in_oklch,var(--muted),black_4%)] hover:text-foreground hover:[--pill:color-mix(in_oklch,var(--muted),var(--foreground)_7%)] dark:[--pill:color-mix(in_oklch,var(--muted),black_22%)] dark:hover:[--pill:color-mix(in_oklch,var(--muted),var(--foreground)_7%)]",
-        selected && "border-primary/45",
+            ? "h-7 rounded-md border-primary/45 bg-primary/14 text-foreground"
+            : "h-7 rounded-md text-muted-foreground hover:bg-foreground/6 hover:text-foreground",
         dragging && "opacity-50",
       )}
       data-selected={selected || undefined}
@@ -242,6 +245,7 @@ const TabPill = memo(function TabPill({
       onDragEnd={endDrag}
     >
       <span
+        data-tab-icon
         className={cn(
           "flex size-4 shrink-0 items-center justify-center",
           active ? "opacity-100" : "opacity-85 group-hover/tab:opacity-100",
@@ -249,30 +253,15 @@ const TabPill = memo(function TabPill({
       >
         {icon}
       </span>
-      <Tooltip>
-        <TooltipTrigger render={<span className="min-w-0 truncate">{title}</span>} />
-        <TooltipPopup>{title}</TooltipPopup>
-      </Tooltip>
+      <TabTitle title={title} />
       {closable ? (
-        // Over the pill's end while it is hovered or focus is inside it, on a backdrop that fades
-        // the title out before it, so the pill keeps its width. Only the 16px ✕ takes clicks.
-        // Transparent rather than hidden at rest, so the ✕ stays in the keyboard's Tab order.
-        <span className="pointer-events-none absolute inset-y-0 end-0 flex items-center opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100">
-          <span className="h-full w-6 bg-linear-to-r from-transparent to-(--pill)" />
-          <span className="flex h-full items-center rounded-e-md bg-(--pill) pe-1.5">
-            <button
-              type="button"
-              aria-label={`Close ${title}`}
-              className="pointer-events-auto flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/8 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-              onClick={(event) => {
-                event.stopPropagation();
-                tabs.close(tabKey);
-              }}
-            >
-              <X className="size-3" />
-            </button>
-          </span>
-        </span>
+        <TabCloseButton
+          label={`Close ${title}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            tabs.close(tabKey);
+          }}
+        />
       ) : null}
     </div>
   );
@@ -342,7 +331,7 @@ function TabStrip({
     <div
       data-pane-strip
       className={cn(
-        "relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1.5 border-b border-border bg-muted px-2",
+        "relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1.5 border-b border-border bg-muted px-2 [--tab-join:var(--background)]",
         titlebar && "drag-region",
         atTop && atRight && tabs.reservesTopRight && "pe-20",
         titlebar && atRight && "wco:pe-(--workspace-native-controls-inset)",
@@ -355,8 +344,9 @@ function TabStrip({
         aria-orientation="horizontal"
         aria-multiselectable
         data-pane-tabs
-        // 2px past the strip's box on each side, so a pill's shadow and focus ring stay whole.
-        className="-mx-0.5 flex min-w-0 items-center gap-1.5 overflow-x-auto px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // Past the strip's padding on each side, so the joined tab's curved feet and a tab's
+        // focus ring stay whole; down over the strip's bottom border, which the joined tab covers.
+        className="-mx-2 -mb-px flex min-w-0 items-center gap-1 self-stretch overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onWheel={(event) => {
           // A vertical wheel scrolls the tabs sideways.
           if (event.deltaX === 0 && event.deltaY !== 0) {
@@ -515,7 +505,10 @@ function dropTargetAt(
   };
 }
 
-/** Joining the strip: the index among its tabs, and the insertion line in the gap before it. */
+/**
+ * Joining the strip: the index among its tabs, and the insertion line in the gap before it, as
+ * tall as a rule between tabs and centred on the strip.
+ */
 function stripTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropTarget | null {
   const list = pane.querySelector<HTMLElement>("[data-pane-tabs]");
   if (!list) return null;
@@ -528,19 +521,19 @@ function stripTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropT
     clientX,
   );
   const gap = Number.parseFloat(getComputedStyle(list).gap) || 0;
-  const before = tabs[index];
-  const last = tabs.at(-1);
-  const near = before ?? last;
-  const at = before ? before.left - gap / 2 : last ? last.right + gap / 2 : listRect.left;
+  const at = insertionLineX(tabs, index, gap, listRect.left + gap);
   return {
     zone: "center",
     index,
-    top: Math.round((near?.top ?? listRect.top) - rect.top),
+    top: Math.round(listRect.top + (listRect.height - INSERTION_LINE_HEIGHT) / 2 - rect.top),
     left: Math.round(at - rect.left - 1),
     width: 2,
-    height: Math.round(near?.height ?? listRect.height),
+    height: INSERTION_LINE_HEIGHT,
   };
 }
+
+/** The insertion line's height, a little over a rule's between tabs (`index.css`). */
+const INSERTION_LINE_HEIGHT = 20;
 
 /** Covers the pane's content with what the overlay draws; collapses when it draws nothing. */
 function PaneOverlay({ children }: { children: ReactNode }) {
@@ -660,6 +653,14 @@ export const PaneView = memo(function PaneView({
       if (!drop) return;
       event.preventDefault();
       endDrag();
+      // Astrolabe: a sidebar's rows open where they land.
+      if (item.place) {
+        item.place(current.id, {
+          side: drop.zone === "center" ? null : drop.zone,
+          index: drop.index,
+        });
+        return;
+      }
       controller.update((arrangement) =>
         drop.zone === "center"
           ? moveTabs(arrangement, item.keys, current.id, drop.index, item.key)

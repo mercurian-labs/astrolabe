@@ -10,7 +10,8 @@ import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import { useOpenLink } from "../browser/useOpenLink";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import { useRightPanelStore } from "../rightPanelStore";
+import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
+import { showPullRequest } from "../components/pullRequest/pullRequestTabs";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -167,7 +168,7 @@ export function useOpenChangeRequestLink(
     event.preventDefault();
     event.stopPropagation();
     if (resolvedPanelRef) {
-      useRightPanelStore.getState().openPullRequest(resolvedPanelRef, {
+      const target = {
         // The standalone PR panel has a synthetic ref; each tab keeps its real environment.
         ...(resolvedPanelRef.environmentId === project.environmentId
           ? {}
@@ -180,7 +181,14 @@ export function useOpenChangeRequestLink(
         repository,
         url: targetUrl,
         number: parsed.number,
-      });
+      };
+      // Astrolabe: on the Pull Requests page a link replaces the tab it is followed in, as a
+      // wikilink does in Wikis (see `showPullRequest`).
+      const onPage =
+        resolvedPanelRef.environmentId === PULL_REQUESTS_PANEL_REF.environmentId &&
+        resolvedPanelRef.threadId === PULL_REQUESTS_PANEL_REF.threadId;
+      if (onPage) showPullRequest(target, "replace");
+      else useRightPanelStore.getState().openPullRequest(resolvedPanelRef, target);
       if (!resolvedThreadRef) {
         void navigate({
           to: "/pull-requests",

@@ -40,12 +40,13 @@ const collabTheme = EditorView.theme({
 
 // No `history()`: undo belongs to Yjs, and CodeMirror history would otherwise record every
 // transaction, agent syncs included, for nothing. The live preview's bindings sit above the
-// default keymap, which supplies motion and deletion that respect hidden syntax.
+// default keymap, which supplies motion and deletion that respect hidden syntax. Astrolabe: less
+// its Mod-/, which in Markdown wraps the line in an HTML comment; the app's Search has the key.
 const liveMarkdown = (options: LivePreviewOptions | undefined) => [
   livePreview(options),
   EditorView.lineWrapping,
   EditorState.allowMultipleSelections.of(true),
-  keymap.of(defaultKeymap),
+  keymap.of(defaultKeymap.filter((binding) => binding.key !== "Mod-/")),
 ];
 
 // Locked: no typing, no caret, and every change the writer lands is brought into view. The

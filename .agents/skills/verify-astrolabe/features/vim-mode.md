@@ -13,6 +13,11 @@ way out. In Vim's normal mode `:` opens the Command Palette (see
   while the switch stays off. `:q`, `:quit` or `:q!` then Enter turns it on. Any
   other ex command (`:w` too), Escape in normal mode, or **Cancel** backs out and
   returns focus to the switch. Turning it off is one click.
+- **Move by screen line** (the row under it, `vimScreenLinesEnabled`, off by default, disabled
+  while Vim is off): `j`/`k` (and the arrows) move one wrapped row, as `gj`/`gk`; with a count
+  (`2k`) or after an operator (`dj`) by lines of text (`defineScreenLineKeys` in
+  `packages/editor/src/vim.ts`). Walk it in the composer with a line long enough to wrap and
+  read the fat cursor's `getBoundingClientRect().top` after each key.
 - **Composer**: a new or cleared draft is in insert mode, and a send returns it there
   (a draft restored after a reload can open in normal mode). Insert mode
   keeps every composer key (Enter sends, Shift+Enter, ArrowUp history, the `@`/`$`

@@ -5,6 +5,7 @@ import {
   moveTabs,
   openBeside,
   openTab,
+  placeTabs,
   splitTab,
   splitTabs,
   splitWithTabs,
@@ -106,5 +107,29 @@ describe("moving a selection of tabs together", () => {
     const two = openTab(openTab(startingArrangement(), diff), files);
     const next = splitTabs(two, [files, diff], "right");
     expect(panes(next)).toEqual([["empty/1"], [diff, files]]);
+  });
+});
+
+describe("placing tabs dropped from outside the panes", () => {
+  const notes = surfaceKey("note:a");
+
+  it("opens the ones not open at the insertion line and moves the open ones there", () => {
+    const next = placeTabs(sideBySide(), [notes, files], "p0", { side: null, index: 0 });
+    expect(panes(next)).toEqual([[notes, files, diff]]);
+    expect(leaves(next.root)[0]?.active).toBe(notes);
+    // The one dragged of several comes to the front.
+    const dragged = placeTabs(sideBySide(), [notes, files], "p0", { side: null, index: 0 }, files);
+    expect(leaves(dragged.root)[0]?.active).toBe(files);
+  });
+
+  it("takes the place of a pane's lone empty tab", () => {
+    expect(panes(startingArrangement())).toEqual([["empty/0"]]);
+    const next = placeTabs(startingArrangement(), [notes], "p0", { side: null, index: 1 });
+    expect(panes(next)).toEqual([[notes]]);
+  });
+
+  it("opens them in a new pane on a pane's edge", () => {
+    const next = placeTabs(sideBySide(), [notes], "p1", { side: "bottom", index: 0 });
+    expect(panes(next)).toEqual([[diff], [files], [notes]]);
   });
 });

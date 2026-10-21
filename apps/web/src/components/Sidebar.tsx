@@ -1,4 +1,8 @@
-import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+import {
+  type ContextMenuItem,
+  type EnvironmentId,
+  type ScopedProjectRef,
+} from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
@@ -197,6 +201,7 @@ import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
   threadActionRequiresOperate,
+  type ThreadActionMenuId,
 } from "./threadActionMenu.logic";
 import {
   animateSidebarLayoutChanges,
@@ -251,6 +256,12 @@ import {
   restrictBelowSidebarLabel,
 } from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
+import {
+  dropThreadTabs,
+  endThreadTabDrag,
+  inListOrder,
+  moveThreadTabDrag,
+} from "../chatTabs/threadTabDrop";
 import { createSidebarListMotion } from "./Sidebar.motion";
 import {
   ThreadPullRequestBadgeControl,
@@ -289,6 +300,8 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
+import { useChatTabsStore } from "../chatTabs/chatTabsStore";
+import { rowClickIntent } from "../tabNavigation.logic";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import {
   SidebarHeaderIconButton,
@@ -378,6 +391,18 @@ const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, SidebarProviderEntry> = new Ma
 // Collapsed shelves share one empty list so a route change alone does not
 // give the sidebar list a new identity.
 const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
+
+/** Astrolabe: keeps the middle button, which opens a row in a new tab, from starting autoscroll. */
+function preventMiddleClickScroll(event: ReactMouseEvent) {
+  if (event.button === 1) event.preventDefault();
+}
+
+/** Astrolabe: a row's context menu item opening it in a new chat tab. */
+const OPEN_IN_NEW_TAB_ITEM = {
+  id: "open-in-new-tab",
+  label: "Open in new tab",
+  icon: "square-plus",
+} as const satisfies ContextMenuItem<"open-in-new-tab">;
 
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
@@ -1330,7 +1355,8 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   project: ProjectFaviconProject | null;
   projectDisplayName: string | null;
   isActive: boolean;
-  onNavigate: (draftId: DraftId) => void;
+  /** Astrolabe: `newTab` opens it in a new chat tab rather than the one in front. */
+  onNavigate: (draftId: DraftId, options?: { readonly newTab?: boolean }) => void;
   onDiscard: (draftId: DraftId) => void;
   onContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
 }) {
@@ -1357,7 +1383,14 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     projectDisplayName: props.projectDisplayName,
     isActive: props.isActive,
   });
-  const handleActivate = () => onNavigate(draftId);
+  // Astrolabe: Option-click and the middle button open the draft in a new chat tab.
+  const handleActivate = (event: ReactMouseEvent) =>
+    onNavigate(draftId, {
+      newTab: rowClickIntent(event, isMacPlatform(navigator.platform)) === "new-tab",
+    });
+  const handleAuxClick = (event: ReactMouseEvent) => {
+    if (event.button === 1) handleActivate(event);
+  };
   const handleKeyDown = (event: ReactKeyboardEvent) => {
     // Keys targeting the nested discard button belong to the button:
     // preventDefault here would swallow Space's synthesized click and
@@ -1396,6 +1429,8 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
           props.isActive ? "bg-sidebar-row-active" : draftSurfaceClassName,
         )}
         onClick={handleActivate}
+        onMouseDown={preventMiddleClickScroll}
+        onAuxClick={handleAuxClick}
         onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
       >
@@ -1447,7 +1482,7 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   projectDisplayNameByKey: ReadonlyMap<string, string>;
   scopedProjectKeys: ReadonlySet<string> | null;
   routeDraftId: string | null;
-  onNavigateToDraft: (draftId: DraftId) => void;
+  onNavigateToDraft: (draftId: DraftId, options?: { readonly newTab?: boolean }) => void;
   onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
 }) {
   const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
@@ -1795,6 +1830,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const handleClick = (event: ReactMouseEvent) => {
     onThreadClick(event, threadRef);
+  };
+  // Astrolabe: the middle button opens the thread in a new chat tab, as Option-click does.
+  const handleAuxClick = (event: ReactMouseEvent) => {
+    if (event.button === 1) onThreadClick(event, threadRef);
   };
   const handleAcknowledgeWokeClick = (event: ReactMouseEvent) => {
     event.preventDefault();
@@ -2146,6 +2185,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 aria-busy={isRegeneratingTitle || undefined}
                 className={cn(rowSurfaceClassName, "flex h-9 items-center gap-2.5 px-2.5")}
                 onClick={handleClick}
+                onMouseDown={preventMiddleClickScroll}
+                onAuxClick={handleAuxClick}
                 onDoubleClick={handleDoubleClick}
                 onKeyDown={handleKeyDown}
                 onContextMenu={handleContextMenu}
@@ -2302,6 +2343,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               aria-busy={isRegeneratingTitle || undefined}
               className={rowSurfaceClassName}
               onClick={handleClick}
+              onMouseDown={preventMiddleClickScroll}
+              onAuxClick={handleAuxClick}
               onDoubleClick={handleDoubleClick}
               onKeyDown={handleKeyDown}
               onContextMenu={handleContextMenu}
@@ -3114,6 +3157,11 @@ export default function Sidebar() {
       params: buildThreadRouteParams(threadRef),
     });
   };
+  // Astrolabe: a thread in a new chat tab, after the one in front (or the tab already showing it).
+  const openThreadInNewTab = (threadRef: ScopedThreadRef) => {
+    useChatTabsStore.getState().openNew(scopedThreadKey(threadRef));
+    void navigateToThread(threadRef);
+  };
 
   const handleThreadFileDrop = async (threadRef: ScopedThreadRef, files: File[]) => {
     const dropId = queuePendingFileDrop({ threadRef, files });
@@ -3137,8 +3185,17 @@ export default function Sidebar() {
     }
   };
 
-  const navigateToDraft = (draftId: DraftId) => {
+  const navigateToDraft = (draftId: DraftId, options?: { readonly newTab?: boolean }) => {
     clearSelection();
+    // Astrolabe: a draft opens in the chat tab in front unless a new tab was asked for.
+    const session = options?.newTab
+      ? useComposerDraftStore.getState().getDraftSession(draftId)
+      : null;
+    if (session) {
+      useChatTabsStore
+        .getState()
+        .openNew(scopedThreadKey(scopeThreadRef(session.environmentId, session.threadId)));
+    }
     if (isMobile) {
       setOpenMobile(false);
     }
@@ -3219,6 +3276,13 @@ export default function Sidebar() {
     const isMac = isMacPlatform(navigator.platform);
     const isModClick = isMac ? event.metaKey : event.ctrlKey;
     const threadKey = scopedThreadKey(threadRef);
+    // Astrolabe: a plain click shows the thread in the chat tab in front; Option-click and the
+    // middle button open it in a new tab.
+    if (rowClickIntent(event, isMac) === "new-tab") {
+      event.preventDefault();
+      openThreadInNewTab(threadRef);
+      return;
+    }
     if (isModClick) {
       event.preventDefault();
       toggleThreadSelection(threadKey);
@@ -3360,6 +3424,7 @@ export default function Sidebar() {
     dragSensorRef.current = null;
     contextDragKeyRef.current = null;
     endThreadContextDrag();
+    endThreadTabDrag();
     if (started) {
       listMotionRef.current?.release();
       setDragState(null);
@@ -3394,8 +3459,11 @@ export default function Sidebar() {
     );
     if (!contextDrag) {
       endThreadContextDrag();
+      endThreadTabDrag();
       return false;
     }
+    // Astrolabe: over the chat tabs, the strip shows where the threads would open.
+    moveThreadTabDrag(point);
     const threads = contextDragThreads();
     const title =
       threadByKeyRef.current.get(contextDragKeyRef.current ?? "")?.title.trim() || "Thread";
@@ -3404,6 +3472,15 @@ export default function Sidebar() {
   };
   const dropThreadContextDrag = (point: { x: number; y: number }) => {
     if (!pointerOutsideThreadList(point)) return false;
+    // Astrolabe: dropped on the chat tabs, the threads open there as tabs, in list order.
+    const front = contextDragKeyRef.current;
+    const keys = contextDragThreads().map((ref) => scopedThreadKey(ref));
+    if (
+      front !== null &&
+      dropThreadTabs(point, inListOrder(keys, orderedThreadKeysRef.current), front)
+    ) {
+      return true;
+    }
     dropThreadContext(point, contextDragThreads());
     return true;
   };
@@ -4174,16 +4251,22 @@ export default function Sidebar() {
           projectByKey.get(`${session.environmentId}:${session.projectId}`)?.workspaceRoot;
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
-            buildDraftActionMenuItems({
-              hasPath: Boolean(workspacePath),
-              hasBranch: Boolean(session.branch),
-              hasProject: projectGroup != null,
-            }),
+            [
+              OPEN_IN_NEW_TAB_ITEM,
+              ...buildDraftActionMenuItems({
+                hasPath: Boolean(workspacePath),
+                hasBranch: Boolean(session.branch),
+                hasProject: projectGroup != null,
+              }),
+            ],
             position,
           ),
         );
         if (clicked._tag === "Failure") return;
         switch (clicked.value) {
+          case OPEN_IN_NEW_TAB_ITEM.id:
+            navigateToDraft(draftId, { newTab: true });
+            return;
           case "project-settings":
             if (projectGroup)
               openProjectSettings(projectGroup, {
@@ -4253,39 +4336,46 @@ export default function Sidebar() {
             ),
           ) ?? null;
         const clicked = await settlePromise(() =>
-          api.contextMenu.show(
-            buildThreadActionMenuItems({
-              canOperate: readEnvironmentScope(
-                threadRef.environmentId,
-                AuthOrchestrationOperateScope,
-              ),
-              branch: thread.branch ?? null,
-              projectFilter: threadProjectGroup
-                ? {
-                    label: threadProjectGroup.displayName,
-                    isActive: projectScopeKey === threadProjectGroup.projectKey,
-                  }
-                : null,
-              isPinned,
-              isSettled,
-              autoSettleEnabled: thread.autoSettleDisabledAt == null,
-              isSnoozed,
-              canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-              isRegeneratingTitle,
-              isRunning: !threadRuntimeCanArchive(thread.runtime),
-              supports: {
-                settlement: supportsSettlement,
-                autoSettleOptOut: supportsAutoSettleOptOut,
-                snooze: supportsSnooze,
-                pinning: supportsPinning,
-                titleRegeneration: supportsTitleRegeneration,
-              },
-              snoozePresets,
-            }),
+          api.contextMenu.show<ThreadActionMenuId | typeof OPEN_IN_NEW_TAB_ITEM.id>(
+            [
+              OPEN_IN_NEW_TAB_ITEM,
+              ...buildThreadActionMenuItems({
+                canOperate: readEnvironmentScope(
+                  threadRef.environmentId,
+                  AuthOrchestrationOperateScope,
+                ),
+                branch: thread.branch ?? null,
+                projectFilter: threadProjectGroup
+                  ? {
+                      label: threadProjectGroup.displayName,
+                      isActive: projectScopeKey === threadProjectGroup.projectKey,
+                    }
+                  : null,
+                isPinned,
+                isSettled,
+                autoSettleEnabled: thread.autoSettleDisabledAt == null,
+                isSnoozed,
+                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+                isRegeneratingTitle,
+                isRunning: !threadRuntimeCanArchive(thread.runtime),
+                supports: {
+                  settlement: supportsSettlement,
+                  autoSettleOptOut: supportsAutoSettleOptOut,
+                  snooze: supportsSnooze,
+                  pinning: supportsPinning,
+                  titleRegeneration: supportsTitleRegeneration,
+                },
+                snoozePresets,
+              }),
+            ],
             position,
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
+        if (clicked.value === OPEN_IN_NEW_TAB_ITEM.id) {
+          openThreadInNewTab(threadRef);
+          return;
+        }
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =

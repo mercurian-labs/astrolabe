@@ -28,14 +28,15 @@ function useRouteThreadRef(target: ThreadRouteTarget): ScopedThreadRef | null {
  * The main area beside T3 Code's sidebar: the chat in front, with the open chats as tabs across
  * the top of its column, and its own header, drawer and right panel. ChatView draws the strip
  * (see `ChatTabStripContext`), so the right panel runs the full height beside it as T3 Code's
- * does. The route's thread is the one in front; showing a thread opens its tab. A draft is keyed
- * by the thread it reserved, so its tab stays put when it is sent.
+ * does. The route's thread is the one in front; showing a thread shows it in the tab in front, or
+ * brings forward the tab already showing it (see `chatTabsStore`). A draft is keyed by the thread
+ * it reserved, so its tab stays put when it is sent.
  */
 export function ChatTabs({ target }: { target: ThreadRouteTarget }) {
   const threadRef = useRouteThreadRef(target);
   const threadKey = threadRef ? scopedThreadKey(threadRef) : null;
   useLayoutEffect(() => {
-    if (threadKey !== null) useChatTabsStore.getState().open(threadKey);
+    if (threadKey !== null) useChatTabsStore.getState().arrive(threadKey);
   }, [threadKey]);
   const strip = useCallback<ChatTabStripSlot>(
     ({ atWindowEdge, trailing }) => (

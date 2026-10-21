@@ -11,6 +11,7 @@ import {
   getThemePreviewSidebarArtwork,
   getThemePreferenceMode,
   isKnownThemePreference,
+  lenientThemeColorOverrides,
   getCustomThemes,
   getStandardThemeColors,
   getStoredCustomThemeCollection,
@@ -1185,6 +1186,21 @@ describe("stored theme preferences", () => {
 
     vi.unstubAllGlobals();
     invalidateCustomThemes();
+  });
+});
+
+describe("the focus bar role", () => {
+  it("is the Mercurian theme's own rust, apart from its focus color", () => {
+    expect(MERCURIAN_THEME.colors.focusBar).not.toBe(MERCURIAN_THEME.colors.focus);
+  });
+
+  it("follows the focus color in a theme written before it had a role of its own", () => {
+    expect(lenientThemeColorOverrides({ focus: "#ff0000" }).focusBar).toBe(
+      lenientThemeColorOverrides({ focus: "#ff0000" }).focus,
+    );
+    expect(lenientThemeColorOverrides({ focus: "#ff0000", focusBar: "#00ff00" }).focusBar).not.toBe(
+      lenientThemeColorOverrides({ focus: "#ff0000" }).focus,
+    );
   });
 });
 

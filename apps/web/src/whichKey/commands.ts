@@ -23,7 +23,12 @@ import type { FocusDirection } from "~/keyboardNav/regions.logic";
 import { scrollToward } from "~/keyboardNav/scroll";
 import type { ScrollDirection } from "~/keyboardNav/scroll.logic";
 import type { EditorWrite, KeyOrigin } from "./doors";
-import type { ChatTabsHandle, PanesHandle, SidebarSectionHandle } from "./handles";
+import type {
+  ChatTabsHandle,
+  PanesHandle,
+  SidebarSectionHandle,
+  TabHistoryHandle,
+} from "./handles";
 import { runKeybindingCommand, shortcutForCommand } from "./keybindingCommands";
 
 /**
@@ -38,6 +43,8 @@ export interface AppCommandContext {
   readonly section: SidebarSectionHandle | null;
   readonly chatTabs: ChatTabsHandle | null;
   readonly panes: PanesHandle | null;
+  /** The back and forward of the section's tab in front, in a section with tabs. */
+  readonly tabHistory?: TabHistoryHandle | null;
   /** The app's sections, as the icon rail opens them. */
   readonly sections: ReadonlyArray<{
     readonly id: string;
@@ -84,6 +91,8 @@ const UPSTREAM_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "sidebar.toggle": "Toggle sidebar",
   "view.reopenClosed": "Reopen closed tab",
   "rightPanel.toggle": "Toggle right panel",
+  "navigation.back": "Back",
+  "navigation.forward": "Forward",
 };
 
 const SECTION_IDS: Partial<Record<AstrolabeKeybindingCommand, string>> = {
@@ -355,6 +364,15 @@ function upstreamCommand(command: KeybindingCommand, context: AppCommandContext)
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
   const label = UPSTREAM_LABELS[command] ?? commandLabel(command);
+  // In a section with tabs, back and forward walk the tab in front (through their shortcut, as
+  // elsewhere), faint with nothing that way.
+  const tabHistory = context.tabHistory ?? null;
+  if (tabHistory && command === "navigation.back" && !tabHistory.canGoBack) {
+    return entry(label, null);
+  }
+  if (tabHistory && command === "navigation.forward" && !tabHistory.canGoForward) {
+    return entry(label, null);
+  }
   // Search has no default shortcut of its own (mod+k is the menu's), nor the file picker (mod+p
   // is the Command Palette's): they open directly.
   if (command === "commandPalette.toggle") return entry(label, context.openSearch);

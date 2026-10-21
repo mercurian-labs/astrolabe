@@ -74,15 +74,6 @@ export function isLeaderKey(
   return !isEditableFocused(element) && !isKeyboardControl(element) && !isInDialog(element);
 }
 
-/**
- * Whether focus on `target` takes typing: a text field, an editor (Vim or not), a terminal. Focus
- * landing there ends the menu's repeat window, so the next key types.
- */
-export function takesTyping(target: EventTarget | null): boolean {
-  const element = target instanceof Element ? target : null;
-  return isEditableFocused(element) || element?.closest("[data-terminal-owner]") != null;
-}
-
 /** The leader key as the menu's breadcrumb and the settings name it. */
 export function leaderKeyLabel(leaderKey: string): string {
   return leaderKey === " " ? "Space" : leaderKey;

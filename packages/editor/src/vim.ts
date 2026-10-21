@@ -93,6 +93,58 @@ function defineWindowKeys() {
   }
 }
 
+/** Whether `j` and `k` move by screen line (see `setVimScreenLineMotion`). */
+let screenLines = false;
+
+/**
+ * Astrolabe: whether `j` and `k` (and the arrows, which Vim reads as them) move one line as it
+ * shows on screen, as `gj` and `gk` do, in the editors running this layer: a line that wraps is
+ * as many lines as it shows. With a count, or after an operator (`dj`, `yk`), they still move by
+ * lines of text, so counts read off line numbers and operators act on whole lines.
+ */
+export function setVimScreenLineMotion(on: boolean) {
+  screenLines = on;
+}
+
+/**
+ * `j` and `k` as Vim's own, where `screenLines` holds by screen line: one entry of Vim's keymap
+ * standing over the package's, so a vimrc maps onto or over them as before. Vim calls a motion
+ * with its table of motions as `this`; the package's two line motions keep each other's goal
+ * column, so this one stands in as the motion it ran for the next.
+ */
+function defineScreenLineKeys() {
+  type MotionFn = Parameters<typeof Vim.defineMotion>[1];
+  type Motions = Record<"moveByLines" | "moveByDisplayLines", MotionFn>;
+  const lines: MotionFn = function (this: Motions, cm, head, motionArgs, state, inputState) {
+    if (state.lastMotion === lines) state.lastMotion = this.moveByLines;
+    // `explicitRepeat` leaves the count as typed: 0 for none.
+    const counted = motionArgs.repeat > 0;
+    motionArgs.repeat = Math.max(motionArgs.repeat, 1);
+    const byScreen = screenLines && atlas(cm) && !counted && !inputState.operator;
+    return (byScreen ? this.moveByDisplayLines : this.moveByLines).call(
+      this,
+      cm,
+      head,
+      motionArgs,
+      state,
+      inputState,
+    );
+  };
+  Vim.defineMotion("atlasLines", lines);
+  for (const [key, forward] of [
+    ["j", true],
+    ["k", false],
+  ] as const) {
+    Vim.mapCommand(
+      key,
+      "motion",
+      "atlasLines",
+      { forward, linewise: true, explicitRepeat: true },
+      {},
+    );
+  }
+}
+
 /**
  * Vim's shared configuration, done once and scoped: each addition acts only in editors that
  * run this layer and otherwise does what the package did before, so another Vim editor on
@@ -105,6 +157,7 @@ function configureVim() {
   if (configured) return;
   configured = true;
   defineWindowKeys();
+  defineScreenLineKeys();
   const { commands } = CodeMirror;
   const { undo, redo } = commands;
   const save: unknown = commands.save;

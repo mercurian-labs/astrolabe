@@ -7,15 +7,18 @@ import {
   PullRequestSpeedActions,
   type PullRequestSpeedActionResult,
 } from "./PullRequestSpeedActions";
-import { memo, type RefCallback } from "react";
+import { memo, type DragEvent, type MouseEvent, type RefCallback } from "react";
+import { endDrag } from "~/panes/drag";
 
 import { cn } from "~/lib/utils";
+import type { RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
 import {
   SIDEBAR_ROW_ACTIVE_CLASS,
   SIDEBAR_ROW_IDLE_CLASS,
+  SIDEBAR_ROW_SELECTED_CLASS,
   SIDEBAR_ROW_SURFACE_CLASS,
   SidebarCardContent,
   SidebarCardFooter,
@@ -89,6 +92,9 @@ function PullRequestRowImpl({
   statsKey,
   statsRef,
   onSelect,
+  inSelection = false,
+  onDragRow,
+  onRowMenu,
   speedMode,
   hostActions,
   onActed,
@@ -106,7 +112,16 @@ function PullRequestRowImpl({
   /** Used by the list's shared visibility observer to defer optional line-count reads. */
   statsKey?: string;
   statsRef?: RefCallback<HTMLDivElement>;
-  onSelect: (entry: PullRequestRowTarget) => void;
+  /**
+   * `click` is how the row was pressed (see `rowClickIntent`), Option or the middle button asking
+   * for a new tab; without one, it shows in the tab in front.
+   */
+  onSelect: (entry: PullRequestRowTarget, click?: RowClick) => void;
+  /** Astrolabe: in the Cmd/Shift-click selection (see `sidebarRowSelection`). */
+  inSelection?: boolean;
+  /** Astrolabe: the row dragged, toward a pane's strip; and its right-click menu. */
+  onDragRow?: (entry: EnvironmentPullRequestEntry, event: DragEvent<HTMLElement>) => void;
+  onRowMenu?: (entry: EnvironmentPullRequestEntry, event: MouseEvent<HTMLElement>) => void;
   speedMode: boolean;
   hostActions: ReadonlySet<PullRequestAction>;
   onActed: (result: PullRequestSpeedActionResult) => void;
@@ -192,11 +207,35 @@ function PullRequestRowImpl({
         <button
           type="button"
           aria-current={selected ? "page" : undefined}
-          onClick={() => onSelect(entry)}
+          aria-label={`#${entry.number} ${entry.title}`}
+          data-selected={inSelection || undefined}
+          draggable={onDragRow !== undefined}
+          onDragStart={onDragRow ? (event) => onDragRow(entry, event) : undefined}
+          onDragEnd={onDragRow ? endDrag : undefined}
+          onContextMenu={
+            onRowMenu
+              ? (event) => {
+                  event.preventDefault();
+                  onRowMenu(entry, event);
+                }
+              : undefined
+          }
+          onClick={(event) => onSelect(entry, event)}
+          onMouseDown={(event) => {
+            // The middle button opens a new tab; keep the browser from starting its autoscroll.
+            if (event.button === 1) event.preventDefault();
+          }}
+          onAuxClick={(event) => {
+            if (event.button === 1) onSelect(entry, event);
+          }}
           className={cn(
             SIDEBAR_ROW_SURFACE_CLASS,
             "min-w-0 flex-1",
-            selected ? SIDEBAR_ROW_ACTIVE_CLASS : SIDEBAR_ROW_IDLE_CLASS,
+            inSelection
+              ? SIDEBAR_ROW_SELECTED_CLASS
+              : selected
+                ? SIDEBAR_ROW_ACTIVE_CLASS
+                : SIDEBAR_ROW_IDLE_CLASS,
           )}
         >
           <SidebarCardContent>
@@ -262,7 +301,14 @@ function PullRequestRowImpl({
       <button
         type="button"
         aria-current={selected ? "true" : undefined}
-        onClick={() => onSelect(entry)}
+        onClick={(event) => onSelect(entry, event)}
+        onMouseDown={(event) => {
+          // The middle button opens a new tab; keep the browser from starting its autoscroll.
+          if (event.button === 1) event.preventDefault();
+        }}
+        onAuxClick={(event) => {
+          if (event.button === 1) onSelect(entry, event);
+        }}
         className={cn(
           PULL_REQUEST_ROW_CLASS,
           PAGE_ROW_CLASS,

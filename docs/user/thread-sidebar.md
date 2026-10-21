@@ -43,6 +43,19 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Chat tabs
+
+Open chats sit as tabs above the chat. Clicking a thread in the sidebar shows it in
+the tab in front, as a link does in a browser; a thread already open in another tab
+comes to the front there instead. To open one in a new tab, Option-click it
+(Alt-click on Windows and Linux), middle-click it, or right-click it and choose
+**Open in new tab**, or drag it onto the tabs to open it where you drop it (a selection of
+threads goes together). Search, `:b`, and new threads also show in the tab in front.
+
+Each tab remembers what it showed. The arrows at the top of the sidebar, `mod+[`
+and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the tab in front.
+The sidebar's toggle is at the bottom of the icon rail.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

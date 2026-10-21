@@ -23,6 +23,7 @@ import { NO_TAB_SELECTION, useTabSelectionStore } from "~/panes/tabSelection";
 import type { Leaf } from "~/panes/tree";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
+import { tabHistorySlot } from "~/whichKey/handles";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
@@ -38,7 +39,10 @@ import {
   openWikiTab,
   registerUnsavedCheck,
   replaceWikiTab,
+  showWikiTab,
+  stepWikiTab,
   useOpenWikiTabKeys,
+  useWikiTabHistory,
   wikiPanes,
 } from "./wikiPanes";
 import { parseWikiTabKey, type WikiTab } from "./wikiTabs";
@@ -59,6 +63,14 @@ export function WikiWorkspace({
   const snapshot = useSyncExternalStore(wikiPanes.subscribe, wikiPanes.getSnapshot);
 
   useDeepLink(deepLink);
+
+  // Astrolabe: the sidebar header's arrows and `navigation.back`/`forward` walk the focused
+  // pane's tab in front.
+  const { canGoBack, canGoForward } = useWikiTabHistory();
+  useEffect(
+    () => tabHistorySlot.register({ canGoBack, canGoForward, go: stepWikiTab }),
+    [canGoBack, canGoForward],
+  );
 
   // A selection of tabs belongs to the panes it was made in.
   useEffect(() => {
@@ -215,7 +227,7 @@ function NoteTab({
       onSaved={(savedTo: WikiChangeRequestId) => {
         // Saved from main, the note now reads inside the change request it was saved to.
         if (savedTo !== tab.changeRequestId) {
-          replaceWikiTab(tabKey, { ...tab, changeRequestId: savedTo });
+          replaceWikiTab(tabKey, { ...tab, changeRequestId: savedTo }, { rekey: true });
         }
       }}
       registerUnsaved={registerUnsaved}
@@ -355,7 +367,10 @@ function EmptyTab({ paneId }: { readonly paneId: string }) {
   );
 }
 
-/** Opens the document a `/wikis/$wikiId` link names, once per link. */
+/**
+ * Shows the document a `/wikis/$wikiId` link names, once per link, in the focused pane's tab in
+ * front, as a sidebar row's click does.
+ */
 function useDeepLink(deepLink: (WikiSearch & { readonly wikiId: WikiId }) | null) {
   const { environmentId } = useWikiEnvironment(deepLink?.environmentId);
   const wikiId = deepLink?.wikiId;
@@ -364,7 +379,7 @@ function useDeepLink(deepLink: (WikiSearch & { readonly wikiId: WikiId }) | null
   useEffect(() => {
     if (environmentId === null || wikiId === undefined) return;
     if (note !== undefined) {
-      openWikiTab({
+      showWikiTab({
         kind: "note",
         environmentId,
         wikiId,
@@ -372,7 +387,7 @@ function useDeepLink(deepLink: (WikiSearch & { readonly wikiId: WikiId }) | null
         changeRequestId: changeRequest,
       });
     } else if (changeRequest !== undefined) {
-      openWikiTab({
+      showWikiTab({
         kind: "change-request",
         environmentId,
         wikiId,

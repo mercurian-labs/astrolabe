@@ -17,6 +17,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { useMarkdownEditorKeys } from "~/editorKeybindings";
+import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { cn } from "~/lib/utils";
@@ -104,6 +105,7 @@ function ComposerPromptEditorCodeMirrorInner(
   const [openCitation, setOpenCitation] = useState<OpenCitationComment | null>(null);
   // Vim is a device setting (Settings › Keybindings), shared with the wiki's note editor.
   const vim = useClientSettings(selectVimModeEnabled);
+  useVimScreenLines();
   // Astrolabe: the formatting keys follow the keybindings; a change recreates the editor, from
   // the current draft.
   const markdownKeys = useMarkdownEditorKeys(COMPOSER_EDITOR);

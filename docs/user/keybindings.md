@@ -62,6 +62,11 @@ composer and wiki notes with Vim's modes and motions on web and desktop. Before 
 type `:q` and press Enter in the small Vim editor that opens, to show you know
 the way out. Turning it off is one click.
 
+A long line that wraps is one line to Vim, so `j` and `k` skip past all of it. Turn on
+**Move by screen line**, under **Vim keybindings**, to have them move one line as it shows on
+screen instead, as `gj` and `gk` do. With a count, such as `3j`, or after an operator, such as
+`dj`, they still move by lines of text.
+
 The composer starts in insert mode, where Enter sends and its other keys work as
 usual, and it returns to insert mode after each send. Escape enters normal mode
 without leaving the composer; the draft shows in the code font until you insert
@@ -118,16 +123,16 @@ you need.
 | Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right    |
 | `d` `u`                 | [Scroll](#scrolling) down or up half a page             |
 | `g`                     | Go to Threads, Wikis, Pull Requests, Usage, or Settings |
-| `t`                     | Chat tabs: next, previous, close, reopen closed         |
-| `p`                     | Panes: split, close, maximize                           |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward      |
+| `p`                     | Panes: split, close, maximize, full screen, right panel |
 | `s` `s`                 | Show or hide the sidebar                                |
 | `w`                     | Open Wikis, or find or create a document                |
 | `,`                     | Settings                                                |
 
 These are the defaults. A row lists every key in its group that runs the same
-command, joined by `|`. Press `mod+k` again to open Search, as `/` does. Change
-either shortcut in **Settings → Keybindings** under **Keyboard Menu: Open** and
-**Search**. The file picker has no shortcut by default (`mod+p` opens the Command
+command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
+opens Search from anywhere but the terminal. Change either shortcut in
+**Settings → Keybindings** under **Keyboard Menu: Open** and **Search**. The file picker has no shortcut by default (`mod+p` opens the Command
 Palette); bind **File Picker: Toggle** to give it one.
 
 The leader key opens the same menu while you are not typing or on a button, and
@@ -154,8 +159,9 @@ Vim moves between windows: to the nearest one in that direction. Use any of:
 After a move from the keyboard menu, its keys keep moving focus for half a
 second without Space, and each move starts the half second again, so Space `l`
 `l` goes two places right. Any other key ends this and does what it normally
-does; Escape only ends it. Landing in the composer, a note, a field, or a
-terminal ends it too, so you can type there at once. In the sidebar or the rail,
+does; Escape only ends it. A run of moves passes through the composer or a note
+too: within that half second the keys above still move, and any other key types
+there. In the sidebar or the rail,
 `j` `k` and the up and down arrows walk the list straight away, since there is
 no place above or below. Change how long it lasts, or turn it off with 0, in
 **Settings → Keybindings → This device → Repeat window**.
@@ -185,14 +191,15 @@ they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
 With a row of the Threads, Wikis, or Pull Requests sidebar focused (move there
 with `Ctrl+H`, or click a row), or a button of the icon rail:
 
-| Key                    | Does                                       |
-| ---------------------- | ------------------------------------------ |
-| `j` `k`, Down Up       | Next or previous row                       |
-| `g` `g`, `G`, Home End | First or last row                          |
-| Enter                  | Open the row, as a click does              |
-| `mod+Enter`            | As a `mod`-click does (Wikis: open beside) |
-| `/`                    | Search the sidebar                         |
-| Escape                 | To the place on the right                  |
+| Key                    | Does                                  |
+| ---------------------- | ------------------------------------- |
+| `j` `k`, Down Up       | Next or previous row                  |
+| `g` `g`, `G`, Home End | First or last row                     |
+| Enter                  | Open the row, as a click does         |
+| `Alt+Enter`            | Open the row in a new tab             |
+| `mod+Enter`            | Select the row, as a `mod`-click does |
+| `/`                    | Search the sidebar                    |
+| Escape                 | To the place on the right             |
 
 Space still opens the keyboard menu. The row with the focus ring is where Enter
 goes; the row you are on keeps its own look. Folded groups are skipped until you
@@ -347,7 +354,13 @@ seconds after the latest action. The default shortcut skips text fields and
 terminals so native undo keeps working there.
 
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
-through the pages you have visited, like a browser's back and forward buttons.
+through the pages you have visited, like a browser's back and forward buttons. On
+Threads and Wikis they go back and forward in the tab in front instead, as the
+arrows at the top of the sidebar do.
+
+Space `p` `f` takes the focused pane full screen: it fills its panes and, in a
+thread's right panel, the panel covers the chat too. Press it again to restore
+both. Space `p` `r` shows or hides the right panel.
 
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your

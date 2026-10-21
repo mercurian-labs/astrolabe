@@ -10,7 +10,7 @@ Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `
 
 ## Read and edit notes
 
-Documents are listed newest first, with open change requests above them. Clicking one opens it as a tab; ⌘-click (Ctrl-click on Windows and Linux) opens it in a new pane beside the current one. Tabs split and rearrange as the right panel's do: drag a tab to a pane's edge to split it, or onto another pane's tabs to move it there. The layout is kept on this device.
+Documents are listed newest first, with open change requests above them. Clicking one shows it in the focused pane's tab in front, which remembers what it showed: the arrows at the top of the sidebar, `mod+[` and `mod+]` go back and forward, as in a browser. A document already open in another tab comes to the front there instead. Option-click (Alt-click on Windows and Linux), middle-click, or **Open in new tab** in its right-click menu opens a new tab; **Open to the right** in that menu opens it in a new pane beside the current one. ⌘-click (Ctrl-click) and Shift-click select several, as in the thread list; a selected row's right-click menu opens them all in new tabs. Drag a row, or a selection, onto a pane's tabs to open it there, or onto a pane's content to open it in a new pane. Tabs split and rearrange as the right panel's do: drag a tab to a pane's edge to split it, or onto another pane's tabs to move it there. The layout is kept on this device.
 
 In a note, ⌘-click a wikilink to follow it in the same tab. Search in the sidebar narrows its list to the documents and change requests whose name holds what you type. **New document** starts one: type its name and choose **Write**.
 

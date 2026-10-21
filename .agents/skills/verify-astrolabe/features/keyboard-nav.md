@@ -39,9 +39,9 @@ composer).
   with the menu hidden, each restarting the window; at an edge the key is spent but
   moves nothing, except up/down from a sidebar row or rail button, which ends the
   window and steps the list (`focusEntry` in `commands.ts` makes that move not
-  repeatable). Focus landing in a text field (input, textarea, contenteditable, a
-  CodeMirror editor, a terminal: `takesTyping` in `leader.ts`) ends it at once, so
-  the next key types. Any other key ends it and reaches the page (Space opens the
+  repeatable). Focus landing in a text field (the composer in insert mode, a note)
+  does not end it, so a run of moves passes through the chat; the first key that does
+  not repeat ends it and reaches the field. Any other key ends it and reaches the page (Space opens the
   menu again, a letter types); Escape only ends it; a click, the window losing focus,
   or the timeout end it. A click on the menu row, the Ctrl shortcuts, and `<C-w>h`
   never arm. The mechanism is generic: `AppCommand`'s `repeatable` flag, read by
@@ -49,7 +49,8 @@ composer).
 - **Focus mark**: the place keys act from (last focused or pressed in) wears
   `[data-focused-place]`; on a pane or the chat column its tab in front
   (`[data-pane-tab]` / `[data-chat-tab]` with `aria-selected=true`) gets a 2px bar in
-  `--ring` along the pill's foot (`::after`). It follows mouse focus too. The sidebar
+  `--focus-bar` (the theme's `focusBar` role; rust in Mercurian, the focus color in themes
+  without one) along the tab's top edge (a background-image). It follows mouse focus too. The sidebar
   and the rail have no mark of their own beyond the attribute: their focused row or
   button's light ring shows where focus is.
 - **Sidebar list** (focus on a row: `sidebar-row-card`, `sidebar-row-slim`,
@@ -58,16 +59,19 @@ composer).
   `j`/`k`/ArrowDown/ArrowUp step, `gg`/`G`/ Home/End jump, folded and hidden rows
   skipped; Enter clicks the row and keeps focus on it (Threads: the opened thread's
   composer does not take focus, `keepsListFocus`; a click still hands it focus),
-  Mod+Enter Mod-clicks it (Threads: toggles selection; Wikis: opens beside; PRs: same
-  as Enter); `/` opens the sidebar's search; Escape focuses the place to the right;
+  Enter shows it in the tab in front, Alt+Enter clicks with Alt (opens it in a new
+  tab; any other Alt chord stays the page's), Mod+Enter Mod-clicks it (Threads:
+  toggles selection, in Wikis and PRs too); `/` opens the sidebar's search; Escape focuses the place to the right;
   Space opens the keyboard menu. Keys act only with the row itself focused, not a
   control in it. The right panel's launcher letters leave a focused row its list keys
   (`gg`, `G`). The reached row shows the rows' light keyboard ring (`:focus-visible`:
   a 1px `--ring` inset edge and a 3px `--ring`/24% band, as inputs have), apart from
   the current row's fill. Rows are a roving tab stop: after a row has focus, only it
   keeps `tabindex=0`.
-- **Rail list** (focus on a rail button, `[data-app-rail] [data-slot=sidebar-menu-button]`):
-  the same keys as the sidebar list, minus `/`; Enter opens the section and keeps
+- **Rail list** (focus on a rail button, `[data-app-rail] [data-slot=sidebar-menu-button]`:
+  the sections, then **Toggle main sidebar** last at the foot):
+  the same keys as the sidebar list, minus `/`; Enter opens the section (or toggles
+  the sidebar) and keeps
   focus on the button; Escape goes to the sidebar (or the main area, collapsed). The
   buttons are their own roving tab stop and show the same light ring
   (`focusRing="light"` on `SidebarMenuButton`).
@@ -202,15 +206,16 @@ carries the bar.
    right-panel tab showing the launcher: Graph does not open) → Enter → that thread
    opens and focus stays on the row → ArrowDown → the next row → Escape → the composer
    → Ctrl+H, `/` → the search field focused → Escape, click a row, Escape → focus in
-   the main area. On Wikis: `j` to a document → Mod+Enter → it opens beside the focused
-   pane. Fold "Open changes" → `j` passes over its rows. On Pull Requests: ArrowDown,
+   the main area. On Wikis: `j` to a document → Mod+Enter → it joins the selection. Fold "Open changes" → `j` passes over its rows. On Pull Requests: ArrowDown,
    `j`, Enter → that PR in a pane, focus still on the row → `k` → the row above.
 8. **Rebind in the vimrc.** Settings › Keybindings › Vim, add Normal `<C-h>` → `<C-w>h`
    (not recursive) → in the composer's normal mode Ctrl+H → the sidebar → remove the
    mapping → Ctrl+H stays in the composer, Ctrl+W `h` still moves.
 9. **Rail.** From a sidebar row: Ctrl+H → the rail, on the current section's button,
    its light ring (`marked: rail`) → `j` → the next button → `G` → Settings → `gg` →
-   Threads → Enter → Threads opens, focus on the button → Escape → the sidebar.
+   Threads → Enter → Threads opens, focus on the button → `G` → Toggle main sidebar →
+   Enter → the sidebar collapses, focus stays on the button → Enter → it opens again
+   → Escape → the sidebar.
    Collapse the sidebar → Ctrl+H from the chat → the rail → Ctrl+L → the chat. Tab
    into the rail → only one button is a tab stop.
 10. **Scrolling.** On a long thread: click the chat's title → Space `d` → `scrollTop`

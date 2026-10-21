@@ -15,7 +15,7 @@ server messages stay T3 Code's, so a stock T3 server stays a drop-in.
   `bg-message-action`.
 - The page title reads "Astrolabe (Alpha)" while booting and "Astrolabe (Dev)" once loaded in dev
   (a server version can set another stage label), and brand marks and the
-  wordmark appear in the sidebar, the boot screen and the welcome wizard.
+  wordmark appear on the boot screen and the welcome wizard, and the monogram heads the icon rail.
 
 ## How to get to it (user POV)
 

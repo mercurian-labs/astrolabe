@@ -1,4 +1,4 @@
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import {
@@ -17,10 +17,12 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -28,6 +30,16 @@ import {
 
 import { isElectron } from "~/env";
 import { cn, isMacPlatform } from "~/lib/utils";
+import { readLocalApi } from "~/localApi";
+import { NEW_TAB_CLICK, rowClickIntent, type RowClick } from "~/tabNavigation.logic";
+import { endDrag, startDrag } from "~/panes/drag";
+import {
+  anchorRow,
+  rangeToRow,
+  rowsActedOn,
+  toggleRow,
+  useRowSelectionStore,
+} from "~/sidebarRowSelection";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -38,6 +50,7 @@ import {
 import {
   SIDEBAR_ROW_ACTIVE_CLASS,
   SIDEBAR_ROW_IDLE_CLASS,
+  SIDEBAR_ROW_SELECTED_CLASS,
   SIDEBAR_ROW_SURFACE_CLASS,
   SidebarCardContent,
   SidebarCardFooter,
@@ -74,7 +87,7 @@ import { AddWikiFolderDialog, NewWikiDialog } from "./WikiDialogs";
 import { useWikiEnvironment, useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
-import { openWikiTab, useFocusedWikiTab } from "./wikiPanes";
+import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
 import { WikiSettingsDialog } from "./WikiSettingsDialog";
 import {
   searchWikiSidebarItems,
@@ -82,6 +95,7 @@ import {
   wikiScopeKey,
   wikiSidebarEntryTab,
   wikiSidebarItems,
+  wikiTabKey,
   type WikiChangeItem,
   type WikiDocumentItem,
   type WikiSidebarEntry,
@@ -89,6 +103,19 @@ import {
 } from "./wikiTabs";
 
 const SCOPE_STORAGE_KEY = "astrolabe:wiki-scope:v1";
+/** The Wikis rows' share of the sidebars' row selection (`sidebarRowSelection`). */
+const SELECTION_SECTION = "wikis";
+const NO_KEYS: readonly string[] = [];
+
+const entryKey = (entry: WikiSidebarEntry) => wikiTabKey(wikiSidebarEntryTab(entry));
+
+/** What a row's drag and menu do, for the rows to share. */
+interface WikiRowActions {
+  readonly drag: (tab: WikiTab, event: DragEvent<HTMLElement>) => void;
+  readonly openAll: (tab: WikiTab) => void;
+  /** How many rows the row's menu acts on: the selection, when the row is in it. */
+  readonly count: (tab: WikiTab) => number;
+}
 const WORKING_CLASS = "text-info-foreground";
 
 function compactTimeLabel(timestamp: string | null): string {
@@ -151,15 +178,81 @@ export function WikiSidebar() {
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
     ) ?? null;
 
+  // Astrolabe: the rows as they show, for Shift-click's ranges and what a selected row carries.
+  const shown = useRef<{ keys: readonly string[]; tabs: ReadonlyMap<string, WikiTab> }>({
+    keys: [],
+    tabs: new Map(),
+  });
+  const selectedKeys = useRowSelectionStore((store) =>
+    store.selection.section === SELECTION_SECTION ? store.selection.keys : NO_KEYS,
+  );
+
+  // Astrolabe: a click shows the document in the focused pane's tab in front; Option-click and
+  // the middle button open it in a new tab there (the row's menu opens it beside, in a new
+  // pane). Cmd/Ctrl-click and Shift-click select rows, as in Threads.
   const open = useCallback(
-    (tab: WikiTab, event: ReactMouseEvent | null) => {
-      const beside =
-        event !== null && (isMacPlatform(navigator.platform) ? event.metaKey : event.ctrlKey);
-      openWikiTab(tab, beside ? "beside" : "tab");
+    (tab: WikiTab, event: RowClick | null) => {
+      const intent =
+        event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
+      const key = wikiTabKey(tab);
+      const { change } = useRowSelectionStore.getState();
+      if (intent === "mod") {
+        change((now) => toggleRow(now, SELECTION_SECTION, key));
+        return;
+      }
+      if (intent === "range") {
+        change((now) => rangeToRow(now, SELECTION_SECTION, key, shown.current.keys));
+        return;
+      }
+      change(() => anchorRow(SELECTION_SECTION, key));
+      if (intent === "new-tab") openWikiTab(tab);
+      else showWikiTab(tab);
       if (isMobile) setOpenMobile(false);
     },
     [isMobile, setOpenMobile],
   );
+  // What a row's drag or menu acts on: the selection when the row is in it.
+  const actedOn = useCallback((tab: WikiTab) => {
+    const { keys, tabs } = shown.current;
+    const { selection } = useRowSelectionStore.getState();
+    return rowsActedOn(selection, SELECTION_SECTION, wikiTabKey(tab), keys).map(
+      (key) => tabs.get(key) ?? tab,
+    );
+  }, []);
+  const rowActions = useMemo<WikiRowActions>(
+    () => ({
+      // Dropped on a pane's strip, they open there; on its content, in a new pane.
+      drag: (tab, event) => {
+        const carried = actedOn(tab);
+        startDrag(
+          event,
+          {
+            key: wikiTabKey(tab),
+            keys: [],
+            place: (paneId, drop) => placeWikiTabs(carried, tab, paneId, drop),
+          },
+          event.currentTarget.getAttribute("aria-label") ?? "",
+          carried.length > 1 ? carried.length : 0,
+        );
+      },
+      openAll: (tab) => {
+        for (const each of actedOn(tab)) openWikiTab(each);
+      },
+      count: (tab) => actedOn(tab).length,
+    }),
+    [actedOn],
+  );
+  // Escape lets go of the selection.
+  const selecting = selectedKeys.length > 0;
+  useEffect(() => {
+    if (!selecting) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      useRowSelectionStore.getState().change((now) => ({ ...now, keys: [] }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selecting]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,12 +272,30 @@ export function WikiSidebar() {
     setActiveResultIndex(0);
   }, []);
   const openResult = useCallback(
-    (entry: WikiSidebarEntry, event: ReactMouseEvent | null) => {
-      clearSearch();
+    (entry: WikiSidebarEntry, event: RowClick | null) => {
+      // Selecting among the matches keeps them; opening one puts the lists back.
+      const intent =
+        event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
+      if (intent !== "mod" && intent !== "range") clearSearch();
       open(wikiSidebarEntryTab(entry), event);
     },
     [clearSearch, open],
   );
+  const shownEntries: readonly WikiSidebarEntry[] = isSearching
+    ? results
+    : [
+        ...(changesExpanded ? changes.map((item) => ({ kind: "change" as const, item })) : []),
+        ...(changes.length === 0 || documentsExpanded
+          ? documents.map((item) => ({ kind: "document" as const, item }))
+          : []),
+        ...(settledExpanded ? settled.map((item) => ({ kind: "change" as const, item })) : []),
+      ];
+  useLayoutEffect(() => {
+    shown.current = {
+      keys: shownEntries.map(entryKey),
+      tabs: new Map(shownEntries.map((entry) => [entryKey(entry), wikiSidebarEntryTab(entry)])),
+    };
+  });
   // The thread search's keys: Escape clears, the arrows move the highlight, Enter opens it.
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -281,6 +392,8 @@ export function WikiSidebar() {
                         key={entry.item.key}
                         item={entry.item}
                         active={isActive(entry)}
+                        selected={selectedKeys.includes(entryKey(entry))}
+                        actions={rowActions}
                         option={option}
                         onOpen={(_tab, event) => openResult(entry, event)}
                       />
@@ -289,6 +402,8 @@ export function WikiSidebar() {
                         key={entry.item.key}
                         item={entry.item}
                         active={isActive(entry)}
+                        selected={selectedKeys.includes(entryKey(entry))}
+                        actions={rowActions}
                         option={option}
                         onOpen={(_tab, event) => openResult(entry, event)}
                       />
@@ -322,6 +437,10 @@ export function WikiSidebar() {
                             key={change.key}
                             item={change}
                             active={isActive({ kind: "change", item: change })}
+                            selected={selectedKeys.includes(
+                              entryKey({ kind: "change", item: change }),
+                            )}
+                            actions={rowActions}
                             onOpen={open}
                           />
                         ))
@@ -342,6 +461,8 @@ export function WikiSidebar() {
                     key={document.key}
                     item={document}
                     active={isActive({ kind: "document", item: document })}
+                    selected={selectedKeys.includes(entryKey({ kind: "document", item: document }))}
+                    actions={rowActions}
                     onOpen={open}
                   />
                 ))}
@@ -362,6 +483,10 @@ export function WikiSidebar() {
                             key={change.key}
                             item={change}
                             active={isActive({ kind: "change", item: change })}
+                            selected={selectedKeys.includes(
+                              entryKey({ kind: "change", item: change }),
+                            )}
+                            actions={rowActions}
                             onOpen={open}
                           />
                         ))
@@ -629,19 +754,27 @@ interface CardRowOption {
 function CardRow({
   label,
   active,
+  selected,
   option,
   slim = false,
   details,
+  tab,
+  actions,
   onOpen,
   children,
 }: {
   readonly label: string;
   readonly active: boolean;
+  /** In the Cmd/Shift-click selection. */
+  readonly selected: boolean;
   readonly option: CardRowOption | undefined;
   readonly slim?: boolean;
   /** The hover card's contents, as the thread rows show. */
   readonly details: ReactNode;
-  readonly onOpen: (event: ReactMouseEvent) => void;
+  /** What the row opens, for its drag and menu. */
+  readonly tab: WikiTab;
+  readonly actions: WikiRowActions;
+  readonly onOpen: (event: RowClick) => void;
   readonly children: ReactNode;
 }) {
   const highlighted = active || option?.highlighted === true;
@@ -657,22 +790,40 @@ function CardRow({
             aria-label={label}
             aria-current={active ? "page" : undefined}
             data-testid={slim ? "wiki-sidebar-row-slim" : "wiki-sidebar-row"}
+            draggable
+            onDragStart={(event) => actions.drag(tab, event)}
+            onDragEnd={endDrag}
+            data-selected={selected || undefined}
             className={cn(
               SIDEBAR_ROW_SURFACE_CLASS,
-              highlighted
-                ? SIDEBAR_ROW_ACTIVE_CLASS
-                : slim
-                  ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  : SIDEBAR_ROW_IDLE_CLASS,
+              selected
+                ? SIDEBAR_ROW_SELECTED_CLASS
+                : highlighted
+                  ? SIDEBAR_ROW_ACTIVE_CLASS
+                  : slim
+                    ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                    : SIDEBAR_ROW_IDLE_CLASS,
               slim && "flex h-9 items-center gap-2.5 px-2.5",
             )}
             onMouseMove={option?.onHighlight}
             onClick={onOpen}
+            onMouseDown={(event) => {
+              // The middle button opens the row in a new tab; keep it from starting autoscroll.
+              if (event.button === 1) event.preventDefault();
+            }}
+            onAuxClick={(event) => {
+              if (event.button === 1) onOpen(event);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              void showRowMenu(event, onOpen, actions.count(tab), () => actions.openAll(tab));
+            }}
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
-              onOpen(event as unknown as ReactMouseEvent);
+              const { altKey, metaKey, ctrlKey, shiftKey } = event;
+              onOpen({ button: 0, altKey, metaKey, ctrlKey, shiftKey });
             }}
           />
         }
@@ -695,6 +846,38 @@ function CardRow({
   ) : (
     <SidebarCardItem role={option ? "presentation" : undefined}>{row}</SidebarCardItem>
   );
+}
+
+/**
+ * A row's context menu: open it in a new tab, or beside in a new pane, as its modified clicks do;
+ * on a row of a selection of `count`, open them all in new tabs.
+ */
+async function showRowMenu(
+  event: ReactMouseEvent,
+  onOpen: (event: RowClick) => void,
+  count: number,
+  onOpenAll: () => void,
+) {
+  const api = readLocalApi();
+  if (!api) return;
+  if (count > 1) {
+    const all: ContextMenuItem<"all">[] = [
+      { id: "all", label: `Open ${count} in new tabs`, icon: "square-plus" },
+    ];
+    const picked = await api.contextMenu.show(all, { x: event.clientX, y: event.clientY });
+    if (picked === "all") onOpenAll();
+    return;
+  }
+  const items: ContextMenuItem<"new-tab" | "beside">[] = [
+    { id: "new-tab", label: "Open in new tab", icon: "square-plus" },
+    { id: "beside", label: "Open to the right" },
+  ];
+  const picked = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
+  if (picked === "new-tab") onOpen(NEW_TAB_CLICK);
+  else if (picked === "beside") {
+    const mac = isMacPlatform(navigator.platform);
+    onOpen({ ...NEW_TAB_CLICK, altKey: false, metaKey: mac, ctrlKey: !mac });
+  }
 }
 
 /** A hover card line: a muted icon, then its text. */
@@ -794,20 +977,28 @@ const titleClassName = "min-w-0 flex-1 truncate text-sm font-medium text-foregro
 const WikiDocumentRow = memo(function WikiDocumentRow({
   item,
   active,
+  selected,
+  actions,
   option,
   onOpen,
 }: {
   readonly item: WikiDocumentItem;
   readonly active: boolean;
+  readonly selected: boolean;
+  readonly actions: WikiRowActions;
   readonly option?: CardRowOption;
-  readonly onOpen: (tab: WikiTab, event: ReactMouseEvent) => void;
+  readonly onOpen: (tab: WikiTab, event: RowClick) => void;
 }) {
   const change = item.changes[0];
   const working = useAgentWorking(item.environmentId, change?.threadId);
+  const tab = useMemo(() => wikiSidebarEntryTab({ kind: "document", item }), [item]);
   return (
     <CardRow
       label={`${item.name}, ${item.wiki.name}`}
       active={active}
+      selected={selected}
+      tab={tab}
+      actions={actions}
       option={option}
       slim
       details={
@@ -826,18 +1017,7 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
           ))}
         </ThreadHoverCard>
       }
-      onOpen={(event) =>
-        onOpen(
-          {
-            kind: "note",
-            environmentId: item.environmentId,
-            wikiId: item.wiki.wikiId,
-            name: item.name,
-            changeRequestId: undefined,
-          },
-          event,
-        )
-      }
+      onOpen={(event) => onOpen(tab, event)}
     >
       <SlimIcon item={item} active={active} />
       <SlimTitle active={active}>{item.name}</SlimTitle>
@@ -861,26 +1041,22 @@ function linkSummary(item: WikiDocumentItem): string {
 const WikiChangeRow = memo(function WikiChangeRow({
   item,
   active,
+  selected,
+  actions,
   option,
   onOpen,
 }: {
   readonly item: WikiChangeItem;
   readonly active: boolean;
+  readonly selected: boolean;
+  readonly actions: WikiRowActions;
   readonly option?: CardRowOption;
-  readonly onOpen: (tab: WikiTab, event: ReactMouseEvent) => void;
+  readonly onOpen: (tab: WikiTab, event: RowClick) => void;
 }) {
   const { changeRequest } = item;
   const working = useAgentWorking(item.environmentId, changeRequest.threadId);
-  const openTab = (event: ReactMouseEvent) =>
-    onOpen(
-      {
-        kind: "change-request",
-        environmentId: item.environmentId,
-        wikiId: item.wiki.wikiId,
-        changeRequestId: changeRequest.changeRequestId,
-      },
-      event,
-    );
+  const tab = useMemo(() => wikiSidebarEntryTab({ kind: "change", item }), [item]);
+  const openTab = (event: RowClick) => onOpen(tab, event);
   const amendments = changeRequest.amendments.length;
   const actors = [...new Set(changeRequest.amendments.map((amendment) => amendment.actor))];
   const details = <WikiChangeDetails item={item} actors={actors} />;
@@ -891,6 +1067,9 @@ const WikiChangeRow = memo(function WikiChangeRow({
       <CardRow
         label={`${changeRequest.title}, ${merged ? "merged" : "closed"} change request in ${item.wiki.name}`}
         active={active}
+        selected={selected}
+        tab={tab}
+        actions={actions}
         option={option}
         slim
         details={details}
@@ -907,6 +1086,9 @@ const WikiChangeRow = memo(function WikiChangeRow({
     <CardRow
       label={`${changeRequest.title}, change request in ${item.wiki.name}`}
       active={active}
+      selected={selected}
+      tab={tab}
+      actions={actions}
       option={option}
       details={details}
       onOpen={openTab}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { dropZone, insertIndex, paneDropZone } from "./drag";
+import { dropZone, insertIndex, insertionLineX, paneDropZone } from "./drag";
 
 describe("drop zones", () => {
   it("names the edge the pointer is near, or the middle", () => {
@@ -48,5 +48,16 @@ describe("where a tab joins a strip", () => {
   it("lands at the end past the last tab's middle, or in an empty strip", () => {
     expect(insertIndex(middles, 190)).toBe(3);
     expect(insertIndex([], 10)).toBe(0);
+  });
+
+  it("draws the insertion line midway between neighbours, or half a gap past an end tab", () => {
+    const boxes = [
+      { left: 100, right: 132 },
+      { left: 140, right: 172 },
+    ];
+    expect(insertionLineX(boxes, 1, 4, 96)).toBe(136);
+    expect(insertionLineX(boxes, 0, 4, 96)).toBe(98);
+    expect(insertionLineX(boxes, 2, 4, 96)).toBe(174);
+    expect(insertionLineX([], 0, 4, 96)).toBe(96);
   });
 });

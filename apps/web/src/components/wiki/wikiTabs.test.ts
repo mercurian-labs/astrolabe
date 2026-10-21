@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { allTabs, focusedPane, startingArrangement } from "~/panes/arrangement";
 import { leaves } from "~/panes/tree";
-import { openWikiTab, replaceWikiTab, wikiPanes } from "./wikiPanes";
+import { openWikiTab, replaceWikiTab, showWikiTab, stepWikiTab, wikiPanes } from "./wikiPanes";
 import {
   parseWikiTabKey,
   sameWikiTab,
@@ -180,5 +180,64 @@ describe("opening documents", () => {
     replaceWikiTab(wikiTabKey(note("Beta")), note("Gamma"));
     expect(allTabs(arrangement())).toHaveLength(2);
     expect(focusedPane(arrangement()).active).toBe(wikiTabKey(note("Gamma")));
+  });
+});
+
+describe("a wiki tab's history", () => {
+  beforeEach(() => {
+    wikiPanes.update(() => startingArrangement());
+  });
+  const arrangement = () => wikiPanes.getSnapshot()!.arrangement;
+  const front = () => focusedPane(arrangement()).active;
+  const key = (name: string) => wikiTabKey(note(name));
+
+  it("shows a clicked document in the tab in front, which steps back and forward", () => {
+    showWikiTab(note("Alpha"));
+    showWikiTab(note("Beta"));
+    showWikiTab(note("Gamma"));
+    expect(allTabs(arrangement())).toEqual([key("Gamma")]);
+    stepWikiTab("back");
+    expect(allTabs(arrangement())).toEqual([key("Beta")]);
+    stepWikiTab("back");
+    expect(front()).toBe(key("Alpha"));
+    // Nothing further back: the tab stays.
+    stepWikiTab("back");
+    expect(front()).toBe(key("Alpha"));
+    stepWikiTab("forward");
+    stepWikiTab("forward");
+    expect(front()).toBe(key("Gamma"));
+  });
+
+  it("clears the way forward when it shows something new, and links join the history", () => {
+    showWikiTab(note("Alpha"));
+    showWikiTab(note("Beta"));
+    stepWikiTab("back");
+    replaceWikiTab(key("Alpha"), note("Delta"));
+    stepWikiTab("forward");
+    expect(front()).toBe(key("Delta"));
+    stepWikiTab("back");
+    expect(front()).toBe(key("Alpha"));
+  });
+
+  it("brings a document open in another tab forward, rather than showing it twice", () => {
+    showWikiTab(note("Alpha"));
+    openWikiTab(note("Beta"));
+    expect(allTabs(arrangement())).toEqual([key("Alpha"), key("Beta")]);
+    showWikiTab(note("Alpha"));
+    expect(allTabs(arrangement())).toEqual([key("Alpha"), key("Beta")]);
+    expect(front()).toBe(key("Alpha"));
+  });
+
+  it("keeps the history of a note saved into a change request, and forgets a closed tab's", () => {
+    showWikiTab(note("Alpha"));
+    showWikiTab(note("Beta"));
+    replaceWikiTab(key("Beta"), note("Beta", "cr-1"), { rekey: true });
+    stepWikiTab("back");
+    expect(front()).toBe(key("Alpha"));
+    openWikiTab(note("Gamma"));
+    wikiPanes.update(() => startingArrangement());
+    showWikiTab(note("Alpha"));
+    stepWikiTab("back");
+    expect(allTabs(arrangement())).toEqual([key("Alpha")]);
   });
 });

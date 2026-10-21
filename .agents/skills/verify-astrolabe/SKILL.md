@@ -50,7 +50,27 @@ Before driving, and whenever something looks off:
 - After pairing, `preview_evaluate` on `document.documentElement.dataset.themeId`
   returns `"mercurian"` on a fresh profile. Anything else means you are on a
   build without the Astrolabe layer or a profile that picked another theme.
-- The sidebar has `role=link[name='Go to threads']` holding `img[name='Astrolabe']`.
+- The icon rail is headed by the monogram tile, `[data-app-rail-mark]` (not in the macOS desktop app).
+
+## Desktop (Electron) checks
+
+The Browser panel drives the web build. For something only the macOS desktop app shows (the
+window's own buttons, the rail's mark moving below them), run the desktop client against a
+copy of the walk's home, so two servers never share one database:
+
+```
+H="$run/desktop-home"; mkdir -p "$H/userdata"
+sqlite3 "$run/home/userdata/statev2.sqlite" ".backup '$H/userdata/statev2.sqlite'"
+T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT=9333 nohup vp run dev:desktop --home-dir "$H" >"$run/desktop.log" 2>&1 &
+echo $! >"$run/desktop.pid"
+```
+
+Wait for `main window created` in the log; if the page reads "Astrolabe could not load",
+reload it once the renderer's Vite is up. Read and screenshot the page over the DevTools
+protocol (`curl 127.0.0.1:9333/json/list`, then `Runtime.evaluate` and
+`Page.captureScreenshot` on the `astrolabe-dev://app/` page); `screencapture` and System
+Events usually lack permission here. The window's own buttons are native, so they are not
+in that screenshot. Stop it by `$run/desktop.pid`.
 
 ## Drive
 

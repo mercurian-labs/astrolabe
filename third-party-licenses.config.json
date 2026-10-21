@@ -273,6 +273,14 @@
       }
     },
     {
+      "name": "@pixi/colord",
+      "version": "2.9.6",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2020 Vlad Shilov"]
+      }
+    },
+    {
       "license": "MIT",
       "name": "@react-grab/cli",
       "sourceUrl": "https://github.com/aidenybai/react-grab/tree/main/packages/cli",

@@ -185,11 +185,15 @@ async function installLocalUpdate(
   }
 }
 
-export function SidebarUpdatePill() {
-  return <SidebarUpdateControl />;
+/**
+ * The desktop app's update control. Astrolabe: `inRail` draws it among the icon rail's buttons
+ * (see `AppIconRail`), as one of its list's rows, with its tooltip and notes to the side.
+ */
+export function SidebarUpdatePill({ inRail = false }: { inRail?: boolean }) {
+  return <SidebarUpdateControl inRail={inRail} />;
 }
 
-function SidebarUpdateControl() {
+function SidebarUpdateControl({ inRail }: { inRail: boolean }) {
   const state = useDesktopUpdateState();
   const [isActionPending, setIsActionPending] = useState(false);
   const [isConfirmingEverything, setIsConfirmingEverything] = useState(false);
@@ -446,8 +450,11 @@ function SidebarUpdateControl() {
       type="button"
       aria-label={idleTooltip?.detail ? `${tooltip}: ${idleTooltip.detail}` : tooltip}
       aria-disabled={isInteractionDisabled || undefined}
+      data-sidebar={inRail ? "menu-button" : undefined}
       className={cn(
-        "inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-inset",
+        "inline-flex size-8 items-center justify-center outline-hidden",
+        inRail ? "rounded-md" : "rounded-full",
+        " ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-inset",
         isInteractionDisabled ? "cursor-not-allowed" : "cursor-pointer",
         showUpdateIconState
           ? cn(
@@ -486,7 +493,7 @@ function SidebarUpdateControl() {
   );
 
   return (
-    <SidebarMenuItem className="ml-auto shrink-0">
+    <SidebarMenuItem className={cn("shrink-0", !inRail && "ml-auto")}>
       <Popover
         handle={releaseNotesPopoverHandle}
         onOpenChange={(open, details) => {
@@ -520,7 +527,7 @@ function SidebarUpdateControl() {
           {!showReleaseNotesPopover ? (
             <TooltipPopup
               align="center"
-              side="top"
+              side={inRail ? "right" : "top"}
               variant={showUpdateDetails ? "glass" : "default"}
             >
               {idleTooltip?.detail ? (
@@ -548,7 +555,7 @@ function SidebarUpdateControl() {
               }
             }}
             ref={releaseNotesPopupRef}
-            side="top"
+            side={inRail ? "right" : "top"}
             tooltipStyle
           >
             <SidebarUpdateReleaseNotes

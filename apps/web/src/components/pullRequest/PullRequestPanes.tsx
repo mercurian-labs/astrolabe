@@ -32,9 +32,15 @@ import {
   useRightPanelStore,
   type PullRequestSurface,
 } from "~/rightPanelStore";
+import { tabHistorySlot } from "~/whichKey/handles";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  attachPullRequestPanes,
+  stepPullRequestTab,
+  usePullRequestTabHistory,
+} from "./pullRequestTabs";
 
 /**
  * Astrolabe: the Pull Requests main area, open pull requests in tabs that split, as the Wikis
@@ -106,6 +112,14 @@ export function PullRequestPanes(props: PullRequestPanesProps) {
   }, [controller]);
   // After the load, so it subscribes to a loaded arrangement; paired with its own cleanup.
   useLayoutEffect(() => controller.follow(), [controller]);
+  // Astrolabe: sidebar row clicks act on these panes, and the sidebar header's arrows (with
+  // `navigation.back`/`forward`) walk the focused pane's tab in front (see `pullRequestTabs`).
+  useLayoutEffect(() => attachPullRequestPanes(controller), [controller]);
+  const { canGoBack, canGoForward } = usePullRequestTabHistory(controller);
+  useEffect(
+    () => tabHistorySlot.register({ canGoBack, canGoForward, go: stepPullRequestTab }),
+    [canGoBack, canGoForward],
+  );
   useEffect(() => {
     useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
     const save = () => controller.flush();
