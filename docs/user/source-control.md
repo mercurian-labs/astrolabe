@@ -155,14 +155,20 @@ uses the project's instructions and recent commit subjects.
 
 ## Review and merge
 
-Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
-or merge. You can edit review titles and descriptions and your own comments where the host allows it.
-GitLab calls these merge requests.
+Open **Change Requests** in the icon rail to review changes and comments, request reviewers,
+check out a branch, or merge. You can edit review titles and descriptions and your own comments
+where the host allows it. GitLab calls these merge requests.
 
-The sidebar lists reviews, with search, sort and filters above them. A review opens as a tab; tabs
-split and rearrange as wiki documents' do, so two reviews can sit side by side.
+The sidebar lists reviews, with search, sort and filters above them, and your wikis' change
+requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The source filter beside the
+search narrows the list to one project's pull requests, or to the wikis' change requests (every
+wiki, or one); one host's pull requests are under **Filters**. A review opens as a
+tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side by side, and the
+arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
+back after a restart.
 
-On mobile, **Pull requests** lists reviews across your connected environments. Open a review
+On mobile, **Change requests** lists reviews across your connected environments, with your
+wikis' change requests in a **Wiki changes** group above them. Open a review
 to read its description, activity, commits, and changed files. Line comments stay as drafts
 until you submit the review. **Work on PR** opens a chat with the review attached; sending
 the first message prepares a worktree from the review's branch.

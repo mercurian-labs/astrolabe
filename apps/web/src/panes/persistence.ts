@@ -6,7 +6,11 @@ import {
   startingArrangement,
   type Arrangement,
 } from "./arrangement";
+import { isSectionTabKey } from "~/sectionTabs/sectionTabs";
 import { leaves, type SplitNode } from "./tree";
+
+/** The keys a right panel or the Change Requests panes keep: their surfaces, and chats and documents. */
+const isPaneKey = (key: string) => isTabKey(key) || isSectionTabKey(key);
 
 /**
  * Each thread's right-panel arrangement is the device's, in localStorage under its scoped thread key, so a
@@ -80,7 +84,7 @@ function readNode(
  */
 export function parseArrangement(
   value: unknown,
-  isKey: (key: string) => boolean = isTabKey,
+  isKey: (key: string) => boolean = isPaneKey,
 ): Arrangement | null {
   if (!isRecord(value)) return null;
   const root = readNode(value.root, new Set(), new Set(), isKey);

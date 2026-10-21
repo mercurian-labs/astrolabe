@@ -38,7 +38,8 @@ interface AppSection {
 }
 
 /**
- * The app's sections: Threads and Wikis, then Pull Requests (where a server supports them) and
+ * The app's sections: Threads and Wikis, then Change Requests (where a server supports pull
+ * requests; it lists the wikis' change requests beside them) and
  * Usage, and Settings. Each opens as the rail's button does.
  */
 export function useAppSections(): readonly AppSection[] {
@@ -75,7 +76,7 @@ export function useAppSections(): readonly AppSection[] {
       ? [
           {
             id: "pull-requests" as const,
-            label: "Pull Requests",
+            label: "Change Requests",
             icon: <PullRequestGlyph.pullRequest />,
             active: onPullRequests,
             open: () =>
@@ -104,7 +105,7 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: the app's sections on top (Threads, Wikis, Pull Requests and Usage),
+ * The far-left icon rail: the app's sections on top (Threads, Wikis, Change Requests and Usage),
  * and the sidebar's toggle over Settings at the foot, which the sidebar's footer used to hold.
  * It runs from below the title bar to the window's bottom edge and stays when the sidebar
  * collapses; the sidebar opens beside it (see `AppSidebarLayout`), and its toggle stays in reach

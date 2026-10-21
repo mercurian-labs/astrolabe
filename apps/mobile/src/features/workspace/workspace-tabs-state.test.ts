@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   initialWorkspaceTabsState,
+  workspaceTabsFor,
   workspaceTabsReducer,
   workspaceToolbarHeight,
 } from "./workspace-tabs-state";
@@ -35,6 +36,24 @@ describe("workspace root navigation", () => {
       scrollOffset: 240,
       searchMode: "active",
     });
+  });
+
+  it("Wikis keeps its own search and position beside the other roots", () => {
+    let state = initialWorkspaceTabsState();
+    state = workspaceTabsReducer(state, { type: "select", tab: "wikis" });
+    state = workspaceTabsReducer(state, { type: "scroll", tab: "wikis", offset: 320 });
+    state = workspaceTabsReducer(state, { type: "search" });
+    state = workspaceTabsReducer(state, { type: "query", query: "roadmap" });
+    state = workspaceTabsReducer(state, { type: "select", tab: "threads" });
+    expect(state.tabs.threads.query).toBe("");
+    state = workspaceTabsReducer(state, { type: "select", tab: "wikis" });
+    expect(state.tabs.wikis).toMatchObject({ query: "roadmap", searchMode: "active" });
+    expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.wikis.scrollOffset).toBe(320);
+  });
+
+  it("iPhone shows Wikis; iPad keeps its two roots until Wikis has a sidebar design", () => {
+    expect(workspaceTabsFor("phone")).toEqual(["threads", "pullRequests", "wikis"]);
+    expect(workspaceTabsFor("pad")).toEqual(["threads", "pullRequests"]);
   });
 
   it("clear keeps search active without losing the position cancel restores", () => {

@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { use, useCallback, useMemo } from "react";
+import { use, useCallback, useMemo, type ReactNode } from "react";
 import { Platform, View, useWindowDimensions } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,19 +18,26 @@ import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCom
 import { WorkspaceConnectionTitle } from "../home/WorkspaceConnectionTitle";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { PullRequestsScreen } from "../pull-requests/PullRequestsScreen";
+import { WikisScreen } from "../wikis/WikisScreen";
 import {
   WorkspaceTabsContext,
   WorkspaceTabsProvider,
   useWorkspaceTabs,
 } from "./WorkspaceTabsContext";
 import { WorkspaceToolbar } from "./WorkspaceToolbar";
-import { WORKSPACE_DOCK, workspaceToolbarHeight } from "./workspace-tabs-state";
+import {
+  WORKSPACE_DOCK,
+  WORKSPACE_TAB_LABELS,
+  workspaceToolbarHeight,
+  type WorkspaceTab,
+} from "./workspace-tabs-state";
 import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
 import { useSidebarWorkspaceTabs, useSystemWorkspaceTabBar } from "./useSystemWorkspaceTabBar";
 
-const TAB_TITLES = {
-  threads: "Threads",
-  pullRequests: "Pull requests",
+const TAB_SCREENS: Readonly<Record<WorkspaceTab, () => ReactNode>> = {
+  threads: () => <HomeRouteScreen />,
+  pullRequests: () => <PullRequestsScreen />,
+  wikis: () => <WikisScreen />,
 };
 
 function WorkspaceRootTitle(props: {
@@ -42,7 +49,9 @@ function WorkspaceRootTitle(props: {
     <View style={{ width: props.maxWidth, minHeight: 32, justifyContent: "center" }}>
       <WorkspaceConnectionTitle
         brand={
-          <CompactBrandTitle accessibilityLabel={`Astrolabe, ${TAB_TITLES[state.selectedTab]}`} />
+          <CompactBrandTitle
+            accessibilityLabel={`Astrolabe, ${WORKSPACE_TAB_LABELS[state.selectedTab].title}`}
+          />
         }
         maxWidth={props.maxWidth}
         onPress={props.onOpenEnvironments}
@@ -108,7 +117,7 @@ function WorkspaceRootContent() {
           <NativeStackScreenOptions
             optionsVersion={[state.selectedTab, state.selectionRevision, width, sidebarNavigation]}
             options={{
-              title: TAB_TITLES[state.selectedTab],
+              title: WORKSPACE_TAB_LABELS[state.selectedTab].title,
               headerShown: true,
               unstable_headerLeftItems: () => [],
               headerTitle: renderHeaderTitle,
@@ -121,8 +130,7 @@ function WorkspaceRootContent() {
             titleContent={renderHeaderTitle()}
             actions={[
               {
-                accessibilityLabel:
-                  state.selectedTab === "threads" ? "Search threads" : "Search pull requests",
+                accessibilityLabel: WORKSPACE_TAB_LABELS[state.selectedTab].search,
                 icon: "magnifyingglass",
                 onPress: () => {
                   dispatchHardwareKeyboardCommand("focusSearch");
@@ -142,7 +150,7 @@ function WorkspaceRootContent() {
         )}
         {sidebarPicker ? <WorkspaceSidebarTabs /> : null}
         <SafeAreaInsetsContext value={sidebarPicker ? { ...insets, top: 0 } : insets}>
-          {state.selectedTab === "threads" ? <HomeRouteScreen /> : <PullRequestsScreen />}
+          {TAB_SCREENS[state.selectedTab]()}
         </SafeAreaInsetsContext>
         <WorkspaceToolbar
           sidebar={sidebarNavigation}

@@ -19,13 +19,11 @@ import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { WorkspaceDock } from "./WorkspaceDock";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
-import { WORKSPACE_TOOLBAR, type WorkspaceTab } from "./workspace-tabs-state";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
-
-const TABS: ReadonlyArray<{ id: WorkspaceTab; label: string; icon: AppSymbolName }> = [
-  { id: "threads", label: "Threads", icon: "text.bubble" },
-  { id: "pullRequests", label: "PRs", icon: PullRequestGlyph.pullRequest },
-];
+import {
+  WORKSPACE_TAB_ICONS,
+  WORKSPACE_TAB_LABELS,
+  WORKSPACE_TOOLBAR,
+} from "./workspace-tabs-state";
 
 function ToolbarButton(props: {
   label: string;
@@ -65,7 +63,6 @@ export function WorkspaceToolbar(props: {
   const focusSearch = useCallback(() => {
     if (!workspace) return false;
     const tab = workspace.state.selectedTab;
-    if (tab !== "threads" && tab !== "pullRequests") return false;
     workspace.dispatch({ type: "scroll", tab, offset: workspace.getScrollOffset(tab) });
     workspace.dispatch({ type: "search" });
     setFocusRequest((request) => request + 1);
@@ -100,7 +97,11 @@ export function WorkspaceToolbar(props: {
   if (!workspace) return null;
   const { state, dispatch } = workspace;
   const tab = state.tabs[state.selectedTab];
-  const activeTab = TABS.find((item) => item.id === state.selectedTab)!;
+  const activeTab = {
+    label: WORKSPACE_TAB_LABELS[state.selectedTab].title,
+    search: WORKSPACE_TAB_LABELS[state.selectedTab].search,
+    icon: WORKSPACE_TAB_ICONS[state.selectedTab],
+  };
   const searching = tab.searchMode !== "resting";
   const expanded = tab.searchMode === "expanded" && !keyboardVisible;
   const showNavigation = !searching || expanded;
@@ -135,8 +136,8 @@ export function WorkspaceToolbar(props: {
                 />
                 <TextInput
                   ref={input}
-                  accessibilityLabel={`Search ${activeTab.label}`}
-                  placeholder={`Search ${activeTab.label === "PRs" ? "pull requests" : "threads"}`}
+                  accessibilityLabel={activeTab.search}
+                  placeholder={activeTab.search}
                   placeholderTextColor={placeholderStyle.color}
                   value={tab.query}
                   onChangeText={(query) => dispatch({ type: "query", query })}

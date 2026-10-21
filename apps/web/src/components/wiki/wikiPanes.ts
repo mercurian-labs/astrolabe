@@ -27,6 +27,8 @@ import {
   type HistoryDirection,
   type TabHistories,
 } from "~/tabNavigation.logic";
+import { isSectionTabKey } from "~/sectionTabs/sectionTabs";
+import { pullRequestTargetOfKey } from "../pullRequest/pullRequestTabs";
 import { parseWikiTabKey, sameWikiTab, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 /**
@@ -40,7 +42,9 @@ const STORAGE_KEY = "astrolabe:wiki-panes:v1";
 const HISTORY_STORAGE_KEY = "astrolabe:wiki-tab-history:v1";
 const PERSIST_DELAY_MS = 150;
 
-const isWikiPaneKey = (key: string) => isEmptyTab(key) || parseWikiTabKey(key) !== null;
+/** The Wikis area keeps its documents, and the chats and pull requests opened beside them. */
+const isWikiPaneKey = (key: string) =>
+  isEmptyTab(key) || isSectionTabKey(key) || pullRequestTargetOfKey(key) !== null;
 
 function storage(): Storage | null {
   try {
@@ -290,9 +294,14 @@ export function useFocusedWikiTab(): WikiTab | null {
   return parseWikiTabKey(key);
 }
 
+/** The Wikis area's arrangement as it stands. */
+export function useWikiArrangement(): Arrangement {
+  return useSyncExternalStore(wikiPanes.subscribe, () => current().arrangement);
+}
+
 /** Every open tab's key, in pane order. */
 export function useOpenWikiTabKeys(): readonly string[] {
-  const arrangement = useSyncExternalStore(wikiPanes.subscribe, () => current().arrangement);
+  const arrangement = useWikiArrangement();
   return useMemo(() => allTabs(arrangement), [arrangement]);
 }
 

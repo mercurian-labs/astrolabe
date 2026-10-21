@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { WikiNoteBuffer } from "./wikiNoteBuffer";
+import { WikiNoteBuffer } from "./noteBuffer";
 
 const buffers: WikiNoteBuffer[] = [];
 function makeBuffer(source: string) {

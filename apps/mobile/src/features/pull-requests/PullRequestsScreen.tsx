@@ -30,6 +30,8 @@ import { PullRequestListFilters } from "./PullRequestListFilters";
 import { usePullRequestList } from "./usePullRequestList";
 import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
+import { useChangeRequestWikiSource } from "../wikis/useChangeRequestWikiSource";
+import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
   pullRequestListFacets,
@@ -42,6 +44,8 @@ import {
 import { useDebouncedValue } from "../../state/queries";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { useAndroidWorkspaceSelection } from "../workspace/useAndroidWorkspaceSelection";
+
+const NO_ENTRIES: EnvironmentPullRequestListEntry[] = [];
 
 function PullRequestScrollView(props: ScrollViewProps) {
   const insets = useSafeAreaInsets();
@@ -144,6 +148,8 @@ export function PullRequestsScreen(
   const sidebar = props.sidebar === true || primaryColumn !== null;
   const selectedKey = props.selectedPullRequestKey ?? primaryColumn?.selectedPullRequestKey;
   const connectedKey = connectedTargets.map((target) => target.environmentId).join("\n");
+  // Astrolabe: a wiki picked in the filter lists only the wikis' change requests.
+  const wikiSource = useChangeRequestWikiSource();
   const entries = useMemo(
     () =>
       filterPullRequestList(
@@ -210,7 +216,7 @@ export function PullRequestsScreen(
     <View className={sidebar ? "flex-1 bg-drawer" : "flex-1 bg-screen"}>
       <LegendList
         ref={listRef}
-        data={entries}
+        data={wikiSource.wikisOnly ? NO_ENTRIES : entries}
         extraData={`${selectedKey}:${busyKey}`}
         keyExtractor={pullRequestKey}
         itemsAreEqual={pullRequestListRowsAreEqual}
@@ -292,7 +298,10 @@ export function PullRequestsScreen(
               labels={
                 knownFacets.environmentId === environmentId ? knownFacets.labels : facets.labels
               }
-              projects={projects}
+              projects={wikiSource.withoutWikiProjects(projects)}
+              wikis={wikiSource.choices}
+              wikiValue={wikiSource.selected}
+              onWiki={wikiSource.select}
             />
             {result.data?.errors.length ? (
               <Text className="px-4 py-3 text-sm text-foreground-muted">
@@ -304,6 +313,10 @@ export function PullRequestsScreen(
                   .join("\n")}
               </Text>
             ) : null}
+            {/* Astrolabe: the wikis' change requests, a group of their own above. */}
+            {controls.projectId && !wikiSource.wikisOnly ? null : (
+              <WikiChangesSection query={query} pullRequestsFollow={!wikiSource.wikisOnly} />
+            )}
           </>
         }
         ListFooterComponent={
@@ -326,7 +339,7 @@ export function PullRequestsScreen(
           ) : undefined
         }
         ListEmptyComponent={
-          result.isPending && connectedTargets.length > 0 ? (
+          wikiSource.wikisOnly ? null : result.isPending && connectedTargets.length > 0 ? (
             <View className="items-center py-12">
               <AppActivityIndicator colorClassName="accent-icon" />
             </View>

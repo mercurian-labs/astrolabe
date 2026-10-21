@@ -1,6 +1,7 @@
 import {
   Files,
   FileDiff,
+  FileText,
   Globe2,
   Plus,
   Smartphone,
@@ -9,7 +10,8 @@ import {
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -37,7 +39,24 @@ import {
   useRightPanelStore,
   type RightPanelSurface,
 } from "~/rightPanelStore";
-import { closeTab, isEmptyTab, openTab, surfaceIdOf, surfaceKey } from "./arrangement";
+import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
+import { WikiFinder } from "~/components/wiki/WikiFinder";
+import { parseWikiTabKey, wikiTabKey } from "~/components/wiki/wikiTabs";
+import {
+  closeSectionTab,
+  SectionTabContent,
+  sectionTabMove,
+  useSectionTabLabel,
+} from "~/sectionTabs/SectionTabContent";
+import {
+  allTabs,
+  closeTab,
+  focusedPane,
+  isEmptyTab,
+  openTab,
+  surfaceIdOf,
+  surfaceKey,
+} from "./arrangement";
 import type { PanelProps, PanesController } from "./panesController";
 import type { PaneTabs } from "./panesHost";
 import { useRightPanelHost, usePanesThreadRef, type RightPanelHost } from "./PaneSurfaceHost";
@@ -57,15 +76,40 @@ export function createRightPanelHost(controller: PanesController): RightPanelHos
     if (surface.parentNode !== slot) slot.appendChild(surface);
     surface.style.display = visible ? "" : "none";
   };
+  // Astrolabe: documents opened beside the thread, each in its own container.
+  const sectionTabs = new Map<string, HTMLDivElement>();
+  const sectionTabContainer = (key: string) => {
+    let container = sectionTabs.get(key);
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col bg-background";
+      container.dataset.sectionTab = key;
+      sectionTabs.set(key, container);
+    }
+    return container;
+  };
+  const close = (tabKey: string) => closeTabOf(controller, tabKey);
   const tabs: PaneTabs = {
     useLabel: useTabLabel,
-    close: (tabKey) => closeTabOf(controller, tabKey),
+    close,
     NewTab: NewTabMenu,
-    place: (slot, _leaf, hosting) => {
+    place: (slot, leaf, hosting) => {
       if (hosting) place(slot, true);
+      for (const key of leaf.tabs) {
+        const container = sectionTabs.get(key);
+        if (!container) continue;
+        if (container.parentNode !== slot) slot.appendChild(container);
+        container.style.display = key === leaf.active ? "" : "none";
+      }
+      // A document in front covers what the pane showed before it.
+      if (!hosting && surface.parentNode === slot && sectionTabs.has(leaf.active)) {
+        surface.style.display = "none";
+      }
     },
     Overlay: SurfaceOverlay,
     reservesTopRight: true,
+    openElsewhere: (tabKey) =>
+      sectionTabMove(tabKey, "threads", close, pullRequestOfSurface(controller, tabKey)),
   };
   return {
     controller,
@@ -75,7 +119,81 @@ export function createRightPanelHost(controller: PanesController): RightPanelHos
       surface.style.display = "none";
     },
     tabs,
+    sectionTabContainer,
+    pruneSectionTabs(open) {
+      for (const [key, container] of sectionTabs) {
+        if (open.has(key)) continue;
+        container.remove();
+        sectionTabs.delete(key);
+      }
+    },
   };
+}
+
+/**
+ * Astrolabe: a pull request beside the thread, named in full to open in Change Requests; its key
+ * leaves out the server, which is the thread's.
+ */
+function pullRequestOfSurface(controller: PanesController, tabKey: string) {
+  const ref = controller.threadRef();
+  const surfaceId = surfaceIdOf(tabKey);
+  if (ref === null || surfaceId === null) return null;
+  const surface = selectThreadRightPanelState(
+    useRightPanelStore.getState().byThreadKey,
+    ref,
+  ).surfaces.find((entry) => entry.id === surfaceId);
+  if (surface?.kind !== "pull-request") return null;
+  return {
+    environmentId: surface.environmentId ?? ref.environmentId,
+    projectId: surface.projectId,
+    repository: surface.repository,
+    number: surface.number,
+    ...(surface.host ? { host: surface.host } : {}),
+    ...(surface.url ? { url: surface.url } : {}),
+  };
+}
+
+/**
+ * Astrolabe: the documents open beside the thread, each rendered once into its container. A
+ * change request's thread link goes to the thread, rather than opening a chat inside a chat.
+ */
+export function RightPanelSectionTabs() {
+  const host = useRightPanelHost();
+  const { controller } = host;
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const keys = useMemo(
+    () => (snapshot ? allTabs(snapshot.arrangement).filter((key) => parseWikiTabKey(key)) : []),
+    [snapshot],
+  );
+  const focusedKey = snapshot ? focusedPane(snapshot.arrangement).active : null;
+  useEffect(() => {
+    host.pruneSectionTabs(new Set(keys));
+  }, [host, keys]);
+  return (
+    <>
+      {keys.map((key) =>
+        createPortal(
+          <SectionTabContent
+            tabKey={key}
+            store={controller}
+            active={key === focusedKey}
+            chats={false}
+            openPullRequest={(target) => {
+              // Beside a thread, its pull requests are the thread's own surfaces.
+              const ref = controller.threadRef();
+              if (!ref) return;
+              const { environmentId, ...rest } = target;
+              useRightPanelStore
+                .getState()
+                .openPullRequest(ref, environmentId === ref.environmentId ? rest : target);
+            }}
+          />,
+          host.sectionTabContainer(key),
+          key,
+        ),
+      )}
+    </>
+  );
 }
 
 /** Re-renders when what the strip draws from ChatView's panel props changes. */
@@ -94,12 +212,14 @@ function useSurface(surfaceId: string | null) {
   );
 }
 
-/** A tab's title and icon: an empty tab, or one of T3 Code's surfaces. */
+/** A tab's title and icon: an empty tab, a document, or one of T3 Code's surfaces. */
 function useTabLabel(tabKey: string): { title: string; icon: ReactNode } {
   const { controller } = useRightPanelHost();
   const panel = usePanel(controller);
   const surface = useSurface(surfaceIdOf(tabKey));
+  const document = useSectionTabLabel(tabKey);
   const { resolvedTheme } = useTheme();
+  if (!surface && surfaceIdOf(tabKey) === null && document !== null) return document;
   if (!surface) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   const favicon = previewFaviconOf(
     surface,
@@ -130,7 +250,7 @@ function closeTabOf(controller: PanesController, tabKey: string) {
   const surfaceId = surfaceIdOf(tabKey);
   const ref = controller.threadRef();
   if (surfaceId === null || ref === null) {
-    controller.update((arrangement) => closeTab(arrangement, tabKey));
+    closeSectionTab(controller, tabKey);
     return;
   }
   const surface = selectThreadRightPanelState(
@@ -255,6 +375,7 @@ function NewTabMenu({ paneId }: { paneId: string }) {
   const { controller } = useRightPanelHost();
   const panel = usePanel(controller);
   const [open, setOpen] = useState(false);
+  const [finding, setFinding] = useState(false);
   const profiles = useBrowserDefaults().profiles;
   const actions = addActions(panel);
   const run = (action: AddAction) => {
@@ -275,6 +396,18 @@ function NewTabMenu({ paneId }: { paneId: string }) {
         side="bottom"
         sideOffset={6}
         onKeyDownCapture={(event) => {
+          if (
+            event.key.toLowerCase() === "o" &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+            setFinding(true);
+            return;
+          }
           const action = surfaceShortcutActionForKey(actions, event.nativeEvent);
           if (!action) return;
           event.preventDefault();
@@ -319,8 +452,53 @@ function NewTabMenu({ paneId }: { paneId: string }) {
             </MenuItem>
           );
         })}
+        <MenuItem
+          onClick={() => {
+            setOpen(false);
+            setFinding(true);
+          }}
+        >
+          <FileText />
+          Document
+          <MenuShortcut>O</MenuShortcut>
+        </MenuItem>
       </MenuPopup>
+      {finding ? (
+        <PaneDocumentFinder
+          onClose={() => setFinding(false)}
+          onPick={(key) => controller.update((arrangement) => openTab(arrangement, key, paneId))}
+        />
+      ) : null}
     </Menu>
+  );
+}
+
+/**
+ * Astrolabe: a wiki's document, opened beside the thread in the pane asked from, as the Wikis
+ * finder finds or writes one.
+ */
+function PaneDocumentFinder({
+  onClose,
+  onPick,
+}: {
+  readonly onClose: () => void;
+  readonly onPick: (key: string) => void;
+}) {
+  const { overviews } = useWikiOverviews();
+  return (
+    <WikiFinder
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      overviews={overviews}
+      scope={null}
+      mode="find"
+      onPick={(tab) => {
+        onClose();
+        onPick(wikiTabKey(tab));
+      }}
+    />
   );
 }
 

@@ -41,6 +41,8 @@ import {
   PullRequestFileRouteScreen,
 } from "./features/pull-requests/PullRequestRouteScreen";
 import { PullRequestFilesSheet } from "./features/pull-requests/PullRequestFiles";
+import { WikiChangeRequestRouteScreen } from "./features/wikis/WikiChangeRequestRouteScreen";
+import { WikiDocumentRouteScreen } from "./features/wikis/WikiDocumentRouteScreen";
 import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
 import { PullRequestReviewersScreen } from "./features/pull-requests/PullRequestReviewersScreen";
 import {
@@ -719,6 +721,17 @@ const RootStackConfig = createWorkspaceStackNavigator({
         parse: { number: Number },
       },
       options: DETAIL_HEADER_OPTIONS,
+    }),
+    // Astrolabe: a wiki's documents and change requests.
+    WikiDocument: createNativeStackScreen({
+      screen: WikiDocumentRouteScreen,
+      linking: "wikis/:environmentId/:wikiId/documents/:name",
+      options: SOLID_HEADER_OPTIONS,
+    }),
+    WikiChangeRequest: createNativeStackScreen({
+      screen: WikiChangeRequestRouteScreen,
+      linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId",
+      options: GLASS_HEADER_OPTIONS,
     }),
     PullRequestGuideStop: createNativeStackScreen({
       screen: PullRequestGuideStopScreen,

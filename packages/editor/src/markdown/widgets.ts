@@ -60,6 +60,16 @@ export function hasModifier(event: MouseEvent) {
   return /mac|iphone|ipad|ipod/i.test(platformName()) ? event.metaKey : event.ctrlKey;
 }
 
+/**
+ * Whether a click opens the link under it: Mod-click, or any click on a read-only document
+ * whose host opens links on click.
+ */
+export function opensLink(view: EditorView, event: MouseEvent) {
+  return (
+    hasModifier(event) || (view.state.readOnly && view.state.facet(previewConfig).linksOpenOnClick)
+  );
+}
+
 /** Opens a link target in a new browsing context with no opener and no referrer. */
 export function openExternal(view: EditorView, href: string) {
   const open = view.state.facet(previewConfig).openUrl;
@@ -253,7 +263,7 @@ export class ImageWidget extends WidgetType {
     wrapper.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      if (hasModifier(event)) {
+      if (opensLink(view, event)) {
         if (href) openExternal(view, href);
         else if (embed !== null) view.state.facet(previewConfig).openWikilink?.(embed);
         else if (src) openExternal(view, src);
@@ -289,7 +299,7 @@ export class EmbedChipWidget extends WidgetType {
     chip.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      if (hasModifier(event)) view.state.facet(previewConfig).openWikilink?.(this.target);
+      if (opensLink(view, event)) view.state.facet(previewConfig).openWikilink?.(this.target);
       else placeCaret(view, sourceStart(view, view.posAtDOM(chip)));
     });
     return chip;

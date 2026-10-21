@@ -10,7 +10,7 @@ import {
 } from "./PaneSurfaceHost";
 import { createPanesController } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
-import { createRightPanelHost } from "./rightPanelPaneTabs";
+import { createRightPanelHost, RightPanelSectionTabs } from "./rightPanelPaneTabs";
 import type { StorageLike } from "./persistence";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
 
@@ -78,7 +78,10 @@ export function ThreadPanesProvider({
       <RightPanelHostContext.Provider value={host}>
         <PanesLayoutKeyContext.Provider value={threadKey}>
           <PanesThreadContext.Provider value={threadRef}>
-            <PaneSurfaceHostProvider>{children}</PaneSurfaceHostProvider>
+            <PaneSurfaceHostProvider>
+              {children}
+              <RightPanelSectionTabs />
+            </PaneSurfaceHostProvider>
           </PanesThreadContext.Provider>
         </PanesLayoutKeyContext.Provider>
       </RightPanelHostContext.Provider>

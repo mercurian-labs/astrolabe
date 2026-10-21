@@ -12,7 +12,18 @@ resize and maximize still drive the panel itself.
 - **Empty panel**: one "New tab" showing T3 Code's launcher ("Open a surface").
   Picking a surface replaces it.
 - **New tab menu** (`+` in every strip): the same surfaces. Items without a
-  source are disabled.
+  source are disabled. Astrolabe adds **Document** (`O`), which opens the wiki
+  finder and puts the pick in that pane as a document tab.
+- **Tabs from other sections** (`apps/web/src/sectionTabs/`): every pane set can hold a
+  chat (`chat:<env>:<thread>`), a document or wiki change request (`wiki-note:`,
+  `wiki-change:`) and a pull request named in full, beside its own tabs. A thread's
+  right panel takes documents (Document, or a Graph tab click, which opens it beside
+  the graph); Wikis and Change Requests take chats (a change request's **Open thread**
+  opens its thread beside it) and pull requests. A tab outside its own section has
+  **Open in Threads / Wikis / Change Requests** first in its right-click menu: it closes
+  here and opens there (a chat in the chat tab in front, a document in the Wikis tab in
+  front, a change request in a new Change Requests tab). Section tab keys survive a
+  reload; a chat mounts only while its tab is in front.
 - **Pane actions** (`⋯`): Split right, Split down (both disabled for a pane's only
   tab), Close pane (disabled for a lone pane holding only an empty tab). The same
   actions are commands (`pane.splitRight`, `pane.splitDown`, `pane.close`,
@@ -21,8 +32,9 @@ resize and maximize still drive the panel itself.
   `rightPanel.toggle`, faint with no chat on screen), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` with focus in the panes closes the focused pane's active tab, not the chat tab.
-- **Tab context menu** (right-click): Close, Close others, Close tabs to the
-  right, Split right, Split down. A lone tab cannot split.
+- **Tab context menu** (right-click): Open in <section> (only for a tab outside its
+  section), Close, Close others, Close tabs to the right, Split right, Split down. A
+  lone tab cannot split.
 - **Maximize pane** / **Restore pane**: fills the panel, shown only beside other
   panes. Separate from T3 Code's **Maximize panel**, which fills the main area.
 - **Full screen** (`p f`, `pane.toggleFullScreen`, label "Full screen pane" /

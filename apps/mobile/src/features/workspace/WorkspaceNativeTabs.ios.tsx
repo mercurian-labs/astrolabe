@@ -6,15 +6,30 @@ import {
   type TabSelectedEvent,
   type TabSelectionPreventedEvent,
   type TabSelectionRejectedEvent,
+  type TabsScreenPropsIOS,
 } from "react-native-screens";
 
 import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
-import type { WorkspaceTab } from "./workspace-tabs-state";
+import { WORKSPACE_TAB_LABELS, workspaceTabsFor, type WorkspaceTab } from "./workspace-tabs-state";
 import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
 import { useSystemWorkspaceTabBar } from "./useSystemWorkspaceTabBar";
 
 const PULL_REQUEST_ICON = require("../../../assets/icons/pull-request.png");
 const COMPOSE_TAB = "compose";
+
+type TabIcons = Pick<TabsScreenPropsIOS, "icon" | "selectedIcon">;
+const TAB_ICONS: Readonly<Record<WorkspaceTab, TabIcons>> = {
+  threads: {
+    icon: { type: "sfSymbol", name: "text.bubble" },
+    selectedIcon: { type: "sfSymbol", name: "text.bubble.fill" },
+  },
+  pullRequests: { icon: { type: "templateSource", templateSource: PULL_REQUEST_ICON } },
+  wikis: {
+    icon: { type: "sfSymbol", name: "book" },
+    selectedIcon: { type: "sfSymbol", name: "book.fill" },
+  },
+};
+const TABS = workspaceTabsFor(Platform.OS === "ios" && Platform.isPad ? "pad" : "phone");
 
 /** Retain each native controller tree; removing its root can leave RNS's stack empty. */
 function RetainedWorkspaceTab(props: {
@@ -81,8 +96,8 @@ export function WorkspaceNativeTabs(props: {
           setProvenance(nativeEvent.provenance);
         }}
         onTabSelected={({ nativeEvent }: NativeSyntheticEvent<TabSelectedEvent>) => {
-          const tab = nativeEvent.selectedScreenKey;
-          if (tab !== "threads" && tab !== "pullRequests") return;
+          const tab = TABS.find((candidate) => candidate === nativeEvent.selectedScreenKey);
+          if (tab === undefined) return;
           setProvenance(nativeEvent.provenance);
           if (nativeEvent.actionOrigin === "programmatic-js" || tab === selectedTab) return;
           Keyboard.dismiss();
@@ -90,19 +105,14 @@ export function WorkspaceNativeTabs(props: {
           workspace.dispatch({ type: "select", tab });
         }}
       >
-        {(["threads", "pullRequests"] as const).map((tab: WorkspaceTab) => (
+        {TABS.map((tab) => (
           <Tabs.Screen
             key={tab}
             screenKey={tab}
-            title={tab === "threads" ? "Threads" : "Pulls"}
-            tabBarItemAccessibilityLabel={tab === "threads" ? "Threads" : "Pull requests"}
+            title={WORKSPACE_TAB_LABELS[tab].title}
+            tabBarItemAccessibilityLabel={WORKSPACE_TAB_LABELS[tab].title}
             ios={{
-              icon:
-                tab === "threads"
-                  ? { type: "sfSymbol", name: "text.bubble" }
-                  : { type: "templateSource", templateSource: PULL_REQUEST_ICON },
-              selectedIcon:
-                tab === "threads" ? { type: "sfSymbol", name: "text.bubble.fill" } : undefined,
+              ...TAB_ICONS[tab],
               overrideScrollViewContentInsetAdjustmentBehavior: false,
             }}
           >

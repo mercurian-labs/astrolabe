@@ -12,13 +12,14 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   (combobox, named `Filter documents by wiki: <wiki>` once one is picked, kept in
   `astrolabe:wiki-scope:v1`: All wikis, each wiki with a settings gear, **Add a
   folder**, **New wiki**) and **New document**. With no wikis, the sidebar's empty
-  state has its own **Add a folder** and **New wiki**. Open change requests are
-  thread-style cards (`[data-testid=wiki-sidebar-row]`) under "Open changes · N";
-  documents (newest first) and the folded "Merged and closed · N" shelf use the
-  settled threads' slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon,
-  name, a pen icon when an open change holds the document, time). Hovering any row
-  opens the threads' hover card: wiki, machine, then links and open changes for a
-  document, or state, amendments, authors and its documents for a change request.
+  state has its own **Add a folder** and **New wiki**. Change requests moved to Change
+  Requests (pull-requests.md): with any open, a first row **Open changes · N →** sets the
+  kind switch to Wikis and goes there. Documents (newest first) use the settled threads'
+  slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
+  when an open change holds the document, time). Hovering a row opens the threads' hover
+  card: wiki, machine, links and the open changes holding it. A wiki change request
+  opened here (the finder, a deep link) is a foreign tab offering **Open in Change
+  Requests**.
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
@@ -56,6 +57,10 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 - **Search**: the Search palette (Cmd+K twice) finds every wiki's documents from
   anywhere in a Documents group; a pick shows it in the focused pane's tab in front,
   as a click does (or brings an open copy forward), and goes to `/wikis`.
+- **Chats and pull requests beside documents**: a change request's **Open thread** opens
+  its thread's chat in a new pane to the right (`chat:<env>:<thread>` tab, a full
+  ChatView without the chat tabs; it mounts only while in front). Its tab menu offers
+  **Open in Threads**. See panes.md, "Tabs from other sections".
 - **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
   files that open inside the change request).
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show

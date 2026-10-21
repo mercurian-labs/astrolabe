@@ -29,6 +29,7 @@
     "@mercurian/editor": "workspace:*",
     "@mercurian/graph": "workspace:*",
     "@mercurian/wiki": "workspace:*",
+    "@mercurian/wiki-editor": "workspace:*",
     "@noble/hashes": "catalog:",
     "@pierre/diffs": "catalog:",
     "@pierre/trees": "1.0.0-beta.6",

@@ -25,7 +25,7 @@ import {
 import { manuallyUnfolded } from "./unfolded.ts";
 import {
   foldedChevron,
-  hasModifier,
+  opensLink,
   MathWidget,
   openExternal,
   PropertiesWidget,
@@ -466,7 +466,7 @@ export const snapPastHiddenMarkers = EditorState.transactionFilter.of((tr) => {
  */
 export const previewInteractions = EditorView.domEventHandlers({
   mousedown(event, view) {
-    if (event.button !== 0 || !hasModifier(event) || !(event.target instanceof Element))
+    if (event.button !== 0 || !opensLink(view, event) || !(event.target instanceof Element))
       return false;
     const link = event.target.closest<HTMLElement>("[data-href], [data-wikilink]");
     if (!link || !view.contentDOM.contains(link)) return false;

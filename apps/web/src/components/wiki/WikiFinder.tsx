@@ -33,6 +33,7 @@ export function WikiFinder({
   scope,
   mode,
   paneId,
+  onPick,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -42,6 +43,8 @@ export function WikiFinder({
   readonly mode: "find" | "new";
   /** The pane a picked document opens in; the focused one by default. */
   readonly paneId?: string;
+  /** Astrolabe: where a pick goes instead of the Wikis area, as for a pane in another section. */
+  readonly onPick?: (tab: WikiTab) => void;
 }) {
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
@@ -59,7 +62,8 @@ export function WikiFinder({
               onOpenChange(false);
               // An empty pane's finder fills that pane; elsewhere a pick shows in the focused
               // pane's tab in front, as a sidebar row's click does.
-              if (paneId === undefined) showWikiTab(tab);
+              if (onPick) onPick(tab);
+              else if (paneId === undefined) showWikiTab(tab);
               else openWikiTab(tab, "tab", paneId);
             }}
           />

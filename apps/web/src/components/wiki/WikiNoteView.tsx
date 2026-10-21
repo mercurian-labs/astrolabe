@@ -45,7 +45,7 @@ import {
   queuedSaveStep,
   type QueuedWikiSave,
 } from "./wiki.logic";
-import { WikiNoteBuffer, type WikiNoteAuthor } from "./wikiNoteBuffer";
+import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
 import { WikiNoteEditor } from "./WikiNoteEditor";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";

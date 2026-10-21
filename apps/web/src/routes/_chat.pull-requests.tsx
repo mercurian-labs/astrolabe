@@ -108,6 +108,9 @@ import { assignProjectsToEnvironments } from "../components/pullRequest/pullRequ
 import { pullRequestFilterProjects } from "../components/pullRequest/pullRequestProjectFilter.logic";
 import { environmentMachineIcon } from "../components/EnvironmentMachineIcon";
 import { PullRequestDetailPanel } from "../components/pullRequest/PullRequestDetailPanel";
+import { useChangeRequestKind } from "../components/changeRequests/changeRequestKind";
+import { ChangeRequestSourceFilter } from "../components/changeRequests/ChangeRequestSourceFilter";
+import { WikiChangesGroup } from "../components/changeRequests/WikiChangesGroup";
 import { PullRequestPanes } from "../components/pullRequest/PullRequestPanes";
 import { placePullRequests, showPullRequest } from "../components/pullRequest/pullRequestTabs";
 import { startDrag } from "../panes/drag";
@@ -1502,8 +1505,12 @@ function PullRequestsRouteView() {
   );
   const columnProps = {
     host: search.host,
-    hostMenuOptions,
-    onHost: (host: string | undefined) => updateListScope({ host }),
+    searchQuery: search.q ?? "",
+    projects: scopedProjects,
+    projectId: scopedProjectId,
+    projectEnvironmentId: scopedProject?.environmentId,
+    onProject: (projectId: ProjectId | undefined, environmentId?: EnvironmentId) =>
+      updateListScope(environmentId === undefined ? { projectId } : { projectId, environmentId }),
     searchInput,
     sortMenu,
     filtersMenu,
@@ -2130,10 +2137,19 @@ function CompactFilterMenu<Value extends string>({
  * Astrolabe: the list as the Pull Requests sidebar holds it, under the section's title: the
  * search, sort and filters, then the rows, scrolling on their own.
  */
+/**
+ * Astrolabe: the Change Requests sidebar's controls and list. The source filter narrows to one
+ * project's pull requests or to the wikis' change requests (see `ChangeRequestSourceFilter`);
+ * with the wikis picked, the pull requests' sort and filters step aside. One host, from Filters,
+ * lists only its pull requests.
+ */
 function PullRequestsSidebarList({
   host,
-  hostMenuOptions,
-  onHost,
+  searchQuery,
+  projects,
+  projectId,
+  projectEnvironmentId,
+  onProject,
   searchInput,
   sortMenu,
   filtersMenu,
@@ -2141,35 +2157,38 @@ function PullRequestsSidebarList({
   scrollRef,
 }: {
   host: string | undefined;
-  hostMenuOptions: ReadonlyArray<PullRequestFilterOption<string>>;
-  onHost: (host: string | undefined) => void;
+  searchQuery: string;
+  projects: ComponentProps<typeof ChangeRequestSourceFilter>["projects"];
+  projectId: ProjectId | undefined;
+  projectEnvironmentId: EnvironmentId | undefined;
+  onProject: (projectId: ProjectId | undefined, environmentId?: EnvironmentId) => void;
   searchInput: ReactNode;
   sortMenu: ReactNode;
   filtersMenu: ReactNode;
   listBody: ReactNode;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
+  const wikisOnly = useChangeRequestKind() === "wikis";
   return (
     <>
       <div className="flex shrink-0 flex-col gap-2 px-2 pb-2">
         {searchInput}
         <div className="flex flex-wrap items-center gap-1.5">
-          {sortMenu}
-          {filtersMenu}
-          <CompactFilterMenu
-            label="Filter by provider"
-            outlined
-            iconOnly={host !== undefined}
-            triggerIcon={<Plug2Icon aria-hidden className="size-4" />}
-            triggerLabel="All"
-            value={host ?? ""}
-            options={hostMenuOptions}
-            onChange={(next) => onHost(next === "" ? undefined : next)}
+          <ChangeRequestSourceFilter
+            projects={projects}
+            projectId={projectId}
+            projectEnvironmentId={projectEnvironmentId}
+            onProject={onProject}
           />
+          {wikisOnly ? null : sortMenu}
+          {wikisOnly ? null : filtersMenu}
         </div>
       </div>
       <div ref={scrollRef} className="@container/pr-list min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        {listBody}
+        {wikisOnly || (host === undefined && projectId === undefined) ? (
+          <WikiChangesGroup query={searchQuery} />
+        ) : null}
+        {wikisOnly ? null : listBody}
       </div>
     </>
   );

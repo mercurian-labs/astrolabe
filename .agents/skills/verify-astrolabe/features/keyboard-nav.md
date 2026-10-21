@@ -206,7 +206,7 @@ carries the bar.
    right-panel tab showing the launcher: Graph does not open) → Enter → that thread
    opens and focus stays on the row → ArrowDown → the next row → Escape → the composer
    → Ctrl+H, `/` → the search field focused → Escape, click a row, Escape → focus in
-   the main area. On Wikis: `j` to a document → Mod+Enter → it joins the selection. Fold "Open changes" → `j` passes over its rows. On Pull Requests: ArrowDown,
+   the main area. On Wikis: `j` to a document → Mod+Enter → it joins the selection. On Change Requests, fold "Wiki changes" → `j` passes over its rows. On Change Requests: ArrowDown,
    `j`, Enter → that PR in a pane, focus still on the row → `k` → the row above.
 8. **Rebind in the vimrc.** Settings › Keybindings › Vim, add Normal `<C-h>` → `<C-w>h`
    (not recursive) → in the composer's normal mode Ctrl+H → the sidebar → remove the

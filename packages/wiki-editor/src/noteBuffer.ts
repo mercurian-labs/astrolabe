@@ -8,7 +8,7 @@ import { applyFileText, fileTextTarget } from "@mercurian/editor/bridge/file-tex
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
 
-import { resolveIncomingNote } from "./wiki.logic";
+import { resolveIncomingNote } from "./incoming";
 
 /**
  * One loaded version of a note: the Yjs document the editor binds to, and the agent peer that

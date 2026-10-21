@@ -1,4 +1,5 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { Columns2, Maximize2, Minimize2, MoreHorizontal, Rows2, SquareX } from "lucide-react";
 import {
   memo,
@@ -114,6 +115,7 @@ const TabPill = memo(function TabPill({
 }) {
   const { controller, tabs } = usePanesHost();
   const { title, icon } = tabs.useLabel(tabKey);
+  const navigate = useNavigate();
   const dragging = useDragging(tabKey);
   // A lone pane's lone empty tab is what an empty panel shows; there is nothing to close.
   const closable = !(only && isEmptyTab(tabKey));
@@ -158,8 +160,17 @@ const TabPill = memo(function TabPill({
       await showSelectionMenu(api, controller, tabs, keys, { x: event.clientX, y: event.clientY });
       return;
     }
-    type Action = "close" | "close-others" | "close-to-right" | "split-right" | "split-down";
+    type Action =
+      | "open-elsewhere"
+      | "close"
+      | "close-others"
+      | "close-to-right"
+      | "split-right"
+      | "split-down";
+    // Astrolabe: a tab outside its own section opens in it.
+    const elsewhere = tabs.openElsewhere?.(tabKey) ?? null;
     const items: ContextMenuItem<Action>[] = [
+      ...(elsewhere ? [{ id: "open-elsewhere" as const, label: elsewhere.label }] : []),
       { id: "close", label: "Close", disabled: !closable },
       { id: "close-others", label: "Close others", disabled: only },
       { id: "close-to-right", label: "Close tabs to the right", disabled: last },
@@ -170,6 +181,9 @@ const TabPill = memo(function TabPill({
     const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
     const snapshot = controller.getSnapshot();
     switch (action) {
+      case "open-elsewhere":
+        elsewhere?.run(navigate);
+        break;
       case "close":
         tabs.close(tabKey);
         break;

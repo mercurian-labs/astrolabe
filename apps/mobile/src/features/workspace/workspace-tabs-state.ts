@@ -1,4 +1,35 @@
-export type WorkspaceTab = "threads" | "pullRequests";
+import type { AppSymbolName } from "../../components/ui/AppSymbol";
+import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+
+export type WorkspaceTab = "threads" | "pullRequests" | "wikis";
+
+/** The roots in the order the tab bar shows them. */
+export const WORKSPACE_TABS: ReadonlyArray<WorkspaceTab> = ["threads", "pullRequests", "wikis"];
+
+/**
+ * The roots iPhone shows. Wikis waits on its own iPad sidebar design, so the iPad sidebar
+ * picker, and the tab bar a compact iPad window shows, keep Threads and Change requests.
+ */
+export function workspaceTabsFor(device: "phone" | "pad"): ReadonlyArray<WorkspaceTab> {
+  return device === "pad" ? WORKSPACE_TABS.filter((tab) => tab !== "wikis") : WORKSPACE_TABS;
+}
+
+/** Each root's name, and the label its search goes by. */
+export const WORKSPACE_TAB_LABELS: Readonly<
+  Record<WorkspaceTab, { readonly title: string; readonly search: string }>
+> = {
+  threads: { title: "Threads", search: "Search threads" },
+  // Astrolabe: pull requests and the wikis' change requests, as web's Change Requests section.
+  pullRequests: { title: "Change requests", search: "Search change requests" },
+  wikis: { title: "Wikis", search: "Search wikis" },
+};
+
+/** Each root's glyph where the app draws its own tabs rather than UIKit's. */
+export const WORKSPACE_TAB_ICONS: Readonly<Record<WorkspaceTab, AppSymbolName>> = {
+  threads: "text.bubble",
+  pullRequests: PullRequestGlyph.pullRequest,
+  wikis: "book",
+};
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
 export interface WorkspaceTabState {
@@ -22,7 +53,7 @@ export function initialWorkspaceTabsState(): WorkspaceTabsState {
   return {
     selectedTab: "threads",
     selectionRevision: 0,
-    tabs: { threads: emptyTab(), pullRequests: emptyTab() },
+    tabs: { threads: emptyTab(), pullRequests: emptyTab(), wikis: emptyTab() },
   };
 }
 
@@ -82,7 +113,8 @@ export function workspaceTabsReducer(
 }
 
 export const WORKSPACE_TOOLBAR = { height: 48, expandedGap: 10, edge: 16, gap: 8 };
-export const WORKSPACE_DOCK = { height: 48, tabsWidth: 176, gap: 12, bottomGap: 6 };
+/** `tabWidth` is one tab's share of the dock's tab group. */
+export const WORKSPACE_DOCK = { height: 48, tabWidth: 88, gap: 12, bottomGap: 6 };
 
 export function workspaceToolbarHeight(mode: WorkspaceSearchMode): number {
   return mode === "expanded"

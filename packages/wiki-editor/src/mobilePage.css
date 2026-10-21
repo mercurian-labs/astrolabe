@@ -1,0 +1,38 @@
+/*
+ * The mobile editor page's own frame. The app sends its colours as custom properties (see
+ * `WikiEditorTheme`); these are the fallbacks until it does, and the tokens the editor's theme
+ * reads that the app's palette does not name.
+ */
+:root {
+  --background: #ffffff;
+  --foreground: #1c1c1e;
+  --muted-foreground: #6b6b70;
+  --border: #e3e3e6;
+  --primary: #2563eb;
+  --ring: var(--primary);
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+  --font-sans: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  padding: 12px 20px 0;
+}
+
+.text-foreground {
+  color: var(--foreground);
+}

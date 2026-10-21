@@ -1,0 +1,189 @@
+import { XIcon } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import { isMacPlatform } from "~/lib/utils";
+import { startDrag } from "~/panes/drag";
+import {
+  anchorRow,
+  rangeToRow,
+  rowsActedOn,
+  toggleRow,
+  useRowSelectionStore,
+} from "~/sidebarRowSelection";
+import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
+import {
+  placeChangeRequestTabs,
+  showChangeRequestTab,
+  useFocusedChangeRequestTabKey,
+} from "../pullRequest/pullRequestTabs";
+import { Button } from "../ui/button";
+import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
+import { TooltipProvider } from "../ui/tooltip";
+import { useWikiOverviews } from "../wiki/wikiEnvironment";
+import { useWikiScope, WikiChangeRow, type WikiRowActions } from "../wiki/WikiSidebar";
+import {
+  searchWikiSidebarItems,
+  wikiScopeKey,
+  wikiSidebarItems,
+  wikiTabKey,
+  type WikiChangeItem,
+  type WikiTab,
+} from "../wiki/wikiTabs";
+
+/** The wiki rows' share of the sidebars' row selection (`sidebarRowSelection`). */
+const SELECTION_SECTION = "change-requests:wikis";
+const NO_KEYS: readonly string[] = [];
+
+/**
+ * Astrolabe: the wikis' change requests in the Change Requests sidebar, a group of their own
+ * beside the pull requests': the open ones as cards, then the merged and closed ones on a folded
+ * shelf of slim rows, as Wikis kept them. The wiki filter is Wikis' own. The section's search
+ * narrows them by title; a click shows one in the focused pane's tab in front, as a pull
+ * request's row does.
+ */
+export function WikiChangesGroup({ query }: { readonly query: string }) {
+  const { overviews } = useWikiOverviews();
+  const [scope, setScope] = useWikiScope(overviews);
+  const focusedKey = useFocusedChangeRequestTabKey();
+  const [openExpanded, setOpenExpanded] = useState(true);
+  const [settledExpanded, setSettledExpanded] = useState(false);
+  const lists = useMemo(() => wikiSidebarItems(overviews, scope), [overviews, scope]);
+  const searching = query.trim().length > 0;
+  const { open, settled } = useMemo(() => {
+    if (!searching) return { open: lists.changes, settled: lists.settled };
+    const matches = searchWikiSidebarItems({ ...lists, documents: [] }, query).flatMap((entry) =>
+      entry.kind === "change" ? [entry.item] : [],
+    );
+    const isOpen = (item: WikiChangeItem) => item.changeRequest.status === "open";
+    return { open: matches.filter(isOpen), settled: matches.filter((item) => !isOpen(item)) };
+  }, [lists, query, searching]);
+  const scoped =
+    overviews.find(
+      (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
+    ) ?? null;
+
+  const shown = useRef<readonly string[]>([]);
+  const shownItems = [
+    ...(openExpanded ? open : []),
+    ...(settledExpanded || searching ? settled : []),
+  ];
+  useLayoutEffect(() => {
+    shown.current = shownItems.map((item) => item.key);
+  });
+  const selectedKeys = useRowSelectionStore((store) =>
+    store.selection.section === SELECTION_SECTION ? store.selection.keys : NO_KEYS,
+  );
+  const selecting = selectedKeys.length > 0;
+  useEffect(() => {
+    if (!selecting) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      useRowSelectionStore.getState().change((now) => ({ ...now, keys: [] }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selecting]);
+
+  const onOpen = useCallback((tab: WikiTab, event: RowClick | null) => {
+    const intent =
+      event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
+    const key = wikiTabKey(tab);
+    const { change } = useRowSelectionStore.getState();
+    if (intent === "mod") {
+      change((now) => toggleRow(now, SELECTION_SECTION, key));
+      return;
+    }
+    if (intent === "range") {
+      change((now) => rangeToRow(now, SELECTION_SECTION, key, shown.current));
+      return;
+    }
+    change(() => anchorRow(SELECTION_SECTION, key));
+    showChangeRequestTab(key, intent === "new-tab" ? "new-tab" : "replace");
+  }, []);
+  const actedOn = useCallback((tab: WikiTab) => {
+    const { selection } = useRowSelectionStore.getState();
+    return rowsActedOn(selection, SELECTION_SECTION, wikiTabKey(tab), shown.current);
+  }, []);
+  const actions = useMemo<WikiRowActions>(
+    () => ({
+      drag: (tab, event) => {
+        const carried = actedOn(tab);
+        const key = wikiTabKey(tab);
+        startDrag(
+          event,
+          {
+            key,
+            keys: [],
+            place: (paneId, drop) => placeChangeRequestTabs(carried, key, paneId, drop),
+          },
+          event.currentTarget.getAttribute("aria-label") ?? "",
+          carried.length > 1 ? carried.length : 0,
+        );
+      },
+      openAll: (tab) => {
+        for (const key of actedOn(tab)) showChangeRequestTab(key, "new-tab");
+      },
+      count: (tab) => actedOn(tab).length,
+    }),
+    [actedOn],
+  );
+
+  if (lists.changes.length === 0 && lists.settled.length === 0) return null;
+  if (searching && open.length === 0 && settled.length === 0) return null;
+  const row = (item: WikiChangeItem) => (
+    <WikiChangeRow
+      key={item.key}
+      item={item}
+      active={focusedKey === item.key}
+      selected={selectedKeys.includes(item.key)}
+      actions={actions}
+      onOpen={onOpen}
+    />
+  );
+  return (
+    <TooltipProvider delay={150} closeDelay={0} timeout={400}>
+      <ul
+        role="presentation"
+        aria-label="Wiki changes"
+        className="relative flex flex-col gap-px pb-2"
+      >
+        <li className="mx-0.5 flex h-8 list-none items-center gap-1">
+          <CollapsibleSectionHeader
+            onClick={() => setOpenExpanded((expanded) => !expanded)}
+            expanded={openExpanded}
+            tone="muted"
+          >
+            {scoped
+              ? `Wiki changes · ${scoped.wiki.name} · ${open.length}`
+              : `Wiki changes · ${open.length}`}
+          </CollapsibleSectionHeader>
+          {scoped ? (
+            <Button
+              size="icon-xs"
+              variant="ghost-muted"
+              aria-label={`Show every wiki's changes, not only ${scoped.wiki.name}'s`}
+              onClick={() => setScope(null)}
+            >
+              <XIcon />
+            </Button>
+          ) : null}
+        </li>
+        {openExpanded ? open.map(row) : null}
+        {settled.length > 0 ? (
+          <>
+            <li className="mx-0.5 h-8 list-none">
+              <CollapsibleSectionHeader
+                onClick={() => setSettledExpanded((expanded) => !expanded)}
+                expanded={settledExpanded || searching}
+                tone="muted"
+              >
+                {`Merged and closed · ${settled.length}`}
+              </CollapsibleSectionHeader>
+            </li>
+            {settledExpanded || searching ? settled.map(row) : null}
+          </>
+        ) : null}
+      </ul>
+    </TooltipProvider>
+  );
+}

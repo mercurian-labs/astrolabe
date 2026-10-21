@@ -22,9 +22,11 @@ import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
+import { PanesHostContext } from "~/panes/panesHost";
+import { showKeyIn } from "~/sectionTabs/SectionTabContent";
 import { useThreadProjection, useThreadShell, useThreadShells } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -36,6 +38,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { WikiPart } from "../wiki/WikiParts";
+import { wikiTabKey, type WikiTab } from "../wiki/wikiTabs";
 import { coordinatorWork, threadChangeRequestOn, type CoordinatorWork } from "./coordinatorWork";
 import {
   useGraphPanelStore,
@@ -155,10 +158,35 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
   const [view, setView] = useState<"story" | "work" | null>(null);
   const shownView = !hasWork ? "story" : (view ?? (wikiCalls.length === 0 ? "work" : "story"));
 
+  // Astrolabe: beside the thread, a document or change request opens in the right panel's
+  // panes next to the graph, where its tab offers to open in its own section.
+  const panes = useContext(PanesHostContext);
   const openWiki = (
     wikiId: string,
     search: { readonly note?: string; readonly changeRequest?: WikiChangeRequestId },
-  ) =>
+  ) => {
+    const tab: WikiTab | null =
+      search.note !== undefined
+        ? {
+            kind: "note",
+            environmentId,
+            wikiId: wikiId as WikiId,
+            name: search.note,
+            changeRequestId: search.changeRequest,
+          }
+        : search.changeRequest !== undefined
+          ? {
+              kind: "change-request",
+              environmentId,
+              wikiId: wikiId as WikiId,
+              changeRequestId: search.changeRequest,
+            }
+          : null;
+    if (panes !== null && tab !== null) {
+      const key = wikiTabKey(tab);
+      panes.controller.update((arrangement) => showKeyIn(arrangement, key, "beside"));
+      return;
+    }
     void navigate({
       to: "/wikis/$wikiId",
       params: { wikiId },
@@ -173,6 +201,7 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
             }),
       },
     });
+  };
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">

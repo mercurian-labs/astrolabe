@@ -31,7 +31,7 @@ import { katexLoaded } from "./math.ts";
 import { markFocused } from "./reveal.ts";
 import { alignments, renderCell, rowCells, tableRows, widgetLines, type Cell } from "./table.ts";
 import type { LinkSource } from "./decorate/links.ts";
-import { hasModifier, openExternal } from "./widgets.ts";
+import { openExternal, opensLink } from "./widgets.ts";
 
 // In-place table editing (section 4.11). The table stays a widget while it is edited: the
 // active cell hosts a child editor whose document is that cell's source text. Child edits
@@ -1553,7 +1553,7 @@ export class TableWidget extends WidgetType {
       const pressed = cellTarget(event.target);
       // A press in any cell, the active one's editor included, may drag out a rectangle.
       const inEditor = event.target.closest(".cm-md-cell-editor") !== null;
-      if (pressed && event.button === 0 && !hasModifier(event) && !view.state.readOnly)
+      if (pressed && event.button === 0 && !opensLink(view, event) && !view.state.readOnly)
         startCellDrag(view, wrapper, pressed, inEditor);
       // The active cell's editor handles its own clicks.
       if (inEditor) return;
@@ -1562,7 +1562,7 @@ export class TableWidget extends WidgetType {
       if (event.button === 2) event.preventDefault();
       if (event.button !== 0) return;
       event.preventDefault();
-      if (hasModifier(event)) {
+      if (opensLink(view, event)) {
         const link = event.target.closest<HTMLElement>("[data-href], [data-wikilink]");
         const { href, wikilink } = link?.dataset ?? {};
         if (href) openExternal(view, href);

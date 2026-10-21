@@ -1,17 +1,10 @@
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
-import { FilePenLineIcon, FileTextIcon, Plus, SearchIcon, SquareDashed } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import type { WikiId } from "@t3tools/contracts";
+import { Plus, SearchIcon } from "lucide-react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { ensureLocalApi } from "~/localApi";
-import { closeTab, isEmptyTab, newTab } from "~/panes/arrangement";
+import { closeTab, focusedPane, isEmptyTab, newTab, surfaceKey } from "~/panes/arrangement";
+import { pullRequestSurface } from "~/rightPanelStore";
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
@@ -20,32 +13,34 @@ import {
 } from "~/panes/panesHost";
 import { PaneTree } from "~/panes/PaneTree";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "~/panes/tabSelection";
-import type { Leaf } from "~/panes/tree";
-import { useEnvironmentQuery } from "~/state/query";
-import { wikiEnvironment } from "~/state/wiki";
+import { leaves, type Leaf } from "~/panes/tree";
+import { chatTabKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
+import {
+  SectionTabContent,
+  sectionTabMove,
+  showKeyIn,
+  useSectionTabLabel,
+} from "~/sectionTabs/SectionTabContent";
 import { tabHistorySlot } from "~/whichKey/handles";
-import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { WikiSearch } from "./wiki.logic";
-import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import { useWikiEnvironment, useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
-import { WikiNoteView } from "./WikiNoteView";
 import {
-  hasUnsavedEdits,
   openWikiTab,
-  registerUnsavedCheck,
   replaceWikiTab,
   showWikiTab,
   stepWikiTab,
   useOpenWikiTabKeys,
+  useWikiArrangement,
   useWikiTabHistory,
   wikiPanes,
 } from "./wikiPanes";
-import { parseWikiTabKey, type WikiTab } from "./wikiTabs";
+import { parseWikiTabKey } from "./wikiTabs";
+import { closeAskingFirst, useWikiTabLabel, WikiTabView, type WikiTabNav } from "./WikiTabView";
 
 const LAYOUT_KEY = "wikis";
 
@@ -132,8 +127,9 @@ function createWikiPanesHost() {
     }
   };
   const tabs: PaneTabs = {
-    useLabel: useWikiTabLabel,
+    useLabel: useWikiAreaTabLabel,
     close: closeWikiTab,
+    openElsewhere: (tabKey) => sectionTabMove(tabKey, "wikis", closeWikiTab),
     NewTab: NewTabButton,
     place(slot: HTMLElement, leaf: Leaf) {
       for (const key of leaf.tabs) {
@@ -151,7 +147,10 @@ function createWikiPanesHost() {
   return { host, containerFor, prune };
 }
 
-/** Every open tab's content, each portaled into its container. */
+/**
+ * Every open tab's content, each portaled into its container. A chat mounts only while its tab is
+ * in front, since a conversation listens to the whole window's keys and pastes.
+ */
 function WikiTabContents({
   containerFor,
   prune,
@@ -160,149 +159,66 @@ function WikiTabContents({
   readonly prune: (open: ReadonlySet<string>) => void;
 }) {
   const keys = useOpenWikiTabKeys();
-  const tabs = useMemo(
-    () =>
-      keys.flatMap((key) => {
-        const tab = parseWikiTabKey(key);
-        return tab ? [{ key, tab }] : [];
-      }),
-    [keys],
+  const arrangement = useWikiArrangement();
+  const fronts = useMemo(
+    () => new Set(leaves(arrangement.root).map((leaf) => leaf.active)),
+    [arrangement],
+  );
+  const focusedFront = focusedPane(arrangement).active;
+  const shown = useMemo(
+    () => keys.filter((key) => !isEmptyTab(key) && (fronts.has(key) || !parseChatTabKey(key))),
+    [fronts, keys],
   );
   useEffect(() => {
-    prune(new Set(keys));
-  }, [keys, prune]);
+    prune(new Set(shown));
+  }, [prune, shown]);
   return (
     <>
-      {tabs.map(({ key, tab }) =>
-        createPortal(<WikiTabView tabKey={key} tab={tab} />, containerFor(key), key),
-      )}
+      {shown.map((key) => {
+        const tab = parseWikiTabKey(key);
+        return createPortal(
+          tab ? (
+            <WikiTabView tabKey={key} tab={tab} nav={wikiAreaNav} />
+          ) : (
+            <SectionTabContent tabKey={key} store={wikiPanes} active={key === focusedFront} />
+          ),
+          containerFor(key),
+          key,
+        );
+      })}
     </>
   );
 }
 
-function WikiTabView({ tabKey, tab }: { readonly tabKey: string; readonly tab: WikiTab }) {
-  return tab.kind === "note" ? (
-    <NoteTab tabKey={tabKey} tab={tab} />
-  ) : (
-    <ChangeRequestTab tab={tab} />
-  );
-}
+/** The Wikis area's way for a document's links: into its own panes, with history. */
+const wikiAreaNav: WikiTabNav = {
+  open(key, placement = "tab") {
+    const tab = parseWikiTabKey(key);
+    if (tab) openWikiTab(tab, placement);
+    else wikiPanes.update((arrangement) => showKeyIn(arrangement, key, placement));
+  },
+  replace(from, key, options) {
+    const tab = parseWikiTabKey(key);
+    if (tab) replaceWikiTab(from, tab, options);
+  },
+  openThread: (ref) =>
+    wikiPanes.update((arrangement) => showKeyIn(arrangement, chatTabKey(ref), "beside")),
+  openPullRequest: (target) =>
+    wikiPanes.update((arrangement) =>
+      showKeyIn(arrangement, surfaceKey(pullRequestSurface(target).id), "beside"),
+    ),
+};
 
-function useChangeRequests(environmentId: EnvironmentId, wikiId: WikiId) {
-  const list = useEnvironmentQuery(
-    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
-  );
-  return list.data?.changeRequests ?? null;
-}
-
-function NoteTab({
-  tabKey,
-  tab,
-}: {
-  readonly tabKey: string;
-  readonly tab: Extract<WikiTab, { kind: "note" }>;
-}) {
-  const all = useChangeRequests(tab.environmentId, tab.wikiId);
-  const openChangeRequests = useMemo(
-    () => (all ?? []).filter((changeRequest) => changeRequest.status === "open"),
-    [all],
-  );
-  const registerUnsaved = useCallback(
-    (check: () => boolean) => registerUnsavedCheck(tabKey, check),
-    [tabKey],
-  );
-  return (
-    <WikiNoteView
-      environmentId={tab.environmentId}
-      wikiId={tab.wikiId}
-      name={tab.name}
-      changeRequestId={tab.changeRequestId}
-      openChangeRequests={openChangeRequests}
-      onOpenNote={(name) => {
-        const next: WikiTab = { ...tab, name };
-        // A link opens in place, as in Obsidian, unless that would drop unsaved edits.
-        if (hasUnsavedEdits(tabKey)) openWikiTab(next);
-        else replaceWikiTab(tabKey, next);
-      }}
-      onSaved={(savedTo: WikiChangeRequestId) => {
-        // Saved from main, the note now reads inside the change request it was saved to.
-        if (savedTo !== tab.changeRequestId) {
-          replaceWikiTab(tabKey, { ...tab, changeRequestId: savedTo }, { rekey: true });
-        }
-      }}
-      registerUnsaved={registerUnsaved}
-    />
-  );
-}
-
-function ChangeRequestTab({ tab }: { readonly tab: Extract<WikiTab, { kind: "change-request" }> }) {
-  const all = useChangeRequests(tab.environmentId, tab.wikiId);
-  const status = all?.find((entry) => entry.changeRequestId === tab.changeRequestId)?.status;
-  return (
-    <WikiChangeRequestView
-      environmentId={tab.environmentId}
-      wikiId={tab.wikiId}
-      changeRequestId={tab.changeRequestId}
-      onOpenNote={(name) =>
-        // An open change request's files read inside it; a merged or closed one's from main.
-        openWikiTab({
-          kind: "note",
-          environmentId: tab.environmentId,
-          wikiId: tab.wikiId,
-          name,
-          changeRequestId: status === "open" ? tab.changeRequestId : undefined,
-        })
-      }
-    />
-  );
-}
-
-/** A tab's title and icon: a note's name, or a change request's title. */
-function useWikiTabLabel(tabKey: string): { title: string; icon: ReactNode } {
-  const tab = parseWikiTabKey(tabKey);
-  const changeRequests = useEnvironmentQuery(
-    tab?.kind === "change-request"
-      ? wikiEnvironment.changeRequests({
-          environmentId: tab.environmentId,
-          input: { wikiId: tab.wikiId },
-        })
-      : null,
-  );
-  if (!tab) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
-  if (tab.kind === "note") {
-    return {
-      title: tab.name,
-      icon:
-        tab.changeRequestId === undefined ? (
-          <FileTextIcon className="size-3.5 shrink-0" />
-        ) : (
-          <FilePenLineIcon className="size-3.5 shrink-0" />
-        ),
-    };
-  }
-  const title =
-    changeRequests.data?.changeRequests.find(
-      (entry) => entry.changeRequestId === tab.changeRequestId,
-    )?.title ?? "Change request";
-  return { title, icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" /> };
+/** A tab's title and icon: a document's or change request's, or a chat's or pull request's. */
+function useWikiAreaTabLabel(tabKey: string): { title: string; icon: ReactNode } {
+  const wiki = useWikiTabLabel(tabKey);
+  const other = useSectionTabLabel(tabKey);
+  return parseWikiTabKey(tabKey) === null && other !== null ? other : wiki;
 }
 
 /** Closes a tab, asking first when it holds unsaved edits. */
 function closeWikiTab(tabKey: string) {
-  const close = () => wikiPanes.update((arrangement) => closeTab(arrangement, tabKey));
-  if (!hasUnsavedEdits(tabKey)) {
-    close();
-    return;
-  }
-  const tab = parseWikiTabKey(tabKey);
-  void ensureLocalApi()
-    .dialogs.confirm(
-      `Close ${tab?.kind === "note" ? tab.name : "this tab"}? Your unsaved edits will be lost.`,
-      { variant: "destructive" },
-    )
-    .then((confirmed) => {
-      if (confirmed) close();
-    });
+  closeAskingFirst(tabKey, () => wikiPanes.update((arrangement) => closeTab(arrangement, tabKey)));
 }
 
 /** Opens an empty tab in the pane, which offers documents to open there. */

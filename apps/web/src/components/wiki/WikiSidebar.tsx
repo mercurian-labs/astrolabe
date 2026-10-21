@@ -1,7 +1,9 @@
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
+import { useNavigate } from "@tanstack/react-router";
 import {
+  ArrowRightIcon,
   BookOpenIcon,
   CircleDashedIcon,
   FilePenLineIcon,
@@ -22,6 +24,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -41,6 +44,8 @@ import {
   useRowSelectionStore,
 } from "~/sidebarRowSelection";
 import { useThreadShell } from "~/state/entities";
+import { setChangeRequestKind } from "../changeRequests/changeRequestKind";
+import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import {
@@ -69,7 +74,6 @@ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
-import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import {
   Combobox,
   ComboboxEmpty,
@@ -110,7 +114,7 @@ const NO_KEYS: readonly string[] = [];
 const entryKey = (entry: WikiSidebarEntry) => wikiTabKey(wikiSidebarEntryTab(entry));
 
 /** What a row's drag and menu do, for the rows to share. */
-interface WikiRowActions {
+export interface WikiRowActions {
   readonly drag: (tab: WikiTab, event: DragEvent<HTMLElement>) => void;
   readonly openAll: (tab: WikiTab) => void;
   /** How many rows the row's menu acts on: the selection, when the row is in it. */
@@ -125,31 +129,51 @@ function compactTimeLabel(timestamp: string | null): string {
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
 }
 
-/** The wiki the sidebar is filtered to, kept on the device as the project filter is. */
-function useWikiScope(overviews: ReadonlyArray<WikiOverview>) {
-  const [stored, setStored] = useState<string | null>(() => {
+/**
+ * The wiki the sidebar is filtered to, kept on the device as the project filter is. One value
+ * for the app, so Wikis and Change Requests narrow to the same wiki.
+ */
+const wikiScopeListeners = new Set<() => void>();
+let storedWikiScope: string | null | undefined;
+
+function readWikiScope(): string | null {
+  if (storedWikiScope === undefined) {
     try {
-      return window.localStorage.getItem(SCOPE_STORAGE_KEY);
+      storedWikiScope = window.localStorage.getItem(SCOPE_STORAGE_KEY);
     } catch {
-      return null;
+      storedWikiScope = null;
     }
-  });
-  const setScope = useCallback((next: string | null) => {
-    setStored(next);
-    try {
-      if (next === null) window.localStorage.removeItem(SCOPE_STORAGE_KEY);
-      else window.localStorage.setItem(SCOPE_STORAGE_KEY, next);
-    } catch {
-      // Blocked storage: the filter still holds for this page.
-    }
-  }, []);
+  }
+  return storedWikiScope;
+}
+
+function writeWikiScope(next: string | null) {
+  storedWikiScope = next;
+  try {
+    if (next === null) window.localStorage.removeItem(SCOPE_STORAGE_KEY);
+    else window.localStorage.setItem(SCOPE_STORAGE_KEY, next);
+  } catch {
+    // Blocked storage: the filter still holds for this page.
+  }
+  for (const listener of wikiScopeListeners) listener();
+}
+
+function subscribeWikiScope(listener: () => void) {
+  wikiScopeListeners.add(listener);
+  return () => {
+    wikiScopeListeners.delete(listener);
+  };
+}
+
+export function useWikiScope(overviews: ReadonlyArray<WikiOverview>) {
+  const stored = useSyncExternalStore(subscribeWikiScope, readWikiScope);
   // A filter on a wiki that is gone reads as no filter.
   const exists =
     stored !== null &&
     overviews.some(
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === stored,
     );
-  return [exists ? stored : null, setScope] as const;
+  return [exists ? stored : null, writeWikiScope] as const;
 }
 
 /**
@@ -166,13 +190,14 @@ export function WikiSidebar() {
   const [finding, setFinding] = useState(false);
   const [adding, setAdding] = useState<"folder" | "new" | null>(null);
   const [settingsFor, setSettingsFor] = useState<WikiOverview | null>(null);
-  const [changesExpanded, setChangesExpanded] = useState(true);
-  const [documentsExpanded, setDocumentsExpanded] = useState(true);
-  // Merged and closed change requests wait on a shelf, as settled threads do, folded at first.
-  const [settledExpanded, setSettledExpanded] = useState(false);
   const { environmentId: addEnvironmentId } = useWikiEnvironment(undefined);
-  const lists = useMemo(() => wikiSidebarItems(overviews, scope), [overviews, scope]);
-  const { changes, documents, settled } = lists;
+  const navigate = useNavigate();
+  // Change requests live in the Change Requests section; this lists the documents, with the
+  // open changes' count as the way there.
+  const allLists = useMemo(() => wikiSidebarItems(overviews, scope), [overviews, scope]);
+  const changes = allLists.changes;
+  const lists = useMemo(() => ({ ...allLists, changes: [], settled: [] }), [allLists]);
+  const { documents } = lists;
   const scoped =
     overviews.find(
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
@@ -283,13 +308,7 @@ export function WikiSidebar() {
   );
   const shownEntries: readonly WikiSidebarEntry[] = isSearching
     ? results
-    : [
-        ...(changesExpanded ? changes.map((item) => ({ kind: "change" as const, item })) : []),
-        ...(changes.length === 0 || documentsExpanded
-          ? documents.map((item) => ({ kind: "document" as const, item }))
-          : []),
-        ...(settledExpanded ? settled.map((item) => ({ kind: "change" as const, item })) : []),
-      ];
+    : documents.map((item) => ({ kind: "document" as const, item }));
   useLayoutEffect(() => {
     shown.current = {
       keys: shownEntries.map(entryKey),
@@ -421,42 +440,27 @@ export function WikiSidebar() {
             ) : (
               <ul role="presentation" className="relative flex flex-col gap-px">
                 {changes.length > 0 ? (
-                  <>
-                    <li className="mx-0.5 h-8 list-none">
-                      <CollapsibleSectionHeader
-                        onClick={() => setChangesExpanded((expanded) => !expanded)}
-                        expanded={changesExpanded}
-                        tone="muted"
-                      >
+                  <li className="mx-0.5 list-none">
+                    <button
+                      type="button"
+                      className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                      onClick={() => {
+                        setChangeRequestKind("wikis");
+                        void navigate({
+                          to: "/pull-requests",
+                          search: readPullRequestListPreferences(),
+                        });
+                      }}
+                    >
+                      <PullRequestGlyph.pullRequest aria-hidden className="size-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate text-left">
                         {`Open changes · ${changes.length}`}
-                      </CollapsibleSectionHeader>
-                    </li>
-                    {changesExpanded
-                      ? changes.map((change) => (
-                          <WikiChangeRow
-                            key={change.key}
-                            item={change}
-                            active={isActive({ kind: "change", item: change })}
-                            selected={selectedKeys.includes(
-                              entryKey({ kind: "change", item: change }),
-                            )}
-                            actions={rowActions}
-                            onOpen={open}
-                          />
-                        ))
-                      : null}
-                    <li className="mx-0.5 h-8 list-none">
-                      <CollapsibleSectionHeader
-                        onClick={() => setDocumentsExpanded((expanded) => !expanded)}
-                        expanded={documentsExpanded}
-                        tone="muted"
-                      >
-                        Documents
-                      </CollapsibleSectionHeader>
-                    </li>
-                  </>
+                      </span>
+                      <ArrowRightIcon aria-hidden className="size-3.5 shrink-0" />
+                    </button>
+                  </li>
                 ) : null}
-                {(changes.length === 0 || documentsExpanded ? documents : []).map((document) => (
+                {documents.map((document) => (
                   <WikiDocumentRow
                     key={document.key}
                     item={document}
@@ -466,33 +470,6 @@ export function WikiSidebar() {
                     onOpen={open}
                   />
                 ))}
-                {settled.length > 0 ? (
-                  <>
-                    <li className="mx-0.5 h-8 list-none">
-                      <CollapsibleSectionHeader
-                        onClick={() => setSettledExpanded((expanded) => !expanded)}
-                        expanded={settledExpanded}
-                        tone="muted"
-                      >
-                        {`Merged and closed · ${settled.length}`}
-                      </CollapsibleSectionHeader>
-                    </li>
-                    {settledExpanded
-                      ? settled.map((change) => (
-                          <WikiChangeRow
-                            key={change.key}
-                            item={change}
-                            active={isActive({ kind: "change", item: change })}
-                            selected={selectedKeys.includes(
-                              entryKey({ kind: "change", item: change }),
-                            )}
-                            actions={rowActions}
-                            onOpen={open}
-                          />
-                        ))
-                      : null}
-                  </>
-                ) : null}
               </ul>
             )}
           </TooltipProvider>
@@ -1038,7 +1015,7 @@ function linkSummary(item: WikiDocumentItem): string {
  * A change request. Open, it is a card: its wiki and when it last moved, its title, and what it
  * holds. Merged or closed, it is history, so it recedes to the slim row.
  */
-const WikiChangeRow = memo(function WikiChangeRow({
+export const WikiChangeRow = memo(function WikiChangeRow({
   item,
   active,
   selected,

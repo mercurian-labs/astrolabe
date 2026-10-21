@@ -15,8 +15,8 @@ import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import { appVimKeys } from "~/whichKey/doors";
 
-import type { WikiNoteSession } from "./wikiNoteBuffer";
-import { wikilinkNoteName } from "./wiki.logic";
+import type { WikiNoteSession } from "@mercurian/wiki-editor/note-buffer";
+import { wikilinkNoteName } from "@mercurian/wiki-editor/incoming";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.

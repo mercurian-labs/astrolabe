@@ -61,12 +61,19 @@ import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
 
-interface StatusLabel {
+export interface StatusLabel {
   readonly label: string;
   readonly icon: AppSymbolName;
   readonly className: string;
   readonly iconTintClassName: string;
 }
+/** Also drawn by rows outside the thread list whose agent is mid-turn. */
+export const THREAD_LIST_V2_WORKING_LABEL: StatusLabel = {
+  label: "Working",
+  icon: "circle.dashed",
+  className: "text-adaptive-sky-600-400",
+  iconTintClassName: "accent-adaptive-sky-600-400",
+};
 const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> = {
   approval: {
     label: "Approval",
@@ -80,12 +87,7 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-adaptive-indigo-600-300",
     iconTintClassName: "accent-adaptive-indigo-600-300",
   },
-  working: {
-    label: "Working",
-    icon: "circle.dashed",
-    className: "text-adaptive-sky-600-400",
-    iconTintClassName: "accent-adaptive-sky-600-400",
-  },
+  working: THREAD_LIST_V2_WORKING_LABEL,
   waiting: {
     label: "Waiting",
     icon: "circle.dashed.inset.filled",
@@ -216,6 +218,29 @@ export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivid
   readonly pane?: "screen" | "sidebar";
 }) {
   return <ThreadListV2Section {...props} />;
+});
+
+/** A folding shelf under its own label, for lists that borrow the thread list's sections. */
+export const ThreadListV2DisclosureDivider = memo(function ThreadListV2DisclosureDivider(props: {
+  readonly label: string;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+  readonly accessibilityLabel: string;
+  readonly accessibilityHint: string;
+  readonly pane?: "screen" | "sidebar";
+}) {
+  return (
+    <ThreadListV2Section
+      label={props.label}
+      pane={props.pane}
+      disclosure={{
+        expanded: props.expanded,
+        onToggle: props.onToggle,
+        accessibilityLabel: props.accessibilityLabel,
+        accessibilityHint: props.accessibilityHint,
+      }}
+    />
+  );
 });
 
 type ThreadListV2ShelfHeaderProps = {

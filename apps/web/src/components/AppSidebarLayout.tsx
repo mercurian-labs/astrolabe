@@ -405,7 +405,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
               : isOnWikis
                 ? "Wikis"
                 : isOnPullRequests
-                  ? "Pull requests"
+                  ? "Change requests"
                   : "Threads"
           }
           resizable={{

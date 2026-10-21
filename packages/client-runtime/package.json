@@ -115,6 +115,18 @@
       "types": "./src/voice-input/index.ts",
       "default": "./src/voice-input/index.ts"
     },
+    "./wikiList": {
+      "types": "./src/wikiList.ts",
+      "default": "./src/wikiList.ts"
+    },
+    "./wikiPullRequests": {
+      "types": "./src/wikiPullRequests.ts",
+      "default": "./src/wikiPullRequests.ts"
+    },
+    "./wikiLogic": {
+      "types": "./src/wikiLogic.ts",
+      "default": "./src/wikiLogic.ts"
+    },
     "./t3ToolSummary": {
       "types": "./src/t3ToolSummary.ts",
       "default": "./src/t3ToolSummary.ts"

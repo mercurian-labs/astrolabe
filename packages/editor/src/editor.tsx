@@ -29,13 +29,18 @@ export interface AtlasEditorProps {
    * change it lands scrolls into view.
    */
   locked?: boolean;
+  /**
+   * Whether the document can be typed into. Switching it reconfigures the editor in place, so
+   * a reading view becomes an editing one without losing its scroll position.
+   */
+  readOnly?: boolean;
   className?: string;
 }
 
 // Remote cursors show their name all the time rather than on hover, so an agent's cursor
-// says whose it is.
+// says whose it is, in the editor's own font (y-codemirror's base theme sets serif).
 const collabTheme = EditorView.theme({
-  ".cm-ySelectionInfo": { opacity: 1 },
+  ".cm-ySelectionInfo": { opacity: 1, fontFamily: "inherit" },
 });
 
 // No `history()`: undo belongs to Yjs, and CodeMirror history would otherwise record every
@@ -48,6 +53,9 @@ const liveMarkdown = (options: LivePreviewOptions | undefined) => [
   EditorState.allowMultipleSelections.of(true),
   keymap.of(defaultKeymap.filter((binding) => binding.key !== "Mod-/")),
 ];
+
+// Read only: no typing and no caret, but selecting and following links still work.
+const readOnlyView = [EditorState.readOnly.of(true), EditorView.editable.of(false)];
 
 // Locked: no typing, no caret, and every change the writer lands is brought into view. The
 // scroll rides the change's own transaction, so it never moves anything on its own.
@@ -103,20 +111,25 @@ export function AtlasEditor({
   vimPanel = true,
   livePreview: livePreviewOptions,
   locked = false,
+  readOnly = false,
 }: AtlasEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // The mounted editor, its Vim compartment, and the undo history Vim runs.
   const mounted = useRef<{
     view: EditorView;
     vimSlot: Compartment;
+    readOnlySlot: Compartment;
     history: VimHistory;
     vimOn: boolean;
+    readOnlyOn: boolean;
   } | null>(null);
   // Read when the editor mounts; later changes reconfigure it (below).
   const vimRef = useRef(vim);
+  const readOnlyRef = useRef(readOnly);
   useEffect(() => {
     vimRef.current = vim;
-  }, [vim]);
+    readOnlyRef.current = readOnly;
+  }, [vim, readOnly]);
   const vimPanelRef = useRef(vimPanel);
 
   useEffect(() => {
@@ -133,6 +146,7 @@ export function AtlasEditor({
       },
     };
     const vimSlot = new Compartment();
+    const readOnlySlot = new Compartment();
     const view = new EditorView({
       parent: host,
       state: EditorState.create({
@@ -149,11 +163,19 @@ export function AtlasEditor({
           agentChanges(text, awareness),
           collabTheme,
           vimSlot.of(vimRef.current ? vimMode(history, { panel: vimPanelRef.current }) : []),
+          readOnlySlot.of(readOnlyRef.current ? readOnlyView : []),
           extensions ?? [],
         ],
       }),
     });
-    mounted.current = { view, vimSlot, history, vimOn: vimRef.current };
+    mounted.current = {
+      view,
+      vimSlot,
+      readOnlySlot,
+      history,
+      vimOn: vimRef.current,
+      readOnlyOn: readOnlyRef.current,
+    };
     return () => {
       mounted.current = null;
       view.destroy();
@@ -172,6 +194,15 @@ export function AtlasEditor({
       ),
     });
   }, [vim]);
+
+  useEffect(() => {
+    const editor = mounted.current;
+    if (!editor || editor.readOnlyOn === readOnly) return;
+    editor.readOnlyOn = readOnly;
+    editor.view.dispatch({
+      effects: editor.readOnlySlot.reconfigure(readOnly ? readOnlyView : []),
+    });
+  }, [readOnly]);
 
   return <div ref={hostRef} className={className} />;
 }

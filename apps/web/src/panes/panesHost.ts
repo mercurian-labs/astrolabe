@@ -1,6 +1,7 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
 import type { Arrangement } from "./arrangement";
+import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import type { Leaf } from "./tree";
 
 export interface PaneArrangementSnapshot {
@@ -37,6 +38,11 @@ export interface PaneTabs {
   readonly Overlay: ComponentType<{ readonly leaf: Leaf; readonly hosting: boolean }>;
   /** Whether the top-right strip leaves room for controls pinned over its end. */
   readonly reservesTopRight: boolean;
+  /**
+   * Astrolabe: for a tab outside its own section (a chat in Wikis, a document beside a thread),
+   * the tab menu's "Open in <section>" (see `sectionTabs`).
+   */
+  readonly openElsewhere?: (tabKey: string) => SectionTabMove | null;
 }
 
 export interface PanesHost {

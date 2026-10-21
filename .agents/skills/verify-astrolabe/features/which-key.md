@@ -33,7 +33,7 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   Scroll up (repeatable), `t` Tabs, `p` Panes, `s` Sidebar, `w` Wikis, `,` Settings. `n`'s
   label follows the section (on Wikis: "New document").
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Threads, w Wikis, p Pull Requests, u Usage, s
+- **Groups** (defaults): `g` t Threads, w Wikis, p Change Requests, u Usage, s
   Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
   browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
   `navigation.back`/`forward` through their shortcuts: in Threads and Wikis they walk

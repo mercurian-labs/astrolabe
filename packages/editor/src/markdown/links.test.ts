@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import {
   caret,
@@ -111,6 +112,26 @@ describe("links", () => {
     );
     expect(targets).toEqual(["Note", "Note", "Note#Head"]);
     expect(line(view, 1).textContent).toBe("Note Alias Note > Head");
+  });
+
+  it("a plain click follows a wikilink only on a read-only document whose host opens links on click", () => {
+    const click = (view: EditorView) => {
+      const link = view.contentDOM.querySelector<HTMLElement>("[data-wikilink]");
+      link?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    };
+    const opened: string[] = [];
+    const openWikilink = (target: string) => opened.push(target);
+    const readOnly = [EditorState.readOnly.of(true)];
+    // (An editable document places the caret instead, which happy-dom cannot replay.)
+    click(mount("[[Note]]", { options: { openWikilink }, extensions: readOnly }));
+    expect(opened).toEqual([]);
+    click(
+      mount("[[Note]]", {
+        options: { openWikilink, linksOpenOnClick: true },
+        extensions: readOnly,
+      }),
+    );
+    expect(opened).toEqual(["Note"]);
   });
 
   it("A35. `![[Embed]]`: placeholder chip; `![[pic.png|200]]`: image with the host-resolved source", () => {

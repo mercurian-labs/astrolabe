@@ -6,7 +6,8 @@ import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChro
 import { SidebarSectionTitle } from "../sidebar/SidebarThreadHeader";
 
 /**
- * Astrolabe: the Pull Requests section's sidebar, as Threads and Wikis have theirs. The sidebar
+ * Astrolabe: the Change Requests section's sidebar (pull requests and the wikis' change
+ * requests), as Threads and Wikis have theirs. The sidebar
  * draws the frame (the brand row, the section's title row, the footer); the list and its
  * controls stay with the page that queries, filters and selects them, which portals them in.
  */
@@ -29,7 +30,7 @@ export function PullRequestsSidebar() {
     <>
       <SidebarChromeHeader isElectron={isElectron} />
       <div className="flex shrink-0 items-center gap-1 px-2 pt-2 pb-1">
-        <SidebarSectionTitle>Pull requests</SidebarSectionTitle>
+        <SidebarSectionTitle>Change requests</SidebarSectionTitle>
         <div
           ref={(element) => {
             titleActions = element;

@@ -478,6 +478,9 @@ importers:
       '@material/material-color-utilities':
         specifier: 0.3.0
         version: 0.3.0
+      '@mercurian/wiki-editor':
+        specifier: workspace:*
+        version: link:../../packages/wiki-editor
       '@noble/curves':
         specifier: 'catalog:'
         version: 1.9.1
@@ -990,6 +993,9 @@ importers:
       '@mercurian/wiki':
         specifier: workspace:*
         version: link:../../packages/wiki
+      '@mercurian/wiki-editor':
+        specifier: workspace:*
+        version: link:../../packages/wiki-editor
       '@noble/hashes':
         specifier: 'catalog:'
         version: 1.8.0
@@ -2288,6 +2294,46 @@ importers:
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4
+      vite-plus:
+        specifier: 1.0.0
+        version: 1.0.0(@types/node@24.12.4)(@vitest/browser-playwright@5.0.1)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(esbuild@0.28.2)(happy-dom@20.14.6(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  packages/wiki-editor:
+    dependencies:
+      '@codemirror/state':
+        specifier: ^6.7.6
+        version: 6.7.6
+      '@codemirror/view':
+        specifier: 6.43.13
+        version: 6.43.13
+      '@mercurian/editor':
+        specifier: workspace:*
+        version: link:../editor
+      react-dom:
+        specifier: 19.2.6
+        version: 19.2.6(react@19.2.6)
+      y-protocols:
+        specifier: ^1.0.7
+        version: 1.0.7(yjs@13.6.33)
+      yjs:
+        specifier: 13.6.33
+        version: 13.6.33
+    devDependencies:
+      '@types/react':
+        specifier: ~19.2.14
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ~19.2.3
+        version: 19.2.7(@types/react@19.2.18)
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.6(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      react:
+        specifier: 19.2.6
+        version: 19.2.6
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
       vite-plus:
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.12.4)(@vitest/browser-playwright@5.0.1)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(esbuild@0.28.2)(happy-dom@20.14.6(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)

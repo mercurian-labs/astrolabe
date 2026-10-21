@@ -26,6 +26,7 @@ import IconArrowsMinimize from "@tabler/icons-react-native/IconArrowsMinimize";
 import IconBan from "@tabler/icons-react-native/IconBan";
 import IconBellRinging from "@tabler/icons-react-native/IconBellRinging";
 import IconBolt from "@tabler/icons-react-native/IconBolt";
+import IconBook from "@tabler/icons-react-native/IconBook";
 import IconBox from "@tabler/icons-react-native/IconBox";
 import IconBrain from "@tabler/icons-react-native/IconBrain";
 import IconCamera from "@tabler/icons-react-native/IconCamera";
@@ -166,6 +167,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "bell.badge": IconBellRinging,
   "bolt.circle": IconBolt,
   "bolt.horizontal.circle": IconBolt,
+  book: IconBook,
   brain: IconBrain,
   "cable.connector": IconPlug,
   camera: IconCamera,

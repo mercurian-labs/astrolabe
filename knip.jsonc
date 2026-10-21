@@ -96,6 +96,8 @@
         "fingerprint.config.js",
         "plugins/*.cjs",
         "scripts/generate-device-stream.mts",
+        "scripts/generate-wiki-editor.mts",
+        "scripts/wiki-editor-stubs/*.ts",
         "src/features/devices/device-stream.browser.ts!",
         "src/features/browser/preview-stream.browser.ts!",
       ],
@@ -116,6 +118,10 @@
     "packages/*": {
       // These workspace packages are private to this monorepo.
       "includeEntryExports": true,
+    },
+    "packages/wiki-editor": {
+      // The mobile app's build script bundles the page into the WebView it shows notes in.
+      "entry": ["src/mobilePage.tsx"],
     },
     "packages/graph": {
       "includeEntryExports": true,

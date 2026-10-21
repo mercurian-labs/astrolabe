@@ -1,0 +1,46 @@
+{
+  "name": "@mercurian/wiki-editor",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./note-buffer": {
+      "types": "./src/noteBuffer.ts",
+      "default": "./src/noteBuffer.ts"
+    },
+    "./note-editor": {
+      "types": "./src/NoteEditor.tsx",
+      "default": "./src/NoteEditor.tsx"
+    },
+    "./incoming": {
+      "types": "./src/incoming.ts",
+      "default": "./src/incoming.ts"
+    },
+    "./protocol": {
+      "types": "./src/protocol.ts",
+      "default": "./src/protocol.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --noEmit",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@mercurian/editor": "workspace:*",
+    "react-dom": "19.2.6",
+    "y-protocols": "^1.0.7",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.14",
+    "@types/react-dom": "~19.2.3",
+    "happy-dom": "^20.14.5",
+    "react": "19.2.6",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  }
+}

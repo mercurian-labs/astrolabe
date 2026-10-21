@@ -38,26 +38,18 @@ project: <project>`), **New thread**. Search is upstream's integrated search: th
   disabled with no projects.
 - **Rail mark**: the cap above the rail (`[data-app-rail-cap]`) holds the small monogram on a bordered rounded tile (`[data-app-rail-mark]`). In the macOS desktop app, where the window's buttons take that corner, the tile is the rail's first item instead, above Threads.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
-  (Threads, Wikis, Pull Requests when the server supports it, Usage), the current one
+  (Threads, Wikis, Change Requests when the server supports pull requests, Usage), the current one
   marked with a bar and `aria-current="page"`; the toggle, the desktop app's update control
   (`Check for updates`, a rail list row) and Settings sit at the foot.
   Usage has no sidebar: there it shows collapsed and the toggle is gone (`mod+b` does
   nothing), and leaving Usage restores the open state. The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Threads returns to the last chat. Pull Requests is a section like
-  Wikis: its own sidebar (title "Pull requests", refresh, search, Sort, Filters,
-  provider, then the reviews as cards) and the reviews in tabs and splits beside it. A row
-  click shows the review in the focused pane's tab in front (one open elsewhere comes to
-  the front there); Option-click, middle-click, Alt+Enter and the row's right-click open a
-  new tab in the focused pane; Mod-click and Shift-click select rows, as in Wikis, and a
-  selected row's right-click opens them all; rows drag onto a pane's strip or content
-  (`placePullRequests`). A pull request picked inside a review (its stack menu, a link in its text)
-  replaces that review's tab. Each tab keeps back/forward (`pullRequestTabs.ts`, localStorage
-  `astrolabe:pull-request-tab-history:v1`), walked by the header's arrows and `mod+[`/`mod+]`. The rail stays when the sidebar collapses, starting below the title
+  (`useAppSections`). Threads returns to the last chat. Change Requests is a section like
+  Wikis, with its own sidebar and panes ([pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail is
   absent, the brand link is hidden (below 768px), and the footer keeps Settings,
-  Wikis (Threads while on Wikis), Pull Requests and Usage; on Settings, Usage and
-  Pull Requests it shows only Back.
+  Wikis (Threads while on Wikis), Change Requests and Usage; on Settings, Usage and
+  Change Requests it shows only Back.
 - **Toggle main sidebar** is at the foot of the icon rail, above Settings (same icon, tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while
   open; a rail list button, so `j`/`k` reach it). On narrow windows (no rail) the
   toggle stays in the title bar and the sheet's header. The rail's title-bar cell is

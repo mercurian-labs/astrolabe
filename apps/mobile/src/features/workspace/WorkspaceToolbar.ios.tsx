@@ -13,6 +13,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { useSidebarWorkspaceTabs } from "./useSystemWorkspaceTabBar";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
+import { WORKSPACE_TAB_LABELS } from "./workspace-tabs-state";
 import { useMobileNavigationTheme } from "../../lib/useMobileNavigationTheme";
 
 // Tabler's git-pull-request geometry, shared with the UIKit tab bar.
@@ -89,8 +90,7 @@ export function WorkspaceToolbar(props: {
                   obscureBackground: false,
                   placement: NATIVE_LIQUID_GLASS_SUPPORTED ? "integratedButton" : "stacked",
                   allowToolbarIntegration: NATIVE_LIQUID_GLASS_SUPPORTED,
-                  placeholder:
-                    selectedTab === "pullRequests" ? "Search pull requests" : "Search threads",
+                  placeholder: WORKSPACE_TAB_LABELS[selectedTab].search,
                   cancelButtonText: "✕",
                   onFocus: () =>
                     tab.searchMode === "resting"
@@ -126,9 +126,7 @@ export function WorkspaceToolbar(props: {
         />
         {NATIVE_LIQUID_GLASS_SUPPORTED ? null : (
           <Toolbar.Button
-            accessibilityLabel={
-              selectedTab === "pullRequests" ? "Search pull requests" : "Search threads"
-            }
+            accessibilityLabel={WORKSPACE_TAB_LABELS[selectedTab].search}
             icon="magnifyingglass"
             onPress={focusSearch}
           />
@@ -138,7 +136,7 @@ export function WorkspaceToolbar(props: {
         {sidebarTabs === "toolbar" ? (
           <Toolbar.Button
             identifier="workspace-tab-threads"
-            accessibilityLabel="Threads"
+            accessibilityLabel={WORKSPACE_TAB_LABELS.threads.title}
             icon={selectedTab === "threads" ? "text.bubble.fill" : "text.bubble"}
             tintColor={selectedTab === "threads" ? selectedTint : undefined}
             onPress={() => selectTab("threads")}
@@ -147,7 +145,7 @@ export function WorkspaceToolbar(props: {
         {sidebarTabs === "toolbar" ? (
           <Toolbar.Button
             identifier="workspace-tab-pull-requests"
-            accessibilityLabel="Pull requests"
+            accessibilityLabel={WORKSPACE_TAB_LABELS.pullRequests.title}
             icon={{ type: "image", source: PULL_REQUEST_ICON, tinted: true }}
             tintColor={selectedTab === "pullRequests" ? selectedTint : undefined}
             onPress={() => selectTab("pullRequests")}

@@ -16,6 +16,13 @@ export interface RightPanelHost extends PanesHost {
   place(slot: HTMLElement, visible: boolean): void;
   /** Hides the surface's container wherever it is. */
   hide(): void;
+  /**
+   * Astrolabe: the container a document opened beside the thread renders into, which the pane
+   * showing its tab takes in, as the surface's does.
+   */
+  sectionTabContainer(key: string): HTMLDivElement;
+  /** Drops the containers of documents no longer open. */
+  pruneSectionTabs(open: ReadonlySet<string>): void;
 }
 
 export const RightPanelHostContext = createContext<RightPanelHost | null>(null);

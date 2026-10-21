@@ -9,6 +9,12 @@ export interface LivePreviewOptions {
   resolveEmbed?: (target: string) => string | null;
   /** Called on Mod-click of a wikilink or embed with its raw target. */
   openWikilink?: (target: string) => void;
+  /**
+   * Whether a plain click opens links and embeds while the document is read-only, as in a
+   * reading view on a touch screen, which has no modifier keys. Mod-click always opens; while
+   * the document is editable, a plain click places the caret.
+   */
+  linksOpenOnClick?: boolean;
   /** Opens an external link; defaults to a new window with no opener and no referrer. */
   openUrl?: (href: string) => void;
   /**
@@ -36,6 +42,7 @@ export interface ResolvedConfig {
   resolveEmbed: (target: string) => string | null;
   openWikilink: ((target: string) => void) | null;
   openUrl: ((href: string) => void) | null;
+  linksOpenOnClick: boolean;
   tabIndentsProse: boolean;
 }
 
@@ -47,6 +54,7 @@ export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
       resolveEmbed: options.resolveEmbed ?? ((target) => target),
       openWikilink: options.openWikilink ?? null,
       openUrl: options.openUrl ?? null,
+      linksOpenOnClick: options.linksOpenOnClick ?? false,
       tabIndentsProse: options.tabIndentsProse ?? true,
     };
   },

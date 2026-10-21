@@ -9,7 +9,13 @@ import {
 } from "~/panes/arrangement";
 import { followRecord } from "~/panes/surfaceMirror";
 import { pullRequestSurface } from "~/rightPanelStore";
-import { keepStoredHistory, parseStoredHistory, pullRequestOpenFor } from "./pullRequestTabs";
+import {
+  keepStoredHistory,
+  parseStoredHistory,
+  pullRequestOpenFor,
+  pullRequestsToRestore,
+  pullRequestTargetOfKey,
+} from "./pullRequestTabs";
 
 const pr = (number: number) =>
   pullRequestSurface({ projectId: "p", repository: "acme/app", number, environmentId: "e" });
@@ -91,5 +97,58 @@ describe("a pull request tab's stored history", () => {
       histories: { a: { back: ["b"], forward: [] } },
       surfaces: { b: pr(2) },
     });
+  });
+});
+
+describe("a pull request row over another kind of tab", () => {
+  it("replaces a wiki change request in front, as it replaces a pull request", () => {
+    const wiki = openTab(startingArrangement(), "wiki-change:e:w:cr1");
+    expect(pullRequestOpenFor(wiki, pr(2).id, "replace")).toEqual({
+      kind: "replace-other",
+      from: "wiki-change:e:w:cr1",
+    });
+    expect(pullRequestOpenFor(wiki, pr(2).id, "new-tab")).toMatchObject({ kind: "tab" });
+  });
+});
+
+describe("pull request tabs saved by key", () => {
+  const full = (number: number) =>
+    pullRequestSurface({
+      environmentId: "env-1",
+      projectId: "project/1",
+      host: "GitHub.com",
+      repository: "acme/app",
+      number,
+    });
+
+  it("reads a pull request back from a tab key that names it in full", () => {
+    expect(pullRequestTargetOfKey(surfaceKey(full(7).id))).toEqual({
+      environmentId: "env-1",
+      projectId: "project/1",
+      host: "github.com",
+      repository: "acme/app",
+      number: 7,
+    });
+  });
+
+  it("does not read a key without its server and host, or another surface", () => {
+    expect(pullRequestTargetOfKey(surfaceKey(pr(7).id))).toBeNull();
+    expect(
+      pullRequestTargetOfKey(
+        surfaceKey(pullRequestSurface({ projectId: "p", repository: "r", number: 1 }).id),
+      ),
+    ).toBeNull();
+    expect(pullRequestTargetOfKey(surfaceKey("diff"))).toBeNull();
+    expect(pullRequestTargetOfKey("wiki-note:a:b::c")).toBeNull();
+  });
+
+  it("restores the saved tabs the record lacks, with the focused pane's in front", () => {
+    let arrangement = openTab(startingArrangement(), surfaceKey(full(1).id));
+    arrangement = openTab(arrangement, surfaceKey(full(2).id));
+    arrangement = activateTab(arrangement, surfaceKey(full(1).id));
+    const restored = pullRequestsToRestore(arrangement, [full(2).id]);
+    expect(restored.targets.map((target) => target.number)).toEqual([1]);
+    expect(restored.front).toBe(full(1).id);
+    expect(pullRequestsToRestore(arrangement, [full(1).id, full(2).id]).targets).toEqual([]);
   });
 });
