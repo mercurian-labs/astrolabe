@@ -1,0 +1,165 @@
+/* Playground defaults for the editor theme. Hosts set the same variables to restyle it. */
+:root {
+  color-scheme: light dark;
+  --atlas-bg: #fbfaf7;
+  --atlas-fg: #1f1d1a;
+  --atlas-muted: #6b665e;
+  --atlas-border: #e4e0d8;
+  --atlas-accent: #0ea5e9;
+
+  --atlas-md-link-color: #2563eb;
+  --atlas-md-quote-color: var(--atlas-muted);
+  --atlas-md-border-color: var(--atlas-border);
+  --atlas-agent-change-strength: 22%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --atlas-bg: #181715;
+    --atlas-fg: #ebe8e2;
+    --atlas-muted: #a39e94;
+    --atlas-border: #33312d;
+    --atlas-md-link-color: #7aa7ff;
+    --atlas-md-code-bg: rgba(235, 232, 226, 0.08);
+    --atlas-agent-change-strength: 30%;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--atlas-bg);
+  color: var(--atlas-fg);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.playground {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px 16px 64px;
+}
+
+/* The controls stay at the top of the viewport while the note scrolls under them. */
+.playground-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--atlas-border);
+  background: var(--atlas-bg);
+}
+
+.playground-bar h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.playground-peer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--atlas-muted);
+}
+
+.playground-peer::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--peer-color);
+}
+
+.playground-bar button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--atlas-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.playground-bar button:hover:not(:disabled) {
+  border-color: var(--atlas-muted);
+}
+
+.playground-bar button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.playground-bar button[aria-pressed="true"] {
+  border-color: var(--atlas-muted);
+  background: color-mix(in srgb, var(--atlas-fg) 8%, transparent);
+}
+
+.playground-status {
+  font-size: 13px;
+  color: var(--atlas-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.playground-file {
+  margin-bottom: 16px;
+  border: 1px solid var(--atlas-border);
+  border-radius: 6px;
+}
+
+.playground-file h2 {
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--atlas-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--atlas-muted);
+}
+
+.playground-file pre {
+  max-height: 40vh;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.playground-editor .cm-panels {
+  background: var(--atlas-bg);
+  color: var(--atlas-fg);
+}
+
+.playground-editor .cm-panels-bottom {
+  border-top: 1px solid var(--atlas-border);
+}
+
+.playground-editor .cm-editor {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.playground-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.playground-editor .cm-content {
+  caret-color: var(--atlas-fg);
+}

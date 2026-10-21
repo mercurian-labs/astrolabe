@@ -17,17 +17,15 @@ to keep a large paste editable in the composer instead.
 The composer writes Markdown and shows it styled as you type. Markers such as
 `**` stay in the text and show beside the styled words when your cursor is on
 them. Lines starting with `- `, `1. `, `- [ ] `, `> `, `# ` or `---` become lists,
-task lists, quotes, headings and rules; ` ``` ` followed by Enter opens a code
-block. What you typed is what the agent receives, markers and numbering
-included, and `#1234` without a space still looks up a pull request.
+task lists, quotes, headings and rules, and ` ``` ` opens a code block. Tables,
+math, footnotes, callouts and `[[wikilinks]]` render too. What you typed is what
+the agent receives, markers and numbering included, and `#1234` without a space
+still looks up a pull request.
 
 Enter sends. In a list or quote, **Shift+Enter** continues it, and Shift+Enter
-on an empty line leaves it; **Tab** nests a list item. In a code block, Enter
-starts a new line at the current indentation, **Tab** and **Shift+Tab** indent
-the selected lines, and a closing ` ``` ` followed by Enter, or two blank lines
-at the end, leave the block. **Backspace** at the start of a code block turns it
-back into plain lines. Choose the language in a code block's corner to change
-it. Very large code blocks are shown without syntax highlighting.
+on an empty item leaves it; **Tab** nests a list item. In a code block, Enter
+starts a new line at the current indentation, and **Tab** and **Shift+Tab**
+indent the selected lines.
 
 ## Attach files
 
