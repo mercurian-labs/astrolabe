@@ -1,3 +1,8 @@
+---
+import HeroWindow from "./HeroWindow.astro";
+import { phases } from "../scripts/tour-scenes.js";
+---
+
           <!-- ───────────────────────────────────────── [01] Hero -->
           <section class="hero" id="top" aria-labelledby="hero-title">
             <div class="hero__head">
@@ -18,171 +23,27 @@
               </div>
             </div>
 
-            <!-- The tour's three phases. Inert until the tour lands: the first is the one shown. -->
+            <!-- The tour's three phases. Without script the first is shown; while the tour plays the
+                 running one fills; once it has played each replays from its phase. -->
             <div class="tour" data-tour>
-              <ol class="tour__phases" aria-label="What the picture shows">
-                <li class="tour__phase is-on" aria-current="step"><i aria-hidden="true"></i><span class="tag"><b>01</b> Threads</span></li>
-                <li class="tour__phase"><i aria-hidden="true"></i><span class="tag"><b>02</b> Wikis</span></li>
-                <li class="tour__phase"><i aria-hidden="true"></i><span class="tag"><b>03</b> Changes</span></li>
+              <ol class="tour__phases" aria-label="The tour's phases">
+                <li><button type="button" class="tour__phase is-on" data-tour-phase disabled aria-current="step"><i aria-hidden="true"><span></span></i><span class="tag"><b>01</b> Threads</span></button></li>
+                <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>02</b> Wikis</span></button></li>
+                <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>03</b> Changes</span></button></li>
               </ol>
-              <p class="tour__caption" data-tour-caption>
-                A question forked at its second turn, Codex on one fork and Claude on the other. The Lineage tab beside the chat draws the family.
-              </p>
+              <p class="tour__caption" data-tour-caption aria-live="polite">{phases[0].caption}</p>
             </div>
 
             <div class="panel">
               <div class="panel__print" aria-hidden="true"><i class="panel__olive"></i><i class="panel__ivory"></i></div>
-              <div class="panel__slot" data-tour-slot>
+              <div class="panel__slot">
                 <figure class="poster">
-                  <div class="app app--poster" role="img" aria-label="The Astrolabe window. The icon rail and the threads of a billing repository on the left; the thread Ledger owns rounding open in a chat tab, Codex's reply and its changed files below; on the right, the Lineage tab drawing the thread's family: the question it forked from, this fork, and a second fork on Claude, idle for three hours.">
-                    <div class="tb">
-                      <div class="tb__cap">
-                        <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
-                        <svg class="ico"><use href="#i-panel" /></svg>
-                        <span class="spacer"></span>
-                        <svg class="ico ico--sm"><use href="#i-left" /></svg>
-                        <svg class="ico ico--sm ico--faint"><use href="#i-right" /></svg>
-                      </div>
-                      <div class="tb__strip tb__strip--chat">
-                        <span class="tab is-front is-focus"><svg class="logo"><use href="#p-openai" /></svg><span class="tab__title">Ledger owns rounding</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-                        <span class="tab"><svg class="logo"><use href="#p-claude" /></svg><span class="tab__title">Keep rounding at the edge</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-                        <svg class="ico ico--muted"><use href="#i-plus" /></svg>
-                        <span class="spacer"></span>
-                        <svg class="ico ico--muted"><use href="#i-panel-r" /></svg>
-                      </div>
-                      <div class="tb__strip tb__strip--pane">
-                        <span class="lights lights--crop" aria-hidden="true"><i></i><i></i><i></i></span>
-                        <span class="tab is-front"><svg class="ico ico--xs"><use href="#i-fork" /></svg><span class="tab__title">Lineage</span></span>
-                        <span class="tab"><svg class="ico ico--xs"><use href="#i-diff" /></svg><span class="tab__title">Diff</span></span>
-                        <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><span class="tab__title">Terminal</span></span>
-                        <svg class="ico ico--muted"><use href="#i-plus" /></svg>
-                        <span class="spacer"></span>
-                        <svg class="ico ico--muted"><use href="#i-more" /></svg>
-                      </div>
-                    </div>
-
-                    <div class="pb">
-                      <nav class="rail" aria-hidden="true">
-                        <span class="rail__mark"><img src="/assets/brand/monogram.svg" alt="" /></span>
-                        <span class="rail__item is-active"><svg class="ico"><use href="#i-msgs" /></svg></span>
-                        <span class="rail__item"><svg class="ico"><use href="#i-book" /></svg></span>
-                        <span class="rail__item"><svg class="ico"><use href="#i-repo" /></svg></span>
-                        <span class="rail__item"><svg class="ico"><use href="#i-pr" /></svg></span>
-                        <span class="rail__item"><svg class="ico"><use href="#i-usage" /></svg></span>
-                        <span class="rail__fill"></span>
-                        <span class="rail__item"><svg class="ico"><use href="#i-settings" /></svg></span>
-                      </nav>
-                      <i class="pb__corner" aria-hidden="true"></i>
-
-                      <aside class="side">
-                        <div class="side__head">
-                          <span class="side__title">Threads</span>
-                          <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
-                        </div>
-                        <ul class="side__list">
-                          <li class="card is-active">
-                            <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta">now</span></div>
-                            <div class="card__title">Ledger owns rounding</div>
-                            <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>ledger-rounding</span><span>Codex</span></div>
-                          </li>
-                          <li class="card">
-                            <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta">3h</span></div>
-                            <div class="card__title">Keep rounding at the edge</div>
-                            <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>edge-rounding</span><span>Claude</span></div>
-                          </li>
-                          <li class="card">
-                            <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta card__meta--warn"><svg class="ico ico--sm"><use href="#i-alert" /></svg>Needs input</span></div>
-                            <div class="card__title">Webhook retries charge twice</div>
-                            <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>fix/webhook-retry</span><span>Cursor</span></div>
-                          </li>
-                          <li class="card">
-                            <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta">4h</span></div>
-                            <div class="card__title">Where should rounding live?</div>
-                            <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>main</span><span>Claude</span></div>
-                          </li>
-                        </ul>
-                        <div class="shelf"><span>Settled</span><i></i><svg class="ico ico--xs"><use href="#i-chevron" /></svg></div>
-                        <ul class="side__list side__list--slim">
-                          <li class="slim"><span class="tile tile--dim">HB</span><span>Bump the Postgres driver</span><em>4d</em></li>
-                          <li class="slim"><span class="tile tile--dim">HB</span><span>Invoice PDFs embed fonts</span><em>5d</em></li>
-                          <li class="slim"><span class="tile tile--dim">HB</span><span>Audit log retention</span><em>1w</em></li>
-                        </ul>
-                      </aside>
-
-                      <div class="pane pane--chat">
-                        <div class="chat">
-                          <div class="msg msg--user">
-                            Try the first option: the ledger owns rounding, and invoices pass it exact
-                            totals.
-                          </div>
-                          <ul class="worklog">
-                            <li><svg class="ico ico--xs"><use href="#i-file" /></svg>Read 6 files</li>
-                            <li><svg class="ico ico--xs"><use href="#i-pen" /></svg>Edited <code>ledger/src/round.ts</code><b class="add">+42</b></li>
-                            <li><svg class="ico ico--xs"><use href="#i-pen" /></svg>Edited <code>invoices/src/total.ts</code><b class="add">+6</b><b class="del">−19</b></li>
-                            <li><svg class="ico ico--xs"><use href="#i-terminal" /></svg>Ran <code>pnpm test ledger invoices</code></li>
-                          </ul>
-                          <div class="msg msg--agent">
-                            <p>
-                              Rounding now happens once, in <code>roundMinor</code>, half to even,
-                              so new entries match the ones already in the ledger.
-                            </p>
-                          </div>
-                          <div class="changed">
-                            <div class="changed__head"><span>3 files changed</span><b class="add">+48</b><b class="del">−19</b><span class="changed__link">View diff</span></div>
-                            <div class="changed__row"><code>ledger/src/round.ts</code><b class="add">+42</b></div>
-                            <div class="changed__row"><code>invoices/src/total.ts</code><b class="add">+6</b><b class="del">−19</b></div>
-                          </div>
-                        </div>
-                        <div class="composer">
-                          <div class="composer__input">Ask for follow-up changes</div>
-                          <div class="composer__row">
-                            <span class="chip"><svg class="logo"><use href="#p-openai" /></svg>Codex<svg class="ico ico--xs"><use href="#i-chevron" /></svg></span>
-                            <span class="chip chip--quiet">High</span>
-                            <span class="spacer"></span>
-                            <span class="send"><svg><use href="#c-send" /></svg></span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="pane pane--lineage">
-                        <div class="lin">
-                          <!-- The Lineage tab as the app lays it out (110 px a turn, 56 a lane), scrolled to its right end. -->
-                          <svg class="lin__fig" viewBox="0 0 458 268" aria-hidden="true">
-                            <circle class="lin__halo" cx="394" cy="108" r="13" />
-                            <path class="lin__line" d="M24 52H174" />
-                            <path class="lin__line" d="M174 52C212.5 52 212.5 108 251 108H394" />
-                            <path class="lin__line" d="M174 52C212.5 52 212.5 216 251 216H284" />
-                            <g class="lin__dots">
-                              <circle cx="64" cy="52" r="5.5" /><circle cx="174" cy="52" r="5.5" />
-                              <circle cx="284" cy="216" r="5.5" />
-                            </g>
-                            <g class="lin__here"><circle cx="394" cy="108" r="10" /><circle cx="394" cy="108" r="4.5" /></g>
-                            <g class="lin__fold"><rect x="267" y="100" width="40" height="16" rx="8" /><text x="287" y="111.5">2 turns</text></g>
-                            <g class="lin__label">
-                              <text x="134" y="20">Where should rounding live?</text>
-                              <text class="lin__muted" x="134" y="36">Claude · idle · 4h ago</text>
-                              <text x="251" y="76">Ledger owns rounding</text>
-                              <text class="lin__muted" x="251" y="92">Codex · idle · just now</text>
-                              <text x="251" y="240">Keep rounding at the edge</text>
-                              <text class="lin__muted" x="251" y="256">Claude · idle · 3h ago</text>
-                            </g>
-                            <g class="lin__turn">
-                              <text x="394" y="136">Try the first option</text>
-                              <text class="lin__muted" x="394" y="152">You are here</text>
-                            </g>
-                          </svg>
-                        </div>
-                        <div class="lin__foot">
-                          <span class="lin__btn">Show every turn</span>
-                          <svg class="lin__map" viewBox="0 0 458 268" preserveAspectRatio="none" aria-hidden="true">
-                            <path d="M24 52H174M174 52C212.5 52 212.5 108 251 108H394M174 52C212.5 52 212.5 216 251 216H284" />
-                            <rect x="84" y="2" width="372" height="264" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <HeroWindow />
                 </figure>
               </div>
             </div>
           </section>
+
+<script>
+  import "../scripts/tour.js";
+</script>
