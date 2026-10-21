@@ -72,7 +72,7 @@ const T3ConnectSidebarAvatar = lazy(() =>
   })),
 );
 
-export const SETTINGS_SECTION_ICONS: Readonly<
+const SETTINGS_SECTION_ICONS: Readonly<
   Record<SettingsPath, ComponentType<{ className?: string }>>
 > = {
   "/settings/general": Settings2Icon,

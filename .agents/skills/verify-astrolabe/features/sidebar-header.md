@@ -27,11 +27,13 @@ project: <project>`), **New thread**. Search is upstream's integrated search: th
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the palette's "New thread in…" picker. It is
   disabled with no projects.
-- **Icon rail** (`nav[aria-label='Sections']`, desktop only): Threads and Wikis on
-  top, the current one marked with a bar and `aria-current="page"`. Pull Requests (when the
-  server supports it), Usage and Settings sit at the foot, each current on its own
-  page. Threads returns to the
-  last chat. The rail stays when the sidebar collapses, starting below the title
+- **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
+  (Threads, Wikis, Pull Requests when the server supports it), the current one marked
+  with a bar and `aria-current="page"`; Usage and Settings sit at the foot, each
+  current on its own page. The rail's sections are the keyboard menu's Go to
+  (`useAppSections`). Threads returns to the last chat. Pull Requests is a section like
+  Wikis: its own sidebar (title "Pull requests", refresh, search, Sort, Filters,
+  provider, then the reviews as cards) and the reviews in tabs and splits beside it. The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail is
   absent, the brand link is hidden (below 768px), and the footer keeps Settings,
@@ -43,9 +45,10 @@ project: <project>`), **New thread**. Search is upstream's integrated search: th
   sidebar's right edge also starts below the title bar; hovering the resize rail
   (`[data-slot=sidebar-rail]`, its `::after`) draws it full height. Collapsed, Search and the
   filter follow the toggle into the main title bar, and Search reopens the sidebar
-  with its field focused. On Usage and Pull Requests the collapsed bar shows Search
-  but not the filter; on Settings (whose sidebar is the settings nav) it shows
-  neither.
+  with its field focused. On pages that list no threads (Usage, Pull Requests, Wikis)
+  the collapsed bar shows Search but not the project filter; on Settings (whose
+  sidebar is the settings nav) it shows neither. Settings has no tabs: its header
+  (Settings / page) is the title bar, as Usage's is.
 
 ## How to get to it (user POV)
 

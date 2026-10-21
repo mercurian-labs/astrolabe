@@ -66,7 +66,7 @@ export function useAppSections(): readonly AppSection[] {
             active: onPullRequests,
             open: () =>
               void navigate({ to: "/pull-requests", search: readPullRequestListPreferences() }),
-            foot: true,
+            foot: false,
           },
         ]
       : []),
@@ -90,7 +90,7 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: the app's sections on top (Threads and Wikis), and Pull Requests,
+ * The far-left icon rail: the app's sections on top (Threads, Wikis and Pull Requests), and
  * Usage and Settings at the foot, which the sidebar's footer used to hold. It runs from below
  * the title bar to the window's bottom edge and stays when the sidebar collapses; the sidebar
  * opens beside it (see `AppSidebarLayout`). The cell above it is the sidebar's part of the title

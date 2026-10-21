@@ -12,12 +12,16 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   (combobox, named `Filter documents by wiki: <wiki>` once one is picked, kept in
   `astrolabe:wiki-scope:v1`: All wikis, each wiki with a settings gear, **Add a
   folder**, **New wiki**) and **New document**. With no wikis, the sidebar's empty
-  state has its own **Add a folder** and **New wiki**. Rows are thread-style cards
-  (`[data-testid=wiki-sidebar-row]`): "Open changes · N", documents newest first
-  (wiki, edited time, name, links or the open change it is in), then a folded
-  "Merged and closed · N" shelf. The row of the focused tab's document is
-  `aria-current="page"`. Search shows `listbox "Document search results"`, whose
-  rows are `option`s (not buttons), or "No documents found".
+  state has its own **Add a folder** and **New wiki**. Open change requests are
+  thread-style cards (`[data-testid=wiki-sidebar-row]`) under "Open changes · N";
+  documents (newest first) and the folded "Merged and closed · N" shelf use the
+  settled threads' slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon,
+  name, a pen icon when an open change holds the document, time). Hovering any row
+  opens the threads' hover card: wiki, machine, then links and open changes for a
+  document, or state, amendments, authors and its documents for a change request.
+  The row of the focused tab's document is `aria-current="page"`. Search shows
+  `listbox "Document search results"`, whose rows are `option`s (not buttons), or
+  "No documents found".
 - **Main area**: one arrangement on the device (localStorage
   `astrolabe:wiki-panes:v1`). Clicking a row opens or brings forward its tab;
   Mod-click (Cmd on macOS, Ctrl elsewhere) opens it in a new pane to the right; a
@@ -62,7 +66,7 @@ preview_click     role=button[name='Find or create a document']  # in an empty t
 
 **Proof:** read the arrangement from the DOM
 (`[data-pane-id]` → its `[data-pane-tab]` labels, `aria-selected`), and the lit row
-(`[data-testid=wiki-sidebar-row][aria-current=page]`); `location.reload()` keeps the
+(`[data-testid^=wiki-sidebar-row][aria-current=page]`); `location.reload()` keeps the
 arrangement. Save a screenshot of the section.
 
 ## Gotchas

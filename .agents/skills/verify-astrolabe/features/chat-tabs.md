@@ -64,7 +64,7 @@ Read the strip (`*` marks the tab in front):
 **Proof:** the strip read and `location.pathname` agree on the tab in front.
 After `location.reload()` and `preview_wait_for role=tab[name='<title>']`, the
 same read returns the same tabs. For layout, measure rather than eyeball:
-`[data-tab-strip=chats]` spans only the chat column while the panel is open,
+`[data-chat-tab-strip]` spans only the chat column while the panel is open,
 and the panel (`[data-preview-panel-mode]`) starts at the top of the window.
 
 ## Gotchas
@@ -76,7 +76,7 @@ and the panel (`[data-preview-panel-mode]`) starts at the top of the window.
   drops at the target's centre, which lands after that tab. To test a drop at
   the start, dispatch `dragstart`, `dragover` and `drop` yourself with one
   `DataTransfer`, at a point between the strip's left edge and the first tab.
-  Check with `elementFromPoint` that the point is in `[data-tab-strip=chats]`,
+  Check with `elementFromPoint` that the point is in `[data-chat-tab-strip]`,
   because the sidebar's resize rail overlaps the strip's first 8px.
 - With nothing open (`/`), there is no strip: ChatView draws it.
 - The stored value is zustand's wrapper: read

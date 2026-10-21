@@ -10,8 +10,19 @@ import {
 import { memo, type RefCallback } from "react";
 
 import { cn } from "~/lib/utils";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
+import {
+  SIDEBAR_ROW_ACTIVE_CLASS,
+  SIDEBAR_ROW_IDLE_CLASS,
+  SIDEBAR_ROW_SURFACE_CLASS,
+  SidebarCardContent,
+  SidebarCardFooter,
+  SidebarCardHeader,
+  SIDEBAR_CARD_ITEM_CLASS,
+  SidebarCardTitle,
+} from "../sidebar/SidebarCard";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import type { EnvironmentPullRequestEntry } from "./pullRequestList.logic";
@@ -84,6 +95,7 @@ function PullRequestRowImpl({
   closing = false,
   sweeping = false,
   onCloseSweepStart,
+  layout = "row",
 }: {
   entry: EnvironmentPullRequestEntry;
   selected: boolean;
@@ -101,8 +113,142 @@ function PullRequestRowImpl({
   closing?: boolean;
   sweeping?: boolean;
   onCloseSweepStart?: (entry: EnvironmentPullRequestEntry, event: PointerEvent) => void;
+  /**
+   * Astrolabe: `card` draws the row as the sidebar's thread and document cards are drawn (where
+   * it lives and when, the title, then who and how it stands), for the Pull Requests sidebar.
+   */
+  layout?: "row" | "card";
 }) {
   const { Icon, providerName } = getSourceControlPresentationForKind(entry.provider);
+  const glyph = (
+    <PullRequestRowGlyph
+      state={entry.state}
+      isDraft={entry.isDraft}
+      mergeability={entry.mergeability}
+      baseBranch={entry.baseBranch}
+      className={layout === "card" ? "shrink-0" : "mt-0.75 self-start"}
+    />
+  );
+  const numberLink = (
+    // The number carries the link, here as much as on the detail: a right-click on it copies
+    // the pull request's own address rather than opening the editing menu.
+    <span
+      className={PULL_REQUEST_ROW_NUMBER_CLASS}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void showPullRequestLinkContextMenu({
+          url: entry.url,
+          openLabel: openOnHostLabel(sourceControlClients.get(entry.provider)),
+          position: { x: event.clientX, y: event.clientY },
+        });
+      }}
+    >
+      #{entry.number}
+    </span>
+  );
+  const signals = (
+    <>
+      {entry.checksState === undefined ? null : (
+        <PullRequestChecksPopover
+          checksState={entry.checksState}
+          environmentId={entry.environmentId}
+          reference={{
+            projectId: entry.projectId,
+            repository: entry.repository,
+            number: entry.number,
+          }}
+        />
+      )}
+      {/* Only a verdict the host actually reports: an approval, a request for changes, or a
+        review the branch rules still require. No glyph on the common case of a pull request
+        nobody has reviewed, so a row only wears a person when the person has said something. */}
+      {entry.reviewDecision === undefined ? null : (
+        <PullRequestReviewDecisionGlyph decision={entry.reviewDecision} />
+      )}
+    </>
+  );
+  const speedActions =
+    hostActions.size > 0 ? (
+      <PullRequestSpeedActions
+        entry={entry}
+        hostActions={hostActions}
+        visible={speedMode}
+        onActed={onActed}
+        closing={closing}
+        sweeping={sweeping}
+        {...(onCloseSweepStart ? { onCloseSweepStart } : {})}
+      />
+    ) : null;
+
+  if (layout === "card") {
+    return (
+      <div
+        ref={statsRef}
+        data-pull-request-stats-key={statsKey}
+        data-pull-request-key={statsKey}
+        className={cn("flex items-center", SIDEBAR_CARD_ITEM_CLASS)}
+      >
+        <button
+          type="button"
+          aria-current={selected ? "page" : undefined}
+          onClick={() => onSelect(entry)}
+          className={cn(
+            SIDEBAR_ROW_SURFACE_CLASS,
+            "min-w-0 flex-1",
+            selected ? SIDEBAR_ROW_ACTIVE_CLASS : SIDEBAR_ROW_IDLE_CLASS,
+          )}
+        >
+          <SidebarCardContent>
+            <SidebarCardHeader>
+              {glyph}
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
+                {entry.repository}
+                {environmentLabel ? ` · ${environmentLabel}` : null}
+              </span>
+              <span className="ml-auto shrink-0 text-xs tabular-nums text-secondary-label">
+                {formatRelativeTimeLabel(entry.updatedAt)}
+              </span>
+            </SidebarCardHeader>
+            <SidebarCardTitle>
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                {numberLink}
+                <span className="min-w-0 truncate text-sm font-medium text-foreground/90">
+                  {entry.title}
+                </span>
+              </span>
+            </SidebarCardTitle>
+            <SidebarCardFooter>
+              <PullRequestRowAuthor
+                actor={entry.author}
+                className="min-w-3.5 max-w-32"
+                labelClassName="truncate"
+              />
+              {matchedElsewhere ? (
+                <SearchIcon aria-label="Matched in the description" className="size-3 shrink-0" />
+              ) : null}
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {signals}
+                <PullRequestChangeBreakdownStat
+                  environmentId={entry.environmentId}
+                  reference={{
+                    projectId: entry.projectId,
+                    host: entry.host,
+                    repository: entry.repository,
+                    number: entry.number,
+                  }}
+                  additions={entry.additions}
+                  deletions={entry.deletions}
+                  className="font-mono"
+                />
+              </span>
+            </SidebarCardFooter>
+          </SidebarCardContent>
+        </button>
+        {speedActions}
+      </div>
+    );
+  }
   return (
     <div
       ref={statsRef}
@@ -123,49 +269,11 @@ function PullRequestRowImpl({
           "min-w-0 flex-1 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
         )}
       >
-        <PullRequestRowGlyph
-          state={entry.state}
-          isDraft={entry.isDraft}
-          mergeability={entry.mergeability}
-          baseBranch={entry.baseBranch}
-          className="mt-0.75 self-start"
-        />
+        {glyph}
         <PullRequestRowLines
-          number={
-            <span
-              className={PULL_REQUEST_ROW_NUMBER_CLASS}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void showPullRequestLinkContextMenu({
-                  url: entry.url,
-                  openLabel: openOnHostLabel(sourceControlClients.get(entry.provider)),
-                  position: { x: event.clientX, y: event.clientY },
-                });
-              }}
-            >
-              #{entry.number}
-            </span>
-          }
+          number={numberLink}
           title={entry.title}
-          signals={
-            <>
-              {entry.checksState === undefined ? null : (
-                <PullRequestChecksPopover
-                  checksState={entry.checksState}
-                  environmentId={entry.environmentId}
-                  reference={{
-                    projectId: entry.projectId,
-                    repository: entry.repository,
-                    number: entry.number,
-                  }}
-                />
-              )}
-              {entry.reviewDecision === undefined ? null : (
-                <PullRequestReviewDecisionGlyph decision={entry.reviewDecision} />
-              )}
-            </>
-          }
+          signals={signals}
           status={
             <>
               {entry.stack ? (
@@ -239,17 +347,7 @@ function PullRequestRowImpl({
           updatedAt={entry.updatedAt}
         />
       </button>
-      {hostActions.size > 0 ? (
-        <PullRequestSpeedActions
-          entry={entry}
-          hostActions={hostActions}
-          visible={speedMode}
-          onActed={onActed}
-          closing={closing}
-          sweeping={sweeping}
-          {...(onCloseSweepStart ? { onCloseSweepStart } : {})}
-        />
-      ) : null}
+      {speedActions}
     </div>
   );
 }

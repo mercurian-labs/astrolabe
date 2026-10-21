@@ -5,10 +5,13 @@ import {
   BookOpenIcon,
   CircleDashedIcon,
   FilePenLineIcon,
+  FileTextIcon,
+  LinkIcon,
   FolderPlusIcon,
   ListFilterIcon,
   PlusIcon,
   SettingsIcon,
+  UsersIcon,
 } from "lucide-react";
 import {
   memo,
@@ -26,6 +29,7 @@ import {
 import { isElectron } from "~/env";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { useThreadShell } from "~/state/entities";
+import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import {
   filterSidebarProjectScopeItems,
@@ -48,6 +52,8 @@ import {
   SidebarPickerFooter,
   SidebarThreadHeader,
 } from "../sidebar/SidebarThreadHeader";
+import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
@@ -62,8 +68,8 @@ import {
   useComboboxFilter,
 } from "../ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { isTurnRunning } from "./wiki.logic";
+import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { isTurnRunning, noteNameOfFile } from "./wiki.logic";
 import { AddWikiFolderDialog, NewWikiDialog } from "./WikiDialogs";
 import { useWikiEnvironment, useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
@@ -615,52 +621,176 @@ interface CardRowOption {
   readonly onHighlight: () => void;
 }
 
-/** A row's shared frame: the card surface, clickable and keyboard-operable. */
+/**
+ * A row's shared frame, clickable and keyboard-operable: a card, or the one-line row settled
+ * threads use. Open change requests are cards; documents and merged or closed change requests
+ * are slim, so the work in flight stands out.
+ */
 function CardRow({
   label,
   active,
   option,
+  slim = false,
+  details,
   onOpen,
   children,
 }: {
   readonly label: string;
   readonly active: boolean;
   readonly option: CardRowOption | undefined;
+  readonly slim?: boolean;
+  /** The hover card's contents, as the thread rows show. */
+  readonly details: ReactNode;
   readonly onOpen: (event: ReactMouseEvent) => void;
   readonly children: ReactNode;
 }) {
-  return (
-    <SidebarCardItem role={option ? "presentation" : undefined}>
-      <div
-        id={option?.id}
-        role={option ? "option" : "button"}
-        tabIndex={option ? -1 : 0}
-        aria-selected={option ? option.highlighted : undefined}
-        aria-label={label}
-        aria-current={active ? "page" : undefined}
-        data-testid="wiki-sidebar-row"
-        className={cn(
-          SIDEBAR_ROW_SURFACE_CLASS,
-          active || option?.highlighted ? SIDEBAR_ROW_ACTIVE_CLASS : SIDEBAR_ROW_IDLE_CLASS,
-        )}
-        onMouseMove={option?.onHighlight}
-        onClick={onOpen}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget) return;
-          if (event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          onOpen(event as unknown as ReactMouseEvent);
-        }}
+  const highlighted = active || option?.highlighted === true;
+  const row = (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <div
+            id={option?.id}
+            role={option ? "option" : "button"}
+            tabIndex={option ? -1 : 0}
+            aria-selected={option ? option.highlighted : undefined}
+            aria-label={label}
+            aria-current={active ? "page" : undefined}
+            data-testid={slim ? "wiki-sidebar-row-slim" : "wiki-sidebar-row"}
+            className={cn(
+              SIDEBAR_ROW_SURFACE_CLASS,
+              highlighted
+                ? SIDEBAR_ROW_ACTIVE_CLASS
+                : slim
+                  ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                  : SIDEBAR_ROW_IDLE_CLASS,
+              slim && "flex h-9 items-center gap-2.5 px-2.5",
+            )}
+            onMouseMove={option?.onHighlight}
+            onClick={onOpen}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              onOpen(event as unknown as ReactMouseEvent);
+            }}
+          />
+        }
       >
-        <SidebarCardContent>{children}</SidebarCardContent>
-      </div>
-    </SidebarCardItem>
+        {slim ? children : <SidebarCardContent>{children}</SidebarCardContent>}
+      </TooltipTrigger>
+      <ThreadHoverCardPopup side="right" align="start" sideOffset={4}>
+        {details}
+      </ThreadHoverCardPopup>
+    </Tooltip>
+  );
+  return slim ? (
+    <li
+      role={option ? "presentation" : undefined}
+      // Matches the h-9 row so unrendered rows never shift the list when they paint.
+      className="list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px]"
+    >
+      {row}
+    </li>
+  ) : (
+    <SidebarCardItem role={option ? "presentation" : undefined}>{row}</SidebarCardItem>
+  );
+}
+
+/** A hover card line: a muted icon, then its text. */
+function DetailLine({
+  icon,
+  children,
+}: {
+  readonly icon: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="flex size-3 shrink-0 items-center justify-center">{icon}</span>
+      <div className="min-w-0 truncate text-foreground/75">{children}</div>
+    </div>
+  );
+}
+
+/** The hover card lines every wiki row starts with: its wiki, then the server holding it. */
+function WikiPlaceDetails({ item }: { readonly item: WikiDocumentItem | WikiChangeItem }) {
+  const environments = useEnvironmentIdentities();
+  const machines = useEnvironmentMachines();
+  const environmentLabel =
+    environments.find((environment) => environment.environmentId === item.environmentId)?.label ??
+    null;
+  return (
+    <>
+      <DetailLine
+        icon={<WikiIcon environmentId={item.environmentId} wiki={item.wiki} className="size-3" />}
+      >
+        {item.wiki.name}
+      </DetailLine>
+      {environmentLabel ? (
+        <DetailLine
+          icon={
+            <EnvironmentMachineIcon
+              kind={machines.get(item.environmentId) ?? "server"}
+              className="size-3 stroke-muted-foreground"
+            />
+          }
+        >
+          {environmentLabel}
+        </DetailLine>
+      ) : null}
+    </>
+  );
+}
+
+const DETAIL_ICON_CLASS = "size-3 stroke-muted-foreground";
+const DOCUMENTS_LISTED = 5;
+
+/** A slim row's parts, as a settled thread's: dimmed wiki icon, title, then the time. */
+function SlimIcon({
+  item,
+  active,
+}: {
+  readonly item: WikiDocumentItem | WikiChangeItem;
+  readonly active: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center transition-opacity",
+        !active &&
+          "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+      )}
+    >
+      <WikiIcon environmentId={item.environmentId} wiki={item.wiki} className="size-4" />
+    </span>
+  );
+}
+
+function SlimTitle({ active, children }: { readonly active: boolean; readonly children: string }) {
+  return (
+    <span
+      className={cn(
+        "min-w-0 flex-1 truncate text-sm font-normal group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+        active ? "text-foreground" : "text-secondary-label/70",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SlimTime({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end text-xs tabular-nums text-secondary-label">
+      {children}
+    </span>
   );
 }
 
 const titleClassName = "min-w-0 flex-1 truncate text-sm font-medium text-foreground/90";
 
-/** A document: its wiki and when it last changed, its name, and its links or open change. */
+/** A document, slim: its name, whether an open change holds it, and when it last changed. */
 const WikiDocumentRow = memo(function WikiDocumentRow({
   item,
   active,
@@ -679,6 +809,23 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       label={`${item.name}, ${item.wiki.name}`}
       active={active}
       option={option}
+      slim
+      details={
+        <ThreadHoverCard title={item.name}>
+          <WikiPlaceDetails item={item} />
+          <DetailLine icon={<LinkIcon className={DETAIL_ICON_CLASS} />}>
+            {linkSummary(item)}
+          </DetailLine>
+          {item.changes.map((entry) => (
+            <DetailLine
+              key={entry.changeRequestId}
+              icon={<FilePenLineIcon className={DETAIL_ICON_CLASS} />}
+            >
+              {`In “${entry.title}”`}
+            </DetailLine>
+          ))}
+        </ThreadHoverCard>
+      }
       onOpen={(event) =>
         onOpen(
           {
@@ -692,43 +839,12 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
         )
       }
     >
-      <SidebarCardHeader>
-        <WikiIcon environmentId={item.environmentId} wiki={item.wiki} className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-          {item.wiki.name}
-        </span>
-        <span className="ml-auto flex h-5 shrink-0 items-center text-xs tabular-nums text-secondary-label">
-          {working ? <WorkingStatus /> : compactTimeLabel(item.editedAt)}
-        </span>
-      </SidebarCardHeader>
-      <SidebarCardTitle>
-        <span className={titleClassName}>{item.name}</span>
-      </SidebarCardTitle>
-      <SidebarCardFooter>
-        {change ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-muted-foreground/70" />
-              }
-            >
-              <FilePenLineIcon aria-hidden className="size-3 shrink-0" />
-              <span className="min-w-0 truncate">
-                {item.changes.length > 1
-                  ? `In ${item.changes.length} open changes`
-                  : `In “${change.title}”`}
-              </span>
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {item.changes.map((entry) => entry.title).join(", ")}
-            </TooltipPopup>
-          </Tooltip>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-            {linkSummary(item)}
-          </span>
-        )}
-      </SidebarCardFooter>
+      <SlimIcon item={item} active={active} />
+      <SlimTitle active={active}>{item.name}</SlimTitle>
+      {change ? (
+        <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+      ) : null}
+      <SlimTime>{working ? <WorkingStatus /> : compactTimeLabel(item.editedAt)}</SlimTime>
     </CardRow>
   );
 });
@@ -738,7 +854,10 @@ function linkSummary(item: WikiDocumentItem): string {
   return item.backlinks > 0 ? `${links} · linked from ${item.backlinks}` : links;
 }
 
-/** A change request: its wiki and when it last moved, its title, and what it holds. */
+/**
+ * A change request. Open, it is a card: its wiki and when it last moved, its title, and what it
+ * holds. Merged or closed, it is history, so it recedes to the slim row.
+ */
 const WikiChangeRow = memo(function WikiChangeRow({
   item,
   active,
@@ -752,30 +871,45 @@ const WikiChangeRow = memo(function WikiChangeRow({
 }) {
   const { changeRequest } = item;
   const working = useAgentWorking(item.environmentId, changeRequest.threadId);
+  const openTab = (event: ReactMouseEvent) =>
+    onOpen(
+      {
+        kind: "change-request",
+        environmentId: item.environmentId,
+        wikiId: item.wiki.wikiId,
+        changeRequestId: changeRequest.changeRequestId,
+      },
+      event,
+    );
   const amendments = changeRequest.amendments.length;
   const actors = [...new Set(changeRequest.amendments.map((amendment) => amendment.actor))];
-  const StatusGlyph =
-    changeRequest.status === "merged"
-      ? PullRequestGlyph.merged
-      : changeRequest.status === "closed"
-        ? PullRequestGlyph.closed
-        : PullRequestGlyph.pullRequest;
+  const details = <WikiChangeDetails item={item} actors={actors} />;
+  if (changeRequest.status !== "open") {
+    const merged = changeRequest.status === "merged";
+    const StatusGlyph = merged ? PullRequestGlyph.merged : PullRequestGlyph.closed;
+    return (
+      <CardRow
+        label={`${changeRequest.title}, ${merged ? "merged" : "closed"} change request in ${item.wiki.name}`}
+        active={active}
+        option={option}
+        slim
+        details={details}
+        onOpen={openTab}
+      >
+        <SlimIcon item={item} active={active} />
+        <SlimTitle active={active}>{changeRequest.title}</SlimTitle>
+        <StatusGlyph aria-hidden className="size-3 shrink-0 text-muted-foreground/40" />
+        <SlimTime>{compactTimeLabel(changeRequest.updatedAt)}</SlimTime>
+      </CardRow>
+    );
+  }
   return (
     <CardRow
       label={`${changeRequest.title}, change request in ${item.wiki.name}`}
       active={active}
       option={option}
-      onOpen={(event) =>
-        onOpen(
-          {
-            kind: "change-request",
-            environmentId: item.environmentId,
-            wikiId: item.wiki.wikiId,
-            changeRequestId: changeRequest.changeRequestId,
-          },
-          event,
-        )
-      }
+      details={details}
+      onOpen={openTab}
     >
       <SidebarCardHeader>
         <WikiIcon environmentId={item.environmentId} wiki={item.wiki} className="size-4 shrink-0" />
@@ -790,19 +924,12 @@ const WikiChangeRow = memo(function WikiChangeRow({
         <span className={titleClassName}>{changeRequest.title}</span>
       </SidebarCardTitle>
       <SidebarCardFooter>
-        <StatusGlyph aria-hidden className="size-3 shrink-0 text-muted-foreground/40" />
+        <PullRequestGlyph.pullRequest
+          aria-hidden
+          className="size-3 shrink-0 text-muted-foreground/40"
+        />
         <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-          {[
-            changeRequest.status === "merged"
-              ? "Merged"
-              : changeRequest.status === "closed"
-                ? "Closed"
-                : null,
-            `${amendments} ${amendments === 1 ? "amendment" : "amendments"}`,
-            `${item.files.length} ${item.files.length === 1 ? "document" : "documents"}`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+          {`${amendments} ${amendments === 1 ? "amendment" : "amendments"} · ${item.files.length} ${item.files.length === 1 ? "document" : "documents"}`}
         </span>
         {actors.length > 0 ? (
           <span className="shrink-0 truncate text-sidebar-muted-foreground/70">
@@ -813,3 +940,56 @@ const WikiChangeRow = memo(function WikiChangeRow({
     </CardRow>
   );
 });
+
+/** A change request's hover card: where it lives, its state, who wrote it, and what it changes. */
+function WikiChangeDetails({
+  item,
+  actors,
+}: {
+  readonly item: WikiChangeItem;
+  readonly actors: ReadonlyArray<string>;
+}) {
+  const { changeRequest } = item;
+  const amendments = changeRequest.amendments.length;
+  const StatusGlyph =
+    changeRequest.status === "merged"
+      ? PullRequestGlyph.merged
+      : changeRequest.status === "closed"
+        ? PullRequestGlyph.closed
+        : PullRequestGlyph.pullRequest;
+  const status =
+    changeRequest.status === "merged"
+      ? "Merged"
+      : changeRequest.status === "closed"
+        ? "Closed"
+        : "Open";
+  const listed = item.files.slice(0, DOCUMENTS_LISTED).map(noteNameOfFile);
+  const more = item.files.length - listed.length;
+  return (
+    <ThreadHoverCard
+      title={changeRequest.title}
+      footer={
+        listed.length > 0 ? (
+          <div className="grid gap-1 border-t border-border/60 pt-2 pl-0.5 text-xs text-muted-foreground">
+            {listed.map((name) => (
+              <DetailLine key={name} icon={<FileTextIcon className={DETAIL_ICON_CLASS} />}>
+                {name}
+              </DetailLine>
+            ))}
+            {more > 0 ? <div className="pl-5">{`${more} more`}</div> : null}
+          </div>
+        ) : null
+      }
+    >
+      <WikiPlaceDetails item={item} />
+      <DetailLine icon={<StatusGlyph className={DETAIL_ICON_CLASS} />}>
+        {`${status} · ${amendments} ${amendments === 1 ? "amendment" : "amendments"}`}
+      </DetailLine>
+      {actors.length > 0 ? (
+        <DetailLine icon={<UsersIcon className={DETAIL_ICON_CLASS} />}>
+          {actors.join(", ")}
+        </DetailLine>
+      ) : null}
+    </ThreadHoverCard>
+  );
+}

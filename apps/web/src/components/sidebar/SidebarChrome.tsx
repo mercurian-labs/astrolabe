@@ -30,7 +30,12 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
-import { isSidebarUtilityPage, isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
+import {
+  isPullRequestsPath,
+  isSidebarUtilityPage,
+  isWikisPath,
+  useNavigateToMainApp,
+} from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -201,6 +206,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
   const isOnWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
+  const isOnPullRequests = useLocation({
+    select: (location) => isPullRequestsPath(location.pathname),
+  });
   const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
@@ -270,7 +278,13 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           ) : (
             <SidebarUtilityItem icon={<BookOpenIcon />} label="Wikis" onClick={handleWikisClick} />
           )}
-          {pullRequestsSupported ? (
+          {isOnPullRequests ? (
+            <SidebarUtilityItem
+              icon={<MessagesSquare />}
+              label="Threads"
+              onClick={handleBackClick}
+            />
+          ) : pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
               label="Pull Requests"

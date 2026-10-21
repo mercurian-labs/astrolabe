@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { moveKey, neighbourOf } from "./tabListStore";
+import { moveKey, neighbourOf } from "./chatTabsStore";
 
-describe("reordering tabs", () => {
+describe("reordering chat tabs", () => {
   it("moves a tab to the insertion line, counted before the move", () => {
     expect(moveKey(["a", "b", "c"], "a", 3)).toEqual(["b", "c", "a"]);
     expect(moveKey(["a", "b", "c"], "c", 0)).toEqual(["c", "a", "b"]);
@@ -17,7 +17,7 @@ describe("reordering tabs", () => {
   });
 });
 
-describe("the tab shown when the one in front closes", () => {
+describe("the chat shown when the one in front closes", () => {
   it("is the tab after it, else the one before it, else none", () => {
     expect(neighbourOf(["a", "b", "c"], "b")).toBe("c");
     expect(neighbourOf(["a", "b", "c"], "c")).toBe("b");

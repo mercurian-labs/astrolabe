@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, settings tabs, tabs and splits in the right panel, sidebar header and icon rail, Wikis, Vim mode, the which-key keyboard menu, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, Wikis, Vim mode, the which-key keyboard menu, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe

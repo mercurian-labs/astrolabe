@@ -16,18 +16,14 @@ export const SIDEBAR_ROW_SELECTED_CLASS = "bg-sidebar-row-selected text-sidebar-
 export const SIDEBAR_ROW_IDLE_CLASS =
   "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover";
 
-/** The list item; it holds its height while scrolled out of view. */
+/** A card's outer box; it holds its height while scrolled out of view. */
+export const SIDEBAR_CARD_ITEM_CLASS =
+  // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
+  "py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]";
+
+/** The list item. */
 export function SidebarCardItem({ className, ...props }: ComponentProps<"li">) {
-  return (
-    <li
-      // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-      className={cn(
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <li className={cn("list-none", SIDEBAR_CARD_ITEM_CLASS, className)} {...props} />;
 }
 
 export function SidebarCardContent({ className, ...props }: ComponentProps<"div">) {

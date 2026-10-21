@@ -128,8 +128,8 @@ and copy the backup back when done. The server picks changes up live.
 2. **Leader across sections.** On Wikis, click the heading → Space → menu after the
    delay, heading `Menu`, rows say "Search"/"New document" → `w` `f` →
    the finder (`[data-testid=wiki-finder]`) open with focus in its field.
-3. **Settings door.** Cmd+K `,` → `/settings/general`, a General settings tab
-   (settings-tabs.md).
+3. **Settings door.** Cmd+K `,` → `/settings/general`, with Settings / General in the
+   title bar (Settings has no tabs).
 4. **Chat tabs.** With several chat tabs, focus off the composer, Cmd+K `t` `[` → the
    previous chat tab is in front (strip read in chat-tabs.md).
 5. **Panes.** Open the right panel with two surfaces in one pane; focus a non-terminal

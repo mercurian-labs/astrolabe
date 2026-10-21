@@ -40,6 +40,7 @@ import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarCh
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { WikiSidebar } from "./wiki/WikiSidebar";
+import { PullRequestsSidebar } from "./pullRequest/PullRequestsSidebar";
 import { WhichKey } from "../whichKey/WhichKey";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
@@ -282,6 +283,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   // Astrolabe: Wikis is a section of its own, beside the threads, with its own sidebar.
   const isOnWikis = isWikisPath(pathname);
+  // Astrolabe: so is Pull Requests, whose page fills its sidebar with the list.
+  const isOnPullRequests = pathname === "/pull-requests";
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const hasIconRail = !useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
@@ -361,7 +364,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           collapsible="offcanvas"
           data-app-sidebar=""
           role="navigation"
-          aria-label={isOnSettings ? "Settings" : isOnWikis ? "Wikis" : "Threads"}
+          aria-label={
+            isOnSettings
+              ? "Settings"
+              : isOnWikis
+                ? "Wikis"
+                : isOnPullRequests
+                  ? "Pull requests"
+                  : "Threads"
+          }
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,
@@ -385,6 +396,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             </>
           ) : isOnWikis ? (
             <WikiSidebar />
+          ) : isOnPullRequests ? (
+            <PullRequestsSidebar />
           ) : legacySidebarEnabled ? (
             <LegacyThreadSidebar />
           ) : (

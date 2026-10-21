@@ -6,9 +6,13 @@ export function isSidebarUtilityPage(pathname: string) {
     pathname === "/settings" ||
     pathname.startsWith("/settings/") ||
     pathname.startsWith("/projects/") ||
-    pathname === "/usage" ||
-    pathname === "/pull-requests"
+    pathname === "/usage"
   );
+}
+
+/** Astrolabe: Pull Requests, a section of its own beside the threads and wikis. */
+export function isPullRequestsPath(pathname: string) {
+  return pathname === "/pull-requests";
 }
 
 /** `/wikis` and every wiki under it: Astrolabe's second section, beside the threads. */
@@ -24,7 +28,9 @@ let mainAppHref: string | null = null;
 export function MainAppLocationTracker() {
   const href = useLocation({
     select: (location) =>
-      isSidebarUtilityPage(location.pathname) || isWikisPath(location.pathname)
+      isSidebarUtilityPage(location.pathname) ||
+      isWikisPath(location.pathname) ||
+      isPullRequestsPath(location.pathname)
         ? null
         : location.href,
   });

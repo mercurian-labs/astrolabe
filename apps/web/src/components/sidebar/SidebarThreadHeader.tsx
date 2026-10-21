@@ -230,11 +230,11 @@ export function SidebarThreadHeader({
 }
 
 /** Astrolabe: the section's name, as large as a dialog's title, on the search field's row height. */
-function SidebarSectionTitle({
+export function SidebarSectionTitle({
   ref,
   children,
 }: {
-  ref: RefObject<HTMLDivElement | null> | undefined;
+  ref?: RefObject<HTMLDivElement | null> | undefined;
   children: ReactNode;
 }) {
   return (
