@@ -1,7 +1,7 @@
-// Astrolabe · drafting · the closing ground, lit by the instrument's sun
+// Astrolabe · drafting · the instrument's ground, lit by its sun
 //
-// The closing section stands on a close crop of Mercury (scripts/render-relight.py exports its normals
-// and height). Each time the working astrolabe's represented moment changes (it announces that with an
+// The instrument's field ([02]) stands on a close crop of Mercury (scripts/render-relight.py exports
+// its normals and height). Each time the working astrolabe's represented moment changes (it announces that with an
 // `astrolabe:time` event), the section takes its palette from the sun's altitude (twilight.js) and
 // this shader prints the ground in the page's two-ink grain under that sun: the print's up is north,
 // so a sun at azimuth A and altitude h lights it along (cos h sin A, cos h cos A, sin h). Shadows are
@@ -17,8 +17,8 @@
 //
 // Repaints happen only when the moment changes (a drag, the eased return to now, the minute) and only
 // while the section is on screen and the tab visible; otherwise the change waits for the next look.
-// The data loads when the section comes near. Without WebGL the static print (CSS masks) shows and the
-// palette still follows the sun.
+// The data loads when the section comes near. Without WebGL (or with `?gl=0`) the static print (CSS
+// masks) shows and the palette still follows the sun.
 
 import Twilight from "./twilight.js";
 
@@ -58,6 +58,7 @@ import Twilight from "./twilight.js";
   document.addEventListener("visibilitychange", paint);
 
   if (!canvas) return;
+  if (new URLSearchParams(location.search).get("gl") === "0") return fallback();
   if ("IntersectionObserver" in window) {
     const near = new IntersectionObserver(
       ([entry]) => {

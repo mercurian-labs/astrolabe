@@ -759,44 +759,20 @@ section {
   }
 }
 
-/* ───────────────────────────────────────── [02] Value */
+/* ───────────────────────────────────────── [02] Value: the working astrolabe beside the manifesto
+   (the field, .sky, is styled with the instrument below; twilight covers the whole section). */
 
 .value {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   border-top: 1px solid var(--rule);
 }
-.value__art {
-  grid-column: span 6;
-  position: relative;
-  min-height: clamp(28rem, 44vw, 54rem);
-  overflow: hidden;
-}
-.art {
-  position: absolute;
-  inset: 0;
-  background: var(--ink);
-  -webkit-mask: var(--art) var(--pos, center) / var(--size, cover) no-repeat;
-  mask: var(--art) var(--pos, center) / var(--size, cover) no-repeat;
-}
-.art--value {
-  --art: url("/assets/art/hero-twoink-light.webp");
-  --pos: 50% 0;
-  --size: max(100%, 40rem) auto;
-  top: 46%;
-  background: var(--ink-2);
-  opacity: 0.6;
-}
-.value__credit {
-  position: absolute;
-  left: 2.75rem;
-  bottom: 1.6rem;
-  padding: 0.3rem 0.5rem;
-  background: var(--paper);
-  color: var(--ink-3);
+.value > .sky {
+  grid-column: span 7;
+  border-left: 0;
 }
 .value__text {
-  grid-column: span 6;
+  grid-column: span 5;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -833,7 +809,7 @@ section {
   border-top: 1px solid var(--rule);
 }
 .works__label {
-  grid-column: span 6;
+  grid-column: span 7;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -847,14 +823,14 @@ section {
   max-width: 18em;
 }
 .works__list {
-  grid-column: span 6;
+  grid-column: span 5;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .works__list li {
   display: grid;
   place-items: center;
-  min-height: 7rem;
+  min-height: 4rem;
   padding: 0.5rem;
   overflow-wrap: anywhere;
   border-left: 1px solid var(--rule);
@@ -863,29 +839,23 @@ section {
   text-transform: uppercase;
   text-align: center;
 }
+.works__list li:nth-child(n + 4) {
+  border-top: 1px solid var(--rule);
+}
 
 @media (max-width: 900px) {
-  .value__art,
+  .value > .sky,
   .value__text,
   .works__label,
   .works__list {
     grid-column: 1 / -1;
-  }
-  .value__art {
-    min-height: 0;
-    aspect-ratio: 4 / 3;
   }
   .value__text {
     border-left: 0;
     border-top: 1px solid var(--rule);
     padding-top: var(--pad-lg);
   }
-  .value__credit {
-    left: 1.25rem;
-    bottom: 1rem;
-  }
   .works__list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     border-top: 1px solid var(--rule);
   }
   .works__list li {
@@ -894,9 +864,6 @@ section {
   }
   .works__list li:nth-child(3n + 1) {
     border-left: 0;
-  }
-  .works__list li:nth-child(n + 4) {
-    border-top: 1px solid var(--rule);
   }
 }
 
@@ -3503,7 +3470,7 @@ kbd {
   }
 }
 
-/* ───────────────────────────────────────── Close: the invitation beside the working astrolabe */
+/* ───────────────────────────────────────── Close: the invitation beside Mercury's limb */
 
 .close {
   display: grid;
@@ -3531,14 +3498,53 @@ kbd {
 .close__copy .btn {
   margin-top: 0.75rem;
 }
+.close__art {
+  grid-column: span 7;
+  position: relative;
+  min-height: clamp(30rem, 42vw, 52rem);
+  overflow: hidden;
+  border-left: 1px solid var(--rule);
+}
+.art {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  -webkit-mask: var(--art) var(--pos, center) / var(--size, cover) no-repeat;
+  mask: var(--art) var(--pos, center) / var(--size, cover) no-repeat;
+}
+/* The limb rises from the panel's foot at every width. */
+.art--limb {
+  --art: url("/assets/art/hero-twoink-light.webp");
+  --pos: 50% 100%;
+  --size: max(100%, 40rem) auto;
+  background: var(--ink-2);
+  opacity: 0.6;
+}
+.close__credit {
+  position: absolute;
+  left: 2.75rem;
+  bottom: 1.6rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--paper);
+  color: var(--ink-3);
+}
 @media (max-width: 900px) {
   .close > .close__copy,
-  .close > .sky {
+  .close > .close__art {
     grid-column: 1 / -1;
   }
-  .close > .sky {
+  .close > .close__art {
+    min-height: 0;
+    aspect-ratio: 4 / 3;
     border-left: 0;
     border-top: 1px solid var(--rule);
+  }
+  .art--limb {
+    --size: max(100%, 30rem) auto;
+  }
+  .close__credit {
+    left: 1.25rem;
+    bottom: 1rem;
   }
 }
 
@@ -4204,13 +4210,13 @@ html:not(.js) .hover-only {
   }
 }
 
-/* ───────────────────────────────────────── [09] Close · the ground under the instrument's sun
+/* ───────────────────────────────────────── [02] Value · the ground under the instrument's sun
 
    relight.js prints the ground of the instrument's field, a close crop of Mercury, under the sun at
    the instrument's represented moment, and twilight.js sets the whole section's palette from the
    sun's altitude (inline custom properties on the section, so its copy, rules and the instrument
-   follow). The ground is a plate set into the field below a ruled edge at --ground-top, the
-   instrument standing on it; the copy beside it stays on paper. Without WebGL, or without
+   follow, and nothing past its edges does). The ground is a plate set into the field below a ruled
+   edge at --ground-top, the instrument standing on it. Without WebGL, or without
    JavaScript, a static print shows instead: shadow ink by day, a little lit grain at night. */
 [data-relight] {
   background: var(--paper) var(--noise);
