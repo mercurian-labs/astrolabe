@@ -73,7 +73,7 @@ matchMedia("(min-width: 961px)").addEventListener(
   (event) => event.matches && setMenu(false),
 );
 
-/* ───────────────────────────── Entry reveals and the problem diagrams on small screens. */
+/* ───────────────────────────── Entry reveals and the drawn figures. */
 
 const once = (targets, onEnter, options) => {
   const observer = new IntersectionObserver((entries) => {
@@ -87,9 +87,6 @@ const once = (targets, onEnter, options) => {
 };
 once($$("[data-reveal]"), (el) => el.classList.add("is-in"), { threshold: 0.2 });
 once($$("[data-draw]"), (el) => el.classList.add("is-drawn"), { threshold: 0.4 });
-if (matchMedia("(max-width: 900px)").matches) {
-  once($$(".pcard"), (el) => el.classList.add("is-drawn"), { threshold: 0.6 });
-}
 
 /* ───────────────────────────── The astrolabe's sighting: a crosshair, rulers and a readout of the true altitude
    and azimuth under the pointer, which instrument.js reads back through the plate's projection

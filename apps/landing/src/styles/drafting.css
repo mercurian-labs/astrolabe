@@ -924,11 +924,78 @@ section {
 .pcard__rail span:last-child {
   color: var(--ink-3);
 }
+/* Four figures on one field (240 × 160, an 8-unit grid): chats are framed windows with a title rule,
+   turns are dots on a line, a checkpoint is a ringed turn, diffs are rows marked + and −. Three weights
+   (ink 1.5, secondary 1, construction 0.75) that hold at any size; rust marks the one thing that goes
+   wrong. The figures are complete at rest. */
 .pcard__fig {
+  display: block;
   width: 100%;
-  height: clamp(11rem, 16vw, 19rem);
+  max-width: 32rem;
+  aspect-ratio: 3 / 2;
   padding: 2rem var(--pad);
   overflow: visible;
+}
+.pcard__fig * {
+  vector-effect: non-scaling-stroke;
+}
+.pf-ink,
+.pf-2,
+.pf-c,
+path.pf-rs {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pf-ink {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.pf-2 {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+}
+.pf-c {
+  stroke: var(--ink-4);
+  stroke-width: 0.75;
+}
+path.pf-rs {
+  stroke: var(--rust);
+  stroke-width: 1.5;
+  transition: stroke-width 0.3s var(--ease-out);
+}
+.pf-dash {
+  stroke-dasharray: 3 3;
+}
+.pf-dots {
+  stroke-width: 1.25;
+  stroke-dasharray: 0 4;
+}
+.pf-fr {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.pf-note {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+.pf-dot {
+  fill: var(--ink);
+}
+.pf-dot.pf-rs {
+  fill: var(--rust);
+}
+.pf-lbl {
+  font: 500 7.5px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--ink-3);
+}
+.pcard:is(:hover, :focus-visible) path.pf-rs {
+  stroke-width: 2.25;
 }
 .pcard__title {
   margin-top: auto;
@@ -954,7 +1021,7 @@ section {
   text-wrap: pretty;
 }
 
-/* Line diagrams: one weight, one ink, rust only on the mark that matters. */
+/* Line diagrams ([09] Anywhere): one weight, one ink, rust only on the mark that matters. */
 .dw {
   fill: none;
   stroke: var(--ink);
@@ -970,11 +1037,6 @@ section {
 .dw.rs {
   stroke: var(--rust);
   stroke-width: 1.75;
-}
-.nd {
-  fill: var(--ink);
-  transform-box: fill-box;
-  transform-origin: center;
 }
 @keyframes draw {
   from {
@@ -1006,21 +1068,9 @@ section {
   }
 }
 @media (hover: hover) and (min-width: 901px) {
-  .motion .pcard:is(:hover, :focus-visible) .dw {
-    animation: draw 0.9s var(--ease-out) calc(var(--i) * 85ms) both;
-  }
-  .motion .pcard:is(:hover, :focus-visible) .nd {
-    animation: pop 0.4s var(--ease-out) calc(var(--i) * 85ms) both;
-  }
   .pcard:is(:hover, :focus-visible) .pcard__title {
     transform: translateX(0.4rem);
   }
-}
-.motion .pcard.is-drawn .dw {
-  animation: draw 0.9s var(--ease-out) calc(var(--i) * 85ms + 150ms) both;
-}
-.motion .pcard.is-drawn .nd {
-  animation: pop 0.4s var(--ease-out) calc(var(--i) * 85ms + 150ms) both;
 }
 
 @media (max-width: 900px) {
@@ -1048,9 +1098,6 @@ section {
   }
   .pcard:last-child {
     border-right: 1px solid var(--rule);
-  }
-  .pcard__fig {
-    height: 13rem;
   }
 }
 
@@ -4868,6 +4915,19 @@ html:not(.js) .hover-only {
    edge at --ground-top, the instrument standing on it. Without WebGL, or without
    JavaScript, a static print shows instead: shadow ink by day, a little lit grain at night. */
 [data-relight] {
+  background: var(--paper) var(--noise);
+  color: var(--ink);
+}
+/* "Works with" is not part of the instrument's sky: it keeps the page's day palette at any hour, so
+   twilight stops at the strip's ruled top edge. */
+[data-relight] .works {
+  --paper: #fbf9f4;
+  --ink: #292724;
+  --ink-2: #57514a;
+  --ink-3: #7d766b;
+  --ink-4: #c3baaa;
+  --rule: #cfc4b1;
+  --rule-soft: #e6dfd2;
   background: var(--paper) var(--noise);
   color: var(--ink);
 }
