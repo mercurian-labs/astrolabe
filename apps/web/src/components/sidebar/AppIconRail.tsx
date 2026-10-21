@@ -12,6 +12,83 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
 
+/** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
+interface AppSection {
+  readonly id: "threads" | "wikis" | "pull-requests" | "usage" | "settings";
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly active: boolean;
+  readonly open: () => void;
+  /** The rail's foot holds it, rather than its top. */
+  readonly foot: boolean;
+}
+
+/**
+ * The app's sections: Threads and Wikis, then Pull Requests (where a server supports them),
+ * Usage and Settings. Each opens as the rail's button does.
+ */
+export function useAppSections(): readonly AppSection[] {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const navigate = useNavigate();
+  const navigateToMainApp = useNavigateToMainApp();
+  const pullRequestsSupported = usePullRequestsSupported();
+
+  const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const onUsage = pathname === "/usage";
+  const onPullRequests = pathname === "/pull-requests";
+  const onWikis = isWikisPath(pathname);
+  const onThreads =
+    !onSettings && !onUsage && !onPullRequests && !onWikis && !pathname.startsWith("/projects/");
+
+  return [
+    {
+      id: "threads",
+      label: "Threads",
+      icon: <MessagesSquare />,
+      active: onThreads,
+      open: () => void navigateToMainApp(),
+      foot: false,
+    },
+    {
+      id: "wikis",
+      label: "Wikis",
+      icon: <BookOpenIcon />,
+      active: onWikis,
+      open: () => void navigate({ to: "/wikis" }),
+      foot: false,
+    },
+    ...(pullRequestsSupported
+      ? [
+          {
+            id: "pull-requests" as const,
+            label: "Pull Requests",
+            icon: <PullRequestGlyph.pullRequest />,
+            active: onPullRequests,
+            open: () =>
+              void navigate({ to: "/pull-requests", search: readPullRequestListPreferences() }),
+            foot: true,
+          },
+        ]
+      : []),
+    {
+      id: "usage",
+      label: "Usage",
+      icon: <ChartNoAxesColumnIcon />,
+      active: onUsage,
+      open: () => void navigate({ to: "/usage" }),
+      foot: true,
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: <SettingsIcon />,
+      active: onSettings,
+      open: () => void navigate({ to: "/settings" }),
+      foot: true,
+    },
+  ];
+}
+
 /**
  * The far-left icon rail: the app's sections on top (Threads and Wikis), and Pull Requests,
  * Usage and Settings at the foot, which the sidebar's footer used to hold. It runs from below
@@ -23,18 +100,18 @@ import { isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
  */
 export function AppIconRail() {
   const isMobile = useIsMobile();
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const navigate = useNavigate();
-  const navigateToMainApp = useNavigateToMainApp();
-  const pullRequestsSupported = usePullRequestsSupported();
+  const sections = useAppSections();
   if (isMobile) return null;
 
-  const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const onUsage = pathname === "/usage";
-  const onPullRequests = pathname === "/pull-requests";
-  const onWikis = isWikisPath(pathname);
-  const onThreads =
-    !onSettings && !onUsage && !onPullRequests && !onWikis && !pathname.startsWith("/projects/");
+  const item = (section: AppSection) => (
+    <RailItem
+      key={section.id}
+      label={section.label}
+      icon={section.icon}
+      active={section.active}
+      onClick={section.open}
+    />
+  );
 
   return (
     <>
@@ -52,42 +129,10 @@ export function AppIconRail() {
         className="fixed top-(--workspace-topbar-height) bottom-0 left-0 z-20 flex w-11 flex-col items-center border-r border-border bg-sidebar py-2"
       >
         <SidebarMenu className="items-center">
-          <RailItem
-            label="Threads"
-            icon={<MessagesSquare />}
-            active={onThreads}
-            onClick={() => void navigateToMainApp()}
-          />
-          <RailItem
-            label="Wikis"
-            icon={<BookOpenIcon />}
-            active={onWikis}
-            onClick={() => void navigate({ to: "/wikis" })}
-          />
+          {sections.filter((section) => !section.foot).map(item)}
         </SidebarMenu>
         <SidebarMenu className="mt-auto items-center">
-          {pullRequestsSupported ? (
-            <RailItem
-              label="Pull Requests"
-              icon={<PullRequestGlyph.pullRequest />}
-              active={onPullRequests}
-              onClick={() =>
-                void navigate({ to: "/pull-requests", search: readPullRequestListPreferences() })
-              }
-            />
-          ) : null}
-          <RailItem
-            label="Usage"
-            icon={<ChartNoAxesColumnIcon />}
-            active={onUsage}
-            onClick={() => void navigate({ to: "/usage" })}
-          />
-          <RailItem
-            label="Settings"
-            icon={<SettingsIcon />}
-            active={onSettings}
-            onClick={() => void navigate({ to: "/settings" })}
-          />
+          {sections.filter((section) => section.foot).map(item)}
         </SidebarMenu>
       </nav>
     </>

@@ -481,6 +481,8 @@ export function filterCommandPaletteGroups(input: {
   projectSearchItems: ReadonlyArray<CommandPaletteActionItem>;
   settingsSearchItems?: ReadonlyArray<CommandPaletteActionItem>;
   threadSearchItems: ReadonlyArray<CommandPaletteActionItem>;
+  /** Astrolabe: every wiki's documents, searched beside the threads. */
+  documentSearchItems?: ReadonlyArray<CommandPaletteActionItem>;
 }): CommandPaletteGroup[] {
   const isActionsFilter = input.query.startsWith(">");
   const searchQuery = isActionsFilter ? input.query.slice(1) : input.query;
@@ -522,6 +524,13 @@ export function filterCommandPaletteGroups(input: {
         value: "threads-search",
         label: "Threads",
         items: input.threadSearchItems,
+      });
+    }
+    if (input.documentSearchItems && input.documentSearchItems.length > 0) {
+      searchableGroups.push({
+        value: "documents-search",
+        label: "Documents",
+        items: input.documentSearchItems,
       });
     }
   }
@@ -648,7 +657,9 @@ export function buildRootGroups(input: {
 export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): string {
   switch (mode) {
     case "root":
-      return "Search commands, projects, and threads...";
+      // Astrolabe: the palette is Search, and finds wiki documents too; actions are in the
+      // Command Palette (`:`).
+      return "Search threads, documents, and projects...";
     case "root-browse":
       return "Enter project path (e.g. ~/projects/my-app)";
     case "submenu":

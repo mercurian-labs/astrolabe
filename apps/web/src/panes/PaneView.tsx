@@ -37,8 +37,19 @@ import {
   useDragging,
   type DropZone,
 } from "./drag";
-import { useToggleMaximized } from "./maximize";
-import { usePanesHost, type PaneArrangementStore, type PaneTabs } from "./panesHost";
+import {
+  canClosePane,
+  canSplitPane,
+  closePane,
+  splitPane,
+  toggleMaximizedPane,
+} from "./paneCommands";
+import {
+  usePanesHost,
+  usePanesLayoutKey,
+  type PaneArrangementStore,
+  type PaneTabs,
+} from "./panesHost";
 import {
   NO_TAB_SELECTION,
   anchorAt,
@@ -379,7 +390,7 @@ function TabStrip({
  */
 function MaximizeButton({ paneId, maximized }: { paneId: string; maximized: boolean }) {
   const { controller } = usePanesHost();
-  const toggleMaximized = useToggleMaximized();
+  const layoutKey = usePanesLayoutKey();
   const label = maximized ? "Restore pane" : "Maximize pane";
   return (
     <Tooltip>
@@ -390,10 +401,7 @@ function MaximizeButton({ paneId, maximized }: { paneId: string; maximized: bool
             className="ms-auto shrink-0"
             size="icon-sm"
             variant="ghost-muted"
-            onClick={() => {
-              if (!maximized) controller.update((arrangement) => focusPane(arrangement, paneId));
-              toggleMaximized(paneId);
-            }}
+            onClick={() => toggleMaximizedPane(controller, layoutKey, paneId)}
           />
         }
       >
@@ -411,9 +419,7 @@ function MaximizeButton({ paneId, maximized }: { paneId: string; maximized: bool
  */
 function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
   const { controller, tabs } = usePanesHost();
-  const { active } = leaf;
-  const split = (side: "right" | "bottom") =>
-    controller.update((arrangement) => splitTab(arrangement, active, side));
+  const split = (side: "right" | "bottom") => splitPane(controller, leaf, side);
   return (
     <Menu>
       <MenuTrigger
@@ -429,21 +435,16 @@ function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
         <MoreHorizontal className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end" side="bottom" sideOffset={6}>
-        <MenuItem disabled={leaf.tabs.length === 1} onClick={() => split("right")}>
+        <MenuItem disabled={!canSplitPane(leaf)} onClick={() => split("right")}>
           <Columns2 />
           Split right
         </MenuItem>
-        <MenuItem disabled={leaf.tabs.length === 1} onClick={() => split("bottom")}>
+        <MenuItem disabled={!canSplitPane(leaf)} onClick={() => split("bottom")}>
           <Rows2 />
           Split down
         </MenuItem>
         <MenuSeparator />
-        <MenuItem
-          disabled={alone && leaf.tabs.every(isEmptyTab)}
-          onClick={() => {
-            for (const key of leaf.tabs) tabs.close(key);
-          }}
-        >
+        <MenuItem disabled={!canClosePane(leaf, alone)} onClick={() => closePane(tabs, leaf)}>
           <SquareX />
           Close pane
         </MenuItem>

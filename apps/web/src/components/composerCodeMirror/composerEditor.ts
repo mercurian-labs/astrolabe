@@ -19,7 +19,8 @@ import {
 } from "@codemirror/state";
 import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
-import { continueMarkup, livePreview } from "@mercurian/editor/markdown";
+import { continueMarkup, livePreview, type LivePreviewOptions } from "@mercurian/editor/markdown";
+import { enterInsertMode, vimInsertMode, vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 
 import {
   clampCollapsedComposerCursor,
@@ -32,6 +33,7 @@ import {
   selectionTouchesMentionBoundary,
 } from "~/composer-editor-mentions";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
+import { appVimKeys } from "~/whichKey/doors";
 import type { ComposerCitationCommentRequest } from "../ComposerPromptEditorTiptap";
 import { importPastedComposerText } from "../composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "../composerSelection";
@@ -105,9 +107,10 @@ const SURROUND_CLOSE: Record<string, string> = {
   _: "_",
 };
 
-// Live preview bindings whose keys belong to the app: the command palette, and the
-// composer's workspace and host pickers.
-const APP_OWNED_KEYS = ["Mod-k", "Mod-Shift-x", "Mod-Shift-h"];
+// Live preview bindings whose keys belong to the app: the composer's workspace and host
+// pickers. Astrolabe: the editor's link key is Mod-Shift-k, so Mod-k (the keyboard menu) is
+// never the editor's.
+const APP_OWNED_KEYS = ["Mod-Shift-x", "Mod-Shift-h"];
 
 // Page keys scroll the timeline (the host's page-scroll handlers), so the editor leaves them
 // alone, as the browser would; Mod-u opens usage rather than undoing a selection.
@@ -147,6 +150,9 @@ const composerTheme = EditorView.theme({
     "--atlas-md-focus-ring": "var(--ring)",
     "--atlas-md-menu-bg": "var(--popover)",
     "--atlas-md-menu-color": "var(--popover-foreground)",
+    // Astrolabe: Vim's drawn selection (see `vimMode`).
+    "--atlas-selection": "color-mix(in oklab, var(--ring) 30%, transparent)",
+    "--atlas-selection-unfocused": "color-mix(in oklab, var(--muted-foreground) 20%, transparent)",
   },
   "&.cm-focused": { outline: "none" },
   // The editor element carries the prompt's font, leading, wrapping, and size limits.
@@ -159,6 +165,14 @@ const composerTheme = EditorView.theme({
   "&.cm-editor .cm-content": { padding: "0", caretColor: "currentColor" },
   ".cm-lineWrapping": { whiteSpace: "inherit" },
   ".cm-line": { padding: "0" },
+  // Vim's ex line (`:`) opens beneath the draft.
+  ".cm-panels": { backgroundColor: "transparent", color: "inherit" },
+  ".cm-panels-bottom": { borderTop: "1px solid var(--border)" },
+});
+
+const COMPOSER_VIM_KEYS = appVimKeys((view) => {
+  const form = view.dom.closest("form");
+  return form ? { label: "Send the draft", run: () => form.requestSubmit() } : null;
 });
 
 function clampOffset(text: string, position: number) {
@@ -210,6 +224,10 @@ export class ComposerEditor {
   private citationRequest: ComposerCitationCommentRequest | null = null;
   private readonly editableSlot = new Compartment();
   private readonly presentationSlot = new Compartment();
+  private readonly vimSlot = new Compartment();
+  private readonly undoHistory = composerHistory(() => this.view);
+  private vim: boolean;
+  private readonly markdownKeys: LivePreviewOptions["keys"];
 
   constructor(options: {
     parent?: HTMLElement;
@@ -218,10 +236,16 @@ export class ComposerEditor {
     cursor: number;
     disabled: boolean;
     presentation: ComposerEditorPresentation;
+    /** Vim mode (the device's setting); `setVim` switches it in place. */
+    vim?: boolean;
+    /** Astrolabe: the formatting commands' keys, from the keybindings; else the defaults. */
+    markdownKeys?: LivePreviewOptions["keys"];
     registry: ComposerChipRegistry;
     host: () => ComposerEditorHost;
   }) {
     this.mode = options.mode;
+    this.vim = options.vim ?? false;
+    this.markdownKeys = options.markdownKeys;
     this.registry = options.registry;
     this.host = options.host;
     const { value } = options;
@@ -238,6 +262,8 @@ export class ComposerEditor {
         extensions: this.extensions(options.disabled, options.presentation),
       }),
     });
+    // The composer is for typing: Vim starts there, rather than in normal mode.
+    if (this.vim) enterInsertMode(this.view);
   }
 
   destroy() {
@@ -251,7 +277,7 @@ export class ComposerEditor {
       // Only `\n` breaks lines, so a CRLF draft keeps its `\r` and the value stays verbatim.
       EditorState.lineSeparator.of("\n"),
       EditorView.lineWrapping,
-      composerHistory(),
+      this.undoHistory.extension,
       this.editableSlot.of(editableExtension(disabled)),
       this.presentationSlot.of(presentationExtension(presentation)),
       Prec.highest(
@@ -272,11 +298,28 @@ export class ComposerEditor {
               this.surroundSelection(view, from, to, text),
             ),
           ],
-      rich ? livePreview({ reservedKeys: APP_OWNED_KEYS, tabIndentsProse: false }) : [],
+      rich
+        ? livePreview({
+            reservedKeys: APP_OWNED_KEYS,
+            tabIndentsProse: false,
+            ...(this.markdownKeys ? { keys: this.markdownKeys } : {}),
+          })
+        : [],
       keymap.of(KEYS),
       EditorView.updateListener.of((update) => this.onUpdate(update)),
       composerTheme,
+      // After the composer's key handler at the same precedence, so the composer sees every
+      // key first; Vim's own handler sits below both.
+      this.vimSlot.of(this.vimExtension()),
     ];
+  }
+
+  // The mode shows in the font (code outside insert mode), not the package's panel. Space
+  // opens the keyboard menu and `:` the palette's ex line, whose `:w` sends the draft as the
+  // send button does.
+  private vimExtension(): Extension {
+    if (!this.vim) return [];
+    return [vimMode(this.undoHistory.vim, { panel: false }), vimNormalModeFont, COMPOSER_VIM_KEYS];
   }
 
   // ── Cursor spaces ─────────────────────────────────────────────────────────
@@ -360,6 +403,8 @@ export class ComposerEditor {
   private suppressesTrigger(state: EditorState, snapshot: ComposerEditorSnapshot) {
     return (
       this.mode === "literal" ||
+      // `@` and `$` menus open while typing, not while Vim moves the caret in normal mode.
+      vimInsertMode(this.view) === false ||
       (this.mode === "rich" && codeBlockAt(state, snapshot.expandedCursor) !== null) ||
       isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "left") ||
       isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "right")
@@ -406,6 +451,8 @@ export class ComposerEditor {
       this.citationRequest = null;
       this.openCitationAt(pendingCitation);
     }
+    // The store empties the prompt when it is sent: Vim is back to typing for the next one.
+    if (value === "" && current !== "") enterInsertMode(this.view);
   }
 
   // ── Handle ────────────────────────────────────────────────────────────────
@@ -498,6 +545,14 @@ export class ComposerEditor {
     this.view.dispatch({ effects: this.editableSlot.reconfigure(editableExtension(disabled)) });
   }
 
+  /** Switches Vim mode in place, keeping the draft; Vim starts in insert mode. */
+  setVim(vim: boolean) {
+    if (this.vim === vim) return;
+    this.vim = vim;
+    this.view.dispatch({ effects: this.vimSlot.reconfigure(this.vimExtension()) });
+    if (vim) enterInsertMode(this.view);
+  }
+
   setPresentation(presentation: ComposerEditorPresentation) {
     this.view.dispatch({
       effects: this.presentationSlot.reconfigure(presentationExtension(presentation)),
@@ -569,6 +624,11 @@ export class ComposerEditor {
       event.stopPropagation();
       return true;
     };
+    // Outside Vim's insert mode the keys are Vim's; Mod+Enter still reaches the composer, to send.
+    if (vimInsertMode(view) === false) {
+      const send = event.key === "Enter" && (event.metaKey || event.ctrlKey);
+      return send && this.host().onCommandKeyDown?.("Enter", event) ? claim() : false;
+    }
     const plainModifiers = !event.altKey && !event.metaKey && !event.ctrlKey;
     // Shift+Tab from just after a citation reaches its comment button, which native tab
     // order skips because the chip lives inside the editor.

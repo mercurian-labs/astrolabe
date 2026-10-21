@@ -4,7 +4,7 @@ A wiki is a folder of linked notes that you and your agents keep together: plain
 
 ## Add a wiki
 
-Open **Wikis** in the icon rail (or search for "Open wikis" in the command palette). The sidebar lists documents in place of threads. Its filter picks one wiki or all of them, as the project filter does for threads, and holds **Add a folder**, which registers a git repository you already have, and **New wiki**, which creates an empty one. A wiki's settings (its folder, mirror, and removing it) open from the gear on its row in the filter.
+Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter picks one wiki or all of them, as the project filter does for threads, and holds **Add a folder**, which registers a git repository you already have, and **New wiki**, which creates an empty one. A wiki's settings (its folder, mirror, and removing it) open from the gear on its row in the filter.
 
 Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, and files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them. Adding a wiki also adds its folder as a project, so you can start threads in it.
 

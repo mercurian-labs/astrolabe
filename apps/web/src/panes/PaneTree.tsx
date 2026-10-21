@@ -3,7 +3,8 @@ import { Fragment, useEffect, useRef, useState, type PointerEvent } from "react"
 import { cn } from "../lib/utils";
 import { resizePanes } from "./arrangement";
 import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
-import { usePanesHost, type PaneArrangementSnapshot } from "./panesHost";
+import { panesSlot } from "../whichKey/handles";
+import { usePanesHost, usePanesLayoutKey, type PaneArrangementSnapshot } from "./panesHost";
 import { PaneView } from "./PaneView";
 import {
   findLeaf,
@@ -34,6 +35,14 @@ export function PaneTree({
 }) {
   const { arrangement, hostPaneId } = snapshot;
   const maximizedId = useMaximizedPaneId();
+  // The keyboard menu and the ex line act on the panes on screen (see `panesSlot`).
+  const { controller, tabs } = usePanesHost();
+  const layoutKey = usePanesLayoutKey();
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(
+    () => panesSlot.register({ controller, tabs, layoutKey, element: () => root.current }),
+    [controller, layoutKey, tabs],
+  );
   // Maximizing ends once the pane is gone or the last one left, so a later split shows every
   // pane rather than maximizing again.
   const maximized =
@@ -47,6 +56,7 @@ export function PaneTree({
   }, [maximized, maximizedId]);
   return (
     <div
+      ref={root}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-1 overflow-y-hidden",
         maximized === null ? "overflow-x-auto" : "overflow-x-hidden",

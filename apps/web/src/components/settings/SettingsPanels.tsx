@@ -1555,10 +1555,13 @@ function PromptFontRow() {
 function CodeFontRow({
   title,
   description = "Code blocks, diffs, and file previews.",
+  // Astrolabe: with Vim on, its normal mode reads in this font too.
+  vimDescription = "Code blocks, diffs, file previews, and Vim's normal mode.",
   preview,
 }: {
   title?: string;
   description?: string;
+  vimDescription?: string;
   preview?: ReactNode;
 }) {
   const settings = useScopedSettings();
@@ -1568,7 +1571,7 @@ function CodeFontRow({
     <FontFamilySettingsRow
       {...searchableSetting("code-font")}
       {...(title !== undefined ? { title } : {})}
-      description={description}
+      description={settings.vimModeEnabled ? vimDescription : description}
       defaultFamily={defaults.code}
       defaultValue={DEFAULT_UNIFIED_SETTINGS.fontFamilyCode}
       value={settings.fontFamilyCode}
@@ -1709,6 +1712,7 @@ function SimpleFontRows() {
       <CodeFontRow
         title="Monospace font"
         description="Code blocks, diffs, file previews, and the terminal."
+        vimDescription="Code blocks, diffs, file previews, the terminal, and Vim's normal mode."
         preview={
           <>
             <CodeFontPreview />

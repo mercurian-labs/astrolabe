@@ -6,6 +6,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { DEFAULT_TRIGGER_KEYBINDINGS } from "@t3tools/shared/keybindingTriggers";
 import { commandLabel } from "./KeybindingsSettings.logic";
 import {
   validateSettingsScopeSearch,
@@ -91,19 +92,29 @@ export function keybindingSearchAnchorId<Command extends KeybindingCommand>(comm
   return `keybinding-${command}` as const;
 }
 
-const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted((left, right) =>
-  commandLabel(left).localeCompare(commandLabel(right)),
+const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted(
+  (left, right) =>
+    // Astrolabe: the editors' formatting keys share keys with app shortcuts (mod+b), so a key
+    // search lands on the app's command first.
+    Number(left.startsWith("markdown.")) - Number(right.startsWith("markdown.")) ||
+    commandLabel(left).localeCompare(commandLabel(right)),
 ).map((command) => {
   const defaultKeys = DEFAULT_KEYBINDINGS.filter((binding) => binding.command === command).map(
     (binding) => binding.key,
   );
+  // Astrolabe: menu keys and aliases are bindings too.
+  const defaultTriggers = DEFAULT_TRIGGER_KEYBINDINGS.filter(
+    (binding) => binding.command === command,
+  ).map((binding) => binding.key);
   return {
     id: keybindingSearchAnchorId(command),
     title: commandLabel(command),
     to: "/settings/keybindings" as const,
-    searchTerms: [command, ...defaultKeys],
+    searchTerms: [command, ...defaultKeys, ...defaultTriggers],
     secondary: true,
-    ...(defaultKeys.length === 0 ? { targetId: "keybindings" } : {}),
+    ...(defaultKeys.length === 0 && defaultTriggers.length === 0
+      ? { targetId: "keybindings" }
+      : {}),
   };
 });
 
@@ -420,6 +431,28 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Rich text composer",
     to: "/settings/general",
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
+  },
+  // Astrolabe: Vim in the composer and wiki notes, the keyboard menu's leader key, and the vimrc,
+  // on the Keybindings page.
+  {
+    id: "vim-mode",
+    title: "Vim keybindings",
+    to: "/settings/keybindings",
+    searchTerms: ["vim vi modal normal insert mode keys composer editor notes wiki"],
+  },
+  {
+    id: "leader-key",
+    title: "Leader key",
+    to: "/settings/keybindings",
+    searchTerms: ["leader space key which-key keyboard menu shortcuts lazyvim mapleader"],
+  },
+  {
+    id: "vim-configuration",
+    title: "Vim configuration",
+    to: "/settings/keybindings",
+    searchTerms: [
+      "vimrc vim map nmap imap noremap mappings keys jk escape timeout pcre regex search patterns options configuration",
+    ],
   },
   {
     id: "composer-collapse",

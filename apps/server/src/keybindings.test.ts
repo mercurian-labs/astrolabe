@@ -363,6 +363,195 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(layerKeybindings())),
   );
 
+  it.effect("moves an untouched mod+k from the palette to the keyboard menu, once", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      const when = "!terminalFocus";
+      const palette = { key: "mod+k", command: "commandPalette.toggle", when } as const;
+      const modK = Effect.map(readKeybindingsConfig(keybindingsConfigPath), (rules) =>
+        rules.filter((entry) => entry.key === "mod+k"),
+      );
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [palette]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      assert.deepStrictEqual(yield* modK, [{ key: "mod+k", command: "whichKey.open", when }]);
+
+      // Putting the palette back on mod+k afterwards survives the next startup.
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [palette]);
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      assert.deepStrictEqual(yield* modK, [palette]);
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect("leaves a customized palette shortcut and gives the menu mod+k", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      const custom = { key: "mod+shift+p", command: "commandPalette.toggle" } as const;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [custom]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.deepStrictEqual(
+        persisted.filter(
+          (entry) => entry.command === "commandPalette.toggle" || entry.command === "whichKey.open",
+        ),
+        [{ key: "mod+k", command: "whichKey.open", when: "!terminalFocus" }, custom],
+      );
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  // Astrolabe: menu keys, aliases, and `-command` removals.
+  it.effect("loads menu, alias, and removal rules and reports malformed ones", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* fs.writeFileString(
+        keybindingsConfigPath,
+        JSON.stringify([
+          { key: "menu g x", command: "chat.new" },
+          { key: ":wq", command: "draft.write" },
+          { key: "menu t ]", command: "-chatTab.next" },
+          { key: "mod+u", command: "-usage.open" },
+          { key: "menu gx", command: "chat.new" },
+          { key: ":w1", command: "draft.write" },
+          { key: "menu x", command: "chat.new", when: "editorFocus" },
+        ]),
+      );
+
+      const configState = yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        return yield* keybindings.loadConfigState;
+      });
+
+      const { triggers, unboundCommands } = configState.keybindingTriggers;
+      assert.deepInclude(triggers, { kind: "menu", command: "chat.new", sequence: ["g", "x"] });
+      assert.deepEqual(
+        triggers.filter((trigger) => trigger.command === "draft.write"),
+        [{ kind: "alias", command: "draft.write", name: "wq", shortest: 2 }],
+      );
+      assert.isFalse(triggers.some((trigger) => trigger.command === "chatTab.next"));
+      assert.isFalse(configState.keybindings.some((entry) => entry.command === "usage.open"));
+      assert.deepEqual(unboundCommands, ["usage.open"]);
+      assert.deepEqual(
+        configState.issues.map((issue) =>
+          issue.kind === "keybindings.invalid-entry" ? issue.index : -1,
+        ),
+        [4, 5, 6],
+      );
+      assert.deepEqual(
+        configState.issues.map((issue) => issue.message),
+        [
+          'Invalid menu keys "menu gx": write "menu" and then single keys, spaced (menu g w)',
+          'Invalid alias ":w1": write a colon and letters, with an optional tail in brackets (:q[uit])',
+          "Menu keys and aliases take no `when`",
+        ],
+      );
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect("backfills default shortcuts per kind, and a removal counts as the command's", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "menu x", command: "chat.new" },
+        { key: "mod+u", command: "-usage.open" },
+      ]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.isTrue(
+        persisted.some((entry) => entry.command === "chat.new" && entry.key === "mod+n"),
+      );
+      assert.isFalse(persisted.some((entry) => entry.command === "usage.open"));
+      // Menu and alias defaults stay in code, out of the file.
+      assert.isFalse(
+        persisted.some((entry) => entry.key.startsWith("menu") && entry.command !== "chat.new"),
+      );
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect("moves an untouched PR-number shortcut out of editors, once", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "mod+shift+k", command: "pullRequest.copyNumber", when: "!terminalFocus" },
+      ]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.deepEqual(
+        persisted.filter((entry) => entry.command === "pullRequest.copyNumber"),
+        [
+          {
+            key: "mod+shift+k",
+            command: "pullRequest.copyNumber",
+            when: "!terminalFocus && !editorFocus",
+          },
+        ],
+      );
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect("moves an untouched mod+p from the file picker to the Command Palette, once", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      const when = "!terminalFocus";
+      const filePicker = { key: "mod+p", command: "filePicker.toggle", when } as const;
+      const modP = Effect.map(readKeybindingsConfig(keybindingsConfigPath), (rules) =>
+        rules.filter((entry) => entry.key === "mod+p" || entry.command === "filePicker.toggle"),
+      );
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [filePicker]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      assert.deepStrictEqual(yield* modP, [{ key: "mod+p", command: "commandLine.open", when }]);
+
+      // Putting the file picker back on mod+p afterwards survives the next startup.
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [filePicker]);
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      assert.deepStrictEqual(yield* modP, [filePicker]);
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect("leaves a customized file picker shortcut, still winning over the palette's", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      const custom = { key: "mod+p", command: "filePicker.toggle" } as const;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [custom]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      // The later rule wins, so the user's file picker keeps mod+p.
+      assert.deepStrictEqual(
+        persisted.filter((entry) => entry.key === "mod+p"),
+        [{ key: "mod+p", command: "commandLine.open", when: "!terminalFocus" }, custom],
+      );
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect("upserts and removes a removal rule, and the result carries the triggers", () =>
+    Effect.gen(function* () {
+      const keybindings = yield* Keybindings.Keybindings;
+      const removal = { key: "menu g w", command: "-section.wikis" } as const;
+      yield* keybindings.upsertKeybindingRule(removal);
+      const removed = (yield* keybindings.getSnapshot).keybindingTriggers.triggers.filter(
+        (trigger) => trigger.command === "section.wikis",
+      );
+      assert.deepEqual(removed, [{ kind: "menu", command: "section.wikis", sequence: ["w", "w"] }]);
+
+      yield* keybindings.removeKeybindingRule(removal);
+      const restored = (yield* keybindings.getSnapshot).keybindingTriggers.triggers.filter(
+        (trigger) => trigger.command === "section.wikis",
+      );
+      assert.lengthOf(restored, 2);
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
   it.effect("skips conflicting default keybindings on startup and logs a detailed warning", () => {
     const messages: string[] = [];
     const logger = Logger.make(({ message }) => {

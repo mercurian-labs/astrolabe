@@ -151,6 +151,13 @@ import {
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
+  ServerRemoveVimMappingInput,
+  ServerSetVimOptionInput,
+  ServerUpsertVimMappingInput,
+  ServerVimrc,
+  VimrcConfigError,
+} from "./vimrc.ts";
+import {
   OrchestrationSearchThreadsError,
   OrchestrationSearchThreadsInput,
   OrchestrationSearchThreadsResult,
@@ -505,6 +512,10 @@ export const WS_METHODS = {
   serverCommitDesktopUpdate: "server.commitDesktopUpdate",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
+  // Astrolabe: the vimrc's mappings and options.
+  serverUpsertVimMapping: "server.upsertVimMapping",
+  serverRemoveVimMapping: "server.removeVimMapping",
+  serverSetVimOption: "server.setVimOption",
   serverRunStorageCleanup: "server.runStorageCleanup",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
@@ -636,6 +647,24 @@ const WsServerRemoveKeybindingRpc = Rpc.make(WS_METHODS.serverRemoveKeybinding, 
   payload: ServerRemoveKeybindingInput,
   success: ServerRemoveKeybindingResult,
   error: Schema.Union([KeybindingsConfigError, EnvironmentAuthorizationError]),
+});
+
+const WsServerUpsertVimMappingRpc = Rpc.make(WS_METHODS.serverUpsertVimMapping, {
+  payload: ServerUpsertVimMappingInput,
+  success: ServerVimrc,
+  error: Schema.Union([VimrcConfigError, EnvironmentAuthorizationError]),
+});
+
+const WsServerRemoveVimMappingRpc = Rpc.make(WS_METHODS.serverRemoveVimMapping, {
+  payload: ServerRemoveVimMappingInput,
+  success: ServerVimrc,
+  error: Schema.Union([VimrcConfigError, EnvironmentAuthorizationError]),
+});
+
+const WsServerSetVimOptionRpc = Rpc.make(WS_METHODS.serverSetVimOption, {
+  payload: ServerSetVimOptionInput,
+  success: ServerVimrc,
+  error: Schema.Union([VimrcConfigError, EnvironmentAuthorizationError]),
 });
 
 const WsServerProbeRpc = Rpc.make(WS_METHODS.serverProbe, {
@@ -1816,6 +1845,8 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
      * client would send it to the provider as an ordinary prompt.
      */
     usageLimitsCommand: Schema.optional(Schema.Boolean),
+    /** Astrolabe: whether this client understands `vimrcUpdated` events. */
+    vimrc: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
@@ -2236,6 +2267,9 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
  * each group's handlers separately and serves them together through `WsRpcGroup`.
  */
 export const WsAstrolabeRpcGroup = RpcGroup.make(
+  WsServerUpsertVimMappingRpc,
+  WsServerRemoveVimMappingRpc,
+  WsServerSetVimOptionRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
   WsWikiRegisterRpc,

@@ -219,12 +219,12 @@ Column key for the summary table at the end of this section: scope (block / inli
 All bindings are registered above the host's default keymap. Mod is Cmd on macOS and Ctrl elsewhere. Each selection range is handled independently.
 
 - **Mod-b bold `**`, Mod-i italic `*`, Mod-e inline code, Mod-Shift-x strikethrough `~~`, Mod-Shift-h highlight `==`.** Rules per range: if the range is inside or exactly spans a matching span (boundaries count), unwrap it and keep the same text selected; else if the range is non-empty, wrap it exactly and keep the text selected; else if the caret touches a word, wrap the word and place the caret at the end of the wrapped word; else insert an empty pair with the caret between. Each toggle is one undo step. Wrapping never happens inside a fenced code block or inline code; the key falls through. Mod-i inside bold produces bold-italic; Mod-i inside bold-italic removes the italic layer. DECIDED (owner-visible improvement over the reference's edge behaviour).
-- **Mod-k link.** With a selection, wrap as `[selection](|)` with the caret in the parens; with a URL selected, wrap as `[|](url)` with the caret in the brackets; with a caret on a word, wrap the word. Pasting a URL over a selected word makes a link. DOCUMENTED.
+- **Mod-Shift-k link.** With a selection, wrap as `[selection](|)` with the caret in the parens; with a URL selected, wrap as `[|](url)` with the caret in the brackets; with a caret on a word, wrap the word. Pasting a URL over a selected word makes a link. DOCUMENTED.
 - **Enter in a list item** continues the list with the same marker, the same indentation, and for ordered lists the **next number in the item's own style** (`1. 1.` lists continue as `1.`; sequential lists continue with n+1) and never renumbers other items. Enter on an empty item removes the marker and exits to the previous indent level in one step, with no blank line inserted. Enter in the middle of an item splits it. Enter on a task item continues with `- [ ]`. DECIDED (fixes four contradictions with the UX guide).
 - **Enter in a blockquote** continues with `> `; Enter on an empty `> ` line exits the quote in one step.
 - **Enter inside a fenced code block** inserts a newline and copies the current line's indentation.
 - **Tab / Shift-Tab in a list item** indent and outdent the item (and its nested children) by the parent's indentation unit, regardless of caret position in the line. Elsewhere Tab inserts an indent. DOCUMENTED. A host whose editor sits in a form may turn prose indentation off (`tabIndentsProse: false`): Tab then acts only in tables, list items, and code, and elsewhere falls through to the page's focus order. DECIDED.
-- **Reserved keys.** A host may list bindings it owns (`reservedKeys`, such as `Mod-k` for a command palette); the preview leaves them unbound. DECIDED.
+- **Reserved keys.** A host may list bindings it owns (`reservedKeys`, such as `Mod-Shift-x` for a picker); the preview leaves them unbound. DECIDED.
 - **Backspace** at the start of a list item's text removes the marker; at the start of an empty quote line removes `> `; elsewhere deletes one character or one hidden atomic range (2.5).
 - **Typing the closing marker** at the end of an emphasis span (`**bold` then `**`) closes it and continues plain, which is simply the parser recognising the span. No auto-pairing of markers. DECIDED.
 - **Typing `- `, `* `, `1. `, `> `, `# `** at line start is not transformed; it simply becomes the construct as the parser recognises it. No input rules rewrite text. DECIDED.
@@ -240,7 +240,8 @@ An optional modal editing layer (`@replit/codemirror-vim`), off by default, swit
 - **Inside an active table cell**, Escape in insert mode returns to normal mode within the cell; Escape in normal mode leaves the cell (4.11's Escape rule). Cell editors run the same Vim layer as the outer editor, so modes are consistent; `j`/`k` at a cell's edge move between rows as the arrow keys do.
 - **Visual mode** selects as the mouse does, revealing what it covers (2.1); a visual selection inside a cell stays inside the cell.
 - **Ex line.** `:` opens the ex line; `:w` is a no-op that reports nothing (the document is always saved through Yjs); `:q` is ignored. Hosts may define their own ex commands.
-- **A mode indicator** is drawn as a panel at the bottom of the editor when Vim mode is on (the package's status panel), so the mode is never ambiguous.
+- **A mode indicator** is drawn as a panel at the bottom of the editor when Vim mode is on (the package's status panel), so the mode is never ambiguous. A host may show the mode itself instead (Astrolabe sets the text in the monospace font outside insert mode) and turn the panel off.
+- **The selection is drawn** by CodeMirror's selection layer while Vim is on, since Vim hides the native one; the host colours it.
 - **Yank and paste** use Vim's registers; the system clipboard is reachable through the `+` and `*` registers. Rectangle selection in tables is unaffected.
 
 ## 6. URL policy
@@ -341,7 +342,7 @@ Every item is a test the implementer writes. "Caret at N" is a collapsed selecti
 - A48. `hello  world`, caret at 6, Mod-b: `hello **** world`, caret at 8.
 - A49. Mod-i inside `**x**`: `***x***`; Mod-i inside `***x***`: `**x**`.
 - A50. Mod-e wraps in backticks; Mod-Shift-x in `~~`; Mod-Shift-h in `==`.
-- A51. Mod-k on selected `docs`: `[docs](|)`. Pasting `https://x` over selected `docs`: `[docs](https://x)`.
+- A51. Mod-Shift-k on selected `docs`: `[docs](|)`. Pasting `https://x` over selected `docs`: `[docs](https://x)`.
 - A52. `- one|`, Enter, type `two`: `- one/- two`. `1. a/2. b|`, Enter: `1. a/2. b/3. |`. `1. a/1. b|`, Enter: `1. a/1. b/1. |`. `1. a|/2. b`, Enter: `1. a/2. |/2. b` (no renumbering of `2. b`).
 - A53. `- a/- |`, Enter: `- a/|` with no blank line. `- a/  - |`, Enter: `- a/- |`.
 - A54. `- [ ] a|`, Enter: `- [ ] a/- [ ] |`.

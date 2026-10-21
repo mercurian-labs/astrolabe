@@ -15,11 +15,14 @@ export function KeybindingsConfigWarning({
   environmentId,
   configPath,
   availableEditors,
+  fileName = "keybindings.json",
 }: {
   message: string;
   environmentId: EnvironmentId | null;
   configPath: string | null;
   availableEditors: readonly EditorId[];
+  /** Astrolabe: the file the button opens, as it names it (the vimrc's warning opens `vimrc`). */
+  fileName?: string;
 }) {
   const canOpenEditor = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const openInEditor = useOpenInPreferredEditor(environmentId, availableEditors);
@@ -40,13 +43,13 @@ export function KeybindingsConfigWarning({
             toastManager.add(
               stackedThreadToast({
                 type: "error",
-                title: "Unable to open keybindings file",
+                title: `Unable to open ${fileName}`,
                 description: error instanceof Error ? error.message : "Unknown error opening file.",
               }),
             );
           }}
         >
-          Open keybindings.json
+          Open {fileName}
         </Button>
       </span>
     </>

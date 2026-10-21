@@ -1,7 +1,18 @@
 # Keybindings
 
-Customize shortcuts in **Settings → Keybindings** on web and desktop. That page
-also lists the command IDs and defaults available in your version.
+Customize keybindings in **Settings → Keybindings** on web and desktop. That page
+lists every bound command once, with a column for each kind of keybinding:
+
+- **Shortcut**: a key chord such as `mod+w`.
+- **Menu keys**: keys pressed in the [keyboard menu](#keyboard-menu), after
+  `mod+k` or the leader key, such as `t` `c`.
+- **Alias**: a short name typed in the [Command Palette](#command-palette), such
+  as `q[uit]`.
+
+Click a binding to change it, or hover a cell and click `+` to add one of that
+kind. A removed default stays in its cell, struck through; the row's `⋯` menu
+removes, resets, and restores bindings. Filter the table to one kind, or search
+for a command's name or keys (`t ]` finds Chat Tab: Next).
 
 ## Composer controls
 
@@ -44,10 +55,107 @@ on macOS and Ctrl on Windows and Linux, including GNOME, KDE Plasma, Niri, and
 Hyprland. If a custom desktop shortcut takes the same keys, choose another binding
 in Settings.
 
+## Vim mode
+
+Turn on **Settings → Keybindings → This device → Vim keybindings** to edit the
+composer and wiki notes with Vim's modes and motions on web and desktop. Before it turns on, you
+type `:q` and press Enter in the small Vim editor that opens, to show you know
+the way out. Turning it off is one click.
+
+The composer starts in insert mode, where Enter sends and its other keys work as
+usual, and it returns to insert mode after each send. Escape enters normal mode
+without leaving the composer; the draft shows in the code font until you insert
+again. Outside insert mode Enter and the arrow keys are Vim's, and `mod+Enter`
+still sends. Notes start in normal mode, and like the draft read in the code font
+outside insert mode. The code font is **Settings → Appearance → Typography →
+Monospace font**. In normal mode, `:` opens the Command Palette (below) instead
+of Vim's command line, and the leader key opens the keyboard menu.
+
+### Vim configuration
+
+Vim reads a `vimrc` file kept on the server, next to `keybindings.json`, so it
+follows you to every device connected to that server. **Settings → Keybindings →
+Vim** edits it:
+
+- **Key mappings**: a row per mapping, with its mode (Normal, Visual, Insert, or
+  All), its keys, and the keys it sends. Press the keys or type them in Vim
+  notation (`<C-d>`, `<Space>`). A mapping does not remap what it sends unless you
+  turn on **Recursive**.
+- **Search patterns**: JavaScript regular expressions (`set pcre`, the default) or
+  Vim's (`set nopcre`).
+- **Escape key timeout**: how long insert mode waits for the rest of a mapping such
+  as `jk` (`set insertModeEscKeysTimeout`, 200 ms by default).
+
+**Open vimrc** opens the file in your editor; a save applies at once. It takes
+`map`, `noremap`, and `unmap` with their mode prefixes (`nmap`, `inoremap`, `xmap`,
+`omap`…), `set`, and `"` comments, one per line. An `unmap` removes a mapping the
+same file made; built-in keys are not mappings. Settings keeps the lines it does
+not show, and a line Vim cannot apply is reported when the file changes.
+
+```vim
+" jk leaves insert mode
+inoremap jk <Esc>
+nnoremap Y y$
+set textwidth=100
+```
+
+## Keyboard menu
+
+On web and desktop, `mod+k` opens the keyboard menu in the main area's top-right
+corner. Press a key to run its command or open its group, or pick a row with
+the mouse, or with the arrow keys and Enter (on a Mac, `Ctrl+N` and `Ctrl+P`
+move too). The keys you have pressed show at the top, Backspace goes back a
+level, and Escape or a click elsewhere closes it. A key with nothing bound says
+so. The menu waits as long as you need.
+
+| Key     | Does                                                    |
+| ------- | ------------------------------------------------------- |
+| `:`     | Command Palette                                         |
+| `/`     | Search threads, wiki documents, projects, and settings  |
+| `n`     | New thread, or new document on Wikis                    |
+| `f`     | Find a file in the current project                      |
+| `g`     | Go to Threads, Wikis, Pull Requests, Usage, or Settings |
+| `t`     | Chat tabs: next, previous, close, reopen closed         |
+| `p`     | Panes: split right or down, close, maximize             |
+| `s` `s` | Show or hide the sidebar                                |
+| `w`     | Open Wikis, or find or create a document                |
+| `,`     | Settings                                                |
+
+These are the defaults. A row lists every key in its group that runs the same
+command, joined by `|`. Press `mod+k` again to open Search, as `/` does. Change
+either shortcut in **Settings → Keybindings** under **Keyboard Menu: Open** and
+**Search**. The file picker has no shortcut by default (`mod+p` opens the Command
+Palette); bind **File Picker: Toggle** to give it one.
+
+The leader key opens the same menu while you are not typing or on a button, and
+in the composer and notes in Vim's normal and visual modes. It is Space unless
+you choose another key, or None, in **Settings → Keybindings → This device →
+Leader key**; `mod+k` works either way. The menu appears after a moment, so a
+quick sequence like Space `g` `w` runs without it showing.
+
+In the composer and wiki notes, `mod+shift+k` inserts a link. Elsewhere it copies
+an open pull request's number (below).
+
+### Command Palette
+
+`mod+p` opens the Command Palette, as does `:` in the keyboard menu. In Search,
+type `>` or `:` first to switch to it; Backspace in its empty field switches back.
+It is marked by a chevron in place of the search icon. Empty, it lists every
+command with its alias or menu keys and its shortcut, followed by the app's
+actions, such as changing the theme. Type to filter them by name.
+
+An alias runs its command directly: `q` closes the tab, `w` sends the draft or
+saves the note, `sp` and `vs` split the pane, `e name` opens or creates a wiki
+document, `b name` switches to a thread, and `noh` clears a Vim search
+highlight. An alias works by any abbreviation down to its shortest form, so `q`,
+`qu`, and `quit` all close the tab. From the composer or a note, other Vim
+commands such as `s/old/new/` run in that editor.
+
 ## Copy pull request references
 
 With a PR open in the right panel or on the Pull Requests page, use `mod+shift+c`
-to copy its URL and `mod+shift+k` to copy its number with a `#` prefix.
+to copy its URL and `mod+shift+k` (outside the composer and notes) to copy its
+number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
 
@@ -89,14 +197,35 @@ It is a JSON array of rules:
 ```
 
 T3 Code creates the file with its defaults and adds new defaults on later startups.
-New defaults do not replace commands you customized. If a new default overlaps one
+New defaults do not replace commands you customized. A file that still has the
+old `mod+p` file picker default gets the Command Palette in its place, once. If a new default overlaps one
 of your shortcuts, [rule order](#precedence) decides which runs.
 Invalid rules are ignored; if the file cannot be parsed, T3 Code uses defaults.
 
 ## Rule shape
 
-Each rule requires a `key` shortcut and a `command` ID. An optional `when`
-expression restricts when it runs.
+Each rule requires a `key` and a `command` ID. The key is one of three kinds:
+
+- a shortcut: `{ "key": "mod+k", "command": "whichKey.open" }`
+- menu keys, after the word `menu`, single keys spaced:
+  `{ "key": "menu g w", "command": "section.wikis" }`. A new group shows as `+`
+  and its number of entries.
+- an alias, after a colon, in Vim's notation with the bracketed tail optional:
+  `{ "key": ":q[uit]", "command": "tab.close" }`
+
+An optional `when` expression restricts when a shortcut runs. A rule replaces
+the defaults of its own command and trigger kind only: a new shortcut for
+`chat.new` keeps its menu keys. Only the shortcut defaults are written to the
+file; menu keys and aliases stay built in.
+
+To remove a default, put `-` before the command and repeat its key:
+`{ "key": "menu t ]", "command": "-chatTab.next" }`. Write an alias in full
+(`:q[uit]` or `:quit`). The Keybindings page does this when you remove a default
+menu key or alias, and can restore it.
+
+The composer's and notes' formatting keys are commands too: `markdown.bold`,
+`markdown.italic`, `markdown.code`, `markdown.strikethrough`,
+`markdown.highlight`, and `markdown.link`, with the `editorFocus` condition.
 
 Project scripts use `script.{id}.run`, such as `script.test.run`.
 
@@ -110,9 +239,9 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
 `previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
-`turnRunning`, `editableFocus`, `isWeb`, and `isDesktop`.
+`turnRunning`, `editableFocus`, `editorFocus`, `isWeb`, and `isDesktop`.
 `editableFocus` is true while a text field, the composer, or another editor has
-the keyboard. `isWeb` is true in a browser tab. `isDesktop` is true in the
+the keyboard. `editorFocus` is true while the composer or a wiki note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the

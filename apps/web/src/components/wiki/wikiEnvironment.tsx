@@ -32,14 +32,17 @@ export function useWikiEnvironment(requested: EnvironmentId | undefined) {
 
 /**
  * Every wiki on every connected server, with its index and change requests as they arrive.
- * `loading` holds while any server's list has not arrived yet.
+ * `loading` holds while any server's list has not arrived yet. With `enabled` false it asks for
+ * none, for a caller that needs them only sometimes (the palette's `:e`).
  */
-export function useWikiOverviews(): {
+export function useWikiOverviews(enabled = true): {
   readonly overviews: ReadonlyArray<WikiOverview>;
   readonly loading: boolean;
 } {
   const { environments } = useEnvironments();
-  const key = JSON.stringify(environments.map((environment) => environment.environmentId));
+  const key = JSON.stringify(
+    enabled ? environments.map((environment) => environment.environmentId) : [],
+  );
   const lists = useAtomValue(wikiOverviewsAtom(key));
   return useMemo(
     () => ({

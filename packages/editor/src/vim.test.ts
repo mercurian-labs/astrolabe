@@ -2,13 +2,23 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import { Vim, getCM, vim as packageVim, type CodeMirrorV } from "@replit/codemirror-vim";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { AtlasEditor } from "./editor.tsx";
 import { caret, destroyViews, finishParse, mount } from "./markdown/testSupport.ts";
-import { vimMode, type VimHistory } from "./vim.ts";
+import {
+  enterInsertMode,
+  runVimEx,
+  vimAtRest,
+  vimConfiguration,
+  vimExLine,
+  vimHostKeys,
+  vimInsertMode,
+  vimMode,
+  type VimHistory,
+} from "./vim.ts";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -595,6 +605,198 @@ describe("Vim mode", () => {
       expect(after && mode(after)).toBe("normal");
       expect(cellEditor(view)).toBe(after);
     });
+  });
+});
+
+describe("Vim for other hosts", () => {
+  const views: EditorView[] = [];
+  afterEach(() => {
+    for (const view of views.splice(0)) view.destroy();
+  });
+
+  /** A plain (not live-preview) editor with Vim, as the composer and the :q gate mount it. */
+  function plainVim(doc: string, extension: Extension = []) {
+    const view = new EditorView({
+      parent: document.body,
+      state: EditorState.create({
+        doc,
+        extensions: [vimMode(noHistory, { panel: false }), extension],
+      }),
+    });
+    views.push(view);
+    return view;
+  }
+
+  const attribute = (view: EditorView) => view.dom.getAttribute("data-vim-mode");
+
+  it("without the panel the mode still shows as data-vim-mode, insert mode from the start included", async () => {
+    const view = plainVim("hello");
+    // Before Vim's own listeners are bound, as a host does right after creating the editor.
+    enterInsertMode(view);
+    await settle();
+    expect(panel(view)).toBeNull();
+    expect(vimInsertMode(view)).toBe(true);
+    expect(attribute(view)).toBe("insert");
+
+    press(view, "Escape");
+    expect(vimInsertMode(view)).toBe(false);
+    expect(vimAtRest(view)).toBe(true);
+    expect(attribute(view)).toBe("normal");
+
+    press(view, "v");
+    expect(attribute(view)).toBe("visual");
+    expect(vimAtRest(view)).toBe(false);
+    enterInsertMode(view);
+    expect(vimInsertMode(view)).toBe(true);
+    expect(attribute(view)).toBe("insert");
+  });
+
+  it("reports nothing without Vim", () => {
+    const view = new EditorView({ parent: document.body, state: EditorState.create({ doc: "x" }) });
+    views.push(view);
+    expect(vimInsertMode(view)).toBeNull();
+    expect(vimAtRest(view)).toBe(false);
+    expect(attribute(view)).toBeNull();
+  });
+
+  it("reports each ex command before Vim runs it, and never a search", () => {
+    const submitted: string[] = [];
+    const view = plainVim(
+      "hello",
+      vimExLine((input) => submitted.push(input)),
+    );
+    const enter = (keys: string, value: string) => {
+      press(view, keys);
+      const input = view.dom.querySelector<HTMLInputElement>(".cm-panels input");
+      if (!input) throw new Error(`no prompt for ${keys}`);
+      input.value = value;
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          keyCode: 13,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+
+    enter(":", "q");
+    // Vim ran it, as this layer's `:q`: nothing, and no "Not an editor command".
+    expect(view.dom.textContent).not.toContain("Not an editor command");
+    enter("/", "hello");
+    enter(":", "w");
+    expect(submitted).toEqual(["q", "w"]);
+  });
+
+  /** An editor whose host takes Space and `:` while `taking` says so, recording each. */
+  function hosted(doc: string, taking = { leader: true, exLine: true }) {
+    const taken: string[] = [];
+    const view = plainVim(
+      doc,
+      vimHostKeys({
+        leader: () => (taken.push("leader"), taking.leader),
+        exLine: () => (taken.push("exLine"), taking.exLine),
+      }),
+    );
+    return { view, taken };
+  }
+
+  const prompt = (view: EditorView) => view.dom.querySelector(".cm-panels input");
+
+  it("offers the host Space in normal and visual mode and : in normal mode, ahead of Vim", () => {
+    const { view, taken } = hosted("hello world");
+    press(view, " ");
+    // Taken: Vim's Space (a step right) did not run.
+    expect(view.state.selection.main.head).toBe(0);
+    press(view, ":");
+    expect(prompt(view)).toBeNull();
+    press(view, "v");
+    press(view, " ");
+    press(view, ":");
+    // Visual `:` stays Vim's: its ex line opens with the selection's range.
+    expect(prompt(view)).not.toBeNull();
+    expect(taken).toEqual(["leader", "exLine", "leader"]);
+  });
+
+  it("keeps both keys Vim's in insert mode, mid-command, and when the host declines", () => {
+    const { view, taken } = hosted("hello world", { leader: false, exLine: false });
+    press(view, " ");
+    // Declined: Space is Vim's step right.
+    expect(view.state.selection.main.head).toBe(1);
+    press(view, ":");
+    expect(prompt(view)).not.toBeNull();
+    expect(taken).toEqual(["leader", "exLine"]);
+
+    const other = hosted("hello world");
+    enterInsertMode(other.view);
+    press(other.view, " ");
+    press(other.view, "Escape");
+    // A count makes `:` a ranged ex line, which is Vim's.
+    press(other.view, "3");
+    press(other.view, ":");
+    expect(prompt(other.view)).not.toBeNull();
+    expect(other.taken).toEqual([]);
+  });
+
+  it("offers the host the leader key it names instead of Space, or none", () => {
+    const taken: string[] = [];
+    let leaderKey: string | null = ",";
+    const view = plainVim(
+      "hello world",
+      vimHostKeys({ leader: () => (taken.push("leader"), true), leaderKey: () => leaderKey }),
+    );
+    press(view, " ");
+    expect(view.state.selection.main.head).toBe(1);
+    press(view, ",");
+    expect(taken).toEqual(["leader"]);
+    leaderKey = null;
+    press(view, ",");
+    press(view, " ");
+    expect(taken).toEqual(["leader"]);
+  });
+
+  it("maps and sets options in every Vim editor, textwidth included, and undoes them", async () => {
+    const view = plainVim("one\ntwo");
+    vimConfiguration.noremap("Q", "gg", "normal");
+    expect(vimConfiguration.setOption("pcre", false)).toBeUndefined();
+    expect(Vim.getOption("pcre")).toBe(false);
+    press(view, "j");
+    press(view, "Q");
+    expect(view.state.selection.main.head).toBe(0);
+    vimConfiguration.unmap("Q", "normal");
+    vimConfiguration.setOption("pcre", true);
+    press(view, "j");
+    press(view, "Q");
+    expect(view.state.selection.main.head).not.toBe(0);
+
+    // textwidth is each editor's own in the package: it reaches open and new editors alike.
+    await Promise.resolve();
+    vimConfiguration.setOption("textwidth", 40);
+    const later = plainVim("two");
+    await Promise.resolve();
+    expect(vimConfiguration.getOption("tw")).toBe(40);
+    expect(getCM(view)?.getOption("textwidth")).toBe(40);
+    expect(getCM(later)?.getOption("textwidth")).toBe(40);
+    vimConfiguration.setOption("textwidth", 80);
+    expect(getCM(later)?.getOption("textwidth")).toBe(80);
+  });
+
+  it("runs an ex command routed back from the host, as Vim's ex line would", () => {
+    const { view } = hosted("one two one");
+    runVimEx(view, "s/one/three/g");
+    expect(view.state.doc.toString()).toBe("three two three");
+    runVimEx(view, "noh");
+    expect(view.dom.textContent).not.toContain("Not an editor command");
+  });
+
+  it("still offers Space once a routed ex command leaves its status, and closes the status", () => {
+    const { view, taken } = hosted("one two");
+    runVimEx(view, "s/one/uno/");
+    // The substitute's "Found 1 matches" notification is up, waiting for nothing.
+    expect(view.dom.textContent).toContain("Found 1 matches");
+    press(view, " ");
+    expect(taken).toEqual(["leader"]);
+    expect(view.dom.textContent).not.toContain("Found 1 matches");
   });
 });
 

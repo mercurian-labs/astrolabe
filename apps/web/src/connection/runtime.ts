@@ -35,6 +35,8 @@ const layerProvidedClientConnection = layerSnapshotLoader.pipe(
       environmentThemes: true,
       usageLimitSources: true,
       usageLimitsCommand: true,
+      // Astrolabe
+      vimrc: true,
     }),
   ),
   Layer.provideMerge(

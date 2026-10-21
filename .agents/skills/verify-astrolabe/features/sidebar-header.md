@@ -15,23 +15,37 @@ actions at its right end.
 - `link "Go to threads"` holds `img "Astrolabe"`, which is the small wordmark.
   When narrow, it falls back to the small mark, measured to fit beside the pill.
 - Title row: heading **Threads**, then **Search threads**, **Filter threads by
-  project** (combobox), **New thread**. Search is upstream's integrated search: the
-  button swaps the heading for upstream's own field, which filters the thread list
-  in place (results are upstream's slim rows). Escape clears a query; Escape on an
-  empty field brings the heading back.
-- **Icon rail** (`nav[aria-label='Sections']`, desktop only): Threads on top,
-  marked current with a bar and `aria-current="page"`. Pull Requests, Usage and
-  Settings sit at the foot, each current on its own page. Threads returns to the
+  project** (combobox; once a project is picked its name is `Filter threads by
+project: <project>`), **New thread**. Search is upstream's integrated search: the
+  button gives way to upstream's field, `combobox "Search threads"` (and a **Clear
+  thread search** button while it holds a query). Typing replaces the list with
+  `listbox "Thread search results"` (or a status: "Searching thread messages…",
+  then "No threads found"). Escape
+  clears a query; Escape on an empty field brings the heading and button back.
+  The keyboard menu's `/` opens the Search palette instead, not this field; its `n`
+  presses the row's New thread / New document button (which-key.md).
+- **New thread** creates a draft directly only with one project or on Shift+click;
+  with several projects it opens the palette's "New thread in…" picker. It is
+  disabled with no projects.
+- **Icon rail** (`nav[aria-label='Sections']`, desktop only): Threads and Wikis on
+  top, the current one marked with a bar and `aria-current="page"`. Pull Requests (when the
+  server supports it), Usage and Settings sit at the foot, each current on its own
+  page. Threads returns to the
   last chat. The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail is
-  absent, and the footer keeps Settings, Pull Requests and Usage.
+  absent, the brand link is hidden (below 768px), and the footer keeps Settings,
+  Wikis (Threads while on Wikis), Pull Requests and Usage; on Settings, Usage and
+  Pull Requests it shows only Back.
 - **Toggle main sidebar** stays at the far left of the titlebar. With the sidebar
   collapsed it sits in the rail's title-bar cell, which keeps the sidebar's colour
   and bottom border; the rail's edge starts below the title bar, never above it. The open
   sidebar's right edge also starts below the title bar; hovering the resize rail
-  (`[data-slot=sidebar-rail]`, its `::after`) draws it full height. On pages that list no threads (Settings, Usage, Pull Requests), the
-  collapsed title bar shows Search but not the project filter.
+  (`[data-slot=sidebar-rail]`, its `::after`) draws it full height. Collapsed, Search and the
+  filter follow the toggle into the main title bar, and Search reopens the sidebar
+  with its field focused. On Usage and Pull Requests the collapsed bar shows Search
+  but not the filter; on Settings (whose sidebar is the settings nav) it shows
+  neither.
 
 ## How to get to it (user POV)
 
@@ -41,14 +55,16 @@ route.
 ## Driving it with the Browser panel
 
 ```
-preview_click  role=button[name='Search threads']       # swaps the heading for the search field
-preview_click  role=combobox[name='Filter threads by project']
-preview_click  role=button[name='New thread']           # navigates to /draft/<id>
+preview_click  role=button[name='Search threads']       # swaps the heading for the field
+preview_type   role=combobox[name='Search threads']  text=<title words>
+preview_click  role=combobox[name=/^Filter threads by project/]
+preview_click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
 preview_click  role=link[name='Go to threads']
 ```
 
-**Proof:** each action's result (the field focused and the list filtered as you
-type, the project filter list, a new `/draft/` URL), plus a saved screenshot of
+**Proof:** each action's result (the field focused and
+`[role=listbox][aria-label="Thread search results"] [role=option]` rows as you
+type, the project filter list, the picker or a new `/draft/` URL), plus a saved screenshot of
 the rows. The borders are visual-only:
 read `getComputedStyle` widths on the header row and `[data-app-rail-cap]`. Check the wordmark is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower.
@@ -57,5 +73,7 @@ and again after dragging `Resize Sidebar` narrower.
 
 - The order of the title row's actions is a design decision still open (search,
   filter, new today). Assert presence, not order, unless the change is about order.
+- Scope locators: `navigation "Threads"` (the sidebar), the rail's `button "Threads"`
+  and `heading "Threads"` share the name.
 - Upstream reworks `Sidebar.tsx` often. After a sync, check that all three
   actions still exist with these names.

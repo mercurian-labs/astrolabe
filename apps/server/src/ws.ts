@@ -110,6 +110,8 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
+// Astrolabe
+import * as Vimrc from "./vimrc.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
@@ -347,6 +349,9 @@ export const withLateEditorConfig = <E, R>(
             return [{ ...current, providers: event.payload.providers }, [event]];
           case "settingsUpdated":
             return [{ ...current, settings: event.payload.settings }, [event]];
+          // Astrolabe
+          case "vimrcUpdated":
+            return [{ ...current, vimrc: event.payload.vimrc }, [event]];
           // Themes and usage-limit sources never ride in a snapshot; clients
           // carry their projected values across one.
           default:
@@ -1189,7 +1194,11 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
   Effect.gen(function* () {
     const wikis = yield* WikiService.WikiService;
+    const vimrc = yield* Vimrc.Vimrc;
     return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
+      [WS_METHODS.serverRemoveVimMapping]: (input) => vimrc.removeMapping(input),
+      [WS_METHODS.serverSetVimOption]: (input) => vimrc.setOption(input),
       [WS_METHODS.wikiList]: (_input) => wikis.list,
       [WS_METHODS.wikiSubscribe]: (_input) => wikis.subscribe,
       [WS_METHODS.wikiRegister]: (input) => wikis.register(input),
@@ -1289,6 +1298,8 @@ const layerWsUpstreamRpc = (
       const agentSessionImporter = yield* AgentSessionImporter.AgentSessionImporter;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
+      // Astrolabe
+      const vimrc = yield* Vimrc.Vimrc;
       const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
@@ -1725,7 +1736,11 @@ const layerWsUpstreamRpc = (
           cwd: config.cwd,
           keybindingsConfigPath: config.keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
+          // Astrolabe
+          keybindingTriggers: keybindingsConfig.keybindingTriggers,
           issues: keybindingsConfig.issues,
+          vimrcConfigPath: config.vimrcConfigPath,
+          vimrc: yield* vimrc.getSnapshot,
           providers,
           ...editorConfig,
           remoteOpenTargets: yield* resolveAvailableEditorsForConfig(
@@ -2401,13 +2416,16 @@ const layerWsUpstreamRpc = (
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(function* (rule) {
             const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule);
-            return { keybindings: keybindingsConfig, issues: [] };
+            // Astrolabe: the triggers come back too, from the state the upsert cached.
+            const { keybindingTriggers } = yield* keybindings.getSnapshot;
+            return { keybindings: keybindingsConfig, keybindingTriggers, issues: [] };
           }),
         [WS_METHODS.serverRemoveKeybinding]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(function* (rule) {
             const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
-            return { keybindings: keybindingsConfig, issues: [] };
+            const { keybindingTriggers } = yield* keybindings.getSnapshot;
+            return { keybindings: keybindingsConfig, keybindingTriggers, issues: [] };
           }),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,
@@ -3001,6 +3019,8 @@ const layerWsUpstreamRpc = (
                   type: "keybindingsUpdated" as const,
                   payload: {
                     keybindings: event.keybindings,
+                    // Astrolabe
+                    keybindingTriggers: event.keybindingTriggers,
                     issues: event.issues,
                   },
                 })),
@@ -3061,6 +3081,17 @@ const layerWsUpstreamRpc = (
                       })),
                     )
                   : Stream.empty;
+              // Astrolabe: gated like the themes, for the same reason.
+              const vimrcUpdates =
+                input.vimrc === true
+                  ? vimrc.streamChanges.pipe(
+                      Stream.map((state) => ({
+                        version: 1 as const,
+                        type: "vimrcUpdated" as const,
+                        payload: { vimrc: state },
+                      })),
+                    )
+                  : Stream.empty;
               const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
@@ -3076,7 +3107,10 @@ const layerWsUpstreamRpc = (
                   providerStatuses,
                   Stream.merge(
                     settingsUpdates,
-                    Stream.merge(environmentThemeUpdates, usageLimitSourceUpdates),
+                    Stream.merge(
+                      environmentThemeUpdates,
+                      Stream.merge(usageLimitSourceUpdates, vimrcUpdates),
+                    ),
                   ),
                 ),
               );

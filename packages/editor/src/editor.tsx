@@ -17,6 +17,11 @@ export interface AtlasEditorProps {
   extensions?: Extension[];
   /** Vim mode (live-preview spec 5.1). Switching it reconfigures the editor in place. */
   vim?: boolean;
+  /**
+   * Vim's mode panel under the editor; off for a host that shows the mode itself (see
+   * `vimNormalModeFont`). Read when the editor mounts.
+   */
+  vimPanel?: boolean;
   /** How the live preview opens links and embeds. Keep the object stable; a new one remounts. */
   livePreview?: LivePreviewOptions;
   /**
@@ -94,6 +99,7 @@ export function AtlasEditor({
   extensions,
   className,
   vim = false,
+  vimPanel = true,
   livePreview: livePreviewOptions,
   locked = false,
 }: AtlasEditorProps) {
@@ -110,6 +116,7 @@ export function AtlasEditor({
   useEffect(() => {
     vimRef.current = vim;
   }, [vim]);
+  const vimPanelRef = useRef(vimPanel);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -140,7 +147,7 @@ export function AtlasEditor({
           locked ? lockedView : [],
           agentChanges(text, awareness),
           collabTheme,
-          vimSlot.of(vimRef.current ? vimMode(history) : []),
+          vimSlot.of(vimRef.current ? vimMode(history, { panel: vimPanelRef.current }) : []),
           extensions ?? [],
         ],
       }),
@@ -159,7 +166,9 @@ export function AtlasEditor({
     if (!editor || editor.vimOn === vim) return;
     editor.vimOn = vim;
     editor.view.dispatch({
-      effects: editor.vimSlot.reconfigure(vim ? vimMode(editor.history) : []),
+      effects: editor.vimSlot.reconfigure(
+        vim ? vimMode(editor.history, { panel: vimPanelRef.current }) : [],
+      ),
     });
   }, [vim]);
 

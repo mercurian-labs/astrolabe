@@ -355,6 +355,8 @@ export interface ServerConfigSubscriptionOptions {
   readonly environmentThemes?: boolean;
   readonly usageLimitSources?: boolean;
   readonly usageLimitsCommand?: boolean;
+  // Astrolabe
+  readonly vimrc?: boolean;
 }
 
 export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConfigState.make")(
@@ -430,6 +432,7 @@ export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConf
       ...(subscription.environmentThemes === true ? { environmentThemes: true } : {}),
       ...(subscription.usageLimitSources === true ? { usageLimitSources: true } : {}),
       ...(subscription.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+      ...(subscription.vimrc === true ? { vimrc: true } : {}),
     }).pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
@@ -613,6 +616,8 @@ export function createServerEnvironmentAtoms<R, E>(
     readonly environmentThemes?: boolean;
     readonly usageLimitSources?: boolean;
     readonly usageLimitsCommand?: boolean;
+    /** Astrolabe: whether this surface applies the server's vimrc (mobile has no Vim). */
+    readonly vimrc?: boolean;
   },
 ) {
   const configScheduler = createAtomCommandScheduler();
@@ -628,6 +633,7 @@ export function createServerEnvironmentAtoms<R, E>(
           ...(options.environmentThemes === true ? { environmentThemes: true } : {}),
           ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
           ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+          ...(options.vimrc === true ? { vimrc: true } : {}),
         }),
       )
       .pipe(
@@ -1183,6 +1189,25 @@ export function createServerEnvironmentAtoms<R, E>(
     removeKeybinding: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:remove-keybinding",
       tag: WS_METHODS.serverRemoveKeybinding,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    // Astrolabe: the vimrc's mappings and options.
+    upsertVimMapping: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:upsert-vim-mapping",
+      tag: WS_METHODS.serverUpsertVimMapping,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    removeVimMapping: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remove-vim-mapping",
+      tag: WS_METHODS.serverRemoveVimMapping,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    setVimOption: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:set-vim-option",
+      tag: WS_METHODS.serverSetVimOption,
       scheduler: configScheduler,
       concurrency: configConcurrency,
     }),

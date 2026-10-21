@@ -11,11 +11,18 @@ import {
   encodeComposerContextFragment,
 } from "@t3tools/shared/composerContextClipboard";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import { undo } from "@codemirror/commands";
 import { forceParsing } from "@codemirror/language";
-import { EditorSelection } from "@codemirror/state";
+import { EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { vimInsertMode } from "@mercurian/editor/vim";
+
+import { onOpenCommandPalette } from "~/commandPaletteBus";
+import { handleLeaderRequests, pendingExOrigin, releaseExOrigin } from "~/whichKey/doors";
+import { exLineGroups } from "~/whichKey/exPalette";
 
 import { collapseExpandedComposerCursor, expandCollapsedComposerCursor } from "~/composer-logic";
 import { ComposerChipRegistry, composerChipsField } from "./composerChips";
@@ -34,6 +41,7 @@ function mount(
     mode?: ComposerEditorMode;
     cursor?: number;
     disabled?: boolean;
+    vim?: boolean;
     host?: Partial<ComposerEditorHost>;
   } = {},
 ) {
@@ -54,6 +62,7 @@ function mount(
     value,
     cursor: options.cursor ?? 0,
     disabled: options.disabled ?? false,
+    vim: options.vim ?? false,
     presentation: { className: "", attributes: {} },
     registry,
     host: () => host,
@@ -73,13 +82,14 @@ function select(editor: ComposerEditor, anchor: number, head = anchor) {
   });
 }
 
-function type(editor: ComposerEditor, text: string) {
+function type(editor: ComposerEditor, text: string, at = Date.now()) {
   const { view } = editor;
   const { from, to } = view.state.selection.main;
   view.dispatch({
     changes: { from, to, insert: text },
     selection: EditorSelection.cursor(from + text.length),
     userEvent: "input.type",
+    annotations: Transaction.time.of(at),
   });
 }
 
@@ -486,6 +496,218 @@ describe("undo grouping", () => {
     expect(docOf(editor)).toBe("ab");
     undo(editor.view);
     expect(docOf(editor)).toBe("");
+  });
+});
+
+describe("undo pauses", () => {
+  it("starts a new step after a second without changes", () => {
+    const { editor } = mount("");
+    editor.view.focus();
+    const now = Date.now();
+    type(editor, "ab", now);
+    type(editor, "cd", now + 1500);
+    undo(editor.view);
+    expect(docOf(editor)).toBe("ab");
+  });
+});
+
+describe("Vim mode", () => {
+  const vimMode = (editor: ComposerEditor) => editor.view.dom.getAttribute("data-vim-mode");
+  const sends = () =>
+    vi.fn<NonNullable<ComposerEditorHost["onCommandKeyDown"]>>((key) => key === "Enter");
+
+  /** Whether a key got past the editor to the page. */
+  function reachesPage(editor: ComposerEditor, key: string) {
+    let reached = false;
+    const listener = () => {
+      reached = true;
+    };
+    document.body.addEventListener("keydown", listener);
+    press(editor, key);
+    document.body.removeEventListener("keydown", listener);
+    return reached;
+  }
+
+  it("starts in insert mode with the composer's keys, and Escape enters normal mode in place", async () => {
+    const onCommandKeyDown = sends();
+    const { editor } = mount("hello", { vim: true, host: { onCommandKeyDown } });
+    editor.view.focus();
+    select(editor, 5);
+    await Promise.resolve();
+    expect(vimInsertMode(editor.view)).toBe(true);
+    expect(vimMode(editor)).toBe("insert");
+
+    press(editor, "Enter");
+    expect(onCommandKeyDown).toHaveBeenLastCalledWith("Enter", expect.anything(), false);
+
+    // The composer is offered Escape first (to close a menu); unclaimed, it is Vim's.
+    expect(reachesPage(editor, "Escape")).toBe(false);
+    expect(onCommandKeyDown).toHaveBeenLastCalledWith("Escape", expect.anything());
+    expect(vimInsertMode(editor.view)).toBe(false);
+    expect(vimMode(editor)).toBe("normal");
+    expect(docOf(editor)).toBe("hello");
+  });
+
+  it("gives Vim the keys outside insert mode, but Mod+Enter still sends", () => {
+    const onCommandKeyDown = sends();
+    const { editor } = mount("hello", { vim: true, host: { onCommandKeyDown } });
+    editor.view.focus();
+    select(editor, 0);
+    press(editor, "Escape");
+    onCommandKeyDown.mockClear();
+
+    press(editor, "x");
+    expect(docOf(editor)).toBe("ello");
+    // (jsdom cannot measure Vim's vertical motions, so the text is not checked after these.)
+    for (const key of ["Enter", "ArrowUp", "ArrowDown", "Tab"]) press(editor, key);
+    expect(onCommandKeyDown).not.toHaveBeenCalled();
+
+    press(editor, "Enter", { ctrlKey: true });
+    expect(onCommandKeyDown).toHaveBeenCalledTimes(1);
+    expect(onCommandKeyDown).toHaveBeenCalledWith("Enter", expect.anything());
+  });
+
+  it("leaves Escape to the composer and the page with Vim off", () => {
+    const onCommandKeyDown = vi.fn(() => false);
+    const { editor } = mount("hello", { host: { onCommandKeyDown } });
+    editor.view.focus();
+    expect(reachesPage(editor, "Escape")).toBe(true);
+    expect(onCommandKeyDown).toHaveBeenCalledWith("Escape", expect.anything());
+  });
+
+  it("opens no @ or $ menu while Vim moves the caret in normal mode", () => {
+    const { editor, onChange } = mount("see @src", { vim: true });
+    editor.view.focus();
+    select(editor, 8);
+    press(editor, "Escape");
+    expect(onChange.mock.lastCall?.[3]).toBe(true);
+    press(editor, "a");
+    type(editor, "x");
+    expect(onChange.mock.lastCall?.[3]).toBe(false);
+  });
+
+  it("is back in insert mode once the store empties the prompt, as a send does", () => {
+    const { editor } = mount("hello", { vim: true });
+    editor.view.focus();
+    press(editor, "Escape");
+    expect(vimInsertMode(editor.view)).toBe(false);
+    editor.syncControlled("", 0);
+    expect(vimInsertMode(editor.view)).toBe(true);
+  });
+
+  it("undoes a whole insert session in one u, whatever its pauses, and Ctrl-r redoes it", () => {
+    const { editor } = mount("", { vim: true });
+    editor.view.focus();
+    const now = Date.now();
+    type(editor, "ab", now);
+    type(editor, "cd", now + 5000);
+    press(editor, "Escape");
+    press(editor, "u");
+    expect(docOf(editor)).toBe("");
+    press(editor, "r", { ctrlKey: true });
+    expect(docOf(editor)).toBe("abcd");
+  });
+
+  it("makes each Vim change its own step", () => {
+    const { editor } = mount("one two", { vim: true });
+    editor.view.focus();
+    select(editor, 0);
+    press(editor, "Escape");
+    press(editor, "x");
+    press(editor, "c");
+    press(editor, "w");
+    type(editor, "uno");
+    press(editor, "Escape");
+    expect(docOf(editor)).toBe("uno two");
+    press(editor, "u");
+    expect(docOf(editor)).toBe("ne two");
+    press(editor, "u");
+    expect(docOf(editor)).toBe("one two");
+  });
+
+  it("opens the palette as the ex line on : in normal mode, and runs the editor's own commands back in the draft", async () => {
+    const opened: unknown[] = [];
+    const stop = onOpenCommandPalette((detail) => opened.push(detail));
+    const { editor } = mount("hello world", { vim: true });
+    const form = document.createElement("form");
+    const submitted = vi.fn((event: Event) => event.preventDefault());
+    form.addEventListener("submit", submitted);
+    document.body.append(form);
+    form.append(editor.view.dom.parentElement!);
+    editor.view.focus();
+    press(editor, "Escape");
+
+    press(editor, ":");
+    stop();
+    expect(opened).toEqual([{ query: ":" }]);
+    // Vim's own ex line stayed shut.
+    expect(editor.view.dom.querySelector(".cm-panels input")).toBeNull();
+    const origin = pendingExOrigin();
+    expect(origin?.view).toBe(editor.view);
+
+    // `:w` sends the draft as the send button does, through the composer's form.
+    expect(origin?.write?.label).toBe("Send the draft");
+    origin?.write?.run();
+    expect(submitted).toHaveBeenCalledOnce();
+
+    // A line the palette does not know is the editor's: `:s` substitutes in the draft.
+    const [group] = exLineGroups("s/world/there/", {
+      origin,
+      triggers: DEFAULT_RESOLVED_TRIGGERS,
+      command: () => ({ label: "", disabled: true, run: () => {} }),
+      leaderLabel: "Space",
+      actionItems: [],
+      setLine: () => {},
+      threadItems: [],
+      chatTabThreadIds: [],
+      overviews: [],
+      showWikis: () => {},
+    });
+    const [item] = group?.items ?? [];
+    expect(item?.disabled).toBeUndefined();
+    if (item?.kind !== "action") throw new Error("no row to run in the editor");
+    // It runs a frame after the palette closes; that frame runs here, without jsdom measuring.
+    const frames: FrameRequestCallback[] = [];
+    const frame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => frames.push(callback));
+    await item.run();
+    frame.mockRestore();
+    for (const callback of frames) callback(0);
+    expect(docOf(editor)).toBe("hello there");
+    releaseExOrigin(origin);
+  });
+
+  it("opens the keyboard menu on Space in normal mode, which stays Vim's without a menu", () => {
+    const { editor } = mount("hello", { vim: true });
+    editor.view.focus();
+    select(editor, 0);
+    press(editor, "Escape");
+    press(editor, " ");
+    // No menu on the page: Space is Vim's step right.
+    expect(editor.view.state.selection.main.head).toBe(1);
+
+    const leader = vi.fn(() => true);
+    const stop = handleLeaderRequests({ open: leader, key: () => " " });
+    press(editor, " ");
+    stop();
+    expect(leader).toHaveBeenCalledWith(expect.objectContaining({ view: editor.view }));
+    expect(editor.view.state.selection.main.head).toBe(1);
+  });
+
+  it("switches in place, keeping the draft, and starts in insert mode when turned on", async () => {
+    const { editor } = mount("draft");
+    const view = editor.view;
+    expect(vimInsertMode(view)).toBeNull();
+    editor.setVim(true);
+    await Promise.resolve();
+    expect(editor.view).toBe(view);
+    expect(vimInsertMode(view)).toBe(true);
+    expect(vimMode(editor)).toBe("insert");
+    editor.setVim(false);
+    expect(vimInsertMode(view)).toBeNull();
+    expect(vimMode(editor)).toBeNull();
+    expect(docOf(editor)).toBe("draft");
   });
 });
 

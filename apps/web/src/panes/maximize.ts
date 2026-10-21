@@ -30,12 +30,3 @@ export function useMaximizedPaneId(): string | null {
     store.maximized && store.maximized.layoutKey === layoutKey ? store.maximized.paneId : null,
   );
 }
-
-/** Maximizes `paneId` in the arrangement on screen, or restores it when it is already. */
-export function useToggleMaximized(): (paneId: string) => void {
-  const layoutKey = usePanesLayoutKey();
-  const toggle = useMaximizedPaneStore((store) => store.toggle);
-  return (paneId) => {
-    if (layoutKey !== null) toggle(layoutKey, paneId);
-  };
-}

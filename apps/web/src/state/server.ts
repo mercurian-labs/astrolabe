@@ -3,6 +3,7 @@ import {
   type EditorId,
   type EnvironmentId,
   type EnvironmentTheme,
+  type ResolvedKeybindingTrigger,
   type ServerConfig,
   type ServerConfigStreamEvent,
   type ServerLifecycleLegacyThreadMigrationPayload,
@@ -19,6 +20,7 @@ import { createServerEnvironmentAtoms } from "@t3tools/client-runtime/state/serv
 import { createOutdatedServerUpdateCommand } from "@t3tools/client-runtime/state/outdatedServerUpdate";
 import { createEnvironmentServerConfigsAtom } from "@t3tools/client-runtime/state/shell";
 import { mergeWithDefaultKeybindings } from "@t3tools/shared/keybindings";
+import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
@@ -38,6 +40,8 @@ export const serverEnvironment = createServerEnvironmentAtoms(connectionAtomRunt
   environmentThemes: true,
   usageLimitSources: true,
   usageLimitsCommand: true,
+  // Astrolabe
+  vimrc: true,
 });
 export const environmentUpdateStatesAtom = environmentAtomList(
   "web-environment-update-states",
@@ -123,17 +127,20 @@ export function createShortcutKeybindingsAtom(input: {
     ReadonlyMap<EnvironmentId, Pick<EnvironmentPresentation, "connection" | "serverConfig">>
   >;
 }) {
-  // Selected before merging, so unrelated config updates keep the merged array.
-  const customAtom = Atom.make((get) => {
+  const configAtom = Atom.make((get) => {
     if (get(input.primaryEnvironmentIdAtom) !== null) {
       // A primary stays authoritative while its config loads.
-      return get(input.primaryConfigAtom)?.keybindings ?? null;
+      return get(input.primaryConfigAtom);
     }
     const environments = [...get(input.environmentsAtom).values()];
-    return environments.find(isConnectedWithConfig)?.serverConfig?.keybindings ?? null;
+    return environments.find(isConnectedWithConfig)?.serverConfig ?? null;
   });
+  // Selected before merging, so unrelated config updates keep the merged array.
+  const customAtom = Atom.make((get) => get(configAtom)?.keybindings ?? null);
+  // Astrolabe: commands a `-command` rule left without a shortcut stay without one.
+  const unboundAtom = Atom.make((get) => get(configAtom)?.keybindingTriggers?.unboundCommands);
   return Atom.make((get): ServerConfig["keybindings"] =>
-    mergeWithDefaultKeybindings(get(customAtom) ?? []),
+    mergeWithDefaultKeybindings(get(customAtom) ?? [], get(unboundAtom)),
   );
 }
 
@@ -165,6 +172,20 @@ export const primaryServerKeybindingsAtom = createShortcutKeybindingsAtom({
   primaryConfigAtom: primaryServerConfigAtom,
   environmentsAtom: environmentConnectionsAtom,
 }).pipe(Atom.withLabel("web-primary-server-keybindings"));
+
+/**
+ * Astrolabe: the keyboard menu's keys and the Command Palette's aliases; the
+ * defaults from a server that predates them.
+ */
+export const primaryServerKeybindingTriggersAtom = Atom.make(
+  (get): ReadonlyArray<ResolvedKeybindingTrigger> =>
+    get(primaryServerConfigAtom)?.keybindingTriggers?.triggers ?? DEFAULT_RESOLVED_TRIGGERS,
+).pipe(Atom.withLabel("web-primary-server-keybinding-triggers"));
+
+/** Astrolabe: the primary server's vimrc text, which every Vim editor on the page applies. */
+export const primaryServerVimrcAtom = Atom.make(
+  (get): string => get(primaryServerConfigAtom)?.vimrc?.text ?? "",
+).pipe(Atom.withLabel("web-primary-server-vimrc"));
 
 export const primaryServerAvailableEditorsAtom = Atom.make(
   (get): ReadonlyArray<EditorId> =>

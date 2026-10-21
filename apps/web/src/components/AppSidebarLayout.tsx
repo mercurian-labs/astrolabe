@@ -40,6 +40,7 @@ import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarCh
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { WikiSidebar } from "./wiki/WikiSidebar";
+import { WhichKey } from "../whichKey/WhichKey";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
 import {
@@ -401,6 +402,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <SidebarControl />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
+        {/* Astrolabe: the keyboard menu (mod+k, and Space as a leader key). */}
+        <WhichKey />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );

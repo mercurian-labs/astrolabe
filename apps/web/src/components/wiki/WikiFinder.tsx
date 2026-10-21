@@ -1,5 +1,6 @@
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { FilePenLineIcon, FilePlusIcon, FileTextIcon } from "lucide-react";
 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -11,7 +12,9 @@ import type { CommandPaletteActionItem, CommandPaletteGroup } from "../CommandPa
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
+import { isWikisPath } from "../sidebar/mainAppLocation";
 import { noteKey } from "./wiki.logic";
+import { useWikiOverviews } from "./wikiEnvironment";
 import { openWikiTab } from "./wikiPanes";
 import { wikiScopeKey, wikiSidebarItems, type WikiDocumentItem, type WikiTab } from "./wikiTabs";
 
@@ -119,8 +122,66 @@ function WikiFinderContent({
   );
 }
 
-/** The finder's groups for a query: documents, change requests, and where to write a new one. */
-function finderGroups(input: {
+/** A document as a palette row, which opens it through `onPick`. */
+function documentRow(
+  document: WikiDocumentItem,
+  multipleWikis: boolean,
+  onPick: (tab: WikiTab) => void,
+): CommandPaletteActionItem {
+  return {
+    kind: "action",
+    value: `wiki-finder:${document.key}`,
+    searchTerms: [document.name],
+    title: document.name,
+    description: [
+      multipleWikis ? document.wiki.name : null,
+      document.editedAt ? `edited ${formatRelativeTimeLabel(document.editedAt)}` : null,
+      document.changes.length > 0 ? "in a change request" : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    icon:
+      document.changes.length > 0 ? (
+        <FilePenLineIcon className={ITEM_ICON_CLASS} />
+      ) : (
+        <FileTextIcon className={ITEM_ICON_CLASS} />
+      ),
+    run: async () =>
+      onPick({
+        kind: "note",
+        environmentId: document.environmentId,
+        wikiId: document.wiki.wikiId,
+        name: document.name,
+        changeRequestId: undefined,
+      }),
+  };
+}
+
+/**
+ * Astrolabe: every wiki's documents as the Search Palette's rows, newest first, for it to match
+ * as it matches threads; a pick opens the document as a tab in the Wikis section, as `:e` does.
+ * Asks for the wikis only while `enabled`, and builds the rows only when they change, not per
+ * keystroke.
+ */
+export function useDocumentSearchRows(enabled: boolean): ReadonlyArray<CommandPaletteActionItem> {
+  const { overviews } = useWikiOverviews(enabled);
+  const navigate = useNavigate();
+  const onWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
+  return useMemo(() => {
+    const { documents } = wikiSidebarItems(overviews, null);
+    const onPick = (tab: WikiTab) => {
+      openWikiTab(tab);
+      if (!onWikis) void navigate({ to: "/wikis" });
+    };
+    return documents.map((document) => documentRow(document, overviews.length > 1, onPick));
+  }, [navigate, onWikis, overviews]);
+}
+
+/**
+ * The finder's groups for a query: documents, change requests, and where to write a new one.
+ * The command palette's `:e` shows the same.
+ */
+export function finderGroups(input: {
   readonly overviews: ReadonlyArray<WikiOverview>;
   readonly scope: string | null;
   readonly mode: "find" | "new";
@@ -139,33 +200,7 @@ function finderGroups(input: {
     .filter((document) => needle === "" || noteKey(document.name).includes(needle))
     .toSorted((a, b) => inScope(a) - inScope(b))
     .slice(0, RESULT_LIMIT)
-    .map((document) => ({
-      kind: "action",
-      value: `wiki-finder:${document.key}`,
-      searchTerms: [document.name],
-      title: document.name,
-      description: [
-        multipleWikis ? document.wiki.name : null,
-        document.editedAt ? `edited ${formatRelativeTimeLabel(document.editedAt)}` : null,
-        document.changes.length > 0 ? "in a change request" : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      icon:
-        document.changes.length > 0 ? (
-          <FilePenLineIcon className={ITEM_ICON_CLASS} />
-        ) : (
-          <FileTextIcon className={ITEM_ICON_CLASS} />
-        ),
-      run: async () =>
-        onPick({
-          kind: "note",
-          environmentId: document.environmentId,
-          wikiId: document.wiki.wikiId,
-          name: document.name,
-          changeRequestId: undefined,
-        }),
-    }));
+    .map((document) => documentRow(document, multipleWikis, onPick));
 
   const changeItems: CommandPaletteActionItem[] =
     mode === "new"

@@ -28,7 +28,12 @@ import {
   type ServerRemoveKeybindingInput,
   type ServerUpsertKeybindingInput,
 } from "@t3tools/contracts";
-import { mergeWithDefaultKeybindings } from "@t3tools/shared/keybindings";
+import {
+  keybindingRemovalTarget,
+  keybindingTriggerKind,
+  mergeWithDefaultKeybindings,
+} from "@t3tools/shared/keybindings";
+import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -36,7 +41,7 @@ import {
 
 import { isElectron } from "../../env";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
-import { formatShortcutLabel } from "../../keybindings";
+import { formatShortcutLabel, shortcutLabelForCommand } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -63,7 +68,6 @@ import {
   parseWhenExpressionDraft,
   groupKeybindingRows,
   type KeybindingCommandOption,
-  type KeybindingGroup,
   type KeybindingRow,
   type WhenVariableOption,
   unknownWhenVariables,
@@ -71,8 +75,32 @@ import {
   whenNodeRemoveLabel,
 } from "./KeybindingsSettings.logic";
 import { SettingsGroup } from "./SettingsGroup";
+// Astrolabe: the table of every command's shortcuts, menu keys, and aliases, and the Vim and
+// leader settings.
+import { KeybindingsDeviceSection } from "./KeybindingsDeviceSettings";
+import { VimrcSection } from "./VimrcSettings";
+import {
+  KeybindingsTable,
+  KeyFieldPopoverContent,
+  type KeybindingsTableEditors,
+} from "./KeybindingsTable";
+import {
+  buildKeybindingCommandRows,
+  KEYBINDING_FILTER_LABELS,
+  KEYBINDING_KIND_LABELS,
+  visibleKinds,
+  type KeybindingCommandRowChange,
+  type KeybindingKind,
+  type KeybindingKindFilter,
+} from "./KeybindingsTable.logic";
+import { TriggerKeyInput } from "./KeybindingTriggerRows";
+import {
+  buildKeybindingTriggerRows,
+  triggerAddInputs,
+  triggerDraftIssue,
+} from "./KeybindingTriggerSettings.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { keybindingSearchAnchorId, searchableSetting } from "./settingsSearch";
+import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -711,12 +739,18 @@ function useKeybindingRowEditor({
   row,
   allRows,
   onSave,
+  startRecording = false,
 }: {
   row: KeybindingRow;
   allRows: ReadonlyArray<KeybindingRow>;
   onSave: (input: ServerUpsertKeybindingInput) => void;
+  // Astrolabe: opened from the Keybindings table's cell, the row records at once.
+  startRecording?: boolean;
 }) {
-  const [draft, setDraft] = useReducer(keybindingRowDraftReducer, row, createKeybindingRowDraft);
+  const [draft, setDraft] = useReducer(keybindingRowDraftReducer, row, (initial) => ({
+    ...createKeybindingRowDraft(initial),
+    isRecording: startRecording,
+  }));
   const { keyDraft, whenDraft, isRecording, isWhenDraftValid } = draft;
   const whenDraftExpression = whenAstToExpression(whenDraft);
   const isDirty = keyDraft !== row.key || whenDraftExpression !== row.when;
@@ -777,6 +811,8 @@ type KeybindingRowProps = KeybindingRowActions & {
   row: KeybindingRow;
   isSaving: boolean;
   anchorId?: string | undefined;
+  // Astrolabe
+  startRecording?: boolean;
 };
 
 function KeybindingKeyControl({
@@ -985,7 +1021,12 @@ function KeybindingHoverRowMenu(props: {
 
 function KeybindingSettingsRow(props: KeybindingRowProps) {
   const { row, isSaving, anchorId, allRows, variables, onSave, onReset, onRemove } = props;
-  const editor = useKeybindingRowEditor({ row, allRows, onSave });
+  const editor = useKeybindingRowEditor({
+    row,
+    allRows,
+    onSave,
+    startRecording: props.startRecording ?? false,
+  });
 
   return (
     <SettingsRow
@@ -1014,14 +1055,47 @@ function KeybindingSettingsRow(props: KeybindingRowProps) {
   );
 }
 
+/**
+ * Astrolabe: a shortcut in the Keybindings table's cell: its keycaps, which open its row above to
+ * change it, recording at once.
+ */
+function KeybindingShortcutBinding(props: KeybindingRowProps) {
+  const { row } = props;
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Edit shortcut for ${commandLabel(row.command)}: ${formatShortcutLabel(row.binding.shortcut)}`}
+            className="inline-flex h-7 cursor-pointer items-center rounded-md border border-transparent px-1 outline-none transition-colors hover:border-border/70 hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24 data-popup-open:bg-accent"
+          />
+        }
+      >
+        <KeybindingPill value={row.key} />
+      </PopoverTrigger>
+      <KeyFieldPopoverContent>
+        <KeybindingSettingsRow {...props} startRecording />
+      </KeyFieldPopoverContent>
+    </Popover>
+  );
+}
+
 function useNewKeybindingDraft({
   allRows,
   onSave,
+  command,
+  initialKind = "shortcut",
 }: {
   allRows: ReadonlyArray<KeybindingRow>;
   onSave: (input: ServerUpsertKeybindingInput) => void;
+  // Astrolabe: the command and kind a table cell's `+` adds.
+  command?: KeybindingCommand | undefined;
+  initialKind?: KeybindingKind | undefined;
 }) {
-  const [commandDraft, setCommandDraft] = useState<KeybindingCommand | "">("");
+  const [commandDraft, setCommandDraft] = useState<KeybindingCommand | "">(command ?? "");
+  // Astrolabe: a shortcut, menu keys, or an alias.
+  const [kind, setKind] = useState<KeybindingKind>(initialKind);
   const [draft, setDraft] = useReducer(keybindingRowDraftReducer, {
     keyDraft: "",
     whenDraft: undefined,
@@ -1036,14 +1110,19 @@ function useNewKeybindingDraft({
     when: whenDraftExpression,
   });
   const commandLabelText = commandDraft ? commandLabel(commandDraft) : "new keybinding";
-  const canSave = Boolean(commandDraft) && keyDraft.trim().length > 0 && isWhenDraftValid;
+  const canSave =
+    Boolean(commandDraft) &&
+    keyDraft.trim().length > 0 &&
+    (kind === "shortcut" ? isWhenDraftValid : triggerDraftIssue(kind, keyDraft) === null);
 
   const save = () => {
     if (!commandDraft) return;
     onSave({
       command: commandDraft,
       key: keyDraft,
-      ...(whenDraftExpression.trim().length > 0 ? { when: whenDraftExpression } : {}),
+      ...(kind === "shortcut" && whenDraftExpression.trim().length > 0
+        ? { when: whenDraftExpression }
+        : {}),
     });
   };
 
@@ -1064,6 +1143,11 @@ function useNewKeybindingDraft({
   return {
     commandDraft,
     setCommandDraft,
+    kind,
+    setKind: (next: KeybindingKind) => {
+      setKind(next);
+      setDraft({ keyDraft: "", whenDraft: undefined, isRecording: false, isWhenDraftValid: true });
+    },
     keyDraft,
     whenDraft,
     whenDraftExpression,
@@ -1086,6 +1170,9 @@ interface NewKeybindingProps {
   isSaving: boolean;
   onSave: (input: ServerUpsertKeybindingInput) => void;
   onCancel: () => void;
+  // Astrolabe: a table cell's `+` fixes the command and kind, so the form only records.
+  command?: KeybindingCommand;
+  kind?: KeybindingKind;
 }
 
 function NewKeybindingCommandSelect({
@@ -1192,27 +1279,72 @@ function NewKeybindingCancelIcon({
 
 function NewKeybindingSettingsRow(props: NewKeybindingProps) {
   const { commandOptions, allRows, variables, isSaving, onSave, onCancel } = props;
-  const draft = useNewKeybindingDraft({ allRows, onSave });
+  const draft = useNewKeybindingDraft({
+    allRows,
+    onSave,
+    command: props.command,
+    initialKind: props.kind,
+  });
+  const shortcut = draft.kind === "shortcut";
 
   return (
     <SettingsRow
       className="bg-muted/15"
-      title="New keybinding"
+      title={
+        props.command
+          ? `New ${KEYBINDING_KIND_LABELS[draft.kind].toLowerCase()} for ${commandLabel(props.command)}`
+          : "New keybinding"
+      }
       description={
-        <span className="flex h-6 items-center gap-1.5">
-          <span className="text-xs leading-none text-muted-foreground/70">When</span>
-          <NewKeybindingWhen draft={draft} variables={variables} />
-        </span>
+        shortcut ? (
+          <span className="flex h-6 items-center gap-1.5">
+            <span className="text-xs leading-none text-muted-foreground/70">When</span>
+            <NewKeybindingWhen draft={draft} variables={variables} />
+          </span>
+        ) : null
       }
       control={
         <div className="flex flex-wrap items-center gap-2">
-          <NewKeybindingCommandSelect
-            draft={draft}
-            commandOptions={commandOptions}
-            className="w-56"
-          />
-          <KeybindingConflictWarning labels={draft.conflictLabels} />
-          <NewKeybindingKeyInput draft={draft} className="w-44" />
+          {props.command ? null : (
+            <NewKeybindingCommandSelect
+              draft={draft}
+              commandOptions={commandOptions}
+              className="w-56"
+            />
+          )}
+          {/* Astrolabe: which kind of trigger the new binding has. */}
+          {props.kind ? null : (
+            <Select
+              value={draft.kind}
+              onValueChange={(value) => {
+                if (value === "shortcut" || value === "menu" || value === "alias")
+                  draft.setKind(value);
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="Kind of keybinding">
+                <SelectValue>
+                  {(value: KeybindingKind) => KEYBINDING_KIND_LABELS[value]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false}>
+                <SelectItem value="shortcut">{KEYBINDING_KIND_LABELS.shortcut}</SelectItem>
+                <SelectItem value="menu">{KEYBINDING_KIND_LABELS.menu}</SelectItem>
+                <SelectItem value="alias">{KEYBINDING_KIND_LABELS.alias}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {shortcut ? <KeybindingConflictWarning labels={draft.conflictLabels} /> : null}
+          {draft.kind === "shortcut" ? (
+            <NewKeybindingKeyInput draft={draft} className="w-44" />
+          ) : (
+            <TriggerKeyInput
+              kind={draft.kind}
+              value={draft.keyDraft}
+              ariaLabel={`Keybinding for ${draft.commandLabelText}`}
+              className="w-44"
+              onChange={(keyDraft) => draft.setDraft({ keyDraft })}
+            />
+          )}
           <Button size="sm" disabled={isSaving || !draft.canSave} onClick={draft.save}>
             {isSaving ? "Saving" : "Save"}
           </Button>
@@ -1221,29 +1353,6 @@ function NewKeybindingSettingsRow(props: NewKeybindingProps) {
       }
     />
   );
-}
-
-interface KeybindingsGroupsProps extends KeybindingRowActions {
-  groups: ReadonlyArray<KeybindingGroup>;
-  anchorIds: ReadonlyMap<string, string>;
-  savingCommand: KeybindingCommand | null;
-}
-
-function KeybindingsGroups(props: KeybindingsGroupsProps) {
-  const { groups, anchorIds, savingCommand, ...rowActions } = props;
-  return groups.map((group) => (
-    <SettingsSection key={group.id} id={`keybindings-${group.id}`} title={group.title}>
-      {group.rows.map((row) => (
-        <KeybindingSettingsRow
-          key={row.id}
-          row={row}
-          anchorId={anchorIds.get(row.id)}
-          isSaving={savingCommand === row.command}
-          {...rowActions}
-        />
-      ))}
-    </SettingsSection>
-  ));
 }
 
 function BrowserKeybindingNotice() {
@@ -1265,26 +1374,24 @@ function BrowserKeybindingNotice() {
   );
 }
 
-function keybindingAnchorIds(rows: ReturnType<typeof buildKeybindingRows>) {
-  const ids = new Map<string, string>();
-  const seen = new Set<KeybindingCommand>();
-  for (const row of rows) {
-    if (seen.has(row.command)) continue;
-    seen.add(row.command);
-    ids.set(row.id, keybindingSearchAnchorId(row.command));
-  }
-  return ids;
-}
-
 // Rows come from a hook so they are cached on the server keybindings alone. Built
 // inline, the compiler joins them to the query's cache scope (filtering might
 // mutate them), and every keystroke rebuilds and re-renders every row.
 function useKeybindingCatalog() {
-  const serverKeybindings = useSettingsScope().environment?.serverConfig?.keybindings;
-  const merged = mergeWithDefaultKeybindings(serverKeybindings ?? []);
+  const serverConfig = useSettingsScope().environment?.serverConfig;
+  // Astrolabe: with the commands a removal left unbound, and the menu and alias triggers.
+  const serverTriggers = serverConfig?.keybindingTriggers;
+  const merged = mergeWithDefaultKeybindings(
+    serverConfig?.keybindings ?? [],
+    serverTriggers?.unboundCommands,
+  );
+  const triggers = serverTriggers?.triggers ?? DEFAULT_RESOLVED_TRIGGERS;
   return {
+    keybindings: merged,
     commandOptions: buildKeybindingCommandOptions(merged),
     allRows: buildKeybindingRows(merged),
+    triggers,
+    triggerRows: buildKeybindingTriggerRows(triggers),
   };
 }
 
@@ -1314,18 +1421,31 @@ export function KeybindingsSettingsPanel() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [savingCommand, setSavingCommand] = useState<KeybindingCommand | null>(null);
   const [isAddingBinding, setIsAddingBinding] = useState(false);
+  // Astrolabe: one row per command, its shortcuts, menu keys, and aliases each in a column, which
+  // the kind filter narrows; the search box filters the command rows, not the bindings.
+  const [kindFilter, setKindFilter] = useState<KeybindingKindFilter>("all");
   const searchTargetId = useLocation({ select: (location) => location.hash.replace(/^#/, "") });
   const [handledSearchTargetId, setHandledSearchTargetId] = useState(searchTargetId);
 
   if (searchTargetId !== handledSearchTargetId) {
     setHandledSearchTargetId(searchTargetId);
-    if (searchTargetId.startsWith("keybinding-")) setQuery("");
+    if (searchTargetId.startsWith("keybinding-")) {
+      setQuery("");
+      // Astrolabe: nor by the kind filter.
+      setKindFilter("all");
+    }
   }
   const whenVariables = buildWhenVariableOptions();
-  const { commandOptions, allRows } = useKeybindingCatalog();
-  const rows = filterKeybindingRows(allRows, query);
-  const groups = groupKeybindingRows(rows);
-  const anchorIds = keybindingAnchorIds(rows);
+  const { keybindings, commandOptions, allRows, triggers, triggerRows } = useKeybindingCatalog();
+  const groups = groupKeybindingRows(
+    buildKeybindingCommandRows({
+      shortcutRows: allRows,
+      triggerRows,
+      query,
+      filter: kindFilter,
+      platform: navigator.platform,
+    }),
+  );
 
   const openKeybindingsFile = () => {
     if (
@@ -1349,27 +1469,35 @@ export function KeybindingsSettingsPanel() {
     })();
   };
 
-  const saveKeybinding = (input: ServerUpsertKeybindingInput) => {
+  // Astrolabe: one or more rules, written in order (an edited default writes its siblings too).
+  const saveKeybindings = (inputs: ReadonlyArray<ServerUpsertKeybindingInput>) => {
+    const [first] = inputs;
     if (
+      !first ||
       !primaryEnvironment ||
       !connectedEnvironments.every((target) =>
         readEnvironmentScope(target.environmentId, AuthSettingsWriteScope),
       )
     )
       return;
-    setSavingCommand(input.command);
-    const payload: ServerUpsertKeybindingInput = {
-      command: input.command,
-      key: input.key.trim(),
-      ...(input.when?.trim() ? { when: input.when.trim() } : {}),
-      ...(input.replace ? { replace: input.replace } : {}),
-    };
+    setSavingCommand(keybindingRemovalTarget(first.command));
     void (async () => {
-      const results = await Promise.all(
-        connectedEnvironments.map((target) =>
-          upsertKeybinding({ environmentId: target.environmentId, input: payload }),
-        ),
-      );
+      const results = [];
+      for (const input of inputs) {
+        const payload: ServerUpsertKeybindingInput = {
+          command: input.command,
+          key: input.key.trim(),
+          ...(input.when?.trim() ? { when: input.when.trim() } : {}),
+          ...(input.replace ? { replace: input.replace } : {}),
+        };
+        results.push(
+          ...(await Promise.all(
+            connectedEnvironments.map((target) =>
+              upsertKeybinding({ environmentId: target.environmentId, input: payload }),
+            ),
+          )),
+        );
+      }
       setSavingCommand(null);
       const failed = results.find((result) => result._tag === "Failure");
       if (!failed) {
@@ -1386,8 +1514,12 @@ export function KeybindingsSettingsPanel() {
       }
     })();
   };
+  const saveKeybinding = (input: ServerUpsertKeybindingInput) => saveKeybindings([input]);
 
-  const removeKeybinding = (row: KeybindingRow) => {
+  const removeKeybindingTarget = (
+    target: ServerRemoveKeybindingInput,
+    also: ReadonlyArray<ServerRemoveKeybindingInput> = [],
+  ) => {
     if (
       !primaryEnvironment ||
       !connectedEnvironments.every((target) =>
@@ -1395,16 +1527,21 @@ export function KeybindingsSettingsPanel() {
       )
     )
       return;
-    setSavingCommand(row.command);
+    setSavingCommand(keybindingRemovalTarget(target.command));
     void (async () => {
-      const results = await Promise.all(
-        connectedEnvironments.map((target) =>
-          removeKeybindingMutation({
-            environmentId: target.environmentId,
-            input: rowKeybindingTarget(row),
-          }),
-        ),
-      );
+      // Astrolabe: one rule after another, so each write sees the last.
+      let results: Awaited<ReturnType<typeof removeKeybindingMutation>>[] = [];
+      for (const input of [target, ...also]) {
+        results = await Promise.all(
+          connectedEnvironments.map((environment) =>
+            removeKeybindingMutation({
+              environmentId: environment.environmentId,
+              input,
+            }),
+          ),
+        );
+        if (results.some((entry) => entry._tag === "Failure")) break;
+      }
       setSavingCommand(null);
       const result = results.find((entry) => entry._tag === "Failure") ?? results[0];
       if (result?._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -1416,6 +1553,15 @@ export function KeybindingsSettingsPanel() {
         });
       }
     })();
+  };
+  const removeKeybinding = (row: KeybindingRow) => removeKeybindingTarget(rowKeybindingTarget(row));
+  // Astrolabe: a new menu key or alias keeps the command's defaults of its kind beside it.
+  const saveNewKeybinding = (input: ServerUpsertKeybindingInput) => {
+    if (keybindingTriggerKind(input.key) === "shortcut") saveKeybinding(input);
+    else {
+      const command = keybindingRemovalTarget(input.command);
+      saveKeybindings(triggerAddInputs(triggerRows, command, input.key));
+    }
   };
 
   const resetKeybinding = (row: KeybindingRow) => {
@@ -1441,15 +1587,74 @@ export function KeybindingsSettingsPanel() {
     onReset: resetKeybinding,
     onRemove: removeKeybinding,
   };
+  // Astrolabe: the table's `⋯`: upstream's reset and remove, or a menu or alias change (removing
+  // a user rule, or adding or deleting a default's removal rule).
+  const changeCommandRow = (change: KeybindingCommandRowChange) => {
+    if (change.type === "resetShortcut") resetKeybinding(change.row);
+    else if (change.type === "removeShortcut") removeKeybinding(change.row);
+    else if (change.change.type === "remove")
+      removeKeybindingTarget(change.change.target, change.change.also);
+    else saveKeybinding(change.change.input);
+  };
+  const tableEditors: KeybindingsTableEditors = {
+    renderShortcut: (row) => (
+      <KeybindingShortcutBinding
+        row={row}
+        isSaving={savingCommand === row.command}
+        {...rowActions}
+      />
+    ),
+    renderAdd: (command, kind, done) => (
+      <NewKeybindingSettingsRow
+        command={command}
+        kind={kind}
+        commandOptions={commandOptions}
+        allRows={allRows}
+        variables={whenVariables}
+        isSaving={savingCommand !== null}
+        onSave={(input) => {
+          saveNewKeybinding(input);
+          done();
+        }}
+        onCancel={done}
+      />
+    ),
+    renderConflict: (labels) => <KeybindingConflictWarning labels={labels} />,
+  };
+  const chordLabel = shortcutLabelForCommand(keybindings, "whichKey.open") ?? "⌘K";
 
   return (
     <SettingsPageContainer>
+      {/* Astrolabe: Vim and the leader key on this device, and the server's vimrc. */}
+      <KeybindingsDeviceSection />
+      <VimrcSection />
       <SettingsSection
         {...searchableSetting("keybindings")}
         headerAction={!isElectron ? <BrowserKeybindingNotice /> : null}
       >
         <div className="flex flex-wrap items-center gap-2 px-3 py-3 sm:px-4">
           <KeybindingsSearchInput query={query} onChange={setQuery} inputRef={searchInputRef} />
+          {/* Astrolabe: which kinds of binding the table shows. */}
+          <Select
+            value={kindFilter}
+            onValueChange={(value) => {
+              if (value === "all" || value === "shortcut" || value === "menu" || value === "alias")
+                setKindFilter(value);
+            }}
+          >
+            <SelectTrigger aria-label="Kinds of keybinding shown">
+              <SelectValue>
+                {(value: KeybindingKindFilter) => KEYBINDING_FILTER_LABELS[value]}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false}>
+              {(["all", "shortcut", "menu", "alias"] as const).map((value) => (
+                <SelectItem key={value} value={value}>
+                  {KEYBINDING_FILTER_LABELS[value]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             variant="outline"
@@ -1494,18 +1699,22 @@ export function KeybindingsSettingsPanel() {
               allRows={allRows}
               variables={whenVariables}
               isSaving={savingCommand !== null}
-              onSave={saveKeybinding}
+              onSave={saveNewKeybinding}
               onCancel={cancelAdd}
             />
           </SettingsGroup>
         ) : null}
 
         {groups.length > 0 ? (
-          <KeybindingsGroups
+          <KeybindingsTable
             groups={groups}
-            anchorIds={anchorIds}
+            kinds={visibleKinds(kindFilter)}
+            triggers={triggers}
             savingCommand={savingCommand}
-            {...rowActions}
+            chordLabel={chordLabel}
+            editors={tableEditors}
+            onSaveTriggers={saveKeybindings}
+            onChange={changeCommandRow}
           />
         ) : (
           <SettingsGroup>

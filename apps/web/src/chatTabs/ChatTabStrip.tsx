@@ -1,7 +1,15 @@
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useNavigate } from "@tanstack/react-router";
 import { MessagesSquare } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 
 import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { useThreadShell } from "~/state/entities";
@@ -14,6 +22,7 @@ import {
 } from "~/threadRoutes";
 import { neighbourOf } from "../titlebarTabs/tabListStore";
 import { TitlebarTab, TitlebarTabStrip, type TitlebarTabSlot } from "../titlebarTabs/TitlebarTabs";
+import { chatTabsSlot } from "../whichKey/handles";
 import { useChatTabsStore } from "./chatTabsStore";
 
 /** Where a chat's tab leads: its server thread, or its draft while it is one. */
@@ -74,6 +83,26 @@ export function ChatTabStrip({
     }
     store.close(key);
   };
+
+  // The keyboard menu and the ex line select and close tabs as the strip does.
+  const select = (key: string) => {
+    const route = routes.current.get(key);
+    if (route && key !== activeKey) go(route);
+  };
+  const handle = useRef({ select, close });
+  useLayoutEffect(() => {
+    handle.current = { select, close };
+  });
+  useEffect(
+    () =>
+      chatTabsSlot.register({
+        keys,
+        activeKey,
+        select: (key) => handle.current.select(key),
+        close: (key) => handle.current.close(key),
+      }),
+    [activeKey, keys],
+  );
 
   return (
     <TitlebarTabStrip

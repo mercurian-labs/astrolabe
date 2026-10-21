@@ -22,6 +22,8 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -32,13 +34,15 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { sidebarSectionSlot } from "../../whichKey/handles";
 import { isSidebarUtilityPage } from "./mainAppLocation";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
-  onNewThread: (event: ReactMouseEvent) => void;
+  /** Astrolabe: without an event when the keyboard menu asks (see `sidebarSectionSlot`). */
+  onNewThread: (event?: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
@@ -99,6 +103,20 @@ export function SidebarThreadHeader({
     setSearchFocusRequest((request) => request + 1);
   };
   const searchLabel = `Search ${searchNoun}s`;
+  // Astrolabe: the keyboard menu's `n` is this row's new button.
+  const newItem = useRef(onNewThread);
+  useLayoutEffect(() => {
+    newItem.current = onNewThread;
+  });
+  useEffect(
+    () =>
+      sidebarSectionSlot.register({
+        newItem: () => newItem.current(),
+        newItemLabel,
+        newItemDisabled: newThreadDisabled,
+      }),
+    [newItemLabel, newThreadDisabled],
+  );
   if (collapsed && slot) {
     return createPortal(
       <SidebarCollapsedActions

@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, settings tabs, tabs and splits in the right panel, sidebar header and icon rail, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, settings tabs, tabs and splits in the right panel, sidebar header and icon rail, Wikis, Vim mode, the which-key keyboard menu, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -26,8 +26,15 @@ It starts `vp run dev` on a clean home in `$run/home`, records the PID in
 `$run/pid`, and returns once the server prints its pairing URL. It also prints
 the `[dev-runner] … serverPort=… webPort=…` line and writes the URL to
 `$run/pairing-url`. The log is `$run/dev.log`. To test against the worktree's
-own `.t3` (for example seeded data), run `vp run dev` in the background
-yourself and track its PID. Never point it at `~/.t3/userdata`, and never set
+own `.t3` (for example seeded data), run it in the background yourself and
+track its PID:
+
+```bash
+nohup vp run dev --home-dir "$PWD/.t3" >"$run/dev.log" 2>&1 & echo $! >"$run/pid"
+```
+
+Then wait for `pairingUrl:` in the log, as `start-dev.sh` does, and stop it with
+`stop-dev.sh "$run"`. Never point it at `~/.t3/userdata`, and never set
 `VITE_HTTP_URL` or `VITE_WS_URL`.
 
 A clean home is not empty: the server adds the directory it runs in
@@ -51,15 +58,31 @@ Open the full URL from `$run/pairing-url` once with `preview_open` and
 `profileId: "incognito"`. The token is single-use. Once it is consumed, mint
 another with `node apps/server/src/bin.ts pair --base-dir "$run/home"`. Pairing
 in incognito means your run neither reads nor leaves the user's default-profile
-state. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
+state, and the incognito session does not outlive the browser: a later run lands
+on `/pair` again. On a tab already at `/pair`, navigating to `…/pair#token=…`
+only changes the hash and pairs nothing; type the token into
+`role=textbox[name='Pairing token']` and click **Continue** instead. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
 `role=tablist[name='Open chats']` before acting. It lands on a draft in the
-**server** project; click a sidebar row (`role=button[name='<title>, <project>']`)
-when the feature needs a real thread. Then:
+**server** project; click a sidebar row when the feature needs a real thread
+(`[data-testid=sidebar-row-card] >> nth=N`, or by name `role=button[name='<title>, <project>']`,
+which becomes `'<title>, <status>, <project>'` while a status shows). Then:
 
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
+  Tools take Playwright selectors: a bare CSS descendant selector
+  (`[data-x] input`) is rejected; chain with `>>` or use roles.
+- `preview_press` sends modifiers (`modifiers: ["Meta"]` for Cmd+K) and one key per
+  call; `preview_click` sends none. Keyboard flows (Vim, the keyboard menu) are
+  driven with `preview_press`.
+- Opening a chat focuses its composer, so keys "to the page" type into the draft.
+  Move focus first (click a sidebar heading, or `document.activeElement.blur()`).
 - `preview_snapshot` returns a very large tree. Use `preview_wait_for` to
   settle and `preview_evaluate` for targeted reads (tab lists, localStorage),
-  and take a snapshot only to look or to save evidence.
+  and take a snapshot only to look or to save evidence. If a snapshot times out,
+  the tab it ran in can stay frozen: don't retry it there. Probe the tab with
+  `preview_evaluate new Promise(r => requestAnimationFrame(() => r(1)))`, and if
+  that times out too, close the tab and open a fresh one. Check a snapshot on a
+  second page before blaming the page under test: a stuck snapshot can be the
+  browser panel's, not the app's.
 - Right-panel arrangements live in localStorage under
   `t3code:right-panel-panes:v1:<environmentId>:<threadId>`. Reading that key proves a
   layout change without a screenshot, and surviving `location.reload()` proves

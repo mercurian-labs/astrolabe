@@ -60,6 +60,8 @@ export interface RpcSessionOptions {
   readonly environmentThemes?: boolean;
   readonly usageLimitSources?: boolean;
   readonly usageLimitsCommand?: boolean;
+  /** Astrolabe: this client applies the server's vimrc, so it follows the file's changes. */
+  readonly vimrc?: boolean;
 }
 
 export class RpcSessionFactory extends Context.Service<
@@ -169,6 +171,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     ...(options.environmentThemes === true ? { environmentThemes: true } : {}),
     ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
     ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+    ...(options.vimrc === true ? { vimrc: true } : {}),
   };
 
   const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {

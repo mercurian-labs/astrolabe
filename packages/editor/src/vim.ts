@@ -11,13 +11,14 @@ import {
   type RangeValue,
   type Text,
 } from "@codemirror/state";
-import { EditorView, ViewPlugin, showPanel, type Panel } from "@codemirror/view";
-import { CodeMirror, Vim, getCM, vim } from "@replit/codemirror-vim";
+import { EditorView, ViewPlugin, drawSelection, showPanel, type Panel } from "@codemirror/view";
+import { CodeMirror, Vim, getCM, vim, type CodeMirrorV } from "@replit/codemirror-vim";
 import { cellModalLayer } from "./markdown/tableCells.ts";
 
 // Vim mode (live-preview spec 5.1): `@replit/codemirror-vim` with undo routed to the host's
 // undo manager, normal-mode motions that never rest on hidden syntax, the same layer in
-// table cells, and a mode panel. Off unless the host installs `vimMode`.
+// table cells, the selection drawn by CodeMirror, and the mode in a panel and a
+// `data-vim-mode` attribute on the editor. Off unless the host installs `vimMode`.
 
 /** The host's undo history, which Vim's `u`, `U`, and `Ctrl-r` run instead of CodeMirror's. */
 export interface VimHistory {
@@ -94,6 +95,21 @@ function vimState(view: EditorView) {
   return getCM(view)?.state.vim ?? null;
 }
 
+/**
+ * Whether Vim's panel holds a prompt waiting for input (the ex line, a search). A status
+ * notification there ("Found 1 matches…") waits for nothing: Vim's next key closes it.
+ */
+function promptOpen(view: EditorView) {
+  const dialog: unknown = getCM(view)?.state.dialog;
+  return dialog instanceof Element && dialog.querySelector("input, textarea") !== null;
+}
+
+/** Closes the status notification in Vim's panel, if one shows, as Vim's next key would. */
+function closeNotification(view: EditorView) {
+  const state = getCM(view)?.state as { currentNotificationClose?: () => void } | undefined;
+  state?.currentNotificationClose?.();
+}
+
 /** Whether Vim has nothing pending: the next key starts a command. */
 function atRest(view: EditorView) {
   const state = vimState(view);
@@ -103,7 +119,7 @@ function atRest(view: EditorView) {
     input.keyBuffer.length === 0 &&
     !input.operator &&
     input.prefixRepeat.length === 0 &&
-    !getCM(view)?.state.dialog
+    !promptOpen(view)
   );
 }
 
@@ -111,6 +127,36 @@ function atRest(view: EditorView) {
 function idle(view: EditorView) {
   const state = vimState(view);
   return !!state && !state.insertMode && !state.visualMode && atRest(view);
+}
+
+/** Whether `view`'s Vim is in insert (or replace) mode; null when the view has no Vim. */
+export function vimInsertMode(view: EditorView): boolean | null {
+  const state = vimState(view);
+  return state ? state.insertMode : null;
+}
+
+/** Whether `view`'s Vim is in normal mode with no command pending, so Escape has nothing to end. */
+export function vimAtRest(view: EditorView): boolean {
+  return idle(view);
+}
+
+/** Takes `view`'s Vim to insert mode from whichever mode it is in. */
+export function enterInsertMode(view: EditorView) {
+  const cm = getCM(view);
+  const state = cm?.state.vim;
+  if (!cm || !state || state.insertMode) return;
+  // Visual `i` starts a text object, and a pending command would take the `i`: end them first.
+  if (!idle(view)) Vim.handleKey(cm, "<Esc>", "api");
+  Vim.handleKey(cm, "i", "api");
+}
+
+/** `view`'s Vim mode as the panel names it, read from its state rather than an event. */
+function currentMode(view: EditorView) {
+  const state = vimState(view);
+  if (!state) return "normal";
+  if (state.insertMode) return getCM(view)?.state.overwrite ? "replace" : "insert";
+  if (!state.visualMode) return "normal";
+  return state.visualLine ? "visual line" : state.visualBlock ? "visual block" : "visual";
 }
 
 /** A mode as the panel names it, from Vim's mode-change event. */
@@ -135,8 +181,14 @@ const vimModeField = StateField.define<{ editor: string; cell: string | null }>(
     }
     return next;
   },
-  provide: (field) => showPanel.from(field, () => modePanel),
+  // The mode as an attribute, so a host can style by it (`insert`, `normal`, `visual`…).
+  provide: (field) =>
+    EditorView.editorAttributes.from(field, ({ editor, cell }) => ({
+      "data-vim-mode": cell ?? editor,
+    })),
 });
+
+const modePanelExtension = showPanel.from(vimModeField, () => modePanel);
 
 function panelText(view: EditorView) {
   const { editor, cell } = view.state.field(vimModeField);
@@ -243,7 +295,13 @@ function vimSupport(outer: boolean) {
       const bind = () => {
         if (cm || destroyed) return;
         cm = getCM(view);
-        cm?.on("vim-mode-change", onMode);
+        if (!cm) return;
+        cm.on("vim-mode-change", onMode);
+        // The host may have changed mode before this listened (insert mode from the start).
+        const mode = currentMode(view);
+        if (outer && view.state.field(vimModeField).editor !== mode) {
+          report(view, setVimMode.of({ cell: false, mode }));
+        }
       };
       // Held from the start: when Vim is switched off, this plugin is destroyed in a state
       // that no longer has the history, and the grouping must still be handed back.
@@ -287,9 +345,46 @@ function vimSupport(outer: boolean) {
 const editorSupport = vimSupport(true);
 const cellSupport = vimSupport(false);
 
+/**
+ * The selection and insert-mode caret, drawn by CodeMirror's layers: Vim hides the native
+ * selection outside insert mode, so a visual selection shows only through these. A host colours
+ * the selection with `--atlas-selection` (focused) and `--atlas-selection-unfocused`.
+ */
+const drawnSelection: Extension = [
+  drawSelection(),
+  EditorView.theme({
+    ".cm-selectionBackground": {
+      background: "var(--atlas-selection-unfocused, #d9d9d9)",
+    },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+      background: "var(--atlas-selection, #d7d4f0)",
+    },
+    // In the text's colour, as the native caret it replaces.
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "currentColor" },
+  }),
+];
+
+/**
+ * Outside insert mode the editor's text reads in the monospace font (`--atlas-md-font-mono`), so
+ * the mode shows without a panel. For a host that shows the mode this way; it acts only while
+ * Vim is on, since the attribute it reads is `vimMode`'s.
+ */
+export const vimNormalModeFont: Extension = EditorView.theme({
+  "&[data-vim-mode]:not([data-vim-mode=insert]):not([data-vim-mode=replace]) .cm-content": {
+    fontFamily:
+      "var(--atlas-md-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
+  },
+});
+
 /** Vim in a table cell's editor: the outer editor's panel shows its mode, same history. */
 function cellVim(history: VimHistory): Extension {
-  return [vim(), vimHistory.of(history), Prec.highest(cellSupport), restOnVisibleText];
+  return [
+    vim(),
+    vimHistory.of(history),
+    Prec.highest(cellSupport),
+    restOnVisibleText,
+    drawnSelection,
+  ];
 }
 
 /**
@@ -314,22 +409,30 @@ const panelCells = new WeakMap<
 >();
 
 /**
- * Vim mode for an Atlas editor: modal editing with the mode in a panel at the bottom, `u`,
+ * Vim mode for an Atlas editor: modal editing with the mode in a panel at the bottom (unless
+ * `panel` is false, for a host that shows the mode itself through `data-vim-mode`, as
+ * `vimNormalModeFont` does), the selection drawn so visual mode shows it, `u`,
  * `U`, and `Ctrl-r` on `history`, and the same layer in table cell editors. Vim's keys take
  * precedence in normal, visual, and operator-pending modes; in insert mode every other
  * binding still runs.
  */
-export function vimMode(history: VimHistory): Extension {
+export function vimMode(
+  history: VimHistory,
+  { panel = true }: { panel?: boolean } = {},
+): Extension {
   configureVim();
   return [
     // Above the keymaps (which CodeMirror runs at default precedence), so normal-mode keys
     // reach Vim first; Vim passes on what it does not handle in insert mode. Vim's own panel
     // only opens for the ex line; the mode panel is this layer's.
     Prec.high(vim()),
+    textwidthTracker,
     vimHistory.of(history),
     vimModeField,
+    panel ? modePanelExtension : [],
     Prec.highest(editorSupport),
     restOnVisibleText,
+    drawnSelection,
     cellModalLayer.of({
       extension: cellVim(history),
       idle,
@@ -368,3 +471,130 @@ export function vimMode(history: VimHistory): Extension {
     }),
   ];
 }
+
+/**
+ * Reports each command entered on the editor's ex line (`:`), without the colon, before Vim
+ * runs it. Vim's ex line is an input in the editor's bottom panel; a search (`/`, `?`) is
+ * not reported.
+ */
+export function vimExLine(onSubmit: (input: string, view: EditorView) => void): Extension {
+  return ViewPlugin.define((view) => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const input = event.target;
+      if (event.key !== "Enter" || event.isComposing) return;
+      if (!(input instanceof HTMLInputElement) || !input.closest(".cm-panels")) return;
+      // The prompt's prefix, the only text beside its input.
+      if (input.parentElement?.textContent !== ":") return;
+      onSubmit(input.value, view);
+    };
+    // Capturing, ahead of the input's own handler, which runs the command and closes the line.
+    view.dom.addEventListener("keydown", onKeyDown, true);
+    return { destroy: () => view.dom.removeEventListener("keydown", onKeyDown, true) };
+  });
+}
+
+/** What a host does with the two normal-mode keys `vimHostKeys` offers it. */
+export interface VimHostKeys {
+  /** The leader key in normal or visual mode; true when the host took it. */
+  leader?: (view: EditorView) => boolean;
+  /**
+   * The leader key as `KeyboardEvent.key` names it, read at each key: Space (`" "`) when not
+   * given, null for none.
+   */
+  leaderKey?: () => string | null;
+  /** `:` in normal mode, in place of Vim's ex line; true when the host took it. */
+  exLine?: (view: EditorView) => boolean;
+}
+
+/**
+ * Offers the host its leader key, Space unless it says otherwise (in normal and visual mode), and
+ * `:` (in normal mode) ahead of Vim. A key the host declines stays Vim's: Space moves right, `:`
+ * opens Vim's ex line. Only when Vim has nothing pending, so `3:`, `d<Space>`, and visual `:`
+ * (with its `'<,'>` range) are always Vim's. Does nothing in an editor without Vim.
+ */
+export function vimHostKeys(host: VimHostKeys): Extension {
+  return Prec.highest(
+    EditorView.domEventHandlers({
+      keydown(event, view) {
+        if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false;
+        const state = vimState(view);
+        if (!state || state.insertMode || !atRest(view)) return false;
+        const leaderKey = host.leaderKey ? host.leaderKey() : " ";
+        // Shift+Space is not Space.
+        const isLeader =
+          leaderKey !== null && event.key === leaderKey && !(leaderKey === " " && event.shiftKey);
+        const take = isLeader
+          ? host.leader
+          : event.key === ":" && !state.visualMode
+            ? host.exLine
+            : undefined;
+        if (!take?.(view)) return false;
+        event.preventDefault();
+        closeNotification(view);
+        return true;
+      },
+    }),
+  );
+}
+
+/**
+ * Runs an ex command (without its colon) in `view` as Vim's ex line would: a host that took
+ * `:` routes the editor's own commands (`:s/a/b/`, `:%s`, `:noh`, `:12`) back through this.
+ */
+export function runVimEx(view: EditorView, input: string) {
+  const cm = getCM(view);
+  if (cm && hasVim(cm)) Vim.handleEx(cm, input);
+}
+
+function hasVim(cm: VimCM): cm is VimCM & CodeMirrorV {
+  return cm.state.vim != null;
+}
+
+/**
+ * The vimrc's `textwidth` (what `gq` wraps to): an option each editor holds in the package, so
+ * every Vim editor takes it as it starts and whenever it changes. Null leaves the package's 80.
+ */
+let vimrcTextwidth: number | null = null;
+const vimEditors = new Set<EditorView>();
+
+function applyTextwidth(view: EditorView) {
+  getCM(view)?.setOption("textwidth", vimrcTextwidth ?? undefined);
+}
+
+const textwidthTracker = ViewPlugin.define((view) => {
+  vimEditors.add(view);
+  // After Vim's own plugin has attached its CodeMirror adapter.
+  queueMicrotask(() => applyTextwidth(view));
+  return { destroy: () => vimEditors.delete(view) };
+});
+
+const TEXTWIDTH_NAMES = new Set(["textwidth", "tw"]);
+
+/** The part of `Vim` a vimrc uses; a mapping for every mode (`:map`) has no context. */
+interface VimConfiguration {
+  map(lhs: string, rhs: string, context?: string): void;
+  noremap(lhs: string, rhs: string, context?: string): void;
+  unmap(lhs: string, context?: string): unknown;
+  setOption(name: string, value: unknown): Error | undefined;
+  getOption(name: string): unknown;
+}
+
+const vimGlobals: VimConfiguration = Vim;
+
+/**
+ * Vim's shared configuration (every Vim editor on the page), as a vimrc applies it: see
+ * `createVimrcApplier` in `@t3tools/shared/vimrc`. `textwidth` reaches each editor.
+ */
+export const vimConfiguration: VimConfiguration = {
+  map: (lhs, rhs, context) => vimGlobals.map(lhs, rhs, context),
+  noremap: (lhs, rhs, context) => vimGlobals.noremap(lhs, rhs, context),
+  unmap: (lhs, context) => vimGlobals.unmap(lhs, context),
+  setOption(name, value) {
+    if (!TEXTWIDTH_NAMES.has(name)) return vimGlobals.setOption(name, value);
+    vimrcTextwidth = typeof value === "number" && value > 1 ? Math.round(value) : null;
+    for (const view of vimEditors) applyTextwidth(view);
+    return undefined;
+  },
+  getOption: (name) =>
+    TEXTWIDTH_NAMES.has(name) ? (vimrcTextwidth ?? 80) : vimGlobals.getOption(name),
+};

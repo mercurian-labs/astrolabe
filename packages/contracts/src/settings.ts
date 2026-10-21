@@ -310,6 +310,10 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
+/** Astrolabe: a leader key, as `KeyboardEvent.key` names it (`" "` for Space). */
+export const LeaderKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32));
+export type LeaderKey = typeof LeaderKey.Type;
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -434,6 +438,15 @@ export const ClientSettingsSchema = Schema.Struct({
   contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   composerCollapseOnScroll: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   composerRichTextEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Astrolabe: Vim keys in the composer and the wiki's note editor. Off until turned on in
+  // Settings, which first asks for `:q`.
+  vimModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Astrolabe: superseded by `leaderKey`, and read only when that is unset (see
+  // `resolveLeaderKey`): false there means no leader key.
+  spaceLeaderEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Astrolabe: the key that opens the keyboard menu while focus is on no field or control (or in
+  // Vim's normal and visual modes); null for none. Unset, `resolveLeaderKey` reads the old switch.
+  leaderKey: Schema.optionalKey(Schema.NullOr(LeaderKey)),
   sendShortcut: Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("enter")),
   ),
@@ -486,6 +499,17 @@ export const ClientSettingsSchema = Schema.Struct({
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientSettingsSchema)({});
+
+/**
+ * Astrolabe: this device's leader key, or null for none: the `leaderKey` setting, else what the
+ * older Space switch said (on is Space, off is none).
+ */
+export function resolveLeaderKey(
+  settings: Pick<ClientSettings, "leaderKey" | "spaceLeaderEnabled">,
+): string | null {
+  if (settings.leaderKey !== undefined) return settings.leaderKey;
+  return settings.spaceLeaderEnabled ? " " : null;
+}
 
 const UsageModelTokenPrice = Schema.Number.check(
   Schema.isFinite(),
@@ -1635,6 +1659,12 @@ export const ClientSettingsPatch = Schema.Struct({
   contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   composerCollapseOnScroll: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
+  // Astrolabe: Vim keys in the composer and notes.
+  vimModeEnabled: Schema.optionalKey(Schema.Boolean),
+  // Astrolabe: Space as the keyboard menu's leader key.
+  spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),
+  // Astrolabe: the keyboard menu's leader key, or null for none.
+  leaderKey: Schema.optionalKey(Schema.NullOr(LeaderKey)),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),

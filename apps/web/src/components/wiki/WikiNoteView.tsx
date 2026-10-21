@@ -33,6 +33,7 @@ import { Label } from "../ui/label";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
 import {
   authorColor,
   defaultSaveTarget,
@@ -264,6 +265,10 @@ export function WikiNoteView({
               session={snapshot.session}
               readOnly={readOnly}
               onOpenNote={onOpenNote}
+              onWrite={() => {
+                if (buffer.getSnapshot().dirty) setSaving(true);
+                else toastManager.add({ type: "info", title: "No edits to save" });
+              }}
             />
           ) : null}
           <div className="grid gap-6 border-t border-border pt-4 sm:grid-cols-2">

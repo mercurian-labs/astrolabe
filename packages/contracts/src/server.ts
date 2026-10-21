@@ -17,10 +17,11 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import {
-  KeybindingCommand,
+  KeybindingRuleCommand,
   KeybindingValue,
   KeybindingWhen,
   ResolvedKeybindingsConfig,
+  ResolvedKeybindingTriggers,
 } from "./keybindings.ts";
 import { EditorId, FileManagerRevealKind, RemoteOpenTarget } from "./editor.ts";
 import { ModelCapabilities, ProviderOptionDescriptor } from "./model.ts";
@@ -28,6 +29,7 @@ import { RuntimeMode } from "./providerPolicy.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { ServerProviderUsageLimits, UsageLimitSourceSnapshots } from "./providerUsageLimits.ts";
 import { ServerSettings } from "./settings.ts";
+import { ServerVimrc } from "./vimrc.ts";
 
 const KeybindingsMalformedConfigIssue = Schema.Struct({
   kind: Schema.Literal("keybindings.malformed-config"),
@@ -605,7 +607,12 @@ export const ServerConfig = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   keybindingsConfigPath: TrimmedNonEmptyString,
   keybindings: ResolvedKeybindingsConfig,
+  // Astrolabe: menu keys and aliases; absent from servers that predate them.
+  keybindingTriggers: Schema.optional(ResolvedKeybindingTriggers),
   issues: ServerConfigIssues,
+  // Astrolabe: the vimrc file beside keybindings.json; absent from servers that predate it.
+  vimrcConfigPath: Schema.optionalKey(TrimmedNonEmptyString),
+  vimrc: Schema.optionalKey(ServerVimrc),
   providers: ServerProviders,
   availableEditors: ForwardCompatibleArray(EditorId),
   remoteOpenTargets: Schema.optionalKey(ForwardCompatibleArray(RemoteOpenTarget)),
@@ -660,13 +667,14 @@ export function resolveEnvironmentMachineKind(
 
 const ServerUpsertKeybindingReplaceTarget = Schema.Struct({
   key: KeybindingValue,
-  command: KeybindingCommand,
+  // Astrolabe: or a `-command` removal rule.
+  command: KeybindingRuleCommand,
   when: Schema.optional(KeybindingWhen),
 });
 
 export const ServerUpsertKeybindingInput = Schema.Struct({
   key: KeybindingValue,
-  command: KeybindingCommand,
+  command: KeybindingRuleCommand,
   when: Schema.optional(KeybindingWhen),
   replace: Schema.optional(ServerUpsertKeybindingReplaceTarget),
 });
@@ -677,6 +685,8 @@ export type ServerRemoveKeybindingInput = typeof ServerRemoveKeybindingInput.Typ
 
 export const ServerUpsertKeybindingResult = Schema.Struct({
   keybindings: ResolvedKeybindingsConfig,
+  // Astrolabe
+  keybindingTriggers: Schema.optional(ResolvedKeybindingTriggers),
   issues: ServerConfigIssues,
 });
 export type ServerUpsertKeybindingResult = typeof ServerUpsertKeybindingResult.Type;
@@ -693,10 +703,18 @@ export type ServerConfigUpdatedPayload = typeof ServerConfigUpdatedPayload.Type;
 
 export const ServerConfigKeybindingsUpdatedPayload = Schema.Struct({
   keybindings: ResolvedKeybindingsConfig,
+  // Astrolabe
+  keybindingTriggers: Schema.optional(ResolvedKeybindingTriggers),
   issues: ServerConfigIssues,
 });
 export type ServerConfigKeybindingsUpdatedPayload =
   typeof ServerConfigKeybindingsUpdatedPayload.Type;
+
+/** Astrolabe: the vimrc after a change, by a client or a hand edit to the file. */
+export const ServerConfigVimrcUpdatedPayload = Schema.Struct({
+  vimrc: ServerVimrc,
+});
+export type ServerConfigVimrcUpdatedPayload = typeof ServerConfigVimrcUpdatedPayload.Type;
 
 export const ServerConfigProviderStatusesPayload = Schema.Struct({
   providers: ServerProviders,
@@ -722,6 +740,13 @@ export const ServerConfigStreamKeybindingsUpdatedEvent = Schema.Struct({
 });
 export type ServerConfigStreamKeybindingsUpdatedEvent =
   typeof ServerConfigStreamKeybindingsUpdatedEvent.Type;
+
+export const ServerConfigStreamVimrcUpdatedEvent = Schema.Struct({
+  version: Schema.Literal(1),
+  type: Schema.Literal("vimrcUpdated"),
+  payload: ServerConfigVimrcUpdatedPayload,
+});
+export type ServerConfigStreamVimrcUpdatedEvent = typeof ServerConfigStreamVimrcUpdatedEvent.Type;
 
 export const ServerConfigStreamProviderStatusesEvent = Schema.Struct({
   version: Schema.Literal(1),
@@ -774,6 +799,8 @@ export const ServerConfigStreamEvent = Schema.Union([
   ServerConfigStreamSettingsUpdatedEvent,
   ServerConfigStreamEnvironmentThemesUpdatedEvent,
   ServerConfigStreamUsageLimitSourcesUpdatedEvent,
+  // Astrolabe
+  ServerConfigStreamVimrcUpdatedEvent,
 ]);
 export type ServerConfigStreamEvent = typeof ServerConfigStreamEvent.Type;
 

@@ -25,6 +25,8 @@ export interface ServerDerivedPaths {
   readonly stateDir: string;
   readonly dbPath: string;
   readonly keybindingsConfigPath: string;
+  /** Astrolabe: the vimrc every Vim editor of this server's clients applies. */
+  readonly vimrcConfigPath: string;
   readonly settingsPath: string;
   readonly environmentThemesDir: string;
   readonly providerStatusCacheDir: string;
@@ -130,6 +132,7 @@ export const deriveServerPaths = Effect.fn(function* (
     stateDir,
     dbPath,
     keybindingsConfigPath: join(stateDir, "keybindings.json"),
+    vimrcConfigPath: join(stateDir, "vimrc"),
     settingsPath: join(stateDir, "settings.json"),
     environmentThemesDir: join(stateDir, "themes"),
     providerStatusCacheDir,

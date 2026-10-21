@@ -153,7 +153,7 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
-import { onOpenCommandPalette } from "../commandPaletteBus";
+import { onOpenCommandPalette, openCommandPalette } from "../commandPaletteBus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -259,6 +259,10 @@ import type { Project } from "../types";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+// Astrolabe: the palette as Vim's ex line, and Search finding wiki documents.
+import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
+import { commandLineField, queryForField } from "~/whichKey/exCommands";
+import { useExLine } from "~/whichKey/exPalette";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 
@@ -586,7 +590,19 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         void navigate({ to: "/usage" });
         return;
       }
-      const mode = overlayModeForCommand(command);
+      // Astrolabe: mod+p over the file picker or content search opens the Command Palette (in
+      // Search, its field handles the key).
+      if (command === "commandLine.open" && state.open && state.mode !== "command") {
+        event.preventDefault();
+        event.stopPropagation();
+        dispatch({ _tag: "OpenSearch", query: ":" });
+        return;
+      }
+      // Astrolabe: mod+k opens the keyboard menu, not the palette; pressed in the open palette
+      // it still closes it, as upstream's toggle did.
+      const mode = overlayModeForCommand(
+        command === "whichKey.open" && state.open ? "commandPalette.toggle" : command,
+      );
       if (mode === null) {
         return;
       }
@@ -604,6 +620,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     resolvedTheme,
     setAppearanceMode,
     setOpen,
+    state.mode,
+    state.open,
     terminalOpen,
     theme,
     themeHalves,
@@ -615,6 +633,10 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       onOpenCommandPalette((detail) => {
         if (detail.open === "new-thread-in") {
           openNewThreadIn();
+        } else if (detail.open === "files") {
+          // Astrolabe: the file picker, from the keyboard menu.
+          dispatch({ _tag: "SetOpen", open: false });
+          toggleMode("files");
         } else if (detail.open === "add-project") {
           openAddProject();
         } else if (detail.query !== undefined) {
@@ -627,7 +649,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           setOpen(true);
         }
       }),
-    [openAddProject, openNewThreadIn, setOpen],
+    [openAddProject, openNewThreadIn, setOpen, toggleMode],
   );
 
   return (
@@ -679,7 +701,7 @@ function CommandPaletteDialog(props: {
           ? "File picker"
           : props.mode === "content"
             ? "Search project contents"
-            : "Command palette"
+            : "Search"
       }
       className={cn("overflow-hidden", props.mode === "content" && "h-105")}
       data-command-palette="true"
@@ -2132,14 +2154,20 @@ function OpenCommandPaletteDialog(props: {
         ? changeThemeItem.groups
         : currentView?.groups[0]?.value === "appearance"
           ? changeAppearanceItem.groups
-          : (currentView?.groups ?? rootGroups);
+          : (currentView?.groups ??
+            // Astrolabe: Search leaves the actions to the Command Palette, which a leading `>`
+            // (upstream's actions filter) or `:` opens instead (`queryForField`).
+            rootGroups.filter((group) => group.value !== "actions"));
 
+  // Astrolabe: Search finds every wiki's documents too.
+  const documentSearchItems = useDocumentSearchRows(currentView === null);
   const filteredGroups = filterCommandPaletteGroups({
     activeGroups,
     query: deferredQuery,
     isInSubmenu: currentView !== null,
     projectSearchItems: projectSearchItems,
     settingsSearchItems,
+    documentSearchItems,
     threadSearchItems:
       linkedThreadSearch?.linkedThreads && deferredQuery === linkedThreadSearch.query
         ? buildLinkedThreadActionItems({
@@ -2774,7 +2802,12 @@ function OpenCommandPaletteDialog(props: {
           },
         ];
 
-  let displayedGroups: CommandPaletteView["groups"] = filteredGroups;
+  // Astrolabe: a query starting with `:` is Vim's ex line (see `useExLine`): the Command
+  // Palette, whose field shows a chevron in place of the typed `:`.
+  const exLineGroups = useExLine(deferredQuery, allThreadItems, actionItems, setQuery);
+  const field = commandLineField(query, currentView === null);
+  let displayedGroups: CommandPaletteView["groups"] =
+    exLineGroups !== null && currentView === null ? exLineGroups : filteredGroups;
   if (newProjectFlow !== null) {
     displayedGroups = [
       ...(newProjectMachineGroup ? [newProjectMachineGroup] : []),
@@ -2790,13 +2823,19 @@ function OpenCommandPaletteDialog(props: {
   }
   const resultRows = buildCommandPaletteRows(displayedGroups);
   const autoHighlightsFirstRow =
-    !isBrowsing && !isRemoteProjectCloneFlow && newProjectFlow === null;
+    !isBrowsing &&
+    !isRemoteProjectCloneFlow &&
+    newProjectFlow === null &&
+    // Astrolabe: Enter on a bare `:` runs nothing, as in Vim; the list is there to pick from.
+    !(field.commandLine && field.text.trim() === "");
 
   const inputPlaceholder =
     newProjectFlow !== null
       ? "Project name"
-      : (remoteProjectInputPlaceholder(addProjectCloneFlow) ??
-        getCommandPaletteInputPlaceholder(paletteMode));
+      : field.commandLine
+        ? "Run a command…"
+        : (remoteProjectInputPlaceholder(addProjectCloneFlow) ??
+          getCommandPaletteInputPlaceholder(paletteMode));
   const isSubmenu = paletteMode === "submenu" || paletteMode === "submenu-browse";
   const hasHighlightedBrowseItem = highlightedItemValue?.startsWith("browse:") ?? false;
   const canWriteSourceControl = useEnvironmentScope(
@@ -2905,6 +2944,14 @@ function OpenCommandPaletteDialog(props: {
       }
       return;
     }
+    // Astrolabe: mod+p switches Search to the Command Palette, and closes the Command Palette.
+    if (command === "commandLine.open") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (field.commandLine) setOpen(false);
+      else openCommandPalette({ query: ":" });
+      return;
+    }
     if (command === "thread.copyReference") {
       event.preventDefault();
       event.stopPropagation();
@@ -2962,6 +3009,12 @@ function OpenCommandPaletteDialog(props: {
     if (event.key === "Backspace" && query === "" && isSubmenu) {
       event.preventDefault();
       popView();
+      return;
+    }
+    // Astrolabe: Backspace in an empty Command Palette goes back to Search.
+    if (event.key === "Backspace" && field.commandLine && field.text === "") {
+      event.preventDefault();
+      handleQueryChange("");
       return;
     }
 
@@ -3251,7 +3304,7 @@ function OpenCommandPaletteDialog(props: {
   return (
     <CommandPaletteContent
       key={`${viewStack.length}-${browseGeneration}-${isBrowsing}-${newProjectFlow ? "new-project" : (addProjectCloneFlow?.step ?? "none")}`}
-      aria-label="Command palette"
+      aria-label={field.commandLine ? "Command palette" : "Search"}
       autoHighlight={autoHighlightsFirstRow ? "always" : false}
       footerActionLabel={footerActionLabel}
       footerTrailing={footerTrailing}
@@ -3283,7 +3336,9 @@ function OpenCommandPaletteDialog(props: {
             }
           : isBrowsing
             ? { startAddon: <FolderPlusIcon /> }
-            : {}),
+            : field.commandLine
+              ? { startAddon: <ChevronRightIcon /> }
+              : {}),
         onKeyDown: handleKeyDown,
       }}
       mode="none"
@@ -3298,9 +3353,11 @@ function OpenCommandPaletteDialog(props: {
           scrollCommandPaletteRowIntoView(resultListRef.current, rowIndex);
         }
       }}
-      onValueChange={handleQueryChange}
+      onValueChange={(next) =>
+        handleQueryChange(queryForField(next, field.commandLine, currentView === null))
+      }
       showBackHint={isSubmenu}
-      value={query}
+      value={field.text}
     >
       {newProjectPathPreview !== null ? (
         <div className="p-2 pb-0">

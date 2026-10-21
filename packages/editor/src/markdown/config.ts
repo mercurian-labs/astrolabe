@@ -17,6 +17,14 @@ export interface LivePreviewOptions {
    */
   reservedKeys?: readonly string[];
   /**
+   * Keys for the formatting commands (bold, italic, code, strikethrough, highlight, link) in
+   * CodeMirror notation (`Mod-Shift-k`): each command named here takes these in place of its
+   * default, and none when given an empty list.
+   */
+  keys?: Partial<
+    Record<"bold" | "italic" | "code" | "strikethrough" | "highlight" | "link", readonly string[]>
+  >;
+  /**
    * Whether Tab and Shift-Tab indent ordinary text. Off, they act only in tables, list items,
    * and code, and elsewhere fall through to the host and the browser's focus order.
    */

@@ -40,3 +40,12 @@ keep the two in step.
 Enter sends, so the fence handling in `handleKeyDown` must run before the send
 handler: checked afterwards, a fence never opens and a newline inside one sends
 the draft.
+
+Vim mode puts the editor package's `vimMode` on the CodeMirror composer, with
+undo routed to the composer's own CodeMirror history rather than Yjs. The
+composer's key handler still sees every key first. Outside insert mode it passes
+them all to Vim except `mod+Enter`, and it suppresses the `@` and `$` triggers.
+Ahead of Vim, the app takes Space and `:` in normal mode for the keyboard menu and
+the palette's ex line ([`whichKey/doors.ts`](../../apps/web/src/whichKey/doors.ts)).
+Nothing tells the editor that a send happened. A store rewrite that empties the
+prompt is the signal that puts Vim back into insert mode.

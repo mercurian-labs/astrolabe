@@ -1,4 +1,5 @@
 import {
+  type KeybindingCommand,
   type KeybindingRule,
   type KeybindingShortcut,
   type KeybindingWhenNode,
@@ -145,6 +146,15 @@ type WhenToken =
   | { type: "rparen" };
 
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
+  // Astrolabe: the Markdown editors' formatting keys, which each editor binds from these rules.
+  // First, so an app shortcut on the same keys still resolves ahead of them outside the editor's
+  // own keymap (mod+b toggles the sidebar, as before).
+  { key: "mod+b", command: "markdown.bold", when: "editorFocus" },
+  { key: "mod+i", command: "markdown.italic", when: "editorFocus" },
+  { key: "mod+e", command: "markdown.code", when: "editorFocus" },
+  { key: "mod+shift+x", command: "markdown.strikethrough", when: "editorFocus" },
+  { key: "mod+shift+h", command: "markdown.highlight", when: "editorFocus" },
+  { key: "mod+shift+k", command: "markdown.link", when: "editorFocus" },
   { key: "mod+b", command: "sidebar.toggle" },
   { key: "mod+[", command: "navigation.back", when: "!terminalFocus" },
   { key: "mod+]", command: "navigation.forward", when: "!terminalFocus" },
@@ -166,8 +176,11 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod++", command: "preview.zoomIn", when: "previewFocus" },
   { key: "mod+-", command: "preview.zoomOut", when: "previewFocus" },
   { key: "mod+0", command: "preview.resetZoom", when: "previewFocus" },
-  { key: "mod+k", command: "commandPalette.toggle", when: "!terminalFocus" },
-  { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
+  // Astrolabe: mod+k opens the keyboard menu, whose `/` (or a second mod+k) is Search;
+  // `commandPalette.toggle` has no default of its own. mod+p is the Command Palette, and the
+  // file picker is the menu's `f` (`DEFAULT_TRIGGER_KEYBINDINGS`).
+  { key: "mod+k", command: "whichKey.open", when: "!terminalFocus" },
+  { key: "mod+p", command: "commandLine.open", when: "!terminalFocus" },
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
   { key: "mod+u", command: "usage.open", when: "!terminalFocus" },
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
@@ -204,7 +217,12 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+x", command: "composer.workspace", when: "!terminalFocus" },
   { key: "mod+shift+g", command: "composer.branch", when: "!terminalFocus" },
   { key: "mod+shift+l", command: "composer.previousWorktree", when: "!terminalFocus" },
-  { key: "mod+shift+k", command: "pullRequest.copyNumber", when: "!terminalFocus" },
+  // Astrolabe: not in an editor, where mod+shift+k inserts a link (`markdown.link`).
+  {
+    key: "mod+shift+k",
+    command: "pullRequest.copyNumber",
+    when: "!terminalFocus && !editorFocus",
+  },
   { key: "mod+shift+arrowup", command: "modelPicker.previousProvider", when: "modelPickerOpen" },
   { key: "mod+shift+arrowdown", command: "modelPicker.nextProvider", when: "modelPickerOpen" },
   { key: "mod+o", command: "editor.openFavorite" },
@@ -437,7 +455,34 @@ export function parseKeybindingWhenExpression(expression: string): KeybindingWhe
   return ast;
 }
 
+/**
+ * Astrolabe: which kind of trigger a rule's `key` is: menu keys (`menu g w`), an alias
+ * (`:q[uit]`), or a shortcut (anything else). See `keybindingTriggers.ts`.
+ */
+export function keybindingTriggerKind(key: string): "shortcut" | "menu" | "alias" {
+  const trimmed = key.trim();
+  if (/^menu(\s|$)/i.test(trimmed)) return "menu";
+  if (trimmed.startsWith(":")) return "alias";
+  return "shortcut";
+}
+
+/** Astrolabe: whether a rule's command is a `-command` removal. */
+export function isKeybindingRemovalCommand(
+  command: KeybindingRule["command"],
+): command is `-${KeybindingCommand}` {
+  return command.startsWith("-");
+}
+
+/** Astrolabe: the command a rule binds, or for a `-command` removal, the one it removes from. */
+export function keybindingRemovalTarget(command: KeybindingRule["command"]): KeybindingCommand {
+  return isKeybindingRemovalCommand(command) ? (command.slice(1) as KeybindingCommand) : command;
+}
+
 export function compileResolvedKeybindingRule(rule: KeybindingRule): ResolvedKeybindingRule | null {
+  // Astrolabe: menu keys, aliases, and removals are not shortcuts.
+  if (keybindingTriggerKind(rule.key) !== "shortcut" || isKeybindingRemovalCommand(rule.command)) {
+    return null;
+  }
   const shortcut = parseKeybindingShortcut(rule.key);
   if (!shortcut) return null;
 
@@ -472,14 +517,19 @@ export function compileResolvedKeybindingsConfig(
 
 export const DEFAULT_RESOLVED_KEYBINDINGS = compileResolvedKeybindingsConfig(DEFAULT_KEYBINDINGS);
 
+/**
+ * Astrolabe: `unbound` names commands whose defaults a `-command` rule removed, which stay
+ * without a shortcut (the server sends them as `keybindingTriggers.unboundCommands`).
+ */
 export function mergeWithDefaultKeybindings(
   custom: ResolvedKeybindingsConfig,
+  unbound: ReadonlyArray<KeybindingCommand> = [],
 ): ResolvedKeybindingsConfig {
-  if (custom.length === 0) {
+  if (custom.length === 0 && unbound.length === 0) {
     return [...DEFAULT_RESOLVED_KEYBINDINGS];
   }
 
-  const overriddenCommands = new Set(custom.map((binding) => binding.command));
+  const overriddenCommands = new Set([...custom.map((binding) => binding.command), ...unbound]);
   const retainedDefaults = DEFAULT_RESOLVED_KEYBINDINGS.filter(
     (binding) => !overriddenCommands.has(binding.command),
   );

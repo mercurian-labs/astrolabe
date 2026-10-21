@@ -8,14 +8,19 @@ below it.
 ## Sub-features
 
 - **Open**: visiting a settings page (sidebar nav, search, a link, the rail's
-  Settings) adds its tab at the end.
+  Settings, the keyboard menu's `,` or `g s`) adds its tab at the end, unless it
+  is already open, in which case that tab comes to the front where it is. The
+  rail opens `/settings`, which redirects to General.
 - **Switch**: clicking a tab shows its page, replacing the history entry as the
   sidebar nav does.
-- **Close**: the ✕ on hover or a middle-click. Closing the tab in front shows
-  the tab after it, else the one before. Closing the last one leaves settings
-  for the chat you came from.
+- **Close**: the ✕ on hover or keyboard focus, or a middle-click. Closing the tab
+  in front shows the tab after it, else the one before. Closing the last one goes
+  to the last threads URL the app recorded (Wikis, Usage, Pull Requests and
+  Settings URLs are never recorded), else `/`.
+- **Switch** drops the URL's hash, so a search deep link's `#target` is lost.
 - **Reorder**: dragging, as on the chat strip.
-- **Persistence**: `localStorage['t3code:settings-tabs:v1']`, by page path.
+- **Persistence**: `localStorage['t3code:settings-tabs:v1']`, zustand's wrapper:
+  `JSON.parse(…).state.keys` is the list of page paths.
 
 ## How to get to it (user POV)
 
@@ -36,7 +41,8 @@ Read the strip:
 `[...document.querySelectorAll('[data-tab-strip=settings] [data-tab]')].map(t => t.getAttribute('aria-label') + (t.getAttribute('aria-selected') === 'true' ? '*' : ''))`.
 
 **Proof:** the strip read and `location.pathname` agree on the tab in front.
-After closing every tab, the URL is a chat again and the stored list is empty.
+Open a chat before Settings; after closing every tab the URL is that chat again,
+`[data-tab-strip=settings]` is gone, and `state.keys` is `[]`.
 
 ## Gotchas
 

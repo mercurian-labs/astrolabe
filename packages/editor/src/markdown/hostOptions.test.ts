@@ -62,12 +62,28 @@ describe("host key options", () => {
     const view = mount("hello", {
       focused: true,
       selection: [[0, 5]],
-      options: { reservedKeys: ["Mod-k"] },
+      options: { reservedKeys: ["Mod-Shift-x"] },
     });
-    expect(press(view, "Mod-k")).toBe(false);
+    expect(press(view, "Mod-Shift-x")).toBe(false);
     expect(docOf(view)).toBe("hello");
     expect(press(view, "Mod-b")).toBe(true);
     expect(docOf(view)).toBe("**hello**");
+  });
+
+  it("formatting commands take the host's keys in place of their defaults", () => {
+    const view = mount("hello", {
+      focused: true,
+      selection: [[0, 5]],
+      options: { keys: { bold: ["Mod-Shift-b"], code: [] } },
+    });
+    expect(press(view, "Mod-b")).toBe(false);
+    expect(press(view, "Mod-e")).toBe(false);
+    expect(docOf(view)).toBe("hello");
+    expect(press(view, "Mod-Shift-b")).toBe(true);
+    expect(docOf(view)).toBe("**hello**");
+    // A command the host does not name keeps its default.
+    expect(press(view, "Mod-Shift-x")).toBe(true);
+    expect(docOf(view)).toBe("**~~hello~~**");
   });
 
   it("with prose indentation off, Tab in prose falls through and changes nothing", () => {

@@ -9,6 +9,7 @@ import {
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
   requiredScopesForProjectMutation,
+  resolveLeaderKey,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
   ServerSettings,
@@ -1272,5 +1273,23 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch({ migrateModelPreferences: input })).toEqual({
       migrateModelPreferences: input,
     });
+  });
+});
+
+// Astrolabe
+describe("the leader key setting", () => {
+  it("reads the old Space switch until a leader key is set", () => {
+    expect(resolveLeaderKey(decodeClientSettings({}))).toBe(" ");
+    expect(resolveLeaderKey(decodeClientSettings({ spaceLeaderEnabled: false }))).toBeNull();
+    expect(
+      resolveLeaderKey(decodeClientSettings({ spaceLeaderEnabled: false, leaderKey: "," })),
+    ).toBe(",");
+    expect(resolveLeaderKey(decodeClientSettings({ leaderKey: null }))).toBeNull();
+    expect(decodeClientSettingsPatch({ leaderKey: null })).toEqual({ leaderKey: null });
+  });
+
+  it("keeps a chosen leader key through a save", () => {
+    const saved = encodeClientSettings(decodeClientSettings({ leaderKey: "," }));
+    expect(resolveLeaderKey(decodeClientSettings(saved))).toBe(",");
   });
 });

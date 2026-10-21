@@ -1,7 +1,7 @@
 import "@mercurian/editor/markdown/theme.css";
 import "@mercurian/editor/markdown/katex.css";
 
-import type { AssistantCitation, ServerProviderSkill } from "@t3tools/contracts";
+import type { AssistantCitation, ClientSettings, ServerProviderSkill } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import {
   memo,
@@ -16,6 +16,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { useMarkdownEditorKeys } from "~/editorKeybindings";
+import { useClientSettings } from "~/hooks/useSettings";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { cn } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
@@ -49,6 +51,9 @@ type OpenCitationComment = {
 
 const EDITOR_CLASS_NAME =
   "-m-1 max-h-52 min-h-19.5 overflow-y-auto p-1 whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none";
+
+const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
+const COMPOSER_EDITOR = { composer: true };
 
 function resolvedThemeFromDocument(): "light" | "dark" {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
@@ -97,6 +102,11 @@ function ComposerPromptEditorCodeMirrorInner(
   const [registry] = useState(() => new ComposerChipRegistry());
   const [isEmpty, setIsEmpty] = useState(value.length === 0);
   const [openCitation, setOpenCitation] = useState<OpenCitationComment | null>(null);
+  // Vim is a device setting (Settings › Keybindings), shared with the wiki's note editor.
+  const vim = useClientSettings(selectVimModeEnabled);
+  // Astrolabe: the formatting keys follow the keybindings; a change recreates the editor, from
+  // the current draft.
+  const markdownKeys = useMarkdownEditorKeys(COMPOSER_EDITOR);
 
   // The editor reads its callbacks through this, so they can change between renders.
   const propsRef = useRef(props);
@@ -134,9 +144,9 @@ function ComposerPromptEditorCodeMirrorInner(
 
   // The latest state to create the editor from; a remount (Strict Mode) must not start
   // from the first render's draft.
-  const creation = useRef({ value, cursor, disabled, presentation });
+  const creation = useRef({ value, cursor, disabled, presentation, vim });
   useLayoutEffect(() => {
-    creation.current = { value, cursor, disabled, presentation };
+    creation.current = { value, cursor, disabled, presentation, vim };
   });
 
   // Created in a layout effect so the composer's own layout effects, which measure the
@@ -170,6 +180,7 @@ function ComposerPromptEditorCodeMirrorInner(
       parent,
       mode,
       ...creation.current,
+      markdownKeys,
       registry,
       host,
     });
@@ -178,7 +189,7 @@ function ComposerPromptEditorCodeMirrorInner(
       editorInstance.current = null;
       editor.destroy();
     };
-  }, [mode, registry]);
+  }, [mode, registry, markdownKeys]);
 
   useLayoutEffect(() => {
     editorInstance.current?.setDisabled(disabled);
@@ -187,6 +198,10 @@ function ComposerPromptEditorCodeMirrorInner(
   useLayoutEffect(() => {
     editorInstance.current?.setPresentation(presentation);
   }, [presentation]);
+
+  useLayoutEffect(() => {
+    editorInstance.current?.setVim(vim);
+  }, [vim]);
 
   // Controlled value and cursor from the store (history recall, chip insertion…).
   useLayoutEffect(() => {

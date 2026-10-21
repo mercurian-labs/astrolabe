@@ -93,9 +93,9 @@ describe("toggles", () => {
     }
   });
 
-  it("A51. Mod-k on selected `docs` gives `[docs](|)`; pasting `https://x` over selected `docs` gives `[docs](https://x)`", () => {
+  it("A51. Mod-Shift-k on selected `docs` gives `[docs](|)`; pasting `https://x` over selected `docs` gives `[docs](https://x)`", () => {
     const view = mount("docs", { focused: true, selection: [[0, 4]] });
-    press(view, "Mod-k");
+    press(view, "Mod-Shift-k");
     expect(docOf(view)).toBe("[docs]()");
     expect(caret(view)).toBe(7);
 
@@ -211,7 +211,14 @@ describe("list and quote continuation", () => {
       selection: [[0, 5]],
       extensions: EditorState.readOnly.of(true),
     });
-    for (const binding of ["Mod-b", "Mod-i", "Mod-e", "Mod-Shift-x", "Mod-Shift-h", "Mod-k"]) {
+    for (const binding of [
+      "Mod-b",
+      "Mod-i",
+      "Mod-e",
+      "Mod-Shift-x",
+      "Mod-Shift-h",
+      "Mod-Shift-k",
+    ]) {
       press(view, binding);
     }
     expect(docOf(view)).toBe("hello");

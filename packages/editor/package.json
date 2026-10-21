@@ -7,6 +7,10 @@
       "types": "./src/editor.tsx",
       "default": "./src/editor.tsx"
     },
+    "./vim": {
+      "types": "./src/vim.ts",
+      "default": "./src/vim.ts"
+    },
     "./collab/agent-changes": {
       "types": "./src/collab/agentChanges.ts",
       "default": "./src/collab/agentChanges.ts"

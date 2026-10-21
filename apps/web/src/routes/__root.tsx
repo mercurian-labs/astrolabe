@@ -587,6 +587,34 @@ function EventRouter({
       return;
     }
 
+    // Astrolabe: the vimrc's own reload and warning, which open the vimrc.
+    if (decision._tag === "VimrcSuccess") {
+      toastManager.add({
+        type: "success",
+        title: "Vim configuration updated",
+        description: "The vimrc reloaded.",
+      });
+      return;
+    }
+    if (decision._tag === "InvalidVimrc") {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: "Vim configuration has lines it cannot apply",
+          description: (
+            <KeybindingsConfigWarning
+              message={decision.message}
+              environmentId={primaryEnvironment?.environmentId ?? null}
+              configPath={serverConfig?.vimrcConfigPath ?? null}
+              availableEditors={serverConfig?.availableEditors ?? []}
+              fileName="vimrc"
+            />
+          ),
+        }),
+      );
+      return;
+    }
+
     toastManager.add(
       stackedThreadToast({
         type: "warning",

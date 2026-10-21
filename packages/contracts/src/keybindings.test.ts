@@ -7,6 +7,7 @@ import {
   KeybindingRule,
   ResolvedKeybindingRule,
   ResolvedKeybindingsConfig,
+  ResolvedKeybindingTriggers,
 } from "./keybindings.ts";
 
 const decode = <S extends Schema.Top>(
@@ -193,4 +194,35 @@ it.effect("drops unknown fields in resolved keybinding rules", () =>
       assert.strictEqual(view.command, "terminal.toggle");
     }),
   ),
+);
+
+// Astrolabe
+it.effect("parses removal rules and rejects removals of unknown commands", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decode(KeybindingRule, { key: "menu t ]", command: "-chatTab.next" });
+    assert.strictEqual(parsed.command, "-chatTab.next");
+    const unknown = yield* Effect.exit(decode(KeybindingRule, { key: "mod+x", command: "-nope" }));
+    assert.strictEqual(unknown._tag, "Failure");
+  }),
+);
+
+it.effect("drops triggers whose command this build does not know", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decode(ResolvedKeybindingTriggers, {
+      triggers: [
+        { kind: "menu", command: "section.wikis", sequence: ["g", "w"] },
+        { kind: "menu", command: "future.command", sequence: ["x"] },
+        { kind: "chord", command: "section.wikis", keys: ["x"] },
+        { kind: "alias", command: "tab.close", name: "quit", shortest: 1 },
+      ],
+      unboundCommands: ["usage.open", "future.command"],
+    });
+    assert.deepEqual(parsed, {
+      triggers: [
+        { kind: "menu", command: "section.wikis", sequence: ["g", "w"] },
+        { kind: "alias", command: "tab.close", name: "quit", shortest: 1 },
+      ],
+      unboundCommands: ["usage.open"],
+    });
+  }),
 );

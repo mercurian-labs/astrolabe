@@ -5,7 +5,12 @@ import { Prec, type Extension } from "@codemirror/state";
 import { keymap, type KeyBinding } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { previewConfig, type LivePreviewOptions } from "./config.ts";
-import { markdownBindings, pasteLinkHandler } from "./keymap.ts";
+import {
+  formattingBindings,
+  markdownBindings,
+  pasteLinkHandler,
+  structuralBindings,
+} from "./keymap.ts";
 import {
   previewDecorations,
   previewFolds,
@@ -22,7 +27,7 @@ import { revealAtomicNodes } from "../collab/reveal.ts";
 
 export type { LivePreviewOptions, PreviewRange } from "./config.ts";
 export { previewExclusions } from "./config.ts";
-export { continueMarkup } from "./keymap.ts";
+export { continueMarkup, markdownCommands, type MarkdownCommand } from "./keymap.ts";
 export {
   alignColumnCenter,
   alignColumnLeft,
@@ -137,9 +142,12 @@ function cellPreview(options: LivePreviewOptions): Extension {
   ];
 }
 
-/** The preview's key bindings without the ones the host reserved. */
+/** The preview's key bindings, formatting on the host's keys, without the ones it reserved. */
 function bindingsFor(options: LivePreviewOptions): readonly KeyBinding[] {
   const reserved = options.reservedKeys;
-  if (!reserved?.length) return markdownBindings;
-  return markdownBindings.filter((binding) => !binding.key || !reserved.includes(binding.key));
+  const bindings = options.keys
+    ? [...formattingBindings(options.keys), ...structuralBindings]
+    : markdownBindings;
+  if (!reserved?.length) return bindings;
+  return bindings.filter((binding) => !binding.key || !reserved.includes(binding.key));
 }

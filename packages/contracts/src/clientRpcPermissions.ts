@@ -16,6 +16,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
   [WS_METHODS.serverRunStorageCleanup]: AuthSettingsWriteScope,
   [WS_METHODS.serverCheckOtlpEndpoint]: AuthSettingsWriteScope,
+  // Astrolabe: the vimrc is written with the grant keybindings.json is.
+  [WS_METHODS.serverUpsertVimMapping]: AuthSettingsWriteScope,
+  [WS_METHODS.serverRemoveVimMapping]: AuthSettingsWriteScope,
+  [WS_METHODS.serverSetVimOption]: AuthSettingsWriteScope,
   [WS_METHODS.pullRequestsRunAction]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsUpdate]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsComment]: AuthSourceControlWriteScope,

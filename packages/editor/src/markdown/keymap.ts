@@ -153,7 +153,7 @@ export function toggleSpan(marker: string): StateCommand {
 const URL_TEXT = /^(?:https?:\/\/|mailto:|www\.)\S+$/i;
 
 /**
- * Mod-k: `[selection](|)`, or `[|](url)` when the selection is a URL; a caret on a word
+ * Mod-Shift-k: `[selection](|)`, or `[|](url)` when the selection is a URL; a caret on a word
  * wraps the word; elsewhere `[|]()`.
  */
 export const insertLink: StateCommand = ({ state, dispatch }) => {
@@ -603,19 +603,44 @@ export const deleteMarkupBackward: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
-/** The live preview's key bindings; install them above the host's default keymap. */
-export const markdownBindings: readonly KeyBinding[] = [
-  { key: "Mod-b", run: toggleSpan("**") },
-  { key: "Mod-i", run: toggleSpan("*") },
-  { key: "Mod-e", run: toggleSpan("`") },
-  { key: "Mod-Shift-x", run: toggleSpan("~~") },
-  { key: "Mod-Shift-h", run: toggleSpan("==") },
-  { key: "Mod-k", run: insertLink },
+/**
+ * The formatting commands, each with its default key; a host may give other keys
+ * (`LivePreviewOptions.keys`). Link is shifted, so Mod-k stays the host's (Astrolabe's keyboard
+ * menu).
+ */
+export const markdownCommands = {
+  bold: { key: "Mod-b", run: toggleSpan("**") },
+  italic: { key: "Mod-i", run: toggleSpan("*") },
+  code: { key: "Mod-e", run: toggleSpan("`") },
+  strikethrough: { key: "Mod-Shift-x", run: toggleSpan("~~") },
+  highlight: { key: "Mod-Shift-h", run: toggleSpan("==") },
+  link: { key: "Mod-Shift-k", run: insertLink },
+} as const satisfies Record<string, { key: string; run: StateCommand }>;
+
+export type MarkdownCommand = keyof typeof markdownCommands;
+
+/** The formatting commands' bindings: `keys` for a command it names, else the default. */
+export function formattingBindings(
+  keys: Partial<Record<MarkdownCommand, readonly string[]>> = {},
+): KeyBinding[] {
+  return Object.entries(markdownCommands).flatMap(([command, { key, run }]) =>
+    (keys[command as MarkdownCommand] ?? [key]).map((binding) => ({ key: binding, run })),
+  );
+}
+
+/** The live preview's bindings beside formatting: list, table, and markup editing keys. */
+export const structuralBindings: readonly KeyBinding[] = [
   { key: "Enter", run: continueMarkup },
   // Inside a table, Tab moves between cells instead of indenting a list item.
   { key: "Tab", run: tabCommand(1), shift: tabCommand(-1) },
   { key: "Backspace", run: (view) => deleteMarkupBackward(view) || deleteCharBackward(view) },
   { key: "Delete", run: deleteCharForward },
+];
+
+/** The live preview's key bindings; install them above the host's default keymap. */
+export const markdownBindings: readonly KeyBinding[] = [
+  ...formattingBindings(),
+  ...structuralBindings,
 ];
 
 /** Turns a pasted URL over a selected word into a link. */

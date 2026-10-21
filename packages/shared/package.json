@@ -243,6 +243,14 @@
       "types": "./src/threadTranscript.ts",
       "import": "./src/threadTranscript.ts"
     },
+    "./keybindingTriggers": {
+      "types": "./src/keybindingTriggers.ts",
+      "import": "./src/keybindingTriggers.ts"
+    },
+    "./vimrc": {
+      "types": "./src/vimrc.ts",
+      "import": "./src/vimrc.ts"
+    },
     "./threadReference": {
       "types": "./src/threadReference.ts",
       "import": "./src/threadReference.ts"
