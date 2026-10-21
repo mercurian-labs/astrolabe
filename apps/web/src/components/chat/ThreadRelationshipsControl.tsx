@@ -71,7 +71,6 @@ import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
-import { usePaneOpenGuest } from "../../panes/PaneSurfaceHost";
 import {
   THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS,
   THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS,
@@ -239,7 +238,6 @@ export function ThreadRelationshipsPanel(props: {
       : null;
   const parentProjection = useThreadProjection(parentRef)?.projection;
   const navigate = useNavigate();
-  const openGuest = usePaneOpenGuest();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
   const stopSession = useAtomCommand(threadEnvironment.stopSession);
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn);
@@ -340,10 +338,6 @@ export function ThreadRelationshipsPanel(props: {
       params: buildThreadRouteParams(scopeThreadRef(props.environmentId, threadId)),
     });
   };
-
-  // Astrolabe: inside the panes a related thread opens beside the conversation, as a guest.
-  const openRelated = (threadId: ThreadId) =>
-    openGuest ? openGuest(scopeThreadRef(props.environmentId, threadId)) : openThread(threadId);
 
   const merge = async () => {
     if (!latestMergeBackRun || mergeTargetThreadId === null || busyAction !== null) return;
@@ -573,7 +567,7 @@ export function ThreadRelationshipsPanel(props: {
                         variant="ghost"
                         part={workflowGroup ? "primary" : "row"}
                         disabled={node?.missing === true}
-                        onClick={() => openRelated(threadId)}
+                        onClick={() => openThread(threadId)}
                       />
                     }
                   >
@@ -591,7 +585,7 @@ export function ThreadRelationshipsPanel(props: {
                     provider={provider}
                     providers={providers}
                     driver={providerDriver}
-                    onOpenThread={(memberThreadId) => openRelated(memberThreadId as ThreadId)}
+                    onOpenThread={(memberThreadId) => openThread(memberThreadId as ThreadId)}
                     isThreadAvailable={(memberThreadId) =>
                       graph.nodes.get(memberThreadId as ThreadId)?.missing === false
                     }
@@ -616,7 +610,7 @@ export function ThreadRelationshipsPanel(props: {
                               part="primary"
                               aria-label={`${threadTitle} ${threadRelationshipStatusLabel(rowStatus)}`}
                               disabled={node?.missing === true}
-                              onClick={() => openRelated(threadId)}
+                              onClick={() => openThread(threadId)}
                             />
                           }
                         >

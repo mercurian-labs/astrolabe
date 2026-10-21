@@ -1,14 +1,10 @@
 import {
-  CONVERSATION,
   activateTab,
   allTabs,
   closeTabs,
   focusedPane,
-  openAtEdge,
-  openBeside,
   openTab,
   replaceTab,
-  restoreTabs,
   surfaceIdOf,
   surfaceKey,
   type Arrangement,
@@ -19,7 +15,7 @@ import { findLeaf, leafWithTab, leaves } from "./tree";
  * T3 Code keeps a thread's right-panel surfaces (browser pages, terminals, Diff, Files, pull
  * requests, devices) in one record per thread: which are open, which is in front, and whether
  * the panel shows. Everything in T3 Code opens, reads and closes surfaces through that record.
- * The panes mirror it rather than intercept it: a surface in the record is a tab, the record's
+ * The right panel's panes mirror it rather than intercept it: a surface in the record is a tab, the record's
  * active surface is that tab shown, and closing either closes both. The functions here are the
  * two directions of that mirror; the panes decide only where each surface tab stands.
  */
@@ -29,34 +25,14 @@ export interface PanelRecord {
   readonly surfaceIds: readonly string[];
 }
 
-/** The tabs a hidden panel took away, so showing it again puts them back where they stood. */
-export interface HiddenSurfaces {
-  readonly before: Arrangement;
-  readonly after: Arrangement;
-}
-
-export interface MirrorState {
-  readonly arrangement: Arrangement;
-  readonly hidden: HiddenSurfaces | null;
-}
-
-/** The share of the conversation's pane a surface takes when it first opens beside it. */
-const SURFACE_PANE_WEIGHT = 0.42;
-/** The share of the main area a terminal pane takes when it first opens across the bottom. */
-const TERMINAL_PANE_WEIGHT = 0.32;
-
 export function isTerminalSurface(surfaceId: string) {
   return surfaceId.startsWith("terminal:");
-}
-
-function surfaceTabs(arrangement: Arrangement) {
-  return allTabs(arrangement).filter((key) => surfaceIdOf(key) !== null);
 }
 
 /**
  * Where a surface new to the arrangement goes: the pane asked from (`targetPaneId`, as a
  * pane's New tab menu asks), else the pane of the surface that was in front, else any pane
- * holding a surface, as the right panel's strip held them all. Null when none holds one.
+ * holding a surface, as the right panel's strip held them all, else the focused pane.
  */
 function surfacePane(
   arrangement: Arrangement,
@@ -69,7 +45,7 @@ function surfacePane(
   if (frontPane) return frontPane.id;
   return (
     leaves(arrangement.root).find((leaf) => leaf.tabs.some((key) => surfaceIdOf(key) !== null))
-      ?.id ?? null
+      ?.id ?? focusedPane(arrangement).id
   );
 }
 
@@ -79,24 +55,21 @@ function surfacePane(
  *
  * - A surface gone from the record closes its tab; one that arrives in the same change takes its
  *   place, as a file opened from the Files explorer replaces it.
- * - A new terminal joins a pane already holding one, else opens in a new pane across the
- *   bottom of the main area, unless a pane asked for it.
- * - The panel hiding takes every surface tab away, remembered in `hidden`; showing it again puts
- *   them back. Unchanged since, the arrangement returns exactly as it was.
- * - While the panel shows, every surface in the record has a tab. A new one opens in the pane
- *   asked from, else beside the others, else in a new pane right of the conversation.
+ * - Every surface in the record has a tab. A new one opens in the pane asked from, else beside
+ *   the others, else in the focused pane.
  * - The record's active surface comes to the front of its pane when it changes or the panel
  *   opens. Pane focus stays where it was, unless the surface opened in the pane asked from.
  *
+ * A closed panel is not drawn, so its tabs simply stay where they stood until it opens again.
  * `consumedTarget` says whether a new surface landed in `targetPaneId`.
  */
 export function followRecord(
-  state: MirrorState,
+  current: Arrangement,
   previous: PanelRecord | null,
   record: PanelRecord,
   targetPaneId: string | null = null,
-): MirrorState & { readonly consumedTarget: boolean } {
-  let { arrangement, hidden } = state;
+): { readonly arrangement: Arrangement; readonly consumedTarget: boolean } {
+  let arrangement = current;
   const present = new Set(record.surfaceIds);
   const dropGone = (next: Arrangement) =>
     closeTabs(
@@ -107,25 +80,6 @@ export function followRecord(
       }),
     );
 
-  if (previous?.isOpen && !record.isOpen) {
-    const before = dropGone(arrangement);
-    const after = closeTabs(before, surfaceTabs(before));
-    return {
-      arrangement: after,
-      hidden: after === before ? hidden : { before, after },
-      consumedTarget: false,
-    };
-  }
-  if (!record.isOpen) return { arrangement: dropGone(arrangement), hidden, consumedTarget: false };
-
-  const opening = !previous?.isOpen;
-  if (opening && hidden) {
-    arrangement =
-      arrangement === hidden.after
-        ? hidden.before
-        : restoreTabs(arrangement, hidden.before, hidden.after, null);
-    hidden = null;
-  }
   // A surface that replaces another in one change, as opening a file replaces the Files
   // explorer, takes its place.
   const gone = allTabs(arrangement).filter((key) => {
@@ -144,32 +98,14 @@ export function followRecord(
   let consumedTarget = false;
   const missing = record.surfaceIds.filter((id) => !leafWithTab(arrangement.root, surfaceKey(id)));
   for (const id of missing) {
-    const key = surfaceKey(id);
     const asking = consumedTarget ? null : targetPaneId;
-    if (isTerminalSurface(id) && (asking === null || !findLeaf(arrangement.root, asking))) {
-      // Terminals keep to themselves, across the bottom as a terminal panel sits.
-      const terminals = leaves(arrangement.root).find((leaf) =>
-        leaf.tabs.some((tab) => isTerminalSurface(surfaceIdOf(tab) ?? "")),
-      );
-      arrangement = terminals
-        ? openTab(arrangement, key, terminals.id, false)
-        : openAtEdge(arrangement, key, "bottom", { focus: false, weight: TERMINAL_PANE_WEIGHT });
-      continue;
-    }
     const home = surfacePane(arrangement, previous, asking);
-    const asked = home !== null && home === targetPaneId;
-    if (home !== null) {
-      arrangement = openTab(arrangement, key, home, asked);
-      consumedTarget ||= asked;
-      continue;
-    }
-    const conversation = leafWithTab(arrangement.root, CONVERSATION) ?? focusedPane(arrangement);
-    arrangement = openBeside(arrangement, key, conversation.id, "right", {
-      focus: false,
-      weight: SURFACE_PANE_WEIGHT,
-    });
+    const asked = home === targetPaneId;
+    arrangement = openTab(arrangement, surfaceKey(id), home, asked);
+    consumedTarget ||= asked;
   }
 
+  const opening = record.isOpen && !previous?.isOpen;
   const active = record.activeSurfaceId;
   if (
     active !== null &&
@@ -178,7 +114,7 @@ export function followRecord(
   ) {
     arrangement = activateTab(arrangement, surfaceKey(active), consumedTarget);
   }
-  return { arrangement, hidden, consumedTarget };
+  return { arrangement, consumedTarget };
 }
 
 /** The surfaces shown: the active tabs of their panes, in reading order. */
@@ -191,27 +127,19 @@ function visibleSurfaces(arrangement: Arrangement, record: PanelRecord): string[
 }
 
 /**
- * What the record should say for the panes as they stand, the other direction of the mirror:
- * open while some surface tab is shown, its active surface the one in the focused pane, else
- * the one already active while it stays shown, else the first shown. The surface the record
- * names is the one T3 Code renders, so only it is live; another shown surface waits for its
- * pane to take focus.
+ * The surface the record should have in front for the panes as they stand, the other direction
+ * of the mirror: the one in the focused pane, else the one already active while it stays shown,
+ * else the first shown. The surface the record names is the one T3 Code renders, so only it is
+ * live; another shown surface waits for its pane to take focus. Whether the panel shows stays
+ * T3 Code's to say.
  */
-export function recordFor(
-  arrangement: Arrangement,
-  record: PanelRecord,
-): { readonly isOpen: boolean; readonly activeSurfaceId: string | null } {
+export function activeSurfaceFor(arrangement: Arrangement, record: PanelRecord): string | null {
   const visible = visibleSurfaces(arrangement, record);
-  if (visible.length === 0) return { isOpen: false, activeSurfaceId: record.activeSurfaceId };
   const focused = surfaceIdOf(focusedPane(arrangement).active);
-  if (focused !== null && visible.includes(focused)) {
-    return { isOpen: true, activeSurfaceId: focused };
-  }
+  if (focused !== null && visible.includes(focused)) return focused;
   const kept = record.activeSurfaceId;
-  return {
-    isOpen: true,
-    activeSurfaceId: kept !== null && visible.includes(kept) ? kept : (visible[0] ?? null),
-  };
+  if (kept !== null && (visible.length === 0 || visible.includes(kept))) return kept;
+  return visible[0] ?? null;
 }
 
 /** The pane that shows the record's active surface, where T3 Code's surface content goes. */

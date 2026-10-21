@@ -20,11 +20,13 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useLocation } from "@tanstack/react-router";
 import { createPortal } from "react-dom";
 
 import { cn } from "~/lib/utils";
 import { SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { isSidebarUtilityPage } from "./mainAppLocation";
 
 export interface SidebarThreadHeaderProps {
   /** Without projects there is nothing to scope, so the scope picker stays out. */
@@ -63,6 +65,11 @@ function SidebarThreadActions({
   showNewThreadInProjectHint,
   collapsed,
 }: SidebarThreadHeaderProps & { collapsed: boolean }) {
+  // Astrolabe: in the title bar of a page that lists no threads (Settings, Usage, Pull Requests),
+  // the project filter has nothing to filter, so the collapsed actions leave it out.
+  const onUtilityPage = useLocation({
+    select: (location) => isSidebarUtilityPage(location.pathname),
+  });
   const newThreadLabel = newThreadShortcutLabel
     ? `New thread (${newThreadShortcutLabel})`
     : "New thread";
@@ -75,7 +82,7 @@ function SidebarThreadActions({
       >
         <SearchIcon />
       </SidebarHeaderIconButton>
-      {hasProjects ? projectScope : null}
+      {hasProjects && !(collapsed && onUtilityPage) ? projectScope : null}
       {collapsed ? null : (
         <SidebarHeaderIconButton
           label="New thread"

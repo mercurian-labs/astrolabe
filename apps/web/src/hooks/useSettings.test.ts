@@ -397,7 +397,7 @@ describe("resolveEnvironmentIdentificationMode", () => {
     ).toBe("none");
   });
 
-  it("keeps artwork when the palette theme opts into it", () => {
+  it("shows the pill for artwork, which Astrolabe does not draw", () => {
     expect(
       resolveEnvironmentIdentificationMode({
         mode: "artwork",
@@ -405,7 +405,10 @@ describe("resolveEnvironmentIdentificationMode", () => {
         paletteThemeActive: true,
         paletteThemeAllowsArtwork: true,
       }),
-    ).toBe("artwork");
+    ).toBe("pill");
+    expect(resolveEnvironmentIdentificationMode({ mode: "artwork", settingsHydrated: true })).toBe(
+      "pill",
+    );
   });
 });
 

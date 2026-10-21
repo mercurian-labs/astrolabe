@@ -12,13 +12,11 @@ import {
 } from "./tree";
 
 /**
- * A thread's arrangement in the main area: its pane tree, the focused pane, and the next free
+ * A thread's arrangement in its right panel: its pane tree, the focused pane, and the next free
  * id number. Each thread keeps its own on the device.
  *
- * A tab is named by a key. The thread's conversation is `conversation`, one of its right-panel
- * surfaces is `surface:<surface id>` (see `surfaceMirror.ts`), another thread visiting as a guest
- * is `guest:<scoped thread key>` (URI-encoded), and a new tab that shows nothing yet is
- * `empty/<n>`.
+ * A tab is named by a key. One of the thread's right-panel surfaces is `surface:<surface id>`
+ * (see `surfaceMirror.ts`), and a tab that shows nothing yet is `empty/<n>`.
  */
 export interface Arrangement {
   readonly root: SplitNode;
@@ -26,34 +24,15 @@ export interface Arrangement {
   readonly seq: number;
 }
 
-export const CONVERSATION = "conversation";
-
 const SURFACE_PREFIX = "surface:";
 
 export function surfaceKey(surfaceId: string) {
   return `${SURFACE_PREFIX}${surfaceId}`;
 }
 
-/** The surface a tab shows; null for the conversation or an empty tab. */
+/** The surface a tab shows; null for an empty tab. */
 export function surfaceIdOf(key: string): string | null {
   return key.startsWith(SURFACE_PREFIX) ? key.slice(SURFACE_PREFIX.length) : null;
-}
-
-const GUEST_PREFIX = "guest:";
-
-/** A guest thread's tab: another thread's conversation visiting this thread's workspace. */
-export function guestKey(threadKey: string) {
-  return `${GUEST_PREFIX}${encodeURIComponent(threadKey)}`;
-}
-
-/** The thread a guest tab shows, by its scoped key; null for any other tab. */
-export function guestThreadOf(key: string): string | null {
-  if (!key.startsWith(GUEST_PREFIX) || key.length === GUEST_PREFIX.length) return null;
-  try {
-    return decodeURIComponent(key.slice(GUEST_PREFIX.length));
-  } catch {
-    return null;
-  }
 }
 
 function emptyKey(n: number) {
@@ -66,85 +45,7 @@ export function isEmptyTab(key: string) {
 
 /** Whether a key names a tab an arrangement can hold. */
 export function isTabKey(key: string) {
-  return (
-    key === CONVERSATION ||
-    isEmptyTab(key) ||
-    (surfaceIdOf(key)?.length ?? 0) > 0 ||
-    guestThreadOf(key) !== null
-  );
-}
-
-/** The guest threads an arrangement holds, by scoped key, in reading order. */
-export function guestThreads(arrangement: Arrangement): string[] {
-  return allTabs(arrangement).flatMap((key) => guestThreadOf(key) ?? []);
-}
-
-/**
- * Adds threads as guests: each not already here opens as a tab after the conversation, in the
- * conversation's pane (or `paneId`'s), in the order given. `show` brings the last one forward
- * and focuses its pane, as opening a thread beside does; otherwise the tabs join quietly, as
- * guests brought along to another workspace do.
- */
-export function addGuests(
-  arrangement: Arrangement,
-  threadKeys: readonly string[],
-  { paneId, show = false }: { paneId?: string; show?: boolean } = {},
-): Arrangement {
-  const keys = threadKeys.map(guestKey);
-  const target =
-    (paneId === undefined ? undefined : findLeaf(arrangement.root, paneId)) ??
-    leafWithTab(arrangement.root, CONVERSATION) ??
-    focusedPane(arrangement);
-  const fresh = keys.filter((key) => !leafWithTab(arrangement.root, key));
-  const last = keys.at(-1);
-  if (fresh.length === 0) {
-    return show && last !== undefined ? activateTab(arrangement, last) : arrangement;
-  }
-  // After the conversation and the guests already beside it; at the end in another pane.
-  const anchor = target.tabs.indexOf(CONVERSATION);
-  let at = anchor === -1 ? target.tabs.length : anchor + 1;
-  while (at < target.tabs.length && guestThreadOf(target.tabs[at] ?? "") !== null) at += 1;
-  const tabs = [...target.tabs.slice(0, at), ...fresh, ...target.tabs.slice(at)];
-  const root = mapLeaf(arrangement.root, target.id, (pane) => ({
-    ...pane,
-    tabs,
-    active: show && last !== undefined ? last : pane.active,
-  }));
-  return { ...arrangement, root, focused: show ? target.id : arrangement.focused };
-}
-
-/**
- * Drops threads on a pane as guests, as dragging them from T3 Code's sidebar does: into its
- * tabs at `index`, counted before the drop as the insertion line shows it, or into a new pane
- * dividing it on `side`. Threads already here as guests move there, as their tabs would. The
- * first one dropped comes forward and its pane takes focus.
- */
-export function dropGuests(
-  arrangement: Arrangement,
-  threadKeys: readonly string[],
-  paneId: string,
-  place: { readonly index: number } | { readonly side: Side },
-): Arrangement {
-  const keys = [...new Set(threadKeys)].map(guestKey);
-  const target = findLeaf(arrangement.root, paneId);
-  if (keys.length === 0 || !target) return arrangement;
-  // A pane holding only the dropped guests has nothing left to divide.
-  if ("side" in place && target.tabs.every((key) => keys.includes(key))) return arrangement;
-  // New guests join the pane's end first, past the tabs its index was counted on.
-  const fresh = keys.filter((key) => !leafWithTab(arrangement.root, key));
-  const joined =
-    fresh.length === 0
-      ? arrangement
-      : {
-          ...arrangement,
-          root: mapLeaf(arrangement.root, paneId, (pane) => ({
-            ...pane,
-            tabs: [...pane.tabs, ...fresh],
-          })),
-        };
-  return "side" in place
-    ? splitWithTabs(joined, keys, paneId, place.side)
-    : moveTabs(joined, keys, paneId, place.index);
+  return isEmptyTab(key) || (surfaceIdOf(key)?.length ?? 0) > 0;
 }
 
 /** A pane holding `tabs`, the first one active. */
@@ -152,9 +53,9 @@ export function paneLeaf(id: string, tabs: readonly string[]): Leaf {
   return { type: "leaf", id, tabs, active: tabs[0] ?? "" };
 }
 
-/** How a thread first opens on a device: one pane with one tab, its conversation. */
+/** How a thread's right panel first opens on a device: one pane with one empty tab. */
 export function startingArrangement(): Arrangement {
-  return { root: paneLeaf("p0", [CONVERSATION]), focused: "p0", seq: 1 };
+  return { root: paneLeaf("p0", [emptyKey(0)]), focused: "p0", seq: 1 };
 }
 
 /**
@@ -176,7 +77,7 @@ export function allTabs(arrangement: Arrangement): string[] {
 
 export function focusedPane(arrangement: Arrangement): Leaf {
   const found = findLeaf(arrangement.root, arrangement.focused) ?? leaves(arrangement.root)[0];
-  return found ?? paneLeaf(arrangement.focused, [CONVERSATION]);
+  return found ?? paneLeaf(arrangement.focused, [emptyKey(arrangement.seq)]);
 }
 
 export function focusPane(arrangement: Arrangement, paneId: string): Arrangement {
@@ -242,8 +143,7 @@ export function openTab(
 }
 
 /**
- * Divides a pane on one side and opens a tab in the new pane there, as a surface opening beside
- * the conversation does. A tab open elsewhere moves. The new pane takes focus unless `focus` is
+ * Divides a pane on one side and opens a tab in the new pane there. A tab open elsewhere moves. The new pane takes focus unless `focus` is
  * false. `weight` is the new pane's share of the divided pane's room, out of 1.
  */
 export function openBeside(
@@ -272,44 +172,6 @@ export function openBeside(
     focused: focus ? leaf.id : from.focused,
     seq: from.seq + 2,
   };
-}
-
-/**
- * Opens a tab in a new pane along one whole edge of the main area, as a terminal opens across
- * the bottom. A tab open elsewhere moves. `weight` is the new pane's share of the main area,
- * out of 1; the pane takes focus unless `focus` is false.
- */
-export function openAtEdge(
-  arrangement: Arrangement,
-  key: string,
-  side: Side,
-  { focus = true, weight = 0.3 }: { focus?: boolean; weight?: number } = {},
-): Arrangement {
-  const source = leafWithTab(arrangement.root, key);
-  const from = source ? detachTab(arrangement, key) : arrangement;
-  const leaf = paneLeaf(`p${from.seq}`, [key]);
-  const direction = side === "left" || side === "right" ? "row" : "column";
-  const before = side === "left" || side === "top";
-  const { root } = from;
-  let next: SplitNode;
-  if (root.type === "branch" && root.direction === direction) {
-    const total = root.weights.reduce((sum, w) => sum + w, 0) || 1;
-    const added = (total * weight) / (1 - weight);
-    next = {
-      ...root,
-      children: before ? [leaf, ...root.children] : [...root.children, leaf],
-      weights: before ? [added, ...root.weights] : [...root.weights, added],
-    };
-  } else {
-    next = {
-      type: "branch",
-      id: `p${from.seq + 1}`,
-      direction,
-      children: before ? [leaf, root] : [root, leaf],
-      weights: before ? [weight, 1 - weight] : [1 - weight, weight],
-    };
-  }
-  return { ...from, root: next, focused: focus ? leaf.id : from.focused, seq: from.seq + 2 };
 }
 
 function reweighPair(root: SplitNode, targetId: string, newId: string, weight: number): SplitNode {
@@ -390,11 +252,9 @@ export function replaceTab(arrangement: Arrangement, key: string, next: string):
 
 /**
  * Closes a tab. Closing a pane's last tab closes the pane and its neighbours take its room; the
- * last pane stays and gets an empty tab. The conversation is never closed: it holds the
- * thread's composer.
+ * last pane stays and gets an empty tab.
  */
 export function closeTab(arrangement: Arrangement, key: string): Arrangement {
-  if (key === CONVERSATION) return arrangement;
   const leaf = leafWithTab(arrangement.root, key);
   if (!leaf) return arrangement;
   const alone = leaves(arrangement.root).length === 1 && leaf.tabs.length === 1;
@@ -406,7 +266,7 @@ export function closeTabs(arrangement: Arrangement, keys: readonly string[]): Ar
   return keys.reduce((next, key) => closeTab(next, key), arrangement);
 }
 
-/** The tabs a tab's "Close others" or "Close tabs to the right" closes; never the conversation. */
+/** The tabs a tab's "Close others" or "Close tabs to the right" closes. */
 export function tabsToClose(
   arrangement: Arrangement,
   key: string,
@@ -414,11 +274,9 @@ export function tabsToClose(
 ): readonly string[] {
   const leaf = leafWithTab(arrangement.root, key);
   if (!leaf) return [];
-  const tabs =
-    which === "others"
-      ? leaf.tabs.filter((tab) => tab !== key)
-      : leaf.tabs.slice(leaf.tabs.indexOf(key) + 1);
-  return tabs.filter((tab) => tab !== CONVERSATION);
+  return which === "others"
+    ? leaf.tabs.filter((tab) => tab !== key)
+    : leaf.tabs.slice(leaf.tabs.indexOf(key) + 1);
 }
 
 /**
@@ -548,41 +406,4 @@ export function resizePanes(
 ): Arrangement {
   const root = setWeights(arrangement.root, branchId, weights);
   return root === arrangement.root ? arrangement : { ...arrangement, root };
-}
-
-/**
- * Puts back into `current` the tabs an action took away: those `before` held and `after` (what
- * the action left) did not, unless open again since. Each goes back into its former pane at its
- * former place while that pane is there. One whose pane is gone goes to the end of
- * `fallbackPaneId`'s pane (the focused one by default), or stays out when it is null. Active
- * tabs and focus stay as `current` has them.
- */
-export function restoreTabs(
-  current: Arrangement,
-  before: Arrangement,
-  after: Arrangement,
-  fallbackPaneId?: string | null,
-): Arrangement {
-  const kept = new Set(allTabs(after));
-  const open = new Set(allTabs(current));
-  let root = current.root;
-  for (const pane of leaves(before.root)) {
-    pane.tabs.forEach((key, index) => {
-      if (kept.has(key) || open.has(key)) return;
-      const target =
-        findLeaf(root, pane.id) ??
-        (fallbackPaneId === null
-          ? undefined
-          : ((fallbackPaneId === undefined ? undefined : findLeaf(root, fallbackPaneId)) ??
-            findLeaf(root, current.focused) ??
-            leaves(root)[0]));
-      if (!target) return;
-      const at = target.id === pane.id ? Math.min(index, target.tabs.length) : target.tabs.length;
-      root = mapLeaf(root, target.id, (leaf) => ({
-        ...leaf,
-        tabs: [...leaf.tabs.slice(0, at), key, ...leaf.tabs.slice(at)],
-      }));
-    });
-  }
-  return root === current.root ? current : { ...current, root };
 }

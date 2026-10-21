@@ -25,6 +25,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
+import { useIsMobile } from "../hooks/useMediaQuery";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -34,6 +35,7 @@ import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
@@ -59,6 +61,17 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useThreadRouteRef } from "../hooks/useThreadRouteTarget";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
+
+/**
+ * Astrolabe: the icon rail's width (`w-11`). On desktop everything beside it starts this far in,
+ * so title-bar content measured from the window's left edge is measured from here instead.
+ */
+const ICON_RAIL_WIDTH_PX = 44;
+
+const SIDEBAR_BESIDE_RAIL_CLASS = cn(
+  "left-11 group-data-[side=left]:border-r-0",
+  "after:pointer-events-none after:absolute after:top-(--workspace-topbar-height) after:right-0 after:bottom-0 after:w-px after:bg-border",
+);
 
 function subscribeToViewportWidth(onChange: () => void): () => void {
   window.addEventListener("resize", onChange);
@@ -266,6 +279,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
+  const hasIconRail = !useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
   // and a clamped drag ends with an unchanged width, which skips the re-render
@@ -273,7 +287,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
   const [brandWidth, setBrandWidth] = useState(0);
   const sidebarMinimumWidth = resolveThreadSidebarMinimumWidth(brandWidth);
-  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth, sidebarMinimumWidth);
+  // Astrolabe: the icon rail takes its width from the room the sidebar and the main area share.
+  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(
+    viewportWidth - (hasIconRail ? ICON_RAIL_WIDTH_PX : 0),
+    sidebarMinimumWidth,
+  );
   const resetSidebarWidth = () => {
     try {
       removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
@@ -294,6 +312,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const sidebarProviderStyle = {
     "--sidebar-width": `${clampThreadSidebarWidth(sidebarWidth, sidebarMinimumWidth, sidebarMaximumWidth)}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
+    ...(hasIconRail
+      ? {
+          "--workspace-titlebar-content-left": `calc(var(--workspace-controls-left) + var(--workspace-titlebar-control-size) + var(--workspace-titlebar-control-gap) - ${ICON_RAIL_WIDTH_PX}px)`,
+        }
+      : {}),
     ...windowControlsInsetStyle,
   } as CSSProperties;
 
@@ -327,6 +350,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
         <ProjectProjectionRetention />
+        {/* The icon rail's room in the layout; the sidebar opens beside it. */}
+        {hasIconRail ? <div aria-hidden className="w-11 shrink-0" /> : null}
         <Sidebar
           side="left"
           collapsible="offcanvas"
@@ -338,11 +363,16 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             minWidth: sidebarMinimumWidth,
             shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
               nextWidth <= currentWidth ||
-              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+              wrapper.clientWidth - (hasIconRail ? ICON_RAIL_WIDTH_PX : 0) - nextWidth >=
+                THREAD_MAIN_CONTENT_MIN_WIDTH,
             storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
             onResize: setSidebarWidth,
           }}
           style={windowControlsInsetStyle}
+          // Astrolabe: beside the icon rail, and its edge drawn from below the title bar, so the
+          // title bar runs unbroken; hovering the resize rail draws the edge full height, as
+          // Obsidian's does.
+          {...(hasIconRail ? { className: SIDEBAR_BESIDE_RAIL_CLASS } : {})}
         >
           {isOnSettings ? (
             <>
@@ -354,9 +384,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           ) : (
             <ThreadSidebar />
           )}
-          <SidebarRail onDoubleClick={resetSidebarWidth} />
+          <SidebarRail
+            onDoubleClick={resetSidebarWidth}
+            // Astrolabe: its hover line lies over the sidebar's edge line, which is drawn inside
+            // the sidebar, rather than beside it.
+            {...(hasIconRail ? { className: "after:-translate-x-full" } : {})}
+          />
         </Sidebar>
         {children}
+        <AppIconRail />
         <SidebarControl />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />

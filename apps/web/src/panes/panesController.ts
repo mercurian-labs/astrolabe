@@ -7,28 +7,12 @@ import {
   useRightPanelStore,
   type RightPanelSurface,
 } from "../rightPanelStore";
-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import {
-  CONVERSATION,
-  activateTab,
-  focusedPane,
-  surfaceIdOf,
-  surfaceKey,
-  type Arrangement,
-} from "./arrangement";
+import { type Arrangement } from "./arrangement";
 import { loadArrangement, writeArrangement, type StorageLike } from "./persistence";
-import { leaves } from "./tree";
-import {
-  followRecord,
-  hostPaneId,
-  isTerminalSurface,
-  recordFor,
-  type MirrorState,
-  type PanelRecord,
-} from "./surfaceMirror";
+import { activeSurfaceFor, followRecord, hostPaneId, type PanelRecord } from "./surfaceMirror";
 
 /**
- * What ChatView hands its right panel's strip, which the panes take in its place: the
+ * What ChatView hands its right panel's strip, which the right panel's panes take in its place: the
  * surfaces' labels, the ways to add and close them, and (as `children`) the active surface's
  * content.
  */
@@ -71,7 +55,7 @@ function surfaceOf(ref: ScopedThreadRef, surfaceId: string): RightPanelSurface |
 }
 
 /**
- * One thread's panes at a time: its arrangement, loaded from and saved to the device, kept in
+ * One thread's right-panel panes at a time: its arrangement, loaded from and saved to the device, kept in
  * line with T3 Code's right-panel record in both directions (see `surfaceMirror.ts`).
  *
  * T3 Code's own changes to the record arrive through the store subscription and move the panes.
@@ -91,19 +75,13 @@ export interface PanesController {
   getPanelSnapshot(): PanelProps | null;
   subscribePanel(listener: () => void): () => void;
   threadRef(): ScopedThreadRef | null;
-  /**
-   * What the terminal shortcut does inside the panes: from a terminal, back to the conversation;
-   * else to an open terminal, or a new one across the bottom when none is open. Says where focus
-   * should go.
-   */
-  toggleTerminal(): "conversation" | "terminal" | null;
   flush(): void;
 }
 
 export function createPanesController(storage: StorageLike | null): PanesController {
   let ref: ScopedThreadRef | null = null;
   let threadKey = "";
-  let mirror: MirrorState | null = null;
+  let arrangement: Arrangement | null = null;
   let previous: PanelRecord | null = null;
   let snapshot: PanesSnapshot | null = null;
   let writing = false;
@@ -115,12 +93,12 @@ export function createPanesController(storage: StorageLike | null): PanesControl
   const panelListeners = new Set<() => void>();
 
   const publish = () => {
-    if (!mirror || !previous) return;
+    if (!arrangement || !previous) return;
     const next: PanesSnapshot = {
       threadKey,
-      arrangement: mirror.arrangement,
+      arrangement,
       record: previous,
-      hostPaneId: hostPaneId(mirror.arrangement, previous),
+      hostPaneId: hostPaneId(arrangement, previous),
     };
     if (
       snapshot &&
@@ -138,30 +116,24 @@ export function createPanesController(storage: StorageLike | null): PanesControl
   const flush = () => {
     if (pending) clearTimeout(pending);
     pending = null;
-    if (mirror && threadKey) writeArrangement(storage, threadKey, mirror.arrangement);
+    if (arrangement && threadKey) writeArrangement(storage, threadKey, arrangement);
   };
 
   const schedulePersist = () => {
     pending ??= setTimeout(flush, PERSIST_DELAY_MS);
   };
 
-  /** Writes what the record should say for the panes as they stand, if it says otherwise. */
+  /** Brings the record's active surface in line with the panes, if it says otherwise. */
   const writeRecord = () => {
-    if (!ref || !mirror || !previous) return;
-    const wanted = recordFor(mirror.arrangement, previous);
-    const changed =
-      wanted.isOpen !== previous.isOpen ||
-      (wanted.isOpen && wanted.activeSurfaceId !== previous.activeSurfaceId);
-    if (!changed) return;
+    if (!ref || !arrangement || !previous || !previous.isOpen) return;
+    const wanted = activeSurfaceFor(arrangement, previous);
+    if (wanted === null || wanted === previous.activeSurfaceId) return;
+    const surface = surfaceOf(ref, wanted);
+    if (!surface) return;
     writing = true;
     try {
-      if (!wanted.isOpen) {
-        useRightPanelStore.getState().close(ref);
-      } else if (wanted.activeSurfaceId !== null) {
-        const surface = surfaceOf(ref, wanted.activeSurfaceId);
-        if (surface && panel) panel.onActivate(surface);
-        else if (surface) useRightPanelStore.getState().activateSurface(ref, surface.id);
-      }
+      if (panel) panel.onActivate(surface);
+      else useRightPanelStore.getState().activateSurface(ref, surface.id);
     } finally {
       writing = false;
     }
@@ -169,83 +141,45 @@ export function createPanesController(storage: StorageLike | null): PanesControl
   };
 
   const takeRecord = (record: PanelRecord) => {
-    if (!mirror) return;
+    if (!arrangement) return;
     if (previous && sameRecord(previous, record)) return;
     if (writing) {
       previous = record;
       return;
     }
     const asked = target && target.until > Date.now() ? target.paneId : null;
-    const followed = followRecord(mirror, previous, record, asked);
+    const followed = followRecord(arrangement, previous, record, asked);
     if (followed.consumedTarget) target = null;
     previous = record;
-    const changed = followed.arrangement !== mirror.arrangement;
-    mirror = { arrangement: followed.arrangement, hidden: followed.hidden };
+    const changed = followed.arrangement !== arrangement;
+    arrangement = followed.arrangement;
     if (changed) schedulePersist();
     writeRecord();
     publish();
   };
 
   /** Applies a change the panes made; the record follows (see `writeRecord`). */
-  const update = (change: (arrangement: Arrangement) => Arrangement) => {
-    if (!mirror) return;
-    const arrangement = change(mirror.arrangement);
-    if (arrangement === mirror.arrangement) return;
-    mirror = { ...mirror, arrangement };
+  const update = (change: (current: Arrangement) => Arrangement) => {
+    if (!arrangement) return;
+    const next = change(arrangement);
+    if (next === arrangement) return;
+    arrangement = next;
     schedulePersist();
     writeRecord();
     publish();
   };
 
-  /** Brings a surface's tab forward in its pane and focuses it, as ChatView's strip does. */
-  const showSurface = (surfaceId: string) => {
-    if (!ref) return;
-    const surface = surfaceOf(ref, surfaceId);
-    if (!surface) return;
-    // Not a write of the panes' own: a hidden panel showing again brings its tabs back.
-    if (panel) panel.onActivate(surface);
-    else useRightPanelStore.getState().activateSurface(ref, surface.id);
-    update((arrangement) => activateTab(arrangement, surfaceKey(surface.id)));
-  };
-
-  /**
-   * The panes have no terminal drawer: whatever opens it (a project script, a setup terminal,
-   * T3 Code's own toggle) shows that terminal as a panel terminal instead, and the drawer stays
-   * shut. The terminal session is the same one, by its id, so nothing restarts.
-   */
-  const takeDrawer = () => {
-    if (!ref) return;
-    const drawer = selectThreadTerminalUiState(
-      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
-      ref,
-    );
-    if (!drawer.terminalOpen) return;
-    useTerminalUiStateStore.getState().setTerminalOpen(ref, false);
-    const terminalId = drawer.activeTerminalId || drawer.terminalIds[0];
-    if (!terminalId) return;
-    const holding = selectThreadRightPanelState(
-      useRightPanelStore.getState().byThreadKey,
-      ref,
-    ).surfaces.find(
-      (surface) => surface.kind === "terminal" && surface.terminalIds.includes(terminalId),
-    );
-    if (!holding) useRightPanelStore.getState().openTerminal(ref, terminalId);
-    showSurface(holding?.id ?? `terminal:${terminalId}`);
-  };
-
   return {
     /** Shows a thread's panes: as last left on this device, brought in line with its record. */
     load(nextRef: ScopedThreadRef, nextKey: string) {
-      if (nextKey === threadKey && mirror) return;
+      if (nextKey === threadKey && arrangement) return;
       flush();
       ref = nextRef;
       threadKey = nextKey;
       target = null;
-      mirror = { arrangement: loadArrangement(storage, nextKey), hidden: null };
       // First load: the record as it stands, against no earlier record.
       const record = recordOf(nextRef);
-      const followed = followRecord(mirror, null, record);
-      mirror = { arrangement: followed.arrangement, hidden: followed.hidden };
+      arrangement = followRecord(loadArrangement(storage, nextKey), null, record).arrangement;
       previous = record;
       writeRecord();
       publish();
@@ -265,37 +199,7 @@ export function createPanesController(storage: StorageLike | null): PanesControl
           surfaceIds: current.surfaces.map((surface) => surface.id),
         });
       });
-      takeDrawer();
-      const stopDrawer = useTerminalUiStateStore.subscribe(takeDrawer);
-      return () => {
-        stopRecord();
-        stopDrawer();
-      };
-    },
-    toggleTerminal() {
-      if (!ref || !mirror || !previous) return null;
-      const { arrangement } = mirror;
-      const front = surfaceIdOf(focusedPane(arrangement).active);
-      if (front !== null && isTerminalSurface(front)) {
-        update((current) => activateTab(current, CONVERSATION));
-        return "conversation";
-      }
-      const open = previous.surfaceIds.filter(isTerminalSurface);
-      const shown = open.find((id) =>
-        leaves(arrangement.root).some((leaf) => leaf.active === surfaceKey(id)),
-      );
-      const choice = shown ?? open.at(-1);
-      if (choice) {
-        showSurface(choice);
-        return "terminal";
-      }
-      if (!panel?.terminalAvailable) return null;
-      panel.onAddTerminal();
-      const added = recordOf(ref).activeSurfaceId;
-      if (added !== null && isTerminalSurface(added)) {
-        update((current) => activateTab(current, surfaceKey(added)));
-      }
-      return "terminal";
+      return stopRecord;
     },
     update,
     /** The next surface the record gains within a few seconds opens in this pane. */

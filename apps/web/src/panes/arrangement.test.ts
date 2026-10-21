@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  CONVERSATION,
   closeTab,
-  moveTab,
   moveTabs,
   openBeside,
   openTab,
-  restoreTabs,
   splitTab,
   splitTabs,
   splitWithTabs,
@@ -26,19 +23,21 @@ function panes(arrangement: Arrangement) {
   return leaves(arrangement.root).map((leaf) => leaf.tabs);
 }
 
-/** The conversation's pane with Diff and Files open beside it. */
-function besideConversation(): Arrangement {
-  const opened = openBeside(startingArrangement(), diff, "p0", "right", { focus: false });
-  return openTab(opened, files, "p1", false);
+/** Diff in the panel's first pane, Files in a pane beside it. */
+function sideBySide(): Arrangement {
+  const opened = openTab(startingArrangement(), diff, "p0");
+  return openBeside(opened, files, "p0", "right", { focus: false });
 }
 
 describe("opening tabs", () => {
-  it("opens a surface beside the conversation without taking focus, at the share asked", () => {
-    const next = openBeside(startingArrangement(), diff, "p0", "right", {
-      focus: false,
-      weight: 0.4,
-    });
-    expect(panes(next)).toEqual([[CONVERSATION], [diff]]);
+  it("opens the first surface in place of the empty tab a fresh panel shows", () => {
+    expect(panes(openTab(startingArrangement(), diff))).toEqual([[diff]]);
+  });
+
+  it("opens a surface beside another without taking focus, at the share asked", () => {
+    const opened = openTab(startingArrangement(), diff, "p0");
+    const next = openBeside(opened, files, "p0", "right", { focus: false, weight: 0.4 });
+    expect(panes(next)).toEqual([[diff], [files]]);
     expect(next.focused).toBe("p0");
     const root = next.root as Branch;
     expect(root.weights[0]).toBeCloseTo(0.6 * 2);
@@ -46,90 +45,66 @@ describe("opening tabs", () => {
   });
 
   it("moves a tab open in another pane to the pane asked from, closing a pane it empties", () => {
-    const next = openTab(besideConversation(), diff, "p0");
-    expect(panes(next)).toEqual([[CONVERSATION, diff], [files]]);
-    const again = openTab(next, files, "p0");
-    expect(panes(again)).toEqual([[CONVERSATION, diff, files]]);
+    expect(panes(openTab(sideBySide(), files, "p0"))).toEqual([[diff, files]]);
   });
 
-  it("takes the place of an empty active tab", () => {
-    // Splitting a pane's only tab leaves an empty tab behind.
-    const split = splitTab(startingArrangement(), CONVERSATION, "right");
-    expect(panes(split)).toEqual([["empty/1"], [CONVERSATION]]);
-    expect(panes(openTab(split, browser, "p0"))).toEqual([[browser], [CONVERSATION]]);
+  it("splits off a pane's only tab, leaving an empty tab whose place the next surface takes", () => {
+    const split = splitTab(openTab(startingArrangement(), diff, "p0"), diff, "right");
+    expect(panes(split)).toEqual([["empty/1"], [diff]]);
+    expect(panes(openTab(split, browser, "p0"))).toEqual([[browser], [diff]]);
   });
 });
 
 describe("closing tabs", () => {
-  it("never closes the conversation, which holds the composer", () => {
-    const start = startingArrangement();
-    expect(closeTab(start, CONVERSATION)).toBe(start);
-    expect(tabsToClose(openTab(start, diff), diff, "others")).toEqual([]);
+  it("leaves the last pane an empty tab, as an empty panel shows, and keeps that one", () => {
+    const closed = closeTab(openTab(startingArrangement(), diff), diff);
+    expect(panes(closed)).toEqual([["empty/1"]]);
+    expect(closeTab(closed, "empty/1")).toBe(closed);
   });
 
   it("closes a pane with its last tab, its neighbour taking its room and focus", () => {
-    const opened = openBeside(startingArrangement(), diff, "p0", "right");
+    const opened = openBeside(openTab(startingArrangement(), diff), files, "p0", "right");
     expect(opened.focused).toBe("p1");
-    const next = closeTab(opened, diff);
-    expect(panes(next)).toEqual([[CONVERSATION]]);
+    const next = closeTab(opened, files);
+    expect(panes(next)).toEqual([[diff]]);
     expect(next.focused).toBe("p0");
   });
-});
 
-describe("moving tabs", () => {
-  it("moves the conversation into another pane, leaving its own to close", () => {
-    const next = moveTab(besideConversation(), CONVERSATION, "p1", 0);
-    expect(panes(next)).toEqual([[CONVERSATION, diff, files]]);
-  });
-});
-
-describe("putting tabs back", () => {
-  it("returns taken tabs to their former panes and places, and skips those whose pane is gone when asked to", () => {
-    const before = besideConversation();
-    const after = closeTab(closeTab(before, diff), files);
-    expect(panes(after)).toEqual([[CONVERSATION]]);
-    // The surfaces' pane closed with them, so with no fallback they stay out.
-    expect(panes(restoreTabs(after, before, after, null))).toEqual([[CONVERSATION]]);
-    // Into a pane that is still there, each goes back at its place.
-    const kept = openTab(before, browser, "p1");
-    const taken = closeTab(kept, files);
-    expect(panes(taken)).toEqual([[CONVERSATION], [diff, browser]]);
-    expect(panes(restoreTabs(taken, kept, taken, null))).toEqual([
-      [CONVERSATION],
-      [diff, files, browser],
-    ]);
+  it("closes the others, or those after a tab, in its own pane", () => {
+    const three = openTab(openTab(openTab(startingArrangement(), diff), files), browser);
+    expect(panes(three)).toEqual([[diff, files, browser]]);
+    expect(tabsToClose(three, files, "others")).toEqual([diff, browser]);
+    expect(tabsToClose(three, files, "after")).toEqual([browser]);
+    expect(tabsToClose(three, browser, "after")).toEqual([]);
   });
 });
 
 describe("moving a selection of tabs together", () => {
   it("moves them in order to the insertion line, closing the pane they empty", () => {
-    const next = moveTabs(besideConversation(), [diff, files], "p0", 0, files);
-    expect(panes(next)).toEqual([[diff, files, CONVERSATION]]);
-    expect(leaves(next.root)[0]?.active).toBe(files);
+    const three = openTab(sideBySide(), browser, "p1", false);
+    expect(panes(three)).toEqual([[diff], [files, browser]]);
+    const next = moveTabs(three, [files, browser], "p0", 0, browser);
+    expect(panes(next)).toEqual([[files, browser, diff]]);
+    expect(leaves(next.root)[0]?.active).toBe(browser);
     expect(next.focused).toBe("p0");
   });
 
   it("reorders them within their own pane, counting the line before the move", () => {
-    const three = openTab(besideConversation(), browser, "p1", false);
-    expect(panes(three)).toEqual([[CONVERSATION], [diff, files, browser]]);
-    expect(panes(moveTabs(three, [files, browser], "p1", 0))).toEqual([
-      [CONVERSATION],
-      [files, browser, diff],
-    ]);
-    expect(panes(moveTabs(three, [diff, browser], "p1", 3))).toEqual([
-      [CONVERSATION],
-      [files, diff, browser],
-    ]);
+    const three = openTab(openTab(openTab(startingArrangement(), diff), files), browser);
+    expect(panes(moveTabs(three, [files, browser], "p0", 0))).toEqual([[files, browser, diff]]);
+    expect(panes(moveTabs(three, [diff, browser], "p0", 3))).toEqual([[files, diff, browser]]);
   });
 
   it("opens them in a new pane on a pane's edge", () => {
-    const next = splitWithTabs(besideConversation(), [diff, files], "p0", "bottom");
+    const three = openTab(sideBySide(), browser, "p1", false);
+    const next = splitWithTabs(three, [files, browser], "p0", "bottom");
     expect(next.root).toMatchObject({ type: "branch", direction: "column" });
-    expect(panes(next)).toEqual([[CONVERSATION], [diff, files]]);
+    expect(panes(next)).toEqual([[diff], [files, browser]]);
   });
 
   it("splits a whole pane's tabs off beside it, leaving an empty tab behind", () => {
-    const next = splitTabs(besideConversation(), [files, diff], "right");
-    expect(panes(next)).toEqual([[CONVERSATION], ["empty/3"], [diff, files]]);
+    const two = openTab(openTab(startingArrangement(), diff), files);
+    const next = splitTabs(two, [files, diff], "right");
+    expect(panes(next)).toEqual([["empty/1"], [diff, files]]);
   });
 });

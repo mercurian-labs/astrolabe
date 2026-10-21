@@ -2384,7 +2384,8 @@ function PullRequestsColumn({
       <WorkspacePageHeader
         electron={isElectron}
         reserveNativeControls={!rightPanelOpen}
-        className="relative bg-background"
+        // Astrolabe: the header's own strip fill, as on every title bar beside the sidebar's header.
+        className="relative"
       >
         {titlebarControls}
         {condensed ? (

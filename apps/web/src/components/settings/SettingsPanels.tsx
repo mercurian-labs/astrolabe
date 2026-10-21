@@ -174,8 +174,11 @@ import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 
-const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
-  artwork: "Artwork",
+// Astrolabe offers no artwork; the schema's "artwork" (its default) shows as the pill.
+const ENVIRONMENT_IDENTIFICATION_LABELS: Record<
+  Exclude<EnvironmentIdentificationMode, "artwork">,
+  string
+> = {
   pill: "Version pill",
   none: "None",
 };
@@ -1230,7 +1233,7 @@ export function AppearanceSettingsPanel() {
             {...searchableSetting("environment-identification")}
             description="Choose how Dev and Nightly environments are identified."
             resetAction={
-              settings.environmentIdentificationMode !== DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE ? (
+              settings.environmentIdentificationMode === "none" ? (
                 <SettingResetButton
                   label="environment identification"
                   onClick={() =>
@@ -1243,9 +1246,13 @@ export function AppearanceSettingsPanel() {
             }
             control={
               <Select
-                value={settings.environmentIdentificationMode}
+                value={
+                  settings.environmentIdentificationMode === "artwork"
+                    ? "pill"
+                    : settings.environmentIdentificationMode
+                }
                 onValueChange={(value) => {
-                  if (value === "artwork" || value === "pill" || value === "none") {
+                  if (value === "pill" || value === "none") {
                     updateSettings({ environmentIdentificationMode: value });
                   }
                 }}
@@ -1256,7 +1263,13 @@ export function AppearanceSettingsPanel() {
                   aria-label="Environment identification"
                 >
                   <SelectValue>
-                    {ENVIRONMENT_IDENTIFICATION_LABELS[settings.environmentIdentificationMode]}
+                    {
+                      ENVIRONMENT_IDENTIFICATION_LABELS[
+                        settings.environmentIdentificationMode === "artwork"
+                          ? "pill"
+                          : settings.environmentIdentificationMode
+                      ]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>

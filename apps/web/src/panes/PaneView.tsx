@@ -1,16 +1,10 @@
-import {
-  parseScopedThreadKey,
-  scopedThreadKey,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
-import type { ContextMenuItem, ScopedThreadRef } from "@t3tools/contracts";
+import type { ContextMenuItem } from "@t3tools/contracts";
 import {
   Columns2,
   Files,
   FileDiff,
   Globe2,
   Maximize2,
-  MessagesSquare,
   Minimize2,
   MoreHorizontal,
   Plus,
@@ -24,16 +18,13 @@ import {
 } from "lucide-react";
 import {
   memo,
-  useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type MouseEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
@@ -60,6 +51,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
+import { observeResize } from "~/lib/observeResize";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import {
@@ -68,24 +60,9 @@ import {
   type RightPanelSurface,
 } from "~/rightPanelStore";
 import {
-  THREAD_CONTEXT_DROP_EVENT,
-  threadContextDropTargetProps,
-  useThreadContextDragGhost,
-} from "~/components/chat/threadContextDrag";
-import { useThreadShell, useThreadShells } from "~/state/entities";
-import { useEnvironmentIdentities } from "~/state/environments";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
-import { guestCandidates, useGuestWorkspaceRequest, workspaceNote } from "./guestWorkspace";
-import {
-  CONVERSATION,
   activateTab,
-  addGuests,
   closeTab,
-  dropGuests,
   focusPane,
-  guestKey,
-  guestThreadOf,
-  guestThreads,
   isEmptyTab,
   moveTabs,
   openTab,
@@ -117,6 +94,7 @@ import {
   useTabSelectionStore,
 } from "./tabSelection";
 import { findLeaf, leaves, type Leaf } from "./tree";
+import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 /** Re-renders when what the strip draws from ChatView's panel props changes. */
 function usePanel(controller: PanesController): PanelProps | null {
@@ -134,17 +112,12 @@ function useSurface(surfaceId: string | null) {
   );
 }
 
-/** A tab's title and icon: the conversation, an empty tab, or one of T3 Code's surfaces. */
-function useTabLabel(tabKey: string): { title: string; icon: ReactNode; note?: string } {
+/** A tab's title and icon: an empty tab, or one of T3 Code's surfaces. */
+function useTabLabel(tabKey: string): { title: string; icon: ReactNode } {
   const { controller } = usePanesHost();
   const panel = usePanel(controller);
   const surface = useSurface(surfaceIdOf(tabKey));
   const { resolvedTheme } = useTheme();
-  const guest = useGuestLabel(guestThreadOf(tabKey));
-  if (tabKey === CONVERSATION) {
-    return { title: "Main Thread", icon: <MessagesSquare className="size-3 shrink-0" /> };
-  }
-  if (guest) return guest;
   if (!surface) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   const favicon = previewFaviconOf(
     surface,
@@ -167,35 +140,6 @@ function useTabLabel(tabKey: string): { title: string; icon: ReactNode; note?: s
         pullRequestStatusSeed={panel?.pullRequestStatusSeeds?.[surface.id]}
       />
     ),
-  };
-}
-
-/**
- * A guest tab's label: its thread's title, and where it works when that differs from the host's
- * (see `workspaceNote`). Null for any other tab.
- */
-function useGuestLabel(
-  guest: string | null,
-): { title: string; icon: ReactNode; note?: string } | null {
-  const guestRef = useMemo(() => (guest === null ? null : parseScopedThreadKey(guest)), [guest]);
-  const guestShell = useThreadShell(guestRef);
-  const hostShell = useThreadShell(usePanesThreadRef());
-  const machines = useEnvironmentIdentities();
-  if (guest === null) return null;
-  const note =
-    guestShell && hostShell
-      ? workspaceNote(
-          guestShell,
-          hostShell,
-          machines.find((machine) => machine.environmentId === guestShell.environmentId)?.label ??
-            null,
-        )
-      : null;
-  return {
-    // A thread not yet sent has no title of its own.
-    title: guestShell?.title ?? "New thread",
-    icon: <MessagesSquare className="size-3 shrink-0" />,
-    ...(note ? { note } : {}),
   };
 }
 
@@ -317,62 +261,12 @@ function runAddAction(controller: PanesController, paneId: string, action: AddAc
   action.invoke(panel);
 }
 
-/** How many threads a pane's New tab menu offers as guests. */
-const GUEST_CANDIDATES = 12;
-
-/**
- * "Thread" in a pane's New tab menu: another thread to open here as a guest, from those the
- * sidebar lists, most recently active first.
- */
-function GuestThreadMenu({ onPick }: { onPick: (threadKey: string) => void }) {
-  const { controller } = usePanesHost();
-  const hostRef = usePanesThreadRef();
-  const shells = useThreadShells();
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const present = new Set([
-    ...(hostRef ? [scopedThreadKey(hostRef)] : []),
-    ...(snapshot ? guestThreads(snapshot.arrangement) : []),
-  ]);
-  const candidates = guestCandidates(
-    shells.map((shell) => ({
-      key: scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id)),
-      title: shell.title,
-      archivedAt: shell.archivedAt,
-      updatedAt: shell.updatedAt,
-      lineage: shell.lineage,
-    })),
-    present,
-    GUEST_CANDIDATES,
-  );
-  return (
-    <MenuSub>
-      <MenuSubTrigger disabled={candidates.length === 0}>
-        <MessagesSquare />
-        Thread
-      </MenuSubTrigger>
-      <MenuSubPopup className="max-w-72">
-        {candidates.map((thread) => (
-          <MenuItem key={thread.key} onClick={() => onPick(thread.key)}>
-            <span className="min-w-0 truncate">{thread.title}</span>
-          </MenuItem>
-        ))}
-      </MenuSubPopup>
-    </MenuSub>
-  );
-}
-
 function NewTabMenu({ paneId }: { paneId: string }) {
   const { controller } = usePanesHost();
   const panel = usePanel(controller);
   const [open, setOpen] = useState(false);
   const profiles = useBrowserDefaults().profiles;
   const actions = addActions(panel);
-  const ref = usePanesThreadRef();
-  const hiddenCount = useRightPanelStore((state) => {
-    if (!ref) return 0;
-    const record = selectThreadRightPanelState(state.byThreadKey, ref);
-    return record.isOpen ? 0 : record.surfaces.length;
-  });
   const run = (action: AddAction) => {
     setOpen(false);
     runAddAction(controller, paneId, action);
@@ -435,36 +329,14 @@ function NewTabMenu({ paneId }: { paneId: string }) {
             </MenuItem>
           );
         })}
-        <MenuSeparator />
-        <GuestThreadMenu
-          onPick={(guest) => {
-            setOpen(false);
-            controller.update((arrangement) =>
-              addGuests(arrangement, [guest], { paneId, show: true }),
-            );
-          }}
-        />
-        {hiddenCount > 0 && ref ? (
-          <>
-            <MenuSeparator />
-            <MenuItem
-              onClick={() => {
-                setOpen(false);
-                useRightPanelStore.getState().show(ref);
-              }}
-            >
-              Show hidden tabs ({hiddenCount})
-            </MenuItem>
-          </>
-        ) : null}
       </MenuPopup>
     </Menu>
   );
 }
 
 /**
- * The right-click menu for a selection of tabs: closing them (the conversation never closes) and
- * moving them together into a new pane beside their own. Either ends the selection.
+ * The right-click menu for a selection of tabs: closing them, and moving them together into a
+ * new pane beside their own. Either ends the selection.
  */
 async function showSelectionMenu(
   api: NonNullable<ReturnType<typeof readLocalApi>>,
@@ -472,10 +344,9 @@ async function showSelectionMenu(
   keys: readonly string[],
   position: { x: number; y: number },
 ) {
-  const closable = keys.filter((key) => key !== CONVERSATION);
   type Action = "close" | "split-right" | "split-down";
   const items: ContextMenuItem<Action>[] = [
-    { id: "close", label: `Close (${closable.length})`, disabled: closable.length === 0 },
+    { id: "close", label: `Close (${keys.length})` },
     { id: "split-right", label: `Split right (${keys.length})` },
     { id: "split-down", label: `Split down (${keys.length})` },
   ];
@@ -483,7 +354,7 @@ async function showSelectionMenu(
   if (action === null || action === undefined) return;
   useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
   if (action === "close") {
-    for (const key of closable) closeTabOf(controller, key);
+    for (const key of keys) closeTabOf(controller, key);
     return;
   }
   controller.update((arrangement) =>
@@ -508,13 +379,14 @@ const TabPill = memo(function TabPill({
   only: boolean;
   /** Whether no tab follows it in the strip. */
   last: boolean;
+  /** Whether its strip is part of the window's title bar, which drags the window. */
   draggableInTitlebar: boolean;
 }) {
   const { controller } = usePanesHost();
-  const { title, icon, note } = useTabLabel(tabKey);
-  const guest = guestThreadOf(tabKey);
+  const { title, icon } = useTabLabel(tabKey);
   const dragging = useDragging(tabKey);
-  const closable = tabKey !== CONVERSATION;
+  // A lone pane's lone empty tab is what an empty panel shows; there is nothing to close.
+  const closable = !(only && isEmptyTab(tabKey));
   const activate = () => controller.update((arrangement) => activateTab(arrangement, tabKey));
   const selected = useTabSelectionStore(
     (store) => store.selection.paneId === paneId && store.selection.keys.includes(tabKey),
@@ -556,17 +428,8 @@ const TabPill = memo(function TabPill({
       await showSelectionMenu(api, controller, keys, { x: event.clientX, y: event.clientY });
       return;
     }
-    type Action =
-      | "own-workspace"
-      | "close"
-      | "close-others"
-      | "close-to-right"
-      | "split-right"
-      | "split-down";
+    type Action = "close" | "close-others" | "close-to-right" | "split-right" | "split-down";
     const items: ContextMenuItem<Action>[] = [
-      ...(guest === null
-        ? []
-        : [{ id: "own-workspace" as const, label: "Open in its own workspace" }]),
       { id: "close", label: "Close", disabled: !closable },
       { id: "close-others", label: "Close others", disabled: only },
       { id: "close-to-right", label: "Close tabs to the right", disabled: last },
@@ -577,9 +440,6 @@ const TabPill = memo(function TabPill({
     const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
     const snapshot = controller.getSnapshot();
     switch (action) {
-      case "own-workspace":
-        if (guest !== null) useGuestWorkspaceRequest.getState().open(guest);
-        break;
       case "close":
         closeTabOf(controller, tabKey);
         break;
@@ -617,7 +477,7 @@ const TabPill = memo(function TabPill({
       className={cn(
         // A pill as wide as its title up to 260px; short of room the pills shrink together to
         // 96px, then the strip scrolls. `--pill` is its fill, which the close control fades to.
-        "group/tab relative flex h-7 max-w-[260px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group/tab relative flex h-7 max-w-[260px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         draggableInTitlebar && "[-webkit-app-region:no-drag]",
         active
           ? cn(
@@ -662,17 +522,8 @@ const TabPill = memo(function TabPill({
         {icon}
       </span>
       <Tooltip>
-        <TooltipTrigger
-          render={
-            <span className="min-w-0 truncate">
-              {title}
-              {note ? (
-                <span className="ms-1.5 font-normal text-muted-foreground">{note}</span>
-              ) : null}
-            </span>
-          }
-        />
-        <TooltipPopup>{note ? `${title} · ${note}` : title}</TooltipPopup>
+        <TooltipTrigger render={<span className="min-w-0 truncate">{title}</span>} />
+        <TooltipPopup>{title}</TooltipPopup>
       </Tooltip>
       {closable ? (
         // Over the pill's end while it is hovered or focus is inside it, on a backdrop that fades
@@ -684,7 +535,7 @@ const TabPill = memo(function TabPill({
             <button
               type="button"
               aria-label={`Close ${title}`}
-              className="pointer-events-auto flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/8 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="pointer-events-auto flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/8 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               onClick={(event) => {
                 event.stopPropagation();
                 closeTabOf(controller, tabKey);
@@ -714,6 +565,12 @@ function scrollIntoStrip(strip: HTMLElement, pill: HTMLElement | undefined) {
   else if (end > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = end - strip.clientWidth;
 }
 
+/**
+ * A pane's strip of tabs. A strip along the panel's top is part of the window's title bar: it
+ * drags the window on desktop, the top-right one leaves room for the panel controls ChatView
+ * pins there and the window's own controls, and with the panel maximized the top-left one clears
+ * a collapsed sidebar's controls.
+ */
 function TabStrip({
   leaf,
   focused,
@@ -733,7 +590,7 @@ function TabStrip({
   const titlebar = isElectron && atTop;
   const { active } = leaf;
   const { controller } = usePanesHost();
-  // A lone pane already fills the main area: there is nothing to maximize it over.
+  // A lone pane already fills the panel: there is nothing to maximize it over.
   const alone = useSyncExternalStore(controller.subscribe, () => {
     const snapshot = controller.getSnapshot();
     return snapshot === null || leaves(snapshot.arrangement.root).length === 1;
@@ -749,10 +606,7 @@ function TabStrip({
         ),
       );
     show();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(show);
-    observer.observe(element);
-    return () => observer.disconnect();
+    return observeResize(element, show);
   }, [active]);
 
   return (
@@ -761,7 +615,8 @@ function TabStrip({
       className={cn(
         "relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1.5 border-b border-border bg-muted px-2",
         titlebar && "drag-region",
-        titlebar && atRight && "wco:pr-(--workspace-native-controls-inset)",
+        atTop && atRight && "pe-20",
+        titlebar && atRight && "wco:pe-(--workspace-native-controls-inset)",
         atTop && atLeft && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
       )}
     >
@@ -801,8 +656,8 @@ function TabStrip({
 }
 
 /**
- * Fills the main area with the pane, or puts the other panes back while it does. Shown only beside
- * other panes: a lone pane already fills the main area.
+ * Fills the panel with the pane, or puts the other panes back while it does. Shown only beside
+ * other panes: a lone pane already fills the panel.
  */
 function MaximizeButton({ paneId, maximized }: { paneId: string; maximized: boolean }) {
   const { controller } = usePanesHost();
@@ -834,9 +689,7 @@ function MaximizeButton({ paneId, maximized }: { paneId: string; maximized: bool
 /**
  * The pane's own menu, ending its strip as Obsidian's pane header ends with one: what acts on
  * the whole pane. Moving the tab in front into a new pane beside it (a pane's only tab stays, as
- * splitting would leave the pane empty), and closing it. What
- * acts on one tab stays on the tab. The pane holding the main thread never closes whole, as the
- * main thread never closes.
+ * splitting would leave the pane empty), and closing it. What acts on one tab stays on the tab.
  */
 function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
   const { controller } = usePanesHost();
@@ -868,7 +721,7 @@ function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
         </MenuItem>
         <MenuSeparator />
         <MenuItem
-          disabled={leaf.tabs.includes(CONVERSATION)}
+          disabled={alone && leaf.tabs.every(isEmptyTab)}
           onClick={() => {
             for (const key of leaf.tabs) closeTabOf(controller, key);
           }}
@@ -1027,47 +880,11 @@ function stripTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropT
   };
 }
 
-/** Set by T3 Code's thread drag on the drop target under the pointer (`threadContextDrag.ts`). */
-const THREAD_CONTEXT_OVER = "data-thread-context-over";
-
 /**
- * Follows threads dragged from T3 Code's sidebar, which drags with pointer events rather than
- * the browser's drag and drop, and reports where they would land on `pane` as tabs would.
- * The pane is a drop target of that drag, but the composer inside it lights up under any
- * target marked over, so the pane takes the mark off itself before paint and tests for the
- * pointer itself; over the composer, the composer is the target.
- */
-function SidebarDropFollower({
-  pane,
-  leaf,
-  onTarget,
-}: {
-  pane: RefObject<HTMLElement | null>;
-  leaf: Leaf;
-  onTarget: (target: DropTarget | null) => void;
-}) {
-  const ghost = useThreadContextDragGhost();
-  const over = useRef(false);
-  useLayoutEffect(() => {
-    const element = pane.current;
-    if (!element) return;
-    element.removeAttribute(THREAD_CONTEXT_OVER);
-    const hit =
-      ghost !== null &&
-      document.elementFromPoint(ghost.x, ghost.y)?.closest("[data-thread-context-drop]") ===
-        element;
-    if (!hit && !over.current) return;
-    over.current = hit;
-    onTarget(hit ? dropTargetAt(element, leaf, [], ghost.x, ghost.y) : null);
-  }, [ghost, leaf, onTarget, pane]);
-  return null;
-}
-
-/**
- * One pane: its strip of tabs across the top and its active tab's content beneath. The
- * conversation and the active surface render once each into containers that move into the pane
- * showing them (see `PanesHost`), so a tab moving between panes never remounts them. Dragging a
- * tab over the pane shows where it would land (see `dropTargetAt`).
+ * One pane: its strip of tabs across the top and its active tab's content beneath. The active
+ * surface renders once into a container that moves into the pane showing it (see `PanesHost`),
+ * so a tab moving between panes never remounts it. Dragging a tab over the pane shows where it
+ * would land (see `dropTargetAt`).
  */
 export const PaneView = memo(function PaneView({
   leaf,
@@ -1084,10 +901,11 @@ export const PaneView = memo(function PaneView({
   /** Whether this pane shows the surface T3 Code renders. */
   hosting: boolean;
   /**
-   * Whether this pane fills the main area (true), or another does and this one waits, mounted,
+   * Whether this pane fills the panel (true), or another does and this one waits, mounted,
    * beneath it (false); null when every pane shows.
    */
   maximized: boolean | null;
+  /** Whether the pane's top, left or right edge is the window's title bar's. */
   atTop: boolean;
   atLeft: boolean;
   atRight: boolean;
@@ -1097,28 +915,9 @@ export const PaneView = memo(function PaneView({
   const { controller } = host;
   const slot = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
-  const holdsConversation = leaf.tabs.includes(CONVERSATION);
-  const showsConversation = leaf.active === CONVERSATION;
 
   useLayoutEffect(() => {
-    if (slot.current && holdsConversation)
-      host.place("conversation", slot.current, showsConversation);
-  }, [holdsConversation, host, showsConversation]);
-
-  // Each guest this pane holds lives in its slot, shown while its tab is active.
-  const guests = leaf.tabs.flatMap((key) => guestThreadOf(key) ?? []).join("\n");
-  useLayoutEffect(() => {
-    const element = slot.current;
-    if (!element || guests === "") return;
-    for (const guest of guests.split("\n")) {
-      const container = host.guest(guest);
-      if (container.parentNode !== element) element.appendChild(container);
-      container.style.display = leaf.active === guestKey(guest) ? "" : "none";
-    }
-  }, [guests, host, leaf.active]);
-
-  useLayoutEffect(() => {
-    if (slot.current && hosting) host.place("surface", slot.current, true);
+    if (slot.current && hosting) host.place(slot.current, true);
   }, [host, hosting]);
 
   // A drag that ends anywhere else, or is cancelled, clears the highlight.
@@ -1134,20 +933,14 @@ export const PaneView = memo(function PaneView({
     };
   }, [dragging]);
 
-  // The conversation and the active surface render through portals, so React's drag events
-  // from them follow the React tree and never reach this pane. Native listeners see the drag
-  // where it happens in the DOM, and capturing it here keeps a dragged tab from reaching the
-  // conversation's file drop.
+  // The active surface renders through a portal, so React's drag events from it follow the
+  // React tree and never reach this pane. Native listeners see the drag where it happens in the
+  // DOM, and capturing it here keeps a dragged tab from reaching a surface's own drop handling.
   const section = useRef<HTMLElement>(null);
-  const hostRef = usePanesThreadRef();
-  const hostKey = hostRef ? scopedThreadKey(hostRef) : null;
-  const latest = useRef({ leaf, target, hostKey });
+  const latest = useRef({ leaf, target });
   useLayoutEffect(() => {
-    latest.current = { leaf, target, hostKey };
+    latest.current = { leaf, target };
   });
-  const followSidebarDrag = useCallback((next: DropTarget | null) => {
-    if (!sameTarget(latest.current.target, next)) setTarget(next);
-  }, []);
   useEffect(() => {
     const pane = section.current;
     if (!pane) return;
@@ -1188,34 +981,11 @@ export const PaneView = memo(function PaneView({
       // The tabs moved together; their selection ends with the move.
       useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
     };
-    // Threads dropped from T3 Code's sidebar where the pane showed they would land (see
-    // `SidebarDropFollower`) join as guests; the host's own thread brings its conversation
-    // forward. A drop on a composer inside the pane is the composer's, as context.
-    const onThreadDrop = (event: Event) => {
-      const { target: drop, leaf: current, hostKey: hostThread } = latest.current;
-      setTarget(null);
-      const threads = (event as CustomEvent<readonly ScopedThreadRef[]>).detail;
-      if (!drop || !Array.isArray(threads)) return;
-      const keys = threads.map(scopedThreadKey);
-      const guests = keys.filter((key) => key !== hostThread);
-      controller.update((arrangement) =>
-        guests.length === 0
-          ? activateTab(arrangement, CONVERSATION)
-          : dropGuests(
-              arrangement,
-              guests,
-              current.id,
-              drop.zone === "center" ? { index: drop.index } : { side: drop.zone },
-            ),
-      );
-    };
-    pane.addEventListener(THREAD_CONTEXT_DROP_EVENT, onThreadDrop);
     pane.addEventListener("dragenter", onDragEnter, true);
     pane.addEventListener("dragover", onDragOver, true);
     pane.addEventListener("dragleave", onDragLeave);
     pane.addEventListener("drop", onDrop, true);
     return () => {
-      pane.removeEventListener(THREAD_CONTEXT_DROP_EVENT, onThreadDrop);
       pane.removeEventListener("dragenter", onDragEnter, true);
       pane.removeEventListener("dragover", onDragOver, true);
       pane.removeEventListener("dragleave", onDragLeave);
@@ -1241,7 +1011,6 @@ export const PaneView = memo(function PaneView({
       inert={maximized === false}
       data-pane-id={leaf.id}
       data-focused={focused || undefined}
-      {...threadContextDropTargetProps()}
       onPointerDownCapture={() => {
         if (!focused) controller.update((arrangement) => focusPane(arrangement, leaf.id));
       }}
@@ -1249,7 +1018,6 @@ export const PaneView = memo(function PaneView({
         if (!focused) controller.update((arrangement) => focusPane(arrangement, leaf.id));
       }}
     >
-      <SidebarDropFollower pane={section} leaf={leaf} onTarget={followSidebarDrag} />
       <TabStrip
         leaf={leaf}
         focused={focused}
@@ -1258,7 +1026,7 @@ export const PaneView = memo(function PaneView({
         atLeft={atLeft}
         atRight={atRight}
       />
-      {/* Layout containment keeps the thread view's fixed-position controls inside the pane. */}
+      {/* Layout containment keeps a surface's fixed-position controls inside the pane. */}
       <div className="relative min-h-0 flex-1 [contain:layout_paint]">
         <div ref={slot} className="absolute inset-0" />
         {content ? (

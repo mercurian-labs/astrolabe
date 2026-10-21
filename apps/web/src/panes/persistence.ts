@@ -1,21 +1,23 @@
 import {
-  CONVERSATION,
+  isEmptyTab,
   isTabKey,
   paneLeaf,
   seqAfter,
   startingArrangement,
   type Arrangement,
 } from "./arrangement";
-import { leaves, mapLeaf, type SplitNode } from "./tree";
+import { leaves, type SplitNode } from "./tree";
 
 /**
- * Each thread's arrangement is the device's, in localStorage under its scoped thread key, so a
+ * Each thread's right-panel arrangement is the device's, in localStorage under its scoped thread key, so a
  * thread comes back as it was left in any browser tab and after a restart. A thread left in its
  * starting arrangement keeps nothing, so storage grows only with the threads someone arranged.
  */
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-const STORAGE_PREFIX = "t3code:panes:v1:";
+// The main-area arrangements of earlier builds (`t3code:panes:v1:`) held the conversation and
+// guest threads; the right panel starts fresh rather than reading them.
+const STORAGE_PREFIX = "t3code:right-panel-panes:v1:";
 
 export function arrangementStorageKey(threadKey: string) {
   return `${STORAGE_PREFIX}${threadKey}`;
@@ -70,15 +72,8 @@ function readNode(value: unknown, open: Set<string>, ids: Set<string>): SplitNod
 /** A stored arrangement as the panes can use it; null for one that holds nothing usable. */
 export function parseArrangement(value: unknown): Arrangement | null {
   if (!isRecord(value)) return null;
-  const open = new Set<string>();
-  let root = readNode(value.root, open, new Set());
+  const root = readNode(value.root, new Set(), new Set());
   if (!root) return null;
-  // The conversation is always somewhere: it holds the composer.
-  if (!open.has(CONVERSATION)) {
-    const first = leaves(root)[0];
-    if (!first) return null;
-    root = mapLeaf(root, first.id, (leaf) => ({ ...leaf, tabs: [CONVERSATION, ...leaf.tabs] }));
-  }
   const panes = leaves(root);
   const focused =
     typeof value.focused === "string" && panes.some((pane) => pane.id === value.focused)
@@ -103,7 +98,7 @@ function isStarting(arrangement: Arrangement) {
   return (
     root.type === "leaf" &&
     root.tabs.length === 1 &&
-    root.tabs[0] === CONVERSATION &&
+    isEmptyTab(root.tabs[0] ?? "") &&
     arrangement.focused === root.id
   );
 }

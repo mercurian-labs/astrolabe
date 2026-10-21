@@ -4,7 +4,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
-import { ThreadPanes } from "../panes/ThreadPanes";
+import { ChatTabs } from "../chatTabs/ChatTabs";
 import { ThreadLinkPrompt } from "../components/promptLinks/ThreadLinkPrompt";
 import { useClientSettings, useLegacySidebarEnabled } from "../hooks/useSettings";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -215,7 +215,7 @@ function ChatRouteLayout() {
       {threadTarget?.kind === "server" ? (
         <ThreadLinkPrompt threadRef={threadTarget.threadRef} />
       ) : null}
-      {threadTarget ? <ThreadPanes target={threadTarget} /> : <Outlet />}
+      {threadTarget ? <ChatTabs target={threadTarget} /> : <Outlet />}
     </>
   );
 }

@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (panes, guest threads, thread header in the tab strip, sidebar header, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, settings tabs, tabs and splits in the right panel, sidebar header and icon rail, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -32,7 +32,7 @@ yourself and track its PID. Never point it at `~/.t3/userdata`, and never set
 
 A clean home is not empty: the server adds the directory it runs in
 (`apps/server`, shown as the **server** project) and opens a draft thread.
-Guest threads need at least two threads; seed them with `vp run migrate-dev-db`
+Chat tabs need at least two threads; seed them with `vp run migrate-dev-db`
 (server stopped) into the worktree's `.t3`, as AGENTS.md describes.
 
 ## Doctor
@@ -52,7 +52,7 @@ Open the full URL from `$run/pairing-url` once with `preview_open` and
 another with `node apps/server/src/bin.ts pair --base-dir "$run/home"`. Pairing
 in incognito means your run neither reads nor leaves the user's default-profile
 state. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
-`role=tab[name='Main Thread']` before acting. It lands on a draft in the
+`role=tablist[name='Open chats']` before acting. It lands on a draft in the
 **server** project; click a sidebar row (`role=button[name='<title>, <project>']`)
 when the feature needs a real thread. Then:
 
@@ -60,8 +60,8 @@ when the feature needs a real thread. Then:
 - `preview_snapshot` returns a very large tree. Use `preview_wait_for` to
   settle and `preview_evaluate` for targeted reads (tab lists, localStorage),
   and take a snapshot only to look or to save evidence.
-- Pane arrangements live in localStorage under
-  `t3code:panes:v1:<environmentId>:<threadId>`. Reading that key proves a
+- Right-panel arrangements live in localStorage under
+  `t3code:right-panel-panes:v1:<environmentId>:<threadId>`. Reading that key proves a
   layout change without a screenshot, and surviving `location.reload()` proves
   persistence.
 

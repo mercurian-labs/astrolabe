@@ -57,7 +57,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     // keeps the sidebar's 8px inset, so the last action lines up with the rows and footer below.
     <div
       className={cn(
-        "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-2",
+        // Astrolabe: its bottom border lines up with the tab strip's beside it.
+        "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 border-b border-border pr-2",
         isElectron && "drag-region",
       )}
     >
@@ -237,6 +238,16 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     closeMobileSidebar();
     void navigateToMainApp();
   };
+
+  // Astrolabe: on desktop the icon rail holds Settings, Pull Requests and Usage, and its Threads
+  // icon is the way back from them; the footer keeps only the update pill.
+  if (!isMobile) {
+    return (
+      <SidebarMenu className="flex-row items-center">
+        <SidebarUpdatePill />
+      </SidebarMenu>
+    );
+  }
 
   return (
     <SidebarMenu className="flex-row items-center">

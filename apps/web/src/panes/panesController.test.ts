@@ -3,8 +3,7 @@ import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { CONVERSATION, activateTab, openTab, surfaceKey } from "./arrangement";
+import { activateTab, openBeside, surfaceKey } from "./arrangement";
 import { createPanesController } from "./panesController";
 import type { StorageLike } from "./persistence";
 import { leaves } from "./tree";
@@ -31,7 +30,6 @@ function record(ref = refA) {
 }
 
 beforeEach(() => {
-  useTerminalUiStateStore.setState({ terminalUiStateByThreadKey: {} });
   useRightPanelStore.setState({
     byThreadKey: {},
     threadPanelVisibilityByThreadKey: {},
@@ -39,7 +37,7 @@ beforeEach(() => {
   });
 });
 
-describe("the panes following T3 Code's panel record", () => {
+describe("the right panel's panes following T3 Code's panel record", () => {
   it("keep following after a remount re-subscribes, as StrictMode does", () => {
     const controller = createPanesController(memoryStorage());
     controller.load(refA, scopedThreadKey(refA));
@@ -49,7 +47,7 @@ describe("the panes following T3 Code's panel record", () => {
     const second = controller.follow();
     useRightPanelStore.getState().open(refA, "files");
     useRightPanelStore.getState().openFile(refA, "README.md");
-    expect(panes(controller)).toEqual([[CONVERSATION], [surfaceKey("file:README.md")]]);
+    expect(panes(controller)).toEqual([[surfaceKey("file:README.md")]]);
     second();
   });
 
@@ -58,23 +56,37 @@ describe("the panes following T3 Code's panel record", () => {
     controller.load(refA, scopedThreadKey(refA));
     useRightPanelStore.getState().open(refA, "diff");
     const stop = controller.follow();
-    expect(panes(controller)).toEqual([[CONVERSATION], [surfaceKey("diff")]]);
+    expect(panes(controller)).toEqual([[surfaceKey("diff")]]);
     stop();
   });
 
-  it("close the panel when no surface tab is shown, and show the surface a tab brings forward", () => {
+  it("make the surface a pane brings forward the one T3 Code shows, and leave the panel open", () => {
     const controller = createPanesController(memoryStorage());
     controller.load(refA, scopedThreadKey(refA));
     const stop = controller.follow();
     useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().open(refA, "files");
     expect(record()).toMatchObject({ isOpen: true, activeSurfaceId: "files" });
-    // The conversation moves over the surfaces: none is shown, so the panel closes, tabs kept.
-    controller.update((arrangement) => openTab(arrangement, CONVERSATION, "p1"));
-    expect(panes(controller)).toEqual([[surfaceKey("diff"), surfaceKey("files"), CONVERSATION]]);
-    expect(record()).toMatchObject({ isOpen: false });
-    controller.update((arrangement) => activateTab(arrangement, surfaceKey("diff")));
+    // Diff moves into its own pane beside Files, taking focus: it becomes the one shown.
+    controller.update((arrangement) => openBeside(arrangement, surfaceKey("diff"), "p0", "right"));
+    expect(panes(controller)).toEqual([[surfaceKey("files")], [surfaceKey("diff")]]);
     expect(record()).toMatchObject({ isOpen: true, activeSurfaceId: "diff" });
+    expect(controller.getSnapshot()?.hostPaneId).toBe("p1");
+    controller.update((arrangement) => activateTab(arrangement, surfaceKey("files")));
+    expect(record()).toMatchObject({ isOpen: true, activeSurfaceId: "files" });
+    expect(controller.getSnapshot()?.hostPaneId).toBe("p0");
+    stop();
+  });
+
+  it("keep the tabs while T3 Code hides its panel, and never open it themselves", () => {
+    const controller = createPanesController(memoryStorage());
+    controller.load(refA, scopedThreadKey(refA));
+    const stop = controller.follow();
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().close(refA);
+    expect(panes(controller)).toEqual([[surfaceKey("diff")]]);
+    controller.update((arrangement) => activateTab(arrangement, surfaceKey("diff")));
+    expect(record()).toMatchObject({ isOpen: false });
     stop();
   });
 
@@ -83,65 +95,14 @@ describe("the panes following T3 Code's panel record", () => {
     controller.load(refA, scopedThreadKey(refA));
     const stop = controller.follow();
     useRightPanelStore.getState().open(refA, "diff");
-    expect(panes(controller)).toEqual([[CONVERSATION], [surfaceKey("diff")]]);
+    expect(panes(controller)).toEqual([[surfaceKey("diff")]]);
     controller.load(refB, scopedThreadKey(refB));
-    expect(panes(controller)).toEqual([[CONVERSATION]]);
+    expect(panes(controller)).toEqual([["empty/0"]]);
     // The other thread's record moving does not touch these panes.
     useRightPanelStore.getState().open(refA, "files");
-    expect(panes(controller)).toEqual([[CONVERSATION]]);
+    expect(panes(controller)).toEqual([["empty/0"]]);
     controller.load(refA, scopedThreadKey(refA));
-    expect(panes(controller)).toEqual([[CONVERSATION], [surfaceKey("diff"), surfaceKey("files")]]);
-    stop();
-  });
-});
-
-describe("terminals inside the panes", () => {
-  function drawerOpen(ref = refA) {
-    return selectThreadTerminalUiState(
-      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
-      ref,
-    ).terminalOpen;
-  }
-
-  it("show a terminal the drawer was opened for as a panel terminal across the bottom, drawer shut", () => {
-    const controller = createPanesController(memoryStorage());
-    controller.load(refA, scopedThreadKey(refA));
-    const stop = controller.follow();
-    // As running a project script does.
-    useTerminalUiStateStore.getState().ensureTerminal(refA, "term-2", { open: true, active: true });
-    expect(drawerOpen()).toBe(false);
-    expect(panes(controller)).toEqual([[CONVERSATION], [surfaceKey("terminal:term-2")]]);
-    expect(controller.getSnapshot()?.arrangement.root).toMatchObject({ direction: "column" });
-    expect(record()).toMatchObject({ isOpen: true, activeSurfaceId: "terminal:term-2" });
-    stop();
-  });
-
-  it("go to an open terminal, then back to the conversation, on the terminal shortcut", () => {
-    const controller = createPanesController(memoryStorage());
-    controller.load(refA, scopedThreadKey(refA));
-    const stop = controller.follow();
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    controller.update((arrangement) => activateTab(arrangement, CONVERSATION));
-    expect(controller.getSnapshot()?.arrangement.focused).toBe("p0");
-    expect(controller.toggleTerminal()).toBe("terminal");
-    const terminalPane = leaves(controller.getSnapshot()!.arrangement.root).find((leaf) =>
-      leaf.tabs.includes(surfaceKey("terminal:term-1")),
-    );
-    expect(controller.getSnapshot()?.arrangement.focused).toBe(terminalPane?.id);
-    expect(controller.toggleTerminal()).toBe("conversation");
-    expect(controller.getSnapshot()?.arrangement.focused).toBe("p0");
-    stop();
-  });
-
-  it("bring a hidden terminal back when the shortcut goes to it", () => {
-    const controller = createPanesController(memoryStorage());
-    controller.load(refA, scopedThreadKey(refA));
-    const stop = controller.follow();
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().close(refA);
-    expect(panes(controller)).toEqual([[CONVERSATION]]);
-    controller.toggleTerminal();
-    expect(panes(controller)).toEqual([[CONVERSATION], [surfaceKey("terminal:term-1")]]);
+    expect(panes(controller)).toEqual([[surfaceKey("diff"), surfaceKey("files")]]);
     stop();
   });
 });
