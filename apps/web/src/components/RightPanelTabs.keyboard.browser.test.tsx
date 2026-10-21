@@ -72,6 +72,7 @@ async function renderPanel(
       onAddPullRequest={noop}
       onAddPullRequests={noop}
       onAddDevice={noop}
+      onAddGraph={noop}
       browserAvailable={false}
       terminalAvailable={false}
       diffAvailable={false}
@@ -79,6 +80,7 @@ async function renderPanel(
       pullRequestAvailable={false}
       pullRequestsAvailable={false}
       deviceAvailable={false}
+      graphAvailable={false}
       {...props}
     >
       content

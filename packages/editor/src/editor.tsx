@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { defaultKeymap, isolateHistory } from "@codemirror/commands";
-import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
 import { livePreview } from "./markdown/livePreview.ts";
+import type { LivePreviewOptions } from "./markdown/config.ts";
 import { agentChanges } from "./collab/agentChanges.ts";
 import { vimMode, type VimHistory } from "./vim.ts";
 
@@ -16,6 +17,13 @@ export interface AtlasEditorProps {
   extensions?: Extension[];
   /** Vim mode (live-preview spec 5.1). Switching it reconfigures the editor in place. */
   vim?: boolean;
+  /** How the live preview opens links and embeds. Keep the object stable; a new one remounts. */
+  livePreview?: LivePreviewOptions;
+  /**
+   * The person watches and does not type: the file's writer is the only author, and each
+   * change it lands scrolls into view.
+   */
+  locked?: boolean;
   className?: string;
 }
 
@@ -28,11 +36,31 @@ const collabTheme = EditorView.theme({
 // No `history()`: undo belongs to Yjs, and CodeMirror history would otherwise record every
 // transaction, agent syncs included, for nothing. The live preview's bindings sit above the
 // default keymap, which supplies motion and deletion that respect hidden syntax.
-const liveMarkdown = [
-  livePreview(),
+const liveMarkdown = (options: LivePreviewOptions | undefined) => [
+  livePreview(options),
   EditorView.lineWrapping,
   EditorState.allowMultipleSelections.of(true),
   keymap.of(defaultKeymap),
+];
+
+// Locked: no typing, no caret, and every change the writer lands is brought into view. The
+// scroll rides the change's own transaction, so it never moves anything on its own.
+const lockedView = [
+  EditorState.readOnly.of(true),
+  EditorView.editable.of(false),
+  EditorState.transactionExtender.of((tr) => {
+    if (!tr.docChanged) return null;
+    let start = -1;
+    let end = 0;
+    tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+      if (start < 0) start = fromB;
+      end = toB;
+    });
+    // Head at the start: a change taller than the view shows its beginning.
+    return {
+      effects: EditorView.scrollIntoView(EditorSelection.range(end, start), { y: "center" }),
+    };
+  }),
 ];
 
 /**
@@ -66,6 +94,8 @@ export function AtlasEditor({
   extensions,
   className,
   vim = false,
+  livePreview: livePreviewOptions,
+  locked = false,
 }: AtlasEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // The mounted editor, its Vim compartment, and the undo history Vim runs.
@@ -106,7 +136,8 @@ export function AtlasEditor({
           yCollab(text, awareness, { undoManager }),
           Prec.high(keymap.of(yUndoManagerKeymap)),
           isolatedUndoSteps(undoManager),
-          liveMarkdown,
+          liveMarkdown(livePreviewOptions),
+          locked ? lockedView : [],
           agentChanges(text, awareness),
           collabTheme,
           vimSlot.of(vimRef.current ? vimMode(history) : []),
@@ -120,7 +151,7 @@ export function AtlasEditor({
       view.destroy();
       undoManager.destroy();
     };
-  }, [text, awareness, extensions]);
+  }, [text, awareness, extensions, livePreviewOptions, locked]);
 
   // Vim on or off without remounting: the compartment is reconfigured in place.
   useEffect(() => {

@@ -4,12 +4,13 @@ import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 
 import {
   PaneSurfaceHostProvider,
-  PanesHostContext,
   PanesThreadContext,
-  createPanesHost,
-  type PanesHost,
+  RightPanelHostContext,
+  type RightPanelHost,
 } from "./PaneSurfaceHost";
 import { createPanesController } from "./panesController";
+import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
+import { createRightPanelHost } from "./rightPanelPaneTabs";
 import type { StorageLike } from "./persistence";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
 
@@ -36,7 +37,9 @@ export function ThreadPanesProvider({
 }) {
   const threadKey = scopedThreadKey(threadRef);
   const [storage] = useState(deviceStorage);
-  const [host] = useState<PanesHost>(() => createPanesHost(createPanesController(storage)));
+  const [host] = useState<RightPanelHost>(() =>
+    createRightPanelHost(createPanesController(storage)),
+  );
   const { controller } = host;
 
   useLayoutEffect(() => {
@@ -72,9 +75,13 @@ export function ThreadPanesProvider({
 
   return (
     <PanesHostContext.Provider value={host}>
-      <PanesThreadContext.Provider value={threadRef}>
-        <PaneSurfaceHostProvider>{children}</PaneSurfaceHostProvider>
-      </PanesThreadContext.Provider>
+      <RightPanelHostContext.Provider value={host}>
+        <PanesLayoutKeyContext.Provider value={threadKey}>
+          <PanesThreadContext.Provider value={threadRef}>
+            <PaneSurfaceHostProvider>{children}</PaneSurfaceHostProvider>
+          </PanesThreadContext.Provider>
+        </PanesLayoutKeyContext.Provider>
+      </RightPanelHostContext.Provider>
     </PanesHostContext.Provider>
   );
 }

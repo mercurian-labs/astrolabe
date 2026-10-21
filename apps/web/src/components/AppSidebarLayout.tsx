@@ -38,7 +38,8 @@ import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
-import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import { isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import { WikiSidebar } from "./wiki/WikiSidebar";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
 import {
@@ -278,6 +279,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  // Astrolabe: Wikis is a section of its own, beside the threads, with its own sidebar.
+  const isOnWikis = isWikisPath(pathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const hasIconRail = !useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
@@ -357,7 +360,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           collapsible="offcanvas"
           data-app-sidebar=""
           role="navigation"
-          aria-label={isOnSettings ? "Settings" : "Threads"}
+          aria-label={isOnSettings ? "Settings" : isOnWikis ? "Wikis" : "Threads"}
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,
@@ -379,6 +382,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
               <SidebarChromeHeader isElectron={isElectron} />
               <SettingsSidebarNav pathname={pathname} />
             </>
+          ) : isOnWikis ? (
+            <WikiSidebar />
           ) : legacySidebarEnabled ? (
             <LegacyThreadSidebar />
           ) : (

@@ -33,14 +33,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * branch divides at least two nodes by positive weights. Ids repeat nowhere (`ids`). Null
  * when nothing usable is left.
  */
-function readNode(value: unknown, open: Set<string>, ids: Set<string>): SplitNode | null {
+function readNode(
+  value: unknown,
+  open: Set<string>,
+  ids: Set<string>,
+  isKey: (key: string) => boolean,
+): SplitNode | null {
   if (!isRecord(value) || typeof value.id !== "string" || ids.has(value.id)) return null;
   ids.add(value.id);
   if (value.type === "leaf") {
     if (!Array.isArray(value.tabs)) return null;
     const tabs: string[] = [];
     for (const key of value.tabs) {
-      if (typeof key !== "string" || !isTabKey(key) || open.has(key)) continue;
+      if (typeof key !== "string" || !isKey(key) || open.has(key)) continue;
       open.add(key);
       tabs.push(key);
     }
@@ -57,7 +62,7 @@ function readNode(value: unknown, open: Set<string>, ids: Set<string>): SplitNod
   const children: SplitNode[] = [];
   const weights: number[] = [];
   value.children.forEach((child, index) => {
-    const node = readNode(child, open, ids);
+    const node = readNode(child, open, ids, isKey);
     if (!node) return;
     children.push(node);
     const weight = stored[index];
@@ -69,10 +74,16 @@ function readNode(value: unknown, open: Set<string>, ids: Set<string>): SplitNod
   return { type: "branch", id: value.id, direction: value.direction, children, weights };
 }
 
-/** A stored arrangement as the panes can use it; null for one that holds nothing usable. */
-export function parseArrangement(value: unknown): Arrangement | null {
+/**
+ * A stored arrangement as the panes can use it; null for one that holds nothing usable. `isKey`
+ * says which tab keys the panes can show (the right panel's by default).
+ */
+export function parseArrangement(
+  value: unknown,
+  isKey: (key: string) => boolean = isTabKey,
+): Arrangement | null {
   if (!isRecord(value)) return null;
-  const root = readNode(value.root, new Set(), new Set());
+  const root = readNode(value.root, new Set(), new Set(), isKey);
   if (!root) return null;
   const panes = leaves(root);
   const focused =
@@ -93,7 +104,7 @@ function readArrangement(storage: StorageLike | null, threadKey: string): Arrang
   }
 }
 
-function isStarting(arrangement: Arrangement) {
+export function isStarting(arrangement: Arrangement) {
   const { root } = arrangement;
   return (
     root.type === "leaf" &&

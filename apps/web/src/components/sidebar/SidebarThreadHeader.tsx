@@ -1,21 +1,26 @@
 /**
- * The sidebar's actions: search, project scope and new thread, as a group of
- * icon buttons at the end of the sidebar's titlebar row, opposite its toggle.
+ * Astrolabe: the sidebar's title row, upstream's search row with the section's name in it. The
+ * name ("Threads", "Wikis") heads the list, with search, the scope filter and new item as icon
+ * buttons at the row's end. Search opens upstream's own search field in the name's place, and the
+ * field stays while it has focus or holds a query; Escape on an empty field, leaving it empty, or
+ * picking a result puts the name back.
  *
- * Search opens the command palette rather than holding a field of its own, so
- * the thread list starts directly under the titlebar. While the sidebar is
- * collapsed, search and project scope follow the toggle into the main area's
- * titlebar through `SidebarCollapsedActionsSlot`.
+ * While the sidebar is collapsed, search and the scope filter follow the toggle into the main
+ * area's titlebar through `SidebarCollapsedActionsSlot`. Search there opens the sidebar with its
+ * field ready, since the results are the sidebar's list.
  *
- * The scope picker itself is passed in: its combobox state lives with the rest
- * of the sidebar's scope logic. The scope icon swaps to the project favicon
- * while a project is selected, so the header still names the scope.
+ * The scope picker itself is passed in: its combobox state lives with the rest of the sidebar's
+ * scope logic. The scope icon swaps to the project favicon while a project is selected, so the
+ * header still names the scope.
  */
-import { FolderPlusIcon, SearchIcon, SquarePenIcon } from "lucide-react";
+import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
+  type ComponentType,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  type RefObject,
   useEffect,
   useState,
   useSyncExternalStore,
@@ -24,68 +29,165 @@ import { useLocation } from "@tanstack/react-router";
 import { createPortal } from "react-dom";
 
 import { cn } from "~/lib/utils";
-import { SidebarMenuButton, useSidebar } from "../ui/sidebar";
+import { Button } from "../ui/button";
+import { SidebarInput, SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage } from "./mainAppLocation";
 
 export interface SidebarThreadHeaderProps {
-  /** Without projects there is nothing to scope, so the scope picker stays out. */
+  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
-  /** The project scope combobox, rendered between search and new thread. */
   projectScope: ReactNode;
-  onSearch: () => void;
-  searchShortcutLabel: string | null | undefined;
-  /** Receives the click so Shift+click can skip the project picker. */
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
-  /** Shift+click only matters once there is more than one project to pick. */
   showNewThreadInProjectHint: boolean;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  onSearchKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
+  isSearching: boolean;
+  searchResultCount: number;
+  activeSearchResultIndex: number;
+  onClearSearch: () => void;
+  /** Astrolabe: the section's name, heading the list. */
+  title: string;
+  /** Astrolabe: what the list holds, for naming its search ("thread", "document"). */
+  searchNoun?: string;
+  /** Astrolabe: what the new button makes, for headers of lists other than threads. */
+  newItemLabel?: string;
 }
 
-export function SidebarThreadHeader(props: SidebarThreadHeaderProps) {
-  const { isMobile, open } = useSidebar();
-  const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null);
-  if (!isMobile && !open && slot) {
-    return createPortal(<SidebarThreadActions {...props} collapsed />, slot);
-  }
-  return <SidebarThreadActions {...props} collapsed={false} />;
-}
-
-function SidebarThreadActions({
+export function SidebarThreadHeader({
+  searchFieldRef,
   hasProjects,
   projectScope,
-  onSearch,
-  searchShortcutLabel,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
   newThreadInProjectShortcutLabel,
   showNewThreadInProjectHint,
-  collapsed,
-}: SidebarThreadHeaderProps & { collapsed: boolean }) {
-  // Astrolabe: in the title bar of a page that lists no threads (Settings, Usage, Pull Requests),
-  // the project filter has nothing to filter, so the collapsed actions leave it out.
-  const onUtilityPage = useLocation({
-    select: (location) => isSidebarUtilityPage(location.pathname),
-  });
+  searchInputRef,
+  searchQuery,
+  onSearchQueryChange,
+  onSearchKeyDown,
+  isSearching,
+  searchResultCount,
+  activeSearchResultIndex,
+  onClearSearch,
+  title,
+  searchNoun = "thread",
+  newItemLabel = "New thread",
+}: SidebarThreadHeaderProps) {
+  // Astrolabe: the field shows from the search button until it loses focus, and while it holds a
+  // query, so picking a result or leaving it empty puts the section's name back.
+  const { isMobile, open, setOpen } = useSidebar();
+  const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
+  const fieldShown = searchOpen || isSearching;
+  const collapsed = !isMobile && !open;
+  useEffect(() => {
+    if (searchFocusRequest === 0) return;
+    // The sidebar may still be sliding in; focusing must not scroll it.
+    searchInputRef.current?.focus({ preventScroll: true });
+  }, [searchFocusRequest, searchInputRef]);
+  const openSearch = () => {
+    if (collapsed) setOpen(true);
+    setSearchOpen(true);
+    setSearchFocusRequest((request) => request + 1);
+  };
+  const searchLabel = `Search ${searchNoun}s`;
+  if (collapsed && slot) {
+    return createPortal(
+      <SidebarCollapsedActions
+        hasProjects={hasProjects}
+        projectScope={projectScope}
+        searchLabel={searchLabel}
+        onSearch={openSearch}
+      />,
+      slot,
+    );
+  }
+
+  const resultsVisible = isSearching && searchResultCount > 0;
+  // Results shrink as the query narrows, so the active index can outrun the
+  // list; pointing aria-activedescendant at a removed option strands the
+  // screen reader on nothing.
+  const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   const newThreadLabel = newThreadShortcutLabel
-    ? `New thread (${newThreadShortcutLabel})`
-    : "New thread";
+    ? `${newItemLabel} (${newThreadShortcutLabel})`
+    : newItemLabel;
+
   return (
-    <div className="flex shrink-0 items-center">
-      <SidebarHeaderIconButton
-        label="Search"
-        tooltip={searchShortcutLabel ? `Search (${searchShortcutLabel})` : "Search"}
-        onClick={onSearch}
+    <div className="flex items-center gap-1">
+      {/* Astrolabe: the section's name holds the field's place until search opens it. */}
+      {fieldShown ? null : <SidebarSectionTitle ref={searchFieldRef}>{title}</SidebarSectionTitle>}
+      <div
+        ref={fieldShown ? searchFieldRef : undefined}
+        className={cn(
+          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+          !fieldShown && "hidden",
+        )}
       >
-        <SearchIcon />
-      </SidebarHeaderIconButton>
-      {hasProjects && !(collapsed && onUtilityPage) ? projectScope : null}
-      {collapsed ? null : (
+        <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
+        <SidebarInput
+          ref={searchInputRef}
+          nativeInput
+          type="search"
+          value={searchQuery}
+          onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            onSearchKeyDown(event);
+            // Astrolabe: Escape on an empty field puts the section's name back.
+            if (event.key === "Escape" && !event.defaultPrevented) {
+              event.preventDefault();
+              event.stopPropagation();
+              setSearchOpen(false);
+            }
+          }}
+          // Astrolabe: an empty field shows only while it has focus.
+          onFocus={() => setSearchOpen(true)}
+          onBlur={() => setSearchOpen(false)}
+          placeholder="Search"
+          aria-label={searchLabel}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={resultsVisible}
+          aria-controls={resultsVisible ? "sidebar-thread-search-results" : undefined}
+          aria-activedescendant={
+            activeResultExists
+              ? `sidebar-thread-search-result-${activeSearchResultIndex}`
+              : undefined
+          }
+          className="min-w-0 flex-1"
+        />
+        {isSearching ? (
+          <Button
+            type="button"
+            size="icon-micro"
+            variant="ghost-muted"
+            className="shrink-0"
+            aria-label={`Clear ${searchNoun} search`}
+            onClick={() => {
+              onClearSearch();
+              searchInputRef.current?.focus();
+            }}
+          >
+            <XIcon className="size-3" />
+          </Button>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center">
+        {fieldShown ? null : (
+          <SidebarHeaderIconButton label={searchLabel} onClick={openSearch}>
+            <SearchIcon />
+          </SidebarHeaderIconButton>
+        )}
+        {hasProjects ? projectScope : null}
         <SidebarHeaderIconButton
-          label="New thread"
+          label={newItemLabel}
           tooltip={
             showNewThreadInProjectHint ? (
               <span className="flex flex-col gap-0.5">
@@ -104,7 +206,49 @@ function SidebarThreadActions({
         >
           <SquarePenIcon />
         </SidebarHeaderIconButton>
-      )}
+      </div>
+    </div>
+  );
+}
+
+/** Astrolabe: the section's name, as large as a dialog's title, on the search field's row height. */
+function SidebarSectionTitle({
+  ref,
+  children,
+}: {
+  ref: RefObject<HTMLDivElement | null> | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <div ref={ref} className="flex h-8 min-w-0 flex-1 items-center px-2">
+      <h2 className="truncate text-xl font-semibold text-sidebar-foreground">{children}</h2>
+    </div>
+  );
+}
+
+/** Astrolabe: what follows the toggle into the main area's titlebar while the sidebar is collapsed. */
+function SidebarCollapsedActions({
+  hasProjects,
+  projectScope,
+  searchLabel,
+  onSearch,
+}: {
+  hasProjects: boolean;
+  projectScope: ReactNode;
+  searchLabel: string;
+  onSearch: () => void;
+}) {
+  // In the title bar of a page that lists no threads (Settings, Usage, Pull Requests, Wikis),
+  // the project filter has nothing to filter, so the collapsed actions leave it out.
+  const onUtilityPage = useLocation({
+    select: (location) => isSidebarUtilityPage(location.pathname),
+  });
+  return (
+    <div className="flex shrink-0 items-center">
+      <SidebarHeaderIconButton label={searchLabel} onClick={onSearch}>
+        <SearchIcon />
+      </SidebarHeaderIconButton>
+      {hasProjects && !onUtilityPage ? projectScope : null}
     </div>
   );
 }
@@ -112,16 +256,37 @@ function SidebarThreadActions({
 /** The project picker's last row: adding a project, which used to be its own header button. */
 export function SidebarNewProjectRow({ onClick }: { onClick: () => void }) {
   return (
-    <div className="border-t border-border p-1">
-      <button
-        type="button"
-        className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-base outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent sm:min-h-7 sm:text-sm"
-        onClick={onClick}
-      >
-        <FolderPlusIcon className="size-4 shrink-0 text-muted-foreground" />
+    <SidebarPickerFooter>
+      <SidebarPickerAction icon={FolderPlusIcon} onClick={onClick}>
         New project
-      </button>
-    </div>
+      </SidebarPickerAction>
+    </SidebarPickerFooter>
+  );
+}
+
+/** Astrolabe: the rows below a header picker's list, for actions rather than picks. */
+export function SidebarPickerFooter({ children }: { children: ReactNode }) {
+  return <div className="border-t border-border p-1">{children}</div>;
+}
+
+export function SidebarPickerAction({
+  icon: Icon,
+  onClick,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-base outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent sm:min-h-7 sm:text-sm"
+      onClick={onClick}
+    >
+      <Icon className="size-4 shrink-0 text-muted-foreground" />
+      {children}
+    </button>
   );
 }
 

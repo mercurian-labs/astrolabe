@@ -1,0 +1,30 @@
+{
+  "name": "@mercurian/code-graph",
+  "private": true,
+  "bin": {
+    "code-graph": "./src/cli.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "index": "node src/cli.ts index",
+    "story": "node src/cli.ts story",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run",
+    "lint": "vp lint ."
+  },
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "web-tree-sitter": "0.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

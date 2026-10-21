@@ -30,6 +30,18 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Writing a guide runs a model on this environment's providers, which reading one does not.
   [WS_METHODS.pullRequestsGenerateReviewGuide]: AuthOrchestrationOperateScope,
   [WS_METHODS.sourceControlCloneRepository]: AuthSourceControlWriteScope,
+  // Astrolabe: wiki writes commit to git like any source-control write.
+  [WS_METHODS.wikiRegister]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiCreate]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiRemove]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiChangeRequestsOpen]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiAmend]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiTransform]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiRevertAmendment]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiMerge]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiSetChangeRequestStatus]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiSetMirror]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiPushMirror]: AuthSourceControlWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,

@@ -1,0 +1,386 @@
+:root,
+[data-theme="light"] {
+  /* Alabaster paper, ink, one rust accent. */
+  --atlas-paper: #f8f7f3;
+  --atlas-ink: #23211d;
+  --atlas-accent: #b24a26;
+  --atlas-warning: #a9812a;
+  --atlas-rule: #d8d4c9;
+  --atlas-muted: #7b766b;
+  --atlas-lens-1: #2c6e78;
+  --atlas-lens-2: #946f12;
+  --atlas-lens-3: #5b4a86;
+  --atlas-lens-4: #3f7a45;
+  --atlas-lens-5: #8c3f5d;
+  --atlas-lens-6: #4b6584;
+  --chrome: #efece4;
+}
+
+[data-theme="dark"] {
+  /* Charcoal with ivory ink. */
+  --atlas-paper: #1c1b19;
+  --atlas-ink: #ebe5d6;
+  --atlas-accent: #d9703f;
+  --atlas-warning: #cfa24a;
+  --atlas-rule: #3b3934;
+  --atlas-muted: #9d978b;
+  --atlas-lens-1: #63aab4;
+  --atlas-lens-2: #d2a847;
+  --atlas-lens-3: #a594d6;
+  --atlas-lens-4: #7fbf85;
+  --atlas-lens-5: #d67d9f;
+  --atlas-lens-6: #8fa7c6;
+  --chrome: #232220;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--atlas-paper);
+  color: var(--atlas-ink);
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+
+.app {
+  background: var(--atlas-paper);
+  color: var(--atlas-ink);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--atlas-rule);
+  background: var(--chrome);
+}
+
+.group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.group-label {
+  color: var(--atlas-muted);
+  margin-right: 2px;
+}
+
+.strip button,
+.strip select,
+.strip input[type="search"] {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 2px;
+  background: var(--atlas-paper);
+  color: var(--atlas-ink);
+  font: inherit;
+}
+
+.strip button[aria-pressed="true"] {
+  border-color: var(--atlas-ink);
+  background: var(--atlas-ink);
+  color: var(--atlas-paper);
+}
+
+.strip button:disabled,
+.strip select:disabled {
+  opacity: 0.45;
+}
+
+.strip select {
+  max-width: 260px;
+}
+
+.strip input[type="search"] {
+  width: 150px;
+}
+
+.strip label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* The graph, with the checkpoint's play-by-play in a column on its right. */
+.body {
+  display: flex;
+  min-height: 0;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.plays {
+  flex: none;
+  width: 260px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-left: 1px solid var(--atlas-rule);
+  background: var(--atlas-paper);
+}
+
+.settings {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto 140px 44px;
+  gap: 6px 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 3px;
+  background: var(--atlas-paper);
+}
+
+.settings output {
+  color: var(--atlas-muted);
+  text-align: right;
+}
+
+.settings .row-wide {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings .design-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 4px 0 0;
+  padding: 6px 0 0;
+  border: 0;
+  border-top: 1px solid var(--atlas-rule);
+}
+
+.design-features legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 0;
+  color: var(--atlas-muted);
+}
+
+.design-features label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.settings .shape-key {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 10px;
+  margin: 4px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--atlas-rule);
+}
+
+.shape-key div {
+  display: flex;
+  gap: 6px;
+}
+
+.shape-key dt {
+  min-width: 1ch;
+}
+
+.shape-key dd {
+  margin: 0;
+  color: var(--atlas-muted);
+}
+
+.debug {
+  position: absolute;
+  /* A readout only: it never takes a click meant for the graph's controls beneath it. */
+  pointer-events: none;
+  left: 8px;
+  bottom: 8px;
+  z-index: 5;
+  padding: 6px 8px;
+  border: 1px solid var(--atlas-rule);
+  border-radius: 3px;
+  background: var(--atlas-paper);
+  color: var(--atlas-muted);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.debug b {
+  color: var(--atlas-ink);
+  font-weight: 500;
+}
+
+.log {
+  position: absolute;
+  right: 8px;
+  /* Above the graph's following chip, whose band (bottom 12px, about 28px tall) stays clear. */
+  bottom: 52px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 360px;
+}
+
+.log div {
+  padding: 6px 8px;
+  border: 1px solid var(--atlas-rule);
+  border-left: 2px solid var(--atlas-accent);
+  border-radius: 3px;
+  background: var(--atlas-paper);
+}
+
+.turn {
+  color: var(--atlas-muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The bench page: controls, then the graph at its fixed viewport, then the results. */
+.bench {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--atlas-paper);
+  color: var(--atlas-ink);
+}
+
+.bench-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bench-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+}
+
+.bench-row input[type="number"] {
+  width: 48px;
+}
+
+.bench-muted {
+  color: var(--atlas-muted);
+}
+
+.bench-stage {
+  position: relative;
+  flex: none;
+  border: 1px solid var(--atlas-rule);
+}
+
+.bench-results {
+  margin: 0;
+  overflow-x: auto;
+  font: inherit;
+  white-space: pre;
+}
+
+/* The note the agent is writing, shown read-only as its file changes. */
+.note-edit {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(100% - 16px));
+  height: min(340px, 55%);
+  border: 1px solid var(--atlas-rule);
+  border-radius: 3px;
+  background: var(--atlas-paper);
+  --atlas-md-link-color: var(--atlas-lens-1);
+  --atlas-md-wikilink-color: var(--atlas-lens-1);
+  --atlas-md-border-color: var(--atlas-rule);
+  --atlas-agent-change-strength: 18%;
+}
+
+.note-edit-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 6px 5px 10px;
+  border-bottom: 1px solid var(--atlas-rule);
+}
+
+.note-edit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--atlas-accent);
+}
+
+.note-edit-name {
+  font-weight: 600;
+}
+
+.note-edit-state {
+  flex: 1;
+  color: var(--atlas-muted);
+}
+
+.note-edit-bar button {
+  border: 0;
+  background: none;
+  color: var(--atlas-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.note-edit-editor {
+  flex: 1;
+  min-height: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  font-size: 13px;
+}
+
+.note-edit-editor .cm-editor {
+  height: 100%;
+}
+
+.note-edit-editor .cm-scroller {
+  padding: 4px 12px;
+}

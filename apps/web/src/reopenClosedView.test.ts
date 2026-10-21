@@ -68,6 +68,22 @@ describe("reopenClosedView", () => {
     expect(openPreview).not.toHaveBeenCalled();
   });
 
+  it("remembers a closed graph tab and reopens it without a workspace", async () => {
+    const panels = useRightPanelStore.getState();
+    panels.open(threadRef, "diff");
+    panels.open(threadRef, "graph");
+    panels.closeSurface(threadRef, "graph");
+    const [entry] = useClosedViewStore.getState().entries;
+    expect(entry).toMatchObject({ kind: "panel-tab", surface: { id: "graph", kind: "graph" } });
+
+    expect(
+      await reopenClosedView(entry!, { openPreview: vi.fn(), workspaceAvailable: false }),
+    ).toBe(true);
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
+    expect(state.activeSurfaceId).toBe("graph");
+    expect(state.surfaces.map((surface) => surface.id)).toEqual(["diff", "graph"]);
+  });
+
   it("does not reopen workspace tabs without an available project", async () => {
     const options = {
       openPreview: vi.fn(),

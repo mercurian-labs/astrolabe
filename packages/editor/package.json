@@ -19,6 +19,10 @@
       "types": "./src/bridge/fileText.ts",
       "default": "./src/bridge/fileText.ts"
     },
+    "./bridge/file-mirror": {
+      "types": "./src/bridge/fileMirror.ts",
+      "default": "./src/bridge/fileMirror.ts"
+    },
     "./markdown": {
       "types": "./src/markdown/livePreview.ts",
       "default": "./src/markdown/livePreview.ts"

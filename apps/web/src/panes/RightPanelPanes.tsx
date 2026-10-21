@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { PreviewPanelShell } from "../components/preview/PreviewPanelShell";
 import type { PanelProps } from "./panesController";
-import { usePanesHost } from "./PaneSurfaceHost";
+import { useRightPanelHost } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
 
 /**
@@ -13,7 +13,7 @@ import { PaneTree } from "./PaneTree";
  * panel's strip, and renders the active surface's content into the pane showing its tab.
  */
 export function RightPanelPanes(props: PanelProps) {
-  const host = usePanesHost();
+  const host = useRightPanelHost();
   const { controller } = host;
   useLayoutEffect(() => {
     controller.setPanel(props);

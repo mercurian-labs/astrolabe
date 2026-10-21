@@ -3,8 +3,7 @@ import { Fragment, useEffect, useRef, useState, type PointerEvent } from "react"
 import { cn } from "../lib/utils";
 import { resizePanes } from "./arrangement";
 import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
-import type { PanesSnapshot } from "./panesController";
-import { usePanesHost } from "./PaneSurfaceHost";
+import { usePanesHost, type PaneArrangementSnapshot } from "./panesHost";
 import { PaneView } from "./PaneView";
 import {
   findLeaf,
@@ -30,7 +29,7 @@ export function PaneTree({
   snapshot,
   panelMaximized,
 }: {
-  snapshot: PanesSnapshot;
+  snapshot: PaneArrangementSnapshot;
   panelMaximized: boolean;
 }) {
   const { arrangement, hostPaneId } = snapshot;

@@ -1,43 +1,41 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { create } from "zustand";
 
-import { usePanesThreadRef } from "./PaneSurfaceHost";
+import { usePanesLayoutKey } from "./panesHost";
 
 /**
- * The pane filling the main area, as T3 Code maximizes its right panel: one at a time, held in
- * memory only, and only for the thread it was maximized in; another thread shows its own
- * layout, and a reload restores every pane.
+ * The pane filling its panes' room, as T3 Code maximizes its right panel: one at a time, held in
+ * memory only, and only for the arrangement it was maximized in (a thread's right panel, or the
+ * Wikis area); another shows its own layout, and a reload restores every pane.
  */
 export const useMaximizedPaneStore = create<{
-  readonly maximized: { readonly threadKey: string; readonly paneId: string } | null;
-  readonly toggle: (threadKey: string, paneId: string) => void;
+  readonly maximized: { readonly layoutKey: string; readonly paneId: string } | null;
+  readonly toggle: (layoutKey: string, paneId: string) => void;
   readonly restore: () => void;
 }>((set) => ({
   maximized: null,
-  toggle: (threadKey, paneId) =>
+  toggle: (layoutKey, paneId) =>
     set(({ maximized }) => ({
       maximized:
-        maximized?.threadKey === threadKey && maximized.paneId === paneId
+        maximized?.layoutKey === layoutKey && maximized.paneId === paneId
           ? null
-          : { threadKey, paneId },
+          : { layoutKey, paneId },
     })),
   restore: () => set({ maximized: null }),
 }));
 
-/** The pane maximized in the thread on screen, if any. */
+/** The pane maximized in the arrangement on screen, if any. */
 export function useMaximizedPaneId(): string | null {
-  const ref = usePanesThreadRef();
-  const threadKey = ref ? scopedThreadKey(ref) : null;
+  const layoutKey = usePanesLayoutKey();
   return useMaximizedPaneStore((store) =>
-    store.maximized && store.maximized.threadKey === threadKey ? store.maximized.paneId : null,
+    store.maximized && store.maximized.layoutKey === layoutKey ? store.maximized.paneId : null,
   );
 }
 
-/** Maximizes `paneId` in the thread on screen, or restores it when it is already. */
+/** Maximizes `paneId` in the arrangement on screen, or restores it when it is already. */
 export function useToggleMaximized(): (paneId: string) => void {
-  const ref = usePanesThreadRef();
+  const layoutKey = usePanesLayoutKey();
   const toggle = useMaximizedPaneStore((store) => store.toggle);
   return (paneId) => {
-    if (ref) toggle(scopedThreadKey(ref), paneId);
+    if (layoutKey !== null) toggle(layoutKey, paneId);
   };
 }

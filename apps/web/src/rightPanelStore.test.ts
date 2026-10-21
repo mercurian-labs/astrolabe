@@ -543,6 +543,29 @@ describe("rightPanelStore", () => {
     expect(selectThreadRightPanelState(migrated.byThreadKey, refA).maximized).toBe(true);
   });
 
+  it("keeps a saved graph surface during migration", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "graph",
+          surfaces: [
+            { id: "diff", kind: "diff" },
+            { id: "graph", kind: "graph" },
+          ],
+        },
+      },
+    });
+    expect(selectThreadRightPanelState(migrated.byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "graph",
+      surfaces: [
+        { id: "diff", kind: "diff" },
+        { id: "graph", kind: "graph" },
+      ],
+    });
+  });
+
   it("drops the legacy singleton terminal surface during migration", () => {
     expect(
       migratePersistedRightPanelState({
@@ -854,6 +877,26 @@ describe("rightPanelStore", () => {
       activeSurfaceId: "files",
       surfaces: [{ id: "files", kind: "files" }],
     });
+  });
+
+  it("keeps the graph as a singleton surface that toggles like the others", () => {
+    const store = useRightPanelStore.getState();
+    store.open(refA, "graph");
+    store.open(refA, "diff");
+    store.toggle(refA, "graph");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "graph",
+      surfaces: [
+        { id: "graph", kind: "graph" },
+        { id: "diff", kind: "diff" },
+      ],
+    });
+    store.toggle(refA, "graph");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
+    expect(
+      selectSelectedRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id,
+    ).toBe("graph");
   });
 
   it("opens workspace-root links as the singleton files explorer", () => {

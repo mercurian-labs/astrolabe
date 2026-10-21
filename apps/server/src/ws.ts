@@ -94,7 +94,9 @@ import {
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   WS_METHODS,
+  WsAstrolabeRpcGroup,
   WsRpcGroup,
+  WsUpstreamRpcGroup,
 } from "@t3tools/contracts";
 import {
   HttpRouter,
@@ -230,6 +232,7 @@ import type { TelemetryOwner } from "./telemetry/Identify.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as WikiService from "./wiki/WikiService.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -544,6 +547,8 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+const ServerWsUpstreamRpcGroup = WsUpstreamRpcGroup.middleware(RpcInstrumentation);
+const ServerWsAstrolabeRpcGroup = WsAstrolabeRpcGroup.middleware(RpcInstrumentation);
 // Replaying each intervening event costs a shell refetch; past this gap a
 // single O(active-threads) snapshot is cheaper and bounded.
 const SHELL_RESUME_MAX_GAP = 1_000;
@@ -1180,14 +1185,41 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
   },
 );
 
-export const layerWsRpc = (
+/** Astrolabe's RPC handlers, a layer of their own beside upstream's; see `WsAstrolabeRpcGroup`. */
+const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
+  Effect.gen(function* () {
+    const wikis = yield* WikiService.WikiService;
+    return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.wikiList]: (_input) => wikis.list,
+      [WS_METHODS.wikiSubscribe]: (_input) => wikis.subscribe,
+      [WS_METHODS.wikiRegister]: (input) => wikis.register(input),
+      [WS_METHODS.wikiCreate]: (input) => wikis.create(input),
+      [WS_METHODS.wikiRemove]: (input) => wikis.remove(input).pipe(Effect.as({})),
+      [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
+      [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
+      [WS_METHODS.wikiChangeRequestsList]: (input) => wikis.changeRequestsList(input),
+      [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
+      [WS_METHODS.wikiChangeRequestsOpen]: (input) =>
+        wikis.changeRequestsOpen(input, WikiService.person),
+      [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
+      [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
+      [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
+      [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
+      [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
+      [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
+      [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
+    });
+  }),
+);
+
+const layerWsUpstreamRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  ServerWsUpstreamRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1803,7 +1835,7 @@ export const layerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers = ServerWsUpstreamRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -3122,6 +3154,25 @@ export const layerWsRpc = (
       });
       return handlers;
     }),
+  );
+
+/** Upstream's RPC handlers and Astrolabe's (see `WsAstrolabeRpcGroup`), served together. */
+export const layerWsRpc = (
+  currentSession: EnvironmentAuth.AuthenticatedSession,
+  clientOrigin: OrchestrationClientOrigin,
+  clientAnalyticsProps: Readonly<Record<string, unknown>>,
+  previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
+  serverBrowser: ServerBrowser.ServerBrowser["Service"],
+) =>
+  Layer.merge(
+    layerWsUpstreamRpc(
+      currentSession,
+      clientOrigin,
+      clientAnalyticsProps,
+      previewAutomationBroker,
+      serverBrowser,
+    ),
+    layerWsAstrolabeRpc,
   );
 
 // RpcServer's default sends a socket-level Defect frame instead, and the client

@@ -1,0 +1,27 @@
+{
+  "layers": [
+    { "name": "model", "paths": ["src/model"] },
+    { "name": "layout", "paths": ["src/layout"] },
+    { "name": "render", "paths": ["src/render"] },
+    { "name": "shell", "paths": ["src/AtlasGraph.tsx", "src/PlayByPlay.tsx", "src/index.ts"] },
+    { "name": "playground", "paths": ["playground"] },
+    { "name": "bench", "paths": ["bench"] },
+    { "name": "fixtures", "paths": ["fixtures"] }
+  ],
+  "allowed": [
+    ["render", "model"],
+    ["render", "layout"],
+    ["layout", "model"],
+    ["shell", "model"],
+    ["shell", "layout"],
+    ["shell", "render"],
+    ["playground", "shell"],
+    ["playground", "model"],
+    ["playground", "fixtures"],
+    ["bench", "shell"],
+    ["bench", "model"],
+    ["bench", "fixtures"],
+    ["bench", "playground"],
+    ["fixtures", "model"]
+  ]
+}

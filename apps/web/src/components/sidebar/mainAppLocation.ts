@@ -11,11 +11,22 @@ export function isSidebarUtilityPage(pathname: string) {
   );
 }
 
+/** `/wikis` and every wiki under it: Astrolabe's second section, beside the threads. */
+export function isWikisPath(pathname: string) {
+  return pathname === "/wikis" || pathname.startsWith("/wikis/");
+}
+
 let mainAppHref: string | null = null;
 
+// Mount once in the app shell. Records the latest threads URL so Back (and the
+// rail's Threads) can return there no matter how many utility pages, or wikis,
+// were visited since.
 export function MainAppLocationTracker() {
   const href = useLocation({
-    select: (location) => (isSidebarUtilityPage(location.pathname) ? null : location.href),
+    select: (location) =>
+      isSidebarUtilityPage(location.pathname) || isWikisPath(location.pathname)
+        ? null
+        : location.href,
   });
   useEffect(() => {
     if (href !== null) mainAppHref = href;

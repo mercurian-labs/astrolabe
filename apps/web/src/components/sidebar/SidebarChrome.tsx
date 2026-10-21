@@ -1,4 +1,10 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  BookOpenIcon,
+  ChartNoAxesColumnIcon,
+  MessagesSquare,
+  SettingsIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -24,7 +30,7 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
-import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
+import { isSidebarUtilityPage, isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -33,11 +39,8 @@ import { observeResize } from "~/lib/observeResize";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
-  actions,
 }: {
   isElectron: boolean;
-  /** Icon buttons at the row's end, opposite the sidebar toggle. */
-  actions?: ReactNode;
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
@@ -53,8 +56,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   const wordmarkFits = useWordmarkFits(brandRow, pillLabel);
 
   return (
-    // The titlebar row, not a padded SidebarHeader: it aligns to the window controls. Its end
-    // keeps the sidebar's 8px inset, so the last action lines up with the rows and footer below.
+    // The titlebar row, not a padded SidebarHeader: it aligns to the window controls.
     <div
       className={cn(
         // Astrolabe: its bottom border lines up with the tab strip's beside it.
@@ -86,17 +88,6 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           </div>
         ) : null}
       </div>
-      {actions ? (
-        <div
-          className={cn(
-            "relative z-10 flex shrink-0 items-center",
-            // Over the stage artwork the buttons keep their own colors on a glass surface.
-            backdropVariant && "surface-glass rounded-lg p-px shadow-xs",
-          )}
-        >
-          {actions}
-        </div>
-      ) : null}
     </div>
   );
 });
@@ -148,7 +139,7 @@ export function SidebarBrandWidthProbe({
       className="pointer-events-none invisible fixed top-0 left-0 flex w-max border-r border-transparent pr-2"
       ref={observeWidth}
     >
-      {/* The narrowest header: the monogram, then the three action buttons. */}
+      {/* The narrowest sidebar: the monogram, then room for the title row's three buttons. */}
       <div className="ml-[var(--workspace-titlebar-content-left)] flex items-center gap-2">
         <AstrolabeMarkSmall className="h-3 shrink-0" />
         <div className="w-21 shrink-0" />
@@ -209,6 +200,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
+  const isOnWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
   const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
@@ -226,6 +218,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
   };
+  const handleWikisClick = () => {
+    closeMobileSidebar();
+    void navigate({ to: "/wikis" });
+  };
 
   const handleUsageClick = () => {
     if (isMobile) {
@@ -239,7 +235,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigateToMainApp();
   };
 
-  // Astrolabe: on desktop the icon rail holds Settings, Pull Requests and Usage, and its Threads
+  // Astrolabe: on desktop the icon rail holds Wikis, Settings, Pull Requests and Usage, and its Threads
   // icon is the way back from them; the footer keeps only the update pill.
   if (!isMobile) {
     return (
@@ -265,6 +261,15 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Settings"
             onClick={handleSettingsClick}
           />
+          {isOnWikis ? (
+            <SidebarUtilityItem
+              icon={<MessagesSquare />}
+              label="Threads"
+              onClick={handleBackClick}
+            />
+          ) : (
+            <SidebarUtilityItem icon={<BookOpenIcon />} label="Wikis" onClick={handleWikisClick} />
+          )}
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}

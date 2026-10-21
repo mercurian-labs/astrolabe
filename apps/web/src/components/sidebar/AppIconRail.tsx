@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { ChartNoAxesColumnIcon, MessagesSquare, SettingsIcon } from "lucide-react";
+import { BookOpenIcon, ChartNoAxesColumnIcon, MessagesSquare, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { isElectron } from "~/env";
@@ -10,10 +10,10 @@ import { usePullRequestsSupported } from "~/state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useNavigateToMainApp } from "./mainAppLocation";
+import { isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
 
 /**
- * The far-left icon rail: the app's sections on top (Threads, for now), and Pull Requests,
+ * The far-left icon rail: the app's sections on top (Threads and Wikis), and Pull Requests,
  * Usage and Settings at the foot, which the sidebar's footer used to hold. It runs from below
  * the title bar to the window's bottom edge and stays when the sidebar collapses; the sidebar
  * opens beside it (see `AppSidebarLayout`). The cell above it is the sidebar's part of the title
@@ -32,8 +32,9 @@ export function AppIconRail() {
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
   const onPullRequests = pathname === "/pull-requests";
+  const onWikis = isWikisPath(pathname);
   const onThreads =
-    !onSettings && !onUsage && !onPullRequests && !pathname.startsWith("/projects/");
+    !onSettings && !onUsage && !onPullRequests && !onWikis && !pathname.startsWith("/projects/");
 
   return (
     <>
@@ -56,6 +57,12 @@ export function AppIconRail() {
             icon={<MessagesSquare />}
             active={onThreads}
             onClick={() => void navigateToMainApp()}
+          />
+          <RailItem
+            label="Wikis"
+            icon={<BookOpenIcon />}
+            active={onWikis}
+            onClick={() => void navigate({ to: "/wikis" })}
           />
         </SidebarMenu>
         <SidebarMenu className="mt-auto items-center">

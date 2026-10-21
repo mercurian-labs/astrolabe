@@ -117,6 +117,11 @@
       // These workspace packages are private to this monorepo.
       "includeEntryExports": true,
     },
+    "packages/graph": {
+      "includeEntryExports": true,
+      // The bench page loads this through playground/bench.html, which knip does not read.
+      "entry": ["playground/bench.tsx"],
+    },
     "packages/effect-acp": {
       "includeEntryExports": true,
       "entry": ["test/fixtures/*.ts"],

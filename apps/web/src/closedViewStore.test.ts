@@ -58,6 +58,7 @@ describe("closedViewStore", () => {
     { id: "bad", kind: "panel-tab", threadRef: {}, surface: { kind: "diff", id: "diff" } },
     { id: "bad", kind: "panel-tab", threadRef: refA, surface: {} },
     { id: "bad", kind: "panel-tab", threadRef: refA, surface: { kind: "file", id: "file:x" } },
+    { id: "bad", kind: "panel-tab", threadRef: refA, surface: { kind: "graph", id: "graph:x" } },
     {
       id: "bad",
       kind: "panel-tab",
@@ -88,6 +89,7 @@ describe("closedViewStore", () => {
       { kind: "diff", id: "diff" },
       { kind: "files", id: "files" },
       { kind: "pull-requests", id: "pull-requests" },
+      { kind: "graph", id: "graph" },
       { kind: "preview", id: "browser:new", resourceId: null },
       { kind: "preview", id: "browser:saved", resourceId: "saved" },
       { kind: "device", id: "device" },

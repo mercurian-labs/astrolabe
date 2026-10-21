@@ -357,6 +357,32 @@ import {
 } from "./scheduledTask.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
+  WikiAmendInput,
+  WikiAmendResult,
+  WikiChangeRequest,
+  WikiChangeRequestDetail,
+  WikiChangeRequestListInput,
+  WikiChangeRequestListResult,
+  WikiChangeRequestOpenInput,
+  WikiChangeRequestTarget,
+  WikiCreateInput,
+  WikiError,
+  WikiEvent,
+  WikiIndexResult,
+  WikiListResult,
+  WikiMergeResult,
+  WikiNoteInput,
+  WikiNoteResult,
+  WikiReadScope,
+  WikiRegisterInput,
+  WikiRevertInput,
+  WikiSetChangeRequestStatusInput,
+  WikiSetMirrorInput,
+  WikiSummary,
+  WikiTarget,
+  WikiTransformInput,
+} from "./wiki.ts";
+import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
   ProjectCloneListEvent,
@@ -509,6 +535,25 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+
+  // Astrolabe: local wikis.
+  wikiList: "wiki.list",
+  wikiSubscribe: "wiki.subscribe",
+  wikiRegister: "wiki.register",
+  wikiCreate: "wiki.create",
+  wikiRemove: "wiki.remove",
+  wikiIndex: "wiki.index",
+  wikiReadNote: "wiki.readNote",
+  wikiChangeRequestsList: "wiki.changeRequests.list",
+  wikiChangeRequestsGet: "wiki.changeRequests.get",
+  wikiChangeRequestsOpen: "wiki.changeRequests.open",
+  wikiAmend: "wiki.amend",
+  wikiTransform: "wiki.transform",
+  wikiRevertAmendment: "wiki.revertAmendment",
+  wikiMerge: "wiki.merge",
+  wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
+  wikiSetMirror: "wiki.setMirror",
+  wikiPushMirror: "wiki.pushMirror",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -1784,6 +1829,110 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+// Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
+const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
+  payload: Schema.Struct({}),
+  success: WikiListResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSubscribeRpc = Rpc.make(WS_METHODS.wikiSubscribe, {
+  payload: Schema.Struct({}),
+  success: WikiEvent,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsWikiRegisterRpc = Rpc.make(WS_METHODS.wikiRegister, {
+  payload: WikiRegisterInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiCreateRpc = Rpc.make(WS_METHODS.wikiCreate, {
+  payload: WikiCreateInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiRemoveRpc = Rpc.make(WS_METHODS.wikiRemove, {
+  payload: WikiTarget,
+  success: Schema.Struct({}),
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiIndexRpc = Rpc.make(WS_METHODS.wikiIndex, {
+  payload: WikiReadScope,
+  success: WikiIndexResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiReadNoteRpc = Rpc.make(WS_METHODS.wikiReadNote, {
+  payload: WikiNoteInput,
+  success: WikiNoteResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
+  payload: WikiChangeRequestListInput,
+  success: WikiChangeRequestListResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiChangeRequestsGetRpc = Rpc.make(WS_METHODS.wikiChangeRequestsGet, {
+  payload: WikiChangeRequestTarget,
+  success: WikiChangeRequestDetail,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiChangeRequestsOpenRpc = Rpc.make(WS_METHODS.wikiChangeRequestsOpen, {
+  payload: WikiChangeRequestOpenInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiAmendRpc = Rpc.make(WS_METHODS.wikiAmend, {
+  payload: WikiAmendInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
+  payload: WikiTransformInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiRevertAmendmentRpc = Rpc.make(WS_METHODS.wikiRevertAmendment, {
+  payload: WikiRevertInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiMergeRpc = Rpc.make(WS_METHODS.wikiMerge, {
+  payload: WikiChangeRequestTarget,
+  success: WikiMergeResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSetChangeRequestStatusRpc = Rpc.make(WS_METHODS.wikiSetChangeRequestStatus, {
+  payload: WikiSetChangeRequestStatusInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
+  payload: WikiSetMirrorInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -1879,7 +2028,8 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
-export const WsRpcGroup = RpcGroup.make(
+/** Upstream T3 Code's RPCs. */
+export const WsUpstreamRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -2079,3 +2229,30 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeThreadRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
 ).middleware(RpcScopeAuthorization);
+
+/**
+ * Astrolabe's own RPCs. They are a group of their own because one group holding every RPC is
+ * past TypeScript's instantiation depth when the server types its handlers; the server builds
+ * each group's handlers separately and serves them together through `WsRpcGroup`.
+ */
+export const WsAstrolabeRpcGroup = RpcGroup.make(
+  WsWikiListRpc,
+  WsWikiSubscribeRpc,
+  WsWikiRegisterRpc,
+  WsWikiCreateRpc,
+  WsWikiRemoveRpc,
+  WsWikiIndexRpc,
+  WsWikiReadNoteRpc,
+  WsWikiChangeRequestsListRpc,
+  WsWikiChangeRequestsGetRpc,
+  WsWikiChangeRequestsOpenRpc,
+  WsWikiAmendRpc,
+  WsWikiTransformRpc,
+  WsWikiRevertAmendmentRpc,
+  WsWikiMergeRpc,
+  WsWikiSetChangeRequestStatusRpc,
+  WsWikiSetMirrorRpc,
+  WsWikiPushMirrorRpc,
+).middleware(RpcScopeAuthorization);
+
+export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

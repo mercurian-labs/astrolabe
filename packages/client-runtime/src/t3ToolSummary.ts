@@ -440,6 +440,12 @@ export function summarizeT3ToolCalls(
     case "capabilities":
       label = phrase("Checked", "check", `orchestration capabilities ${times}`);
       break;
+    case "wiki-read":
+      label = phrase("Read", "read", `wikis ${times}`);
+      break;
+    case "wiki-amend":
+      label = phrase("Amended", "amend", `wikis ${times}`);
+      break;
   }
   return { label, failedCount };
 }

@@ -58,6 +58,7 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
+  BookOpenIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -2024,6 +2025,17 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:wikis",
+    searchTerms: ["wikis", "wiki", "notes", "knowledge", "skill map", "change requests"],
+    title: "Open wikis",
+    icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/wikis" });
+    },
+  });
 
   actionItems.push({
     kind: "action",

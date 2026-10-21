@@ -212,6 +212,23 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeServerLifecycle]: "server",
   [WS_METHODS.subscribeAuthAccess]: "auth",
   [WS_METHODS.subscribeBackgroundPolicy]: "server",
+  [WS_METHODS.wikiList]: "wiki",
+  [WS_METHODS.wikiSubscribe]: "wiki",
+  [WS_METHODS.wikiRegister]: "wiki",
+  [WS_METHODS.wikiCreate]: "wiki",
+  [WS_METHODS.wikiRemove]: "wiki",
+  [WS_METHODS.wikiIndex]: "wiki",
+  [WS_METHODS.wikiReadNote]: "wiki",
+  [WS_METHODS.wikiChangeRequestsList]: "wiki",
+  [WS_METHODS.wikiChangeRequestsGet]: "wiki",
+  [WS_METHODS.wikiChangeRequestsOpen]: "wiki",
+  [WS_METHODS.wikiAmend]: "wiki",
+  [WS_METHODS.wikiTransform]: "wiki",
+  [WS_METHODS.wikiRevertAmendment]: "wiki",
+  [WS_METHODS.wikiMerge]: "wiki",
+  [WS_METHODS.wikiSetChangeRequestStatus]: "wiki",
+  [WS_METHODS.wikiSetMirror]: "wiki",
+  [WS_METHODS.wikiPushMirror]: "wiki",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";
