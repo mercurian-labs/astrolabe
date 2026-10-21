@@ -91,7 +91,7 @@ export const buildInitialGrokProviderSnapshot = Effect.fn(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Grok is disabled in Astrolabe settings.",
+        message: "Grok is disabled in T3 Code settings.",
       },
     });
   }
@@ -413,7 +413,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Grok is disabled in Astrolabe settings.",
+        message: "Grok is disabled in T3 Code settings.",
       },
     });
   }

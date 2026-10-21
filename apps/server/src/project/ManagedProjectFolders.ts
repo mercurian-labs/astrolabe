@@ -183,7 +183,7 @@ function namedProjectReadme(name: string): string {
     "",
     `# ${name}`,
     "",
-    "Created in Astrolabe.",
+    "Created in [T3 Code](https://t3.codes).",
     "",
   ].join("\n");
 }

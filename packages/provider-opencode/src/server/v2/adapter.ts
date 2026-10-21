@@ -552,7 +552,7 @@ const RECONNECT_DELAY = "2 seconds";
 const RECONCILE_TIMEOUT = "15 seconds";
 const RECONNECT_WAIT = "30 seconds";
 const LOST_BACKGROUND =
-  "Astrolabe lost its connection to OpenCode while this subagent ran, so its result is not shown.";
+  "T3 Code lost its connection to OpenCode while this subagent ran, so its result is not shown.";
 const INVENTORY_TIMEOUT = "5 seconds";
 const ACTIVE_CHECK_TIMEOUT = "5 seconds";
 /** Answers that mean the server refused a prompt; any other failure may have been accepted. */
@@ -614,7 +614,7 @@ const boundaryAfter = (
       new ProviderAdapter.ProviderAdapterProtocolError({
         driver: OPENCODE_PROVIDER,
         detail:
-          "This OpenCode conversation has turns from an earlier Astrolabe version, so it can't be cut there.",
+          "This OpenCode conversation has turns from an earlier T3 Code version, so it can't be cut there.",
       }),
     );
   }
@@ -1710,7 +1710,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       yield* finishTurn(state, {
         status: "failed",
         failure: makeProviderFailure({
-          message: "OpenCode is waiting on a request Astrolabe couldn't answer.",
+          message: "OpenCode is waiting on a request T3 Code couldn't answer.",
           class: "provider_error",
         }),
       });
@@ -1961,7 +1961,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       }
       // Cancelling ends OpenCode's execution as a user stop, so the turn is
       // failed here with the reason and that stop's end is skipped.
-      yield* Effect.logWarning("Declined an OpenCode form Astrolabe cannot show.", {
+      yield* Effect.logWarning("Declined an OpenCode form T3 Code cannot show.", {
         reason: mapped.unsupported,
       });
       const cancelled = yield* deliver(
@@ -1976,7 +1976,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       yield* finishTurn(asker, {
         status: "failed",
         failure: makeProviderFailure({
-          message: `OpenCode asked for ${mapped.unsupported}, which Astrolabe can't show. The question was declined.`,
+          message: `OpenCode asked for ${mapped.unsupported}, which T3 Code can't show. The question was declined.`,
           class: "provider_error",
         }),
       });
@@ -2638,7 +2638,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                   status: "failed",
                   failure: makeProviderFailure({
                     message:
-                      "OpenCode ended the turn with an error while Astrolabe was reconnecting.",
+                      "OpenCode ended the turn with an error while T3 Code was reconnecting.",
                     class: "provider_error",
                   }),
                 }
@@ -3127,7 +3127,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             Effect.timeout(INVENTORY_TIMEOUT),
             Effect.as(true),
             Effect.catchCause((cause) =>
-              Effect.logWarning("Could not add Astrolabe's MCP server to OpenCode.", cause).pipe(
+              Effect.logWarning("Could not add T3 Code's MCP server to OpenCode.", cause).pipe(
                 Effect.as(false),
               ),
             ),

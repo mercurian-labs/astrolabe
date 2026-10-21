@@ -2962,7 +2962,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       icon: "icons",
       category: "Development",
       synopsis: "Desktop GUI for coding agents",
-      maintainer: "T3 Tools <hello@t3.codes>",
+      maintainer: "Mercurian <venk@mercurian.ai>",
       protocols: [
         {
           name: "Astrolabe",
@@ -3915,8 +3915,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     packageManager: rootPackageJson.packageManager,
     description: "Astrolabe desktop build",
     license: "MIT",
-    homepage: "https://t3.codes",
-    author: "T3 Tools",
+    homepage: "https://astrolabe.sh",
+    author: "Mercurian",
     main: "apps/desktop/dist-electron/boot.cjs",
     build: yield* createBuildConfig(
       options.platform,

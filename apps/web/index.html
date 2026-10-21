@@ -55,13 +55,13 @@
             light: {
               background: "oklch(0.976139 0 0)",
               foreground: "oklch(0 0 0)",
-              accent: "oklch(0.51156 0.12411 39.604)",
+              accent: "oklch(0.273776 0.006186 78.224)",
               chrome: "oklch(0.976139 0 0)",
             },
             dark: {
               background: "oklch(0.185441 0.009432 208.772)",
               foreground: "oklch(0.851419 0 0)",
-              accent: "oklch(0.640296 0.134927 41.768)",
+              accent: "oklch(0.902134 0.032641 80.987)",
               chrome: "oklch(0.185441 0.009432 208.772)",
             },
           },
@@ -482,8 +482,8 @@
       }
 
       /* The loading wordmark at the approved 224px, its full three-dot canvas reserved: masks
-         over one canvas, the lettering in the splash text color and the pivot and dots in the
-         theme accent. Dots two and three keep the approved 1.6s rhythm, still under reduced
+         over one canvas, the lettering in the splash text color and the pivot and dots in brand rust,
+         which no theme recolors. Dots two and three keep the approved 1.6s rhythm, still under reduced
          motion. */
       .boot-shell-wordmark {
         position: relative;
@@ -496,7 +496,7 @@
         inset: 0;
         -webkit-mask: var(--boot-mask) center / contain no-repeat;
         mask: var(--boot-mask) center / contain no-repeat;
-        background: var(--boot-accent, #a0492a);
+        background: #a0492a;
       }
 
       .boot-shell-wordmark > .boot-shell-wordmark-ink {

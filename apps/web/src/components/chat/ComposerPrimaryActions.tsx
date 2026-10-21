@@ -1,7 +1,11 @@
 import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, Minimize2Icon, PlayIcon } from "lucide-react";
-import { CornerUpRight, ListPlus } from "lucide";
-import { MorphIcon } from "~/components/MorphIcon";
+import {
+  QueueControlIcon,
+  SendControlIcon,
+  SteerControlIcon,
+  StopControlIcon,
+} from "~/components/brand/ComposerControlIcons";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
@@ -135,7 +139,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <button
             type="button"
             className={cn(
-              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
+              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs shadow-message-action/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-message-action-hover active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
               insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
             )}
             {...pointerFocusProps}
@@ -147,9 +151,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           />
         }
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-          <rect x="2" y="2" width="8" height="8" rx="1.5" />
-        </svg>
+        <StopControlIcon />
       </TooltipTrigger>
       <TooltipPopup>Interrupt</TooltipPopup>
     </Tooltip>
@@ -338,17 +340,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       ) : isEditingQueuedMessage ? (
         <CheckIcon className="size-4" aria-hidden="true" />
       ) : isRunning ? (
-        <MorphIcon className="size-4" icon={isQueuing ? ListPlus : CornerUpRight} />
+        isQueuing ? (
+          <QueueControlIcon />
+        ) : (
+          <SteerControlIcon />
+        )
       ) : (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-          <path
-            d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <SendControlIcon />
       )}
     </button>
   );

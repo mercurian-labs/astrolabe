@@ -1,12 +1,12 @@
 import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
-import { AstrolabeWordmark } from "../brand/AstrolabeMarks";
+import { AstrolabeMarkSmall, AstrolabeWordmark } from "../brand/AstrolabeMarks";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -33,8 +33,11 @@ import { observeResize } from "~/lib/observeResize";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
+  actions,
 }: {
   isElectron: boolean;
+  /** Icon buttons at the row's end, opposite the sidebar toggle. */
+  actions?: ReactNode;
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
@@ -46,11 +49,15 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     environmentIdentificationMode === "pill"
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
       : null;
+  const [brandRow, setBrandRow] = useState<HTMLDivElement | null>(null);
+  const wordmarkFits = useWordmarkFits(brandRow, pillLabel);
 
   return (
+    // The titlebar row, not a padded SidebarHeader: it aligns to the window controls. Its end
+    // keeps the sidebar's 8px inset, so the last action lines up with the rows and footer below.
     <div
       className={cn(
-        "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-3",
+        "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-2",
         isElectron && "drag-region",
       )}
     >
@@ -62,19 +69,66 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           aria-label="Toggle main sidebar"
         />
       </div>
-      <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
-        <SidebarBrand onBackdrop={backdropVariant !== null} />
+      {/* One visible line: the pill wraps onto the clipped second line once it no longer fits.
+          The padding keeps the brand's focus ring inside the clip, and clears the sidebar toggle.
+          The wordmark shows while it fits beside the pill, the monogram after. */}
+      <div
+        ref={setBrandRow}
+        className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5 md:pl-(--workspace-titlebar-content-left)"
+      >
+        <SidebarBrand onBackdrop={backdropVariant !== null} wordmark={wordmarkFits} />
         {pillLabel ? (
-          <div className="ml-1 flex h-7 items-center">
+          <div data-environment-pill className="flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">
               {pillLabel}
             </Badge>
           </div>
         ) : null}
       </div>
+      {actions ? (
+        <div
+          className={cn(
+            "relative z-10 flex shrink-0 items-center",
+            // Over the stage artwork the buttons keep their own colors on a glass surface.
+            backdropVariant && "surface-glass rounded-lg p-px shadow-xs",
+          )}
+        >
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 });
+
+// The wordmark's width at the header's 0.75rem height, from its canvas.
+const WORDMARK_ASPECT = 373.52 / 59.74;
+const WORDMARK_HEIGHT_REM = 0.75;
+
+/** Whether the wordmark fits the brand row beside the environment pill, from measured widths. */
+function useWordmarkFits(row: HTMLDivElement | null, pillLabel: string | null): boolean {
+  const [fits, setFits] = useState(true);
+  useEffect(() => {
+    if (!row) return;
+    const measure = () => {
+      const style = getComputedStyle(row);
+      const available =
+        row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const pill = pillLabel ? row.querySelector<HTMLElement>("[data-environment-pill]") : null;
+      const needed =
+        WORDMARK_HEIGHT_REM * rem * WORDMARK_ASPECT +
+        (pill ? parseFloat(style.columnGap) + pill.offsetWidth : 0);
+      setFits(available >= needed);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    // The pill changes width with its label, without resizing the row.
+    const pill = pillLabel ? row.querySelector("[data-environment-pill]") : null;
+    if (pill) observer.observe(pill);
+    return () => observer.disconnect();
+  }, [row, pillLabel]);
+  return fits;
+}
 
 export function SidebarBrandWidthProbe({
   onWidthChange,
@@ -90,34 +144,36 @@ export function SidebarBrandWidthProbe({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none invisible fixed top-0 left-0 flex w-max border-r border-transparent pr-3"
+      className="pointer-events-none invisible fixed top-0 left-0 flex w-max border-r border-transparent pr-2"
       ref={observeWidth}
     >
-      <div className="ml-[var(--workspace-titlebar-content-left)] flex">
-        <SidebarBrandMark onBackdrop={false} />
+      {/* The narrowest header: the monogram, then the three action buttons. */}
+      <div className="ml-[var(--workspace-titlebar-content-left)] flex items-center gap-2">
+        <AstrolabeMarkSmall className="h-3 shrink-0" />
+        <div className="w-21 shrink-0" />
       </div>
     </div>
   );
 }
 
-function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
+function SidebarBrand({ onBackdrop, wordmark }: { onBackdrop: boolean; wordmark: boolean }) {
   return (
     <Link
       aria-label="Go to threads"
       className={cn(
-        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
+        "relative z-10 hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
       )}
       to="/"
     >
-      <SidebarBrandMark onBackdrop={onBackdrop} />
+      {/* As tall as the drawn sidebar toggle icon beside it. */}
+      {wordmark ? (
+        <AstrolabeWordmark small label="Astrolabe" onDark={onBackdrop} className="h-3 shrink-0" />
+      ) : (
+        <AstrolabeMarkSmall label="Astrolabe" onDark={onBackdrop} className="h-3 shrink-0" />
+      )}
     </Link>
   );
-}
-
-function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
-  // No taller than the sidebar's 16px icons beside it.
-  return <AstrolabeWordmark label="Astrolabe" onDark={onBackdrop} className="h-4 shrink-0" />;
 }
 
 function SidebarUtilityItem({

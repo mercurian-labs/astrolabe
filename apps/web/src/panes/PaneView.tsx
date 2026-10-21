@@ -732,6 +732,12 @@ function TabStrip({
   const strip = useRef<HTMLDivElement>(null);
   const titlebar = isElectron && atTop;
   const { active } = leaf;
+  const { controller } = usePanesHost();
+  // A lone pane already fills the main area: there is nothing to maximize it over.
+  const alone = useSyncExternalStore(controller.subscribe, () => {
+    const snapshot = controller.getSnapshot();
+    return snapshot === null || leaves(snapshot.arrangement.root).length === 1;
+  });
   useEffect(() => {
     const element = strip.current;
     if (!element) return;
@@ -788,50 +794,52 @@ function TabStrip({
         ))}
       </div>
       <NewTabMenu paneId={leaf.id} />
-      {maximized ? <RestoreButton paneId={leaf.id} /> : null}
-      <PaneMenu leaf={leaf} maximized={maximized} />
+      {alone ? null : <MaximizeButton paneId={leaf.id} maximized={maximized} />}
+      <PaneMenu leaf={leaf} alone={alone} />
     </div>
   );
 }
 
-/** Shown while the pane fills the main area: it says so, and puts the other panes back. */
-function RestoreButton({ paneId }: { paneId: string }) {
+/**
+ * Fills the main area with the pane, or puts the other panes back while it does. Shown only beside
+ * other panes: a lone pane already fills the main area.
+ */
+function MaximizeButton({ paneId, maximized }: { paneId: string; maximized: boolean }) {
+  const { controller } = usePanesHost();
   const toggleMaximized = useToggleMaximized();
+  const label = maximized ? "Restore pane" : "Maximize pane";
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Button
-            aria-label="Restore pane"
+            aria-label={label}
             className="ms-auto shrink-0"
             size="icon-sm"
             variant="ghost-muted"
-            onClick={() => toggleMaximized(paneId)}
+            onClick={() => {
+              if (!maximized) controller.update((arrangement) => focusPane(arrangement, paneId));
+              toggleMaximized(paneId);
+            }}
           />
         }
       >
-        <Minimize2 className="size-4" />
+        {maximized ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
       </TooltipTrigger>
-      <TooltipPopup side="bottom">Restore pane</TooltipPopup>
+      <TooltipPopup side="bottom">{label}</TooltipPopup>
     </Tooltip>
   );
 }
 
 /**
  * The pane's own menu, ending its strip as Obsidian's pane header ends with one: what acts on
- * the whole pane. Filling the main area with it, moving the tab in front into a new pane beside
- * it (a pane's only tab stays, as splitting would leave the pane empty), and closing it. What
+ * the whole pane. Moving the tab in front into a new pane beside it (a pane's only tab stays, as
+ * splitting would leave the pane empty), and closing it. What
  * acts on one tab stays on the tab. The pane holding the main thread never closes whole, as the
  * main thread never closes.
  */
-function PaneMenu({ leaf, maximized }: { leaf: Leaf; maximized: boolean }) {
+function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
   const { controller } = usePanesHost();
-  const toggleMaximized = useToggleMaximized();
-  // A lone pane already fills the main area: there is nothing to maximize it over.
-  const alone = useSyncExternalStore(controller.subscribe, () => {
-    const snapshot = controller.getSnapshot();
-    return snapshot === null || leaves(snapshot.arrangement.root).length === 1;
-  });
   const { active } = leaf;
   const split = (side: "right" | "bottom") =>
     controller.update((arrangement) => splitTab(arrangement, active, side));
@@ -841,7 +849,7 @@ function PaneMenu({ leaf, maximized }: { leaf: Leaf; maximized: boolean }) {
         render={
           <Button
             aria-label="Pane actions"
-            className={cn("shrink-0", !maximized && "ms-auto")}
+            className={cn("shrink-0", alone && "ms-auto")}
             size="icon-sm"
             variant="ghost-muted"
           />
@@ -850,17 +858,6 @@ function PaneMenu({ leaf, maximized }: { leaf: Leaf; maximized: boolean }) {
         <MoreHorizontal className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end" side="bottom" sideOffset={6}>
-        <MenuItem
-          disabled={alone}
-          onClick={() => {
-            if (!maximized) controller.update((arrangement) => focusPane(arrangement, leaf.id));
-            toggleMaximized(leaf.id);
-          }}
-        >
-          {maximized ? <Minimize2 /> : <Maximize2 />}
-          {maximized ? "Restore pane" : "Maximize pane"}
-        </MenuItem>
-        <MenuSeparator />
         <MenuItem disabled={leaf.tabs.length === 1} onClick={() => split("right")}>
           <Columns2 />
           Split right

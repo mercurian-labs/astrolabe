@@ -1,117 +1,82 @@
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+/**
+ * The sidebar's actions: search, project scope and new thread, as a group of
+ * icon buttons at the end of the sidebar's titlebar row, opposite its toggle.
+ *
+ * Search opens the command palette rather than holding a field of its own, so
+ * the thread list starts directly under the titlebar. While the sidebar is
+ * collapsed, search and project scope follow the toggle into the main area's
+ * titlebar through `SidebarCollapsedActionsSlot`.
+ *
+ * The scope picker itself is passed in: its combobox state lives with the rest
+ * of the sidebar's scope logic. The scope icon swaps to the project favicon
+ * while a project is selected, so the header still names the scope.
+ */
+import { FolderPlusIcon, SearchIcon, SquarePenIcon } from "lucide-react";
 import {
   type ComponentProps,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
-  type RefObject,
+  useEffect,
+  useState,
+  useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "~/lib/utils";
-import { Button } from "../ui/button";
-import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
+import { SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
+  /** Without projects there is nothing to scope, so the scope picker stays out. */
   hasProjects: boolean;
+  /** The project scope combobox, rendered between search and new thread. */
   projectScope: ReactNode;
-  onNewProject: () => void;
+  onSearch: () => void;
+  searchShortcutLabel: string | null | undefined;
+  /** Receives the click so Shift+click can skip the project picker. */
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
+  /** Shift+click only matters once there is more than one project to pick. */
   showNewThreadInProjectHint: boolean;
-  searchInputRef: RefObject<HTMLInputElement | null>;
-  searchQuery: string;
-  onSearchQueryChange: (value: string) => void;
-  onSearchKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
-  isSearching: boolean;
-  searchResultCount: number;
-  activeSearchResultIndex: number;
-  onClearSearch: () => void;
 }
 
-export function SidebarThreadHeader({
-  searchFieldRef,
+export function SidebarThreadHeader(props: SidebarThreadHeaderProps) {
+  const { isMobile, open } = useSidebar();
+  const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null);
+  if (!isMobile && !open && slot) {
+    return createPortal(<SidebarThreadActions {...props} collapsed />, slot);
+  }
+  return <SidebarThreadActions {...props} collapsed={false} />;
+}
+
+function SidebarThreadActions({
   hasProjects,
   projectScope,
-  onNewProject,
+  onSearch,
+  searchShortcutLabel,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
   newThreadInProjectShortcutLabel,
   showNewThreadInProjectHint,
-  searchInputRef,
-  searchQuery,
-  onSearchQueryChange,
-  onSearchKeyDown,
-  isSearching,
-  searchResultCount,
-  activeSearchResultIndex,
-  onClearSearch,
-}: SidebarThreadHeaderProps) {
-  const resultsVisible = isSearching && searchResultCount > 0;
-  // Results shrink as the query narrows, so the active index can outrun the
-  // list; pointing aria-activedescendant at a removed option strands the
-  // screen reader on nothing.
-  const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
+  collapsed,
+}: SidebarThreadHeaderProps & { collapsed: boolean }) {
   const newThreadLabel = newThreadShortcutLabel
     ? `New thread (${newThreadShortcutLabel})`
     : "New thread";
-
   return (
-    <div className="flex items-center gap-1">
-      <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+    <div className="flex shrink-0 items-center">
+      <SidebarHeaderIconButton
+        label="Search"
+        tooltip={searchShortcutLabel ? `Search (${searchShortcutLabel})` : "Search"}
+        onClick={onSearch}
       >
-        <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
-        <SidebarInput
-          ref={searchInputRef}
-          nativeInput
-          type="search"
-          value={searchQuery}
-          onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
-          onKeyDown={onSearchKeyDown}
-          placeholder="Search"
-          aria-label="Search threads"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={resultsVisible}
-          aria-controls={resultsVisible ? "sidebar-thread-search-results" : undefined}
-          aria-activedescendant={
-            activeResultExists
-              ? `sidebar-thread-search-result-${activeSearchResultIndex}`
-              : undefined
-          }
-          className="min-w-0 flex-1"
-        />
-        {isSearching ? (
-          <Button
-            type="button"
-            size="icon-micro"
-            variant="ghost-muted"
-            className="shrink-0"
-            aria-label="Clear thread search"
-            onClick={() => {
-              onClearSearch();
-              searchInputRef.current?.focus();
-            }}
-          >
-            <XIcon className="size-3" />
-          </Button>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 items-center">
-        {hasProjects ? (
-          <>
-            {projectScope}
-            <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
-              <FolderPlusIcon />
-            </SidebarHeaderIconButton>
-          </>
-        ) : null}
+        <SearchIcon />
+      </SidebarHeaderIconButton>
+      {hasProjects ? projectScope : null}
+      {collapsed ? null : (
         <SidebarHeaderIconButton
           label="New thread"
           tooltip={
@@ -132,11 +97,78 @@ export function SidebarThreadHeader({
         >
           <SquarePenIcon />
         </SidebarHeaderIconButton>
-      </div>
+      )}
     </div>
   );
 }
 
+/** The project picker's last row: adding a project, which used to be its own header button. */
+export function SidebarNewProjectRow({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="border-t border-border p-1">
+      <button
+        type="button"
+        className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-base outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent sm:min-h-7 sm:text-sm"
+        onClick={onClick}
+      >
+        <FolderPlusIcon className="size-4 shrink-0 text-muted-foreground" />
+        New project
+      </button>
+    </div>
+  );
+}
+
+// Where the sidebar's actions land while it is collapsed: beside the toggle in the main area's
+// titlebar. One slot per window, registered by the toggle's container.
+let slotElement: HTMLElement | null = null;
+const slotListeners = new Set<() => void>();
+function subscribeSlot(listener: () => void) {
+  slotListeners.add(listener);
+  return () => slotListeners.delete(listener);
+}
+function getSlot() {
+  return slotElement;
+}
+function setSlot(element: HTMLElement | null) {
+  slotElement = element;
+  for (const listener of slotListeners) listener();
+}
+
+/**
+ * Sits after the sidebar toggle while the sidebar is collapsed. It publishes its width as
+ * `--workspace-collapsed-sidebar-actions`, so titlebars that inset for the toggle clear the
+ * actions too.
+ */
+export function SidebarCollapsedActionsSlot() {
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!element) return;
+    setSlot(element);
+    const root = document.documentElement;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry?.borderBoxSize[0]?.inlineSize ?? element.offsetWidth;
+      root.style.setProperty("--workspace-collapsed-sidebar-actions", `${width}px`);
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--workspace-collapsed-sidebar-actions");
+      if (slotElement === element) setSlot(null);
+    };
+  }, [element]);
+  return (
+    <div
+      ref={setElement}
+      className="pointer-events-auto flex items-center empty:hidden [-webkit-app-region:no-drag]"
+    />
+  );
+}
+
+/**
+ * Icon button with a tooltip, sized for the header's group. Spreads unknown props through so it
+ * can serve as a popup trigger's render target, which injects its own handlers, ref and aria
+ * state.
+ */
 export function SidebarHeaderIconButton({
   label,
   tooltip = label,
@@ -144,6 +176,7 @@ export function SidebarHeaderIconButton({
   children,
   ...rest
 }: {
+  /** Accessible name; also the tooltip unless `tooltip` says more. */
   label: string;
   tooltip?: ReactNode;
   className?: string | undefined;
@@ -166,12 +199,13 @@ export function SidebarHeaderIconButton({
         }
       >
         {children}
+        {/* Coarse-pointer hit area, matching the rest of the sidebar chrome. */}
         <span
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
         />
       </TooltipTrigger>
-      <TooltipPopup side="top">{tooltip}</TooltipPopup>
+      <TooltipPopup side="bottom">{tooltip}</TooltipPopup>
     </Tooltip>
   );
 }

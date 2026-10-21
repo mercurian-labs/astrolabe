@@ -4,12 +4,14 @@ import markSmallDotsUrl from "~/assets/brand/mark-small-dots.svg?url";
 import markSmallInkUrl from "~/assets/brand/mark-small-ink.svg?url";
 import wordmarkDotsUrl from "~/assets/brand/wordmark-dots.svg?url";
 import wordmarkInkUrl from "~/assets/brand/wordmark-ink.svg?url";
+import wordmarkSmallDotsUrl from "~/assets/brand/wordmark-small-dots.svg?url";
+import wordmarkSmallInkUrl from "~/assets/brand/wordmark-small-ink.svg?url";
 import { cn } from "~/lib/utils";
 
 /*
  * Astrolabe's marks, from the branding repository's approved masters (identity/astrolabe), drawn
- * duotone in the theme's colors: each mark is two masks over one canvas, the lettering in the
- * text color and the pivot and full stop in the theme accent, so every theme recolors them.
+ * duotone: each mark is two masks over one canvas, the lettering in the text color and the pivot
+ * and full stop in brand rust, which no theme recolors.
  */
 
 interface MarkProps {
@@ -54,20 +56,26 @@ function DuotoneMark({
         className={cn("absolute inset-0", onDark ? "bg-white" : "bg-foreground")}
         style={maskStyle(inkUrl)}
       />
-      <span className="absolute inset-0 bg-primary" style={maskStyle(dotsUrl)} />
+      <span className="absolute inset-0 bg-(--brand-rust)" style={maskStyle(dotsUrl)} />
     </span>
   );
 }
 
 /**
  * The full "Astrolabe." wordmark, which is also the product's horizontal lockup. Set its height
- * with the className; the width follows the canvas.
+ * with the className; the width follows the canvas. `small` draws its A with the monogram's small
+ * drawing, for use below the wordmark's 18px cap-height minimum, so its pivot matches the small
+ * monogram's.
  */
-export function AstrolabeWordmark({ className, ...props }: MarkProps) {
+export function AstrolabeWordmark({
+  className,
+  small = false,
+  ...props
+}: MarkProps & { small?: boolean }) {
   return (
     <DuotoneMark
-      inkUrl={wordmarkInkUrl}
-      dotsUrl={wordmarkDotsUrl}
+      inkUrl={small ? wordmarkSmallInkUrl : wordmarkInkUrl}
+      dotsUrl={small ? wordmarkSmallDotsUrl : wordmarkDotsUrl}
       className={cn("aspect-[373.52/59.74]", className)}
       {...props}
     />

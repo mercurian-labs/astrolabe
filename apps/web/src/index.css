@@ -2452,3 +2452,14 @@ code {
     }
   }
 }
+
+/* Brand rust belongs to Astrolabe's marks and no theme recolors it. The composer controls'
+   pivot is rust in the Mercurian theme and the control's own ink in every other theme, so a
+   foreign palette never gets a stray brand color. */
+:root {
+  --brand-rust: #a0492a;
+  --pivot: currentColor;
+}
+:root[data-theme-id="mercurian"] {
+  --pivot: var(--brand-rust);
+}

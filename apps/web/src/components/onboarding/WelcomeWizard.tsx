@@ -425,7 +425,7 @@ function ConnectionStep({
       ) : null}
       <div className="mt-6 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
         <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-          T3 Code collects anonymous usage data to help us improve it. To read more about how your
+          Astrolabe collects anonymous usage data to help us improve it. To read more about how your
           data is used and how to opt out, see our{" "}
           <a
             className="underline underline-offset-2 hover:text-foreground"

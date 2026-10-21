@@ -35,6 +35,7 @@ import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
@@ -195,6 +196,7 @@ function SidebarControl() {
           Toggle main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
         </TooltipPopup>
       </Tooltip>
+      {isSidebarVisible ? null : <SidebarCollapsedActionsSlot />}
     </div>
   );
 }
