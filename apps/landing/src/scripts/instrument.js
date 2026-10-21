@@ -435,7 +435,7 @@ import Sky from "./sky.js";
     const sun = Sky.sun(date);
     const sunHa = wrap360(lst - sun.ra);
     const { alt: sunAlt, az: sunAz } = Sky.altAz(sunHa, sun.dec, lat);
-    return { ms, date, lst, sun, sunHa, sunAlt, sunAz };
+    return { ms, date, lst, sun, sunHa, sunAlt, sunAz, lat };
   }
 
   let lastMinute = "";

@@ -4266,6 +4266,38 @@ html:not(.js) .relight__static,
   background: #eaddc7;
   opacity: calc(0.22 * var(--night, 0));
 }
+/* `?ground=hemisphere` (relight.js): Mercury's limb rises from the foot of the field instead, its top
+   at --cap-top, the cap spanning the field's width. The canvas covers the field and draws the limb
+   itself; the static print is placed to match (hemisphere.json: 1440 × 820, the limb's top 12 texels
+   down). */
+.sky[data-ground="hemisphere"] {
+  --cap-top: 60%;
+}
+.sky[data-ground="hemisphere"] .relight__ground {
+  inset: 0;
+  height: 100%;
+  border-top: 0;
+}
+.sky[data-ground="hemisphere"] .relight__static {
+  inset: var(--cap-top) 0 auto;
+  height: auto;
+  aspect-ratio: 1440 / 820;
+  border-top: 0;
+  transform: translateY(-1.46%);
+}
+.sky[data-ground="hemisphere"] .relight__static i {
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+.sky[data-ground="hemisphere"] .relight__olive {
+  --m: url("/assets/art/hemisphere-olive.webp");
+}
+.sky[data-ground="hemisphere"] .relight__dark {
+  --m: url("/assets/art/hemisphere-dark.webp");
+}
+.sky[data-ground="hemisphere"] .relight__light {
+  --m: url("/assets/art/hemisphere-light.webp");
+}
 /* The instrument stands on the ground: its plate is a paper disc (the limb is already paper), and
    the labels and the reading sit on paper chips so they read over the grain. */
 [data-relight] .sky__art::before {
