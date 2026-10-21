@@ -1,23 +1,11 @@
 import Constants from "expo-constants";
-import { relayClerkTokenOptions } from "@t3tools/shared/relayAuth";
+import { normalizeAuthOrigin } from "@t3tools/shared/mercurianAccount";
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
-import * as Schema from "effect/Schema";
-
-export class CloudPublicConfigMissingError extends Schema.TaggedError<CloudPublicConfigMissingError>()(
-  "CloudPublicConfigMissingError",
-  {
-    key: Schema.Literal("T3CODE_CLERK_JWT_TEMPLATE"),
-  },
-) {
-  override get message(): string {
-    return `${this.key} is not configured.`;
-  }
-}
 
 export interface CloudPublicConfig {
-  readonly clerk: {
-    readonly publishableKey: string | null;
-    readonly jwtTemplate: string | null;
+  readonly auth: {
+    /** The sign-in pages' origin, e.g. https://app.astrolabe.sh. */
+    readonly url: string | null;
   };
   readonly relay: {
     readonly url: string | null;
@@ -58,9 +46,8 @@ function normalizeSecureUrl(value: unknown): string | null {
 
 export function resolveCloudPublicConfig(extra: ExpoExtra = Constants.expoConfig?.extra) {
   return {
-    clerk: {
-      publishableKey: trimNonEmpty(extra?.clerk?.publishableKey),
-      jwtTemplate: trimNonEmpty(extra?.clerk?.jwtTemplate),
+    auth: {
+      url: normalizeAuthOrigin(trimNonEmpty(extra?.auth?.url) ?? ""),
     },
     relay: {
       url: normalizeSecureRelayUrl(trimNonEmpty(extra?.relay?.url) ?? ""),
@@ -75,7 +62,7 @@ export function resolveCloudPublicConfig(extra: ExpoExtra = Constants.expoConfig
 
 export function hasCloudPublicConfig(): boolean {
   const config = resolveCloudPublicConfig();
-  return Boolean(config.clerk.publishableKey && config.clerk.jwtTemplate && config.relay.url);
+  return Boolean(config.auth.url && config.relay.url);
 }
 
 type Configured<T> = {
@@ -94,12 +81,4 @@ export function hasTracingPublicConfig(
     config.observability.tracesDataset &&
     config.observability.tracesToken,
   );
-}
-
-export function resolveRelayClerkTokenOptions() {
-  const { jwtTemplate } = resolveCloudPublicConfig().clerk;
-  if (!jwtTemplate) {
-    throw new CloudPublicConfigMissingError({ key: "T3CODE_CLERK_JWT_TEMPLATE" });
-  }
-  return relayClerkTokenOptions(jwtTemplate);
 }

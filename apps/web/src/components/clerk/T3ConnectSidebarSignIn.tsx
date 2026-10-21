@@ -1,9 +1,10 @@
-import { UserButton, useAuth } from "@clerk/react";
 import { LogInIcon } from "lucide-react";
 
+import { useCloudAccount } from "../../cloud/account";
 import { hasCloudPublicConfig } from "../../cloud/publicConfig";
+import { Button } from "../ui/button";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
-import { T3_CONNECT_ACCOUNT_PAGES } from "./T3ConnectAccountPages";
+import { setOpenCloudAccountPage } from "./T3ConnectAccountPages";
 import { useT3ConnectAuthPrompt } from "./useT3ConnectAuthPrompt";
 
 export function T3ConnectSidebarSignIn() {
@@ -19,35 +20,31 @@ export function T3ConnectSidebarAvatar() {
 }
 
 function ConfiguredT3ConnectSidebarAvatar() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, user } = useCloudAccount();
 
-  if (!isLoaded || !isSignedIn) return null;
+  if (!isLoaded || !isSignedIn || !user) return null;
 
+  const initial = (user.name || user.email).trim().charAt(0).toUpperCase();
   return (
-    <UserButton
-      appearance={{
-        elements: {
-          avatarBox: "size-7",
-          userButtonTrigger: "rounded-lg p-1 hover:bg-sidebar-row-hover",
-        },
-      }}
+    <Button
+      size="icon"
+      variant="ghost"
+      aria-label={`Account: ${user.email}`}
+      onClick={() => setOpenCloudAccountPage("account")}
     >
-      {T3_CONNECT_ACCOUNT_PAGES.map((page) => (
-        <UserButton.UserProfilePage
-          key={page.url}
-          label={page.label}
-          labelIcon={page.icon}
-          url={page.url}
-        >
-          {page.content}
-        </UserButton.UserProfilePage>
-      ))}
-    </UserButton>
+      {user.image ? (
+        <img alt="" src={user.image} className="size-7 rounded-full" />
+      ) : (
+        <span className="flex size-7 items-center justify-center rounded-full bg-muted text-xs font-medium">
+          {initial}
+        </span>
+      )}
+    </Button>
   );
 }
 
 function ConfiguredT3ConnectSidebarSignIn() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useCloudAccount();
   const { authPrompt, openAuthPrompt } = useT3ConnectAuthPrompt();
 
   if (!isLoaded || isSignedIn) return null;
@@ -58,7 +55,7 @@ function ConfiguredT3ConnectSidebarSignIn() {
         <SidebarMenuItem>
           <SidebarMenuButton onClick={openAuthPrompt}>
             <LogInIcon />
-            <span>Sign in to T3 Connect</span>
+            <span>Sign in</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

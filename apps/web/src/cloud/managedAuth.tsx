@@ -1,4 +1,3 @@
-import { useAuth } from "@clerk/react";
 import { ManagedRelay, setManagedRelaySession } from "@t3tools/client-runtime/relay";
 import {
   reportAtomCommandResult,
@@ -12,7 +11,7 @@ import { environmentCatalog } from "../connection/catalog";
 import { runtime } from "../lib/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { useAtomCommand } from "../state/use-atom-command";
-import { resolveRelayClerkTokenOptions } from "./publicConfig";
+import { readCloudRelayToken, refreshCloudAccount, useCloudAccount } from "./account";
 
 export function deactivateManagedRelayAuthentication(): void {
   setManagedRelaySession(appAtomRegistry, null);
@@ -29,9 +28,7 @@ export function activateManagedRelayAuthentication(
 }
 
 export function ManagedRelayAuthProvider({ children }: { readonly children: ReactNode }) {
-  const { getToken, isLoaded, isSignedIn, userId } = useAuth({
-    treatPendingAsSignedOut: false,
-  });
+  const { isLoaded, isSignedIn, userId } = useCloudAccount();
   const removeRelayEnvironments = useAtomCommand(environmentCatalog.removeRelayEnvironments, {
     reportFailure: false,
     reportDefect: false,
@@ -75,7 +72,7 @@ export function ManagedRelayAuthProvider({ children }: { readonly children: Reac
         void queueAccountCleanup();
       }
     } else {
-      const tokenProvider = () => getToken(resolveRelayClerkTokenOptions());
+      const tokenProvider = readCloudRelayToken;
       const activateSession = () => {
         if (!cancelled) {
           activateManagedRelayAuthentication(userId, tokenProvider);
@@ -100,9 +97,28 @@ export function ManagedRelayAuthProvider({ children }: { readonly children: Reac
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded, isSignedIn, removeRelayEnvironments, userId]);
+  }, [isLoaded, isSignedIn, removeRelayEnvironments, userId]);
 
   useEffect(() => () => deactivateManagedRelayAuthentication(), []);
+
+  // Picks up sign-ins and sign-outs from other tabs and devices. A failed
+  // read (offline at launch) leaves the account loading, so retry it.
+  useEffect(() => {
+    let retry: number | undefined;
+    const refresh = () => {
+      window.clearTimeout(retry);
+      void refreshCloudAccount().catch((error: unknown) => {
+        console.warn("Could not read the Astrolabe session", error);
+        retry = window.setTimeout(refresh, 15_000);
+      });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearTimeout(retry);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
 
   return children;
 }

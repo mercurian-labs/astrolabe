@@ -1,4 +1,4 @@
-/** Better Auth on an in-memory database, for tests. */
+/** Better Auth on an in-memory database, for tests and the apps/auth dev server. */
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 
@@ -9,8 +9,14 @@ export const ORIGIN = "http://localhost:4399";
 export const PASSWORD = "a-long-and-unremarkable-passphrase";
 
 export const makeAuth = (
-  overrides: { removeRelayData?: (userId: string, relayToken: string) => Promise<void> } = {},
+  overrides: {
+    removeRelayData?: (userId: string, relayToken: string) => Promise<void>;
+    /** The origin the pages and API share; the dev server passes its own. */
+    origin?: string;
+    onMail?: (mail: Mail) => void;
+  } = {},
 ) => {
+  const origin = overrides.origin ?? ORIGIN;
   const mail: Array<Mail> = [];
   const db = Object.fromEntries(
     [
@@ -32,8 +38,8 @@ export const makeAuth = (
   );
   const options = authOptions(
     {
-      baseUrl: ORIGIN,
-      trustedOrigins: [ORIGIN],
+      baseUrl: origin,
+      trustedOrigins: [origin],
       passkeyRpId: "localhost",
       ipAddressHeaders: ["x-forwarded-for"],
       turnstileSecret: undefined,
@@ -46,6 +52,7 @@ export const makeAuth = (
     {
       sendMail: async (message) => {
         mail.push(message);
+        overrides.onMail?.(message);
       },
       removeRelayData: overrides.removeRelayData ?? (async () => {}),
     },
@@ -62,11 +69,11 @@ export const makeAuth = (
 
   const post = async (path: string, body: unknown, cookie?: string) => {
     const response = await auth.handler(
-      new Request(`${ORIGIN}/api/auth${path}`, {
+      new Request(`${origin}/api/auth${path}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: ORIGIN,
+          origin,
           ...(cookie ? { cookie } : {}),
         },
         body: JSON.stringify(body),
@@ -82,7 +89,7 @@ export const makeAuth = (
   };
   const get = async (path: string, cookie: string) => {
     const response = await auth.handler(
-      new Request(`${ORIGIN}/api/auth${path}`, { headers: { cookie, origin: ORIGIN } }),
+      new Request(`${origin}/api/auth${path}`, { headers: { cookie, origin } }),
     );
     return { status: response.status, headers: response.headers, json: await response.json() };
   };

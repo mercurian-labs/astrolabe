@@ -23,8 +23,10 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
+import * as Terminal from "effect/Terminal";
 import { Command, Flag, GlobalFlag, Prompt } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
@@ -61,14 +63,13 @@ const jsonFlag = Flag.Boolean("json").pipe(
 const isCloudCliTokenManagerError = Schema.is(CliTokenManager.CloudCliTokenManagerError);
 
 const headlessFlag = Flag.Boolean("headless").pipe(
-  Flag.withDescription("Authorize without a local browser using the OAuth device flow."),
+  Flag.withDescription("Authorize without opening a browser on this machine."),
   Flag.withDefault(false),
 );
 
 /**
- * Inside an SSH session there is no local browser to complete the loopback
- * OAuth callback, so the device authorization grant is the only flow that
- * can work.
+ * Inside an SSH session the browser that would open is on the wrong machine,
+ * so the CLI only prints the approval link.
  */
 export const headlessSessionConfig = Config.all({
   sshConnection: Config.String("SSH_CONNECTION").pipe(Config.option),
@@ -77,50 +78,75 @@ export const headlessSessionConfig = Config.all({
   Config.map(({ sshConnection, sshTty }) => Option.isSome(sshConnection) || Option.isSome(sshTty)),
 );
 
-const showDeviceAuthorizationPrompt = (prompt: CliTokenManager.DeviceAuthorizationPrompt) =>
-  Console.log(formatDeviceAuthorizationPrompt(prompt));
+const boldTerminalText = (value: string): string => `\u001b[1m${value}\u001b[22m`;
 
 function formatDeviceAuthorizationPrompt(
   prompt: CliTokenManager.DeviceAuthorizationPrompt,
+  offerBrowser: boolean,
 ): string {
   const minutes = Math.max(1, Math.round(Duration.toMinutes(prompt.expiresIn)));
   return [
-    "Headless authorization",
-    "Open this URL on a device with a browser:",
+    offerBrowser
+      ? "Open this URL to sign in to Astrolabe:"
+      : "Open this URL on a device with a browser:",
     `  ${prompt.verificationUriComplete ?? prompt.verificationUri}`,
     "",
     `Confirm this code when asked: ${prompt.userCode}`,
     "",
+    ...(offerBrowser ? [`Press ${boldTerminalText("Enter")} to open it in your browser.`] : []),
     `Waiting for approval (expires in ${minutes} min). Press Ctrl+C to cancel.`,
   ].join("\n");
 }
+
+/** Opens the approval page each time Enter is pressed, until the caller's scope closes. */
+const openBrowserOnEnter = Effect.fn("cloud.cli.open_browser_on_enter")(function* (url: string) {
+  const terminal = yield* Terminal.Terminal;
+  const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
+  const input = yield* terminal.readInput;
+  while (true) {
+    const event = yield* Queue.take(input);
+    const keyName = event.key.name.toLowerCase();
+    if (keyName !== "enter" && keyName !== "return") continue;
+    yield* externalLauncher
+      .launchBrowser(url)
+      .pipe(
+        Effect.catch(() =>
+          Console.warn("Could not open a browser on this device. Open the URL above manually."),
+        ),
+      );
+  }
+});
 
 const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
   readonly headless: boolean;
 }) {
   const tokens = yield* CliTokenManager.CloudCliTokenManager;
-  const useOutOfBandOAuth = options.headless || (yield* headlessSessionConfig);
-  if (!useOutOfBandOAuth) {
-    const authorization = yield* tokens.get;
-    if (authorization._tag === "Authorized") {
-      return authorization.token.identity ?? null;
-    }
-    yield* Console.log("\nHeadless mode enabled. A new authorization link is ready below.");
-  }
   const existing = yield* tokens.getExisting.pipe(
     Effect.catchTags({
       CloudCliCredentialRefreshError: () =>
-        Console.log(
-          "The stored T3 Connect credential could not be refreshed; signing in again.",
-        ).pipe(Effect.as(Option.none())),
+        Console.log("The stored T3 Connect sign-in has ended; signing in again.").pipe(
+          Effect.as(Option.none()),
+        ),
     }),
   );
   if (Option.isSome(existing)) {
     return existing.value.identity ?? null;
   }
-  const { token, identity } = yield* CliTokenManager.deviceAuthorizationLogin(
-    showDeviceAuthorizationPrompt,
+  const offerBrowser = !(options.headless || (yield* headlessSessionConfig));
+  const { token, identity } = yield* CliTokenManager.deviceAuthorizationLogin((prompt) =>
+    Console.log(formatDeviceAuthorizationPrompt(prompt, offerBrowser)).pipe(
+      Effect.andThen(
+        offerBrowser
+          ? Effect.forkScoped(
+              openBrowserOnEnter(prompt.verificationUriComplete ?? prompt.verificationUri).pipe(
+                Effect.ignore,
+              ),
+            )
+          : Effect.void,
+      ),
+    ),
   ).pipe(
+    Effect.scoped,
     Effect.mapError((cause) =>
       isCloudCliTokenManagerError(cause)
         ? cause
@@ -514,6 +540,7 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
     E,
     | ServerSecretStore.ServerSecretStore
     | CliTokenManager.CloudCliTokenManager
+    | ExternalLauncher.ExternalLauncher
     | RelayClient.RelayClient
     | EnvironmentAuth.EnvironmentAuth
     | BootService.BootService
@@ -533,10 +560,8 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
   const minimumLogLevel = options?.quietLogs ? "Error" : config.logLevel;
   const layerRuntime = Layer.mergeAll(
     ServerSecretStore.layer,
-    CliTokenManager.layer.pipe(
-      Layer.provide(ServerSecretStore.layer),
-      Layer.provide(ExternalLauncher.layer),
-    ),
+    CliTokenManager.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+    ExternalLauncher.layer,
     RelayClient.layerCloudflared({ baseDir: config.baseDir }),
     EnvironmentAuth.layerRuntime,
     CliService.layer(config),

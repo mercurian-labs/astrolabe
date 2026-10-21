@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  CloudPublicConfigMissingError,
-  hasTracingPublicConfig,
-  resolveCloudPublicConfig,
-  resolveRelayClerkTokenOptions,
-} from "./publicConfig";
+import { hasTracingPublicConfig, resolveCloudPublicConfig } from "./publicConfig";
 
 vi.mock("expo-constants", () => ({
   default: {
@@ -16,17 +11,10 @@ vi.mock("expo-constants", () => ({
 }));
 
 describe("resolveCloudPublicConfig", () => {
-  it("reports the missing Clerk JWT template as structured configuration", () => {
-    expect(() => resolveRelayClerkTokenOptions()).toThrowError(
-      new CloudPublicConfigMissingError({ key: "T3CODE_CLERK_JWT_TEMPLATE" }),
-    );
-  });
-
   it("returns no cloud configuration for an unconfigured build", () => {
     expect(resolveCloudPublicConfig({})).toEqual({
-      clerk: {
-        publishableKey: null,
-        jwtTemplate: null,
+      auth: {
+        url: null,
       },
       relay: {
         url: null,
@@ -42,7 +30,7 @@ describe("resolveCloudPublicConfig", () => {
   it("normalizes statically injected cloud configuration", () => {
     expect(
       resolveCloudPublicConfig({
-        clerk: { publishableKey: "  pk_test_example  ", jwtTemplate: "  t3-relay  " },
+        auth: { url: " https://auth.example.test/ " },
         relay: { url: " https://relay.example.test/// " },
         observability: {
           tracesUrl: " https://api.axiom.co/v1/traces ",
@@ -51,9 +39,8 @@ describe("resolveCloudPublicConfig", () => {
         },
       }),
     ).toEqual({
-      clerk: {
-        publishableKey: "pk_test_example",
-        jwtTemplate: "t3-relay",
+      auth: {
+        url: "https://auth.example.test",
       },
       relay: {
         url: "https://relay.example.test",
@@ -66,16 +53,18 @@ describe("resolveCloudPublicConfig", () => {
     });
   });
 
-  it("rejects an insecure relay URL", () => {
+  it("rejects insecure auth and relay URLs, except a loopback auth URL", () => {
+    expect(resolveCloudPublicConfig({ auth: { url: "http://localhost:4310" } }).auth.url).toBe(
+      "http://localhost:4310",
+    );
     expect(
       resolveCloudPublicConfig({
-        clerk: { publishableKey: "pk_test_example", jwtTemplate: "t3-relay" },
+        auth: { url: "http://auth.example.test" },
         relay: { url: "http://relay.example.test" },
       }),
     ).toEqual({
-      clerk: {
-        publishableKey: "pk_test_example",
-        jwtTemplate: "t3-relay",
+      auth: {
+        url: null,
       },
       relay: {
         url: null,

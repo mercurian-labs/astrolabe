@@ -4,8 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import {
-  hostedAppUrlConfig,
-  makeCloudCliOAuthConfig,
+  makeAuthUrlConfig,
+  makeCloudCliAuthConfig,
   makeRelayUrlConfig,
   resolveRelayClientTracingConfig,
 } from "./publicConfig.ts";
@@ -48,33 +48,31 @@ it.effect("rejects an injected relay URL with a non-origin path", () =>
   makeRelayUrlConfig("https://embedded.example.test/path").pipe(provideEnv({}), Effect.flip),
 );
 
-it.effect("normalizes the hosted app URL to an absolute origin", () =>
+it.effect("normalizes the auth URL to an absolute origin", () =>
   Effect.gen(function* () {
     assert.equal(
-      yield* hostedAppUrlConfig.pipe(
-        provideEnv({ T3CODE_HOSTED_APP_URL: "https://nightly.app.t3.codes" }),
+      yield* makeAuthUrlConfig("").pipe(
+        provideEnv({ T3CODE_AUTH_URL: "https://app.astrolabe.sh/" }),
       ),
-      "https://nightly.app.t3.codes",
+      "https://app.astrolabe.sh",
     );
     assert.equal(
-      yield* hostedAppUrlConfig.pipe(
-        provideEnv({ T3CODE_HOSTED_APP_URL: "http://localhost:5733" }),
-      ),
-      "http://localhost:5733",
+      yield* makeAuthUrlConfig("").pipe(provideEnv({ T3CODE_AUTH_URL: "http://localhost:4310" })),
+      "http://localhost:4310",
     );
   }),
 );
 
-it.effect("rejects malformed or insecure hosted app URLs", () =>
+it.effect("rejects malformed or insecure auth URLs", () =>
   Effect.gen(function* () {
     for (const value of [
-      "app.t3.codes",
-      "http://app.t3.codes",
-      "https://app.t3.codes/nested",
-      "https://app.t3.codes?alias=true",
+      "app.astrolabe.sh",
+      "http://app.astrolabe.sh",
+      "https://app.astrolabe.sh/nested",
+      "https://app.astrolabe.sh?alias=true",
     ]) {
-      const result = yield* hostedAppUrlConfig.pipe(
-        provideEnv({ T3CODE_HOSTED_APP_URL: value }),
+      const result = yield* makeAuthUrlConfig("").pipe(
+        provideEnv({ T3CODE_AUTH_URL: value }),
         Effect.result,
       );
       assert.isTrue(Result.isFailure(result), value);
@@ -82,67 +80,32 @@ it.effect("rejects malformed or insecure hosted app URLs", () =>
   }),
 );
 
-it.effect("derives direct Clerk OAuth endpoints from statically injected public config", () =>
+it.effect("derives the CLI's sign-in endpoints from the injected auth URL", () =>
   Effect.gen(function* () {
-    const config = yield* makeCloudCliOAuthConfig({
-      clerkPublishableKeyFallback: "pk_test_Y2xlcmsuZXhhbXBsZS50ZXN0JA==",
-      clerkCliOAuthClientIdFallback: "oauth_client_embedded",
-    }).pipe(provideEnv({}));
+    const config = yield* makeCloudCliAuthConfig("https://auth.example.test").pipe(provideEnv({}));
 
     assert.deepEqual(config, {
-      tokenEndpoint: "https://clerk.example.test/oauth/token",
-      deviceAuthorizationEndpoint: "https://clerk.example.test/oauth/device_authorization",
-      clientId: "oauth_client_embedded",
-      loopbackPort: 34338,
-      redirectUri: "http://127.0.0.1:34338/callback",
-      scopes: ["openid", "profile", "email", "offline_access"],
+      deviceCodeEndpoint: "https://auth.example.test/api/auth/device/code",
+      deviceTokenEndpoint: "https://auth.example.test/api/auth/device/token",
+      sessionEndpoint: "https://auth.example.test/api/auth/get-session",
+      relayTokenEndpoint: "https://auth.example.test/api/auth/token",
+      clientId: "astrolabe-cli",
     });
   }),
 );
 
-it.effect("prefers runtime Clerk OAuth config overrides over statically injected values", () =>
+it.effect("prefers a runtime auth URL over the injected one", () =>
   Effect.gen(function* () {
-    const config = yield* makeCloudCliOAuthConfig({
-      clerkPublishableKeyFallback: "pk_test_ZW1iZWRkZWQuZXhhbXBsZS50ZXN0JA==",
-      clerkCliOAuthClientIdFallback: "oauth_client_embedded",
-    }).pipe(
-      provideEnv({
-        T3CODE_CLERK_PUBLISHABLE_KEY: "pk_test_cnVudGltZS5leGFtcGxlLnRlc3Qk",
-        T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: "oauth_client_runtime",
-      }),
+    const config = yield* makeCloudCliAuthConfig("https://embedded.example.test").pipe(
+      provideEnv({ T3CODE_AUTH_URL: "https://runtime.example.test" }),
     );
 
-    assert.equal(config.tokenEndpoint, "https://runtime.example.test/oauth/token");
-    assert.equal(config.clientId, "oauth_client_runtime");
+    assert.equal(config.relayTokenEndpoint, "https://runtime.example.test/api/auth/token");
   }),
 );
 
-it.effect("requires Clerk OAuth config when the server bundle has no injected values", () =>
-  makeCloudCliOAuthConfig({
-    clerkPublishableKeyFallback: "",
-    clerkCliOAuthClientIdFallback: "",
-  }).pipe(provideEnv({}), Effect.flip),
-);
-
-it.effect("reports malformed Clerk publishable keys as typed configuration failures", () =>
-  Effect.gen(function* () {
-    const result = yield* makeCloudCliOAuthConfig({
-      clerkPublishableKeyFallback: "pk_test_not-base64!!",
-      clerkCliOAuthClientIdFallback: "oauth_client_embedded",
-    }).pipe(provideEnv({}), Effect.result);
-
-    assert.isTrue(Result.isFailure(result));
-    if (Result.isFailure(result)) {
-      assert.equal(result.failure.cause._tag, "SourceError");
-      if (result.failure.cause._tag === "SourceError") {
-        assert.equal(
-          result.failure.cause.message,
-          "Failed to derive Clerk Frontend API URL from the publishable key.",
-        );
-        assert.instanceOf(result.failure.cause.cause, Error);
-      }
-    }
-  }),
+it.effect("requires an auth URL when the server bundle has no injected value", () =>
+  makeCloudCliAuthConfig("").pipe(provideEnv({}), Effect.flip),
 );
 
 it("resolves relay client tracing from runtime config with build-time fallback", () => {

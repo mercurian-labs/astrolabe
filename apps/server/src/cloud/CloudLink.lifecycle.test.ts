@@ -197,7 +197,6 @@ describe("reconcileDesiredCloudLink", () => {
       Effect.provideService(
         CliTokenManager.CloudCliTokenManager,
         CliTokenManager.CloudCliTokenManager.of({
-          get: unusedSecretStoreOperation(),
           getExisting: Effect.succeedNone,
           hasCredential: unusedSecretStoreOperation(),
           store: () => unusedSecretStoreOperation(),
@@ -337,7 +336,6 @@ describe("releaseManagedTunnelOnShutdown", () => {
         Effect.provideService(
           CliTokenManager.CloudCliTokenManager,
           CliTokenManager.CloudCliTokenManager.of({
-            get: unusedSecretStoreOperation(),
             getExisting: harness.getExisting ?? Effect.succeedSome(cliToken),
             hasCredential: unusedSecretStoreOperation(),
             store: () => unusedSecretStoreOperation(),
@@ -1362,9 +1360,8 @@ describe("releaseManagedTunnelOnShutdown", () => {
     const requests: Array<HttpClientRequest.HttpClientRequest> = [];
     const applyConfigCalls: Array<unknown> = [];
     const permanent = new CliTokenManager.CloudCliCredentialRefreshError({
-      cause: new Error("private-oauth-failure"),
-      status: 400,
-      oauthErrorCode: "invalid_grant",
+      cause: new Error("private-session-failure"),
+      status: 401,
     });
     let attempts = 0;
     const getExisting = Effect.suspend(() => {
@@ -1389,7 +1386,7 @@ describe("releaseManagedTunnelOnShutdown", () => {
       const error = yield* Fiber.join(registration);
       expect(attempts).toBe(2);
       expect(error).toBe(permanent);
-      expect(error.message).toContain("t3 connect login");
+      expect(error.message).toContain("astrolabe connect login");
       expect(error.message).not.toContain("private");
       expect(requests).toEqual([]);
       expect(applyConfigCalls).toEqual([]);

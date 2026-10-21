@@ -3,7 +3,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./app": "./src/app.ts"
+    "./app": "./src/app.ts",
+    "./testing": "./src/auth/testing.ts",
+    "./waitlist": "./src/admin/waitlist.ts",
+    "./mail": "./src/mail/Mailer.ts",
+    "./mail/templates": "./src/mail/templates.ts"
   },
   "scripts": {
     "auth:schema": "npx auth@1.7.7 generate --config scripts/auth-schema.ts --output src/auth/schema.ts --yes && node scripts/mark-generated.ts && vp fmt src/auth/schema.ts",

@@ -1,7 +1,7 @@
 // @effect-diagnostics globalConsole:off - a command-line tool prints its results.
 /**
- * Waitlist approvals until the admin page exists. Members who asked to own
- * an organization are in the same queue.
+ * Waitlist approvals from a terminal; apps/admin is the same over the tailnet.
+ * Members who asked to own an organization are in the same queue.
  *
  *   node scripts/waitlist.ts list
  *   node scripts/waitlist.ts approve someone@example.com
@@ -13,6 +13,7 @@
 import * as Effect from "effect/Effect";
 import { Pool } from "pg";
 
+import { makeWaitlist } from "../src/admin/waitlist.ts";
 import * as Mailer from "../src/mail/Mailer.ts";
 import { approvedMail } from "../src/mail/templates.ts";
 
@@ -24,47 +25,29 @@ const mailFrom = process.env.MAIL_FROM;
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
 
-const setAccess = async (to: "approved" | "declined") => {
-  if (!email) throw new Error(`usage: waitlist.ts ${command} <email>`);
-  // Waitlisted accounts move either way. A member moves only if they asked for
-  // their own organization: approving promotes them, declining keeps them a member.
-  const result = await pool.query(
-    `UPDATE auth."user"
-     SET access = CASE WHEN access = 'member' AND $1 = 'declined' THEN 'member' ELSE $1 END,
-         org_requested_at = NULL,
-         updated_at = now()
-     WHERE lower(email) = lower($2)
-       AND (access IN ('waitlisted', 'declined') OR (access = 'member' AND org_requested_at IS NOT NULL))
-     RETURNING email`,
-    [to, email],
-  );
-  if (result.rowCount === 0) throw new Error(`no one waiting for approval at ${email}`);
-  return result.rows[0].email as string;
-};
+const waitlist = makeWaitlist(pool);
 
 try {
   if (command === "list") {
-    const result = await pool.query(
-      `SELECT email, name, access, to_char(coalesce(org_requested_at, created_at), 'YYYY-MM-DD HH24:MI') AS since
-       FROM auth."user"
-       WHERE (access = 'waitlisted' AND email_verified) OR (access = 'member' AND org_requested_at IS NOT NULL)
-       ORDER BY coalesce(org_requested_at, created_at)`,
-    );
-    for (const row of result.rows) {
-      const why = row.access === "member" ? "wants an org" : "waitlisted";
-      console.log(`${row.since} UTC  ${why.padEnd(12)}  ${row.email}  ${row.name}`);
+    for (const entry of await waitlist.pending()) {
+      const why = entry.wantsOrganization ? "wants an org" : "waitlisted";
+      console.log(
+        `${entry.joinedAt.toISOString().slice(0, 16)} UTC  ${why.padEnd(12)}  ${entry.email}  ${entry.name}`,
+      );
     }
-  } else if (command === "approve") {
-    const approved = await setAccess("approved");
-    const mailer = mailFrom === undefined ? Mailer.layerLog : Mailer.layerSes(mailFrom);
-    await Effect.runPromise(
-      Mailer.Mailer.use((service) => service.send(approvedMail(approved, signInUrl))).pipe(
-        Effect.provide(mailer),
-      ),
-    );
-    console.log(`approved ${approved}`);
-  } else if (command === "decline") {
-    console.log(`declined ${await setAccess("declined")}`);
+  } else if (command === "approve" || command === "decline") {
+    if (!email) throw new Error(`usage: waitlist.ts ${command} <email>`);
+    const [changed] = await waitlist.decide(command, [email]);
+    if (changed === undefined) throw new Error(`no one waiting for approval at ${email}`);
+    if (command === "approve") {
+      const mailer = mailFrom === undefined ? Mailer.layerLog : Mailer.layerSes(mailFrom);
+      await Effect.runPromise(
+        Mailer.Mailer.use((service) => service.send(approvedMail(changed, signInUrl))).pipe(
+          Effect.provide(mailer),
+        ),
+      );
+    }
+    console.log(`${command === "approve" ? "approved" : "declined"} ${changed}`);
   } else {
     throw new Error("usage: waitlist.ts list | approve <email> | decline <email>");
   }

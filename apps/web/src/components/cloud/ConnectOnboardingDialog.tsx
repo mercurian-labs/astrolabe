@@ -1,4 +1,3 @@
-import { useAuth } from "@clerk/react";
 import { useAtomValue } from "@effect/atom-react";
 import { AuthRelayReadScope, AuthRelayWriteScope, type AuthSessionState } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -9,6 +8,7 @@ import {
   ConnectOnboardingOptOutSchema,
   EMPTY_CONNECT_ONBOARDING_OPT_OUT_STATE,
 } from "~/cloud/connectOnboarding";
+import { useCloudAccount } from "~/cloud/account";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { useCloudLinkController } from "~/cloud/useCloudLinkController";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -38,9 +38,7 @@ type OnboardingStep = "publish" | "devices";
 const EMPTY_SESSION_STATE_ATOM = Atom.make(AsyncResult.initial<AuthSessionState>());
 
 function ConfiguredConnectOnboardingDialog() {
-  // Mirrors ManagedRelayAuthProvider: a pending Clerk session must not read as
-  // signed-out, or its later activation would look like a fresh sign-in.
-  const { isLoaded, isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
+  const { isLoaded, isSignedIn, userId } = useCloudAccount();
   const [optOutState, setOptOutState] = useLocalStorage(
     CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY,
     EMPTY_CONNECT_ONBOARDING_OPT_OUT_STATE,

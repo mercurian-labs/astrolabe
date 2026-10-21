@@ -54,8 +54,9 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
 ### Mobile ids, schemes, names
 
 - `apps/mobile/app.config.ts`: `VARIANT_CONFIG` names, ids and schemes; permission prompts; widget
-  descriptions. The `appleTeamId`, EAS `owner`/`projectId`, `slug` and `clerk.t3.codes` are still
-  upstream's accounts and stay that way until Astrolabe has its own.
+  descriptions. The `appleTeamId` is Mercurian's (`SC9Q89Q4B6`); keep it when upstream changes the
+  line. EAS `owner`/`projectId` and `slug` are still upstream's accounts and stay that way until
+  Astrolabe has its own.
 - `apps/mobile/package.json`: the `--scheme` in the `dev:client*` and `showcase` scripts.
 - `apps/mobile/src/App.tsx`: linking `prefixes`.
 - `apps/mobile/src/lib/appLinking.ts`: the scheme regex.
@@ -147,7 +148,7 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   `scripts/install.sh` and `install.ps1` do the same mapping inline.
 - When upstream adds a variable, there's nothing to do here: `ASTROLABE_<NEW>` already works. When
   upstream adds a new process entry point, call `applyAstrolabeEnv` from it.
-- Build-time variables (`T3CODE_CLERK_*`, `T3CODE_RELAY_URL` and other release workflow inputs)
+- Build-time variables (`T3CODE_AUTH_URL`, `T3CODE_RELAY_URL` and other release workflow inputs)
   are read by build scripts that don't go through the mapping, so they keep their `T3CODE_` names.
 - User docs name the `ASTROLABE_*` spelling. Maintainer docs keep `T3CODE_*`.
 
@@ -189,13 +190,14 @@ Upstream adds new "T3 Code" strings often. Change them in the merge commit.
 
 ### Accounts and hosted services still upstream's
 
-Nothing in the fork changes these yet. Astrolabe builds that need them won't work against
-upstream's accounts:
+Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. Nothing in the
+fork changes the rest yet. Astrolabe builds that need them won't work against upstream's accounts:
 
-- Clerk (`clerk.t3.codes`, the publishable key and JWT template in `.env.example`), `app.t3.codes`
-  (`packages/shared/src/connectAuth.ts`, `providerAuthReturnUrl.ts`, `apps/web/vercel.ts`), and
-  `relay.t3.codes`. T3 Connect sign-in can't allowlist Astrolabe's ids or schemes.
-- Apple team `ARK85ZXQ4Z`, EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
+- `app.t3.codes` (`packages/shared/src/connectAuth.ts`, `providerAuthReturnUrl.ts`,
+  `apps/web/vercel.ts`) and `relay.t3.codes` (`.env.example`). The hosted app's sign-in shares the
+  sign-in pages' session cookie, so it works only once the hosted app is served from
+  `app.astrolabe.sh`.
+- EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
   `apps/mobile/app.config.ts`, and the Firebase project. Push to `com.mercurian.astrolabe*` needs
   Astrolabe's own APNs key and Firebase app.
 - npm trusted publishing for `@mercurian/astrolabe`.

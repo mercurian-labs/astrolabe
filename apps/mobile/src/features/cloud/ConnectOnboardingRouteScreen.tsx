@@ -4,7 +4,6 @@ import { IconButton } from "../../components/ui/IconButton";
 import { Button } from "../../components/ui/Button";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 
-import { useAuth } from "@clerk/expo";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { useEffect, useState } from "react";
 import { Platform, RefreshControl, View } from "react-native";
@@ -17,6 +16,7 @@ import { CloudEnvironmentRows } from "../connection/CloudEnvironmentRows";
 import { splitEnvironmentSections } from "../connection/environmentSections";
 import { useConnectionController } from "../connection/useConnectionController";
 import { optOutOfConnectOnboarding } from "./connectOnboardingOptOut";
+import { useCloudAccount } from "./account";
 import { hasCloudPublicConfig } from "./publicConfig";
 
 export function ConnectOnboardingRouteScreen() {
@@ -41,7 +41,7 @@ export function ConnectOnboardingRouteScreen() {
 function ConfiguredConnectOnboardingRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
+  const { isSignedIn, userId } = useCloudAccount();
   const { connectedEnvironments, onSetEnvironmentEnabled, onRemoveEnvironmentPress } =
     useRemoteConnections();
   const { refreshRelayEnvironments } = useConnectionController();

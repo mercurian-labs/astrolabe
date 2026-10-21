@@ -5,13 +5,10 @@ import { appAtomRegistry } from "../../state/atom-registry";
 import { activateCloudRelayAccount, deactivateCloudRelayAccount } from "./CloudAuthProvider";
 import { setAgentAwarenessRelayTokenProvider } from "../agent-awareness/remoteRegistration";
 
-vi.mock("@clerk/expo", () => ({
-  ClerkProvider: vi.fn(),
-  useAuth: vi.fn(),
-}));
-
-vi.mock("@clerk/expo/token-cache", () => ({
-  tokenCache: {},
+vi.mock("./account", () => ({
+  readCloudRelayToken: vi.fn(),
+  useCloudAccount: vi.fn(),
+  useCloudAccountRefresh: vi.fn(),
 }));
 
 vi.mock("../../lib/runtime", () => ({
@@ -34,10 +31,9 @@ vi.mock("../../state/use-composer-drafts", () => ({
 
 vi.mock("./publicConfig", () => ({
   resolveCloudPublicConfig: vi.fn(() => ({
-    clerk: { publishableKey: null },
+    auth: { url: null },
     relay: { url: null },
   })),
-  resolveRelayClerkTokenOptions: vi.fn(),
 }));
 
 vi.mock("../agent-awareness/remoteRegistration", () => ({

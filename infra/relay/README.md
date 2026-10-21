@@ -146,7 +146,7 @@ The `production` GitHub environment must define these Actions variables:
   [Relay alerts](../../docs/operations/relay-observability.md#alerts).
 - `RELAY_WARNING_NOTIFIER_ID`, optional, the Axiom notifier for relay warnings
 - `ACCOUNT_JWT_ISSUER`, the Astrolabe sign-in origin (https://app.astrolabe.sh) whose tokens the relay accepts
-- `CLERK_PUBLISHABLE_KEY` and `CLERK_JWT_TEMPLATE`, read only by the release workflow for client builds
+- `AUTH_URL`, the same origin, read only by the release workflow for client builds
 - `APNS_ENVIRONMENT`
 - `APNS_TEAM_ID`
 - `APNS_KEY_ID`
@@ -160,11 +160,11 @@ The `production` GitHub environment must define these Actions secrets:
 The account-scoped repository credentials are consumed by Alchemy while provisioning relay stages; they
 are not bound into the relay Worker. The production deployment uses an Axiom personal access token,
 so `AXIOM_ORG_ID` must accompany `AXIOM_TOKEN`. The release workflow reads the production relay's
-derived public URL and Clerk publishable key from the same environment for downstream desktop, CLI,
+derived public URL and `AUTH_URL` from the same environment for downstream desktop, CLI,
 and hosted web builds.
 
 See:
 
-- [T3 Connect setup](../../docs/operations/connect-setup.md) for Clerk keys, JWT templates, and sign-up restrictions.
+- [T3 Connect setup](../../docs/operations/connect-setup.md) for client configuration and sign-up restrictions.
 - [Relay Observability](../../docs/operations/relay-observability.md) for deployment tracing and diagnostics.
 - [T3 Connect architecture](../../docs/internals/t3-connect.md) for environment linking and trust boundaries.

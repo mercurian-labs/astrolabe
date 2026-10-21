@@ -29,7 +29,7 @@ the version.
   - Pushing a `vX.Y.Z` tag by hand still works and builds exactly the tagged commit. Use it when
     the commit to ship is not the latest nightly, such as a cherry-picked fix on a release branch.
 - Runs lint, typecheck, and tests alongside artifact builds. Publishing waits for every check.
-- Reads the shared production T3 Connect relay URL and Clerk client configuration before packaging clients.
+- Reads the shared production T3 Connect relay URL and Astrolabe sign-in URL before packaging clients.
 - Builds the platform-independent JS (server bundle, web client, Electron main) once in the `build_bundle` job and hands it to every platform job as the `js-bundle` artifact; the platform jobs only package it, so no runner rebuilds it.
 - Builds six desktop artifacts in parallel for both channels, each as its own job (`desktop_<platform>_<arch>`, one call of `release-desktop.yml`), gated only on the bundle. Every target builds on hardware of its own architecture except Windows arm64: its runners have 4 vCPUs, so it builds and signs (with jsign) on a Linux runner, and a `windows-11-arm` job runs the packaged natives and the CLI archive (`verify_runner`). The Windows jobs embed the same-arch Linux CLI archive as the WSL runtime and wait for that artifact partway through, not for the whole Linux job:
   - macOS `arm64` DMG
@@ -75,7 +75,7 @@ split so the Developer ID certificate never shares a job with PR code:
   for itself). It then packages and signs the bundle through `release-desktop.yml` checked out at
   `main`, so packaging, native helpers, and the Electron/desktop dependencies come from `main`, not
   the PR. Only the version and the public T3 Connect identifiers in `.env.example` are read from the
-  PR commit, as data, so the signed app's passkey entitlement matches the bundle. A PR that changes
+  PR commit, as data, so the packaged app points at the same deployment as the bundle. A PR that changes
   packaging must use the `channel=preview` release train above instead.
 
 Before handing the bundle to the signing runner, the trusted workflow validates its ZIP entries
@@ -105,7 +105,7 @@ client builds must point at the same relay so users see the same linked environm
 release channels.
 
 `.github/workflows/deploy-relay.yml` deploys Alchemy stage `prod` on every push to `main`. The
-release workflow reads the relay URL and Clerk client configuration from the existing `production`
+release workflow reads the relay URL and Astrolabe sign-in URL from the existing `production`
 GitHub Actions environment before building desktop, CLI, or hosted web artifacts.
 
 Required repository variables shared by relay deployments:
@@ -123,12 +123,14 @@ Required repository secrets shared by relay deployments:
 
 Required `production` environment variables:
 
-- `RELAY_API_ZONE_NAME`
-- `RELAY_TUNNEL_ZONE_NAME`
-- `ACCOUNT_JWT_ISSUER`
-- `CLERK_PUBLISHABLE_KEY`
-- `CLERK_JWT_TEMPLATE`
-- `CLERK_CLI_OAUTH_CLIENT_ID`
+- `RELAY_API_ZONE_NAME`, `astrolabe.sh`. The site is `astrolabe.sh`; the hosted app, the sign-in
+  pages and `/api/auth` share `app.astrolabe.sh`; the relay is `relay.astrolabe.sh`.
+- `RELAY_TUNNEL_ZONE_NAME`, `astrolabe.foo`. Tunnels serve whatever a user's machine returns, so
+  they stay off `astrolabe.sh`: a tunneled page can't set cookies on the sign-in domain, and a
+  phishing report against a tunnel doesn't get the sign-in domain blocklisted.
+- `ACCOUNT_JWT_ISSUER`, `https://app.astrolabe.sh`
+- `AUTH_URL`, the Astrolabe sign-in origin baked into client builds. Use the same origin as
+  `ACCOUNT_JWT_ISSUER`.
 - `APNS_ENVIRONMENT`
 - `APNS_TEAM_ID`
 - `APNS_KEY_ID`
@@ -556,24 +558,19 @@ Required secrets used by the workflow:
 - `APPLE_API_KEY`
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
-- `MACOS_PROVISIONING_PROFILE` (base64-encoded provisioning profile with Associated Domains)
+- `MACOS_PROVISIONING_PROFILE` (base64-encoded provisioning profile)
 
 Required repository variables:
 
 - `APPLE_TEAM_ID`
 
-Optional repository variables:
-
-- `CLERK_PASSKEY_RP_DOMAINS`: comma-separated RP-domain override. By default, the build derives the
-  domain from the production Clerk publishable key.
-
 Checklist:
 
 1. Apple Developer account access:
    - Team has rights to create Developer ID certificates.
-2. Create an explicit App ID for `com.mercurian.astrolabe` and enable Associated Domains.
+2. Create an explicit App ID for `com.mercurian.astrolabe`.
 3. Create a `Developer ID Application` certificate and a compatible provisioning profile for that
-   App ID with Associated Domains enabled.
+   App ID.
 4. Export the certificate + private key as `.p12` from Keychain.
 5. Base64-encode the `.p12` and store as `CSC_LINK`.
 6. Base64-encode the provisioning profile and store it as `MACOS_PROVISIONING_PROFILE`.
@@ -584,9 +581,8 @@ Checklist:
    - `APPLE_API_KEY`: contents of the downloaded `.p8`
    - `APPLE_API_KEY_ID`: Key ID
    - `APPLE_API_ISSUER`: Issuer ID
-10. Complete the Clerk Native API and AASA setup in [T3 Connect setup](./connect-setup.md#desktop-passkeys).
-11. Re-run a tag release and confirm macOS artifacts are signed/notarized and contain the expected
-    `com.apple.developer.associated-domains` entitlement.
+10. Re-run a tag release and confirm macOS artifacts are signed/notarized and the build log lists
+    the passkey entitlements you expect (see the notes below).
 
 Notes:
 
@@ -651,8 +647,7 @@ Checklist:
 
 - macOS build unsigned when expected signed:
   - Check all Apple secrets plus `APPLE_TEAM_ID` are populated and non-empty.
-  - Confirm the provisioning profile belongs to `APPLE_TEAM_ID.com.mercurian.astrolabe` and includes
-    Associated Domains.
+  - Confirm the provisioning profile belongs to `APPLE_TEAM_ID.com.mercurian.astrolabe`.
 - Windows build unsigned when expected signed:
   - Check all Azure ATS and auth secrets are populated and non-empty.
 - Build fails with signing error:

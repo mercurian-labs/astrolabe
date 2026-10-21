@@ -40,9 +40,9 @@ vi.mock(import("@effect/atom-react"), async (original) => ({
     ),
   })) as never,
 }));
-vi.mock(import("@clerk/react"), async (original) => ({
+vi.mock(import("./account"), async (original) => ({
   ...(await original()),
-  useAuth: (() => ({ getToken: testState.getToken, isSignedIn: true })) as never,
+  useCloudAccount: (() => ({ getToken: testState.getToken, isSignedIn: true })) as never,
 }));
 vi.mock(import("../components/ui/toast"), async (original) => {
   const actual = await original();
@@ -82,11 +82,6 @@ vi.mock(import("./primaryCloudLinkState"), async (original) => ({
     isPending: false,
     refresh: testState.refreshLink,
   })) as never,
-}));
-// The Clerk JWT template is build-time config the test environment does not set.
-vi.mock(import("./publicConfig"), async (original) => ({
-  ...(await original()),
-  resolveRelayClerkTokenOptions: () => ({}) as never,
 }));
 
 import { useCloudLinkController, type CloudLinkDesiredState } from "./useCloudLinkController";
@@ -151,7 +146,7 @@ function setup() {
   testState.snapshot = linkedState;
   testState.renderedSnapshot = linkedState;
   testState.relayProviderKind = null;
-  testState.getToken.mockReset().mockResolvedValue("clerk-token");
+  testState.getToken.mockReset().mockResolvedValue("relay-token");
   for (const command of [
     testState.link,
     testState.unlink,
@@ -196,7 +191,7 @@ describe("useCloudLinkController", () => {
       await using screen = await mountController();
       testState.getToken.mockImplementationOnce(async () => {
         testState.scopes.delete(scope);
-        return "clerk-token";
+        return "relay-token";
       });
 
       expect(await screen.reconcile({ managedTunnel: false, publish: false })).toBe(false);
@@ -209,7 +204,7 @@ describe("useCloudLinkController", () => {
     await using screen = await mountController();
     testState.getToken.mockImplementationOnce(async () => {
       testState.snapshot = null;
-      return "clerk-token";
+      return "relay-token";
     });
 
     expect(await screen.reconcile({ managedTunnel: true, publish: true })).toBe(false);
@@ -223,7 +218,7 @@ describe("useCloudLinkController", () => {
     await using screen = await mountController();
     testState.getToken.mockImplementationOnce(async () => {
       testState.snapshot = linkedState;
-      return "clerk-token";
+      return "relay-token";
     });
 
     expect(await screen.reconcile({ managedTunnel: true, publish: true })).toBe(true);
@@ -245,7 +240,7 @@ describe("useCloudLinkController", () => {
     expect(await screen.reconcile({ managedTunnel: true, publish: false })).toBe(true);
     expect(testState.link).toHaveBeenCalledExactlyOnceWith({
       target,
-      clerkToken: "clerk-token",
+      clerkToken: "relay-token",
       mode: "managed",
     });
   });
@@ -265,7 +260,7 @@ describe("useCloudLinkController", () => {
     expect(await screen.reconcile({ managedTunnel: true, publish: false })).toBe(true);
     expect(testState.link).toHaveBeenCalledExactlyOnceWith({
       target,
-      clerkToken: "clerk-token",
+      clerkToken: "relay-token",
       mode: "managed",
     });
   });

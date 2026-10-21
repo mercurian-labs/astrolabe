@@ -23,6 +23,7 @@ import * as schema from "./auth/schema.ts";
 import type { Mail } from "./mail/Mailer.ts";
 import { decideCors } from "./cors.ts";
 import { loadMailbox } from "./dev/mailbox.ts";
+import { renderPage } from "./pages.ts";
 import { deletePushRegistrations, removeRelayData } from "./relay/RelayAccount.ts";
 
 const optional = (name: string) =>
@@ -64,6 +65,7 @@ const authConfig = Config.all({
     Config.map((headers) => (headers.length > 0 ? headers : ["x-forwarded-for"])),
   ),
   turnstileSecret: optional("TURNSTILE_SECRET_KEY"),
+  turnstileSiteKey: optional("TURNSTILE_SITE_KEY"),
   // Normalized like the relay normalizes its own origin, so `aud` always matches.
   relayUrl: Config.String("RELAY_URL").pipe(
     Config.withDefault("http://localhost:8787"),
@@ -72,7 +74,7 @@ const authConfig = Config.all({
   google: oauth("GOOGLE"),
   github: oauth("GITHUB"),
   microsoft: oauth("MICROSOFT"),
-}) satisfies Config.Config<Omit<AuthConfig, "apple">>;
+}) satisfies Config.Config<Omit<AuthConfig, "apple"> & { turnstileSiteKey: string | undefined }>;
 
 // Settings with no safe default. Checked at startup in the running service,
 // so a misconfigured deploy fails its health check instead of a sign-in.
@@ -85,6 +87,8 @@ const requiredAtRuntime = Config.all({
 
 export const makeCloudApp = (deps: {
   readonly sendMail: (mail: Mail) => Effect.Effect<void, unknown>;
+  /** The built sign-in pages (`@mercurian/auth/page`); without it page paths answer 404. */
+  readonly page?: string;
 }) =>
   Effect.gen(function* () {
     if ((yield* ALCHEMY_PHASE) === "runtime") yield* requiredAtRuntime.pipe(Effect.orDie);
@@ -133,8 +137,29 @@ export const makeCloudApp = (deps: {
     // Only the local emulator sets this; it turns on /dev/mailbox.
     const emulatorEndpoint = yield* optional("AWS_ENDPOINT_URL");
 
+    const { turnstileSiteKey } = yield* authConfig;
+    const page = yield* Effect.cached(
+      deps.page === undefined
+        ? Effect.succeed(null)
+        : Effect.promise(() =>
+            renderPage(deps.page!, {
+              providers: Object.entries({
+                google: config.google,
+                github: config.github,
+                microsoft: config.microsoft,
+                apple: config.apple,
+              })
+                .filter(([, credentials]) => credentials !== undefined)
+                .map(([provider]) => provider),
+              turnstileSiteKey: turnstileSiteKey ?? null,
+              // App schemes (astrolabe://) are trusted for Better Auth, not page returns.
+              returnOrigins: config.trustedOrigins.filter((origin) => /^https?:\/\//.test(origin)),
+            }),
+          ),
+    );
+
     return {
-      /** Serves `/api/auth/*`; anything else is the caller's. */
+      /** Serves `/api/auth/*` and, given the built pages, every other page path. */
       fetch: Effect.gen(function* () {
         const request = yield* HttpServerRequest;
         const { pathname } = new URL(request.url, "http://api");
@@ -143,7 +168,13 @@ export const makeCloudApp = (deps: {
             yield* Effect.promise(() => loadMailbox(emulatorEndpoint)),
           );
         }
-        if (!pathname.startsWith("/api/auth/")) return HttpServerResponse.empty({ status: 404 });
+        if (!pathname.startsWith("/api/auth/")) {
+          const rendered = yield* page;
+          if (rendered && (request.method === "GET" || request.method === "HEAD")) {
+            return HttpServerResponse.text(rendered.html, { headers: rendered.headers });
+          }
+          return HttpServerResponse.empty({ status: 404 });
+        }
         const cors = decideCors(
           {
             method: request.method,

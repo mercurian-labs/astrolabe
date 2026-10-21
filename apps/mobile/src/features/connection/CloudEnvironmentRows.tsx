@@ -1,7 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ConnectionTraceId } from "./ConnectionTraceId";
-import { useAuth } from "@clerk/expo";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import {
   hasSavedBearerRoute,
@@ -26,6 +25,7 @@ import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-typ
 import { serverEnvironment } from "../../state/server";
 import { environmentPresentations } from "../../state/presentation";
 import { availableCloudEnvironmentPresentation } from "../cloud/cloudEnvironmentPresentation";
+import { useCloudAccount } from "../cloud/account";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { useConnectionDiagnosis } from "./ConnectionDiagnosisDetails";
@@ -43,13 +43,11 @@ interface CloudEnvironmentRowsProps {
 }
 
 export function CloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
-  // Showcase captures run without a Clerk publishable key, so `ClerkProvider`
-  // is never mounted and any `useAuth` call throws — the fixture states whether
-  // the rows are signed in instead of asking Clerk.
+  // Showcase captures run without cloud config, so the fixture states whether
+  // the rows are signed in instead of asking the account.
   if (props.showcaseSignedIn !== undefined) {
     return props.showcaseSignedIn ? <CloudEnvironmentRowsContent {...props} /> : null;
   }
-  // No cloud config means no `ClerkProvider` either, so `useAuth` would throw.
   if (!hasCloudPublicConfig()) {
     return <ConnectedOnlyCloudEnvironmentRows {...props} />;
   }
@@ -57,7 +55,7 @@ export function CloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
 }
 
 function SignedInCloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
-  const { isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
+  const { isSignedIn } = useCloudAccount();
   if (!isSignedIn) return <ConnectedOnlyCloudEnvironmentRows {...props} />;
   return <CloudEnvironmentRowsContent {...props} />;
 }

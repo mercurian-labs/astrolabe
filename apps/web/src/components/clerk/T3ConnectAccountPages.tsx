@@ -1,11 +1,11 @@
-import { useAuth, useClerk } from "@clerk/react";
 import { ServerIcon, SmartphoneIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { createPortal } from "react-dom";
+import { useSyncExternalStore } from "react";
 
+import { useCloudAccount } from "../../cloud/account";
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
 import { T3ConnectUserProfilePage } from "./T3ConnectUserProfilePage";
 
+/** Pages in the account dialog after Account, in menu order. */
 export const T3_CONNECT_ACCOUNT_PAGES = [
   {
     label: "Mobile clients",
@@ -21,44 +21,35 @@ export const T3_CONNECT_ACCOUNT_PAGES = [
   },
 ] as const;
 
-type PortalTargets = Readonly<Record<string, HTMLDivElement | undefined>>;
+export type CloudAccountPage = "account" | (typeof T3_CONNECT_ACCOUNT_PAGES)[number]["url"];
 
-/**
- * Clerk mounts custom pages into DOM nodes it owns, so the caller must keep `portals` rendered for
- * as long as the modal can be open.
- */
+let openPage: CloudAccountPage | null = null;
+const pageListeners = new Set<() => void>();
+
+/** Opens the account dialog (mounted by `CloudAccountDialogs`) on a page, or closes it. */
+export function setOpenCloudAccountPage(page: CloudAccountPage | null): void {
+  openPage = page;
+  for (const listener of pageListeners) listener();
+}
+
+export function useOpenCloudAccountPage(): CloudAccountPage | null {
+  return useSyncExternalStore(
+    (listener) => {
+      pageListeners.add(listener);
+      return () => pageListeners.delete(listener);
+    },
+    () => openPage,
+  );
+}
+
+/** Opens the account dialog on the T3 Connect page from outside the sidebar avatar. */
 export function useT3ConnectAccountPage(): {
   readonly open: (() => void) | null;
-  readonly portals: ReactNode;
+  readonly portals: null;
 } {
-  const clerk = useClerk();
-  const { isSignedIn } = useAuth();
-  const [targets, setTargets] = useState<PortalTargets>({});
-
-  const open = () => {
-    const setTarget = (key: string, element: HTMLDivElement | undefined) =>
-      setTargets((current) => ({ ...current, [key]: element }));
-    clerk.openUserProfile({
-      __experimental_startPath: "/t3-connect",
-      customPages: T3_CONNECT_ACCOUNT_PAGES.map((page) => ({
-        label: page.label,
-        url: page.url,
-        mount: (element: HTMLDivElement) => setTarget(`content:${page.url}`, element),
-        unmount: () => setTarget(`content:${page.url}`, undefined),
-        mountIcon: (element: HTMLDivElement) => setTarget(`icon:${page.url}`, element),
-        unmountIcon: () => setTarget(`icon:${page.url}`, undefined),
-      })),
-    });
+  const { isSignedIn } = useCloudAccount();
+  return {
+    open: isSignedIn ? () => setOpenCloudAccountPage("t3-connect") : null,
+    portals: null,
   };
-
-  const portals = T3_CONNECT_ACCOUNT_PAGES.flatMap((page) => {
-    const content = targets[`content:${page.url}`];
-    const icon = targets[`icon:${page.url}`];
-    return [
-      content ? createPortal(page.content, content, `content:${page.url}`) : null,
-      icon ? createPortal(page.icon, icon, `icon:${page.url}`) : null,
-    ];
-  });
-
-  return { open: isSignedIn ? open : null, portals };
 }

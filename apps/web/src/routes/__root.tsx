@@ -24,6 +24,7 @@ import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
+import { CloudAccountDialogs } from "../components/clerk/CloudAccountDialogs";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
@@ -154,7 +155,7 @@ function RootRouteView() {
     authGateState.status === "hosted-static",
   );
 
-  if (pathname === "/pair" || pathname === "/connect" || pathname === "/connect-agent") {
+  if (pathname === "/pair" || pathname === "/connect-agent") {
     return (
       <>
         <DocumentTitleSync />
@@ -188,6 +189,7 @@ function RootRouteView() {
           <FontAppearanceSync />
           <ProviderAuthCallbackCoordinator />
           <CustomSnoozeDialogHost />
+          <CloudAccountDialogs />
           <CommandPalette>
             <AppSidebarLayout>
               <Outlet />
@@ -237,6 +239,7 @@ function RootRouteView() {
           {isElectron ? <RunningThreadKeepAlive /> : null}
           <RelayClientInstallDialog />
           <ConnectOnboardingDialog />
+          <CloudAccountDialogs />
           <SshPasswordPromptDialog />
           <SnapShotCoordinator />
           <ThreadNotificationCoordinator />

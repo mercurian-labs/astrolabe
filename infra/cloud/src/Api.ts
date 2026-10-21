@@ -6,9 +6,10 @@
  * the code to Effect and Node APIs (tests run on Node) so it can move to
  * Node once Alchemy supports it.
  *
- * Astrolabe sign-in (`/api/auth/*`) comes from apps/cloud; `/health`
- * proves the API reaches Postgres and Electric.
+ * Astrolabe sign-in (`/api/auth/*` and its pages, built from apps/auth)
+ * comes from apps/cloud; `/health` proves the API reaches Postgres and Electric.
  */
+import page from "@mercurian/auth/page";
 import { makeCloudApp } from "@mercurian/cloud/app";
 import * as AWS from "alchemy/AWS";
 import * as Drizzle from "alchemy/Drizzle/Postgres";
@@ -69,6 +70,7 @@ export default Api.make(
         ? yield* Config.String("MAIL_FROM").pipe(Effect.orDie)
         : "";
     const app = yield* makeCloudApp({
+      page,
       sendMail: (mail) =>
         Effect.gen(function* () {
           yield* sendEmail({

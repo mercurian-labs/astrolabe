@@ -195,10 +195,6 @@
       "types": "./src/telemetryId.ts",
       "import": "./src/telemetryId.ts"
     },
-    "./relayAuth": {
-      "types": "./src/relayAuth.ts",
-      "import": "./src/relayAuth.ts"
-    },
     "./relayUrl": {
       "types": "./src/relayUrl.ts",
       "import": "./src/relayUrl.ts"
@@ -226,6 +222,10 @@
     "./connectAuth": {
       "types": "./src/connectAuth.ts",
       "import": "./src/connectAuth.ts"
+    },
+    "./mercurianAccount": {
+      "types": "./src/mercurianAccount.ts",
+      "import": "./src/mercurianAccount.ts"
     },
     "./symlink": {
       "types": "./src/symlink.ts",

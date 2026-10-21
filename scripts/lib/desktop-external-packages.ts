@@ -8,7 +8,6 @@ export const DESKTOP_RUNTIME_EXTERNAL_PREFIXES = [
   // Native addons and the wrappers that dlopen them by real path.
   "@napi-rs/keyring",
   "@crowecawcaw/xa11y",
-  "@clerk/electron-passkeys",
   "electron-webauthn",
   "ffi-rs",
   "@yuuang/",
