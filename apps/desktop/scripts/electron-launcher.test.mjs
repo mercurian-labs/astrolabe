@@ -111,7 +111,7 @@ describe("electron development launcher", () => {
 
     assert.match(values.CFBundleDisplayName, /^Astrolabe \((?:Dev|Beta)\)$/);
     assert.equal(values.CFBundleName, values.CFBundleDisplayName);
-    assert.match(values.CFBundleIdentifier, /^com\.t3tools\.t3code(?:\.dev\.[a-z0-9]+)?$/);
+    assert.match(values.CFBundleIdentifier, /^com\.mercurian\.astrolabe(?:\.dev\.[a-z0-9]+)?$/);
   });
 
   it("declares why the macOS app needs protected access", () => {

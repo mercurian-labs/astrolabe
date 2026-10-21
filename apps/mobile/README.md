@@ -10,9 +10,9 @@
 
 This app has three variants:
 
-- `development`: Expo dev client, installable side-by-side as `T3 Code Dev`
-- `preview`: persistent internal preview build, installable side-by-side as `T3 Code Preview`
-- `production`: store/release build as `T3 Code`
+- `development`: Expo dev client, installable side-by-side as `Astrolabe Dev`
+- `preview`: persistent internal preview build, installable side-by-side as `Astrolabe Preview`
+- `production`: store/release build as `Astrolabe`
 
 Run commands from `apps/mobile`.
 

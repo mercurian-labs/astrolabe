@@ -195,14 +195,14 @@ describe("AgentActivity widget layout", () => {
       environment as never,
     );
     expect(JSON.stringify(layout.banner)).toContain(
-      '"widgetURL":"t3code://threads/env-1/thread-2"',
+      '"widgetURL":"astrolabe://threads/env-1/thread-2"',
     );
   });
 
   it("deep links the banner to the first row when nothing needs attention", () => {
     const layout = AgentActivity({ ...props, activities: [makeRow({})] }, environment as never);
     expect(JSON.stringify(layout.banner)).toContain(
-      '"widgetURL":"t3code://threads/env-1/thread-1"',
+      '"widgetURL":"astrolabe://threads/env-1/thread-1"',
     );
   });
 

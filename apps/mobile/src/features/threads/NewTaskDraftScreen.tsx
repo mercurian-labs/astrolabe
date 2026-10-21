@@ -1783,6 +1783,7 @@ export function NewTaskDraftScreen(props: {
                               : "Queue task")
                   }
                   disabled={!canStart}
+                  control={queuesInsteadOfStarting ? "queue" : "send"}
                   icon={queuesInsteadOfStarting ? "tray.and.arrow.up" : "arrow.up"}
                   onPress={() => void handleStart()}
                   variant="primary"

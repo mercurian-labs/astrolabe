@@ -112,17 +112,20 @@ describe("ssh tunnel scripts", () => {
       script,
       "T3_RELEASE_BASE_URL='https://github.com/pingdotgg/t3code/releases/download'",
     );
-    assert.include(script, 'T3_RUNTIME_DIR="$HOME/.t3/runtime/versions/$T3_ARCHIVE_VERSION"');
+    assert.include(
+      script,
+      'T3_RUNTIME_DIR="$HOME/.astrolabe/runtime/versions/$T3_ARCHIVE_VERSION"',
+    );
     assert.include(script, 'T3_ARCHIVE="t3-$T3_ARCHIVE_VERSION-$T3_PLATFORM-$T3_ARCH.tar.gz"');
     assert.include(script, "SHA256SUMS");
-    assert.include(script, 'exec "$T3_RUNTIME_DIR/t3" "$@"');
+    assert.include(script, 'exec "$T3_RUNTIME_DIR/astrolabe" "$@"');
     assert.notInclude(script, "npx");
     assert.notInclude(script, "npm exec");
-    assert.notInclude(script, "t3@latest");
+    assert.notInclude(script, "@mercurian/astrolabe@latest");
     assert.notInclude(script, 'exec t3 "$@"');
     assert.include(
       script,
-      'T3_LOCK="$HOME/.t3/runtime/versions/.$T3_ARCHIVE_VERSION.install.lock"',
+      'T3_LOCK="$HOME/.astrolabe/runtime/versions/.$T3_ARCHIVE_VERSION.install.lock"',
     );
     assert.include(script, 'if ! kill -0 "$T3_LOCK_OWNER" 2>/dev/null; then');
     assert.include(script, 'if [ "$T3_LOCK_UNOWNED" -ge 5 ]; then');
@@ -133,7 +136,7 @@ describe("ssh tunnel scripts", () => {
     assert.notInclude(script, "-mmin");
     assert.equal(script.split("if ! t3_runtime_ready; then").length - 1, 2);
     assert.isBelow(
-      script.indexOf('"$T3_STAGING/t3" --version'),
+      script.indexOf('"$T3_STAGING/astrolabe" --version'),
       script.indexOf('> "$T3_STAGING/.install-complete"'),
     );
     assert.equal(script.split("ensure_remote_node_path || true").length - 1, 1);
@@ -256,7 +259,7 @@ describe("ssh tunnel scripts", () => {
     assert.include(launch, '"$RUNNER_FILE" serve --host 127.0.0.1');
     assert.include(launch, '--base-dir "$DEFAULT_SERVER_HOME"');
     assert.notInclude(launch, "server-home");
-    assert.include(launch, "Remote T3 server did not become ready");
+    assert.include(launch, "Remote Astrolabe server did not become ready");
     assert.include(launch, 'wait_ready "60000"');
     assert.include(launch, 'if [ -s "$LOG_FILE" ]; then');
     assert.include(launch, "It wrote nothing to %s");
@@ -568,7 +571,9 @@ describe("ssh tunnel scripts", () => {
                 ...makeSuccessfulProcess(""),
                 exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
                 stderr: Stream.make(
-                  new TextEncoder().encode("Remote T3 server did not stop within 2 seconds.\n"),
+                  new TextEncoder().encode(
+                    "Remote Astrolabe server did not stop within 2 seconds.\n",
+                  ),
                 ),
               };
             }
@@ -611,7 +616,7 @@ describe("ssh tunnel scripts", () => {
             assert.instanceOf(disconnected.failure, SshCommandError);
             assert.equal(
               disconnected.failure.message,
-              "Remote T3 server did not stop within 2 seconds.",
+              "Remote Astrolabe server did not stop within 2 seconds.",
             );
           }
         } else {
@@ -1112,8 +1117,8 @@ describe("archive runner script", () => {
     const script = [
       "set -eu",
       `mkdir -p '${stage}' '${release}'`,
-      `printf '#!/bin/sh\\necho t3 v${archiveVersion}\\n' > '${stage}/t3'`,
-      `chmod +x '${stage}/t3'`,
+      `printf '#!/bin/sh\\necho astrolabe v${archiveVersion}\\n' > '${stage}/astrolabe'`,
+      `chmod +x '${stage}/astrolabe'`,
       `tar -czf '${release}/${stem}.tar.gz' -C '${root}/stage' '${stem}'`,
       `cd '${release}' && (sha256sum '${stem}.tar.gz' 2>/dev/null || shasum -a 256 '${stem}.tar.gz') > SHA256SUMS`,
     ].join("\n");
@@ -1177,9 +1182,9 @@ describe("archive runner script", () => {
         assert.equal(yield* fs.readFileString(`${bin}/installs`), "\n");
         for (const result of results) {
           assert.equal(result.exitCode, 0, result.stderr);
-          assert.include(result.stdout, `t3 v${archiveVersion}`);
+          assert.include(result.stdout, `astrolabe v${archiveVersion}`);
         }
-        const versionsDir = `${home}/.t3/runtime/versions`;
+        const versionsDir = `${home}/.astrolabe/runtime/versions`;
         assert.deepEqual(yield* fs.readDirectory(versionsDir), [archiveVersion]);
         assert.equal(
           (yield* fs.readFileString(`${versionsDir}/${archiveVersion}/.install-complete`)).trim(),
@@ -1268,7 +1273,7 @@ server.listen(Number(flag("--port")), "127.0.0.1", () => {
     const fs = yield* FileSystem.FileSystem;
     const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-launch-script-" });
     const home = `${root}/home`;
-    const stateDir = `${home}/.t3/ssh-launch/test-state`;
+    const stateDir = `${home}/.astrolabe/ssh-launch/test-state`;
     const fakeServer = `${root}/fake-t3.cjs`;
     const launch = `${root}/launch.sh`;
     yield* fs.makeDirectory(stateDir, { recursive: true });
@@ -1312,7 +1317,15 @@ server.listen(Number(flag("--port")), "127.0.0.1", () => {
     const startDefaultHomeServer = (flags: ReadonlyArray<string>) =>
       Effect.gen(function* () {
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-        const args = [fakeServer, "serve", "--port", "0", "--base-dir", `${home}/.t3`, ...flags];
+        const args = [
+          fakeServer,
+          "serve",
+          "--port",
+          "0",
+          "--base-dir",
+          `${home}/.astrolabe`,
+          ...flags,
+        ];
         const server = yield* spawner.spawn(ChildProcess.make("node", args));
         const port = yield* server.stdout.pipe(
           Stream.decodeText(),
@@ -1474,7 +1487,7 @@ server.listen(Number(flag("--port")), "127.0.0.1", () => {
         assert.include(zombieState.stdout, "Z");
         yield* fs.writeFileString(`${stateDir}/pid`, `${zombie}\n`);
         yield* fs.writeFileString(
-          `${home}/.t3/userdata/server-runtime.json`,
+          `${home}/.astrolabe/userdata/server-runtime.json`,
           JSON.stringify({
             version: 1,
             pid: zombie,

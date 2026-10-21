@@ -48,7 +48,7 @@ class AgentNotificationsTest {
       }
     )
     AgentNotifications.clear(context)
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", true)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", true)
     // The fixtures alert for this thread; a resumed app is showing it.
     AgentNotifications.setThreadOnScreen("/threads/environment/thread")
   }
@@ -193,7 +193,7 @@ class AgentNotificationsTest {
     val alert = manager.activeNotifications.single()
     assertEquals("5 agents finished", alert.notification.extras.getString(Notification.EXTRA_TITLE))
     assertEquals(titles, alert.notification.extras.getString(Notification.EXTRA_BIG_TEXT))
-    assertEquals("t3code-dev://", shadowOf(alert.notification.contentIntent).savedIntent.dataString)
+    assertEquals("astrolabe-dev://", shadowOf(alert.notification.contentIntent).savedIntent.dataString)
   }
 
   @Test
@@ -218,10 +218,10 @@ class AgentNotificationsTest {
   fun reopeningSameAccountPreservesCardsDeduplicationAndDismissal() {
     val message = update("attention", true)
     AgentNotifications.receive(context, message)
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", true)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", true)
     assertEquals(2, manager.activeNotifications.size)
     AgentNotifications.dismiss(context)
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", true)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", true)
     AgentNotifications.receive(context, message)
     assertEquals("t3-agent-alert", manager.activeNotifications.single().tag)
   }
@@ -229,10 +229,10 @@ class AgentNotificationsTest {
   @Test
   fun changingAccountOrDeviceClearsOldCardsAndRejectsOldPushes() {
     AgentNotifications.receive(context, update("attention", true))
-    AgentNotifications.configure(context, "device", "different-user", "t3code-dev", true)
+    AgentNotifications.configure(context, "device", "different-user", "astrolabe-dev", true)
     AgentNotifications.receive(context, update("attention", true))
     assertTrue(manager.activeNotifications.isEmpty())
-    AgentNotifications.configure(context, "different-device", "user", "t3code-dev", true)
+    AgentNotifications.configure(context, "different-device", "user", "astrolabe-dev", true)
     AgentNotifications.receive(context, update("attention", true))
     assertTrue(manager.activeNotifications.isEmpty())
     AgentNotifications.clear(context)
@@ -259,7 +259,7 @@ class AgentNotificationsTest {
     val card = manager.activeNotifications.single().notification
     assertEquals(lines.joinToString("\n"), card.extras.getString(Notification.EXTRA_BIG_TEXT))
     assertEquals(
-      "t3code-dev://threads/environment/thread",
+      "astrolabe-dev://threads/environment/thread",
       shadowOf(card.contentIntent).savedIntent.dataString
     )
   }
@@ -310,7 +310,7 @@ class AgentNotificationsTest {
     assertTrue(manager.activeNotifications.isEmpty())
     AgentNotifications.receive(context, update("new-work", true))
     assertEquals("t3-agent-activity", manager.activeNotifications.single().tag)
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", false)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", false)
     assertTrue(manager.activeNotifications.isEmpty())
   }
 
@@ -354,7 +354,7 @@ class AgentNotificationsTest {
     )
     assertEquals(listOf("Approve", "Dismiss"), card.actions.map { it.title.toString() })
     assertEquals(
-      "t3code-dev://threads/environment/thread",
+      "astrolabe-dev://threads/environment/thread",
       shadowOf(card.actions[0].actionIntent).savedIntent.dataString
     )
     assertEquals("Approve", card.extras.getString(NotificationCompat.EXTRA_SHORT_CRITICAL_TEXT))
@@ -371,7 +371,7 @@ class AgentNotificationsTest {
     assertEquals("2 need you", next.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
     assertEquals("Answer", next.actions[0].title.toString())
     assertEquals(
-      "t3code-dev://threads/another-environment/another-thread",
+      "astrolabe-dev://threads/another-environment/another-thread",
       shadowOf(next.actions[0].actionIntent).savedIntent.dataString
     )
     assertEquals("Answer", next.extras.getString(NotificationCompat.EXTRA_SHORT_CRITICAL_TEXT))
@@ -551,13 +551,13 @@ class AgentNotificationsTest {
     AgentNotifications.receive(context, update("work", true))
     AgentNotifications.dismiss(context)
     assertTrue(alarms.scheduledAlarms.isEmpty())
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", false)
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", true)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", false)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", true)
     AgentNotifications.receive(context, update("work", true))
     assertEquals(1, alarms.scheduledAlarms.size)
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", false)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", false)
     assertTrue(alarms.scheduledAlarms.isEmpty())
-    AgentNotifications.configure(context, "device", "user", "t3code-dev", true)
+    AgentNotifications.configure(context, "device", "user", "astrolabe-dev", true)
     AgentNotifications.receive(context, update("work", true))
     AgentNotifications.clear(context)
     assertTrue(alarms.scheduledAlarms.isEmpty())

@@ -11,6 +11,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// Astrolabe: people set ASTROLABE_*, and this file reads T3CODE_*. The same
+// mapping as packages/shared/src/astrolabeEnv.ts, inline because the launcher
+// has no dependencies. The executable it starts inherits the result.
+if (process.env.ASTROLABE_ENV_APPLIED !== "1") {
+  for (const name of ["T3CODE_HOME", "T3CODE_PORT", "T3CODE_HOST"]) delete process.env[name];
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("ASTROLABE_"))
+      process.env[`T3CODE_${key.slice("ASTROLABE_".length)}`] = value;
+  }
+  process.env.ASTROLABE_ENV_APPLIED = "1";
+}
+
 const { version } = JSON.parse(
   fs.readFileSync(path.join(import.meta.dirname, "../package.json"), "utf8"),
 );
@@ -19,7 +31,7 @@ const SUPPORTED = ["darwin-arm64", "linux-arm64", "linux-x64", "win32-arm64", "w
 
 function t3Home() {
   const raw = (process.env.T3CODE_HOME || "").trim();
-  if (raw === "") return path.join(os.homedir(), ".t3");
+  if (raw === "") return path.join(os.homedir(), ".astrolabe");
   if (raw === "~") return os.homedir();
   if (raw.startsWith("~/") || raw.startsWith("~\\")) return path.join(os.homedir(), raw.slice(2));
   return path.resolve(raw);
@@ -56,7 +68,7 @@ async function download(url, file) {
         shown = step;
         const percent = total ? ` ${step}%` : "";
         process.stderr.write(
-          `\r\x1b[2Kt3: downloading T3 Code ${version}${percent} (${(received / 1048576).toFixed(1)} MB)`,
+          `\r\x1b[2Kastrolabe: downloading Astrolabe ${version}${percent} (${(received / 1048576).toFixed(1)} MB)`,
         );
       }
     }
@@ -134,7 +146,7 @@ async function main() {
   const key = `${process.platform}-${process.arch}`;
   if (!SUPPORTED.includes(key)) {
     throw new Error(
-      `no T3 Code CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).\n` +
+      `no Astrolabe CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).\n` +
         "The desktop app is at https://github.com/pingdotgg/t3code/releases",
     );
   }
@@ -146,7 +158,7 @@ async function main() {
   // so forwarding SIGINT too would deliver it twice.
   const ipc = process.send !== undefined;
   const child = spawn(
-    path.join(dir, process.platform === "win32" ? "t3.exe" : "t3"),
+    path.join(dir, process.platform === "win32" ? "astrolabe.exe" : "astrolabe"),
     process.argv.slice(2),
     {
       stdio: ipc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
@@ -169,7 +181,7 @@ async function main() {
 }
 
 function fail(error) {
-  process.stderr.write(`t3: ${error.message}\n`);
+  process.stderr.write(`astrolabe: ${error.message}\n`);
   process.exit(1);
 }
 

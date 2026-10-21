@@ -120,7 +120,7 @@ it.effect("setup without root does not report a host without fonts as ready", ()
   Effect.gen(function* () {
     const { commands, output } = yield* runSetup({ root: false });
     expect(output).toContain(
-      "T3's browser needs fontconfig and system fonts; setup installs them.",
+      "Astrolabe's browser needs fontconfig and system fonts; setup installs them.",
     );
     expect(output).toContain("This needs root. Run:");
     expect(output).not.toContain("ready");
@@ -143,6 +143,6 @@ it.effect("setup as root installs missing libraries and fonts after one package 
       "fonts-liberation",
     ]);
     expect(output).toContain("Installed the browser's fonts.");
-    expect(output).toContain("This host is ready for T3's browser.");
+    expect(output).toContain("This host is ready for Astrolabe's browser.");
   }),
 );

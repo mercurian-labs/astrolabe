@@ -15,9 +15,9 @@ const devBundleIdSuffix = NodePath.basename(repoRoot)
   .replaceAll(/[^a-z0-9]+/g, "");
 const APP_DISPLAY_NAME = isDevelopment ? "Astrolabe (Dev)" : "Astrolabe (Beta)";
 const APP_BUNDLE_ID = isDevelopment
-  ? `com.t3tools.t3code.dev.${devBundleIdSuffix || "local"}`
-  : "com.t3tools.t3code";
-const APP_PROTOCOL_SCHEMES = isDevelopment ? ["t3code-dev"] : ["t3code"];
+  ? `com.mercurian.astrolabe.dev.${devBundleIdSuffix || "local"}`
+  : "com.mercurian.astrolabe";
+const APP_PROTOCOL_SCHEMES = isDevelopment ? ["astrolabe-dev"] : ["astrolabe"];
 const LAUNCHER_VERSION = 20;
 const developmentMacIconPngPath = NodePath.join(
   repoRoot,

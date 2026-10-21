@@ -1,5 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
+import type { ComposerControl } from "../../components/brand/ComposerControlIcons";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -247,6 +248,15 @@ const FOLLOW_UP_ACTION_SUBTITLE = {
   restart: "Start the turn over with this message",
 } as const;
 
+// The brand control for each primary-button state; editing a queued message keeps its checkmark.
+const SEND_PRESENTATION_CONTROL: Record<ComposerSendPresentation["icon"], ComposerControl | null> =
+  {
+    "arrow.up": "send",
+    "list.number": "queue",
+    "arrow.turn.left.up": "steer",
+    checkmark: null,
+  };
+
 function SendActionButton(props: {
   readonly accessibilityLabel: string;
   readonly presentation: ComposerSendPresentation;
@@ -257,6 +267,7 @@ function SendActionButton(props: {
   const button = (
     <ComposerActionButton
       accessibilityLabel={props.accessibilityLabel}
+      control={SEND_PRESENTATION_CONTROL[presentation.icon]}
       icon={presentation.icon}
       variant="primary"
       disabled={props.disabled}
@@ -623,7 +634,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: props.environmentId,
       threadTitle: props.selectedThread.title,
-      projectTitle: props.environmentLabel ?? "T3 Code",
+      projectTitle: props.environmentLabel ?? "Astrolabe",
     });
   };
 
@@ -1073,8 +1084,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 {showStopAction ? (
                   <ComposerActionButton
                     accessibilityLabel="Stop agent"
+                    control="stop"
                     icon="stop.fill"
-                    variant="danger"
                     disabled={!props.canOperateThread}
                     onPress={props.onStopThread}
                   />
@@ -1160,8 +1171,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   {showStopAction ? (
                     <ComposerActionButton
                       accessibilityLabel="Stop agent"
+                      control="stop"
                       icon="stop.fill"
-                      variant="danger"
                       disabled={!props.canOperateThread}
                       onPress={props.onStopThread}
                     />

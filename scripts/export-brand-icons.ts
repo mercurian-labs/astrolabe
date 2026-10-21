@@ -17,6 +17,9 @@ import { BRAND_ASSET_PATHS, DEVELOPMENT_PUBLIC_ICON_OVERRIDES } from "./lib/bran
 import { encodePngIco, readPngDimensions, WINDOWS_ICON_SIZES } from "./lib/icon-export.ts";
 
 const DESIGN_GENERATION = 26;
+// Sizes drawn from each channel's small project: the mark redrawn so the pivot's ring
+// gap survives at device size, rather than the master shrunk.
+const SMALL_ICON_SIZES: ReadonlySet<number> = new Set([16, 24]);
 const ICON_COMPOSER_EXECUTABLE_PARTS = [
   "Contents",
   "Applications",
@@ -57,6 +60,7 @@ interface VariantOutputs {
 interface IconVariant {
   readonly label: string;
   readonly source: string;
+  readonly smallSource: string;
   readonly outputs: VariantOutputs;
 }
 
@@ -206,6 +210,7 @@ const ICON_VARIANTS = [
   {
     label: "development",
     source: BRAND_ASSET_PATHS.developmentIconComposerProject,
+    smallSource: BRAND_ASSET_PATHS.developmentSmallIconComposerProject,
     outputs: {
       ios: BRAND_ASSET_PATHS.developmentIosIconPng,
       macos: BRAND_ASSET_PATHS.developmentDesktopIconPng,
@@ -220,6 +225,7 @@ const ICON_VARIANTS = [
   {
     label: "preview",
     source: BRAND_ASSET_PATHS.nightlyIconComposerProject,
+    smallSource: BRAND_ASSET_PATHS.nightlySmallIconComposerProject,
     outputs: {
       ios: BRAND_ASSET_PATHS.nightlyIosIconPng,
       macos: BRAND_ASSET_PATHS.nightlyMacIconPng,
@@ -234,6 +240,7 @@ const ICON_VARIANTS = [
   {
     label: "production",
     source: BRAND_ASSET_PATHS.productionIconComposerProject,
+    smallSource: BRAND_ASSET_PATHS.productionSmallIconComposerProject,
     outputs: {
       ios: BRAND_ASSET_PATHS.productionIosIconPng,
       macos: BRAND_ASSET_PATHS.productionMacIconPng,
@@ -246,14 +253,6 @@ const ICON_VARIANTS = [
     },
   },
 ] as const satisfies ReadonlyArray<IconVariant>;
-
-const MACOS_EXPORT_CODEX_PROMPT = [
-  "Use [@Computer](plugin://computer-use@openai-bundled) and the Icon Composer app to export the three macOS app icons in this repository.",
-  "For each project below, use Platform: macOS pre-Tahoe, Appearance: Default, Size: 1024pt, and Scale: 1×, then save the PNG to the exact destination:",
-  ...ICON_VARIANTS.map((variant) => `- ${variant.source} -> ${variant.outputs.macos}`),
-  "Do not resize, composite, or otherwise post-process the exported PNGs.",
-  "Verify every result is 1024×1024 and has the classic macOS safe area: an 824×824 opaque body inset 100px on every side, with only Icon Composer's native shadow extending beyond it.",
-];
 
 const RepositoryRoot = Effect.service(Path.Path).pipe(
   Effect.flatMap((path) => path.fromFileUrl(new URL("..", import.meta.url))),
@@ -555,20 +554,27 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const sourcePath = path.join(repositoryRoot, variant.source);
-  const sourceExists = yield* fs.exists(sourcePath).pipe(
-    Effect.mapError(
-      (cause) =>
-        new IconExportFileSystemError({
-          operation: "check-path",
-          path: sourcePath,
-          cause,
-        }),
-    ),
-  );
-  if (!sourceExists) {
-    return yield* new IconExportSourceMissingError({ sourcePath: variant.source });
-  }
+  const resolveSource = Effect.fn("iconExport.renderVariant.resolveSource")(function* (
+    relativePath: string,
+  ) {
+    const sourcePath = path.join(repositoryRoot, relativePath);
+    const sourceExists = yield* fs.exists(sourcePath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new IconExportFileSystemError({
+            operation: "check-path",
+            path: sourcePath,
+            cause,
+          }),
+      ),
+    );
+    if (!sourceExists) {
+      return yield* new IconExportSourceMissingError({ sourcePath: relativePath });
+    }
+    return sourcePath;
+  });
+  const sourcePath = yield* resolveSource(variant.source);
+  const smallSourcePath = yield* resolveSource(variant.smallSource);
 
   const renditionCache = new Map<string, Buffer>();
   const render = Effect.fn("iconExport.renderVariant.rendition")(function* (
@@ -580,7 +586,8 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
     if (cached) return cached;
 
     const outputPath = path.join(temporaryDirectory, `${variant.label}-${platform}-${size}.png`);
-    const contents = yield* renderIcon(toolPath, sourcePath, outputPath, platform, size);
+    const source = SMALL_ICON_SIZES.has(size) ? smallSourcePath : sourcePath;
+    const contents = yield* renderIcon(toolPath, source, outputPath, platform, size);
     renditionCache.set(cacheKey, contents);
     return contents;
   });
@@ -611,15 +618,10 @@ const logManualMacOsExportInstructions = Effect.fn("iconExport.logManualMacOsExp
   function* () {
     yield* Console.warn(
       [
-        "macOS icons require Icon Composer's GUI-only pre-Tahoe preset and were not changed.",
-        "Export each source with Platform: macOS pre-Tahoe, Appearance: Default, Size: 1024pt, Scale: 1×:",
-        ...ICON_VARIANTS.map((variant) => `- ${variant.source} -> ${variant.outputs.macos}`),
+        "macOS icons were not changed: Icon Composer cannot export the classic 824×824 tile.",
+        "Copy each channel's macos-1024.png from the branding package's identity/astrolabe/icons/:",
+        ...ICON_VARIANTS.map((variant) => `- ${variant.outputs.macos}`),
         "See assets/README.md for the complete workflow.",
-        "",
-        "Copy/paste this prompt into Codex to perform the native exports:",
-        "---",
-        ...MACOS_EXPORT_CODEX_PROMPT,
-        "---",
       ].join("\n"),
     );
   },

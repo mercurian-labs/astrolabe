@@ -305,7 +305,7 @@ it.effect("warns to deregister when unlink has no stored CLI authorization", () 
     assert.equal(lines[0]?.text, "T3 Connect is disabled locally.");
     assert.include(lines[1]?.text, "The relay-side environment record was not revoked.");
     assert.include(lines[1]?.text, "T3 Connect page of your T3 account");
-    assert.include(lines[1]?.text, "`t3 connect login`");
+    assert.include(lines[1]?.text, "`astrolabe connect login`");
     assert.notInclude(lines.map((line) => line.text).join("\n"), "Revoked the relay-side");
   }),
 );
@@ -320,7 +320,7 @@ it.effect("points a failed relay unlink at retry and account deregistration", ()
     const warning = lines.find((line) => line.stream === "warn")?.text ?? "";
 
     assert.equal(lines[0]?.text, "T3 Connect is disabled locally.");
-    assert.include(warning, "Run `t3 connect unlink` again when the relay is reachable");
+    assert.include(warning, "Run `astrolabe connect unlink` again when the relay is reachable");
     assert.include(warning, "deregister it from the T3 Connect page of your T3 account");
     assert.notInclude(warning, "relay unreachable");
   }),

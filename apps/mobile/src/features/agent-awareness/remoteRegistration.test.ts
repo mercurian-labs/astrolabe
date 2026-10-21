@@ -317,13 +317,13 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         label: "Julius's iPhone",
         iosMajorVersion: 18,
         appVersion: "1.0.0",
-        bundleId: "com.t3tools.t3code.preview",
+        bundleId: "com.mercurian.astrolabe.preview",
         apsEnvironment: resolveApsEnvironment("preview"),
         notificationsEnabled: true,
         preferences: {},
       }),
     ).toMatchObject({
-      bundleId: "com.t3tools.t3code.preview",
+      bundleId: "com.mercurian.astrolabe.preview",
       apsEnvironment: "production",
     });
   });

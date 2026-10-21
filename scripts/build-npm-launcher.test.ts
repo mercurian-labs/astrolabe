@@ -56,10 +56,10 @@ const serveFakeRelease = Effect.fn("test.serveFakeRelease")(function* (root: str
     recursive: true,
   });
   yield* fs.writeFileString(
-    path.join(root, "release", stem, "t3"),
+    path.join(root, "release", stem, "astrolabe"),
     '#!/bin/sh\necho "stub $* launcher=$T3CODE_NPM_LAUNCHER_PATH"\nexit 7\n',
   );
-  yield* fs.chmod(path.join(root, "release", stem, "t3"), 0o755);
+  yield* fs.chmod(path.join(root, "release", stem, "astrolabe"), 0o755);
   const tar = yield* run("tar", ["-czf", archiveName, stem], {
     cwd: path.join(root, "release"),
     env: { PATH: process.env.PATH },
@@ -114,9 +114,9 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         const manifest = yield* decodeManifest(
           yield* fs.readFileString(path.join(output.packageDir, "package.json")),
         );
-        assert.equal(manifest.name, "t3");
+        assert.equal(manifest.name, "@mercurian/astrolabe");
         assert.equal(manifest.version, VERSION);
-        assert.deepStrictEqual(manifest.bin, { t3: "./bin/t3.mjs" });
+        assert.deepStrictEqual(manifest.bin, { astrolabe: "./bin/astrolabe.mjs" });
         // Nothing for npm to resolve, so nothing that can lag behind the launcher.
         assert.isUndefined(manifest.dependencies);
         assert.isUndefined(manifest.optionalDependencies);
@@ -133,12 +133,15 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
 
         const release = yield* serveFakeRelease(root);
         const home = path.join(root, "home");
+        // People set ASTROLABE_*; a home inherited from a T3 Code shell is ignored.
+        const t3codeHome = path.join(root, "t3code-home");
         const env = {
           PATH: process.env.PATH,
-          T3CODE_HOME: home,
-          T3CODE_RELEASE_BASE_URL: release.baseUrl,
+          T3CODE_HOME: t3codeHome,
+          ASTROLABE_HOME: home,
+          ASTROLABE_RELEASE_BASE_URL: release.baseUrl,
         };
-        const launcher = path.join(packageDir, "bin/t3.mjs");
+        const launcher = path.join(packageDir, "bin/astrolabe.mjs");
         const first = yield* run(process.execPath, [launcher, "serve", "a b"], {
           cwd: root,
           env,
@@ -152,6 +155,7 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
           VERSION,
         );
         assert.isTrue(yield* fs.exists(path.join(versionDir, "node_modules/native")));
+        assert.isFalse(yield* fs.exists(t3codeHome));
         assert.deepStrictEqual(
           (yield* fs.readDirectory(path.join(home, "runtime/versions"))).sort(),
           [VERSION],
@@ -165,7 +169,7 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
 
         // Services installed before 0.0.41 fork dist/bin.mjs and talk to the
         // server over IPC; the channel and SIGTERM must reach the executable.
-        const ipcServer = path.join(home, "runtime/versions", VERSION, "t3");
+        const ipcServer = path.join(home, "runtime/versions", VERSION, "astrolabe");
         yield* fs.writeFileString(
           ipcServer,
           `#!${process.execPath}\nprocess.on("SIGTERM", () => process.exit(23));\nprocess.on("message", (m) => process.send({ reply: m }));\nprocess.send({ args: process.argv.slice(2) });\n`,
@@ -191,7 +195,7 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         const raceHome = path.join(root, "race-home");
         const launch = run(process.execPath, [launcher, "--version"], {
           cwd: root,
-          env: { ...env, T3CODE_HOME: raceHome },
+          env: { ...env, ASTROLABE_HOME: raceHome },
         });
         const [one, two] = yield* Effect.all([launch, launch], { concurrency: "unbounded" });
         assert.equal(one.exitCode, 7, one.stderr);
@@ -204,7 +208,7 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         release.corruptChecksum();
         const corrupt = yield* run(process.execPath, [launcher, "--version"], {
           cwd: root,
-          env: { ...env, T3CODE_HOME: path.join(root, "other-home") },
+          env: { ...env, ASTROLABE_HOME: path.join(root, "other-home") },
         });
         assert.equal(corrupt.exitCode, 1);
         assert.include(corrupt.stderr, "checksum mismatch");

@@ -1,3 +1,4 @@
+import { ComposerControlIcon, type ComposerControl } from "./brand/ComposerControlIcons";
 import type { ComponentProps, ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -250,6 +251,8 @@ export function ComposerToolbarScroller(props: {
 export function ComposerActionButton(props: {
   readonly accessibilityLabel: string;
   readonly disabled?: boolean;
+  /** A brand control, drawn instead of the symbol. Only the composer's primary button uses one. */
+  readonly control?: ComposerControl | null;
   readonly icon: ComponentProps<typeof SymbolView>["name"];
   readonly onPress: () => void;
   readonly variant?: "primary" | "danger";
@@ -282,15 +285,25 @@ export function ComposerActionButton(props: {
               : "bg-primary",
         )}
       >
-        <SymbolView
-          name={props.icon}
-          size={smallIconSize}
-          weight="semibold"
-          tintColorClassName={
-            props.variant === "danger" ? "accent-danger-foreground" : "accent-primary-foreground"
-          }
-          type="monochrome"
-        />
+        {props.control ? (
+          <ComposerControlIcon
+            control={props.control}
+            size={Math.round(20 * scale)}
+            colorClassName={
+              props.variant === "danger" ? "accent-danger-foreground" : "accent-primary-foreground"
+            }
+          />
+        ) : (
+          <SymbolView
+            name={props.icon}
+            size={smallIconSize}
+            weight="semibold"
+            tintColorClassName={
+              props.variant === "danger" ? "accent-danger-foreground" : "accent-primary-foreground"
+            }
+            type="monochrome"
+          />
+        )}
       </View>
     </Pressable>
   );

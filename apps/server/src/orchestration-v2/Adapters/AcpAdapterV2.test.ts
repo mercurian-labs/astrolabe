@@ -634,9 +634,9 @@ function assertReinjectedInstructions(
   request: string,
 ) {
   const text = blocks[0]?.text ?? "";
-  assert.include(text, "T3 Code interaction mode: Default");
-  assert.include(text, "T3 Code collaborative browser");
-  assert.include(text, "T3 Code orchestration");
+  assert.include(text, "Astrolabe interaction mode: Default");
+  assert.include(text, "Astrolabe collaborative browser");
+  assert.include(text, "Astrolabe orchestration");
   assert.include(text, `<user_request>\n${request}\n</user_request>`);
 }
 
@@ -1161,9 +1161,9 @@ describe("AcpAdapterV2", () => {
       assert.notInclude(whitespaceCommand.prompt, "<t3_code_instructions>");
       const firstDefault = yield* runTurn(2, defaultPolicy, "First default request.");
       assert.equal(firstDefault.textBlockCount, 2);
-      assert.include(firstDefault.prompt, "T3 Code interaction mode: Default");
-      assert.include(firstDefault.prompt, "T3 Code collaborative browser");
-      assert.include(firstDefault.prompt, "T3 Code orchestration");
+      assert.include(firstDefault.prompt, "Astrolabe interaction mode: Default");
+      assert.include(firstDefault.prompt, "Astrolabe collaborative browser");
+      assert.include(firstDefault.prompt, "Astrolabe orchestration");
       assert.notInclude(
         firstDefault.methods,
         "session/set_config_option",
@@ -1176,14 +1176,14 @@ describe("AcpAdapterV2", () => {
 
       const planPolicy = policy("plan");
       const firstPlan = yield* runTurn(4, planPolicy, "Plan this change.");
-      assert.include(firstPlan.prompt, "T3 Code interaction mode: Plan");
+      assert.include(firstPlan.prompt, "Astrolabe interaction mode: Plan");
       assert.include(firstPlan.methods, "session/set_config_option");
       assert.include(
         (yield* runTurn(5, planPolicy, "Continue planning.")).prompt,
         "Continue planning.",
       );
       const restoredBuild = yield* runTurn(6, defaultPolicy, "Implement the change.");
-      assert.include(restoredBuild.prompt, "T3 Code interaction mode: Default");
+      assert.include(restoredBuild.prompt, "Astrolabe interaction mode: Default");
       assert.include(
         restoredBuild.methods,
         "session/set_config_option",

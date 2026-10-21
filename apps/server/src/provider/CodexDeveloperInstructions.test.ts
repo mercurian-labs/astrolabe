@@ -72,7 +72,7 @@ describe("buildCodexDeveloperInstructions", () => {
       buildCodexDeveloperInstructions("default"),
       /^<collaboration_mode># Collaboration Mode: Default/,
     );
-    NodeAssert.match(instructions, /T3 Code/);
+    NodeAssert.match(instructions, /Astrolabe/);
     NodeAssert.match(instructions, /Codex harness/);
     NodeAssert.match(instructions, /as gpt-5\.3-codex with high reasoning effort/);
   });
@@ -142,7 +142,7 @@ describe("T3 browser developer instructions", () => {
       const instructions = toolInstructions(runtime, false);
       NodeAssert.doesNotMatch(instructions, /preview_status/);
       NodeAssert.doesNotMatch(instructions, /preview_open/);
-      NodeAssert.doesNotMatch(instructions, /T3 Code collaborative browser/);
+      NodeAssert.doesNotMatch(instructions, /Astrolabe collaborative browser/);
       NodeAssert.doesNotMatch(instructions, /Do not switch to global browser skills/);
       NodeAssert.match(buildCodexDeveloperInstructions(mode), /<collaboration_mode>/);
       NodeAssert.match(buildCodexDeveloperInstructions(mode), /<\/collaboration_mode>/);

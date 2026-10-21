@@ -61,7 +61,7 @@ describe("remote helper lifecycle", () => {
           "#!/bin/sh\nprintf 'emulated webcam<N> none\\n' >&2\n",
           { mode: 0o755 },
         );
-        const root = NodePath.join(home, ".t3/device");
+        const root = NodePath.join(home, ".astrolabe/device");
         const hubDir = NodePath.join(root, `tools/expo-device-hub@${DEVICE_HUB_VERSION}`);
         const agentDir = NodePath.join(root, `tools/agent-device@${AGENT_DEVICE_VERSION}`);
         const hub = NodePath.join(hubDir, "node_modules/expo-device-hub/dist/server/cli.mjs");

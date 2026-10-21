@@ -324,7 +324,7 @@ describe("readCursorAccountUsage", () => {
         accountKey: null,
         records: [],
         missing: false,
-        error: "Allow Keychain access on the Mac running T3 Code, then refresh.",
+        error: "Allow Keychain access on the Mac running Astrolabe, then refresh.",
       });
     }).pipe(Effect.provide(NodeServices.layer)),
   );

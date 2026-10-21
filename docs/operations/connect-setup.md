@@ -65,12 +65,12 @@ URL selects the deployment.
 Enable Clerk's Native API and add the desktop redirects to its SSO redirect allowlist:
 
 ```text
-t3code-dev://app/
-t3code://app/
+astrolabe-dev://app/
+astrolabe://app/
 ```
 
 Add the corresponding origin to the Clerk instance's Backend API `allowed_origins` array.
-Development uses `t3code-dev://app`; production uses `t3code://app`. Update the array with
+Development uses `astrolabe-dev://app`; production uses `astrolabe://app`. Update the array with
 `PATCH https://api.clerk.com/v1/instance` using the Clerk secret key, preserving existing entries.
 The Clerk Electron integration handles token
 persistence and system-browser callback delivery.
@@ -79,24 +79,24 @@ persistence and system-browser callback delivery.
 
 Clerk's native Android SDK uses `clerk://<applicationId>.callback`. In the Clerk instance selected by the app's publishable key, add each supported package to **Native applications > Allowlist for mobile SSO redirect**:
 
-| Variant     | Callback                                      |
-| ----------- | --------------------------------------------- |
-| Development | `clerk://com.t3tools.t3code.dev.callback`     |
-| Preview     | `clerk://com.t3tools.t3code.preview.callback` |
-| Production  | `clerk://com.t3tools.t3code.callback`         |
+| Variant     | Callback                                           |
+| ----------- | -------------------------------------------------- |
+| Development | `clerk://com.mercurian.astrolabe.dev.callback`     |
+| Preview     | `clerk://com.mercurian.astrolabe.preview.callback` |
+| Production  | `clerk://com.mercurian.astrolabe.callback`         |
 
-Preserve existing entries. These callbacks are separate from the `t3code-dev` / `t3code-preview` / `t3code` navigation schemes. A private development build using the production Clerk key still needs its development callback allowed by that instance's administrator; rebuilding the same package does not change the allowlist.
+Preserve existing entries. These callbacks are separate from the `astrolabe-dev` / `astrolabe-preview` / `astrolabe` navigation schemes. A private development build using the production Clerk key still needs its development callback allowed by that instance's administrator; rebuilding the same package does not change the allowlist.
 
 ## Desktop passkeys
 
-For a production macOS app with bundle ID `com.t3tools.t3code`:
+For a production macOS app with bundle ID `com.mercurian.astrolabe`:
 
 1. Create an explicit macOS App ID in the Apple Developer portal with **Associated Domains**.
 2. Create a provisioning profile for that App ID and the distribution signing certificate.
 3. In Clerk's Native API settings, add an iOS app with the same Apple Team ID and bundle ID.
    This setting also configures Electron/macOS passkeys.
 4. Check `https://<frontend-api>/.well-known/apple-app-site-association`. Its
-   `webcredentials.apps` must include `<TEAM_ID>.com.t3tools.t3code`.
+   `webcredentials.apps` must include `<TEAM_ID>.com.mercurian.astrolabe`.
 5. Configure signing as described in the [release runbook](./release.md#2-apple-signing--notarization-setup-macos).
 
 Local signed builds additionally use:
@@ -119,15 +119,15 @@ actual web and server ports. For example, with the default ports:
 ```sh
 VITE_DEV_SERVER_URL=http://127.0.0.1:5733 \
 T3CODE_PORT=13773 \
-  "/Applications/T3 Code (Alpha).app/Contents/MacOS/T3 Code (Alpha)"
+  "/Applications/Astrolabe (Alpha).app/Contents/MacOS/Astrolabe (Alpha)"
 ```
 
 Rebuild the signed app after native dependency, main-process, preload, entitlement, provisioning,
 or signing changes. Renderer edits can reuse it. Verify the installed bundle before testing:
 
 ```sh
-codesign --verify --deep --strict "/Applications/T3 Code (Alpha).app"
-codesign -d --entitlements :- "/Applications/T3 Code (Alpha).app"
+codesign --verify --deep --strict "/Applications/Astrolabe (Alpha).app"
+codesign -d --entitlements :- "/Applications/Astrolabe (Alpha).app"
 ```
 
 ## Restricting sign-ups
