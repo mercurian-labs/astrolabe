@@ -4784,6 +4784,19 @@ html:not(.js) .hover-only {
   background: var(--paper) var(--noise);
   color: var(--ink);
 }
+/* "Works with" is not part of the instrument's sky: it keeps the page's day palette at any hour, so
+   twilight stops at the strip's ruled top edge. */
+[data-relight] .works {
+  --paper: #fbf9f4;
+  --ink: #292724;
+  --ink-2: #57514a;
+  --ink-3: #7d766b;
+  --ink-4: #c3baaa;
+  --rule: #cfc4b1;
+  --rule-soft: #e6dfd2;
+  background: var(--paper) var(--noise);
+  color: var(--ink);
+}
 [data-relight] .sky {
   isolation: isolate;
 }
