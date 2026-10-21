@@ -1,0 +1,64 @@
+        <!-- ───────────────────────────────────────── Footer -->
+        <footer class="foot">
+          <div class="foot__matrix">
+            <div class="foot__prop">
+              <img src="/assets/brand/wordmark-small.svg" alt="Astrolabe" width="140" height="26" />
+              <p>An agent development environment, where every turn is a checkpoint you can return to, fork from and compare.</p>
+            </div>
+            <nav class="foot__group" aria-labelledby="foot-product">
+              <p class="tag" id="foot-product">Product</p>
+              <ul>
+                <li><a href="#threads">Threads</a></li>
+                <li><a href="#wikis">Wikis</a></li>
+                <li><a href="#changes">Changes</a></li>
+                <li><a href="#agents">Agents</a></li>
+                <li><a href="#anywhere">Anywhere</a></li>
+              </ul>
+            </nav>
+            <nav class="foot__group" aria-labelledby="foot-resources">
+              <p class="tag" id="foot-resources">Resources</p>
+              <ul>
+                <li><a href="#threads">How a thread works</a></li>
+                <li><a href="https://app.astrolabe.sh">Try Astrolabe</a></li>
+                <li><a href="https://app.astrolabe.sh">Sign in</a></li>
+              </ul>
+            </nav>
+            <div class="foot__symbol" aria-hidden="true">
+              <img src="/assets/brand/symbol.svg" alt="" width="70" height="90" />
+            </div>
+            <p class="foot__fine">© 2026 Mercurian. Astrolabe adapts T3 Code, used under the MIT license.</p>
+            <p class="foot__fine foot__fine--end">Mercury from the USGS MESSENGER global elevation model, simplified for illustration.</p>
+          </div>
+          <div class="foot__mark" data-ink-mark aria-hidden="true">
+            <svg class="mark" viewBox="0 0 1000 250" focusable="false">
+              <defs>
+                <filter id="mark-ink" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.028 0.04" numOctaves="3" seed="5" result="noise" />
+                  <feDisplacementMap in="SourceGraphic" in2="noise" scale="62" xChannelSelector="R" yChannelSelector="G" />
+                  <feGaussianBlur stdDeviation="0.55" />
+                  <feComponentTransfer><feFuncA type="linear" slope="5" intercept="-2.15" /></feComponentTransfer>
+                </filter>
+                <mask id="mark-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="250">
+                  <g filter="url(#mark-ink)">
+                    <circle class="mark__lag" cx="500" cy="125" r="0" fill="#fff" opacity="0.2" />
+                    <circle class="mark__lens" cx="500" cy="125" r="0" fill="#fff" />
+                  </g>
+                </mask>
+              </defs>
+              <g class="mark__build">
+                <path d="M0 44H1000" class="mark__dash" />
+                <path d="M0 200.75H1000" />
+                <path d="M20 30V236M980 30V236" class="mark__dash" />
+                <path d="M159.9 200.75v10M255.2 200.75v10M331.2 200.75v10M424.6 200.75v10M541.1 200.75v10M603.5 200.75v10M713 200.75v10M832.2 200.75v10M936.3 200.75v10" />
+                <path d="M56.2 115.8V20H96" />
+                <text x="102" y="24">Pivot</text>
+                <text x="20" y="236" dx="8">Baseline</text>
+                <text x="980" y="236" dx="-8" text-anchor="end">Astrolabe · wordmark</text>
+              </g>
+              <use class="mark__outline" href="#wm" x="20" y="44" width="960" height="176.77" />
+              <g class="mark__solid" mask="url(#mark-mask)">
+                <use href="#wm" x="20" y="44" width="960" height="176.77" />
+              </g>
+            </svg>
+          </div>
+        </footer>

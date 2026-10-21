@@ -1,0 +1,44 @@
+---
+import Sprite from "../components/Sprite.astro";
+import "../styles/drafting.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astrolabe · Chart twice, build once</title>
+    <meta
+      name="description"
+      content="Astrolabe is an agent development environment. Run the coding agents you already use, fork any turn to try a second direction, and ship each change with its docs."
+    />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#fbf9f4" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/assets/brand/icon-small.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png" />
+    <link rel="preload" href="/assets/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/plex-sans.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/plex-mono-500.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      // .js turns on the interactive states; .motion turns on the moving ones.
+      document.documentElement.classList.add("js");
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("motion");
+    </script>
+  </head>
+  <body>
+    <Sprite />
+
+    <a class="skip" href="#main">Skip to content</a>
+
+    <div class="sheet">
+      <div class="page">
+        <slot />
+      </div>
+    </div>
+    <script>
+      import "../scripts/drafting.js";
+    </script>
+  </body>
+</html>

@@ -1,0 +1,116 @@
+          <!-- ───────────────────────────────────────── [07] Agents and four moves -->
+          <section class="agents" id="agents" aria-labelledby="agents-title">
+            <div class="head">
+              <div class="head__main">
+                <p class="tag">[07] Agents</p>
+                <h2 id="agents-title" class="h2" data-reveal>Bring the agents you already have.</h2>
+              </div>
+              <p class="body head__aside" data-reveal>
+                Astrolabe drives the coding agents on your computer, signed in with your own accounts. Your
+                code goes to the provider you chose, the same as running its command line yourself. Switch
+                agents between turns; the thread notes each handoff.
+              </p>
+            </div>
+
+            <ol class="moves" data-moves>
+              <li class="move" id="move-fork">
+                <div class="move__sim sim" data-sim>
+                  <svg class="sf" viewBox="0 0 400 240" aria-hidden="true">
+                    <path class="sf-main" pathLength="1" d="M28 150H372" />
+                    <circle class="sf-n" style="--d: 0.25s" cx="84" cy="150" r="6" />
+                    <circle class="sf-n" style="--d: 0.45s" cx="152" cy="150" r="6" />
+                    <circle class="sf-n" style="--d: 0.65s" cx="220" cy="150" r="6" />
+                    <circle class="sf-n" style="--d: 0.85s" cx="300" cy="150" r="6" />
+                    <circle class="sf-ring" pathLength="1" cx="220" cy="150" r="14" />
+                    <text class="sf-t" x="220" y="190" text-anchor="middle">cp 3</text>
+                    <path class="sf-branch" pathLength="1" d="M220 150C262 150 254 78 298 78H352" />
+                    <circle class="sf-n" style="--d: 1.75s" cx="310" cy="78" r="6" />
+                    <circle class="sf-head" cx="352" cy="78" r="6" />
+                    <g class="sf-tag">
+                      <rect x="262" y="34" width="110" height="24" />
+                      <text x="317" y="50" text-anchor="middle">New thread</text>
+                    </g>
+                  </svg>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[01]</p>
+                  <h3 class="move__verb">Fork</h3>
+                  <p>Nothing runs until you send the fork its first message, so you can open one before you decide to use it.</p>
+                </div>
+              </li>
+              <li class="move" id="move-run">
+                <div class="move__sim sim sim--run" data-sim aria-hidden="true">
+                  <div class="sr">
+                    <p class="sr__head"><span>Codex</span><span class="sr__done">Done</span></p>
+                    <p class="sr__line" style="--n: 12; --d: 0.2s">Read 6 files</p>
+                    <p class="sr__line" style="--n: 22; --d: 0.7s">Edited ledger/round.ts <b>+42</b></p>
+                    <p class="sr__line" style="--n: 25; --d: 1.25s">Edited invoices/total.ts <b>+6</b></p>
+                    <p class="sr__line" style="--n: 20; --d: 1.85s">Ran pnpm test ledger</p>
+                    <p class="sr__foot">Branch ledger-rounding</p>
+                  </div>
+                  <div class="sr">
+                    <p class="sr__head"><span>Claude Code</span><span class="sr__live"><i></i>Working</span></p>
+                    <p class="sr__line" style="--n: 12; --d: 0.45s">Read 4 files</p>
+                    <p class="sr__line" style="--n: 24; --d: 0.95s">Edited invoices/round.ts <b>+31</b></p>
+                    <p class="sr__line" style="--n: 23; --d: 1.55s">Edited round.test.ts <b>+58</b></p>
+                    <p class="sr__line" style="--n: 21; --d: 2.1s">Running pnpm test …</p>
+                    <p class="sr__foot">Branch edge-rounding</p>
+                  </div>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[02]</p>
+                  <h3 class="move__verb">Run</h3>
+                  <p>Each fork shows its own status in the sidebar, working or waiting for you, and its agent in the composer.</p>
+                </div>
+              </li>
+              <li class="move" id="move-compare">
+                <div class="move__sim sim sim--cmp" data-sim aria-hidden="true">
+                  <div class="sc">
+                    <p class="sc__head">Codex · ledger</p>
+                    <p class="sc__row sc__row--del" style="--d: 0.15s"><i>−</i>round(item.amount)</p>
+                    <p class="sc__row" style="--d: 0.3s"><i>+</i>const exact = sum(items)</p>
+                    <p class="sc__row sc__row--key" style="--d: 0.45s"><i>+</i>roundMinor(exact, currency)</p>
+                    <p class="sc__foot">ledger/src/round.ts · idle</p>
+                  </div>
+                  <div class="sc">
+                    <p class="sc__head">Claude Code · invoices</p>
+                    <p class="sc__row sc__row--del" style="--d: 0.25s"><i>−</i>round(item.amount)</p>
+                    <p class="sc__row" style="--d: 0.4s"><i>+</i>const step = currency.step</p>
+                    <p class="sc__row sc__row--key" style="--d: 0.55s"><i>+</i>roundTo(line, step)</p>
+                    <p class="sc__foot">invoices/src/round.ts · working</p>
+                  </div>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[03]</p>
+                  <h3 class="move__verb">Compare</h3>
+                  <p>Open the forks as chat tabs with a diff beside each, and choose on what actually changed.</p>
+                </div>
+              </li>
+              <li class="move" id="move-keep">
+                <div class="move__sim sim sim--keep" data-sim aria-hidden="true">
+                  <div class="sk">
+                    <p class="sk__crumb">Wiki · engineering</p>
+                    <p class="sk__title">Rounding</p>
+                    <p class="sk__bar" style="--w: 94%"></p>
+                    <p class="sk__bar" style="--w: 80%"></p>
+                    <p class="sk__new"><span>Rounding happens once, in the ledger, using half to even.</span></p>
+                    <p class="sk__bar" style="--w: 88%"></p>
+                    <p class="sk__bar" style="--w: 56%"></p>
+                    <p class="sk__merged">Merged</p>
+                  </div>
+                  <p class="sk__note"><span>From “Ledger owns rounding”</span>Rounding happens once, in the ledger, using half to even.</p>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[04]</p>
+                  <h3 class="move__verb">Keep</h3>
+                  <p>The kept fork comes back as a summary. What should outlast the thread goes to the wiki, as an amendment you approve.</p>
+                </div>
+              </li>
+            </ol>
+            <div class="pager" data-pager hidden>
+              <button type="button" aria-label="Fork" aria-current="true"></button>
+              <button type="button" aria-label="Run"></button>
+              <button type="button" aria-label="Compare"></button>
+              <button type="button" aria-label="Keep"></button>
+            </div>
+          </section>

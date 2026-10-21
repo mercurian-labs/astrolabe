@@ -1,0 +1,219 @@
+          <!-- ───────────────────────────────────────── [04] Walkthrough -->
+          <section class="story" id="threads" aria-labelledby="story-title" data-story>
+            <div class="head">
+              <div class="head__main">
+                <p class="tag">[04] How a thread works</p>
+                <h2 id="story-title" class="h2" data-reveal>Branch the conversation, not only the code.</h2>
+              </div>
+              <p class="body head__aside" data-reveal>
+                A thread is the conversation and the code, saved together after every turn. Here is one,
+                built a step at a time, as the Lineage tab draws it beside the chat.
+              </p>
+            </div>
+            <div class="story__runway">
+              <div class="story__stage">
+                <div class="story__top">
+                  <span class="tag">Fig. 1 · One thread and its forks</span>
+                  <i class="story__bar" aria-hidden="true"><i></i></i>
+                  <span class="tag story__count" data-story-count aria-hidden="true">Stage 1 / 5</span>
+                </div>
+                <div class="story__graph">
+                  <div class="story__fig">
+                    <svg class="tg" viewBox="0 0 1200 560" role="img" aria-labelledby="tg-title tg-desc">
+                      <title id="tg-title">A thread with two forks</title>
+                      <desc id="tg-desc">A thread of four turns, each saved as a checkpoint. From the third checkpoint, two forks run at once, one with Codex and one with Claude Code. Each fork has a lane of its own; the Codex fork's quiet turns fold into a count, and each fork shows its state: Codex idle for three hours, Claude Code working. The Codex fork is kept, and what it learned is carried back into the thread.</desc>
+                      <defs>
+                        <mask id="tg-xfer-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="560">
+                          <path class="k-draw" style="--a: 0.7; --b: 0.77" pathLength="1" d="M800 140C870 140 860 290 930 290" stroke="#fff" stroke-width="10" fill="none" />
+                        </mask>
+                      </defs>
+
+                      <!-- Stage 1–2: a turn is a message and a change; a checkpoint holds both -->
+                      <g class="k-io" style="--a: 0.03; --b: 0.1; --c: 0.33; --d: 0.37">
+                        <path class="tg-lane" d="M50 196H500" />
+                        <path class="tg-lane" d="M50 384H500" />
+                        <g class="tg-lbl tg-lbl--mute">
+                          <text x="516" y="200.5">Conversation</text>
+                          <text x="516" y="388.5">Code</text>
+                        </g>
+                        <g class="tg-msg">
+                          <rect x="96" y="189" width="28" height="14" />
+                          <rect x="216" y="189" width="28" height="14" />
+                          <rect x="336" y="189" width="28" height="14" />
+                          <rect x="456" y="189" width="28" height="14" />
+                        </g>
+                        <g class="tg-lbl tg-lbl--diff">
+                          <text x="110" y="372" text-anchor="middle">+12</text>
+                          <text x="230" y="372" text-anchor="middle">+3 −1</text>
+                          <text x="350" y="372" text-anchor="middle">+28</text>
+                          <text x="470" y="372" text-anchor="middle">+6 −2</text>
+                        </g>
+                      </g>
+                      <g class="tg-caps k-out" style="--c: 0.33; --d: 0.37">
+                        <rect class="k-draw" style="--a: 0.17; --b: 0.21" pathLength="1" x="72" y="176" width="76" height="226" />
+                        <rect class="k-draw" style="--a: 0.19; --b: 0.23" pathLength="1" x="192" y="176" width="76" height="226" />
+                        <rect class="k-draw" style="--a: 0.21; --b: 0.25" pathLength="1" x="312" y="176" width="76" height="226" />
+                        <rect class="k-draw" style="--a: 0.23; --b: 0.27" pathLength="1" x="432" y="176" width="76" height="226" />
+                      </g>
+
+                      <!-- Stage 1: the main line of turns -->
+                      <path class="tg-future k-fade" style="--a: 0.1; --b: 0.15" d="M470 290H1150" />
+                      <path class="tg-line k-draw" style="--a: 0; --b: 0.1" pathLength="1" d="M50 290H470" />
+                      <g class="tg-nodes">
+                        <circle class="k-fade" style="--a: 0.02; --b: 0.04" cx="110" cy="290" r="6" />
+                        <circle class="k-fade" style="--a: 0.04; --b: 0.06" cx="230" cy="290" r="6" />
+                        <circle class="k-fade" style="--a: 0.06; --b: 0.08" cx="350" cy="290" r="6" />
+                        <circle class="k-fade" style="--a: 0.08; --b: 0.1" cx="470" cy="290" r="6" />
+                      </g>
+                      <g class="tg-lbl k-fade" style="--a: 0.08; --b: 0.13">
+                        <text x="110" y="328" text-anchor="middle">Turn 1</text>
+                        <text x="230" y="328" text-anchor="middle">Turn 2</text>
+                        <text x="350" y="328" text-anchor="middle">Turn 3</text>
+                        <text x="470" y="328" text-anchor="middle">Turn 4</text>
+                      </g>
+
+                      <!-- Stage 2: every turn is a checkpoint -->
+                      <g class="tg-rings">
+                        <circle class="k-draw" style="--a: 0.17; --b: 0.2" pathLength="1" cx="110" cy="290" r="14" />
+                        <circle class="k-draw" style="--a: 0.19; --b: 0.22" pathLength="1" cx="230" cy="290" r="14" />
+                        <circle class="k-draw" style="--a: 0.21; --b: 0.24" pathLength="1" cx="350" cy="290" r="14" />
+                        <circle class="k-draw" style="--a: 0.23; --b: 0.26" pathLength="1" cx="470" cy="290" r="14" />
+                      </g>
+                      <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.22; --b: 0.28">
+                        <text x="110" y="258" text-anchor="middle">cp 1</text>
+                        <text x="230" y="258" text-anchor="middle">cp 2</text>
+                        <text x="350" y="258" text-anchor="middle">cp 3</text>
+                        <text x="470" y="258" text-anchor="middle">cp 4</text>
+                      </g>
+
+                      <!-- Stage 3: two forks from checkpoint 3, each on its own agent -->
+                      <g class="tg-b" style="--a: 0.67; --b: 0.71">
+                        <path class="tg-line k-draw" style="--a: 0.35; --b: 0.45" pathLength="1" d="M350 290C420 290 410 440 480 440H760" />
+                        <g class="tg-nodes">
+                          <circle class="k-fade" style="--a: 0.41; --b: 0.43" cx="540" cy="440" r="6" />
+                          <circle class="k-fade" style="--a: 0.43; --b: 0.45" cx="650" cy="440" r="6" />
+                          <circle class="k-fade tg-open" style="--a: 0.45; --b: 0.47" cx="760" cy="440" r="6" />
+                        </g>
+                        <g class="tg-chip k-fade" style="--a: 0.43; --b: 0.47">
+                          <rect x="480" y="462" width="118" height="26" />
+                          <text x="539" y="479.5" text-anchor="middle">Claude Code</text>
+                        </g>
+                        <g class="tg-lbl k-fade" style="--a: 0.45; --b: 0.49">
+                          <text x="480" y="420">Keep rounding at the edge</text>
+                        </g>
+                      </g>
+                      <path class="tg-line k-draw" style="--a: 0.33; --b: 0.43" pathLength="1" d="M350 290C420 290 410 140 480 140H800" />
+                      <g class="tg-nodes">
+                        <g class="k-out" style="--c: 0.52; --d: 0.55">
+                          <circle class="k-fade" style="--a: 0.39; --b: 0.41" cx="540" cy="140" r="6" />
+                          <circle class="k-fade" style="--a: 0.41; --b: 0.43" cx="660" cy="140" r="6" />
+                        </g>
+                        <circle class="k-fade" style="--a: 0.43; --b: 0.45" cx="800" cy="140" r="6" />
+                      </g>
+                      <g class="tg-chip k-fade" style="--a: 0.41; --b: 0.45">
+                        <rect x="480" y="92" width="72" height="26" />
+                        <text x="516" y="109.5" text-anchor="middle">Codex</text>
+                      </g>
+                      <g class="tg-lbl k-fade" style="--a: 0.43; --b: 0.47">
+                        <text x="480" y="172">Ledger owns rounding</text>
+                      </g>
+
+                      <!-- Stage 4: Lineage's reading. Quiet turns fold into a count; each fork says where it stands. -->
+                      <g class="tg-fold k-fade" style="--a: 0.53; --b: 0.57">
+                        <rect x="566" y="128" width="88" height="24" rx="12" />
+                        <text x="610" y="144.5" text-anchor="middle">2 turns</text>
+                      </g>
+                      <g class="tg-lbl tg-lbl--state k-fade" style="--a: 0.56; --b: 0.6">
+                        <text x="480" y="196">Codex · idle · 3h ago</text>
+                      </g>
+                      <g class="tg-b" style="--a: 0.67; --b: 0.71">
+                        <g class="tg-lbl tg-lbl--state k-fade" style="--a: 0.56; --b: 0.6">
+                          <text x="480" y="398">Claude Code · working</text>
+                        </g>
+                      </g>
+
+                      <!-- Stage 5: one fork is kept, and what it learned comes back -->
+                      <g class="tg-lbl tg-lbl--strong k-fade" style="--a: 0.69; --b: 0.72">
+                        <text x="800" y="118" text-anchor="middle">Kept</text>
+                      </g>
+                      <path class="tg-xfer" mask="url(#tg-xfer-mask)" d="M800 140C870 140 860 290 930 290" />
+                      <path class="tg-line k-draw" style="--a: 0.74; --b: 0.8" pathLength="1" d="M470 290H1110" />
+                      <g class="tg-nodes">
+                        <circle class="k-fade" style="--a: 0.76; --b: 0.78" cx="930" cy="290" r="6" />
+                        <circle class="k-fade" style="--a: 0.78; --b: 0.79" cx="1030" cy="290" r="6" />
+                      </g>
+                      <g class="tg-here k-fade" style="--a: 0.79; --b: 0.81">
+                        <circle class="tg-here__ring" cx="1110" cy="290" r="13" />
+                        <circle class="tg-here__pivot" cx="1110" cy="290" r="5.5" />
+                      </g>
+                      <g class="tg-lbl k-fade" style="--a: 0.77; --b: 0.81">
+                        <text x="930" y="328" text-anchor="middle">Brings back</text>
+                        <text x="930" y="348" text-anchor="middle">what it learned</text>
+                        <text x="1110" y="328" text-anchor="middle">You are here</text>
+                      </g>
+                    </svg>
+                    <svg class="mf" viewBox="0 0 332 404" role="img" aria-labelledby="mf-title">
+                      <title id="mf-title">A thread of three checkpoints forks into two branches, Codex and Claude Code, which run at once, each showing its state. The Codex branch is kept, and what it learned comes back into the thread.</title>
+                      <path class="tg-future" d="M16 104V344" />
+                      <path class="tg-line" d="M16 6V104" />
+                      <path class="tg-line" d="M16 104C16 140 92 132 92 168V268" />
+                      <path class="tg-line mf-dim" d="M16 104C16 140 214 132 214 168V268" />
+                      <path class="tg-xfer" d="M92 268C92 310 16 300 16 344" />
+                      <path class="tg-line" d="M16 344V388" />
+                      <g class="tg-rings"><circle cx="16" cy="16" r="11" /><circle cx="16" cy="60" r="11" /><circle cx="16" cy="104" r="11" /></g>
+                      <g class="tg-nodes">
+                        <circle cx="16" cy="16" r="4.5" /><circle cx="16" cy="60" r="4.5" /><circle cx="16" cy="104" r="4.5" />
+                        <circle cx="92" cy="196" r="4.5" /><circle cx="92" cy="268" r="4.5" /><circle cx="16" cy="344" r="4.5" />
+                      </g>
+                      <g class="mf-dim"><circle class="tg-node-b" cx="214" cy="196" r="4.5" /><circle class="tg-open" cx="214" cy="268" r="4.5" /></g>
+                      <text class="mf-tag" x="102" y="228">Idle · 3h ago</text>
+                      <text class="mf-tag mf-dim" x="224" y="228">Working</text>
+                      <g class="tg-chip mf-chip">
+                        <rect x="102" y="146" width="56" height="20" /><text x="130" y="160" text-anchor="middle">Codex</text>
+                      </g>
+                      <g class="tg-chip mf-chip mf-dim">
+                        <rect x="224" y="146" width="94" height="20" /><text x="271" y="160" text-anchor="middle">Claude Code</text>
+                      </g>
+                      <g class="mf-cap">
+                        <text x="102" y="192">Ledger owns</text><text x="102" y="208">rounding</text>
+                        <text x="224" y="192" class="mf-dim">Keep rounding</text><text x="224" y="208" class="mf-dim">at the edge</text>
+                      </g>
+                      <text class="mf-tag" x="100" y="272">Kept</text>
+                      <g class="mf-cap">
+                        <text x="40" y="20"><tspan class="mf-tag">1/5</tspan><tspan dx="8">A thread is a line of turns.</tspan></text>
+                        <text x="40" y="64"><tspan class="mf-tag">2/5</tspan><tspan dx="8">Each turn ends as a checkpoint.</tspan></text>
+                        <text x="40" y="108"><tspan class="mf-tag">3/5</tspan><tspan dx="8">Fork it, each fork on its own agent.</tspan></text>
+                        <text x="110" y="296"><tspan class="mf-tag">4/5</tspan><tspan dx="8">Each fork has a lane, and</tspan></text>
+                        <text x="110" y="312">says where it stands.</text>
+                        <text x="40" y="348"><tspan class="mf-tag">5/5</tspan><tspan dx="8">Keep one; what it learned</tspan></text>
+                        <text x="40" y="364">comes back into the thread.</text>
+                      </g>
+                      <circle class="tg-here__ring" cx="16" cy="388" r="9" /><circle class="tg-here__pivot" cx="16" cy="388" r="4" />
+                      <text class="mf-tag" x="40" y="392">You are here</text>
+                    </svg>
+                  </div>
+                </div>
+                <ol class="story__steps">
+                  <li data-step="0"><span class="tag">[1/5]</span><span>A thread is a line of turns: you ask, the agent works, you read what it did.</span></li>
+                  <li data-step="1"><span class="tag">[2/5]</span><span>When a turn ends, the conversation and the code are saved together as a checkpoint.</span></li>
+                  <li data-step="2"><span class="tag">[3/5]</span><span>Fork from any checkpoint. Each fork gets its own branch, and can run a different agent.</span></li>
+                  <li data-step="3"><span class="tag">[4/5]</span><span>Each fork gets a lane. Quiet turns fold into a count, and every fork says where it stands: its agent, working or idle, and since when.</span></li>
+                  <li data-step="4"><span class="tag">[5/5]</span><span>Keep one fork, and carry what it learned back into the thread you started from.</span></li>
+                </ol>
+                <div class="story__text">
+                  <h3 class="h2 story__title">Lineage draws it beside the chat.</h3>
+                  <p class="body">
+                    Open the Lineage tab next to any thread. Hover a turn for its question, its reply and
+                    the files it changed; click it to scroll the chat there, or click a fork to open it in
+                    a tab. What comes back from a fork arrives as a summary, so the thread stays readable.
+                  </p>
+                  <ul class="caps">
+                    <li>Put the files back as they were at any turn.</li>
+                    <li>Each fork works on a branch of its own.</li>
+                    <li>Switch agents between turns.</li>
+                    <li>Checkpoints are git refs you can read without us.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </section>
