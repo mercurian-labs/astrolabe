@@ -1,5 +1,6 @@
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import { MERCURIAN_THEME_ID } from "@t3tools/shared/themePalettes";
 import * as Schema from "effect/Schema";
 import { useEffect, useSyncExternalStore } from "react";
 import {
@@ -39,8 +40,9 @@ type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
+// A fresh install opens in Astrolabe's own theme, following the system appearance.
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
-  theme: "system",
+  theme: MERCURIAN_THEME_ID,
   resolvedTheme: "light",
   systemDark: false,
   followSystem: true,
@@ -151,7 +153,8 @@ function getSystemDark() {
 }
 
 function readStoredFollowSystem(theme: Theme): boolean {
-  if (typeof window === "undefined") return theme === "system";
+  const followsByDefault = theme === "system" || theme === DEFAULT_THEME_SNAPSHOT.theme;
+  if (typeof window === "undefined") return followsByDefault;
 
   try {
     const raw = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
@@ -159,7 +162,7 @@ function readStoredFollowSystem(theme: Theme): boolean {
     if (raw === "false") return false;
   } catch {}
 
-  return theme === "system";
+  return followsByDefault;
 }
 
 function isThemePreferenceMode(value: string | null): value is ThemePreferenceMode {

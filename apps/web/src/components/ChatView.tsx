@@ -539,6 +539,13 @@ import {
 } from "../lib/attachmentUploadQueue";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
+import { PaneChatHeader } from "../panes/PaneChatHeader";
+import {
+  PaneSurfaceTabs,
+  usePaneMemberInactive,
+  usePaneOpenGuest,
+  usePaneSurfaceHost,
+} from "../panes/PaneSurfaceHost";
 import { previewEnvironment } from "../state/preview";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -1188,7 +1195,11 @@ export default function ChatView(props: ChatViewProps) {
   })();
   const promptRef = useRef("");
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
-  const composerRef = useComposerHandleContext() ?? localComposerRef;
+  // Astrolabe: a pane member out of focus keeps its own composer handle and leaves the page's
+  // keys, paste and refocus to the member in focus.
+  const paneMemberInactive = usePaneMemberInactive();
+  const sharedComposerRef = useComposerHandleContext();
+  const composerRef = (paneMemberInactive ? null : sharedComposerRef) ?? localComposerRef;
   const queuedRunEdit = useQueuedRunEdit({
     environmentId,
     routeThreadRef,
@@ -1488,10 +1499,14 @@ export default function ChatView(props: ChatViewProps) {
     scopedThreadKey(scopeThreadRef(draftThread.environmentId, draftThread.threadId)),
   );
   const [mountedTerminalThreadKeys, setMountedTerminalThreadKeys] = useState<string[]>([]);
-  const mountedTerminalThreadRefs = mountedTerminalThreadKeys.flatMap((mountedThreadKey) => {
-    const mountedThreadRef = parseScopedThreadKey(mountedThreadKey);
-    return mountedThreadRef ? [{ key: mountedThreadKey, threadRef: mountedThreadRef }] : [];
-  });
+  // Astrolabe: the panes show terminals as panel terminals, with no drawer.
+  const paneSurfaceHost = usePaneSurfaceHost();
+  const mountedTerminalThreadRefs = (paneSurfaceHost ? [] : mountedTerminalThreadKeys).flatMap(
+    (mountedThreadKey) => {
+      const mountedThreadRef = parseScopedThreadKey(mountedThreadKey);
+      return mountedThreadRef ? [{ key: mountedThreadKey, threadRef: mountedThreadRef }] : [];
+    },
+  );
 
   const fallbackDraftProjectRef = draftThread
     ? scopeProjectRef(draftThread.environmentId, draftThread.projectId)
@@ -1762,7 +1777,10 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     panelAnimationDurationMs,
   );
-  const rightPanelPresent = rightPanelPresence.present;
+  // Astrolabe: inside the panes, the panes draw the surfaces as tabs, so the panel stays out of
+  // this layout and its strip renders as the panes' host instead.
+  const RightPanelTabsOrHost = paneSurfaceHost ? PaneSurfaceTabs : RightPanelTabs;
+  const rightPanelPresent = rightPanelPresence.present && !paneSurfaceHost;
   const rightPanelControlsInPanel =
     shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
@@ -1772,9 +1790,10 @@ export default function ChatView(props: ChatViewProps) {
     activePreviewMiniPlayer?.source ?? null,
     renderedRightPanelSurface,
   );
-  const canMaximizeRightPanel = rightPanelOpen && !shouldUsePlanSidebarSheet;
+  const canMaximizeRightPanel = rightPanelOpen && !shouldUsePlanSidebarSheet && !paneSurfaceHost;
   const rightPanelMaximized = canMaximizeRightPanel && rightPanelState.maximized === true;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
+  const inlineRightPanelOwnsTitleBar =
+    rightPanelOpen && !shouldUsePlanSidebarSheet && !paneSurfaceHost;
   const [threadPanelPresentation, setThreadPanelPresentation] =
     useState<ThreadPanelPresentation>("inline");
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
@@ -3470,7 +3489,10 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const onInterruptStable = useStableCallback(onInterrupt);
-  useEffect(() => subscribeSnapShotComposerFocus(focusComposerStable), [focusComposerStable]);
+  useEffect(
+    () => (paneMemberInactive ? undefined : subscribeSnapShotComposerFocus(focusComposerStable)),
+    [focusComposerStable, paneMemberInactive],
+  );
   const scheduleComposerFocus = () => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -4691,17 +4713,18 @@ export default function ChatView(props: ChatViewProps) {
   }, [timelineThreadReset]);
 
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!activeThread?.id || terminalUiState.terminalOpen || paneMemberInactive) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposerStable();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposerStable, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, focusComposerStable, paneMemberInactive, terminalUiState.terminalOpen]);
 
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
+    if (paneMemberInactive) return;
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -4721,7 +4744,13 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposerStable, isMobileViewport, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    focusComposerStable,
+    isMobileViewport,
+    paneMemberInactive,
+    terminalUiState.terminalOpen,
+  ]);
 
   useEffect(() => {
     if (!activeThread?.id) return;
@@ -5778,7 +5807,7 @@ export default function ChatView(props: ChatViewProps) {
       if (!event.repeat) composerRef.current?.openControl(command);
     }) satisfies ChatShortcutHandler;
   useChatShortcuts({
-    enabled: activeThreadId !== null,
+    enabled: activeThreadId !== null && !paneMemberInactive,
     keybindings,
     scriptKeybindings,
     getShortcutContext: getShortcutContextStable,
@@ -5915,6 +5944,7 @@ export default function ChatView(props: ChatViewProps) {
   // Paste-to-focus: the resting composer blurs on a click into the timeline,
   // so a paste that follows has no editable target and would be dropped.
   useEffect(() => {
+    if (paneMemberInactive) return;
     const keyHandler = (event: KeyboardEvent) => {
       if (
         shouldRedirectInputToComposer(event) &&
@@ -5947,7 +5977,7 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("keydown", keyHandler, true);
       window.removeEventListener("paste", handler, true);
     };
-  }, [activeThreadId, composerRef]);
+  }, [activeThreadId, composerRef, paneMemberInactive]);
 
   const onRevertToTurnCount = async (
     turnCount: number,
@@ -6081,6 +6111,7 @@ export default function ChatView(props: ChatViewProps) {
     });
   };
 
+  const openGuest = usePaneOpenGuest();
   const onForkFromRun = async (input: {
     readonly sourceThreadId: ThreadId;
     readonly runId: RunId;
@@ -6115,6 +6146,8 @@ export default function ChatView(props: ChatViewProps) {
       );
       return;
     }
+    // Astrolabe: inside the panes a fork opens beside the conversation, as a guest.
+    if (openGuest) return openGuest(targetThreadRef);
     await navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(targetThreadRef),
@@ -8042,6 +8075,8 @@ export default function ChatView(props: ChatViewProps) {
     <PanelLayoutControls
       {...panelToggleControlProps}
       showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      showTerminalControl={!paneSurfaceHost}
+      showRightPanelControl={!paneSurfaceHost}
     />
   );
   const threadPanelHeaderControl = (
@@ -8063,7 +8098,7 @@ export default function ChatView(props: ChatViewProps) {
       )}
       data-workspace-titlebar-controls
     >
-      {!shouldUsePlanSidebarSheet ? (
+      {!shouldUsePlanSidebarSheet && !paneSurfaceHost ? (
         <span
           aria-hidden={!rightPanelOpen}
           className={cn(
@@ -8110,7 +8145,7 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
       >
-        <header
+        <PaneChatHeader
           ref={threadPanelPopoverAnchorRef}
           data-chat-header
           className={cn(
@@ -8148,7 +8183,7 @@ export default function ChatView(props: ChatViewProps) {
               ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
               : {})}
           />
-        </header>
+        </PaneChatHeader>
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas
@@ -8795,8 +8830,8 @@ export default function ChatView(props: ChatViewProps) {
         ))}
       </div>
 
-      {rightPanelPresent && !shouldUsePlanSidebarSheet && activeThreadRef ? (
-        <RightPanelTabs
+      {((rightPanelPresent && !shouldUsePlanSidebarSheet) || paneSurfaceHost) && activeThreadRef ? (
+        <RightPanelTabsOrHost
           mode="inline"
           open={rightPanelOpen}
           keybindings={keybindings}
@@ -8839,7 +8874,7 @@ export default function ChatView(props: ChatViewProps) {
           deviceAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}
-        </RightPanelTabs>
+        </RightPanelTabsOrHost>
       ) : null}
       {rightPanelPresent && shouldUsePlanSidebarSheet && activeThreadRef ? (
         <RightPanelSheet

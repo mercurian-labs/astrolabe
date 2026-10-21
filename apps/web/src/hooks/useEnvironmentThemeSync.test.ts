@@ -1,4 +1,5 @@
 import type { EnvironmentTheme } from "@t3tools/contracts";
+import { MERCURIAN_THEME_ID } from "@t3tools/shared/themePalettes";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 const NIGHTFALL_THEME = {
@@ -140,7 +141,8 @@ describe("published theme refresh", () => {
     expectPreview();
     publish([LIGHT_THEME, { ...NIGHTFALL_THEME, id: "unused-theme" }]);
     expectPreview();
-    expect(publish([]).theme).toBe("system");
+    // The stored theme is gone, so the preference falls back to the default theme.
+    expect(publish([]).theme).toBe(MERCURIAN_THEME_ID);
     expectPreview();
 
     const current = publish([{ ...NIGHTFALL_THEME, canvas: "#112233" }]);

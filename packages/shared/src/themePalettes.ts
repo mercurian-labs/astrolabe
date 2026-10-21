@@ -1,4 +1,15 @@
-export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris"] as const;
+import { MERCURIAN_THEME, MERCURIAN_THEME_ID, PICKER_HIDDEN_THEME_IDS } from "./mercurianTheme.ts";
+
+export { MERCURIAN_THEME, MERCURIAN_THEME_ID, PICKER_HIDDEN_THEME_IDS };
+
+export const BUILT_IN_THEME_IDS = [
+  MERCURIAN_THEME_ID,
+  "t3-chat",
+  "grove",
+  "ocean",
+  "ember",
+  "iris",
+] as const;
 
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
@@ -919,6 +930,7 @@ export const IRIS_THEME: ThemeDefinition = {
 };
 
 export const BUILT_IN_THEMES: ReadonlyArray<ThemeDefinition> = [
+  MERCURIAN_THEME,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,

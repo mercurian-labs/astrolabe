@@ -233,7 +233,7 @@ describe("remote environment authorization", () => {
           httpBaseUrl: "https://remote.example.com/",
           credential: "pairing-token",
           clientMetadata: {
-            label: "T3 Code Web",
+            label: "Astrolabe Web",
             deviceType: "desktop",
             os,
           },

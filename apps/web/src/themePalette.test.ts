@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { converter } from "culori/fn";
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEMES, MERCURIAN_THEME } from "@t3tools/shared/themePalettes";
 
 import {
   applyThemeColorPreview,
@@ -510,6 +510,44 @@ describe("theme files", () => {
       );
       expect(contrastRatio(colors.sidebarForeground, colors.sidebar)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(colors.accentForeground, colors.accent)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps Mercurian's text readable on every surface in both appearances", () => {
+    expect(getThemeDefinition(MERCURIAN_THEME.id)).toBe(MERCURIAN_THEME);
+    for (const mode of ["light", "dark"] as const) {
+      const colors = getThemeColorsForMode(MERCURIAN_THEME, mode)!;
+      const pairs = [
+        ["text", "canvas"],
+        ["textMuted", "canvas"],
+        ["textMuted", "surface"],
+        ["accentForeground", "accent"],
+        ["toolbarControlForeground", "toolbarControl"],
+        ["secondaryForeground", "secondary"],
+        ["mutedForeground", "muted"],
+        ["placeholder", "surfaceRaised"],
+        ["messageForeground", "messageSurface"],
+        ["messageActionForeground", "messageAction"],
+        ["messageActionForeground", "messageActionHover"],
+        ["errorForeground", "errorSurface"],
+        ["warningForeground", "warningSurface"],
+        ["updateForeground", "updateSurface"],
+        // Status roles double as text colors (text-destructive, text-warning).
+        ...(["error", "warning", "update"] as const).flatMap((status) =>
+          (["canvas", "surface", "surfaceOverlay"] as const).map(
+            (background) => [status, background] as const,
+          ),
+        ),
+        ["sidebarForeground", "sidebar"],
+        ["sidebarMutedForeground", "sidebar"],
+        ["sidebarMutedForeground", "sidebarRowActive"],
+      ] as const;
+      for (const [foreground, background] of pairs) {
+        expect(
+          contrastRatio(colors[foreground], colors[background]),
+          `${mode} ${foreground} on ${background}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 

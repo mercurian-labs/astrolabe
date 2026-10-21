@@ -82,6 +82,16 @@ describe("theme failure handling", () => {
     expect(readThemePreference()).toBe("t3-chat");
   });
 
+  it("opens a fresh install in Mercurian, following the system appearance", async () => {
+    vi.stubGlobal("window", { localStorage: createStorage() });
+
+    const { readAppearanceModePreference, readThemePreference } = await import("./useTheme");
+
+    const theme = readThemePreference();
+    expect(theme).toBe("mercurian");
+    expect(readAppearanceModePreference(theme)).toBe("system");
+  });
+
   it("falls back during initial theme application and logs only safe attributes", async () => {
     const cause = new Error("private browsing storage failure");
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
