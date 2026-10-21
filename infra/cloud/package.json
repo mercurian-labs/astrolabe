@@ -1,0 +1,27 @@
+{
+  "name": "mercurian-cloud-infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp pack && mkdir -p dist/migrations && cp -R ../relay/migrations/postgres dist/migrations/relay",
+    "dev": "alchemy dev",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy",
+    "typecheck": "tsc-rs --noEmit"
+  },
+  "dependencies": {
+    "@distilled.cloud/aws": "1.0.0-rc.13",
+    "@effect/platform-node": "catalog:",
+    "@effect/sql-pg": "catalog:",
+    "alchemy": "2.0.0-beta.80",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
+    "effect": "catalog:",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

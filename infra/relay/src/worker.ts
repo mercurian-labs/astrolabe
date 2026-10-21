@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Axiom from "alchemy/Axiom";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle/Postgres";
+import { ALCHEMY_DEV } from "alchemy/Phase";
 import * as Config from "effect/Config";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -39,6 +40,7 @@ import * as EnvironmentLinks from "./environments/EnvironmentLinks.ts";
 import * as ManagedEndpointAllocations from "./environments/ManagedEndpointAllocations.ts";
 import * as LiveActivities from "./agentActivity/LiveActivities.ts";
 import * as RelayDb from "./db.ts";
+import * as Local from "./local.ts";
 import {
   RelayApnsDeliveryDeadLetterQueue,
   RelayApnsDeliveryQueue,
@@ -111,32 +113,37 @@ const ApnsDeliveryJobSigningSecret = Alchemy.makeRandom("ApnsDeliveryJobSigningS
 export class Api extends Cloudflare.Worker<Api, {}>()("Api") {}
 
 export const layer = Api.make(
-  RelayDeploymentConfig.pipe(
-    Effect.map(({ relayPublicDomain }) => ({
+  Effect.all([RelayDeploymentConfig, ALCHEMY_DEV]).pipe(
+    Effect.map(([{ relayPublicDomain }, local]) => ({
       main: import.meta.filename,
       compatibility: {
         date: "2026-05-22",
         flags: ["nodejs_compat"],
       },
-      // Requests run several Postgres queries in sequence. At the user's edge
-      // each one paid the round trip to the database (~300 ms from JNB); next
-      // to PlanetScale `us-west` the request pays that distance once.
-      placement: { region: "aws:us-west-2" },
-      domain: relayPublicDomain,
+      ...(local
+        ? { dev: { port: Local.RELAY_LOCAL_PORT } }
+        : {
+            // Requests run several Postgres queries in sequence. At the user's edge
+            // each one paid the round trip to the database (~300 ms from JNB); next
+            // to PlanetScale `us-west` the request pays that distance once.
+            placement: { region: "aws:us-west-2" },
+            domain: relayPublicDomain,
+          }),
     })),
     Effect.orDie,
   ),
   Effect.gen(function* () {
-    const { relayPublicOrigin, stage } = yield* RelayDeploymentConfig;
+    const { relayPublicOrigin: deployedOrigin, stage } = yield* RelayDeploymentConfig;
+    // Zones, tunnels and Axiom are cloud-only; see local.ts.
+    const local = yield* ALCHEMY_DEV;
     const apnsDeliveryQueue = yield* RelayApnsDeliveryQueue;
     const apnsDeliveryDeadLetterQueue = yield* RelayApnsDeliveryDeadLetterQueue;
     const fcmDeliveryQueue = yield* RelayFcmDeliveryQueue;
     const fcmDeliveryDeadLetterQueue = yield* RelayFcmDeliveryDeadLetterQueue;
     const cloudMintKeyPair = yield* CloudMintKeyPair;
-    const relayApiZone = yield* RelayApiZone;
-    const managedEndpointZone = yield* ManagedEndpointZone;
     const randomApnsDeliveryJobSigningSecret = yield* ApnsDeliveryJobSigningSecret;
-    yield* RelayObservability;
+    const alchemyRuntimeContext: Alchemy.BaseRuntimeContext = yield* Cloudflare.Worker;
+    if (!local) yield* RelayObservability;
 
     const apnsEnabled = yield* Config.Boolean("APNS_ENABLED").pipe(Config.withDefault(true));
     const apnsCredentials = apnsEnabled
@@ -164,7 +171,9 @@ export const layer = Api.make(
 
     const cloudMintPrivateKey = yield* cloudMintKeyPair.privateKey;
     const cloudMintPublicKey = yield* cloudMintKeyPair.publicKey;
-    const hyperdrive = yield* Cloudflare.Hyperdrive.Connect(yield* RelayDb.RelayHyperdrive);
+    const hyperdrive = yield* Cloudflare.Hyperdrive.Connect(
+      yield* local ? Local.LocalHyperdrive : RelayDb.RelayHyperdrive,
+    );
     // Named prepared statements collide behind Hyperdrive's transaction-mode
     // pool: sql-pg < 4.0.0-rc.117 names them `effect1..N` per connection, and
     // inside a transaction a Bind can reach another request's statement
@@ -173,11 +182,24 @@ export const layer = Api.make(
       prepare: false,
     });
 
-    const managedEndpointTunnelBinding = yield* Cloudflare.Tunnel.ReadWriteTunnel();
-    // Keep Worker custom-domain reconciliation ordered after API zone provisioning.
-    yield* yield* relayApiZone.zoneId;
-    const managedEndpointDnsBinding = yield* Cloudflare.DNS.ReadWriteDns(managedEndpointZone);
-    const managedEndpointZoneName = yield* managedEndpointZone.name;
+    const managedEndpoints = local
+      ? { layer: Local.layerManagedEndpoints, zoneName: Effect.succeed("") }
+      : yield* Effect.gen(function* () {
+          const relayApiZone = yield* RelayApiZone;
+          const managedEndpointZone = yield* ManagedEndpointZone;
+          const managedEndpointTunnelBinding = yield* Cloudflare.Tunnel.ReadWriteTunnel();
+          // Keep Worker custom-domain reconciliation ordered after API zone provisioning.
+          yield* yield* relayApiZone.zoneId;
+          const managedEndpointDnsBinding = yield* Cloudflare.DNS.ReadWriteDns(managedEndpointZone);
+          return {
+            layer: ManagedEndpointProvider.layerCloudflareBindings(
+              managedEndpointTunnelBinding,
+              managedEndpointDnsBinding,
+              alchemyRuntimeContext,
+            ),
+            zoneName: yield* managedEndpointZone.name,
+          };
+        });
     const managedEndpointCleanupMode = yield* RelayConfiguration.managedEndpointCleanupModeConfig;
     const legacyManagedEndpointCleanupMode =
       yield* RelayConfiguration.legacyManagedEndpointCleanupModeConfig;
@@ -202,11 +224,9 @@ export const layer = Api.make(
     });
     const hookInboxes = yield* HookInboxObject.HookInboxObject;
 
-    const alchemyRuntimeContext: Alchemy.BaseRuntimeContext = yield* Cloudflare.Worker;
-
     const loadSettings = Effect.gen(function* () {
       return RelayConfiguration.RelayConfiguration.of({
-        relayIssuer: relayPublicOrigin,
+        relayIssuer: local ? Local.RELAY_LOCAL_ORIGIN : deployedOrigin,
         ...(fcmServiceAccount ? { fcmServiceAccount } : {}),
         apns: apnsCredentials,
         apnsDeliveryJobSigningSecret: yield* apnsDeliveryJobSigningSecret,
@@ -215,7 +235,8 @@ export const layer = Api.make(
         clerkJwtAudience,
         cloudMintPrivateKey: yield* cloudMintPrivateKey,
         cloudMintPublicKey: yield* cloudMintPublicKey,
-        managedEndpointBaseDomain: yield* managedEndpointZoneName,
+        // Empty in local dev, which leaves managed endpoints unconfigured.
+        managedEndpointBaseDomain: yield* managedEndpoints.zoneName,
         managedEndpointNamespace: stage,
         managedEndpointCleanupMode,
         legacyManagedEndpointCleanupMode,
@@ -259,13 +280,7 @@ export const layer = Api.make(
           HeldHooks.layer,
         ),
       ),
-      Layer.provideMerge(
-        ManagedEndpointProvider.layerCloudflareBindings(
-          managedEndpointTunnelBinding,
-          managedEndpointDnsBinding,
-          alchemyRuntimeContext,
-        ),
-      ),
+      Layer.provideMerge(managedEndpoints.layer),
       Layer.provideMerge(DpopProofs.layer),
       Layer.provideMerge(ApnsDeliveries.layer),
       Layer.provideMerge(
@@ -480,13 +495,15 @@ export const layer = Api.make(
         ),
         Layer.provideMerge(
           Layer.unwrap(
-            Effect.map(RelayObservability, (observability) =>
-              Axiom.Telemetry({
+            Effect.gen(function* () {
+              if (yield* ALCHEMY_DEV) return Layer.empty;
+              const observability = yield* RelayObservability;
+              return Axiom.Telemetry({
                 serviceName: "t3code-relay",
                 token: observability.workerIngestToken,
                 traces: observability.traces,
-              }),
-            ),
+              });
+            }),
           ),
         ),
       ),
