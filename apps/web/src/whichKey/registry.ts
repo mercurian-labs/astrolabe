@@ -54,9 +54,16 @@ function rows(
       items[at] = { ...existing, keys: [...existing.keys, key] };
       continue;
     }
-    const { label, disabled, run } = command(child.command);
+    const { label, disabled, run, repeatable } = command(child.command);
     rowFor.set(child.command, items.length);
-    items.push({ keys: [key], label, disabled, run, command: child.command });
+    items.push({
+      keys: [key],
+      label,
+      disabled,
+      run,
+      command: child.command,
+      ...(repeatable ? { repeatable } : {}),
+    });
   }
   return items;
 }

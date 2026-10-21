@@ -781,6 +781,74 @@ describe("Vim for other hosts", () => {
     expect(getCM(later)?.getOption("textwidth")).toBe(80);
   });
 
+  /** An editor whose host takes Vim's window keys, recording each direction. */
+  function windowed(doc: string) {
+    const moves: string[] = [];
+    const view = plainVim(
+      doc,
+      vimHostKeys({ window: (_view, direction) => void moves.push(direction) }),
+    );
+    return { view, moves };
+  }
+
+  it("sends <C-w>h, j, k, l and the arrows to the host from normal mode", async () => {
+    const { view, moves } = windowed("one\ntwo");
+    for (const key of ["h", "j", "k", "l"]) {
+      press(view, "Ctrl-w");
+      press(view, key);
+    }
+    press(view, "Ctrl-w");
+    press(view, "ArrowRight");
+    press(view, "Ctrl-w");
+    press(view, "Ctrl-h");
+    await settle();
+    expect(moves).toEqual(["left", "down", "up", "right", "right", "left"]);
+    // Nothing moved in the editor itself.
+    expect(view.state.selection.main.head).toBe(0);
+    expect(vimAtRest(view)).toBe(true);
+  });
+
+  it("leaves plain Ctrl-h, insert mode's <C-w>, and an editor without a host as they were", async () => {
+    const { view, moves } = windowed("one two");
+    press(view, "Ctrl-h");
+    await settle();
+    expect(moves).toEqual([]);
+    view.dispatch({ selection: { anchor: 7 } });
+    enterInsertMode(view);
+    press(view, "Ctrl-w");
+    // Insert mode's `<C-w>` deletes the word before the caret.
+    expect(view.state.doc.toString()).toBe("one ");
+    press(view, "h");
+    await settle();
+    expect(moves).toEqual([]);
+
+    const plain = plainVim("one");
+    press(plain, "Ctrl-w");
+    press(plain, "l");
+    expect(vimAtRest(plain)).toBe(true);
+    expect(plain.state.selection.main.head).toBe(0);
+  });
+
+  it("lets a vimrc map onto the window keys and over them, and undoing it keeps them", async () => {
+    const { view, moves } = windowed("one\ntwo");
+    vimConfiguration.noremap("<C-h>", "<C-w>h", "normal");
+    press(view, "Ctrl-h");
+    vimConfiguration.noremap("<C-w>l", "j", "normal");
+    press(view, "Ctrl-w");
+    press(view, "l");
+    await settle();
+    expect(moves).toEqual(["left"]);
+    expect(view.state.doc.lineAt(view.state.selection.main.head).number).toBe(2);
+
+    vimConfiguration.unmap("<C-w>l", "normal");
+    vimConfiguration.unmap("<C-h>", "normal");
+    press(view, "Ctrl-w");
+    press(view, "l");
+    press(view, "Ctrl-h");
+    await settle();
+    expect(moves).toEqual(["left", "right"]);
+  });
+
   it("runs an ex command routed back from the host, as Vim's ex line would", () => {
     const { view } = hosted("one two one");
     runVimEx(view, "s/one/three/g");

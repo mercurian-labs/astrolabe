@@ -37,7 +37,7 @@ import { appCommand, isAppCommand, type AppCommandContext } from "./commands";
 import { handleLeaderRequests, openExLine, type KeyOrigin } from "./doors";
 import { appCommandsSlot, chatTabsSlot, panesSlot, sidebarSectionSlot } from "./handles";
 import { isSyntheticKeybinding } from "./keybindingCommands";
-import { isInDialog, isLeaderKey, leaderKeyLabel, menuKeyOf } from "./leader";
+import { isInDialog, isLeaderKey, leaderKeyLabel, menuKeyOf, takesTyping } from "./leader";
 import {
   menuTrail,
   shortTrail,
@@ -48,6 +48,16 @@ import {
   type WhichKeyState,
 } from "./menu";
 import { whichKeyRoot } from "./registry";
+
+/** A keydown's keys, as the menu reads them. */
+const pressOf = (event: KeyboardEvent) => ({
+  key: event.key,
+  metaKey: event.metaKey,
+  ctrlKey: event.ctrlKey,
+  altKey: event.altKey,
+  shiftKey: event.shiftKey,
+  isComposing: event.isComposing,
+});
 
 /** The menu sits this far in from the main area's top-right corner, below the title bar. */
 const INSET_PX = 12;
@@ -84,8 +94,13 @@ function menuAnchor() {
  * chord shows the menu at once; the leader waits a moment, so a fast sequence runs without it
  * drawing. Open, it reads every key: a group key walks in, a command key runs and
  * closes it, Backspace goes up, Escape closes it, and so do a click elsewhere and the window
- * losing focus. The arrow keys (and Ctrl+N, Ctrl+P on a Mac) move a cursor over the rows, which
- * Enter or a click chooses. It never times out. Focus stays where it was throughout.
+ * losing focus. Ctrl+N and Ctrl+P on a Mac, and the arrow keys in a group that does not bind
+ * them (the root binds them to focus moves), move a cursor over the rows, which Enter or a click
+ * chooses. It never times out. Focus stays where it was throughout. A repeatable command chosen
+ * by its key (the focus moves' arrows and h/j/k/l) leaves the menu armed for the device's repeat
+ * window (`menuRepeatWindowMs`): its key runs it again without the menu showing, each run
+ * restarting the window, until another key (which the page then gets, Escape aside), a click,
+ * focus landing in a text field, or the window passing.
  */
 export function WhichKey() {
   const [menu] = useState(createWhichKeyMenu<KeyOrigin>);
@@ -94,6 +109,8 @@ export function WhichKey() {
   const triggers = useAtomValue(primaryServerKeybindingTriggersAtom);
   const leaderKey = useClientSettings(resolveLeaderKey);
   const leaderLabel = leaderKey === null ? "Space" : leaderKeyLabel(leaderKey);
+  const repeatMs = useClientSettings((settings) => settings.menuRepeatWindowMs);
+  const armed = useSyncExternalStore(menu.subscribe, menu.isArmed);
   const vimrc = useAtomValue(primaryServerVimrcAtom);
   const sections = useAppSections();
   const navigate = useNavigate();
@@ -154,14 +171,32 @@ export function WhichKey() {
     });
   const isChord = (event: KeyboardEvent) => commandOf(event) === "whichKey.open";
 
+  // In the repeat window, a repeatable key of the group runs again, and Escape only ends it.
+  const onRepeatKeyDown = (event: KeyboardEvent) => {
+    // A held key repeats too, as a held shortcut does.
+    const key = menuKeyOf({ ...pressOf(event), repeat: false }, isChord(event), { mac });
+    if (key === null) return;
+    // Focus has moved since the menu opened: the commands act from where it is now.
+    const step = menu.pressRepeat(whichKeyRoot(triggers, command(focusOrigin())), key, repeatMs);
+    if (!step?.consumed) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    step.run?.();
+  };
+
   // Open, every key is the menu's: captured on the window, ahead of every element and editor.
+  // In the repeat window, only the keys that repeat are, and Escape.
   const onOpenKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (!menu.getState() || isSyntheticKeybinding(event)) return;
+    if (isSyntheticKeybinding(event)) return;
+    if (!menu.getState()) {
+      if (menu.isArmed()) onRepeatKeyDown(event);
+      return;
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     const key = menuKeyOf(event, isChord(event), { mac });
     if (key === null) return;
-    menu.press(root(), key)?.();
+    menu.press(root(), key, { repeatMs })?.();
   });
 
   // Closed, the doors listen after the page has had the key, so an element that binds the chord
@@ -175,7 +210,8 @@ export function WhichKey() {
     if (shortcut !== null && isAppCommand(shortcut)) {
       event.preventDefault();
       event.stopPropagation();
-      if (!event.repeat) command(focusOrigin())(shortcut).run();
+      const entry = command(focusOrigin())(shortcut);
+      if (!event.repeat || entry.repeatable) entry.run();
       return;
     }
     const door: WhichKeyDoor | null =
@@ -201,8 +237,14 @@ export function WhichKey() {
   useEffect(() => {
     const capture = (event: KeyboardEvent) => onOpenKeyDown(event);
     const bubble = (event: KeyboardEvent) => onDoorKeyDown(event);
+    // A move landing in a text field (the composer, a note, a terminal) ends the repeat window,
+    // so the next key types there. Listening throughout, as the move lands a frame after its key.
+    const onFocusIn = (event: FocusEvent) => {
+      if (menu.isArmed() && takesTyping(event.target)) menu.close();
+    };
     window.addEventListener("keydown", capture, true);
     window.addEventListener("keydown", bubble);
+    document.addEventListener("focusin", onFocusIn);
     const stop = handleLeaderRequests({
       open: (from) => onLeaderRequest(from),
       key: () => currentLeaderKey(),
@@ -210,12 +252,14 @@ export function WhichKey() {
     return () => {
       window.removeEventListener("keydown", capture, true);
       window.removeEventListener("keydown", bubble);
+      document.removeEventListener("focusin", onFocusIn);
       stop();
     };
-  }, []);
+  }, [menu]);
 
-  // It closes as it loses focus: a click outside it, or the window losing focus.
-  const listening = state !== null;
+  // It closes as it loses focus: a click outside it, or the window losing focus. Either ends a
+  // repeat window too.
+  const listening = state !== null || armed;
   useEffect(() => {
     if (!listening) return;
     const onPointerDown = (event: PointerEvent) => {

@@ -5,6 +5,8 @@ import { DEFAULT_RESOLVED_KEYBINDINGS, mergeWithDefaultKeybindings } from "./key
 import {
   DEFAULT_RESOLVED_TRIGGERS,
   formatAlias,
+  formatMenuKeys,
+  isMenuKey,
   keybindingRuleIssue,
   parseAlias,
   parseMenuKeys,
@@ -23,10 +25,52 @@ describe("trigger parsing", () => {
     expect(parseMenuKeys("menu g w")).toEqual(["g", "w"]);
     expect(parseMenuKeys("menu  t ]")).toEqual(["t", "]"]);
     expect(parseMenuKeys("Menu space x")).toEqual([" ", "x"]);
+    expect(parseMenuKeys("menu p arrowleft")).toEqual(["p", "ArrowLeft"]);
+    expect(parseMenuKeys("menu p ArrowDown")).toEqual(["p", "ArrowDown"]);
+    expect(parseMenuKeys("menu p left")).toBeNull();
     expect(parseMenuKeys("menu")).toBeNull();
     expect(parseMenuKeys("menu gw")).toBeNull();
     expect(parseMenuKeys("leader g w")).toBeNull();
     expect(parseMenuKeys("mod+k")).toBeNull();
+  });
+
+  it("writes named keys back by name, so a recorded arrow reads as it parses", () => {
+    expect(formatMenuKeys([" ", "x"])).toBe("menu space x");
+    expect(formatMenuKeys(["p", "ArrowRight"])).toBe("menu p arrowright");
+    expect(parseMenuKeys(formatMenuKeys(["p", "ArrowUp"]))).toEqual(["p", "ArrowUp"]);
+    expect(isMenuKey("ArrowLeft")).toBe(true);
+    expect(isMenuKey("h")).toBe(true);
+    expect(isMenuKey("Enter")).toBe(false);
+  });
+
+  it("puts the focus moves at the menu's root as the arrows and h/j/k/l, each arrow first", () => {
+    const sequences = DEFAULT_RESOLVED_TRIGGERS.flatMap((trigger) =>
+      trigger.kind === "menu" && trigger.command.startsWith("focus.")
+        ? [[trigger.command, ...trigger.sequence]]
+        : [],
+    );
+    expect(sequences).toEqual([
+      ["focus.left", "ArrowLeft"],
+      ["focus.left", "h"],
+      ["focus.down", "ArrowDown"],
+      ["focus.down", "j"],
+      ["focus.up", "ArrowUp"],
+      ["focus.up", "k"],
+      ["focus.right", "ArrowRight"],
+      ["focus.right", "l"],
+    ]);
+  });
+
+  it("puts scrolling at the menu's root as d and u, as Vim's Ctrl-D and Ctrl-U", () => {
+    const sequences = DEFAULT_RESOLVED_TRIGGERS.flatMap((trigger) =>
+      trigger.kind === "menu" && trigger.command.startsWith("scroll.")
+        ? [[trigger.command, ...trigger.sequence]]
+        : [],
+    );
+    expect(sequences).toEqual([
+      ["scroll.down", "d"],
+      ["scroll.up", "u"],
+    ]);
   });
 
   it("reads an alias in Vim's notation", () => {

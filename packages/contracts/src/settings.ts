@@ -314,6 +314,18 @@ export type ModelPreferences = {
 export const LeaderKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32));
 export type LeaderKey = typeof LeaderKey.Type;
 
+/**
+ * Astrolabe: how long, in milliseconds, the keyboard menu keeps a repeatable command's keys live
+ * after it ran from the menu (the focus moves' arrows and h/j/k/l, scrolling's d/u), as tmux's
+ * repeat-time; 0 turns it off.
+ */
+export const MAX_MENU_REPEAT_WINDOW_MS = 5000;
+export const MenuRepeatWindowMs = Schema.Int.check(
+  Schema.isBetween({ minimum: 0, maximum: MAX_MENU_REPEAT_WINDOW_MS }),
+);
+export type MenuRepeatWindowMs = typeof MenuRepeatWindowMs.Type;
+export const DEFAULT_MENU_REPEAT_WINDOW_MS: MenuRepeatWindowMs = 500;
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -447,6 +459,10 @@ export const ClientSettingsSchema = Schema.Struct({
   // Astrolabe: the key that opens the keyboard menu while focus is on no field or control (or in
   // Vim's normal and visual modes); null for none. Unset, `resolveLeaderKey` reads the old switch.
   leaderKey: Schema.optionalKey(Schema.NullOr(LeaderKey)),
+  // Astrolabe: the keyboard menu's repeat window (see `MenuRepeatWindowMs`).
+  menuRepeatWindowMs: MenuRepeatWindowMs.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_MENU_REPEAT_WINDOW_MS)),
+  ),
   sendShortcut: Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("enter")),
   ),
@@ -1665,6 +1681,8 @@ export const ClientSettingsPatch = Schema.Struct({
   spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),
   // Astrolabe: the keyboard menu's leader key, or null for none.
   leaderKey: Schema.optionalKey(Schema.NullOr(LeaderKey)),
+  // Astrolabe: the keyboard menu's repeat window, in milliseconds.
+  menuRepeatWindowMs: Schema.optionalKey(MenuRepeatWindowMs),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),

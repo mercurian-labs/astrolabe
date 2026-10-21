@@ -205,7 +205,7 @@ const TabPill = memo(function TabPill({
       className={cn(
         // A pill as wide as its title up to 260px; short of room the pills shrink together to
         // 96px, then the strip scrolls. `--pill` is its fill, which the close control fades to.
-        "group/tab relative flex h-7 max-w-[260px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "group/tab relative flex h-7 max-w-[260px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
         draggableInTitlebar && "[-webkit-app-region:no-drag]",
         active
           ? cn(

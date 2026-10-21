@@ -2,8 +2,8 @@
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { isLeaderKey, menuKeyOf } from "./leader";
-import { CHORD } from "./menu";
+import { isLeaderKey, menuKeyOf, takesTyping } from "./leader";
+import { CHORD, CURSOR_DOWN, CURSOR_UP } from "./menu";
 
 afterEach(() => document.body.replaceChildren());
 
@@ -62,6 +62,31 @@ describe("Space as the leader key", () => {
   });
 });
 
+describe("where focus takes typing, which ends the repeat window", () => {
+  it("is a text field, an editor, or a terminal", () => {
+    for (const html of [
+      "<input />",
+      "<textarea></textarea>",
+      '<div class="cm-editor"><div class="cm-content" contenteditable="true" data-target></div></div>',
+      '<div data-terminal-owner="right-panel"><canvas data-target></canvas></div>',
+    ]) {
+      expect(takesTyping(element(html)), html).toBe(true);
+    }
+  });
+
+  it("is not a sidebar row, a pane's tab, a rail button, or the page", () => {
+    for (const html of [
+      '<div role="button" tabindex="0" data-testid="sidebar-row-card">row</div>',
+      '<div role="tab" tabindex="0" data-pane-tab>tab</div>',
+      '<nav data-app-rail><button data-target aria-current="page">Threads</button></nav>',
+    ]) {
+      expect(takesTyping(element(html)), html).toBe(false);
+    }
+    expect(takesTyping(document.body)).toBe(false);
+    expect(takesTyping(null)).toBe(false);
+  });
+});
+
 describe("another leader key", () => {
   it("leads with the key it names, shifted or not, and never with none", () => {
     const comma = { leaderKey: "," };
@@ -90,8 +115,9 @@ describe("the keys the open menu reads", () => {
   });
 
   it("steps the cursor on Ctrl+N and Ctrl+P on a Mac only", () => {
-    expect(menuKeyOf(space({ key: "n", ctrlKey: true }), false, { mac: true })).toBe("ArrowDown");
-    expect(menuKeyOf(space({ key: "p", ctrlKey: true }), false, { mac: true })).toBe("ArrowUp");
+    // The cursor's own keys, not the arrows, which the root binds to focus moves.
+    expect(menuKeyOf(space({ key: "n", ctrlKey: true }), false, { mac: true })).toBe(CURSOR_DOWN);
+    expect(menuKeyOf(space({ key: "p", ctrlKey: true }), false, { mac: true })).toBe(CURSOR_UP);
     // Elsewhere Ctrl+N and Ctrl+P are the app's shortcuts, which reach no row here.
     expect(menuKeyOf(space({ key: "n", ctrlKey: true }), false, { mac: false })).toBe("");
     expect(

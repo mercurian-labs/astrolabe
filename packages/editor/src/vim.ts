@@ -44,16 +44,67 @@ const atlas = (cm: VimCM) => cm.cm6.state.facet(vimHistory) !== null;
 
 let configured = false;
 
+/** A direction `<C-w>` moves in, as `vimHostKeys`' `window` receives it. */
+export type VimWindowDirection = "left" | "down" | "up" | "right";
+
+const WINDOW_KEYS: Readonly<Record<string, VimWindowDirection>> = {
+  h: "left",
+  j: "down",
+  k: "up",
+  l: "right",
+};
+
+/** The host's `<C-w>` handler (see `vimHostKeys`), per editor. */
+const vimWindowHost = Facet.define<
+  (view: EditorView, direction: VimWindowDirection) => void,
+  ((view: EditorView, direction: VimWindowDirection) => void) | null
+>({ combine: (values) => values[0] ?? null });
+
+/**
+ * `<C-w>h`, `<C-w>j`, `<C-w>k`, `<C-w>l` in normal mode, which Vim moves between windows with:
+ * here they go to the host's `window` (see `vimHostKeys`), and do nothing in an editor without
+ * one, as the package's `<C-w>` did. They are one entry of Vim's own keymap, `<C-w><character>`,
+ * standing where the package's do-nothing `<C-w>` stood, so they are default keys: a vimrc can
+ * map onto them (`nnoremap <C-h> <C-w>h`) or over them (`nmap <C-w>h …`), and undoing its
+ * mappings never removes them. `<C-w>` with an arrow or with Ctrl held (`<C-w><C-l>`) maps onto
+ * them, as Vim reads those too.
+ */
+function defineWindowKeys() {
+  // The package's `<C-w>` (normal mode) does nothing, but as a full match it would end the key
+  // there: it gives way to the entry below, which keeps the keymap's count of defaults.
+  Vim.unmap("<C-w>", "normal");
+  Vim.defineAction("atlasWindow", (cm, args) => {
+    const direction = WINDOW_KEYS[args.selectedCharacter ?? ""];
+    const host = cm.cm6.state.facet(vimWindowHost);
+    if (!direction || !host) return;
+    const view = cm.cm6;
+    // After Vim has finished with the key, since the host moves focus out of the editor.
+    queueMicrotask(() => host(view, direction));
+  });
+  Vim.mapCommand("<C-w><character>", "action", "atlasWindow", {}, { context: "normal" });
+  for (const [key, arrow] of [
+    ["h", "Left"],
+    ["j", "Down"],
+    ["k", "Up"],
+    ["l", "Right"],
+  ] as const) {
+    Vim.noremap(`<C-w><${arrow}>`, `<C-w>${key}`, "normal");
+    Vim.noremap(`<C-w><C-${key}>`, `<C-w>${key}`, "normal");
+  }
+}
+
 /**
  * Vim's shared configuration, done once and scoped: each addition acts only in editors that
  * run this layer and otherwise does what the package did before, so another Vim editor on
  * the page is unaffected. Undo and redo go to the editor's `vimHistory`; `U` undoes in
  * normal mode; `:w` (through the package's save hook) and `:q` do nothing, since the
- * document is always saved through Yjs.
+ * document is always saved through Yjs; `<C-w>` with a direction goes to the host.
+ * The window keys come first, before any other mapping, so they stand among Vim's defaults.
  */
 function configureVim() {
   if (configured) return;
   configured = true;
+  defineWindowKeys();
   const { commands } = CodeMirror;
   const { undo, redo } = commands;
   const save: unknown = commands.save;
@@ -493,7 +544,7 @@ export function vimExLine(onSubmit: (input: string, view: EditorView) => void): 
   });
 }
 
-/** What a host does with the two normal-mode keys `vimHostKeys` offers it. */
+/** What a host does with the normal-mode keys `vimHostKeys` offers it. */
 export interface VimHostKeys {
   /** The leader key in normal or visual mode; true when the host took it. */
   leader?: (view: EditorView) => boolean;
@@ -504,15 +555,22 @@ export interface VimHostKeys {
   leaderKey?: () => string | null;
   /** `:` in normal mode, in place of Vim's ex line; true when the host took it. */
   exLine?: (view: EditorView) => boolean;
+  /** `<C-w>h`, `<C-w>j`, `<C-w>k`, `<C-w>l` (and the arrows) in normal mode: Vim's window keys. */
+  window?: (view: EditorView, direction: VimWindowDirection) => void;
 }
 
 /**
  * Offers the host its leader key, Space unless it says otherwise (in normal and visual mode), and
  * `:` (in normal mode) ahead of Vim. A key the host declines stays Vim's: Space moves right, `:`
  * opens Vim's ex line. Only when Vim has nothing pending, so `3:`, `d<Space>`, and visual `:`
- * (with its `'<,'>` range) are always Vim's. Does nothing in an editor without Vim.
+ * (with its `'<,'>` range) are always Vim's. Vim's window keys (`<C-w>h` …) go to `window`, as
+ * keys of Vim's own (see `defineWindowKeys`). Does nothing in an editor without Vim.
  */
 export function vimHostKeys(host: VimHostKeys): Extension {
+  return [host.window ? vimWindowHost.of(host.window) : [], hostKeyHandler(host)];
+}
+
+function hostKeyHandler(host: VimHostKeys): Extension {
   return Prec.highest(
     EditorView.domEventHandlers({
       keydown(event, view) {
@@ -586,9 +644,10 @@ const vimGlobals: VimConfiguration = Vim;
  * `createVimrcApplier` in `@t3tools/shared/vimrc`. `textwidth` reaches each editor.
  */
 export const vimConfiguration: VimConfiguration = {
-  map: (lhs, rhs, context) => vimGlobals.map(lhs, rhs, context),
-  noremap: (lhs, rhs, context) => vimGlobals.noremap(lhs, rhs, context),
-  unmap: (lhs, context) => vimGlobals.unmap(lhs, context),
+  // Configured first, so a vimrc applied before any editor mounts maps after the window keys.
+  map: (lhs, rhs, context) => (configureVim(), vimGlobals.map(lhs, rhs, context)),
+  noremap: (lhs, rhs, context) => (configureVim(), vimGlobals.noremap(lhs, rhs, context)),
+  unmap: (lhs, context) => (configureVim(), vimGlobals.unmap(lhs, context)),
   setOption(name, value) {
     if (!TEXTWIDTH_NAMES.has(name)) return vimGlobals.setOption(name, value);
     vimrcTextwidth = typeof value === "number" && value > 1 ? Math.round(value) : null;

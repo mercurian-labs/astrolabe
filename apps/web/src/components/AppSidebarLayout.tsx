@@ -41,6 +41,7 @@ import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { WikiSidebar } from "./wiki/WikiSidebar";
 import { PullRequestsSidebar } from "./pullRequest/PullRequestsSidebar";
+import { KeyboardNavigation } from "../keyboardNav/KeyboardNavigation";
 import { WhichKey } from "../whichKey/WhichKey";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
@@ -73,7 +74,7 @@ const ICON_RAIL_WIDTH_PX = 44;
 
 const SIDEBAR_BESIDE_RAIL_CLASS = cn(
   "left-11 group-data-[side=left]:border-r-0",
-  "after:pointer-events-none after:absolute after:top-(--workspace-topbar-height) after:right-0 after:bottom-0 after:w-px after:bg-border",
+  "after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border",
 );
 
 function subscribeToViewportWidth(onChange: () => void): () => void {
@@ -186,6 +187,19 @@ function SidebarControl() {
       unsubscribe?.();
     };
   }, [keybindings, toggleSidebar, usagePageOpen]);
+
+  // Astrolabe: beside the icon rail the toggle is the rail's (`AppIconRail`); the title bar keeps
+  // only the collapsed sidebar's actions, where the main area's title bar content starts.
+  if (!isMobile) {
+    return (
+      <div
+        className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-[calc(2.75rem+var(--workspace-titlebar-content-left))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+        data-sidebar-control=""
+      >
+        {isSidebarVisible ? null : <SidebarCollapsedActionsSlot gap />}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -321,7 +335,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(hasIconRail
       ? {
-          "--workspace-titlebar-content-left": `calc(var(--workspace-controls-left) + var(--workspace-titlebar-control-size) + var(--workspace-titlebar-control-gap) - ${ICON_RAIL_WIDTH_PX}px)`,
+          // The sidebar toggle is the rail's, so title-bar content clears only the window's own
+          // controls (macOS's traffic lights reach past the rail).
+          "--workspace-titlebar-content-left": `max(0.5rem, calc(var(--workspace-controls-left) - ${ICON_RAIL_WIDTH_PX}px))`,
         }
       : {}),
     ...windowControlsInsetStyle,
@@ -384,9 +400,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             onResize: setSidebarWidth,
           }}
           style={windowControlsInsetStyle}
-          // Astrolabe: beside the icon rail, and its edge drawn from below the title bar, so the
-          // title bar runs unbroken; hovering the resize rail draws the edge full height, as
-          // Obsidian's does.
+          // Astrolabe: beside the icon rail, its edge drawn the window's full height while it is
+          // open, through the title bar, as Obsidian's is; collapsed, the rail covers it.
           {...(hasIconRail ? { className: SIDEBAR_BESIDE_RAIL_CLASS } : {})}
         >
           {isOnSettings ? (
@@ -415,8 +430,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <SidebarControl />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
-        {/* Astrolabe: the keyboard menu (mod+k, and Space as a leader key). */}
+        {/* Astrolabe: the keyboard menu (mod+k, and Space as a leader key), and moving focus
+            between the sidebar and the panes, and through the sidebar's list. */}
         <WhichKey />
+        <KeyboardNavigation />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );

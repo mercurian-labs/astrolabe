@@ -543,6 +543,7 @@ import { useChatTabStrip } from "../chatTabs/ChatTabStrip";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
 import { usePaneSurfaceHost } from "../panes/PaneSurfaceHost";
 import { RightPanelPanes } from "../panes/RightPanelPanes";
+import { keepsListFocus } from "../keyboardNav/placeLists";
 import { previewEnvironment } from "../state/preview";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -4708,6 +4709,8 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
+      // Astrolabe: a thread opened by Enter in the sidebar's list leaves focus in the list.
+      if (keepsListFocus()) return;
       focusComposerStable();
     });
     return () => {

@@ -2463,3 +2463,57 @@ code {
 :root[data-theme-id="mercurian"] {
   --pivot: var(--brand-rust);
 }
+
+/* Astrolabe: the place keys act from (see `keyboardNav/regions.ts`). The pane or chat column
+   last focused or pressed in marks its tab in front with a bar in the focus color along the
+   pill's foot, as an editor marks the active tab of its focused group; the sidebar shows its
+   focused row's own ring instead. Static, with no transition. */
+/* Astrolabe: the focused place's tab in front already wears the bar below, so its own focus
+   ring would only repeat it; a tab elsewhere in the strip keeps the ring. */
+:is([data-pane-id], [data-chat-column-maximized-away])[data-focused-place]
+  :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-inset-ring-shadow: 0 0 #0000;
+}
+
+:is([data-pane-id], [data-chat-column-maximized-away])[data-focused-place]
+  :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0.5rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--ring);
+  pointer-events: none;
+}
+
+/* Astrolabe: beside the icon rail, the sidebar's body wears the main area's background (the
+   root's `--background`, captured as `--astrolabe-canvas` before the sidebar's palette redefines
+   it), while the rail, its title-bar cell and the sidebar's own title-bar row (the wordmark's)
+   keep the rail's `bg-sidebar` (`--astrolabe-rail`), so the title bar reads as one band over the
+   rail and the sidebar. The narrow window's sheet keeps the sidebar colour. T3 Code's default light palette fills hovered and current rows a step lighter
+   than its sidebar colour, which the canvas would swallow, so they move a step darker; themes
+   derive their row fills from the canvas already. */
+:root {
+  --astrolabe-canvas: var(--background);
+  --astrolabe-rail: var(--sidebar);
+}
+
+html [data-app-sidebar][data-slot="sidebar-container"] {
+  --sidebar: var(--astrolabe-canvas);
+  --sidebar-stage-fade: var(--astrolabe-canvas);
+}
+
+html [data-app-sidebar][data-slot="sidebar-container"] [data-sidebar-chrome-header] {
+  background-color: var(--astrolabe-rail);
+}
+
+html:is(:not([data-theme-id]), [data-theme-id=""])
+  [data-app-sidebar][data-slot="sidebar-container"] {
+  @variant light {
+    --sidebar-row-hover: var(--color-zinc-50);
+    --sidebar-row-active: var(--color-zinc-100);
+    --sidebar-row-selected: var(--color-zinc-100);
+  }
+}

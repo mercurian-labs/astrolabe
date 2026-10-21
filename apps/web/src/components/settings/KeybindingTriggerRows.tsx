@@ -1,8 +1,8 @@
 import type { ResolvedKeybindingTrigger, ServerUpsertKeybindingInput } from "@t3tools/contracts";
-import { formatMenuKeys, parseMenuKeys } from "@t3tools/shared/keybindingTriggers";
+import { formatMenuKeys, isMenuKey, parseMenuKeys } from "@t3tools/shared/keybindingTriggers";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { leaderKeyLabel } from "~/whichKey/leader";
+import { menuKeyLabel } from "~/whichKey/menu";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Kbd, KbdGroup } from "../ui/kbd";
@@ -28,7 +28,7 @@ export function TriggerPill({ row }: { row: KeybindingTriggerRow }) {
   // Keys repeat (`menu g g`): each repeat is keyed by its count so far.
   const seen = new Map<string, number>();
   const caps = row.trigger.sequence.map((key) => {
-    const label = leaderKeyLabel(key);
+    const label = menuKeyLabel(key);
     const count = seen.get(label) ?? 0;
     seen.set(label, count + 1);
     return { label, id: `${label}:${count}` };
@@ -101,7 +101,8 @@ export function TriggerKeyInput({
       return;
     }
     if (event.metaKey || event.ctrlKey || event.altKey) return;
-    if (Array.from(event.key).length !== 1) return;
+    // Astrolabe: a character, or an arrow (`menu p arrowleft`).
+    if (!isMenuKey(event.key)) return;
     onChange(formatMenuKeys([...sequence, event.key]));
   };
   return (
@@ -109,7 +110,7 @@ export function TriggerKeyInput({
       data-keybinding-capture=""
       autoFocus={autoFocus}
       aria-label={ariaLabel}
-      value={sequence.map(leaderKeyLabel).join(" ")}
+      value={sequence.map(menuKeyLabel).join(" ")}
       placeholder="Press keys"
       size="sm"
       font="mono"

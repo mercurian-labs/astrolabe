@@ -1,14 +1,25 @@
+import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { PanelLeft, PanelLeftClose } from "lucide";
 import { BookOpenIcon, ChartNoAxesColumnIcon, MessagesSquare, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { isElectron } from "~/env";
 import { useIsMobile } from "~/hooks/useMediaQuery";
+import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
+import { primaryServerKeybindingsAtom } from "~/state/server";
+import { MorphIcon } from "../MorphIcon";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { usePullRequestsSupported } from "~/state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+  useSidebarVisibility,
+} from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
 
@@ -93,10 +104,14 @@ export function useAppSections(): readonly AppSection[] {
  * The far-left icon rail: the app's sections on top (Threads, Wikis and Pull Requests), and
  * Usage and Settings at the foot, which the sidebar's footer used to hold. It runs from below
  * the title bar to the window's bottom edge and stays when the sidebar collapses; the sidebar
- * opens beside it (see `AppSidebarLayout`). The cell above it is the sidebar's part of the title
- * bar, drawn as the sidebar's own: beside the sidebar's header while it is open, and holding the
- * sidebar toggle while it is collapsed. The title bar runs unbroken across it; the rail's edge
- * starts at the title bar's bottom border. Narrow windows, where the sidebar is a sheet, have no rail.
+ * opens beside it (see `AppSidebarLayout`), and the sidebar's toggle ends the foot, so it stays
+ * in reach while the sidebar is collapsed. The cell above it is the rail's part of the title bar,
+ * drawn as the rail. The title bar's bottom border stops at it, so the cell and the rail read as
+ * one column; the rail's edge starts at that border's row, so the two lines meet square at the
+ * sidebar's corner. Narrow windows, where the sidebar is a sheet, have no rail (the toggle sits
+ * in the title bar there).
+ * It is the leftmost of the places the focus moves go between, its buttons a list walked with
+ * `j`/`k` (see `keyboardNav/`).
  */
 export function AppIconRail() {
   const isMobile = useIsMobile();
@@ -119,36 +134,65 @@ export function AppIconRail() {
         aria-hidden
         data-app-rail-cap=""
         className={cn(
-          "fixed top-0 left-0 h-(--workspace-topbar-height) w-11 border-b border-border bg-sidebar",
+          "fixed top-0 left-0 h-(--workspace-topbar-height) w-11 bg-sidebar",
           isElectron && "drag-region",
         )}
       />
       <nav
         aria-label="Sections"
         data-app-rail=""
-        className="fixed top-(--workspace-topbar-height) bottom-0 left-0 z-20 flex w-11 flex-col items-center border-r border-border bg-sidebar py-2"
+        className="fixed top-[calc(var(--workspace-topbar-height)-1px)] bottom-0 left-0 z-20 flex w-11 flex-col items-center border-r border-border bg-sidebar py-2"
       >
         <SidebarMenu className="items-center">
           {sections.filter((section) => !section.foot).map(item)}
         </SidebarMenu>
         <SidebarMenu className="mt-auto items-center">
           {sections.filter((section) => section.foot).map(item)}
+          <SidebarToggleItem />
         </SidebarMenu>
       </nav>
     </>
   );
 }
 
-/** One section: an icon with its name in a tooltip, marked by a bar on the rail's edge when current. */
+/** The sidebar's toggle (`sidebar.toggle`), as the title bar held it before the rail did. */
+function SidebarToggleItem() {
+  const { toggleSidebar } = useSidebar();
+  const open = useSidebarVisibility();
+  const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle", {
+    context: { usagePageOpen },
+  });
+  return (
+    <RailItem
+      label="Toggle main sidebar"
+      tooltip={`Toggle main sidebar${shortcutLabel ? ` (${shortcutLabel})` : ""}`}
+      icon={<MorphIcon className="size-4" icon={open ? PanelLeftClose : PanelLeft} />}
+      active={false}
+      pressed={open}
+      onClick={toggleSidebar}
+    />
+  );
+}
+
+/**
+ * One section: an icon with its name in a tooltip, marked by a bar on the rail's edge when
+ * current. The sidebar's toggle is one too, `pressed` while the sidebar is open.
+ */
 function RailItem({
   label,
+  tooltip = label,
   icon,
   active,
+  pressed,
   onClick,
 }: {
   label: string;
+  tooltip?: string;
   icon: ReactNode;
   active: boolean;
+  pressed?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -165,15 +209,18 @@ function RailItem({
             <SidebarMenuButton
               aria-label={label}
               aria-current={active ? "page" : undefined}
+              aria-pressed={pressed}
               isActive={active}
               onClick={onClick}
               size="icon"
+              // Walked as a list from the keyboard (`placeLists.ts`), with the rows' ring.
+              focusRing="light"
             >
               {icon}
             </SidebarMenuButton>
           }
         />
-        <TooltipPopup side="right">{label}</TooltipPopup>
+        <TooltipPopup side="right">{tooltip}</TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>
   );

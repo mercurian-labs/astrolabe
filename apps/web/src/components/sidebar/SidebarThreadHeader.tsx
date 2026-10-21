@@ -34,6 +34,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { focusListRow, listDefaultRow } from "../../keyboardNav/placeLists";
 import { sidebarSectionSlot } from "../../whichKey/handles";
 import { isSidebarUtilityPage } from "./mainAppLocation";
 
@@ -103,10 +104,12 @@ export function SidebarThreadHeader({
     setSearchFocusRequest((request) => request + 1);
   };
   const searchLabel = `Search ${searchNoun}s`;
-  // Astrolabe: the keyboard menu's `n` is this row's new button.
+  // Astrolabe: the keyboard menu's `n` is this row's new button, and the list's `/` its search.
   const newItem = useRef(onNewThread);
+  const search = useRef(openSearch);
   useLayoutEffect(() => {
     newItem.current = onNewThread;
+    search.current = openSearch;
   });
   useEffect(
     () =>
@@ -114,6 +117,7 @@ export function SidebarThreadHeader({
         newItem: () => newItem.current(),
         newItemLabel,
         newItemDisabled: newThreadDisabled,
+        openSearch: () => search.current(),
       }),
     [newItemLabel, newThreadDisabled],
   );
@@ -158,11 +162,15 @@ export function SidebarThreadHeader({
           onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
           onKeyDown={(event) => {
             onSearchKeyDown(event);
-            // Astrolabe: Escape on an empty field puts the section's name back.
+            // Astrolabe: Escape on an empty field puts the section's name back, and focus on
+            // the list's row, rather than nowhere once the field hides.
             if (event.key === "Escape" && !event.defaultPrevented) {
               event.preventDefault();
               event.stopPropagation();
               setSearchOpen(false);
+              const sidebar = event.currentTarget.closest("[data-app-sidebar]");
+              const row = sidebar ? listDefaultRow(sidebar) : null;
+              if (row) focusListRow(row);
             }
           }}
           // Astrolabe: an empty field shows only while it has focus.
@@ -325,11 +333,12 @@ function setSlot(element: HTMLElement | null) {
 }
 
 /**
- * Sits after the sidebar toggle while the sidebar is collapsed. It publishes its width as
+ * Sits after the sidebar toggle while the sidebar is collapsed (beside the icon rail, where the
+ * toggle is the rail's, at the start of the title bar instead). It publishes its width as
  * `--workspace-collapsed-sidebar-actions`, so titlebars that inset for the toggle clear the
- * actions too.
+ * actions too; `gap` includes the room after them, which the toggle's inset otherwise gives.
  */
-export function SidebarCollapsedActionsSlot() {
+export function SidebarCollapsedActionsSlot({ gap = false }: { gap?: boolean }) {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!element) return;
@@ -349,7 +358,10 @@ export function SidebarCollapsedActionsSlot() {
   return (
     <div
       ref={setElement}
-      className="pointer-events-auto flex items-center empty:hidden [-webkit-app-region:no-drag]"
+      className={cn(
+        "pointer-events-auto flex items-center empty:hidden [-webkit-app-region:no-drag]",
+        gap && "pe-(--workspace-titlebar-control-gap)",
+      )}
     />
   );
 }

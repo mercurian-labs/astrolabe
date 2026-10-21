@@ -1,5 +1,5 @@
 import { isEditableFocused } from "~/lib/editableFocus";
-import { CHORD } from "./menu";
+import { CHORD, CURSOR_DOWN, CURSOR_UP, menuKeyLabel } from "./menu";
 
 /** The keys a keyboard event carries, as the rules below read them. */
 type KeyPress = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey"> & {
@@ -74,14 +74,23 @@ export function isLeaderKey(
   return !isEditableFocused(element) && !isKeyboardControl(element) && !isInDialog(element);
 }
 
+/**
+ * Whether focus on `target` takes typing: a text field, an editor (Vim or not), a terminal. Focus
+ * landing there ends the menu's repeat window, so the next key types.
+ */
+export function takesTyping(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null;
+  return isEditableFocused(element) || element?.closest("[data-terminal-owner]") != null;
+}
+
 /** The leader key as the menu's breadcrumb and the settings name it. */
 export function leaderKeyLabel(leaderKey: string): string {
   return leaderKey === " " ? "Space" : leaderKey;
 }
 
-/** Menu keys as the keycaps read them: `t ]`, Space by name. */
+/** Menu keys as the keycaps read them: `t ]`, Space by name, the arrows as arrows. */
 export function menuKeysLabel(sequence: readonly string[]): string {
-  return sequence.map(leaderKeyLabel).join(" ");
+  return sequence.map(menuKeyLabel).join(" ");
 }
 
 /** Keys that only modify another; pressing one alone chooses nothing. */
@@ -89,9 +98,9 @@ const MODIFIERS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsL
 
 /**
  * The key the open menu reads from a keydown: its `key` when pressed plainly, `CHORD` for the
- * menu's chord, ArrowDown and ArrowUp for Ctrl+N and Ctrl+P on a Mac (as macOS lists move; on
- * other platforms they are app shortcuts), and an empty key (which nothing is bound to) for
- * any other chord. Null for a key the menu ignores: a modifier alone, a held key (the arrows
+ * menu's chord, the cursor keys for Ctrl+N and Ctrl+P on a Mac (as macOS lists move; on other
+ * platforms they are app shortcuts), and an empty key (which nothing is bound to) for any other
+ * chord. Null for a key the menu ignores: a modifier alone, a held key (the arrows
  * excepted, which step), or one composing text.
  */
 export function menuKeyOf(
@@ -102,7 +111,7 @@ export function menuKeyOf(
   if (event.isComposing || MODIFIERS.has(event.key)) return null;
   if (isChord) return event.repeat ? null : CHORD;
   const step = options.mac ? macListStep(event) : null;
-  if (step !== null) return step;
+  if (step !== null) return step === "ArrowDown" ? CURSOR_DOWN : CURSOR_UP;
   if (event.repeat && event.key !== "ArrowDown" && event.key !== "ArrowUp") return null;
   return isPlainKey(event) ? event.key : "";
 }

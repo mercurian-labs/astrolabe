@@ -3,6 +3,7 @@ import type { EditorView } from "@codemirror/view";
 import { vimHostKeys } from "@mercurian/editor/vim";
 
 import { openCommandPalette } from "~/commandPaletteBus";
+import { appCommandsSlot } from "./handles";
 
 /**
  * Astrolabe: where a key for the keyboard menu or the ex line came from, so what it opens can act
@@ -45,6 +46,16 @@ function requestLeader(origin: KeyOrigin): boolean {
   return leaderHandler?.open(origin) ?? false;
 }
 
+/**
+ * Opens the keyboard menu from `key` pressed on `element` when it is the leader key, for a
+ * place whose own keys would otherwise take it (a sidebar list's row, which Space presses);
+ * false when it is not the leader key, or the menu declined.
+ */
+export function openLeaderFrom(element: Element, key: string): boolean {
+  if (!leaderHandler || key !== leaderHandler.key()) return false;
+  return requestLeader({ element, view: null, write: null });
+}
+
 let pendingOrigin: KeyOrigin | null = null;
 
 /** Opens the command palette as an ex line, `:` and `text` typed, acting where `origin` says. */
@@ -62,11 +73,19 @@ export function releaseExOrigin(origin: KeyOrigin | null) {
   if (pendingOrigin === origin) pendingOrigin = null;
 }
 
+const WINDOW_COMMANDS = {
+  left: "focus.left",
+  down: "focus.down",
+  up: "focus.up",
+  right: "focus.right",
+} as const;
+
 /**
  * The keyboard menu's doors in a Vim editor of the app's (the composer, a wiki note): the leader
  * key in normal and visual mode opens the menu, and `:` in normal mode opens the palette as the
  * ex line, with `write` as that editor's `:w`. Without Vim, or with no leader key, the keys stay
- * Vim's.
+ * Vim's. Vim's window keys (`<C-w>h` …) move focus between the sidebar and the panes, as the
+ * focus moves do.
  */
 export function appVimKeys(write: (view: EditorView) => EditorWrite | null): Extension {
   const origin = (view: EditorView): KeyOrigin => ({
@@ -82,5 +101,7 @@ export function appVimKeys(write: (view: EditorView) => EditorWrite | null): Ext
       openExLine(origin(view));
       return true;
     },
+    window: (view, direction) =>
+      appCommandsSlot.get()?.command(WINDOW_COMMANDS[direction], origin(view)).run(),
   });
 }

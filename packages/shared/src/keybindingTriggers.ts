@@ -37,6 +37,19 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu /", command: "commandPalette.toggle" },
   { key: "menu n", command: "section.new" },
   { key: "menu f", command: "filePicker.toggle" },
+  // Focus moves sit at the root as the arrows and h/j/k/l, Vim's window keys; each arrow first,
+  // so its row reads `← | h`. The root's cursor moves with Ctrl+N/Ctrl+P and the mouse instead.
+  { key: "menu arrowleft", command: "focus.left" },
+  { key: "menu h", command: "focus.left" },
+  { key: "menu arrowdown", command: "focus.down" },
+  { key: "menu j", command: "focus.down" },
+  { key: "menu arrowup", command: "focus.up" },
+  { key: "menu k", command: "focus.up" },
+  { key: "menu arrowright", command: "focus.right" },
+  { key: "menu l", command: "focus.right" },
+  // Half a page of the focused place, as Vim's Ctrl-D and Ctrl-U.
+  { key: "menu d", command: "scroll.down" },
+  { key: "menu u", command: "scroll.up" },
   { key: "menu g t", command: "section.threads" },
   { key: "menu g w", command: "section.wikis" },
   { key: "menu g p", command: "section.pullRequests" },
@@ -50,6 +63,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu p s", command: "pane.splitDown" },
   { key: "menu p c", command: "pane.close" },
   { key: "menu p m", command: "pane.toggleMaximized" },
+  { key: "menu p f", command: "pane.toggleFullScreen" },
+  { key: "menu p r", command: "rightPanel.toggle" },
   { key: "menu s s", command: "sidebar.toggle" },
   { key: "menu w w", command: "section.wikis" },
   { key: "menu w f", command: "wiki.findDocument" },
@@ -63,22 +78,42 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: ":noh[lsearch]", command: "search.clearHighlight" },
 ];
 
+/**
+ * The keys a menu rule names by word, as `KeyboardEvent.key` names them: `space`, and the arrows
+ * as shortcuts spell them (`arrowup`).
+ */
+const NAMED_MENU_KEYS: Readonly<Record<string, string>> = {
+  space: " ",
+  arrowleft: "ArrowLeft",
+  arrowdown: "ArrowDown",
+  arrowup: "ArrowUp",
+  arrowright: "ArrowRight",
+};
+
+const MENU_KEY_NAMES = new Map(Object.entries(NAMED_MENU_KEYS).map(([name, key]) => [key, name]));
+
+/** Whether `key` (a `KeyboardEvent.key`) can be a menu key: one character, or a named key. */
+export function isMenuKey(key: string): boolean {
+  return Array.from(key).length === 1 || MENU_KEY_NAMES.has(key);
+}
+
 /** The keys of a `menu …` rule, as `KeyboardEvent.key` names them; null when malformed. */
 export function parseMenuKeys(key: string): string[] | null {
   const [word, ...tokens] = key.trim().split(/\s+/);
   if (word?.toLowerCase() !== "menu" || tokens.length === 0) return null;
   const sequence: string[] = [];
   for (const token of tokens) {
-    if (token.toLowerCase() === "space") sequence.push(" ");
+    const named = NAMED_MENU_KEYS[token.toLowerCase()];
+    if (named !== undefined) sequence.push(named);
     else if (Array.from(token).length === 1) sequence.push(token);
     else return null;
   }
   return sequence;
 }
 
-/** Menu keys as a rule writes them: `menu g w`. */
+/** Menu keys as a rule writes them: `menu g w`, `menu p arrowleft`. */
 export function formatMenuKeys(sequence: readonly string[]): string {
-  return ["menu", ...sequence.map((key) => (key === " " ? "space" : key))].join(" ");
+  return ["menu", ...sequence.map((key) => MENU_KEY_NAMES.get(key) ?? key)].join(" ");
 }
 
 /** An alias in Vim's notation (`:q[uit]`), lowercased; null when malformed. */

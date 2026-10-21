@@ -103,23 +103,26 @@ set textwidth=100
 
 On web and desktop, `mod+k` opens the keyboard menu in the main area's top-right
 corner. Press a key to run its command or open its group, or pick a row with
-the mouse, or with the arrow keys and Enter (on a Mac, `Ctrl+N` and `Ctrl+P`
-move too). The keys you have pressed show at the top, Backspace goes back a
-level, and Escape or a click elsewhere closes it. A key with nothing bound says
-so. The menu waits as long as you need.
+the mouse, or with `Ctrl+N` and `Ctrl+P` and Enter on a Mac. Inside a group the
+arrow keys move between rows too; at the top level they move focus. The keys you
+have pressed show at the top, Backspace goes back a level, and Escape or a click
+elsewhere closes it. A key with nothing bound says so. The menu waits as long as
+you need.
 
-| Key     | Does                                                    |
-| ------- | ------------------------------------------------------- |
-| `:`     | Command Palette                                         |
-| `/`     | Search threads, wiki documents, projects, and settings  |
-| `n`     | New thread, or new document on Wikis                    |
-| `f`     | Find a file in the current project                      |
-| `g`     | Go to Threads, Wikis, Pull Requests, Usage, or Settings |
-| `t`     | Chat tabs: next, previous, close, reopen closed         |
-| `p`     | Panes: split right or down, close, maximize             |
-| `s` `s` | Show or hide the sidebar                                |
-| `w`     | Open Wikis, or find or create a document                |
-| `,`     | Settings                                                |
+| Key                     | Does                                                    |
+| ----------------------- | ------------------------------------------------------- |
+| `:`                     | Command Palette                                         |
+| `/`                     | Search threads, wiki documents, projects, and settings  |
+| `n`                     | New thread, or new document on Wikis                    |
+| `f`                     | Find a file in the current project                      |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right    |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page             |
+| `g`                     | Go to Threads, Wikis, Pull Requests, Usage, or Settings |
+| `t`                     | Chat tabs: next, previous, close, reopen closed         |
+| `p`                     | Panes: split, close, maximize                           |
+| `s` `s`                 | Show or hide the sidebar                                |
+| `w`                     | Open Wikis, or find or create a document                |
+| `,`                     | Settings                                                |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does. Change
@@ -135,6 +138,67 @@ quick sequence like Space `g` `w` runs without it showing.
 
 In the composer and wiki notes, `mod+shift+k` inserts a link. Elsewhere it copies
 an open pull request's number (below).
+
+### Moving focus
+
+Focus moves between the icon rail, the sidebar, the chat, and each pane the way
+Vim moves between windows: to the nearest one in that direction. Use any of:
+
+- `Ctrl+H`, `Ctrl+J`, `Ctrl+K`, `Ctrl+L` (Ctrl on a Mac too), while you are not
+  typing in a field, an editor, or a terminal. Hold one to keep moving;
+- Space then an arrow or `h` `j` `k` `l`, in the keyboard menu;
+- `Ctrl+W` then `h` `j` `k` `l` or an arrow, in the composer or a note in Vim's
+  normal mode. Your vimrc can map onto these like any Vim key, for example
+  `nnoremap <C-h> <C-w>h`.
+
+After a move from the keyboard menu, its keys keep moving focus for half a
+second without Space, and each move starts the half second again, so Space `l`
+`l` goes two places right. Any other key ends this and does what it normally
+does; Escape only ends it. Landing in the composer, a note, a field, or a
+terminal ends it too, so you can type there at once. In the sidebar or the rail,
+`j` `k` and the up and down arrows walk the list straight away, since there is
+no place above or below. Change how long it lasts, or turn it off with 0, in
+**Settings → Keybindings → This device → Repeat window**.
+
+Focus returns to where you left it in that place; the first time, it lands on
+the composer, the pane's tab in front, the sidebar's current row, or the rail's
+current section. The pane or chat that has focus marks its tab in front with a
+line in the focus color, as it does after a click. On Windows and Linux `Ctrl+J`
+and `Ctrl+K` stay the terminal toggle and the keyboard menu, so use Space `j`
+and `k` there, or bind **Focus Down** and **Focus Up** to other keys. In a
+terminal every key stays the terminal's; to move from there, bind a shortcut of
+your own in Settings.
+
+### Scrolling
+
+Space `d` and `u`, or `Ctrl+D` and `Ctrl+U`, scroll the place with focus half a
+page down or up: the chat's messages, a pane's note, diff, or files, or the
+sidebar's list. After Space `d`, more `d` and `u` keep scrolling for the repeat
+window, so Space `d` `d` `d` goes a page and a half. The keyboard menu shows them
+faint when there is nowhere further to go. `Ctrl+D` and `Ctrl+U` work while you
+are not typing; in the composer and notes they stay Vim's. On Windows and Linux
+they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
+**Scroll Down** and **Scroll Up** to other keys.
+
+### The sidebar's list
+
+With a row of the Threads, Wikis, or Pull Requests sidebar focused (move there
+with `Ctrl+H`, or click a row), or a button of the icon rail:
+
+| Key                    | Does                                       |
+| ---------------------- | ------------------------------------------ |
+| `j` `k`, Down Up       | Next or previous row                       |
+| `g` `g`, `G`, Home End | First or last row                          |
+| Enter                  | Open the row, as a click does              |
+| `mod+Enter`            | As a `mod`-click does (Wikis: open beside) |
+| `/`                    | Search the sidebar                         |
+| Escape                 | To the place on the right                  |
+
+Space still opens the keyboard menu. The row with the focus ring is where Enter
+goes; the row you are on keeps its own look. Folded groups are skipped until you
+unfold them. Enter keeps you in the list, so you can open one thread after
+another; press Escape or `Ctrl+L` to reach its composer. A click on a thread
+still puts you in its composer.
 
 ### Command Palette
 

@@ -3,7 +3,7 @@ import { Fragment, useEffect, useRef, useState, type PointerEvent } from "react"
 import { cn } from "../lib/utils";
 import { resizePanes } from "./arrangement";
 import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
-import { panesSlot } from "../whichKey/handles";
+import { panesSlot, type PanesPanel } from "../whichKey/handles";
 import { usePanesHost, usePanesLayoutKey, type PaneArrangementSnapshot } from "./panesHost";
 import { PaneView } from "./PaneView";
 import {
@@ -24,14 +24,17 @@ const paneMinimum = () => MIN_SPLIT_PX;
  */
 /**
  * `panelMaximized` says whether the panel fills the main area, so its left edge is the window's
- * and its top-left strip clears a collapsed sidebar's controls.
+ * and its top-left strip clears a collapsed sidebar's controls. `panel` is the thread's right
+ * panel holding the panes, for the keyboard menu's full screen.
  */
 export function PaneTree({
   snapshot,
   panelMaximized,
+  panel,
 }: {
   snapshot: PaneArrangementSnapshot;
   panelMaximized: boolean;
+  panel?: PanesPanel;
 }) {
   const { arrangement, hostPaneId } = snapshot;
   const maximizedId = useMaximizedPaneId();
@@ -40,8 +43,15 @@ export function PaneTree({
   const layoutKey = usePanesLayoutKey();
   const root = useRef<HTMLDivElement>(null);
   useEffect(
-    () => panesSlot.register({ controller, tabs, layoutKey, element: () => root.current }),
-    [controller, layoutKey, tabs],
+    () =>
+      panesSlot.register({
+        controller,
+        tabs,
+        layoutKey,
+        element: () => root.current,
+        ...(panel ? { panel } : {}),
+      }),
+    [controller, layoutKey, panel, tabs],
   );
   // Maximizing ends once the pane is gone or the last one left, so a later split shows every
   // pane rather than maximizing again.

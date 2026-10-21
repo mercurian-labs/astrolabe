@@ -262,7 +262,7 @@ function ChatTab({
       className={cn(
         // A pill as wide as its title up to 220px; short of room the pills shrink together to
         // 96px, then the strip scrolls. `--pill` is its fill, which the close control fades to.
-        "group/tab relative flex h-7 max-w-[220px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "group/tab relative flex h-7 max-w-[220px] min-w-24 shrink cursor-pointer items-center gap-1.5 rounded-md border border-transparent bg-(--pill) px-2.25 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
         isElectron && "[-webkit-app-region:no-drag]",
         active
           ? "border-border text-foreground shadow-xs/5 [--pill:var(--card)]"

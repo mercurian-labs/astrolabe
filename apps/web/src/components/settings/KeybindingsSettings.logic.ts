@@ -405,6 +405,12 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "draft.write": "Send Draft or Save Note",
   "buffer.open": "Switch to Thread",
   "document.open": "Open Document",
+  "focus.left": "Focus Left",
+  "focus.down": "Focus Down",
+  "focus.up": "Focus Up",
+  "focus.right": "Focus Right",
+  "scroll.down": "Scroll Down",
+  "scroll.up": "Scroll Up",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

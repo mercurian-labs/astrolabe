@@ -23,11 +23,13 @@ function createHandleSlot<T>() {
   };
 }
 
-/** The sidebar section's title row: its new button ("New thread", "New document"). */
+/** The sidebar section's title row: its new button ("New thread", "New document") and search. */
 export interface SidebarSectionHandle {
   readonly newItem: () => void;
   readonly newItemLabel: string;
   readonly newItemDisabled: boolean;
+  /** Opens the section's search field, as its search button does. */
+  readonly openSearch?: () => void;
 }
 
 export const sidebarSectionSlot = createHandleSlot<SidebarSectionHandle>();
@@ -49,6 +51,17 @@ export interface PanesHandle {
   readonly layoutKey: string | null;
   /** The element holding the panes, to tell whether focus is in them. */
   readonly element: () => HTMLElement | null;
+  /**
+   * The thread's right panel holding the panes, which maximizes over the chat column (upstream's
+   * `rightPanel.toggleMaximized`); absent for the Wikis and Pull Requests areas, which fill the
+   * main area already.
+   */
+  readonly panel?: PanesPanel;
+}
+
+export interface PanesPanel {
+  readonly maximized: boolean;
+  readonly setMaximized: (maximized: boolean) => void;
 }
 
 export const panesSlot = createHandleSlot<PanesHandle>();

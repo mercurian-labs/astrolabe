@@ -8,9 +8,13 @@ import { cn } from "~/lib/utils";
  * rows all draw through these parts, so the lists read as one.
  */
 
-/** The interactive surface every row shares; status lives in the row's content, not here. */
+/**
+ * The interactive surface every row shares; status lives in the row's content, not here. Focused
+ * from the keyboard, a row wears the inputs' light ring (a thin edge and a soft band in the focus
+ * color), which reads apart from the current row's fill.
+ */
 export const SIDEBAR_ROW_SURFACE_CLASS =
-  "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/24";
 export const SIDEBAR_ROW_ACTIVE_CLASS = "bg-sidebar-row-active text-sidebar-foreground";
 export const SIDEBAR_ROW_SELECTED_CLASS = "bg-sidebar-row-selected text-sidebar-foreground";
 export const SIDEBAR_ROW_IDLE_CLASS =

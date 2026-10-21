@@ -17,6 +17,11 @@ import {
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
+import { focusRegion, regionToward } from "~/keyboardNav/regions";
+import { isListRow } from "~/keyboardNav/placeLists";
+import type { FocusDirection } from "~/keyboardNav/regions.logic";
+import { scrollToward } from "~/keyboardNav/scroll";
+import type { ScrollDirection } from "~/keyboardNav/scroll.logic";
 import type { EditorWrite, KeyOrigin } from "./doors";
 import type { ChatTabsHandle, PanesHandle, SidebarSectionHandle } from "./handles";
 import { runKeybindingCommand, shortcutForCommand } from "./keybindingCommands";
@@ -57,6 +62,11 @@ export interface AppCommand {
   /** Shown faint: there is nothing for it to act on here. */
   readonly disabled: boolean;
   readonly run: () => void;
+  /**
+   * Run again and again in a row: from the keyboard menu its key repeats for the repeat window
+   * after it (`menuRepeatWindowMs`), and its shortcut repeats while held.
+   */
+  readonly repeatable?: boolean;
 }
 
 const APP_COMMANDS = new Set<KeybindingCommand>(ASTROLABE_KEYBINDING_COMMANDS);
@@ -73,6 +83,7 @@ const UPSTREAM_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "chat.new": "New thread",
   "sidebar.toggle": "Toggle sidebar",
   "view.reopenClosed": "Reopen closed tab",
+  "rightPanel.toggle": "Toggle right panel",
 };
 
 const SECTION_IDS: Partial<Record<AstrolabeKeybindingCommand, string>> = {
@@ -130,11 +141,62 @@ export function inEditor(origin: KeyOrigin | null, line: string): (() => void) |
     });
 }
 
+/**
+ * Runs `run` on a frame after the Command Palette has gone (it hands focus back as it leaves),
+ * waiting out its closing for a few frames at most.
+ */
+function afterPalette(run: () => void, frames = 30) {
+  requestAnimationFrame(() => {
+    if (frames > 0 && document.querySelector("[data-command-palette]"))
+      afterPalette(run, frames - 1);
+    else run();
+  });
+}
+
+/**
+ * Moves focus to the region `direction` from where the key came from (see `regions.ts`), once the
+ * menu or palette it may have come through has closed; null with nowhere to go.
+ */
+function focusToward(direction: FocusDirection, origin: KeyOrigin | null): (() => void) | null {
+  // Outside a page (the registry's tests) there is no focus to move.
+  if (typeof document === "undefined") return null;
+  const target = regionToward(direction, origin?.element ?? document.activeElement);
+  return target ? () => afterPalette(() => focusRegion(target)) : null;
+}
+
+/**
+ * Scrolls the place the key came from (see `scroll.ts`) half a page; null where it cannot go
+ * that way.
+ */
+function scrollFrom(direction: ScrollDirection, origin: KeyOrigin | null): (() => void) | null {
+  // Outside a page (the registry's tests) there is nothing to scroll.
+  if (typeof document === "undefined") return null;
+  return scrollToward(direction, origin?.element ?? document.activeElement);
+}
+
 const entry = (label: string, run: (() => void) | null): AppCommand => ({
   label,
   disabled: run === null,
   run: () => run?.(),
 });
+
+const repeatableEntry = (label: string, run: (() => void) | null): AppCommand => ({
+  ...entry(label, run),
+  repeatable: true,
+});
+
+/**
+ * A focus move. Up or down with nowhere to go from a list's row (the sidebar's, the rail's), its
+ * key (`j`, ArrowDown …) is the list's: it does not repeat, so in the repeat window after Space
+ * `h` it ends the window and steps the list rather than being spent on a move that cannot happen.
+ */
+function focusEntry(label: string, direction: FocusDirection, origin: KeyOrigin | null) {
+  const run = focusToward(direction, origin);
+  const vertical = direction === "up" || direction === "down";
+  const element = origin?.element ?? null;
+  const listKey = run === null && vertical && element !== null && isListRow(element);
+  return listKey ? entry(label, null) : repeatableEntry(label, run);
+}
 
 /** One of Astrolabe's commands, acting on what is on screen now. */
 function astrolabeCommand(
@@ -208,6 +270,37 @@ function astrolabeCommand(
         ),
       );
     }
+    case "pane.toggleFullScreen": {
+      const panel = panes?.panel ?? null;
+      const state = focused
+        ? fullScreenState({
+            alone: focused.alone,
+            paneMaximized: !!panes && isPaneMaximized(panes.layoutKey, focused.leaf.id),
+            panelMaximized: panel ? panel.maximized : null,
+          })
+        : null;
+      return entry(
+        state?.full && state.change ? "Exit full screen" : "Full screen pane",
+        onPane(!!state?.change, (handle, leaf) => {
+          const change = state?.change;
+          if (!change) return;
+          if (change.pane) toggleMaximizedPane(handle.controller, handle.layoutKey, leaf.id);
+          if (change.panel !== null) panel?.setMaximized(change.panel);
+        }),
+      );
+    }
+    case "focus.left":
+      return focusEntry("Focus left", "left", context.origin);
+    case "focus.down":
+      return focusEntry("Focus down", "down", context.origin);
+    case "focus.up":
+      return focusEntry("Focus up", "up", context.origin);
+    case "focus.right":
+      return focusEntry("Focus right", "right", context.origin);
+    case "scroll.down":
+      return repeatableEntry("Scroll down", scrollFrom("down", context.origin));
+    case "scroll.up":
+      return repeatableEntry("Scroll up", scrollFrom("up", context.origin));
     case "wiki.findDocument":
       return entry("Find or create a document", context.findDocument);
     case "tab.close":
@@ -228,8 +321,39 @@ function astrolabeCommand(
   }
 }
 
+/**
+ * What full screen does to the focused pane: it fills the content area once it fills its panes'
+ * room (maximized, or alone) and, in a thread's right panel (`panelMaximized` not null), the
+ * panel is maximized over the chat column too. Pressed again it restores both. `change` says
+ * whether to toggle the pane's maximizing and what to set the panel to; null with nothing to do
+ * (a lone pane in the Wikis or Pull Requests area already fills it).
+ */
+export function fullScreenState(pane: {
+  readonly alone: boolean;
+  readonly paneMaximized: boolean;
+  readonly panelMaximized: boolean | null;
+}): {
+  readonly full: boolean;
+  readonly change: { readonly pane: boolean; readonly panel: boolean | null } | null;
+} {
+  const { alone, paneMaximized, panelMaximized } = pane;
+  const full = (alone || paneMaximized) && panelMaximized !== false;
+  if (full) {
+    if (!paneMaximized && !panelMaximized) return { full, change: null };
+    return { full, change: { pane: paneMaximized, panel: panelMaximized ? false : null } };
+  }
+  return {
+    full,
+    change: { pane: !alone && !paneMaximized, panel: panelMaximized === false ? true : null },
+  };
+}
+
 /** An upstream command, pressed through its shortcut; faint without one. */
 function upstreamCommand(command: KeybindingCommand, context: AppCommandContext): AppCommand {
+  // The right panel is a thread's: with no chat on screen there is none to toggle.
+  if (command === "rightPanel.toggle" && context.chatTabs === null) {
+    return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
+  }
   const label = UPSTREAM_LABELS[command] ?? commandLabel(command);
   // Search has no default shortcut of its own (mod+k is the menu's), nor the file picker (mod+p
   // is the Command Palette's): they open directly.

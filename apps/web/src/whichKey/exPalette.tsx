@@ -3,7 +3,19 @@ import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { Columns2, CornerDownLeft, Rows2, SquareTerminal, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ChevronsDown,
+  ChevronsUp,
+  Columns2,
+  CornerDownLeft,
+  Rows2,
+  SquareTerminal,
+  X,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { useChatTabsStore } from "~/chatTabs/chatTabsStore";
@@ -84,6 +96,12 @@ const COMMAND_ICONS: Partial<Record<KeybindingCommand, ReactNode>> = {
   "draft.write": <CornerDownLeft className={ITEM_ICON_CLASS} />,
   "pane.splitDown": <Rows2 className={ITEM_ICON_CLASS} />,
   "pane.splitRight": <Columns2 className={ITEM_ICON_CLASS} />,
+  "focus.left": <ArrowLeft className={ITEM_ICON_CLASS} />,
+  "focus.down": <ArrowDown className={ITEM_ICON_CLASS} />,
+  "focus.up": <ArrowUp className={ITEM_ICON_CLASS} />,
+  "focus.right": <ArrowRight className={ITEM_ICON_CLASS} />,
+  "scroll.down": <ChevronsDown className={ITEM_ICON_CLASS} />,
+  "scroll.up": <ChevronsUp className={ITEM_ICON_CLASS} />,
 };
 
 const iconFor = (command: KeybindingCommand) =>

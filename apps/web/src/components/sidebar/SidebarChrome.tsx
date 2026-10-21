@@ -62,7 +62,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 
   return (
     // The titlebar row, not a padded SidebarHeader: it aligns to the window controls.
+    // Astrolabe: beside the icon rail it keeps the rail's colour (`index.css`).
     <div
+      data-sidebar-chrome-header=""
       className={cn(
         // Astrolabe: its bottom border lines up with the tab strip's beside it.
         "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 border-b border-border pr-2",
@@ -78,7 +80,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         />
       </div>
       {/* One visible line: the pill wraps onto the clipped second line once it no longer fits.
-          The padding keeps the brand's focus ring inside the clip, and clears the sidebar toggle.
+          The padding keeps the brand's focus ring inside the clip, and clears the window's own
+          controls (beside the icon rail, the sidebar toggle is the rail's).
           The wordmark shows while it fits beside the pill, the monogram after. */}
       <div
         ref={setBrandRow}

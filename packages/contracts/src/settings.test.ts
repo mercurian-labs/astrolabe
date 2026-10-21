@@ -7,6 +7,7 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   ClaudeSettings,
+  DEFAULT_MENU_REPEAT_WINDOW_MS,
   DEFAULT_SERVER_SETTINGS,
   requiredScopesForProjectMutation,
   resolveLeaderKey,
@@ -1291,5 +1292,22 @@ describe("the leader key setting", () => {
   it("keeps a chosen leader key through a save", () => {
     const saved = encodeClientSettings(decodeClientSettings({ leaderKey: "," }));
     expect(resolveLeaderKey(decodeClientSettings(saved))).toBe(",");
+  });
+});
+
+// Astrolabe
+describe("the keyboard menu's repeat window", () => {
+  it("is half a second on a device that never set it, and 0 turns it off", () => {
+    expect(decodeClientSettings({}).menuRepeatWindowMs).toBe(DEFAULT_MENU_REPEAT_WINDOW_MS);
+    expect(DEFAULT_MENU_REPEAT_WINDOW_MS).toBe(500);
+    expect(decodeClientSettings({ menuRepeatWindowMs: 0 }).menuRepeatWindowMs).toBe(0);
+    expect(decodeClientSettingsPatch({ menuRepeatWindowMs: 400 })).toEqual({
+      menuRepeatWindowMs: 400,
+    });
+  });
+
+  it("keeps a chosen window through a save", () => {
+    const saved = encodeClientSettings(decodeClientSettings({ menuRepeatWindowMs: 750 }));
+    expect(decodeClientSettings(saved).menuRepeatWindowMs).toBe(750);
   });
 });

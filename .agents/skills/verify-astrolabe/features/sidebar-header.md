@@ -69,7 +69,7 @@ preview_click  role=link[name='Go to threads']
 `[role=listbox][aria-label="Thread search results"] [role=option]` rows as you
 type, the project filter list, the picker or a new `/draft/` URL), plus a saved screenshot of
 the rows. The borders are visual-only:
-read `getComputedStyle` widths on the header row and `[data-app-rail-cap]`. Check the wordmark is not clipped at the default sidebar width,
+read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Check the wordmark is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower.
 
 ## Gotchas

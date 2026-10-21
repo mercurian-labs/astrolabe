@@ -93,6 +93,7 @@ import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
+import { takesListKey } from "~/keyboardNav/placeLists";
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
@@ -414,6 +415,8 @@ export function RightPanelEmptyState(props: {
     if (document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
     const target = event.composedPath()[0] ?? event.target;
     if (target instanceof Element && surfaceShortcutTargetsTypingContext(target)) return;
+    // Astrolabe: a focused sidebar row or rail button keeps its list's keys (`gg`, `G`).
+    if (takesListKey(target, event.key)) return;
     event.preventDefault();
     event.stopPropagation();
     action.onClick();

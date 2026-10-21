@@ -432,8 +432,8 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
   },
-  // Astrolabe: Vim in the composer and wiki notes, the keyboard menu's leader key, and the vimrc,
-  // on the Keybindings page.
+  // Astrolabe: Vim in the composer and wiki notes, the keyboard menu's leader key and repeat
+  // window, and the vimrc, on the Keybindings page.
   {
     id: "vim-mode",
     title: "Vim keybindings",
@@ -445,6 +445,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Leader key",
     to: "/settings/keybindings",
     searchTerms: ["leader space key which-key keyboard menu shortcuts lazyvim mapleader"],
+  },
+  {
+    id: "menu-repeat-window",
+    title: "Repeat window",
+    to: "/settings/keybindings",
+    searchTerms: [
+      "repeat window timeout repeat-time tmux keyboard menu focus move hjkl arrows scroll panes milliseconds",
+    ],
   },
   {
     id: "vim-configuration",

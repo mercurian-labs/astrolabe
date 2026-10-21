@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   CHORD,
+  CURSOR_DOWN,
+  CURSOR_UP,
   NOT_BOUND,
   NOT_HERE,
   LEADER_REVEAL_MS,
   createWhichKeyMenu,
+  keyLabels,
+  pressRepeat,
   menuTrail,
   shortTrail,
   type WhichKeyGroup,
@@ -136,6 +140,41 @@ describe("the keyboard menu", () => {
     expect(ran).toEqual(["wikis"]);
   });
 
+  it("runs an arrow a group binds, where the arrows would otherwise move the cursor", () => {
+    const ran: string[] = [];
+    const root: WhichKeyGroup = {
+      label: "Keyboard commands",
+      items: [
+        {
+          keys: ["p"],
+          label: "Panes",
+          group: {
+            label: "Panes",
+            items: [
+              { keys: ["j", "ArrowDown"], label: "Focus down", run: () => ran.push("down") },
+              { keys: ["v"], label: "Split right", run: () => ran.push("split") },
+            ],
+          },
+        },
+      ],
+    };
+    const menu = createWhichKeyMenu();
+    menu.open("chord");
+    menu.press(root, "p");
+    // ArrowUp is unbound here, so it still moves the cursor.
+    menu.press(root, "ArrowUp");
+    expect(menu.getState()?.cursor).toBe(1);
+    // The cursor keys (Ctrl+N, Ctrl+P on a Mac) move it past a bound arrow too.
+    menu.press(root, CURSOR_DOWN);
+    expect(menu.getState()?.cursor).toBe(0);
+    menu.press(root, CURSOR_UP);
+    expect(menu.getState()?.cursor).toBe(1);
+    menu.press(root, "ArrowDown")?.();
+    expect(menu.getState()).toBeNull();
+    expect(ran).toEqual(["down"]);
+    expect(keyLabels(root.items[0]!.group!.items[0]!, "⌘K")).toEqual(["j", "↓"]);
+  });
+
   it("shows at once on the chord, and on Space only after a pause that each key restarts", () => {
     const { root, ran } = tree();
     const menu = createWhichKeyMenu();
@@ -170,5 +209,121 @@ describe("the keyboard menu", () => {
     expect(menu.getState()).not.toBeNull();
     menu.close();
     expect(menu.getState()).toBeNull();
+  });
+});
+
+describe("the repeat window after a repeatable command", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function focusTree({ edge = false } = {}) {
+    const ran: string[] = [];
+    const move = (direction: string) => ({
+      keys: [direction[0]!] as [string],
+      label: `Focus ${direction}`,
+      repeatable: true,
+      run: () => void ran.push(direction),
+    });
+    const root: WhichKeyGroup = {
+      label: "Keyboard commands",
+      items: [
+        { ...move("left"), keys: ["h"] },
+        { ...move("down"), keys: ["j"], disabled: edge },
+        { keys: [","], label: "Settings", run: () => void ran.push("settings") },
+        {
+          keys: ["p"],
+          label: "Panes",
+          group: {
+            label: "Panes",
+            items: [{ keys: ["v"], label: "Split right", run: () => void ran.push("split") }],
+          },
+        },
+      ],
+    };
+    return { root, ran };
+  }
+
+  it("arms after a repeatable key, closed and unshown, and each repeat restarts it", () => {
+    const { root, ran } = focusTree();
+    const menu = createWhichKeyMenu();
+    menu.open("leader");
+    menu.press(root, "h", { repeatMs: 1000 })?.();
+    expect(menu.getState()).toBeNull();
+    expect(menu.isArmed()).toBe(true);
+    vi.advanceTimersByTime(900);
+    const step = menu.pressRepeat(root, "j", 1000);
+    expect(step).toMatchObject({ consumed: true, repeating: true });
+    step?.run?.();
+    vi.advanceTimersByTime(900);
+    // Still armed: the repeat restarted the window.
+    expect(menu.isArmed()).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(menu.isArmed()).toBe(false);
+    expect(menu.pressRepeat(root, "h", 1000)).toBeNull();
+    expect(ran).toEqual(["left", "down"]);
+  });
+
+  it("ends on another key, which goes on to the page, but spends Escape", () => {
+    const { root, ran } = focusTree();
+    const menu = createWhichKeyMenu();
+    menu.open("chord");
+    menu.press(root, "h", { repeatMs: 1000 })?.();
+    expect(menu.pressRepeat(root, "x", 1000)).toEqual({
+      consumed: false,
+      repeating: false,
+      run: null,
+    });
+    expect(menu.isArmed()).toBe(false);
+
+    menu.open("chord");
+    menu.press(root, "h", { repeatMs: 1000 })?.();
+    // A key of the menu that is not repeatable ends it too, and is not run from here.
+    expect(menu.pressRepeat(root, ",", 1000)?.consumed).toBe(false);
+    expect(menu.isArmed()).toBe(false);
+
+    menu.open("chord");
+    menu.press(root, "h", { repeatMs: 1000 })?.();
+    expect(menu.pressRepeat(root, "Escape", 1000)).toEqual({
+      consumed: true,
+      repeating: false,
+      run: null,
+    });
+    expect(menu.isArmed()).toBe(false);
+    expect(ran).toEqual(["left", "left", "left"]);
+  });
+
+  it("keeps the window on a repeatable key with nothing to act on, which runs nothing", () => {
+    const { root } = focusTree({ edge: true });
+    expect(pressRepeat(root, [], "j")).toEqual({ consumed: true, repeating: true, run: null });
+    expect(pressRepeat(root, [], "Escape").consumed).toBe(true);
+    expect(pressRepeat(root, [], "x").consumed).toBe(false);
+  });
+
+  it("never arms with a window of 0, from a click, or after a command that does not repeat", () => {
+    const { root } = focusTree();
+    const menu = createWhichKeyMenu();
+    menu.open("chord");
+    menu.press(root, "h", { repeatMs: 0 })?.();
+    expect(menu.isArmed()).toBe(false);
+    // A click chooses a row through Enter, without a window.
+    menu.open("chord");
+    menu.press(root, "ArrowDown");
+    menu.press(root, "Enter")?.();
+    expect(menu.isArmed()).toBe(false);
+    menu.open("chord");
+    menu.press(root, ",", { repeatMs: 1000 })?.();
+    expect(menu.isArmed()).toBe(false);
+  });
+
+  it("ends when the menu opens again or closes, as on a click elsewhere", () => {
+    const { root } = focusTree();
+    const menu = createWhichKeyMenu();
+    menu.open("chord");
+    menu.press(root, "h", { repeatMs: 1000 })?.();
+    menu.open("leader");
+    expect(menu.isArmed()).toBe(false);
+    menu.press(root, "h", { repeatMs: 1000 })?.();
+    menu.close();
+    expect(menu.isArmed()).toBe(false);
   });
 });

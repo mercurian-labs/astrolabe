@@ -9,7 +9,7 @@ import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/
 import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
-import { appCommand, cycleKey, type AppCommandContext } from "./commands";
+import { appCommand, cycleKey, fullScreenState, type AppCommandContext } from "./commands";
 import type { PanesHandle } from "./handles";
 import {
   CHORD,
@@ -132,6 +132,12 @@ describe("the keyboard menu built from the menu rules", () => {
       [`/ ${CHORD}`, "Search"],
       ["n", "New thread"],
       ["f", "Find file"],
+      ["ArrowLeft h", "Focus left"],
+      ["ArrowDown j", "Focus down"],
+      ["ArrowUp k", "Focus up"],
+      ["ArrowRight l", "Focus right"],
+      ["d", "Scroll down"],
+      ["u", "Scroll up"],
       ["g", "Go to"],
       ["t", "Tabs"],
       ["p", "Panes"],
@@ -139,6 +145,19 @@ describe("the keyboard menu built from the menu rules", () => {
       ["w", "Wikis"],
       [",", "settings"],
     ]);
+    // Only the focus moves and the scrolls repeat, there and nowhere in the groups.
+    const repeatable = (group: WhichKeyGroup): string[] =>
+      group.items.flatMap((item) =>
+        item.group ? repeatable(item.group) : item.repeatable ? [item.keys[0]] : [],
+      );
+    expect(repeatable(root)).toEqual(["ArrowLeft", "ArrowDown", "ArrowUp", "ArrowRight", "d", "u"]);
+    // Each focus move's row reads its arrow, then its letter.
+    expect(
+      keyLabels(
+        root.items.find((item) => item.label === "Focus left")!,
+        "⌘K",
+      ),
+    ).toEqual(["←", "h"]);
   });
 
   it("names a prefix a user made by its count, and shares a row between keys for one command", () => {
@@ -265,5 +284,74 @@ describe("the keyboard menu built from the menu rules", () => {
     );
     // Without panes on screen there is nothing to act on.
     expect(press(context().root, ["p", "s"])).toBe(NOT_HERE);
+  });
+
+  it("takes the focused pane full screen, maximizing the right panel too, and back", () => {
+    const panes = twoPanes();
+    let panelMaximized = false;
+    const inPanel = () => ({
+      ...panes,
+      panel: {
+        maximized: panelMaximized,
+        setMaximized: (next: boolean) => void (panelMaximized = next),
+      },
+    });
+    const label = () =>
+      context({ panes: inPanel() })
+        .root.items.find((item) => item.keys[0] === "p")
+        ?.group?.items.find((item) => item.keys[0] === "f")?.label;
+    expect(label()).toBe("Full screen pane");
+    press(context({ panes: inPanel() }).root, ["p", "f"]);
+    expect(useMaximizedPaneStore.getState().maximized?.paneId).toBe(panes.arrangement().focused);
+    expect(panelMaximized).toBe(true);
+    expect(label()).toBe("Exit full screen");
+    press(context({ panes: inPanel() }).root, ["p", "f"]);
+    expect(useMaximizedPaneStore.getState().maximized).toBeNull();
+    expect(panelMaximized).toBe(false);
+  });
+
+  it("toggles the right panel from p r only with a chat on screen", () => {
+    const pressed = pressedCommands();
+    const select = vi.fn();
+    const close = vi.fn();
+    expect(press(context().root, ["p", "r"])).toBe(NOT_HERE);
+    press(context({ chatTabs: { keys: ["a"], activeKey: "a", select, close } }).root, ["p", "r"]);
+    expect(pressed).toEqual(["rightPanel.toggle"]);
+  });
+});
+
+describe("full screen for the focused pane", () => {
+  it("maximizes what does not fill yet, and restores both once full", () => {
+    // A right panel's lone pane: only the panel maximizes, and back.
+    expect(fullScreenState({ alone: true, paneMaximized: false, panelMaximized: false })).toEqual({
+      full: false,
+      change: { pane: false, panel: true },
+    });
+    expect(fullScreenState({ alone: true, paneMaximized: false, panelMaximized: true })).toEqual({
+      full: true,
+      change: { pane: false, panel: false },
+    });
+    // A pane among others, with the panel maximized by hand: the pane maximizes, the panel stays.
+    expect(fullScreenState({ alone: false, paneMaximized: false, panelMaximized: true })).toEqual({
+      full: false,
+      change: { pane: true, panel: null },
+    });
+    expect(fullScreenState({ alone: false, paneMaximized: true, panelMaximized: true })).toEqual({
+      full: true,
+      change: { pane: true, panel: false },
+    });
+  });
+
+  it("is maximizing the pane in the Wikis area, with nothing to do for a lone pane", () => {
+    expect(fullScreenState({ alone: false, paneMaximized: false, panelMaximized: null })).toEqual({
+      full: false,
+      change: { pane: true, panel: null },
+    });
+    expect(
+      fullScreenState({ alone: false, paneMaximized: true, panelMaximized: null }).change,
+    ).toEqual({ pane: true, panel: null });
+    expect(
+      fullScreenState({ alone: true, paneMaximized: false, panelMaximized: null }).change,
+    ).toBeNull();
   });
 });

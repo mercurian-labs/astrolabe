@@ -18,20 +18,26 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   pressed again at the root still opens Search. A group key opens its group, a command key runs and
   closes the menu. Backspace goes up (at the root it closes); Escape, a click
   outside, or the window losing focus closes it; Cmd+K inside a group goes back to
-  the root. Rows take a click (hover highlights), and ArrowUp/ArrowDown (Ctrl+P/
-  Ctrl+N on a Mac) move a highlighted row (`li[data-highlighted]`) that Enter
-  chooses. An unbound key shows **Not bound** and keeps the menu open; a command
+  the root. Rows take a click (hover highlights), and Ctrl+P/Ctrl+N on a Mac move a
+  highlighted row (`li[data-highlighted]`) that Enter chooses, in every group;
+  ArrowUp/ArrowDown move it too, except in a group that binds that arrow: the root
+  (the focus moves, by default) or a user's `menu p arrowdown`, where it runs its row.
+  So at the root off a Mac only the mouse moves the cursor. An unbound key shows **Not bound** and keeps the menu open; a command
   with nothing to act on here shows faint, **Not available here** (e.g. `g p` where
   Pull Requests is unsupported). Cmd+K shows it at once; the leader after ~300 ms,
   so a fast `Space g w` runs without it flashing.
 - **Top level** (defaults): `:` Command palette, `/` Search (always enabled),
   `n` New thread or document, `f` Find file (upstream's file picker), `g` Go to,
-  `t` Tabs, `p` Panes, `s` Sidebar, `w` Wikis, `,` Settings. `n`'s label follows the section (on Wikis: "New document").
+  `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows read `← | h`;
+  repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll down and `u`
+  Scroll up (repeatable), `t` Tabs, `p` Panes, `s` Sidebar, `w` Wikis, `,` Settings. `n`'s
+  label follows the section (on Wikis: "New document").
   A prefix the user added with no built-in name shows as `+N` (its entry count).
 - **Groups** (defaults): `g` t Threads, w Wikis, p Pull Requests, u Usage, s
   Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
   browser tabs, not chat tabs; see chat-tabs.md). `p` `v` split right, `s` split
-  down, `c` close pane, `m` maximize/restore. `s` `s` toggle sidebar. `w` `w` open
+  down, `c` close pane, `m` maximize/restore (the focus moves left Panes for the root).
+  `s` `s` toggle sidebar. `w` `w` open
   Wikis, `f` find or create a document.
 - **Search** (the palette's plain mode, dialog name `Search`): empty, it lists
   Recent Threads only; upstream's Actions are the Command Palette's. A query finds
@@ -62,7 +68,7 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   terminal's (`when: !terminalFocus`). Its description reads "Another way to open
   the keyboard menu, besides ⌘K. …".
 - **Triggers in `keybindings.json`**: one rule shape `{key, command, when?}`. `key`
-  is a shortcut (`mod+k`), menu keys (`menu g w`, single keys spaced) or an alias
+  is a shortcut (`mod+k`), menu keys (`menu g w`, single keys spaced; `space` and `arrowleft`…`arrowright` by name) or an alias
   (`:q[uit]`, bracketed tail optional); `when` is for shortcuts only. A `-command`
   rule removes that command's matching default (`{"key": "menu t ]", "command":
 "-chatTab.next"}`). A user rule replaces only its own kind's defaults for that
@@ -121,7 +127,7 @@ and copy the backup back when done. The server picks changes up live.
 
 ## Flows
 
-1. **Menu basics.** On a chat: Cmd+K → menu at the top right with the ten top-level
+1. **Menu basics.** On a chat: Cmd+K → menu at the top right with the fourteen top-level
    rows (Search's row shows only `/`), `Esc close` footer → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g`
    (or click Go to) → heading `Menu › Go to` → click **Backspace back** → heading `Menu` → `g` → `z` → "Not bound", still open →
    click Threads, or `w` → the URL changes, menu closed.

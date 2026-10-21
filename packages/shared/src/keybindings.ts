@@ -155,6 +155,19 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+x", command: "markdown.strikethrough", when: "editorFocus" },
   { key: "mod+shift+h", command: "markdown.highlight", when: "editorFocus" },
   { key: "mod+shift+k", command: "markdown.link", when: "editorFocus" },
+  // Astrolabe: Ctrl+H/J/K/L move focus between the sidebar and the panes, as Vim's and tmux's
+  // window keys do, only while nothing is being typed into (a field, an editor, a terminal):
+  // there they stay the editor's. Early, so where `mod` is Ctrl the terminal (mod+j) and the
+  // keyboard menu (mod+k) keep their keys.
+  { key: "ctrl+h", command: "focus.left", when: "!editableFocus && !terminalFocus" },
+  { key: "ctrl+j", command: "focus.down", when: "!editableFocus && !terminalFocus" },
+  { key: "ctrl+k", command: "focus.up", when: "!editableFocus && !terminalFocus" },
+  { key: "ctrl+l", command: "focus.right", when: "!editableFocus && !terminalFocus" },
+  // Astrolabe: Ctrl+D and Ctrl+U scroll the focused place half a page, as in Vim, on the same
+  // terms; in an editor they stay Vim's. Where `mod` is Ctrl, the diff (mod+d) and Usage (mod+u)
+  // keep their keys.
+  { key: "ctrl+d", command: "scroll.down", when: "!editableFocus && !terminalFocus" },
+  { key: "ctrl+u", command: "scroll.up", when: "!editableFocus && !terminalFocus" },
   { key: "mod+b", command: "sidebar.toggle" },
   { key: "mod+[", command: "navigation.back", when: "!terminalFocus" },
   { key: "mod+]", command: "navigation.forward", when: "!terminalFocus" },

@@ -1,7 +1,8 @@
-import { useLayoutEffect, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { PreviewPanelShell } from "../components/preview/PreviewPanelShell";
+import { useRightPanelStore } from "../rightPanelStore";
 import type { PanelProps } from "./panesController";
 import { useRightPanelHost } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
@@ -20,6 +21,18 @@ export function RightPanelPanes(props: PanelProps) {
   });
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const hostPaneId = snapshot?.hostPaneId ?? null;
+  const maximized = props.maximized === true;
+  // The keyboard menu's full screen maximizes the panel too, as its maximize control does.
+  const panel = useMemo(
+    () => ({
+      maximized,
+      setMaximized: (next: boolean) => {
+        const ref = controller.threadRef();
+        if (ref) useRightPanelStore.getState().setMaximized(ref, next);
+      },
+    }),
+    [controller, maximized],
+  );
   // The active surface's content shows only in the pane showing its tab.
   useLayoutEffect(() => {
     if (hostPaneId === null) host.hide();
@@ -31,7 +44,13 @@ export function RightPanelPanes(props: PanelProps) {
       {...(props.open !== undefined ? { open: props.open } : {})}
       {...(props.inlineSize ? { inlineSize: props.inlineSize } : {})}
     >
-      {snapshot ? <PaneTree snapshot={snapshot} panelMaximized={props.maximized === true} /> : null}
+      {snapshot ? (
+        <PaneTree
+          snapshot={snapshot}
+          panelMaximized={maximized}
+          {...(props.open !== false ? { panel } : {})}
+        />
+      ) : null}
       {createPortal(props.children, host.surface)}
     </PreviewPanelShell>
   );

@@ -206,7 +206,9 @@ export function WikiNoteView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-6 py-2">
+      {/* The view's header, as Obsidian's: one line as tall as the pane's tab strip above it,
+          whose bottom border is the only line between them and the note. */}
+      <div className="flex h-(--workspace-topbar-height) shrink-0 items-center gap-2 overflow-hidden px-6">
         <h2 className="min-w-0 truncate text-base font-semibold">{data.name}</h2>
         {readOnly ? <Badge variant="secondary">Skill map · read only</Badge> : null}
         {data.exists ? null : <Badge variant="warning">Not written yet</Badge>}
