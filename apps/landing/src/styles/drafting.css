@@ -2751,9 +2751,14 @@ hidden, leaves the sticky stage working). */
 .tour__try[hidden] {
   display: none;
 }
+/* The label sits on the print's grain like the chips beside it, on its own dark plate. */
 .tour__try .tag {
+  align-self: center;
+  padding: 0.3rem 0.55rem;
   color: #eaddc7;
-  opacity: 0.8;
+  background: rgb(30 28 26 / 0.72);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 .tour__chips {
   display: flex;
@@ -2767,7 +2772,9 @@ hidden, leaves the sticky stage working). */
   height: 2.6rem;
   padding: 0 1rem;
   border: 1px solid rgb(234 221 199 / 0.35);
-  background: rgb(30 28 26 / 0.55);
+  background: rgb(30 28 26 / 0.8);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   color: #f3ead9;
   font: inherit;
   font-size: 0.9375rem;
@@ -2785,7 +2792,7 @@ hidden, leaves the sticky stage working). */
 .tour__chip:hover:not(:disabled),
 .tour__chip:focus-visible {
   border-color: #eaddc7;
-  background: rgb(30 28 26 / 0.8);
+  background: rgb(30 28 26 / 0.92);
 }
 .tour__chip.tour__chip[aria-pressed="true"] {
   border-color: #eaddc7;
@@ -2796,7 +2803,7 @@ hidden, leaves the sticky stage working). */
   cursor: default;
 }
 .tour__chip:disabled:not([aria-pressed="true"]) {
-  opacity: 0.55;
+  color: rgb(243 234 217 / 0.6);
 }
 
 @container (min-width: 901px) {
@@ -3802,7 +3809,7 @@ hidden, leaves the sticky stage working). */
 .wake .wake__rust {
   fill: var(--rust);
 }
-/* Scaled strokes, so each line's pathLength holds and the draw-in reaches its end. */
+/* Scaled strokes, so the wake's lines keep their weight against its wide viewBox. */
 .wake .dw {
   vector-effect: none;
 }
@@ -3943,6 +3950,23 @@ kbd {
    column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
 .reach__defs {
   position: absolute;
+}
+/* Line figures (the Automations wake): one weight, one ink, rust only on the mark that matters.
+   Static and complete at rest, like the problem figures. */
+.dw {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.dw.lt {
+  stroke: var(--ink-4);
+}
+.dw.rs {
+  stroke: var(--rust);
+  stroke-width: 1.75;
 }
 .reach {
   display: block;
