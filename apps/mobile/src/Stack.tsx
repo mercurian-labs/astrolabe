@@ -55,6 +55,8 @@ import { useAgentNotificationNavigation } from "./features/agent-awareness/notif
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
+import { SettingsChangeRequestsRouteScreen } from "./features/settings/SettingsChangeRequestsRouteScreen";
+import { ChangeGroupRouteScreen } from "./features/changeGroups/ChangeGroupRouteScreen";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
 import { selectedPullRequestKey } from "./features/pull-requests/pullRequestSelection";
@@ -274,6 +276,11 @@ const SettingsContentStack = createV5SheetStackNavigator({
       screen: SettingsThreadsRouteScreen,
       linking: "thread-preferences",
       options: { title: "Thread behavior" },
+    }),
+    SettingsChangeRequests: createNativeStackScreen({
+      screen: SettingsChangeRequestsRouteScreen,
+      linking: "change-request-preferences",
+      options: { title: "Change requests" },
     }),
     SettingsAbout: createNativeStackScreen({
       screen: SettingsAboutRouteScreen,
@@ -732,6 +739,12 @@ const RootStackConfig = createWorkspaceStackNavigator({
       screen: ThreadFileScreen,
       linking: "repositories/file/:path*",
       options: SOLID_HEADER_OPTIONS,
+    }),
+    // Astrolabe: a change group, from the Change requests tab.
+    ChangeGroup: createNativeStackScreen({
+      screen: ChangeGroupRouteScreen,
+      linking: "change-groups/:environmentId/:groupId",
+      options: { ...SOLID_HEADER_OPTIONS, title: "Change group" },
     }),
     // Astrolabe: a wiki's documents and change requests.
     WikiDocument: createNativeStackScreen({

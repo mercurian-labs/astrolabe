@@ -2,9 +2,11 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Columns2, Maximize2, Minimize2, MoreHorizontal, Rows2, SquareX } from "lucide-react";
 import {
+  Fragment,
   memo,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -12,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { TabGroupLabel, tabGroupId, useTabGroupCollapsed, useTabGroupLookup } from "./tabGroups";
 import { Button } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -24,6 +27,7 @@ import {
   focusPane,
   isEmptyTab,
   moveTabs,
+  openTab,
   splitTab,
   splitTabs,
   splitWithTabs,
@@ -322,6 +326,20 @@ function TabStrip({
   const { active } = leaf;
   const { controller, tabs } = usePanesHost();
   const NewTab = tabs.NewTab;
+  const groupOf = useTabGroupLookup();
+  const isCollapsed = useTabGroupCollapsed();
+  const groupsOfTabs = useMemo(() => leaf.tabs.map(groupOf), [groupOf, leaf.tabs]);
+  /** The keys of the group run starting at `start`. */
+  const runFrom = (start: number) => {
+    const first = groupsOfTabs[start];
+    const keys: string[] = [];
+    for (let index = start; index < leaf.tabs.length; index += 1) {
+      const group = groupsOfTabs[index];
+      if (!group || !first || tabGroupId(group) !== tabGroupId(first)) break;
+      keys.push(leaf.tabs[index]!);
+    }
+    return keys;
+  };
   // A lone pane already fills the panel: there is nothing to maximize it over.
   const alone = useSyncExternalStore(controller.subscribe, () => {
     const snapshot = controller.getSnapshot();
@@ -368,18 +386,40 @@ function TabStrip({
           }
         }}
       >
-        {leaf.tabs.map((key, index) => (
-          <TabPill
-            key={key}
-            tabKey={key}
-            paneId={leaf.id}
-            active={key === active}
-            paneFocused={focused}
-            only={leaf.tabs.length === 1}
-            last={index === leaf.tabs.length - 1}
-            draggableInTitlebar={titlebar}
-          />
-        ))}
+        {leaf.tabs.map((key, index) => {
+          // Astrolabe: a change group's tabs stand together behind its label (`tabGroups`).
+          const group = groupsOfTabs[index] ?? null;
+          const id = group ? tabGroupId(group) : null;
+          const previous = groupsOfTabs[index - 1] ?? null;
+          const starts = group !== null && (previous === null || tabGroupId(previous) !== id);
+          const hidden = id !== null && isCollapsed(id) && key !== active;
+          return (
+            <Fragment key={key}>
+              {starts && group ? (
+                <TabGroupLabel
+                  group={group}
+                  tabKeys={runFrom(index)}
+                  controller={controller}
+                  collapsedNow={isCollapsed(tabGroupId(group))}
+                  onOpenGroup={(groupKey) =>
+                    controller.update((arrangement) => openTab(arrangement, groupKey, leaf.id))
+                  }
+                />
+              ) : null}
+              {hidden ? null : (
+                <TabPill
+                  tabKey={key}
+                  paneId={leaf.id}
+                  active={key === active}
+                  paneFocused={focused}
+                  only={leaf.tabs.length === 1}
+                  last={index === leaf.tabs.length - 1}
+                  draggableInTitlebar={titlebar}
+                />
+              )}
+            </Fragment>
+          );
+        })}
       </div>
       <NewTab paneId={leaf.id} />
       {alone ? null : <MaximizeButton paneId={leaf.id} maximized={maximized} />}

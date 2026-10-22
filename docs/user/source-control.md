@@ -209,6 +209,30 @@ PR creation from Git actions continue to use the project's environment.
 For Azure DevOps, use the host website to change comments. Bitbucket does not support reopening a
 declined pull request.
 
+### Change groups
+
+A change group is change requests in different projects that are one effort, such as a pull
+request and the wiki change request documenting it. A thread's own change requests form a group on
+their own, and so do a coordinator's children's and a fork's; a change request with no thread joins
+the group whose titles share its issue key (`M-123`). Groups lead the **Change Requests** list,
+each with its state: **In sync**, **Docs behind**, **Waiting on code**, **Docs missing** or
+**Merged**. A thread in a group shows it beside its title.
+
+A group's tab lists its members and why each is there. **Merge with the code** merges the
+documentation the moment the code has; a merge the wiki refuses stays open for you. From the tab
+you can add a change request by hand or take one out, ask an agent for suggestions (you accept or
+dismiss each), and ask a thread to update documentation that fell behind or to draft missing
+documentation. **Open as a tab group** opens the group's thread, pull requests and documentation
+together: the label before them collapses them, and its menu merges the group with the code or
+closes its tabs.
+
+Which rules group change requests, and what an agent may do, are under **Settings → Change
+Requests → Grouping**, for each environment. Turning a rule off keeps the members already grouped.
+
+On your phone, groups lead the **Change requests** tab; a group shows its members, opens each,
+takes one out, and turns **Merge with the code** on or off. Grouping is under **Settings →
+Change requests**.
+
 ### Review guides
 
 Review guides are in beta. Turn on **Review guides** in Settings → Source Control to add the

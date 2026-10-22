@@ -49,6 +49,8 @@ import {
   attachPullRequestPanes,
   restorePullRequestTabs,
   showPullRequest,
+  showChangeRequestTab,
+  pullRequestTargetOfKey,
   stepPullRequestTab,
   usePullRequestTabHistory,
 } from "./pullRequestTabs";
@@ -215,6 +217,7 @@ export function PullRequestPanes(props: PullRequestPanesProps) {
                 store={controller}
                 active={key === focusedKey}
                 openPullRequest={(target) => showPullRequest(target, "new-tab")}
+                openAll={openChangeRequestsTogether}
               />,
               containerFor(key),
               key,
@@ -348,4 +351,18 @@ function EmptyTabOverlay({ leaf }: { readonly leaf: Leaf }) {
       </Empty>
     )
   );
+}
+
+/**
+ * Astrolabe: a change group's tabs opened together in the focused pane, its own tab in front. A
+ * pull request goes through the page's record, as every pull request tab here does.
+ */
+function openChangeRequestsTogether(keys: ReadonlyArray<string>) {
+  for (const key of keys.slice(1)) {
+    const target = pullRequestTargetOfKey(key);
+    if (target) showPullRequest(target, "new-tab");
+    else showChangeRequestTab(key, "new-tab");
+  }
+  const [front] = keys;
+  if (front !== undefined) showChangeRequestTab(front, "new-tab");
 }

@@ -19,6 +19,11 @@ import {
   TrimmedString,
 } from "./baseSchemas.ts";
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
+import {
+  ChangeGroupGroupingSettings,
+  ChangeGroupGroupingSettingsPatch,
+  DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
+} from "./changeGroups.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
 import {
@@ -1144,6 +1149,10 @@ export const ServerSettings = Schema.Struct({
   storageCleanup: StorageCleanupSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(StorageCleanupSettings)({}))),
   ),
+  /** Astrolabe: Settings › Change Requests › Grouping (see `changeGroups.ts`). */
+  changeGroupGrouping: ChangeGroupGroupingSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS)),
+  ),
 
   worktreesDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
@@ -1463,6 +1472,7 @@ export const ServerSettingsPatch = Schema.Struct({
       ]),
     ),
   ),
+  changeGroupGrouping: Schema.optionalKey(ChangeGroupGroupingSettingsPatch),
   storageCleanup: Schema.optionalKey(
     Schema.Struct({
       worktreeKeepWhen: Schema.optionalKey(WorktreeKeepWhen),

@@ -540,6 +540,7 @@ import {
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { useChatTabStrip } from "../chatTabs/ChatTabStrip";
+import { ThreadChangeGroupPill } from "./changeRequests/groups/ThreadChangeGroupPill";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
 import { usePaneSurfaceHost } from "../panes/PaneSurfaceHost";
 import { RightPanelPanes } from "../panes/RightPanelPanes";
@@ -8180,6 +8181,13 @@ export default function ChatView(props: ChatViewProps) {
               ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
               : {})}
           />
+          {/* Astrolabe: the change group this thread's change requests are in. */}
+          {isServerThread ? (
+            <ThreadChangeGroupPill
+              environmentId={activeThread.environmentId}
+              threadId={activeThread.id}
+            />
+          ) : null}
         </PaneChatHeader>
 
         <div className="relative flex min-h-0 min-w-0 flex-1">

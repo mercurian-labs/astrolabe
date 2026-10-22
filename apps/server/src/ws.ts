@@ -235,6 +235,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
+import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1196,8 +1197,11 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const wikis = yield* WikiService.WikiService;
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
+    const changeGroups = yield* ChangeGroupService.ChangeGroupService;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
+      [WS_METHODS.changeGroupsList]: () => changeGroups.list,
+      [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
       [WS_METHODS.serverRemoveVimMapping]: (input) => vimrc.removeMapping(input),
       [WS_METHODS.serverSetVimOption]: (input) => vimrc.setOption(input),

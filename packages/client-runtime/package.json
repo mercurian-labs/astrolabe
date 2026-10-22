@@ -123,6 +123,10 @@
       "types": "./src/wikiPullRequests.ts",
       "default": "./src/wikiPullRequests.ts"
     },
+    "./changeGroups": {
+      "types": "./src/changeGroups.ts",
+      "default": "./src/changeGroups.ts"
+    },
     "./wikiLogic": {
       "types": "./src/wikiLogic.ts",
       "default": "./src/wikiLogic.ts"
@@ -234,6 +238,10 @@
     "./state/review": {
       "types": "./src/state/review.ts",
       "default": "./src/state/review.ts"
+    },
+    "./state/changeGroups": {
+      "types": "./src/state/changeGroups.ts",
+      "default": "./src/state/changeGroups.ts"
     },
     "./state/runtime": {
       "types": "./src/state/runtime.ts",

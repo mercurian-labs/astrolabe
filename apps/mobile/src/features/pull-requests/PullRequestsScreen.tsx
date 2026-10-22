@@ -31,6 +31,7 @@ import { usePullRequestList } from "./usePullRequestList";
 import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
 import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
+import { ChangeGroupsSection } from "../changeGroups/ChangeGroupsSection";
 import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
@@ -316,6 +317,7 @@ export function PullRequestsScreen(
               </Text>
             ) : null}
             {/* Astrolabe: the wikis' change requests, a group of their own above. */}
+            <ChangeGroupsSection query={query} />
             {wikiSource.wikisOnly || (wikiSource.kind === "all" && !controls.projectId) ? (
               <WikiChangesSection
                 query={query}

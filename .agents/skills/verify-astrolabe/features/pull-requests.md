@@ -38,6 +38,26 @@ thread's own Pull request tab. Shown only when a connected server reports
   requests (`#N · State`, tap opens the review), the merge/close prompt, and Merge into
   main's dialog names an unmerged one. No kind switch on mobile. Walk on an iPhone with
   agent-device; rows are buttons named `<title>, change request in <wiki>`.
+- **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
+  server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`):
+  `ul[aria-label="Change groups"]` heads the list ("Groups · N", hidden for merged groups),
+  each card `button "<title>, change group, <state>"` with a coloured dot and its members as
+  buttons. A group needs two members (or a decision); its id is the root thread. The tab
+  (`change-group:<env>:<id>`) shows `switch "Merge with the code"`, **Open as a tab group**,
+  **Ask for suggestions** (when agent suggestions are on; messages the root thread to use
+  `t3_change_group_suggest`), **Add a change request**, Suggested rows (✓ / ✕), and Code /
+  Documentation rows with ✕ to take out. **Ask to update the docs** shows on Docs behind;
+  **Draft the docs** on Docs missing with drafts on. The server sweeps armed groups each minute
+  and merges their open docs once all live code merged. A thread's header shows
+  `button "Change group: <title>, <state>"`, which opens the tab here. Tab groups
+  (`panes/tabGroups.tsx`): in any panes, a group's run of tabs is headed by
+  `[data-tab-group]` (click collapses all but the front tab; right-click: Expand/Collapse,
+  Merge with the code, Open the group, Close the group's tabs). Settings: `/settings/change-requests`.
+  MCP: `t3_change_groups`, `t3_change_group_suggest`, `t3_change_group_update`.
+  Mobile: the Change requests tab leads with `Groups · N` and cards
+  `button "<title>, change group, <state>"` (route `ChangeGroup`: Merge with the code switch,
+  members as buttons, "Take … out of the group"); Settings → Change requests
+  (`SettingsChangeRequests`) holds the Grouping switches. No tab groups or agent asks on the phone.
 - **Project filter** (`changeRequests/ChangeRequestSourceFilter.tsx` over the shared
   `projects/projectFilter.ts`, button `Filter by project: <name>` beside Sort and Filters, in
   place of upstream's provider menu): a searchable list of All projects, **Repositories** and

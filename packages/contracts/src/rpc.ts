@@ -151,6 +151,13 @@ import {
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
+import {
+  ChangeGroupDecisions,
+  ChangeGroupError,
+  ChangeGroupListInput,
+  ChangeGroupListResult,
+  ChangeGroupUpdateInput,
+} from "./changeGroups.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ServerRemoveVimMappingInput,
@@ -475,6 +482,8 @@ export const WS_METHODS = {
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
   reviewGetRecentFiles: "review.getRecentFiles",
+  changeGroupsList: "changeGroups.list",
+  changeGroupsUpdate: "changeGroups.update",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -1521,6 +1530,18 @@ const WsReviewGetDiffFileContentsRpc = Rpc.make(WS_METHODS.reviewGetDiffFileCont
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsChangeGroupsListRpc = Rpc.make(WS_METHODS.changeGroupsList, {
+  payload: ChangeGroupListInput,
+  success: ChangeGroupListResult,
+  error: Schema.Union([ChangeGroupError, EnvironmentAuthorizationError]),
+});
+
+const WsChangeGroupsUpdateRpc = Rpc.make(WS_METHODS.changeGroupsUpdate, {
+  payload: ChangeGroupUpdateInput,
+  success: ChangeGroupDecisions,
+  error: Schema.Union([ChangeGroupError, EnvironmentAuthorizationError]),
+});
+
 const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
   payload: ReviewRecentFilesInput,
   success: ReviewRecentFilesResult,
@@ -2276,6 +2297,8 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
  * each group's handlers separately and serves them together through `WsRpcGroup`.
  */
 export const WsAstrolabeRpcGroup = RpcGroup.make(
+  WsChangeGroupsListRpc,
+  WsChangeGroupsUpdateRpc,
   WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,

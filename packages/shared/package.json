@@ -514,6 +514,10 @@
     "./markdownMath": {
       "types": "./src/markdownMath.ts",
       "import": "./src/markdownMath.ts"
+    },
+    "./changeGroups": {
+      "types": "./src/changeGroups.ts",
+      "import": "./src/changeGroups.ts"
     }
   },
   "scripts": {

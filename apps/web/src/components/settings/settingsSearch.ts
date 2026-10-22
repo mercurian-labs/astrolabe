@@ -25,6 +25,7 @@ export type SettingsPath =
   | "/settings/integrations"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
+  | "/settings/change-requests"
   | "/settings/storage"
   | "/settings/connections"
   | "/settings/archived";
@@ -83,6 +84,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": "Integrations",
   "/settings/scheduled-tasks": "Scheduled Tasks",
   "/settings/source-control": "Source Control",
+  "/settings/change-requests": "Change Requests",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
@@ -909,6 +911,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "project-defaults",
   },
   {
+    id: "change-group-grouping",
+    title: "Grouping",
+    to: "/settings/change-requests",
+    searchTerms: [
+      "change groups group wiki documentation docs sync same thread coordinator lineage fork references issue key agent suggestions merge with the code",
+    ],
+    environmentOnly: true,
+  },
+  {
     id: "review-guides",
     title: "Review guides (beta)",
     to: "/settings/source-control",
@@ -1063,6 +1074,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/providers": null,
   "/settings/integrations": null,
   "/settings/source-control": "environment-defaults",
+  "/settings/change-requests": "environment-defaults",
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
   "/settings/scheduled-tasks": null,

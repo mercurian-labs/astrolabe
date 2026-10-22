@@ -1,4 +1,5 @@
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
+import * as ChangeGroupService from "../changeGroups/ChangeGroupService.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -267,6 +268,10 @@ const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
 );
 // One per server: it holds each wiki's write lock, the event stream, and index caches.
 const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProjectService));
+// Astrolabe: change groups read the same wikis and threads (one wiki service per server).
+const layerChangeGroupServiceProvided = ChangeGroupService.layer.pipe(
+  Layer.provide(Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer)),
+);
 const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -367,6 +372,7 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,
+  layerChangeGroupServiceProvided,
   layerThreadLaunchProvided,
   layerThreadLifecycleProvided,
   layerScheduledTaskProvided,

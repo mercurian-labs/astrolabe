@@ -181,6 +181,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.reviewGetDiffPreview]: "review",
   [WS_METHODS.reviewGetDiffFileContents]: "review",
   [WS_METHODS.reviewGetRecentFiles]: "review",
+  [WS_METHODS.changeGroupsList]: "wiki",
+  [WS_METHODS.changeGroupsUpdate]: "wiki",
   [WS_METHODS.terminalOpen]: "terminal",
   [WS_METHODS.terminalAttach]: "terminal",
   [WS_METHODS.terminalObserve]: "terminal",

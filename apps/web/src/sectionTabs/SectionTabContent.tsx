@@ -1,3 +1,6 @@
+import { ChangeGroupView } from "~/components/changeRequests/groups/ChangeGroupView";
+import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import { useChangeGroupTabLabel } from "~/components/changeRequests/groups/useChangeGroupTabLabel";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import {
   RepositoryTabView,
@@ -31,8 +34,10 @@ import { ensureLocalApi } from "~/localApi";
 import {
   activateTab,
   closeTab,
+  focusedPane,
   openBeside,
   openTab,
+  placeTabs,
   replaceTab,
   surfaceKey,
   type Arrangement,
@@ -156,7 +161,9 @@ export function useSectionTabLabel(key: string): { title: string; icon: ReactNod
   const thread = useThreadShell(chat);
   const wikiLabel = useWikiTabLabel(key);
   const repositoryLabel = useRepositoryTabLabel(key);
+  const groupLabel = useChangeGroupTabLabel(key);
   if (repositoryLabel !== null) return repositoryLabel;
+  if (groupLabel !== null) return groupLabel;
   if (chat !== null) {
     return {
       title: thread?.title ?? "Thread",
@@ -185,6 +192,7 @@ export function SectionTabContent({
   active,
   chats = true,
   openPullRequest,
+  openAll,
 }: {
   readonly tabKey: string;
   readonly store: PaneArrangementStore;
@@ -192,11 +200,33 @@ export function SectionTabContent({
   readonly chats?: boolean;
   /** Where a change request's pull request opens, for panes that hold them their own way. */
   readonly openPullRequest?: (target: FullPullRequestTarget) => void;
+  /** How tabs open together (a change group's tab group), for panes that hold them their own way. */
+  readonly openAll?: (keys: ReadonlyArray<string>) => void;
 }) {
   const chat = parseChatTabKey(tabKey);
   if (chat !== null) return chats ? <PaneChat threadRef={chat} /> : null;
   const repository = parseRepositoryTabKey(tabKey);
   if (repository !== null) return <RepositoryTabView tabKey={tabKey} tab={repository} />;
+  const group = parseChangeGroupTabKey(tabKey);
+  if (group !== null) {
+    return (
+      <ChangeGroupView
+        tab={group}
+        open={(key) => store.update((arrangement) => showKeyIn(arrangement, key, "beside"))}
+        openAll={
+          openAll ??
+          ((keys) =>
+            store.update((arrangement) => {
+              const pane = focusedPane(arrangement);
+              const [front] = keys;
+              if (front === undefined) return arrangement;
+              const index = Math.max(0, pane.tabs.indexOf(front));
+              return placeTabs(arrangement, keys, pane.id, { side: null, index }, front);
+            }))
+        }
+      />
+    );
+  }
   const wiki = parseWikiTabKey(tabKey);
   if (wiki !== null) {
     return (

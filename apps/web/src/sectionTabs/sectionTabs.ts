@@ -1,6 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 
+import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { surfaceIdOf } from "~/panes/arrangement";
@@ -51,6 +52,7 @@ const isPullRequestKey = (key: string) => surfaceIdOf(key)?.startsWith("pull-req
 export function tabSection(key: string): SectionId | null {
   if (parseChatTabKey(key) !== null) return "threads";
   if (parseRepositoryTabKey(key) !== null) return "repositories";
+  if (parseChangeGroupTabKey(key) !== null) return "change-requests";
   const wiki = parseWikiTabKey(key);
   if (wiki !== null) return wiki.kind === "note" ? "wikis" : "change-requests";
   if (isPullRequestKey(key)) return "change-requests";
@@ -73,6 +75,7 @@ export function isSectionTabKey(key: string): boolean {
   return (
     parseChatTabKey(key) !== null ||
     parseWikiTabKey(key) !== null ||
-    parseRepositoryTabKey(key) !== null
+    parseRepositoryTabKey(key) !== null ||
+    parseChangeGroupTabKey(key) !== null
   );
 }

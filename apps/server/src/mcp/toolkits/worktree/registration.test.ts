@@ -29,6 +29,7 @@ import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.t
 import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
+import * as ChangeGroupService from "../../../changeGroups/ChangeGroupService.ts";
 import * as PreviewManager from "../../../preview/Manager.ts";
 import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
@@ -61,6 +62,7 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(ThreadSearch.ThreadSearch)({}),
   McpProviderSessions.layer,
   Layer.mock(WikiService.WikiService)({}),
+  Layer.mock(ChangeGroupService.ChangeGroupService)({}),
 );
 
 const ToolsListPayload = Schema.fromJsonString(

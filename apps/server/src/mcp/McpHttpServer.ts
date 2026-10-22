@@ -64,6 +64,8 @@ import { WorktreeToolkit } from "./toolkits/worktree/tools.ts";
 import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
 import * as WikiHandlers from "./toolkits/wiki/handlers.ts";
+import * as ChangeGroupHandlers from "./toolkits/changeGroups/handlers.ts";
+import { ChangeGroupToolkit } from "./toolkits/changeGroups/tools.ts";
 import { WikiToolkit } from "./toolkits/wiki/tools.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
@@ -1045,6 +1047,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
 );
 
 export const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
+export const layerChangeGroupToolkit = toolkitRegistration(
+  ChangeGroupToolkit,
+  ChangeGroupHandlers.layer,
+);
 
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,
@@ -1080,6 +1086,7 @@ export const layer = Layer.mergeAll(
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,
   layerWikiToolkit,
+  layerChangeGroupToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
 ).pipe(Layer.provideMerge(layerMcpTransport));

@@ -111,6 +111,7 @@ import { PullRequestDetailPanel } from "../components/pullRequest/PullRequestDet
 import { useChangeRequestKind } from "../components/changeRequests/changeRequestKind";
 import { ChangeRequestSourceFilter } from "../components/changeRequests/ChangeRequestSourceFilter";
 import { WikiChangesGroup } from "../components/changeRequests/WikiChangesGroup";
+import { ChangeGroupsSection } from "../components/changeRequests/groups/ChangeGroupsSection";
 import { PullRequestPanes } from "../components/pullRequest/PullRequestPanes";
 import { placePullRequests, showPullRequest } from "../components/pullRequest/pullRequestTabs";
 import { startDrag } from "../panes/drag";
@@ -2186,6 +2187,11 @@ function PullRequestsSidebarList({
         </div>
       </div>
       <div ref={scrollRef} className="@container/pr-list min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        <ChangeGroupsSection
+          query={searchQuery}
+          projectId={projectId}
+          projectEnvironmentId={projectEnvironmentId}
+        />
         {wikisOnly || (kind === "all" && host === undefined && projectId === undefined) ? (
           <WikiChangesGroup query={searchQuery} alone={wikisOnly} />
         ) : null}
