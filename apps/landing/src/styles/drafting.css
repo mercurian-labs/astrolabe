@@ -4907,6 +4907,32 @@ html:not(.js) .hover-only {
 .foot__readout[hidden] {
   display: none;
 }
+/* With JavaScript, a fine pointer and the live print, the lens's centre mark is the pointer over
+   the stage (footer.js): no system cursor, and the mark exactly where it points. */
+.foot.takes-cursor .foot__stage.is-sighting {
+  cursor: none;
+}
+.foot__pip {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  overflow: visible;
+  pointer-events: none;
+  display: none;
+}
+.foot.takes-cursor .foot__stage.is-sighting .foot__pip {
+  display: block;
+}
+.foot__pip * {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
 .foot__readout b {
   display: block;
   margin-bottom: 0.35rem;

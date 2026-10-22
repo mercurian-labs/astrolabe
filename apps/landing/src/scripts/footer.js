@@ -261,6 +261,9 @@ class Foot {
     this.markImg = el.querySelector("[data-foot-mark]");
     this.svg = el.querySelector("[data-foot-names]");
     this.readout = el.querySelector("[data-foot-readout]");
+    this.pip = el.querySelector("[data-foot-pip]");
+    this.sighting = false; // a fine pointer over the stage, which the centre mark stands in for
+    this.client = { x: 0, y: 0 };
     this.visible = false;
     this.ready = false;
     this.raf = 0;
@@ -416,7 +419,7 @@ class Foot {
   }
 
   fallback() {
-    this.el.classList.remove("is-live");
+    this.el.classList.remove("is-live", "takes-cursor");
     this.el.classList.add("is-static");
   }
 
@@ -541,19 +544,49 @@ class Foot {
   /* Pointer: the lens lives on the stage, the open print under the links. A mouse moves it while it
      hovers; a touch places it with a tap and moves it with a sideways drag (the band is
      touch-action: pan-y, so vertical swipes still scroll the page), and the lens stays where the
-     finger left it until a tap lands outside the stage. */
+     finger left it until a tap lands outside the stage. With a fine pointer that hovers, the lens's
+     centre mark is the pointer: CSS hides the system cursor while the stage is sighting, the mark
+     sits exactly on the pointer and the lens eases after it. Leaving the stage, a blurred window or
+     a hidden tab gives the system cursor back. */
   listen() {
+    const fine = matchMedia("(hover: hover) and (pointer: fine)");
+    const takeOver = () =>
+      this.el.classList.toggle("takes-cursor", fine.matches && this.ready && !!this.pip);
+    takeOver();
+    fine.addEventListener("change", takeOver);
     const at = (event) => {
       const rect = this.el.getBoundingClientRect();
+      this.client = { x: event.clientX, y: event.clientY };
       this.target.x = event.clientX - rect.left;
       this.target.y = event.clientY - rect.top;
       this.target.on = true;
       this.request();
     };
+    const leave = () => {
+      if (!this.sighting) return;
+      this.sight(false);
+      this.target.on = false;
+      this.request();
+    };
     this.stage.addEventListener("pointermove", (event) => {
       if (event.pointerType === "touch" && !this.touch) return;
+      if (event.pointerType !== "touch") this.sight(true);
       at(event);
     });
+    addEventListener("blur", leave);
+    document.addEventListener("visibilitychange", () => document.hidden && leave());
+    // Scrolling carries the stage under a resting pointer, which sends no move; follow it from there.
+    addEventListener(
+      "scroll",
+      () => {
+        if (!this.sighting) return;
+        const under = document.elementFromPoint(this.client.x, this.client.y);
+        if (under && this.stage.contains(under))
+          at({ clientX: this.client.x, clientY: this.client.y });
+        else leave();
+      },
+      { passive: true },
+    );
     this.stage.addEventListener("pointerdown", (event) => {
       if (event.pointerType === "touch") this.touch = true;
       at(event);
@@ -563,6 +596,7 @@ class Foot {
     this.stage.addEventListener("pointercancel", lift);
     this.stage.addEventListener("pointerleave", (event) => {
       if (event.pointerType === "touch") return;
+      this.sight(false);
       this.target.on = false;
       this.request();
     });
@@ -574,6 +608,12 @@ class Foot {
     });
   }
 
+  sight(on) {
+    if (this.sighting === on) return;
+    this.sighting = on;
+    this.stage.classList.toggle("is-sighting", on);
+  }
+
   request() {
     if (this.raf || !this.ready || !this.visible || document.hidden) return;
     this.raf = requestAnimationFrame((time) => this.frame(time));
@@ -583,6 +623,9 @@ class Foot {
     this.raf = 0;
     const dt = this.last ? Math.min(64, time - this.last) : 16;
     const moving = this.step(dt);
+    // The centre mark is the pointer: on the target itself, never eased.
+    if (this.sighting && this.pip)
+      this.pip.style.transform = `translate(${this.target.x}px, ${this.target.y - this.stage.offsetTop}px)`;
     this.gl.uniform3f(this.u.u_lens, this.lens.x, this.lens.y, this.lens.r);
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
     this.names();
@@ -679,9 +722,11 @@ class Foot {
       n.textContent = i + 1;
       nodes.push(n);
     });
-    nodes.push(
-      el("circle", { class: "lead", cx: lens.x.toFixed(1), cy: (lens.y - top).toFixed(1), r: 4 }),
-    );
+    // The lens's centre; where the pointer mark stands in for it (CSS shows it), that is enough.
+    if (!this.sighting || !this.el.classList.contains("takes-cursor"))
+      nodes.push(
+        el("circle", { class: "lead", cx: lens.x.toFixed(1), cy: (lens.y - top).toFixed(1), r: 4 }),
+      );
     svg.replaceChildren(...nodes);
     svg.style.opacity = fade;
     const deg = (v, pos, neg) => `${Math.abs(v).toFixed(2)}° ${v >= 0 ? pos : neg}`;
