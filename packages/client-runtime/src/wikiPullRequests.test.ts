@@ -5,7 +5,7 @@ import {
   changeRequestPullRequests,
   pullRequestNudge,
   unmergedPullRequests,
-} from "./wikiPullRequests";
+} from "./wikiPullRequests.ts";
 
 const link = (
   number: number,

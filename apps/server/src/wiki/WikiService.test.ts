@@ -212,8 +212,9 @@ it.effect("dates each note by the last commit that changed it, on the line read"
       );
       const changeRequestId = amended.changeRequest.changeRequestId;
       const head = yield* git(root, ["log", "-1", "--format=%cI", amended.commit]);
-      const editedAt = (notes: ReadonlyArray<{ name: string; editedAt?: string }>) =>
-        Object.fromEntries(notes.map((note) => [note.name, note.editedAt]));
+      const editedAt = (
+        notes: ReadonlyArray<{ readonly name: string; readonly editedAt?: string | undefined }>,
+      ) => Object.fromEntries(notes.map((note) => [note.name, note.editedAt]));
       assert.deepEqual(editedAt((yield* wikis.index({ wikiId })).notes), {
         Alpha: first,
         Beta: first,
