@@ -72,7 +72,7 @@ const headlessFlag = Flag.Boolean("headless").pipe(
  * Inside an SSH session the browser that would open is on the wrong machine,
  * so the CLI only prints the approval link.
  */
-export const headlessSessionConfig = Config.all({
+const headlessSessionConfig = Config.all({
   sshConnection: Config.String("SSH_CONNECTION").pipe(Config.option),
   sshTty: Config.String("SSH_TTY").pipe(Config.option),
 }).pipe(
@@ -482,7 +482,7 @@ const unlinkRelayEnvironment = Effect.fn("cloud.cli.unlink_relay_environment")(f
  * A missing CLI login or a failed relay DELETE leaves that record registered, so
  * those outcomes warn to deregister it from the T3 Connect account page.
  */
-export const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_results")(
+const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_results")(
   function* (input: {
     readonly clearAuthorization: boolean;
     readonly liveResult: LiveCloudActionResult;
@@ -823,29 +823,29 @@ const connectLogoutCommand = Command.make("logout", {
   ),
 );
 
-export const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding")(
-  function* (outcome: CliService.ServiceOnboardingOutcome) {
-    if (outcome === "pending") {
-      yield* Console.log(
-        "\nBackground service restarting\n\nThe server establishes the remote access link once it is back. Check the log above if it does not come back.",
-      );
-      return;
-    }
-    if (outcome === "ready") {
-      const platform = yield* HostProcess.Platform;
-      yield* Console.log(
-        platform === "darwin"
-          ? "\n✓ Background service ready\n\nAstrolabe is set to run while you are logged in to this Mac. The server establishes the remote access link on startup."
-          : "\n✓ Background service ready\n\nAstrolabe is set to keep running after you log out. The server establishes the remote access link on startup.",
-      );
-      return;
-    }
-    const serveCommand = yield* resolveCliCommand("serve");
+const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding")(function* (
+  outcome: CliService.ServiceOnboardingOutcome,
+) {
+  if (outcome === "pending") {
     yield* Console.log(
-      `\nNext\n  Start the server with \`${serveCommand}\` to make this machine reachable.\n  It checks that other devices can reach this machine when it starts.`,
+      "\nBackground service restarting\n\nThe server establishes the remote access link once it is back. Check the log above if it does not come back.",
     );
-  },
-);
+    return;
+  }
+  if (outcome === "ready") {
+    const platform = yield* HostProcess.Platform;
+    yield* Console.log(
+      platform === "darwin"
+        ? "\n✓ Background service ready\n\nAstrolabe is set to run while you are logged in to this Mac. The server establishes the remote access link on startup."
+        : "\n✓ Background service ready\n\nAstrolabe is set to keep running after you log out. The server establishes the remote access link on startup.",
+    );
+    return;
+  }
+  const serveCommand = yield* resolveCliCommand("serve");
+  yield* Console.log(
+    `\nNext\n  Start the server with \`${serveCommand}\` to make this machine reachable.\n  It checks that other devices can reach this machine when it starts.`,
+  );
+});
 
 export const connectCommand = Command.make("connect", {
   ...projectLocationFlags,

@@ -92,8 +92,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a repository
   is the list's `projectId` scope. Repositories (all or one) hides Wiki changes; Wikis (all or
   one) hides the pull requests, Sort and Filters, and an empty wiki says `No change requests in
-<wiki> yet`. The Agents filter (`projects/useThreadsProjectFilter.ts`, combobox `Filter
-threads by project: <name>`) lists the same, a wiki only once its folder is a project (one
+  <wiki> yet`. The Agents filter (`projects/useThreadsProjectFilter.ts`, combobox `Filter
+  threads by project: <name>`) lists the same, a wiki only once its folder is a project (one
   added through Wikis → Add a folder is). Filters still holds Host (with several hosts) and
   upstream's Project, which mirrors the same scope.
   Mobile's Filters → Project lists All projects, "Repositories" and each repository, then
@@ -105,8 +105,8 @@ threads by project: <name>`) lists the same, a wiki only once its folder is a pr
   wikis").
 - **Sidebar** (`role=navigation[name='Changes']`): heading **Changes** and
   **Refresh pull requests**; no New or Link button. Under it `searchbox "Search pull
-requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by project:
-<name>`, `Sort pull requests: <sort>` and **Filters** (a count badge per non-default
+  requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by project:
+  <name>`, `Sort pull requests: <sort>` and **Filters** (a count badge per non-default
   filter; Sort and Filters are hidden while Wikis is picked). `mod+f` (find) focuses and
   selects the search, opening the sidebar, or the narrow window's sheet, first.
   - Search matches number, title, repository, branch and author, and takes GitHub-style
@@ -204,7 +204,7 @@ Save a screenshot of the section.
   with `t3_wiki_amend` only, then **Link pull request to thread** (palette) with a merged
   and an open upstream pull request URL; nothing is written to the host.
 - Escape with nothing open goes back to the previous page, whichever section that was (`useEscapeToGoBack`,
-  `routes/_chat.pull-requests.tsx`). It does not yet clear a selection here as it does in
+  `pullRequest/PullRequestsPage.tsx`). It does not yet clear a selection here as it does in
   Wikis: a known gap, not intended; don't pass it.
   Blur, then press Escape only while a menu is open.
 - Shift-click ranges follow the data's order, not the screen's, so a short range can
@@ -229,6 +229,7 @@ and `groups/` with the thread header's pill), `state/changeGroups.ts`,
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
 `packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server
 `changeGroups/ChangeGroupService.ts` and `mcp/toolkits/changeGroups/`, the section shell in
-`routes/_chat.pull-requests.tsx` (sidebar portal, panes, selection, drag, row menu), and
+`pullRequest/PullRequestsPage.tsx` (sidebar portal, panes, selection, drag, row menu), its list
+in `PullRequestsColumn.tsx` (`PullRequestsSidebarList`) and `PullRequestListGroups.tsx`, and
 the Pull Requests branches in `AppSidebarLayout.tsx`, `sidebar/AppIconRail.tsx` and
 `sidebar/mainAppLocation.ts`. Tab groups (`panes/tabGroups.tsx`) are panes.md's.

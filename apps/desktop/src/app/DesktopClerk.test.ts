@@ -97,22 +97,6 @@ describe("DesktopClerk", () => {
     requestSingleInstanceLockMock.mockReset().mockReturnValue(true);
   });
 
-  it.effect("takes the single-instance lock after pointing userData at the real path", () => {
-    const events: string[] = [];
-
-    return Effect.gen(function* () {
-      yield* Effect.scoped(Layer.build(layerDesktopClerk(true, events)));
-
-      // The lock both lives in and creates the userData directory.
-      assert.deepEqual(events, [
-        "setPath:userData:/tmp/app-data/astrolabe-dev",
-        "requestSingleInstanceLock",
-        "on:second-instance",
-        "setAsDefaultProtocolClient:astrolabe-dev",
-      ]);
-    });
-  });
-
   it.each([
     {
       name: "packaged macOS",

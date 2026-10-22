@@ -14,7 +14,7 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
 - **Menu** (`[data-which-key]`): a muted heading naming the groups entered (`Menu`,
   `Menu › Go to`; past four levels the middle folds to `…`, with the whole trail on
   hover), the group's rows, a footer (`Esc close`; in a group `Backspace back · Esc
-close`) whose hints are buttons that do what they say. A row shows every key that runs it at this level,
+  close`) whose hints are buttons that do what they say. A row shows every key that runs it at this level,
   joined by `|` (`g w | w w` style); Search's row shows only `/`, though Cmd+K
   pressed again at the root still opens Search. A group key opens its group, a command key runs and
   closes the menu. Backspace goes up (at the root it closes); Escape, a click
@@ -82,7 +82,7 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   is a shortcut (`mod+k`), menu keys (`menu g w`, single keys spaced; `space` and `arrowleft`…`arrowright` by name) or an alias
   (`:q[uit]`, bracketed tail optional); `when` is for shortcuts only. A `-command`
   rule removes that command's matching default (`{"key": "menu t ]", "command":
-"-chatTab.next"}`). A user rule replaces only its own kind's defaults for that
+  "-chatTab.next"}`). A user rule replaces only its own kind's defaults for that
   command. Menu and alias defaults live in code, not the file. Bad rules are
   skipped with a server warning and a keybindings toast, as upstream reports bad
   shortcuts (`Invalid menu keys "…"`, `Invalid alias "…"`). `leader …` is not a
@@ -98,11 +98,11 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   `mod+w`). A shortcut's keycaps (`aria-label="Edit shortcut for …"`) open a
   popover holding upstream's row, recording at once (When, conflicts, ⋯, Save).
   Menu keys and aliases (`aria-label="Edit menu keys for …"` / `"Edit alias for
-…"`) open a recorder popover with Save. A cell's `+` (`aria-label="Add
-shortcut|menu keys|alias for …"`, visible on hover) opens upstream's new-binding
+  …"`) open a recorder popover with Save. A cell's `+` (`aria-label="Add
+  shortcut|menu keys|alias for …"`, visible on hover) opens upstream's new-binding
   form fixed to that command and kind; adding beside defaults writes them too. A
   removed default shows struck through in its cell; the row's `⋯` (`aria-label=
-"Actions for …"`) lists **Remove `x`**, **Reset `x` to default**, and **Restore
+  "Actions for …"`) lists **Remove `x`**, **Reset `x` to default**, and **Restore
   default `x`** per binding. Narrow (under 44rem), the columns stack as labelled
   lines. **Add keybinding** asks for the command, the kind, then records.
 - **Migrations** (once each, recorded in `$home/userdata/keybindings-migrations`):

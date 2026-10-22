@@ -312,6 +312,8 @@ export class ComposerEditor {
       // Only `\n` breaks lines, so a CRLF draft keeps its `\r` and the value stays verbatim.
       EditorState.lineSeparator.of("\n"),
       EditorView.lineWrapping,
+      // An Arabic or Hebrew line reads and navigates right to left, as in T3 Code's composer.
+      EditorView.perLineTextDirection.of(true),
       this.undoHistory.extension,
       this.editableSlot.of(editableExtension(disabled)),
       this.presentationSlot.of(presentationExtension(presentation)),

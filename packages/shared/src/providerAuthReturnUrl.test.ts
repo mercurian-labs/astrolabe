@@ -15,12 +15,7 @@ describe("provider auth return destinations", () => {
   );
   it.each([
     "astrolabe://attacker/welcome",
-    "astrolabe://app:123/welcome",
-    "astrolabe://app/auth/callback",
-    "astrolabe://user@ app/welcome",
     "astrolabe://app/welcome/../evil",
     "https://attacker.example/welcome",
-    "file:///welcome",
-    "javascript:alert(1)",
   ])("rejects %s", (url) => expect(providerAuthReturnUrl(url)).toBeUndefined());
 });

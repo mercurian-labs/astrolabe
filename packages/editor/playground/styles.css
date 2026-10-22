@@ -33,12 +33,7 @@ body {
   margin: 0;
   background: var(--atlas-bg);
   color: var(--atlas-fg);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 .playground {

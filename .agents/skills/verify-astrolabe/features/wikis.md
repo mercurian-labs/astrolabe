@@ -77,9 +77,9 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   view; its header has `Edit the document`/`Stop editing` (not on read-only skill maps), and
   once edited `Save to a change request` and `Document actions` › Discard edits. Save opens
   the "Save to change request" sheet: New change request or an open one, `Change request
-title`, `What changed`, then Save (`Save when the turn ends` while the agent works). A
+  title`, `What changed`, then Save (`Save when the turn ends` while the agent works). A
   change request (route `WikiChangeRequest`, from the Changes tab) has `Change
-request actions` (Merge into main, Close/Reopen, Open thread), "Amendments (N)" with
+  request actions` (Merge into main, Close/Reopen, Open thread), "Amendments (N)" with
   `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
   stays on the computer. Walk it on an iPhone with test-t3-mobile.
 

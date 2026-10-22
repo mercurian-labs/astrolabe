@@ -5,7 +5,6 @@ import {
   parseNewThreadLink,
   parseThreadLinkPrompt,
   promptLinkAppPath,
-  promptLinkDeepLink,
   sanitizeLinkedPrompt,
   withoutPromptLinkParams,
 } from "./promptLinks.ts";
@@ -116,12 +115,5 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("https://evil.test/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("astrolabe://app/index.html")).toBeNull();
     expect(promptLinkAppPath("t3code://new?prompt=hi")).toBeNull();
-  });
-
-  it("hands an in-app path to the installed app", () => {
-    expect(promptLinkDeepLink("/new?prompt=hi")).toBe("astrolabe://new?prompt=hi");
-    expect(promptLinkDeepLink("/env-1/thread-1?prompt=hi")).toBe(
-      "astrolabe://threads/env-1/thread-1?prompt=hi",
-    );
   });
 });

@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, MouseEvent as ReactMouseEvent } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -20,6 +20,11 @@ export const SIDEBAR_ROW_ACTIVE_CLASS = "bg-sidebar-row-active text-sidebar-fore
 export const SIDEBAR_ROW_SELECTED_CLASS = "bg-sidebar-row-selected text-sidebar-foreground";
 export const SIDEBAR_ROW_IDLE_CLASS =
   "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover";
+
+/** Keeps the middle button, which opens a row in a new tab, from starting autoscroll. */
+export function preventMiddleClickScroll(event: ReactMouseEvent) {
+  if (event.button === 1) event.preventDefault();
+}
 
 /** A card's outer box; it holds its height while scrolled out of view. */
 export const SIDEBAR_CARD_ITEM_CLASS =

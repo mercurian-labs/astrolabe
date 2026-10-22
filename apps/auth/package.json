@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build && node scripts/emit-page.ts",
-    "typecheck": "tsc-rs --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@better-auth/passkey": "1.7.7",

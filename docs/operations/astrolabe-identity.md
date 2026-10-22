@@ -109,9 +109,10 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   remote-host folders under `~/.astrolabe`.
 - `apps/server/src/project/AgentSessionScanner.ts`: recognises both `.astrolabe/worktrees` and
   `.t3/worktrees`.
-- Left on purpose: `apps/server/scripts/migrate-dev-db.ts` and `t3-sqlite-state.ts` still read
-  `~/.t3`, where the developer's real threads live. The worktree-local `.t3` dev folder
-  (`packages/shared/src/devHome.ts`) and AGENTS.md's `~/.t3/userdata` warning also stay.
+- Left on purpose: `apps/server/scripts/migrate-dev-db.ts`, `t3-sqlite-state.ts` and the first
+  dev start's seed in `scripts/dev-runner.ts` still read `~/.t3`, where the developer's real
+  threads live. The worktree-local `.t3` dev folder (`packages/shared/src/devHome.ts`), the setup
+  markers in `scripts/setup-worktree.ts` and AGENTS.md's `~/.t3/userdata` warning also stay.
 
 ### CLI and npm packages
 
@@ -232,7 +233,8 @@ merging upstream doc changes.
 Expected exceptions:
 
 - Play Store and App Store links to upstream's listings.
-- `migrate-dev-db` and `devHome`, which still use `.t3`.
+- `migrate-dev-db`, `devHome`, `dev-runner`'s first-start seed and `setup-worktree`, which still use
+  `.t3`.
 - `t3code:` storage keys, which the pattern only matches when they're followed by `//`.
 - Prose that talks about T3 Code as the upstream project, and code comments.
 - `"t3"` as the workspace package name, credential owner, branch prefix or MCP server name.

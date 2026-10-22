@@ -368,12 +368,7 @@ body {
 .note-edit-editor {
   flex: 1;
   min-height: 0;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
 }
 

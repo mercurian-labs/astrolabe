@@ -12,7 +12,7 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
 - **Sidebar** (`role=navigation[name='Repositories']`): heading **Repositories** with
   **Search files**, **Filter by repository** (combobox; its popup starts with a
   `Search repositories` field; named `Filter by repository:
-<name>` once one is picked; kept in `astrolabe:repository-scope:v1`: the
+  <name>` once one is picked; kept in `astrolabe:repository-scope:v1`: the
   **Repositories** heading for all, then each repository; a wiki's checkout and the
   server's scratch workspace (threads with no project) are left out) and **Add a repository** (the add-project palette; once
   it adds the repository the app leaves `/repositories` for a new draft thread there, so

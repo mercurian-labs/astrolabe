@@ -29,7 +29,7 @@ spelling live in
   wordmark appear on the boot screen and the welcome wizard, and the monogram heads the icon rail.
   The monogram also replaces T3's glyph in the chat timeline: on the plain "Created thread" row
   (`components/chat/V2LifecycleRow.tsx`) and as the `t3-code` work-log icon for thread-create
-  tools and system notifications (`WorkEntryIcon` in `components/chat/MessagesTimeline.tsx`).
+  tools and system notifications (`WorkEntryIcon` in `components/chat/TimelineToolActivityIcon.tsx`).
 - **Visible names**: client, server and provider text says Astrolabe, and the
   relay service is Remote access. The allowed exceptions are the "T3 Code"
   theme card and links to upstream's own app-store builds.
@@ -104,7 +104,7 @@ sync" in the identity doc; don't copy it here, so there is one place to update.
 - The picker hides Iris by leaving it out of `ThemeSettings.tsx`'s list, not through
   `PICKER_HIDDEN_THEME_IDS` (which the command palette and mobile use). An
   ordering change has to hold in `ThemeSettings.tsx` and in the palette's
-  `themeCards` (`CommandPalette.tsx`).
+  `useThemeCards` (`CommandPaletteThemeItems.tsx`).
 - `apps/web/index.html` keeps its own copy of the default theme and palette for the
   boot screen, `index.css` holds the rust pivot rule, `branding.ts` the name and
   title. A sync conflict in any of them walks this feature.

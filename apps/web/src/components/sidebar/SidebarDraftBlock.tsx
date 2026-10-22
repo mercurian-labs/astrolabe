@@ -1,0 +1,248 @@
+import { discardComposerDraft } from "../../lib/discardComposerDraft";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { XIcon } from "lucide-react";
+import {
+  memo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { cn, isMacPlatform } from "~/lib/utils";
+import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  composerDraftHasUserContent,
+  DraftId,
+  useComposerDraftStore,
+  type ComposerThreadDraftState,
+  type DraftSessionState,
+} from "../../composerDraftStore";
+import { rowClickIntent } from "../../tabNavigation.logic";
+import { draftSurfaceClassName } from "./SidebarThreadRow";
+import {
+  SIDEBAR_ROW_SURFACE_CLASS,
+  SidebarAgentRowContent,
+  SidebarAgentRowItem,
+  SidebarCardHeader,
+  preventMiddleClickScroll,
+} from "./SidebarCard";
+
+const SidebarDraftRow = memo(function SidebarDraftRow(props: {
+  draftId: DraftId;
+  composer: ComposerThreadDraftState;
+  project: ProjectFaviconProject | null;
+  projectDisplayName: string | null;
+  isActive: boolean;
+  /** Astrolabe: `newTab` opens it in a new chat tab rather than the one in front. */
+  onNavigate: (draftId: DraftId, options?: { readonly newTab?: boolean }) => void;
+  onDiscard: (draftId: DraftId) => void;
+  onContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+}) {
+  const { composer, draftId, onContextMenu, onDiscard, onNavigate } = props;
+  const promptPreview =
+    replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label)
+      .trim()
+      .split("\n", 1)[0] ?? "";
+  // images mirrors persistedAttachments once rehydration finishes; before
+  // that only the persisted list is populated, hence max not sum.
+  const attachmentCount =
+    Math.max(composer.images.length, composer.persistedAttachments.length) +
+    composer.files.length +
+    composer.terminalContexts.length +
+    composer.previewAnnotations.length +
+    composer.reviewComments.length;
+  const preview =
+    promptPreview.length > 0
+      ? promptPreview
+      : `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
+  const accessibility = resolveSidebarRowAccessibility({
+    title: preview,
+    statusLabel: "Unsent draft",
+    projectDisplayName: props.projectDisplayName,
+    isActive: props.isActive,
+  });
+  // Astrolabe: Option-click and the middle button open the draft in a new chat tab.
+  const handleActivate = (event: ReactMouseEvent) =>
+    onNavigate(draftId, {
+      newTab: rowClickIntent(event, isMacPlatform(navigator.platform)) === "new-tab",
+    });
+  const handleAuxClick = (event: ReactMouseEvent) => {
+    if (event.button === 1) handleActivate(event);
+  };
+  const handleKeyDown = (event: ReactKeyboardEvent) => {
+    // Keys targeting the nested discard button belong to the button:
+    // preventDefault here would swallow Space's synthesized click and
+    // navigate instead of discarding.
+    if ((event.target as HTMLElement).closest("button")) return;
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      onContextMenu(draftId, { x: rect.left, y: rect.bottom });
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onNavigate(draftId);
+    }
+  };
+  const handleContextMenu = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    onContextMenu(draftId, { x: event.clientX, y: event.clientY });
+  };
+  const handleDiscard = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onDiscard(draftId);
+  };
+  return (
+    <SidebarAgentRowItem twoLines>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={accessibility.label}
+        aria-current={accessibility.current}
+        data-testid="sidebar-draft-row"
+        className={cn(
+          // Astrolabe: the rows' shared surface, for its light keyboard focus ring.
+          SIDEBAR_ROW_SURFACE_CLASS,
+          "text-sidebar-foreground",
+          props.isActive ? "bg-sidebar-row-active" : draftSurfaceClassName,
+        )}
+        onClick={handleActivate}
+        onMouseDown={preventMiddleClickScroll}
+        onAuxClick={handleAuxClick}
+        onContextMenu={handleContextMenu}
+        onKeyDown={handleKeyDown}
+      >
+        <span className="sr-only">{preview}</span>
+        {/* Astrolabe: laid out as the thread rows are, the preview as its title and Draft below. */}
+        <SidebarAgentRowContent>
+          <SidebarCardHeader>
+            {props.project ? (
+              <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+            ) : null}
+            <span
+              aria-hidden
+              className="min-w-0 flex-1 truncate text-sm font-medium text-foreground/90"
+            >
+              {preview}
+            </span>
+            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="Discard draft"
+                      onClick={handleDiscard}
+                      className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  }
+                />
+                <TooltipPopup side="top">Discard draft</TooltipPopup>
+              </Tooltip>
+            </span>
+          </SidebarCardHeader>
+          <div
+            aria-hidden
+            className="flex h-4 items-center text-xs font-medium text-warning-foreground"
+          >
+            Draft
+          </div>
+        </SidebarAgentRowContent>
+      </div>
+    </SidebarAgentRowItem>
+  );
+});
+
+interface SidebarDraftRowData {
+  draftId: DraftId;
+  session: DraftSessionState;
+  composer: ComposerThreadDraftState;
+}
+
+export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
+  projectByKey: ReadonlyMap<string, EnvironmentProject>;
+  projectDisplayNameByKey: ReadonlyMap<string, string>;
+  scopedProjectKeys: ReadonlySet<string> | null;
+  routeDraftId: string | null;
+  onNavigateToDraft: (draftId: DraftId, options?: { readonly newTab?: boolean }) => void;
+  onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+}) {
+  const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
+  const draftsByThreadKey = useComposerDraftStore((store) => store.draftsByThreadKey);
+  const [frozenActive, setFrozenActive] = useState<{
+    routeDraftId: string | null;
+    row: SidebarDraftRowData | null;
+  }>({ routeDraftId: null, row: null });
+  if (frozenActive.routeDraftId !== props.routeDraftId) {
+    let row: SidebarDraftRowData | null = null;
+    if (props.routeDraftId !== null) {
+      const draftId = DraftId.make(props.routeDraftId);
+      const session = draftThreadsByThreadKey[draftId];
+      const composer = draftsByThreadKey[draftId];
+      row =
+        session && session.promotedTo == null && composer && composerDraftHasUserContent(composer)
+          ? { draftId, session, composer }
+          : null;
+    }
+    setFrozenActive({ routeDraftId: props.routeDraftId, row });
+  }
+  const drafts = (() => {
+    const rows: SidebarDraftRowData[] = [];
+    for (const [draftKey, session] of Object.entries(draftThreadsByThreadKey)) {
+      if (session.promotedTo != null) {
+        continue;
+      }
+      if (
+        props.scopedProjectKeys !== null &&
+        !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
+      ) {
+        continue;
+      }
+      if (draftKey === props.routeDraftId) {
+        if (frozenActive.routeDraftId === draftKey && frozenActive.row !== null) {
+          rows.push(frozenActive.row);
+        }
+        continue;
+      }
+      const composer = draftsByThreadKey[draftKey];
+      if (!composer || !composerDraftHasUserContent(composer)) {
+        continue;
+      }
+      rows.push({ draftId: DraftId.make(draftKey), session, composer });
+    }
+    rows.sort((left, right) => right.session.createdAt.localeCompare(left.session.createdAt));
+    return rows;
+  })();
+  if (drafts.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      {drafts.map(({ composer, draftId, session }) => {
+        const projectKey = `${session.environmentId}:${session.projectId}`;
+        return (
+          <SidebarDraftRow
+            key={draftId}
+            draftId={draftId}
+            composer={composer}
+            project={props.projectByKey.get(projectKey) ?? null}
+            projectDisplayName={props.projectDisplayNameByKey.get(projectKey) ?? null}
+            isActive={draftId === props.routeDraftId}
+            onNavigate={props.onNavigateToDraft}
+            onDiscard={discardComposerDraft}
+            onContextMenu={props.onDraftContextMenu}
+          />
+        );
+      })}
+      <li
+        aria-hidden
+        data-testid="sidebar-draft-divider"
+        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
+      />
+    </>
+  );
+});

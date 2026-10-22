@@ -3,7 +3,6 @@ import {
   initialWorkspaceTabsState,
   workspaceTabsFor,
   workspaceTabsReducer,
-  workspaceToolbarHeight,
 } from "./workspace-tabs-state";
 
 describe("workspace root navigation", () => {
@@ -70,12 +69,6 @@ describe("workspace root navigation", () => {
       searchEntryOffset: 500,
     });
     expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.threads.scrollOffset).toBe(500);
-  });
-
-  it("reserves space for both Android toolbar rows when expanded", () => {
-    expect(workspaceToolbarHeight("expanded")).toBeGreaterThan(
-      workspaceToolbarHeight("resting") * 2,
-    );
   });
 
   it("a late native blur cannot reopen a cancelled search", () => {

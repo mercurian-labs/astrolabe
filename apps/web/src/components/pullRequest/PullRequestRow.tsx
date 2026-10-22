@@ -106,7 +106,6 @@ function PullRequestRowImpl({
   inSelection = false,
   onDragRow,
   onRowMenu,
-  speedMode,
   hostActions,
   onActed,
   closing = false,
@@ -133,7 +132,6 @@ function PullRequestRowImpl({
   /** Astrolabe: the row dragged, toward a pane's strip; and its right-click menu. */
   onDragRow?: (entry: EnvironmentPullRequestEntry, event: DragEvent<HTMLElement>) => void;
   onRowMenu?: (entry: EnvironmentPullRequestEntry, event: MouseEvent<HTMLElement>) => void;
-  speedMode: boolean;
   hostActions: ReadonlySet<PullRequestAction>;
   onActed: (result: PullRequestSpeedActionResult) => void;
   closing?: boolean;
@@ -200,7 +198,6 @@ function PullRequestRowImpl({
       <PullRequestSpeedActions
         entry={entry}
         hostActions={hostActions}
-        visible={speedMode}
         onActed={onActed}
         closing={closing}
         sweeping={sweeping}

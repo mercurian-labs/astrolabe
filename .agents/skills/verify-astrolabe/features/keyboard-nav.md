@@ -85,7 +85,7 @@ timeline or the composer).
   the place (itself included) with `overflow-y` auto/scroll/overlay and content to
   scroll, by visible area (`scroll.ts`; no markers). Triggers: the menu's root `d`/`u`
   (repeatable: Space `d` `d` `d`) and Ctrl+D/Ctrl+U with `when: !editableFocus &&
-!terminalFocus` (so Vim's Ctrl-D/Ctrl-U in editors stay Vim's); where `mod` is
+  !terminalFocus` (so Vim's Ctrl-D/Ctrl-U in editors stay Vim's); where `mod` is
   Ctrl, Ctrl+D/U stay `diff.toggle`/`usage.open`. Faint in the menu when the area is
   at that end (or the place has none, like the rail).
 

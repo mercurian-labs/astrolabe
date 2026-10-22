@@ -166,7 +166,7 @@ must be true. Then `preview_snapshot save:true` with the strip in view.
 - Drag from the sidebar: the rows' pointer sensor accepts synthetic events, and the
   preview tools send no raw CDP input. From `preview_evaluate`, on the row card (not an
   action button) dispatch a `pointerdown` with `{pointerId: 1, isPrimary: true,
-button: 0, buttons: 1, clientX, clientY, bubbles: true}`. Then dispatch several
+  button: 0, buttons: 1, clientX, clientY, bubbles: true}`. Then dispatch several
   `pointermove`s with the same pointerId, `buttons: 1` and coordinates, more than 6px
   in total, ending at a point inside `[data-chat-tab-strip]` and outside the sidebar's
   thread list. Finish with a `pointerup` there. A move with `buttons: 0` ends the drag.

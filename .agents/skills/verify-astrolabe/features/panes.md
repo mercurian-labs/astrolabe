@@ -25,7 +25,7 @@ resize and maximize still drive the panel itself.
   shows a card (ask, reply's first line, files and lines, model, when). Another
   thread's title, line or checkpoint is `Open <title> in a new tab`, which opens it as
   a chat tab; a fork's label reads `<agent> · <running|waiting on you|idle · 3h ago|merged
-back|not started> · <n> behind`. Quiet stretches fold into buttons named
+  back|not started> · <n> behind`. Quiet stretches fold into buttons named
   `Show <n> folded turns` (text `<n> turns`) that unfold on click; a bar under the drawing
   holds **Show every turn** / **Fold quiet turns** and, when the drawing overflows the panel,
   a minimap (`LineageMinimap`, an `aria-hidden` `.h-9` strip: the drawing's paths squeezed,
