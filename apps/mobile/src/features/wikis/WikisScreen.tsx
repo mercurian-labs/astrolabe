@@ -1,3 +1,4 @@
+import { useAtomSet } from "@effect/atom-react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -26,6 +27,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useProjects } from "../../state/entities";
+import { changeRequestProjectKindAtom, changeRequestWikiScopeAtom } from "../../state/wiki";
 import { useWorkspaceState } from "../../state/workspace";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -122,10 +124,15 @@ export function WikisScreen() {
     [navigation],
   );
   // Change requests are the Change requests tab's; this row leads there.
+  const setChangeRequestKind = useAtomSet(changeRequestProjectKindAtom);
+  const setChangeRequestWikiScope = useAtomSet(changeRequestWikiScopeAtom);
+  // Into Change requests narrowed as this tab is: the one wiki, or every wiki.
   const openChanges = useCallback(() => {
     Keyboard.dismiss();
+    setChangeRequestKind("wikis");
+    setChangeRequestWikiScope(scope);
     workspace.dispatch({ type: "select", tab: "pullRequests" });
-  }, [workspace]);
+  }, [scope, setChangeRequestKind, setChangeRequestWikiScope, workspace]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();

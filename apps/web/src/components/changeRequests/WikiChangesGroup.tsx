@@ -20,7 +20,8 @@ import { Button } from "../ui/button";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { TooltipProvider } from "../ui/tooltip";
 import { useWikiOverviews } from "../wiki/wikiEnvironment";
-import { useWikiScope, WikiChangeRow, type WikiRowActions } from "../wiki/WikiSidebar";
+import { changeRequestWikiScope } from "../wiki/wikiScope";
+import { WikiChangeRow, type WikiRowActions } from "../wiki/WikiSidebar";
 import {
   searchWikiSidebarItems,
   wikiScopeKey,
@@ -37,13 +38,20 @@ const NO_KEYS: readonly string[] = [];
 /**
  * Astrolabe: the wikis' change requests in the Change Requests sidebar, a group of their own
  * beside the pull requests': the open ones as cards, then the merged and closed ones on a folded
- * shelf of slim rows, as Wikis kept them. The wiki filter is Wikis' own. The section's search
- * narrows them by title; a click shows one in the focused pane's tab in front, as a pull
- * request's row does.
+ * shelf of slim rows, as Wikis kept them. They are every wiki's, or the one wiki the section's
+ * project filter picked. The section's search narrows them by title; a click shows one in the
+ * focused pane's tab in front, as a pull request's row does.
  */
-export function WikiChangesGroup({ query }: { readonly query: string }) {
+export function WikiChangesGroup({
+  query,
+  alone = false,
+}: {
+  readonly query: string;
+  /** Whether the group is the whole list, so it says so when it has nothing to show. */
+  readonly alone?: boolean;
+}) {
   const { overviews } = useWikiOverviews();
-  const [scope, setScope] = useWikiScope(overviews);
+  const [scope, setScope] = changeRequestWikiScope.useScope(overviews);
   const focusedKey = useFocusedChangeRequestTabKey();
   const [openExpanded, setOpenExpanded] = useState(true);
   const [settledExpanded, setSettledExpanded] = useState(false);
@@ -128,8 +136,21 @@ export function WikiChangesGroup({ query }: { readonly query: string }) {
     [actedOn],
   );
 
-  if (lists.changes.length === 0 && lists.settled.length === 0) return null;
-  if (searching && open.length === 0 && settled.length === 0) return null;
+  const none =
+    (lists.changes.length === 0 && lists.settled.length === 0) ||
+    (searching && open.length === 0 && settled.length === 0);
+  if (none) {
+    if (!alone) return null;
+    return (
+      <p role="status" className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground">
+        {searching
+          ? "No change requests found"
+          : scoped
+            ? `No change requests in ${scoped.wiki.name} yet`
+            : "No wiki change requests yet"}
+      </p>
+    );
+  }
   const row = (item: WikiChangeItem) => (
     <WikiChangeRow
       key={item.key}

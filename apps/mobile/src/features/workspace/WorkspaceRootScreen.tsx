@@ -18,6 +18,7 @@ import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCom
 import { WorkspaceConnectionTitle } from "../home/WorkspaceConnectionTitle";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { PullRequestsScreen } from "../pull-requests/PullRequestsScreen";
+import { RepositoriesScreen } from "../repositories/RepositoriesScreen";
 import { WikisScreen } from "../wikis/WikisScreen";
 import {
   WorkspaceTabsContext,
@@ -38,6 +39,7 @@ const TAB_SCREENS: Readonly<Record<WorkspaceTab, () => ReactNode>> = {
   threads: () => <HomeRouteScreen />,
   pullRequests: () => <PullRequestsScreen />,
   wikis: () => <WikisScreen />,
+  repositories: () => <RepositoriesScreen />,
 };
 
 function WorkspaceRootTitle(props: {

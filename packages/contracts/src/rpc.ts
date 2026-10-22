@@ -145,6 +145,8 @@ import {
 import {
   ReviewDiffFileContentsInput,
   ReviewDiffFileContentsResult,
+  ReviewRecentFilesInput,
+  ReviewRecentFilesResult,
   ReviewDiffPreviewError,
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
@@ -472,6 +474,7 @@ export const WS_METHODS = {
 
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
+  reviewGetRecentFiles: "review.getRecentFiles",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -1518,6 +1521,12 @@ const WsReviewGetDiffFileContentsRpc = Rpc.make(WS_METHODS.reviewGetDiffFileCont
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
+  payload: ReviewRecentFilesInput,
+  success: ReviewRecentFilesResult,
+  error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
+});
+
 const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -2267,6 +2276,7 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
  * each group's handlers separately and serves them together through `WsRpcGroup`.
  */
 export const WsAstrolabeRpcGroup = RpcGroup.make(
+  WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,
   WsServerSetVimOptionRpc,

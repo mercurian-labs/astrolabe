@@ -39,7 +39,8 @@ import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { SidebarTabHistory } from "./sidebar/SidebarTabHistory";
-import { isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import { isRepositoriesPath, isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import { RepositorySidebar } from "./repositories/RepositorySidebar";
 import { WikiSidebar } from "./wiki/WikiSidebar";
 import { PullRequestsSidebar } from "./pullRequest/PullRequestsSidebar";
 import { KeyboardNavigation } from "../keyboardNav/KeyboardNavigation";
@@ -309,6 +310,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   // Astrolabe: Wikis is a section of its own, beside the threads, with its own sidebar.
   const isOnWikis = isWikisPath(pathname);
+  // Astrolabe: and Repositories, a repository's files and changes.
+  const isOnRepositories = isRepositoriesPath(pathname);
   // Astrolabe: so is Pull Requests, whose page fills its sidebar with the list.
   const isOnPullRequests = pathname === "/pull-requests";
   // Astrolabe: Usage has no sidebar. It shows collapsed there, and the toggle is gone, while the
@@ -343,7 +346,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   );
   const windowControlsInsetStyle = (
     isMacosDesktop && !isWindowFullscreen
-      ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
+      ? {
+          "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET,
+          // Astrolabe: the rail's sidebar toggle sits just after the window's buttons.
+          "--rail-toggle-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET,
+        }
       : {}
   ) as CSSProperties;
   const sidebarProviderStyle = {
@@ -351,9 +358,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(hasIconRail
       ? {
-          // The sidebar toggle is the rail's, so title-bar content clears only the window's own
-          // controls (macOS's traffic lights reach past the rail).
-          "--workspace-titlebar-content-left": `max(0.5rem, calc(var(--workspace-controls-left) - ${ICON_RAIL_WIDTH_PX}px))`,
+          // The sidebar toggle sits over the rail, so title-bar content clears only what reaches
+          // past it: in the macOS desktop app, the window's buttons and the toggle after them.
+          "--workspace-titlebar-content-left": `max(0.5rem, calc(var(--workspace-controls-left) + 2.25rem - ${ICON_RAIL_WIDTH_PX}px))`,
         }
       : {}),
     ...windowControlsInsetStyle,
@@ -404,9 +411,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
               ? "Settings"
               : isOnWikis
                 ? "Wikis"
-                : isOnPullRequests
-                  ? "Change requests"
-                  : "Threads"
+                : isOnRepositories
+                  ? "Repositories"
+                  : isOnPullRequests
+                    ? "Change requests"
+                    : "Threads"
           }
           resizable={{
             maxWidth: sidebarMaximumWidth,
@@ -430,6 +439,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             </>
           ) : isOnWikis ? (
             <WikiSidebar />
+          ) : isOnRepositories ? (
+            <RepositorySidebar />
           ) : isOnPullRequests ? (
             <PullRequestsSidebar />
           ) : legacySidebarEnabled ? (

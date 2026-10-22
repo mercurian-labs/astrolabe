@@ -98,6 +98,7 @@ const UPSTREAM_LABELS: Partial<Record<KeybindingCommand, string>> = {
 const SECTION_IDS: Partial<Record<AstrolabeKeybindingCommand, string>> = {
   "section.threads": "threads",
   "section.wikis": "wikis",
+  "section.repositories": "repositories",
   "section.pullRequests": "pull-requests",
   "section.usage": "usage",
   "section.settings": "settings",
@@ -233,6 +234,7 @@ function astrolabeCommand(
       return upstreamCommand("chat.new", context);
     case "section.threads":
     case "section.wikis":
+    case "section.repositories":
     case "section.pullRequests":
     case "section.usage":
     case "section.settings": {

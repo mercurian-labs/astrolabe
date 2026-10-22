@@ -65,6 +65,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "section.new",
   "section.threads",
   "section.wikis",
+  "section.repositories",
   "section.pullRequests",
   "section.usage",
   "section.settings",

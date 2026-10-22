@@ -38,13 +38,18 @@ thread's own Pull request tab. Shown only when a connected server reports
   requests (`#N · State`, tap opens the review), the merge/close prompt, and Merge into
   main's dialog names an unmerged one. No kind switch on mobile. Walk on an iPhone with
   agent-device; rows are buttons named `<title>, change request in <wiki>`.
-- **Source filter** (`changeRequests/ChangeRequestSourceFilter.tsx`, button `Filter by source:
-<name>` beside Sort and Filters, in place of upstream's provider menu): a searchable list of
-  All, each project (a wiki's folder project is left out), All wikis, each wiki ("Wiki").
-  A project is the list's `projectId` scope and hides Wiki changes; a wiki sets the kind
-  (`astrolabe:change-request-kind:v1`) and Wikis' own wiki filter (`astrolabe:wiki-scope:v1`,
-  one shared store), and hides the pull requests, Sort and Filters; All clears both. Filters
-  still holds Host (with several hosts) and upstream's Project, which mirrors the same scope.
+- **Project filter** (`changeRequests/ChangeRequestSourceFilter.tsx` over the shared
+  `projects/projectFilter.ts`, button `Filter by project: <name>` beside Sort and Filters, in
+  place of upstream's provider menu): a searchable list of All projects, **Repositories** and
+  each repository (a wiki's folder project is left out), **Wikis** and each wiki. The kind
+  (`astrolabe:change-request-kind:v1`: all, repositories, wikis) and this section's own wiki
+  (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a repository
+  is the list's `projectId` scope. Repositories (all or one) hides Wiki changes; Wikis (all or
+  one) hides the pull requests, Sort and Filters, and an empty wiki says "No change requests in
+  <wiki> yet". The Threads filter (`projects/useThreadsProjectFilter.ts`, combobox `Filter
+threads by project: <name>`) lists the same, a wiki only once its folder is a project (one
+  added through Wikis → Add a folder is). Filters still holds Host (with several hosts) and
+  upstream's Project, which mirrors the same scope.
   Mobile puts the wikis at the end of Filters → Project ("All wikis", "<wiki> · Wiki");
   the menu scrolls, so walk it with two short `scroll down 0.3` steps.
 - **Sidebar** (`role=navigation[name='Change requests']`): heading **Change requests** and

@@ -36,7 +36,7 @@ project: <project>`), **New thread**. Search is upstream's integrated search: th
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the palette's "New thread in…" picker. It is
   disabled with no projects.
-- **Rail mark**: the cap above the rail (`[data-app-rail-cap]`) holds the small monogram on a bordered rounded tile (`[data-app-rail-mark]`). In the macOS desktop app, where the window's buttons take that corner, the tile is the rail's first item instead, above Threads.
+- **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Threads, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) holds the sidebar toggle instead (`[data-app-rail-toggle]`, centred, x ≈ 6); in the macOS desktop app, whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
   (Threads, Wikis, Change Requests when the server supports pull requests, Usage), the current one
   marked with a bar and `aria-current="page"`; the toggle, the desktop app's update control
@@ -50,10 +50,10 @@ project: <project>`), **New thread**. Search is upstream's integrated search: th
   absent, the brand link is hidden (below 768px), and the footer keeps Settings,
   Wikis (Threads while on Wikis), Change Requests and Usage; on Settings, Usage and
   Change Requests it shows only Back.
-- **Toggle main sidebar** is at the foot of the icon rail, above Settings (same icon, tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while
-  open; a rail list button, so `j`/`k` reach it). On narrow windows (no rail) the
-  toggle stays in the title bar and the sheet's header. The rail's title-bar cell is
-  empty and has no bottom border; the rail's right edge starts on the title bar's
+- **Toggle main sidebar** is in the rail's title-bar cell, above the monogram (same icon,
+  tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while open; outside the rail's list,
+  so `j`/`k` no longer reach it). On narrow windows (no rail) the toggle stays in the
+  title bar and the sheet's header. The rail's title-bar cell has no bottom border; the rail's right edge starts on the title bar's
   bottom-border row, so it meets the sidebar header's border square at the
   sidebar's top-left corner. The open sidebar's right edge runs the full window
   height, through the title bar (`[data-app-sidebar]::after`); collapsed there is

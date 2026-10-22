@@ -1,3 +1,8 @@
+import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
+import {
+  RepositoryTabView,
+  useRepositoryTabLabel,
+} from "~/components/repositories/RepositoryTabView";
 import type { ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
@@ -132,9 +137,12 @@ export function sectionTabMove(
         return;
       }
       void ensureLocalApi()
-        .dialogs.confirm("Open this document in Wikis? Your unsaved edits here will be lost.", {
-          variant: "destructive",
-        })
+        .dialogs.confirm(
+          `Open this in ${SECTION_LABELS[home]}? Your unsaved edits here will be lost.`,
+          {
+            variant: "destructive",
+          },
+        )
         .then((confirmed) => {
           if (confirmed) move();
         });
@@ -147,6 +155,8 @@ export function useSectionTabLabel(key: string): { title: string; icon: ReactNod
   const chat = parseChatTabKey(key);
   const thread = useThreadShell(chat);
   const wikiLabel = useWikiTabLabel(key);
+  const repositoryLabel = useRepositoryTabLabel(key);
+  if (repositoryLabel !== null) return repositoryLabel;
   if (chat !== null) {
     return {
       title: thread?.title ?? "Thread",
@@ -185,6 +195,8 @@ export function SectionTabContent({
 }) {
   const chat = parseChatTabKey(tabKey);
   if (chat !== null) return chats ? <PaneChat threadRef={chat} /> : null;
+  const repository = parseRepositoryTabKey(tabKey);
+  if (repository !== null) return <RepositoryTabView tabKey={tabKey} tab={repository} />;
   const wiki = parseWikiTabKey(tabKey);
   if (wiki !== null) {
     return (

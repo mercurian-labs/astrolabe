@@ -51,8 +51,8 @@ describe("workspace root navigation", () => {
     expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.wikis.scrollOffset).toBe(320);
   });
 
-  it("iPhone shows Wikis; iPad keeps its two roots until Wikis has a sidebar design", () => {
-    expect(workspaceTabsFor("phone")).toEqual(["threads", "pullRequests", "wikis"]);
+  it("iPhone shows Wikis and Repositories; iPad keeps its two roots until they have a sidebar design", () => {
+    expect(workspaceTabsFor("phone")).toEqual(["threads", "pullRequests", "wikis", "repositories"]);
     expect(workspaceTabsFor("pad")).toEqual(["threads", "pullRequests"]);
   });
 

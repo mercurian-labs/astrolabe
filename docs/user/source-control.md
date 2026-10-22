@@ -160,9 +160,9 @@ check out a branch, or merge. You can edit review titles and descriptions and yo
 where the host allows it. GitLab calls these merge requests.
 
 The sidebar lists reviews, with search, sort and filters above them, and your wikis' change
-requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The source filter beside the
-search narrows the list to one project's pull requests, or to the wikis' change requests (every
-wiki, or one); one host's pull requests are under **Filters**. A review opens as a
+requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The project filter beside the
+search picks every repository's pull requests or one repository's, every wiki's change requests
+or one wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
 tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side by side, and the
 arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
 back after a restart.

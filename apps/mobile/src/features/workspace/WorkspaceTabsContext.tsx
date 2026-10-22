@@ -47,6 +47,7 @@ export function WorkspaceTabsProvider(props: { readonly children: ReactNode }) {
     threads: 0,
     pullRequests: 0,
     wikis: 0,
+    repositories: 0,
   });
   const getScrollOffset = useCallback((tab: WorkspaceTab) => scrollOffsets.current[tab], []);
   const recordScrollOffset = useCallback((tab: WorkspaceTab, offset: number) => {

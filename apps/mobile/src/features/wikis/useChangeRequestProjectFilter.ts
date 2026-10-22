@@ -2,9 +2,8 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { wikiScopeKey } from "@t3tools/client-runtime/wikiList";
 import { useMemo } from "react";
 
-import { changeRequestWikisOnlyAtom } from "../../state/wiki";
+import { changeRequestProjectKindAtom, changeRequestWikiScopeAtom } from "../../state/wiki";
 import { useWorkspaceState } from "../../state/workspace";
-import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { useWikiOverviews } from "./useWikiOverviews";
 import { resolveWikiScope } from "./wikisList";
 
@@ -12,14 +11,16 @@ import { resolveWikiScope } from "./wikisList";
 export const ALL_WIKIS = "wikis";
 
 /**
- * Astrolabe: the wikis as the Change requests tab's filter offers them beside its projects:
- * every wiki, or one, each listing only the wikis' change requests. `selected` is the wiki
- * choice in force, or null while the pull requests show; `select(null)` goes back to them.
+ * Astrolabe: the Change requests tab's project filter, as every section's is: All projects, then
+ * Repositories and each repository, then Wikis and each wiki. A repository is the list's own
+ * project control; this keeps the kind and the tab's own wiki. `selected` is the wiki choice in
+ * force, or null while the pull requests show.
  */
-export function useChangeRequestWikiSource() {
-  const workspace = useWorkspaceTabs()!;
-  const wikisOnly = useAtomValue(changeRequestWikisOnlyAtom);
-  const setWikisOnly = useAtomSet(changeRequestWikisOnlyAtom);
+export function useChangeRequestProjectFilter() {
+  const kind = useAtomValue(changeRequestProjectKindAtom);
+  const setKind = useAtomSet(changeRequestProjectKindAtom);
+  const storedScope = useAtomValue(changeRequestWikiScopeAtom);
+  const setScope = useAtomSet(changeRequestWikiScopeAtom);
   const { environments } = useWorkspaceState();
   const environmentIds = useMemo(
     () =>
@@ -29,13 +30,13 @@ export function useChangeRequestWikiSource() {
     [environments],
   );
   const { overviews } = useWikiOverviews(environmentIds);
-  const scope = resolveWikiScope(overviews, workspace.wikiScope);
+  const scope = resolveWikiScope(overviews, storedScope);
   const choices = useMemo(
     () =>
       overviews.length === 0
         ? []
         : [
-            { value: ALL_WIKIS, title: "All wikis" },
+            { value: ALL_WIKIS, title: "Wikis" },
             ...overviews.map((overview) => ({
               value: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
               title: `${overview.wiki.name} · Wiki`,
@@ -56,19 +57,25 @@ export function useChangeRequestWikiSource() {
     [overviews],
   );
   return {
-    wikisOnly,
+    kind,
+    wikisOnly: kind === "wikis",
+    repositoriesOnly: kind === "repositories",
+    /** The wiki in force: one wiki's scope key, or `ALL_WIKIS`. */
+    scope,
     choices,
     withoutWikiProjects: <Project extends { id: string; environmentId: string }>(
       projects: ReadonlyArray<Project>,
     ) => projects.filter((project) => !wikiProjects.has(`${project.environmentId}:${project.id}`)),
-    selected: wikisOnly ? (scope ?? ALL_WIKIS) : null,
-    select(value: string | null) {
-      if (value === null) {
-        setWikisOnly(false);
+    selected: kind === "wikis" ? (scope ?? ALL_WIKIS) : null,
+    /** Every kind (`"all"`), every repository, or a wiki choice (`ALL_WIKIS` or one wiki). */
+    select(value: "all" | "repositories" | string) {
+      if (value === "all" || value === "repositories") {
+        setKind(value);
+        setScope(null);
         return;
       }
-      setWikisOnly(true);
-      workspace.setWikiScope(value === ALL_WIKIS ? null : value);
+      setKind("wikis");
+      setScope(value === ALL_WIKIS ? null : value);
     },
   };
 }

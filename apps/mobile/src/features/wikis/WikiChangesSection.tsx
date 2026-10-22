@@ -3,11 +3,13 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   searchWikiListEntries,
   wikiListEntries,
+  wikiScopeKey,
   type WikiChangeEntry,
 } from "@t3tools/client-runtime/wikiList";
 import { useCallback, useMemo, useState } from "react";
 import { Keyboard, View } from "react-native";
 
+import { AppText as Text } from "../../components/ui/AppText";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useProjects } from "../../state/entities";
 import { useWorkspaceState } from "../../state/workspace";
@@ -15,27 +17,28 @@ import {
   ThreadListV2DisclosureDivider,
   ThreadListV2SectionDivider,
 } from "../threads/thread-list-v2-items";
-import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { useWikiOverviews } from "./useWikiOverviews";
 import { WikiChangeRow } from "./WikiListRow";
-import { buildWikiChangeItems, resolveWikiScope } from "./wikisList";
+import { buildWikiChangeItems } from "./wikisList";
 
 /**
  * Astrolabe: the wikis' change requests at the top of the Change requests tab, a group of their
  * own above the pull requests, as web lists them: the open ones under "Wiki changes", then the
- * merged and closed on a folded shelf. The Wikis tab's filter narrows them, and the tab's search
- * by title. Nothing without any.
+ * merged and closed on a folded shelf. The tab's project filter narrows them to one wiki
+ * (`scope`), and its search by title. Nothing without any, unless they are the whole list.
  */
 export function WikiChangesSection({
   query,
+  scope,
   pullRequestsFollow = true,
 }: {
   readonly query: string;
+  /** The one wiki to list, or null for every wiki. */
+  readonly scope: string | null;
   /** Whether pull requests follow below, under a rule of their own. */
   readonly pullRequestsFollow?: boolean;
 }) {
   const navigation = useNavigation();
-  const workspace = useWorkspaceTabs()!;
   const { environments } = useWorkspaceState();
   const projects = useProjects();
   const [settledExpanded, setSettledExpanded] = useState(false);
@@ -47,7 +50,6 @@ export function WikiChangesSection({
     [environments],
   );
   const { overviews } = useWikiOverviews(environmentIds);
-  const scope = resolveWikiScope(overviews, workspace.wikiScope);
   const projectByKey = useMemo(
     () =>
       new Map<string, EnvironmentProject>(
@@ -74,7 +76,21 @@ export function WikiChangesSection({
     },
     [navigation],
   );
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    if (pullRequestsFollow) return null;
+    const wiki = overviews.find(
+      (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
+    );
+    return (
+      <Text className="px-4 py-6 text-center text-sm text-foreground-muted">
+        {searching
+          ? "No change requests found"
+          : wiki
+            ? `No change requests in ${wiki.wiki.name} yet`
+            : "No wiki change requests yet"}
+      </Text>
+    );
+  }
   return (
     <View accessibilityLabel="Wiki changes">
       {items.map((item) => {

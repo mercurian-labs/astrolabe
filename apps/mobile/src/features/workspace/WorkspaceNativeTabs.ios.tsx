@@ -28,6 +28,10 @@ const TAB_ICONS: Readonly<Record<WorkspaceTab, TabIcons>> = {
     icon: { type: "sfSymbol", name: "book" },
     selectedIcon: { type: "sfSymbol", name: "book.fill" },
   },
+  repositories: {
+    icon: { type: "sfSymbol", name: "folder" },
+    selectedIcon: { type: "sfSymbol", name: "folder.fill" },
+  },
 };
 const TABS = workspaceTabsFor(Platform.OS === "ios" && Platform.isPad ? "pad" : "phone");
 

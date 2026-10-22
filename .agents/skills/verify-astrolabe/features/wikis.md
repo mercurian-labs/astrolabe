@@ -14,7 +14,7 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   folder**, **New wiki**) and **New document**. With no wikis, the sidebar's empty
   state has its own **Add a folder** and **New wiki**. Change requests moved to Change
   Requests (pull-requests.md): with any open, a first row **Open changes · N →** sets the
-  kind switch to Wikis and goes there. Documents (newest first) use the settled threads'
+  kind and that section's wiki to the Wikis section's own choice and goes there. Documents (newest first) use the settled threads'
   slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
   card: wiki, machine, links and the open changes holding it. A wiki change request

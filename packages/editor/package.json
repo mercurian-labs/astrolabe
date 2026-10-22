@@ -32,7 +32,12 @@
       "default": "./src/markdown/livePreview.ts"
     },
     "./markdown/theme.css": "./src/markdown/theme.css",
-    "./markdown/katex.css": "./src/markdown/katex.css"
+    "./markdown/katex.css": "./src/markdown/katex.css",
+    "./code": {
+      "types": "./src/code/code.ts",
+      "default": "./src/code/code.ts"
+    },
+    "./code/theme.css": "./src/code/theme.css"
   },
   "scripts": {
     "dev": "vp dev",

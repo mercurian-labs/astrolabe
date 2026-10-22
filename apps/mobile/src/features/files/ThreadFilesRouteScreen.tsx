@@ -334,7 +334,10 @@ function FileContent(props: {
 
 type ThreadFilesRouteScreenProps = StaticScreenProps<{
   readonly environmentId: string;
-  readonly threadId: string;
+  readonly threadId?: string;
+  /** Astrolabe: a repository's tree, with no thread, names its checkout itself. */
+  readonly cwd?: string;
+  readonly projectName?: string;
 }>;
 
 type ThreadFileRouteScreenProps = StaticScreenProps<{
@@ -460,7 +463,19 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
   };
 
   const handleSelectFile = (path: string) => {
-    if (environmentId === null || threadId === null) {
+    if (environmentId === null) return;
+    // Astrolabe: a repository's tree has no thread; its files open on the repository's file
+    // route, which carries the checkout along, as a draft's do.
+    if (threadId === null) {
+      if (cwd === null) return;
+      navigation.dispatch(
+        StackActions.push("RepositoryFile", {
+          environmentId: String(environmentId),
+          cwd,
+          projectName,
+          path: path.split("/").filter((segment) => segment.length > 0),
+        }),
+      );
       return;
     }
     const params = {
@@ -506,13 +521,22 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     }
   }, [cwd, fileInspector.supported, showAuxiliaryPane]);
 
-  if (selectedThread === null || environmentId === null || threadId === null) {
-    if (fileInspector.supported) {
+  // Astrolabe: a repository's tree (no thread, its checkout named) needs no thread to load.
+  const repositoryTree = threadId === null && cwd !== null;
+  const threadRoute =
+    threadId === null
+      ? null
+      : { ...props.route, params: { environmentId: props.route.params.environmentId, threadId } };
+  if (
+    environmentId === null ||
+    (!repositoryTree && (selectedThread === null || threadId === null))
+  ) {
+    if (fileInspector.supported && threadRoute !== null) {
       return (
         <ThreadRouteScreen
           onReturnToThread={handleReturnToThread}
           renderInspector={renderInspector}
-          route={props.route}
+          route={threadRoute}
         />
       );
     }
@@ -531,12 +555,12 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     return <FilesUnavailable />;
   }
 
-  if (fileInspector.supported) {
+  if (fileInspector.supported && threadRoute !== null) {
     return (
       <ThreadRouteScreen
         onReturnToThread={handleReturnToThread}
         renderInspector={renderInspector}
-        route={props.route}
+        route={threadRoute}
       />
     );
   }

@@ -91,7 +91,6 @@ import {
   CircleDashedIcon,
   CircleDotDashedIcon,
   ClockIcon,
-  FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
   MessageCircleQuestionIcon,
@@ -210,7 +209,6 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
-  filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
   hasUnseenCompletion,
@@ -276,6 +274,9 @@ import {
 } from "./ThreadStatusIndicators";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
+import { ProjectFilterIcon } from "./projects/ProjectFilterIcon";
+import { searchProjectFilterOptions } from "./projects/projectFilter";
+import { useThreadsProjectFilter } from "./projects/useThreadsProjectFilter";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
@@ -827,10 +828,6 @@ function useSidebarLookups() {
   const projectGroupByScopeKey = new Map(
     projectGroups.map((project) => [project.projectKey, project] as const),
   );
-  const projectScopeItems = [
-    { value: "all", label: "All projects" },
-    ...projectGroups.map((project) => ({ value: project.projectKey, label: project.displayName })),
-  ];
   return {
     projects,
     serverConfigs,
@@ -840,7 +837,6 @@ function useSidebarLookups() {
     projectByKey,
     projectDisplayNameByKey,
     projectGroupByScopeKey,
-    projectScopeItems,
   };
 }
 
@@ -2776,7 +2772,6 @@ export default function Sidebar() {
     projectByKey,
     projectDisplayNameByKey,
     projectGroupByScopeKey,
-    projectScopeItems,
   } = useSidebarLookups();
   const router = useRouter();
   const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
@@ -2950,27 +2945,23 @@ export default function Sidebar() {
     }
     return environmentLabelById.get(thread.environmentId) ?? null;
   };
-  const selectedProjectScopeItem =
-    projectScopeItems.find((item) => item.value === (projectScopeKey ?? "all")) ??
-    projectScopeItems[0]!;
-  const filteredProjectScopeItems = filterSidebarProjectScopeItems({
-    items: projectScopeItems,
-    query: projectScopeMenuState.query,
-    matches: (item, query) =>
-      projectScopeFilter.contains(item, query, (candidate) => candidate.label),
+  // Astrolabe: the project filter every section shares, repositories then wikis, with a kind
+  // heading for each (`useThreadsProjectFilter`). {value, label} items let Base UI drive the
+  // combobox selection contract while the popup search filters the same collection.
+  const projectFilter = useThreadsProjectFilter({
+    groups: projectGroups,
+    scopeKey: projectScopeKey,
+    setScopeKey: setProjectScopeKey,
   });
-  const scopedProjectGroup =
-    projectScopeKey === null
-      ? null
-      : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null);
-  const scopedProjectKeys =
-    scopedProjectGroup === null
-      ? null
-      : new Set(
-          scopedProjectGroup.memberProjectRefs.map(
-            (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
-          ),
-        );
+  const projectScopeItems = projectFilter.items;
+  type ProjectScopeItem = (typeof projectScopeItems)[number];
+  const selectedProjectScopeItem = projectFilter.selected;
+  const filteredProjectScopeItems = searchProjectFilterOptions(
+    projectScopeItems,
+    projectScopeMenuState.query,
+    (item, query) => projectScopeFilter.contains(item, query, (candidate) => candidate.label),
+  );
+  const scopedProjectKeys = projectFilter.scopedProjectKeys;
   useEffect(() => {
     const nextKey = resolveSidebarProjectScopeKey({
       groups: projectGroups,
@@ -3078,7 +3069,8 @@ export default function Sidebar() {
     activeKeysById,
     routeRowThreadKey,
   } = useSidebarThreads({
-    projectScopeKey,
+    // Astrolabe: the settled tail restarts when the filter's kind changes too.
+    projectScopeKey: projectFilter.resetKey,
     scopedProjectKeys,
     serverConfigs,
     optimisticDrop,
@@ -4671,43 +4663,46 @@ export default function Sidebar() {
                   items={projectScopeItems}
                   filteredItems={filteredProjectScopeItems}
                   autoHighlight
-                  itemToStringLabel={(item) => item.label}
-                  isItemEqualToValue={(a, b) => a.value === b.value}
+                  itemToStringLabel={(item: ProjectScopeItem) => item.label}
+                  isItemEqualToValue={(a: ProjectScopeItem, b: ProjectScopeItem) =>
+                    a.value === b.value
+                  }
                   open={projectScopeMenuState.open}
                   onOpenChange={(open) => {
                     if (open) suppressNextScopeChangeRef.current = false;
                     dispatchProjectScopeMenu({ type: "open-changed", open });
                   }}
-                  onItemHighlighted={(item) => {
-                    highlightedProjectScopeKeyRef.current = item?.value ?? null;
+                  onItemHighlighted={(item: ProjectScopeItem | undefined) => {
+                    highlightedProjectScopeKeyRef.current =
+                      item?.kind === "repository" ? item.repository.projectKey : null;
                   }}
                   value={selectedProjectScopeItem}
-                  onValueChange={(item) => {
+                  onValueChange={(item: ProjectScopeItem | null) => {
                     if (suppressNextScopeChangeRef.current) {
                       suppressNextScopeChangeRef.current = false;
                       return;
                     }
                     if (!item) return;
-                    setProjectScopeKey(item.value === "all" ? null : item.value);
+                    projectFilter.choose(item);
                   }}
                 >
                   <ComboboxTrigger
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          scopedProjectGroup
-                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
-                            : "Filter threads by project"
+                          selectedProjectScopeItem.kind === "all"
+                            ? "Filter threads by project"
+                            : `Filter threads by project: ${selectedProjectScopeItem.label}`
                         }
                       />
                     }
                   >
-                    {scopedProjectGroup ? (
-                      <span className="flex shrink-0">
-                        <ProjectFavicon project={scopedProjectGroup} className="size-4" />
-                      </span>
-                    ) : (
+                    {selectedProjectScopeItem.kind === "all" ? (
                       <ListFilterIcon className="size-4" />
+                    ) : (
+                      <span className="flex shrink-0">
+                        <ProjectFilterIcon option={selectedProjectScopeItem} />
+                      </span>
                     )}
                   </ComboboxTrigger>
                   <ComboboxPopup
@@ -4745,7 +4740,9 @@ export default function Sidebar() {
                     <ComboboxEmpty>No matching projects.</ComboboxEmpty>
                     <ComboboxList>
                       {(item: (typeof projectScopeItems)[number]) => {
-                        const project = projectGroupByScopeKey.get(item.value) ?? null;
+                        // A repository's row keeps its machine and settings; a wiki's and a
+                        // heading's show only their icon.
+                        const project = item.kind === "repository" ? item.repository : null;
                         return (
                           <ComboboxItem
                             key={item.value}
@@ -4755,11 +4752,7 @@ export default function Sidebar() {
                               if (project) handleProjectSettings(event, project);
                             }}
                           >
-                            {project ? (
-                              <ProjectFavicon project={project} className="size-4 shrink-0" />
-                            ) : (
-                              <FolderIcon className="size-4 shrink-0" />
-                            )}
+                            <ProjectFilterIcon option={item} />
                             <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
                             {project && showProjectEnvironments ? (
                               <ProjectEnvironmentBadge
@@ -5205,8 +5198,8 @@ export default function Sidebar() {
                     Add project
                   </button>
                 </>
-              ) : scopedProjectGroup ? (
-                `No threads in ${scopedProjectGroup.displayName} yet`
+              ) : selectedProjectScopeItem.kind !== "all" ? (
+                `No threads in ${selectedProjectScopeItem.kind === "repositories" || selectedProjectScopeItem.kind === "wikis" ? `your ${selectedProjectScopeItem.label.toLowerCase()}` : selectedProjectScopeItem.label} yet`
               ) : (
                 "No threads yet"
               )}

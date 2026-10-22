@@ -24,7 +24,6 @@ import {
   useReducer,
   useRef,
   useState,
-  useSyncExternalStore,
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -44,7 +43,7 @@ import {
   useRowSelectionStore,
 } from "~/sidebarRowSelection";
 import { useThreadShell } from "~/state/entities";
-import { setChangeRequestKind } from "../changeRequests/changeRequestKind";
+import { changeRequestKindStore } from "../changeRequests/changeRequestKind";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -93,6 +92,7 @@ import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
 import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
 import { WikiSettingsDialog } from "./WikiSettingsDialog";
+import { changeRequestWikiScope, useWikiScope } from "./wikiScope";
 import {
   searchWikiSidebarItems,
   tabShowsDocument,
@@ -106,7 +106,6 @@ import {
   type WikiTab,
 } from "./wikiTabs";
 
-const SCOPE_STORAGE_KEY = "astrolabe:wiki-scope:v1";
 /** The Wikis rows' share of the sidebars' row selection (`sidebarRowSelection`). */
 const SELECTION_SECTION = "wikis";
 const NO_KEYS: readonly string[] = [];
@@ -127,53 +126,6 @@ function compactTimeLabel(timestamp: string | null): string {
   const label = formatRelativeTimeLabel(timestamp);
   if (label === "just now") return "now";
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
-}
-
-/**
- * The wiki the sidebar is filtered to, kept on the device as the project filter is. One value
- * for the app, so Wikis and Change Requests narrow to the same wiki.
- */
-const wikiScopeListeners = new Set<() => void>();
-let storedWikiScope: string | null | undefined;
-
-function readWikiScope(): string | null {
-  if (storedWikiScope === undefined) {
-    try {
-      storedWikiScope = window.localStorage.getItem(SCOPE_STORAGE_KEY);
-    } catch {
-      storedWikiScope = null;
-    }
-  }
-  return storedWikiScope;
-}
-
-function writeWikiScope(next: string | null) {
-  storedWikiScope = next;
-  try {
-    if (next === null) window.localStorage.removeItem(SCOPE_STORAGE_KEY);
-    else window.localStorage.setItem(SCOPE_STORAGE_KEY, next);
-  } catch {
-    // Blocked storage: the filter still holds for this page.
-  }
-  for (const listener of wikiScopeListeners) listener();
-}
-
-function subscribeWikiScope(listener: () => void) {
-  wikiScopeListeners.add(listener);
-  return () => {
-    wikiScopeListeners.delete(listener);
-  };
-}
-
-export function useWikiScope(overviews: ReadonlyArray<WikiOverview>) {
-  const stored = useSyncExternalStore(subscribeWikiScope, readWikiScope);
-  // A filter on a wiki that is gone reads as no filter.
-  const exists =
-    stored !== null &&
-    overviews.some(
-      (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === stored,
-    );
-  return [exists ? stored : null, writeWikiScope] as const;
 }
 
 /**
@@ -445,7 +397,9 @@ export function WikiSidebar() {
                       type="button"
                       className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                       onClick={() => {
-                        setChangeRequestKind("wikis");
+                        // Into Change Requests narrowed as Wikis is: the one wiki, or every wiki.
+                        changeRequestKindStore.set("wikis");
+                        changeRequestWikiScope.set(scope);
                         void navigate({
                           to: "/pull-requests",
                           search: readPullRequestListPreferences(),

@@ -722,6 +722,17 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
       options: DETAIL_HEADER_OPTIONS,
     }),
+    // Astrolabe: a repository's file tree and files, from the Repositories tab, with no thread.
+    RepositoryFiles: createNativeStackScreen({
+      screen: ThreadFilesTreeScreen,
+      linking: "repositories/files",
+      options: { ...SOLID_HEADER_OPTIONS, title: "Files" },
+    }),
+    RepositoryFile: createNativeStackScreen({
+      screen: ThreadFileScreen,
+      linking: "repositories/file/:path*",
+      options: SOLID_HEADER_OPTIONS,
+    }),
     // Astrolabe: a wiki's documents and change requests.
     WikiDocument: createNativeStackScreen({
       screen: WikiDocumentRouteScreen,

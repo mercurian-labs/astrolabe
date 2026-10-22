@@ -1,11 +1,16 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { PanelLeft, PanelLeftClose } from "lucide";
-import { BookOpenIcon, ChartNoAxesColumnIcon, MessagesSquare, SettingsIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  ChartNoAxesColumnIcon,
+  FolderGit2Icon,
+  MessagesSquare,
+  SettingsIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { isElectron } from "~/env";
-import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
@@ -23,12 +28,12 @@ import {
   useSidebarVisibility,
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
+import { isRepositoriesPath, isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 /** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
 interface AppSection {
-  readonly id: "threads" | "wikis" | "pull-requests" | "usage" | "settings";
+  readonly id: "threads" | "wikis" | "repositories" | "pull-requests" | "usage" | "settings";
   readonly label: string;
   readonly icon: ReactNode;
   readonly active: boolean;
@@ -52,8 +57,14 @@ export function useAppSections(): readonly AppSection[] {
   const onUsage = pathname === "/usage";
   const onPullRequests = pathname === "/pull-requests";
   const onWikis = isWikisPath(pathname);
+  const onRepositories = isRepositoriesPath(pathname);
   const onThreads =
-    !onSettings && !onUsage && !onPullRequests && !onWikis && !pathname.startsWith("/projects/");
+    !onSettings &&
+    !onUsage &&
+    !onPullRequests &&
+    !onWikis &&
+    !onRepositories &&
+    !pathname.startsWith("/projects/");
 
   return [
     {
@@ -70,6 +81,14 @@ export function useAppSections(): readonly AppSection[] {
       icon: <BookOpenIcon />,
       active: onWikis,
       open: () => void navigate({ to: "/wikis" }),
+      foot: false,
+    },
+    {
+      id: "repositories",
+      label: "Repositories",
+      icon: <FolderGit2Icon />,
+      active: onRepositories,
+      open: () => void navigate({ to: "/repositories" }),
       foot: false,
     },
     ...(pullRequestsSupported
@@ -105,22 +124,19 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: the app's sections on top (Threads, Wikis, Change Requests and Usage),
- * and the sidebar's toggle over Settings at the foot, which the sidebar's footer used to hold.
- * It runs from below the title bar to the window's bottom edge and stays when the sidebar
- * collapses; the sidebar opens beside it (see `AppSidebarLayout`), and its toggle stays in reach
- * while the sidebar is collapsed. The cell above it is the rail's part of the title bar,
- * drawn as the rail. The title bar's bottom border stops at it, so the cell and the rail read as
+ * The far-left icon rail: the monogram, then the app's sections (Threads, Wikis, Repositories,
+ * Change Requests and Usage), and Settings at the foot. It runs from below the title bar to the
+ * window's bottom edge and stays when the sidebar collapses; the sidebar opens beside it (see
+ * `AppSidebarLayout`). The cell above it is the rail's part of the title bar, drawn as the rail,
+ * and holds the sidebar's toggle, which so stays in reach while the sidebar is collapsed; in the
+ * macOS desktop app, whose window buttons take that corner, the toggle sits just after them
+ * (`--rail-toggle-left`). The title bar's bottom border stops at it, so the cell and the rail read as
  * one column; the rail's edge starts at that border's row, so the two lines meet square at the
  * sidebar's corner. Narrow windows, where the sidebar is a sheet, have no rail (the toggle sits
  * in the title bar there).
  * It is the leftmost of the places the focus moves go between, its buttons a list walked with
  * `j`/`k` (see `keyboardNav/`).
  */
-// The macOS desktop app draws its window buttons in the top-left corner, over the rail's cap.
-const nativeControlsOnLeft =
-  isElectron && typeof navigator !== "undefined" && isMacPlatform(navigator.platform);
-
 export function AppIconRail() {
   const isMobile = useIsMobile();
   const sidebarOpen = useSidebarVisibility();
@@ -146,10 +162,15 @@ export function AppIconRail() {
           "fixed top-0 left-0 flex h-(--workspace-topbar-height) w-11 items-center justify-center bg-sidebar",
           isElectron && "drag-region",
         )}
+      />
+      {/* The sidebar's toggle, centred in the cap, or just after the macOS window buttons. */}
+      <div
+        data-app-rail-toggle=""
+        className="fixed top-[var(--workspace-controls-top)] left-(--rail-toggle-left,--spacing(1.5)) z-50 flex h-(--workspace-topbar-height) items-center"
       >
-        {/* The monogram heads the rail here, or, where the macOS desktop app keeps this corner
-            for the window's own buttons, first in the rail below. */}
-        {nativeControlsOnLeft ? null : <RailMark />}
+        <SidebarMenu>
+          <SidebarToggleItem />
+        </SidebarMenu>
       </div>
       {sidebarOpen ? (
         // Where the open sidebar meets the rail and the title bar, its corner rounds as the tab
@@ -176,16 +197,13 @@ export function AppIconRail() {
         data-app-rail=""
         className="fixed top-[calc(var(--workspace-topbar-height)-1px)] bottom-0 left-0 z-20 flex w-11 flex-col items-center border-r border-border bg-sidebar py-2"
       >
-        {nativeControlsOnLeft ? (
-          <div className="flex shrink-0 justify-center pb-1">
-            <RailMark />
-          </div>
-        ) : null}
+        <div className="flex shrink-0 justify-center pb-1">
+          <RailMark />
+        </div>
         <SidebarMenu className="items-center">
           {sections.filter((section) => !section.foot).map(item)}
         </SidebarMenu>
         <SidebarMenu className="mt-auto items-center">
-          <SidebarToggleItem />
           <SidebarUpdatePill inRail />
           {sections.filter((section) => section.foot).map(item)}
         </SidebarMenu>
@@ -206,7 +224,7 @@ function RailMark() {
   );
 }
 
-/** The sidebar's toggle (`sidebar.toggle`), as the title bar held it before the rail did. */
+/** The sidebar's toggle (`sidebar.toggle`), in the title bar's corner above the rail. */
 function SidebarToggleItem() {
   const { toggleSidebar } = useSidebar();
   const open = useSidebarVisibility();

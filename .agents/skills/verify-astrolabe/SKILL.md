@@ -50,7 +50,7 @@ Before driving, and whenever something looks off:
 - After pairing, `preview_evaluate` on `document.documentElement.dataset.themeId`
   returns `"mercurian"` on a fresh profile. Anything else means you are on a
   build without the Astrolabe layer or a profile that picked another theme.
-- The icon rail is headed by the monogram tile, `[data-app-rail-mark]` (not in the macOS desktop app).
+- The icon rail is headed by the monogram tile, `[data-app-rail-mark]`, its first item above Threads; the sidebar toggle (`[data-app-rail-toggle]`) sits in the corner above the rail (after the window buttons in the macOS desktop app).
 
 ## Desktop (Electron) checks
 

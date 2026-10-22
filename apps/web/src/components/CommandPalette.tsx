@@ -2050,6 +2050,17 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push({
     kind: "action",
+    value: "action:repositories",
+    searchTerms: ["repositories", "repository", "repo", "files", "code", "diffs"],
+    title: "Open repositories",
+    icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/repositories" });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
     value: "action:wikis",
     searchTerms: ["wikis", "wiki", "notes", "knowledge", "skill map", "change requests"],
     title: "Open wikis",

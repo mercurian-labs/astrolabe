@@ -32,6 +32,7 @@ import { Route as SettingsArchivedRouteImport } from './routes/settings.archived
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatWikisRouteImport } from './routes/_chat.wikis'
+import { Route as ChatRepositoriesRouteImport } from './routes/_chat.repositories'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatWikisWikiIdRouteImport } from './routes/_chat.wikis_.$wikiId'
@@ -153,6 +154,11 @@ const ChatWikisRoute = ChatWikisRouteImport.update({
   path: '/wikis',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatRepositoriesRoute = ChatRepositoriesRouteImport.update({
+  id: '/repositories',
+  path: '/repositories',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   id: '/pull-requests',
   path: '/pull-requests',
@@ -189,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
+  '/repositories': typeof ChatRepositoriesRoute
   '/wikis': typeof ChatWikisRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
+  '/repositories': typeof ChatRepositoriesRoute
   '/wikis': typeof ChatWikisRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
+  '/_chat/repositories': typeof ChatRepositoriesRoute
   '/_chat/wikis': typeof ChatWikisRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
@@ -280,6 +289,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/new'
     | '/pull-requests'
+    | '/repositories'
     | '/wikis'
     | '/projects/$projectKey'
     | '/settings/appearance'
@@ -308,6 +318,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/new'
     | '/pull-requests'
+    | '/repositories'
     | '/wikis'
     | '/projects/$projectKey'
     | '/settings/appearance'
@@ -338,6 +349,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/_chat/new'
     | '/_chat/pull-requests'
+    | '/_chat/repositories'
     | '/_chat/wikis'
     | '/projects/$projectKey'
     | '/settings/appearance'
@@ -533,6 +545,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatWikisRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/repositories': {
+      id: '/_chat/repositories'
+      path: '/repositories'
+      fullPath: '/repositories'
+      preLoaderRoute: typeof ChatRepositoriesRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/pull-requests': {
       id: '/_chat/pull-requests'
       path: '/pull-requests'
@@ -574,6 +593,7 @@ declare module '@tanstack/react-router' {
 interface ChatRouteChildren {
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
+  ChatRepositoriesRoute: typeof ChatRepositoriesRoute
   ChatWikisRoute: typeof ChatWikisRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
@@ -584,6 +604,7 @@ interface ChatRouteChildren {
 const ChatRouteChildren: ChatRouteChildren = {
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
+  ChatRepositoriesRoute: ChatRepositoriesRoute,
   ChatWikisRoute: ChatWikisRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,

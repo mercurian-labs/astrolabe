@@ -30,7 +30,7 @@ import { PullRequestListFilters } from "./PullRequestListFilters";
 import { usePullRequestList } from "./usePullRequestList";
 import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
-import { useChangeRequestWikiSource } from "../wikis/useChangeRequestWikiSource";
+import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
 import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
@@ -148,8 +148,9 @@ export function PullRequestsScreen(
   const sidebar = props.sidebar === true || primaryColumn !== null;
   const selectedKey = props.selectedPullRequestKey ?? primaryColumn?.selectedPullRequestKey;
   const connectedKey = connectedTargets.map((target) => target.environmentId).join("\n");
-  // Astrolabe: a wiki picked in the filter lists only the wikis' change requests.
-  const wikiSource = useChangeRequestWikiSource();
+  // Astrolabe: the project filter's kind: the wikis picked list only the wikis' change requests,
+  // the repositories only the pull requests.
+  const wikiSource = useChangeRequestProjectFilter();
   const entries = useMemo(
     () =>
       filterPullRequestList(
@@ -301,7 +302,8 @@ export function PullRequestsScreen(
               projects={wikiSource.withoutWikiProjects(projects)}
               wikis={wikiSource.choices}
               wikiValue={wikiSource.selected}
-              onWiki={wikiSource.select}
+              repositoriesOnly={wikiSource.repositoriesOnly}
+              onSource={wikiSource.select}
             />
             {result.data?.errors.length ? (
               <Text className="px-4 py-3 text-sm text-foreground-muted">
@@ -314,9 +316,13 @@ export function PullRequestsScreen(
               </Text>
             ) : null}
             {/* Astrolabe: the wikis' change requests, a group of their own above. */}
-            {controls.projectId && !wikiSource.wikisOnly ? null : (
-              <WikiChangesSection query={query} pullRequestsFollow={!wikiSource.wikisOnly} />
-            )}
+            {wikiSource.wikisOnly || (wikiSource.kind === "all" && !controls.projectId) ? (
+              <WikiChangesSection
+                query={query}
+                scope={wikiSource.scope}
+                pullRequestsFollow={!wikiSource.wikisOnly}
+              />
+            ) : null}
           </>
         }
         ListFooterComponent={

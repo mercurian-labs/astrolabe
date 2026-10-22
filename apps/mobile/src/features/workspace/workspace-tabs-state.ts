@@ -1,17 +1,25 @@
 import type { AppSymbolName } from "../../components/ui/AppSymbol";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
-export type WorkspaceTab = "threads" | "pullRequests" | "wikis";
+export type WorkspaceTab = "threads" | "pullRequests" | "wikis" | "repositories";
 
 /** The roots in the order the tab bar shows them. */
-export const WORKSPACE_TABS: ReadonlyArray<WorkspaceTab> = ["threads", "pullRequests", "wikis"];
+export const WORKSPACE_TABS: ReadonlyArray<WorkspaceTab> = [
+  "threads",
+  "pullRequests",
+  "wikis",
+  "repositories",
+];
 
 /**
- * The roots iPhone shows. Wikis waits on its own iPad sidebar design, so the iPad sidebar
- * picker, and the tab bar a compact iPad window shows, keep Threads and Change requests.
+ * The roots iPhone shows. Wikis and Repositories wait on their own iPad sidebar design, so the
+ * iPad sidebar picker, and the tab bar a compact iPad window shows, keep Threads and Change
+ * requests.
  */
 export function workspaceTabsFor(device: "phone" | "pad"): ReadonlyArray<WorkspaceTab> {
-  return device === "pad" ? WORKSPACE_TABS.filter((tab) => tab !== "wikis") : WORKSPACE_TABS;
+  return device === "pad"
+    ? WORKSPACE_TABS.filter((tab) => tab !== "wikis" && tab !== "repositories")
+    : WORKSPACE_TABS;
 }
 
 /** Each root's name, and the label its search goes by. */
@@ -22,6 +30,7 @@ export const WORKSPACE_TAB_LABELS: Readonly<
   // Astrolabe: pull requests and the wikis' change requests, as web's Change Requests section.
   pullRequests: { title: "Change requests", search: "Search change requests" },
   wikis: { title: "Wikis", search: "Search wikis" },
+  repositories: { title: "Repositories", search: "Search files" },
 };
 
 /** Each root's glyph where the app draws its own tabs rather than UIKit's. */
@@ -29,6 +38,7 @@ export const WORKSPACE_TAB_ICONS: Readonly<Record<WorkspaceTab, AppSymbolName>> 
   threads: "text.bubble",
   pullRequests: PullRequestGlyph.pullRequest,
   wikis: "book",
+  repositories: "folder",
 };
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
@@ -53,7 +63,12 @@ export function initialWorkspaceTabsState(): WorkspaceTabsState {
   return {
     selectedTab: "threads",
     selectionRevision: 0,
-    tabs: { threads: emptyTab(), pullRequests: emptyTab(), wikis: emptyTab() },
+    tabs: {
+      threads: emptyTab(),
+      pullRequests: emptyTab(),
+      wikis: emptyTab(),
+      repositories: emptyTab(),
+    },
   };
 }
 

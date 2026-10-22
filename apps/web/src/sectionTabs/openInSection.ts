@@ -5,6 +5,7 @@ import {
   pullRequestTargetOfKey,
   type PullRequestTarget,
 } from "~/components/pullRequest/pullRequestTabs";
+import { repositoryPanes } from "~/components/repositories/repositoryPanes";
 import { showWikiTab } from "~/components/wiki/wikiPanes";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { buildThreadRouteParams } from "~/threadRoutes";
@@ -43,6 +44,11 @@ export function openInSection(key: string, navigate: NavigateFn, pullRequest?: P
   if (wiki?.kind === "note") {
     showWikiTab(wiki);
     void navigate({ to: "/wikis" });
+    return;
+  }
+  if (tabSection(key) === "repositories") {
+    repositoryPanes.show(key);
+    void navigate({ to: "/repositories" });
     return;
   }
   if (tabSection(key) !== "change-requests") return;

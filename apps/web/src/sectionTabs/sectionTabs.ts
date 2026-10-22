@@ -1,6 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 
+import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { surfaceIdOf } from "~/panes/arrangement";
 
@@ -10,11 +11,12 @@ import { surfaceIdOf } from "~/panes/arrangement";
  * document. A tab outside its section offers to open in it (`Open in <section>`). The tab's key
  * says what it shows on its own, so any section's panes can show it and keep it across a reload.
  */
-export type SectionId = "threads" | "wikis" | "change-requests";
+export type SectionId = "threads" | "wikis" | "repositories" | "change-requests";
 
 export const SECTION_LABELS: Readonly<Record<SectionId, string>> = {
   threads: "Threads",
   wikis: "Wikis",
+  repositories: "Repositories",
   "change-requests": "Change Requests",
 };
 
@@ -42,12 +44,13 @@ export function parseChatTabKey(key: string): ScopedThreadRef | null {
 const isPullRequestKey = (key: string) => surfaceIdOf(key)?.startsWith("pull-request:") ?? false;
 
 /**
- * The section a tab belongs to: chats are Threads', documents Wikis', and change requests (a
- * pull request or a wiki's) Change Requests'. Null for an empty tab, and for the right panel's
- * other surfaces, which never leave their thread.
+ * The section a tab belongs to: chats are Threads', documents Wikis', files and diffs
+ * Repositories', and change requests (a pull request or a wiki's) Change Requests'. Null for an
+ * empty tab, and for the right panel's other surfaces, which never leave their thread.
  */
 export function tabSection(key: string): SectionId | null {
   if (parseChatTabKey(key) !== null) return "threads";
+  if (parseRepositoryTabKey(key) !== null) return "repositories";
   const wiki = parseWikiTabKey(key);
   if (wiki !== null) return wiki.kind === "note" ? "wikis" : "change-requests";
   if (isPullRequestKey(key)) return "change-requests";
@@ -60,11 +63,16 @@ export function tabSection(key: string): SectionId | null {
  */
 export function layoutSection(layoutKey: string | null): SectionId {
   if (layoutKey === "wikis") return "wikis";
+  if (layoutKey === "repositories") return "repositories";
   if (layoutKey === "pull-requests") return "change-requests";
   return "threads";
 }
 
-/** Whether a key names a chat or a wiki tab, which any section's panes can hold. */
+/** Whether a key names a chat, wiki or repository tab, which any section's panes can hold. */
 export function isSectionTabKey(key: string): boolean {
-  return parseChatTabKey(key) !== null || parseWikiTabKey(key) !== null;
+  return (
+    parseChatTabKey(key) !== null ||
+    parseWikiTabKey(key) !== null ||
+    parseRepositoryTabKey(key) !== null
+  );
 }

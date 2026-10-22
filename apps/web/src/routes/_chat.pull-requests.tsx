@@ -2138,10 +2138,10 @@ function CompactFilterMenu<Value extends string>({
  * search, sort and filters, then the rows, scrolling on their own.
  */
 /**
- * Astrolabe: the Change Requests sidebar's controls and list. The source filter narrows to one
- * project's pull requests or to the wikis' change requests (see `ChangeRequestSourceFilter`);
- * with the wikis picked, the pull requests' sort and filters step aside. One host, from Filters,
- * lists only its pull requests.
+ * Astrolabe: the Change Requests sidebar's controls and list. The project filter narrows to the
+ * repositories' pull requests (all, or one's) or to the wikis' change requests (all, or one's;
+ * see `ChangeRequestSourceFilter`); with the wikis picked, the pull requests' sort and filters
+ * step aside. One host, from Filters, lists only its pull requests.
  */
 function PullRequestsSidebarList({
   host,
@@ -2168,7 +2168,8 @@ function PullRequestsSidebarList({
   listBody: ReactNode;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
-  const wikisOnly = useChangeRequestKind() === "wikis";
+  const kind = useChangeRequestKind();
+  const wikisOnly = kind === "wikis";
   return (
     <>
       <div className="flex shrink-0 flex-col gap-2 px-2 pb-2">
@@ -2185,8 +2186,8 @@ function PullRequestsSidebarList({
         </div>
       </div>
       <div ref={scrollRef} className="@container/pr-list min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        {wikisOnly || (host === undefined && projectId === undefined) ? (
-          <WikiChangesGroup query={searchQuery} />
+        {wikisOnly || (kind === "all" && host === undefined && projectId === undefined) ? (
+          <WikiChangesGroup query={searchQuery} alone={wikisOnly} />
         ) : null}
         {wikisOnly ? null : listBody}
       </div>

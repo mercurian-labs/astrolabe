@@ -1,3 +1,4 @@
+import { repositoryMoveOfSurface } from "~/components/repositories/openInRepositories";
 import {
   Files,
   FileDiff,
@@ -109,6 +110,7 @@ export function createRightPanelHost(controller: PanesController): RightPanelHos
     Overlay: SurfaceOverlay,
     reservesTopRight: true,
     openElsewhere: (tabKey) =>
+      repositoryMoveOfSurface(controller.threadRef(), surfaceIdOf(tabKey)) ??
       sectionTabMove(tabKey, "threads", close, pullRequestOfSurface(controller, tabKey)),
   };
   return {

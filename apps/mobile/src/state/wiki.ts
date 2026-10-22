@@ -20,10 +20,19 @@ export const wikiOverviewsAtom = Atom.family((key: string) =>
 );
 
 /**
- * Astrolabe: whether the Change requests tab lists only the wikis' change requests, as its
- * filter's wiki choices ask. Which wiki is the workspace's wiki filter, shared with Wikis.
+ * Astrolabe: which kind of project the Change requests tab lists while no one project is picked:
+ * all, the repositories' pull requests, or the wikis' change requests.
  */
-export const changeRequestWikisOnlyAtom = Atom.make(false).pipe(
+export const changeRequestProjectKindAtom = Atom.make<"all" | "repositories" | "wikis">("all").pipe(
   Atom.keepAlive,
-  Atom.withLabel("change-request-wikis-only"),
+  Atom.withLabel("change-request-project-kind"),
+);
+
+/**
+ * The wiki the Change requests tab's filter picked (its `wikiScopeKey`), or null for every wiki.
+ * The tab's own, not the Wikis tab's filter, so narrowing one never narrows the other.
+ */
+export const changeRequestWikiScopeAtom = Atom.make<string | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("change-request-wiki-scope"),
 );

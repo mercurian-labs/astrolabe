@@ -15,6 +15,11 @@ export function isPullRequestsPath(pathname: string) {
   return pathname === "/pull-requests";
 }
 
+/** Astrolabe: Repositories, a section of its own beside the wikis. */
+export function isRepositoriesPath(pathname: string) {
+  return pathname === "/repositories";
+}
+
 /** `/wikis` and every wiki under it: Astrolabe's second section, beside the threads. */
 export function isWikisPath(pathname: string) {
   return pathname === "/wikis" || pathname.startsWith("/wikis/");
@@ -30,6 +35,7 @@ export function MainAppLocationTracker() {
     select: (location) =>
       isSidebarUtilityPage(location.pathname) ||
       isWikisPath(location.pathname) ||
+      isRepositoriesPath(location.pathname) ||
       isPullRequestsPath(location.pathname)
         ? null
         : location.href,

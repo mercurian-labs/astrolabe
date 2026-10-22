@@ -1195,7 +1195,9 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
   Effect.gen(function* () {
     const wikis = yield* WikiService.WikiService;
     const vimrc = yield* Vimrc.Vimrc;
+    const review = yield* ReviewService.ReviewService;
     return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
       [WS_METHODS.serverRemoveVimMapping]: (input) => vimrc.removeMapping(input),
       [WS_METHODS.serverSetVimOption]: (input) => vimrc.setOption(input),

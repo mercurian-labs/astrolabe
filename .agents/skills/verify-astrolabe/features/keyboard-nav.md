@@ -3,7 +3,7 @@
 Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
-leftmost), the sidebar on screen (Threads, Wikis or Pull Requests), the chat
+leftmost), the sidebar on screen (Threads, Wikis, Repositories or Change Requests), the chat
 column, and each pane (the right panel's, the Wikis area's, the Pull Requests
 area's). Never anything inside one (no stop for a tab strip, the timeline or the
 composer).

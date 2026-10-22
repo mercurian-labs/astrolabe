@@ -54,7 +54,7 @@ threads goes together). Search, `:b`, and new threads also show in the tab in fr
 
 Each tab remembers what it showed. The arrows at the top of the sidebar, `mod+[`
 and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the tab in front.
-The sidebar's toggle is at the bottom of the icon rail.
+The sidebar's toggle is in the top-left corner, above the icon rail (after the window buttons in the macOS app).
 
 ## Pin and reorder threads
 
@@ -194,6 +194,11 @@ same link to return to the branch PR, if one exists.
 The linked pull request participates in automatic settlement.
 
 ## Find and reference work
+
+A project is a repository or a wiki. The filter at the top of the thread list picks **All
+projects**, every repository, every wiki, or one of them; a wiki's threads are the ones working
+in its folder. **Change Requests** and **Wikis** use the same list, and each section remembers
+its own choice.
 
 On web and desktop, open the command palette with `Cmd/Ctrl+K` twice to search threads
 across connected environments. Message search starts after two characters and

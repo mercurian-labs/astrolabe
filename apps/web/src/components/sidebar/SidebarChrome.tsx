@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   BookOpenIcon,
+  FolderGit2Icon,
   ChartNoAxesColumnIcon,
   MessagesSquare,
   SettingsIcon,
@@ -33,6 +34,7 @@ import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPr
 import {
   isPullRequestsPath,
   isSidebarUtilityPage,
+  isRepositoriesPath,
   isWikisPath,
   useNavigateToMainApp,
 } from "./mainAppLocation";
@@ -156,6 +158,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
   const isOnWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
+  const isOnRepositories = useLocation({
+    select: (location) => isRepositoriesPath(location.pathname),
+  });
   const isOnPullRequests = useLocation({
     select: (location) => isPullRequestsPath(location.pathname),
   });
@@ -179,6 +184,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const handleWikisClick = () => {
     closeMobileSidebar();
     void navigate({ to: "/wikis" });
+  };
+  const handleRepositoriesClick = () => {
+    closeMobileSidebar();
+    void navigate({ to: "/repositories" });
   };
 
   const handleUsageClick = () => {
@@ -221,6 +230,19 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             />
           ) : (
             <SidebarUtilityItem icon={<BookOpenIcon />} label="Wikis" onClick={handleWikisClick} />
+          )}
+          {isOnRepositories ? (
+            <SidebarUtilityItem
+              icon={<MessagesSquare />}
+              label="Threads"
+              onClick={handleBackClick}
+            />
+          ) : (
+            <SidebarUtilityItem
+              icon={<FolderGit2Icon />}
+              label="Repositories"
+              onClick={handleRepositoriesClick}
+            />
           )}
           {isOnPullRequests ? (
             <SidebarUtilityItem
