@@ -1,6 +1,6 @@
 ---
 import HeroWindow from "./HeroWindow.astro";
-import { phases } from "../scripts/tour-scenes.js";
+import { phases, scenarios } from "../scripts/tour-scenes.js";
 import { headline } from "../site.js";
 ---
 
@@ -25,8 +25,8 @@ import { headline } from "../site.js";
               </div>
             </div>
 
-            <!-- The tour's three phases. Without script the first is shown; while the tour plays the
-                 running one fills; once it has played each replays from its phase. -->
+            <!-- The tour's three phases, one per section. Without script the first is shown; while the tour
+                 plays the running one fills; once it has played each replays from its phase. -->
             <div class="tour" id="tour" data-tour>
               <ol class="tour__phases" aria-label="The tour's phases">
                 <li><button type="button" class="tour__phase is-on" data-tour-phase disabled aria-current="step"><i aria-hidden="true"><span></span></i><span class="tag"><b>01</b> Agents</span></button></li>
@@ -42,6 +42,24 @@ import { headline } from "../site.js";
                 <figure class="poster">
                   <HeroWindow />
                 </figure>
+                <!-- Once the tour has played: three prompts to send into the drawn composer. -->
+                <div class="tour__try" data-tour-try hidden>
+                  <p class="tag">Example prompts</p>
+                  <ul class="tour__chips">
+                    {
+                      scenarios.map((s) => (
+                        <li>
+                          <button type="button" class="tour__chip" data-try aria-pressed="false">
+                            <svg class="arw" aria-hidden="true">
+                              <use href="#i-arrow" />
+                            </svg>
+                            {s.prompt}
+                          </button>
+                        </li>
+                      ))
+                    }
+                  </ul>
+                </div>
               </div>
             </div>
           </section>

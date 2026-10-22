@@ -2,18 +2,20 @@
 // (components/HeroWindow.astro).
 //
 // The window's state is a set of shown parts (data-k) plus a few attributes on its root: the rail's
-// section, the thread on show, the pane a phone shows. Each event changes that state; replaying from
-// a phase rebuilds it from every event before. One pending timeout waits for the next event, and the
-// running segment's fill is one transform animation that pauses with it. Once the last phase ends
-// nothing is scheduled and nothing animates.
+// section, the thread on show, the Changes tab in front, the wiki's edits and the merge switch. Each
+// event changes that state; starting a phase rebuilds it from every event before. One pending
+// timeout waits for the next event, and the running segment's fill is one transform animation that
+// pauses with it. Once a scenario ends nothing is scheduled and nothing animates.
 //
-// States: poster (waiting to be seen), playing, paused (out of view or a hidden tab), complete (the
-// last phase ended), exploring (unlocked: the rail and thread rows answer, each segment replays).
-// With reduced motion it never plays: a segment shows its phase's finished state at once.
+// States: poster (waiting to be seen), playing, paused (out of view or a hidden tab), exploring
+// (unlocked: the rail, the tabs and the sidebar's rows answer; each segment replays the main
+// scenario from its phase, and each example prompt plays its scenario). With reduced motion nothing
+// plays: a segment or a chip shows its finished state at once.
 
-import { phases } from "./tour-scenes.js";
+import { scenarios } from "./tour-scenes.js";
 
-const ATTRIBUTES = new Set(["section", "focus", "thread", "edits", "merge"]);
+const ATTRIBUTES = new Set(["section", "thread", "cpane", "edits", "merge"]);
+const SECTIONS = ["agents", "wikis", "changes"];
 
 const tour = document.querySelector("[data-tour]");
 const app = document.querySelector("[data-tour-app]");
@@ -24,6 +26,8 @@ function run(tour, app) {
   const caption = tour.querySelector("[data-tour-caption]");
   const segments = [...tour.querySelectorAll("[data-tour-phase]")];
   const fills = segments.map((segment) => segment.querySelector("i span"));
+  const tries = panel.querySelector("[data-tour-try]");
+  const chips = tries ? [...tries.querySelectorAll("[data-try]")] : [];
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 
   // Each part, under every key it answers to; a part shows while any of its keys is shown.
@@ -32,10 +36,15 @@ function run(tour, app) {
     el.keys = el.dataset.k.split(" ");
     for (const key of el.keys) parts.set(key, [...(parts.get(key) ?? []), el]);
   }
+  const owned = [...app.querySelectorAll("[data-only]")];
+  const tabs = [...app.querySelectorAll("[data-tab]")];
+  const rows = [...app.querySelectorAll("[data-row]")];
+  const paneTabs = [...app.querySelectorAll("[data-cp]")];
   const shown = new Set();
-  const sections = phases.map((p) => p.events.find((e) => e.type === "section").payload);
+  const played = new Set();
 
   let state = "poster";
+  let scenario = 0;
   let phase = 0;
   let index = 0;
   let elapsed = 0;
@@ -44,6 +53,8 @@ function run(tour, app) {
   let fill = null;
   let seen = false;
   let visible = false;
+
+  const phasesOf = (s) => scenarios[s].phases;
 
   /* ───────────── Events. `quiet` applies one without its entrance (rebuilding, reduced motion). */
 
@@ -58,14 +69,32 @@ function run(tour, app) {
     }
   }
 
+  // The thread on show: its parts, its tab in front, its row marked.
+  function showThread(id) {
+    for (const el of owned)
+      el.toggleAttribute("data-off", !el.dataset.only.split(" ").includes(id));
+    for (const tab of tabs) tab.classList.toggle("is-front", tab.dataset.tab === id);
+    for (const tab of tabs) tab.classList.toggle("is-focus", tab.dataset.tab === id);
+    for (const row of rows) row.classList.toggle("is-on", row.dataset.row === id);
+  }
+
+  function setAttribute(type, value) {
+    app.dataset[type] = value;
+    if (type === "thread") showThread(value);
+    if (type === "cpane")
+      for (const tab of paneTabs) {
+        tab.classList.toggle("is-front", tab.dataset.cp === value);
+        tab.classList.toggle("is-focus", tab.dataset.cp === value);
+      }
+  }
+
   function apply({ type, payload }, quiet) {
-    if (ATTRIBUTES.has(type)) app.dataset[type] = payload;
+    if (ATTRIBUTES.has(type)) setAttribute(type, payload);
     else if (type === "show" || type === "hide") setKeys([payload].flat(), type === "show", quiet);
     else if (type === "swap") {
       setKeys([payload.from], false, quiet);
       setKeys([payload.to], true, quiet);
-    } else if (type === "step" || type === "files") setKeys([payload.key], true, quiet);
-    else if (type === "press" && !quiet) {
+    } else if (type === "press" && !quiet) {
       for (const el of app.querySelectorAll(`[data-p="${payload}"]`)) {
         el.classList.remove("is-pressed");
         void el.offsetWidth;
@@ -74,11 +103,21 @@ function run(tour, app) {
     }
   }
 
-  // The window as it stands when phase `to` begins: empty, then every earlier event at once.
-  function rebuild(to) {
+  const applyAll = (s, to = phasesOf(s).length) => {
+    for (const p of phasesOf(s).slice(0, to)) for (const e of p.events) apply(e, true);
+  };
+
+  // The window as it stands when phase `to` of scenario `s` begins: empty, then the main scenario
+  // and any example already played (an example starts from a finished window), then every earlier
+  // event of its own.
+  function rebuild(s, to) {
     setKeys([...shown], false, true);
     for (const el of app.querySelectorAll(".is-pressed")) el.classList.remove("is-pressed");
-    for (const p of phases.slice(0, to)) for (const e of p.events) apply(e, true);
+    if (s !== 0) {
+      applyAll(0);
+      for (const other of played) if (other !== 0 && other !== s) applyAll(other);
+    }
+    applyAll(s, to);
   }
 
   /* ───────────── The clock: one timeout for the next event, one animation for the bar. */
@@ -89,7 +128,7 @@ function run(tour, app) {
     clearTimeout(timer);
     timer = 0;
     if (state !== "playing") return;
-    const { events, duration } = phases[phase];
+    const { events, duration } = phasesOf(scenario)[phase];
     const t = clock();
     while (index < events.length && events[index].at <= t) apply(events[index++], false);
     const next = index < events.length ? events[index].at : duration;
@@ -98,7 +137,7 @@ function run(tour, app) {
 
   function advance() {
     timer = 0;
-    if (phase + 1 < phases.length) begin(phase + 1);
+    if (phase + 1 < phasesOf(scenario).length) begin(phase + 1);
     else finish();
   }
 
@@ -110,9 +149,10 @@ function run(tour, app) {
     elapsed = 0;
     startedAt = performance.now();
     state = visible && !document.hidden ? "playing" : "paused";
-    showPhase(i);
-    fill = fills[i].animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], {
-      duration: phases[i].duration,
+    showPhase();
+    const { segment, duration } = phasesOf(scenario)[i];
+    fill = fills[segment].animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], {
+      duration,
       easing: "linear",
       fill: "forwards",
     });
@@ -120,9 +160,11 @@ function run(tour, app) {
     tick();
   }
 
-  // Play from phase i to the end, the window locked.
-  function play(i) {
-    rebuild(i);
+  // Play scenario s from phase i to its end, the window locked.
+  function play(s, i) {
+    scenario = s;
+    played.add(s);
+    rebuild(s, i);
     lock(true);
     begin(i);
   }
@@ -145,9 +187,8 @@ function run(tour, app) {
   }
 
   function finish() {
-    state = "complete";
     // Commit the fill as a style so no animation object outlives the tour.
-    settleFills(phase);
+    settleFills();
     explore();
   }
 
@@ -156,28 +197,33 @@ function run(tour, app) {
     lock(false);
   }
 
-  /* ───────────── The bar, the caption, the lock. */
+  /* ───────────── The bar, the caption, the chips, the lock. */
 
-  function settleFills(i) {
+  // The segments mark the running phase's section: filled before it in the main scenario, empty
+  // after; an example fills only its own.
+  function settleFills() {
+    const on = phasesOf(scenario)[phase].segment;
     fills.forEach((f, n) => {
       for (const a of f.getAnimations()) a.cancel();
-      f.style.transform = `scaleX(${n <= i ? 1 : 0})`;
+      f.style.transform = `scaleX(${n === on || (scenario === 0 && n < on) ? 1 : 0})`;
     });
     fill = null;
   }
 
-  function showPhase(i) {
-    segments.forEach((segment, n) => {
-      segment.classList.toggle("is-on", n === i);
-      segment.classList.toggle("is-done", n < i);
-      if (n === i) segment.setAttribute("aria-current", "step");
-      else segment.removeAttribute("aria-current");
-      if (n !== i) {
+  function showPhase() {
+    const { segment, caption: text } = phasesOf(scenario)[phase];
+    segments.forEach((el, n) => {
+      el.classList.toggle("is-on", n === segment);
+      el.classList.toggle("is-done", scenario === 0 && n < segment);
+      if (n === segment) el.setAttribute("aria-current", "step");
+      else el.removeAttribute("aria-current");
+      if (n !== segment) {
         for (const a of fills[n].getAnimations()) a.cancel();
-        fills[n].style.transform = `scaleX(${n < i ? 1 : 0})`;
+        fills[n].style.transform = `scaleX(${scenario === 0 && n < segment ? 1 : 0})`;
       }
     });
-    if (caption.textContent !== phases[i].caption) caption.textContent = phases[i].caption;
+    chips.forEach((chip, n) => chip.setAttribute("aria-pressed", String(n === scenario)));
+    if (caption.textContent !== text) caption.textContent = text;
   }
 
   function lock(on) {
@@ -185,41 +231,64 @@ function run(tour, app) {
     app.dataset.state = on ? "playing" : "exploring";
     tour.dataset.state = on ? "playing" : "ready";
     for (const segment of segments) segment.disabled = on;
+    if (!tries) return;
+    // The prompts appear once the main scenario has played, and stay.
+    if (!on) tries.hidden = false;
+    tries.dataset.state = on ? "playing" : "ready";
+    for (const chip of chips) chip.disabled = on;
   }
 
-  // The finished window, on phase i's section, at once.
-  function jump(i) {
+  // Scenario s finished, on phase i, at once.
+  function jump(s, i) {
     clearTimeout(timer);
     timer = 0;
-    rebuild(phases.length);
+    scenario = s;
+    played.add(s);
+    rebuild(s, phasesOf(s).length);
     turnTo(i);
     explore();
   }
 
+  // Phase i's section, as the scenario left it.
   function turnTo(i) {
-    app.dataset.section = sections[i];
     phase = i;
-    showPhase(i);
-    settleFills(i);
+    setAttribute("section", SECTIONS[phasesOf(scenario)[i].segment]);
+    showPhase();
+    settleFills();
   }
+
+  const start = (s, i) => (reduced.matches ? jump(s, i) : play(s, i));
 
   segments.forEach((segment, i) =>
     segment.addEventListener("click", () => {
-      if (state === "playing" || state === "paused") return;
-      if (reduced.matches) jump(i);
-      else play(i);
+      if (state !== "exploring") return;
+      start(0, i);
     }),
   );
+  // An example "sends" its prompt: the window plays its scenario from the composer.
+  chips.forEach((chip, n) =>
+    chip.addEventListener("click", () => {
+      if (state === "exploring") start(n, 0);
+    }),
+  );
+  // "See it run" lands on the tour; once it has played, it plays the main scenario again.
+  document.querySelector("[data-tour-run]")?.addEventListener("click", () => {
+    if (state === "exploring") start(0, 0);
+  });
 
-  /* ───────────── Exploring: the rail switches between the phases' ends; thread rows answer. */
+  /* ───────────── Exploring: the rail switches sections; tabs and rows switch threads. */
 
   app.addEventListener("click", (event) => {
     if (state !== "exploring") return;
-    const go = event.target.closest("[data-go]");
-    const row = event.target.closest("[data-row]");
-    if (go) turnTo(sections.indexOf(go.dataset.go));
-    else if (row && (!row.dataset.k || shown.has(row.dataset.k)))
-      app.dataset.thread = row.dataset.row;
+    const target = event.target.closest("[data-go], [data-tab], [data-row], [data-cp]");
+    if (!target || (target.dataset.k && !target.keys.some((k) => shown.has(k)))) return;
+    if (target.dataset.go) {
+      const section = target.dataset.go;
+      const i = phasesOf(scenario).findIndex((p) => SECTIONS[p.segment] === section);
+      if (i >= 0) turnTo(i);
+      else setAttribute("section", section);
+    } else if (target.dataset.cp) setAttribute("cpane", target.dataset.cp);
+    else setAttribute("thread", target.dataset.tab ?? target.dataset.row);
   });
 
   /* ───────────── When to play: once, when the window is well in view; pause when it isn't. */
@@ -232,9 +301,9 @@ function run(tour, app) {
       visible = entry.isIntersecting && ratio >= 0.15;
       if (!seen && enough && !document.hidden && !reduced.matches) {
         seen = true;
-        play(0);
+        play(0, 0);
       } else if (!visible) pause();
-      else resume();
+      else if (!document.hidden) resume();
     },
     { threshold: [0, 0.15, 0.3, 0.5, 0.7, 1] },
   );
@@ -248,20 +317,20 @@ function run(tour, app) {
   reduced.addEventListener("change", () => {
     if (!reduced.matches) return;
     seen = true;
-    if (state !== "exploring") jump(state === "poster" ? 0 : phase);
+    if (state !== "exploring") jump(scenario, state === "poster" ? 0 : phase);
   });
 
   if (reduced.matches) {
-    jump(0);
+    jump(0, 0);
   } else {
-    // Until it plays, the window waits on the thread before its first message.
-    rebuild(0);
-    for (const e of phases[0].events) if (e.at === 0) apply(e, true);
+    // Until it plays, the window waits on an empty thread before its first message.
+    rebuild(0, 0);
+    for (const e of phasesOf(0)[0].events) if (e.at === 0) apply(e, true);
     app.dataset.state = "poster";
     app.toggleAttribute("inert", true);
     tour.dataset.state = "poster";
     for (const segment of segments) segment.disabled = true;
-    showPhase(0);
+    showPhase();
     fills[0].style.transform = "scaleX(0)";
   }
 }

@@ -1,16 +1,80 @@
 ---
-// The hero's drawn window: Threads, Wikis and Changes in one app frame, each section's surfaces
-// authored here and driven by scripts/tour.js. As written (no script) it is the tour's last
-// Threads state: the fork on Claude, its lane in Lineage. Anything named data-k is a part the tour
-// shows or hides; data-gone marks a part the finished still leaves out; data-only marks a part of
-// one thread's view ("codex" or "fork").
-import { files, steps } from "../scripts/tour-scenes.js";
+// The hero's drawn window: Agents, Wikis and Changes in one app frame, driven by scripts/tour.js
+// from the scene data in scripts/tour-scenes.js. As written (no script) it is the main tour's
+// finished Agents state: the planner's thread with both subagents done and their results landed.
+// Anything named data-k is a part the tour shows or hides; data-gone marks a part the finished
+// still leaves out; data-only names the threads a part belongs to, and data-off hides it while
+// another thread is on show.
+//
+// Subagents are drawn the way the app draws them (V2LifecycleRow, MessagesTimeline): a round mark
+// with the provider's logo and a state dot, the task's title, its latest progress or result, and
+// its elapsed time; several started together sit under one "N subagents" row; a finished one
+// lands back in the parent as a row of its own. Children never appear in the sidebar, and their
+// first message reads "Sent by another agent".
 
-const added = files.reduce((sum, file) => sum + file.added, 0);
-const removed = files.reduce((sum, file) => sum + file.removed, 0);
+const SHOWN = "plan";
+const off = (ids: string) => (ids.split(" ").includes(SHOWN) ? undefined : true);
+
+type Step = { k: string; icon: string; text?: string; code?: string; more?: string; gone?: boolean };
+const read = (k: string, path: string, more?: string): Step => ({ k, icon: "i-eye", text: "Read", code: path, more });
+const edit = (k: string, path: string): Step => ({ k, icon: "i-square-pen", code: path });
+const run = (k: string, command: string): Step => ({ k, icon: "i-terminal", code: command });
+const live = (k: string): Step => ({ k, icon: "i-terminal", text: "Running command", gone: true });
+
+const threads = [
+  {
+    id: "intents",
+    parent: "Add Apple Pay to checkout",
+    ask: "Add POST /payments/intents for Apple Pay: create a payment intent and return its client secret. Open a pull request when the tests pass.",
+    steps: [
+      read("intents-read", "payments/charge.ts", "+3 more"),
+      edit("intents-e1", "payments/intents.ts"),
+      edit("intents-e2", "payments/intents.test.ts"),
+      live("intents-live"),
+      run("intents-run", "pnpm test payments"),
+    ],
+    reply: "Added <code>POST /payments/intents</code>. It creates a payment intent for Apple Pay and returns the client secret. Tests pass; opened #512.",
+  },
+  {
+    id: "button",
+    parent: "Add Apple Pay to checkout",
+    ask: "Add an Apple Pay button to checkout that calls POST /payments/intents. Show it only where Apple Pay can make payments.",
+    steps: [
+      read("button-read", "checkout/PayButtons.tsx", "+2 more"),
+      edit("button-e1", "checkout/ApplePayButton.tsx"),
+      edit("button-e2", "checkout/PayButtons.tsx"),
+      live("button-live"),
+      run("button-run", "pnpm test checkout"),
+    ],
+    reply: "The button shows where Apple Pay can make payments and falls back to the card form everywhere else. Opened #513.",
+  },
+  {
+    id: "review",
+    parent: "Fix the flaky login test",
+    ask: "Review the fix for the flaky login test on fix/login-flake. Say what you would change.",
+    steps: [read("review-read", "e2e/login.spec.ts"), run("review-diff", "git diff main")],
+    reply: "The wait is right: the session cookie is the real signal. One change: assert the dashboard heading after the redirect, so a slow redirect fails loudly.",
+  },
+];
+
+const models = [
+  { ids: "plan s3", logo: "p-claude", name: "Claude Opus 5.5" },
+  { ids: "button review", logo: "p-claude", name: "Claude Sonnet 5.5" },
+  { ids: "intents flaky nightly", logo: "p-openai", name: "GPT-6.1-Sol" },
+];
+
+const tabs = [
+  { id: "plan", family: "plan intents button", logo: "p-claude", title: "Add Apple Pay to checkout" },
+  { id: "intents", family: "plan intents button", logo: "p-openai", title: "Payment intents API", k: "tab-intents" },
+  { id: "button", family: "plan intents button", logo: "p-claude", title: "Apple Pay button", k: "tab-button" },
+  { id: "flaky", family: "flaky review", logo: "p-openai", title: "Fix the flaky login test" },
+  { id: "review", family: "flaky review", logo: "p-claude", title: "Review the login test fix", k: "tab-review" },
+  { id: "s3", family: "s3", logo: "p-claude", title: "Move uploads to S3" },
+  { id: "nightly", family: "nightly", logo: "p-openai", title: "Copy old uploads to S3" },
+];
 ---
 
-<div class="app app--poster app--tour" data-tour-app data-section="threads" data-thread="fork" data-edits="accepted" data-merge="on" aria-hidden="true">
+<div class="app app--poster app--tour" data-tour-app data-section="agents" data-thread="plan" data-cpane="group" data-edits="accepted" data-merge="on" aria-hidden="true">
   <div class="tb">
     <div class="tb__cap">
       <span class="lights"><i></i><i></i><i></i></span>
@@ -20,44 +84,38 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
       <svg class="ico ico--sm ico--faint"><use href="#i-right" /></svg>
     </div>
 
-    <!-- Threads: the chat tabs over the chat column, the right panel's pane strip beside them. -->
-    <div class="tb__strip tb__strip--chat" data-in="threads">
+    <!-- Agents: the chat tabs over the chat. -->
+    <div class="tb__strip tb__strip--pane tb__strip--main" data-in="agents">
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
-      <span class="tab is-front is-focus">
-        <svg class="logo" data-only="codex"><use href="#p-openai" /></svg>
-        <svg class="logo" data-only="fork" data-k="model-codex" data-gone><use href="#p-openai" /></svg>
-        <svg class="logo" data-only="fork" data-k="model-claude"><use href="#p-claude" /></svg>
-        <span class="tab__title"><span data-only="codex">Ledger owns rounding</span><span data-only="fork">Ledger owns rounding fork</span></span>
-        <svg class="ico ico--xs"><use href="#i-x" /></svg>
-      </span>
+      {
+        tabs.map((tab) => (
+          <span class:list={["tab", { "is-front is-focus": tab.id === SHOWN }]} data-tab={tab.id} data-p={`tab-${tab.id}`} data-only={tab.family} data-off={off(tab.family)} data-k={tab.k}>
+            <svg class="logo"><use href={`#${tab.logo}`} /></svg>
+            <span class="tab__title">{tab.title}</span>
+            <svg class="ico ico--xs"><use href="#i-x" /></svg>
+          </span>
+        ))
+      }
       <svg class="ico ico--muted"><use href="#i-plus" /></svg>
       <span class="spacer"></span>
       <svg class="ico ico--muted"><use href="#i-panel-r" /></svg>
-    </div>
-    <div class="tb__strip tb__strip--pane" data-in="threads">
-      <span class="lights lights--crop"><i></i><i></i><i></i></span>
-      <span class="tab is-front"><svg class="ico ico--xs"><use href="#i-fork" /></svg><span class="tab__title">Lineage</span></span>
-      <span class="tab"><svg class="ico ico--xs"><use href="#i-diff" /></svg><span class="tab__title">Diff</span></span>
-      <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><span class="tab__title">Terminal</span></span>
-      <svg class="ico ico--muted"><use href="#i-plus" /></svg>
-      <span class="spacer"></span>
-      <svg class="ico ico--muted"><use href="#i-more" /></svg>
     </div>
 
     <!-- Wikis and Changes: one pane of tabs across the main area. -->
     <div class="tb__strip tb__strip--pane tb__strip--main" data-in="wikis">
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
-      <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Rounding</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-      <span class="tab"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Ledger</span></span>
-      <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Ledger owns rounding</span></span>
+      <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Checkout</span></span>
+      <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Add Apple Pay to checkout</span></span>
       <svg class="ico ico--muted"><use href="#i-plus" /></svg>
       <span class="spacer"></span>
       <svg class="ico ico--muted"><use href="#i-more" /></svg>
     </div>
     <div class="tb__strip tb__strip--pane tb__strip--main" data-in="changes">
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
-      <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-layers" /></svg><span class="tab__title">Ledger owns rounding</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-      <span class="tab"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span class="tab__title">#482 Ledger owns rounding</span></span>
+      <span class="tab is-front is-focus" data-cp="group" data-p="cp-group"><svg class="ico ico--xs"><use href="#i-layers" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab" data-cp="pr" data-p="cp-pr"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span class="tab__title">#512 Payment intents API</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span class="tab__title">#513 Apple Pay button</span></span>
       <svg class="ico ico--muted"><use href="#i-plus" /></svg>
       <span class="spacer"></span>
       <svg class="ico ico--muted"><use href="#i-more" /></svg>
@@ -67,42 +125,47 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
   <div class="pb">
     <nav class="rail">
       <span class="rail__mark"><img src="/assets/brand/monogram.svg" alt="" /></span>
-      <span class="rail__item" data-go="threads"><svg class="ico"><use href="#i-msgs" /></svg></span>
-      <span class="rail__item" data-go="wikis"><svg class="ico"><use href="#i-book" /></svg></span>
-      <span class="rail__item"><svg class="ico"><use href="#i-repo" /></svg></span>
-      <span class="rail__item" data-go="changes"><svg class="ico"><use href="#i-pr" /></svg></span>
-      <span class="rail__item"><svg class="ico"><use href="#i-usage" /></svg></span>
+      <span class="rail__item" data-go="agents" title="Agents"><svg class="ico"><use href="#i-msgs" /></svg></span>
+      <span class="rail__item" data-go="wikis" title="Wikis"><svg class="ico"><use href="#i-book" /></svg></span>
+      <span class="rail__item" title="Repositories"><svg class="ico"><use href="#i-repo" /></svg></span>
+      <span class="rail__item" data-go="changes" title="Changes"><svg class="ico"><use href="#i-pr" /></svg></span>
+      <span class="rail__item" title="Usage"><svg class="ico"><use href="#i-usage" /></svg></span>
       <span class="rail__fill"></span>
-      <span class="rail__item"><svg class="ico"><use href="#i-settings" /></svg></span>
+      <span class="rail__item" title="Settings"><svg class="ico"><use href="#i-settings" /></svg></span>
     </nav>
     <i class="pb__corner"></i>
 
-    <!-- ───────────── Threads -->
-    <aside class="side" data-in="threads">
+    <!-- ───────────── Agents: top-level threads only; subagents open from their parent. -->
+    <aside class="side" data-in="agents">
       <div class="side__head">
         <span class="side__title">Agents</span>
         <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
       </div>
       <ul class="side__list">
-        <li class="card" data-row="fork" data-k="fork-row">
-          <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta card__meta--info" data-k="fork-row-working" data-gone><svg class="ico ico--sm"><use href="#i-working" /></svg>Working</span><span class="card__meta" data-k="fork-row-now">now</span></div>
-          <div class="card__title">Ledger owns rounding fork</div>
-          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>ledger-rounding-fork</span><span>Claude</span></div>
+        <li class="card" data-row="nightly" data-p="row-nightly" data-k="nightly-row" data-gone>
+          <div class="card__head"><span class="tile">HA</span><span class="card__repo">harbor/api</span><span class="card__meta card__meta--ok" data-k="nightly-st-done" data-gone><svg class="ico ico--sm"><use href="#i-check" /></svg>Done</span><span class="card__meta" data-k="nightly-st-time">02:14</span></div>
+          <div class="card__title">Copy old uploads to S3</div>
+          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-cal-clock" /></svg>Every night 02:00</span><span>Codex</span></div>
         </li>
-        <li class="card" data-row="codex">
-          <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta card__meta--info" data-k="codex-row-working" data-gone><svg class="ico ico--sm"><use href="#i-working" /></svg>Working</span><span class="card__meta" data-k="codex-row-now">now</span></div>
-          <div class="card__title">Ledger owns rounding</div>
-          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>ledger-rounding</span><span>Codex</span></div>
+        <li class="card" data-row="s3" data-k="s3-row" data-gone>
+          <div class="card__head"><span class="tile">HA</span><span class="card__repo">harbor/api</span><span class="card__meta card__meta--info" data-k="s3-st-work" data-gone><svg class="ico ico--sm"><use href="#i-working" /></svg>Working</span><span class="card__meta" data-k="s3-st-now">now</span></div>
+          <div class="card__title">Move uploads to S3</div>
+          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>s3-uploads</span><span>Claude</span></div>
+        </li>
+        <li class="card" data-row="flaky" data-k="flaky-row" data-gone>
+          <div class="card__head"><span class="tile">HW</span><span class="card__repo">harbor/web</span><span class="card__meta card__meta--info" data-k="flaky-st-work" data-gone><svg class="ico ico--sm"><use href="#i-working" /></svg>Working</span><span class="card__meta" data-k="flaky-st-now">now</span></div>
+          <div class="card__title">Fix the flaky login test</div>
+          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>fix/login-flake</span><span>Codex</span></div>
+        </li>
+        <li class="card is-on" data-row="plan" data-k="plan-row">
+          <div class="card__head"><span class="tile">HC</span><span class="card__repo">harbor/checkout</span><span class="card__meta card__meta--info" data-k="plan-st-work" data-gone><svg class="ico ico--sm"><use href="#i-working" /></svg>Working</span><span class="card__meta" data-k="plan-st-now">now</span></div>
+          <div class="card__title">Add Apple Pay to checkout</div>
+          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>apple-pay</span><span>Claude</span></div>
         </li>
         <li class="card">
           <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta">Waiting</span></div>
           <div class="card__title">Webhook retries charge twice</div>
           <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>fix/webhook-retry</span><span>Cursor</span></div>
-        </li>
-        <li class="card">
-          <div class="card__head"><span class="tile">HB</span><span class="card__repo">harbor/billing</span><span class="card__meta">4h</span></div>
-          <div class="card__title">Where should rounding live?</div>
-          <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>main</span><span>Claude</span></div>
         </li>
       </ul>
       <div class="shelf"><span>Settled</span><i></i><svg class="ico ico--xs"><use href="#i-chevron" /></svg></div>
@@ -112,153 +175,204 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
       </ul>
     </aside>
 
-    <div class="pane pane--chat" data-in="threads">
+    <div class="pane pane--chat" data-in="agents">
       <div class="chat">
-        <div class="chat__log">
-          <div class="msg msg--agent" data-k="carried">
-            <p>
-              Rounding could live in one of two places: once, in the ledger, or at the edge, in
-              each invoice line. The first keeps totals exact; the second changes less code.
-            </p>
-          </div>
-          <div class="life" data-k="carried"><svg class="ico ico--xs"><use href="#i-fork" /></svg>Forked from conversation<span>Open source conversation</span></div>
-          <div class="msg msg--user" data-k="ask-1">
-            Try the first option: the ledger owns rounding, and invoices pass it exact totals.
+        <!-- The planner: Claude, asked to plan, with its two subagents. -->
+        <div class="chat__log" data-only="plan" data-off={off("plan")}>
+          <div class="msg msg--user" data-k="plan-ask">
+            Add Apple Pay to checkout. Plan it, then hand the API and the button to two agents, each in a worktree of its own.
           </div>
           <ul class="worklog">
-            <li data-k={steps.read.key}><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>{steps.read.label} <code>{steps.read.path}</code> +{steps.read.more} more</span></li>
-            {
-              [steps.editRound, steps.editTotal].map((step) => (
-                <li data-k={step.key}>
-                  <svg class="ico ico--xs">
-                    <use href="#i-square-pen" />
-                  </svg>
-                  <code>{step.path}</code>
-                </li>
-              ))
-            }
-            <li data-k={steps.run.key}><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>{steps.run.label}</code></li>
-            <li data-k="run-live" data-gone><svg class="ico ico--xs"><use href="#i-terminal" /></svg><span>{steps.run.live}</span></li>
+            <li data-k="plan-read"><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Read <code>checkout/Checkout.tsx</code> +6 more</span></li>
           </ul>
-          <div class="msg msg--agent" data-k="reply-1">
-            <p>
-              Rounding now happens once, in <code>roundMinor</code>, half to even, so new entries
-              match the ones already in the ledger. Invoices pass exact totals.
-            </p>
+          <div class="msg msg--agent" data-k="plan-reply-1">
+            <p>Two pieces can run at once: a payment intents endpoint for Apple Pay, and the button in checkout that calls it. Codex takes the API, a second Claude the button.</p>
           </div>
-          <div class="changed" data-k="files">
-            <div class="changed__head">
-              <span>{files.length} changed files</span><b class="add">+{added}</b><b class="del">-{removed}</b>
-              <span class="changed__link"><svg class="ico ico--xs"><use href="#i-diff" /></svg>Open diff</span>
+          <div class="subs" data-k="plan-subs">
+            <div class="subs__head">
+              <span class="subs__avs"><span class="sub__av"><svg class="logo"><use href="#p-openai" /></svg></span><span class="sub__av"><svg class="logo"><use href="#p-claude" /></svg></span></span>
+              <span class="sub__main">
+                <b>2 subagents</b>
+                <em class="sub__live" data-k="sub-2w" data-gone>2 working</em>
+                <em class="sub__live" data-k="sub-1w" data-gone>1 working · 1 done</em>
+                <em data-k="sub-2d">2 done</em>
+              </span>
+              <span class="sub__time">6m 05s</span>
+              <svg class="ico ico--xs ico--muted sub__open"><use href="#i-chevron" /></svg>
             </div>
-            {
-              files.map((file) => (
-                <div class="changed__row">
-                  <svg class="ico ico--xs">
-                    <use href="#i-file" />
-                  </svg>
-                  <code>{file.path}</code>
-                  <b class="add">+{file.added}</b>
-                  <b class="del">-{file.removed}</b>
-                </div>
-              ))
-            }
+            <div class="subs__list">
+              <div class="sub" data-p="card-a">
+                <span class="sub__av"><svg class="logo"><use href="#p-openai" /></svg><i class="sub__dot sub__dot--run" data-k="a-run" data-gone></i><i class="sub__dot" data-k="a-done"></i></span>
+                <span class="sub__main">
+                  <b>Payment intents API <i data-k="a-run" data-gone>Running</i></b>
+                  <em><span data-k="a-run" data-gone>Editing payments/intents.ts</span><span data-k="a-done">Opened #512. Tests pass.</span></em>
+                </span>
+                <span class="sub__time"><span data-k="a-run" data-gone>1m 08s</span><span data-k="a-done">4m 12s</span></span>
+                <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
+              </div>
+              <div class="sub" data-p="card-b">
+                <span class="sub__av"><svg class="logo"><use href="#p-claude" /></svg><i class="sub__dot sub__dot--run" data-k="b-run" data-gone></i><i class="sub__dot" data-k="b-done"></i></span>
+                <span class="sub__main">
+                  <b>Apple Pay button <i data-k="b-run" data-gone>Running</i></b>
+                  <em><span data-k="b-run" data-gone>Reading checkout/PayButtons.tsx</span><span data-k="b-done">Opened #513. Falls back to the card form.</span></em>
+                </span>
+                <span class="sub__time"><span data-k="b-run" data-gone>1m 02s</span><span data-k="b-done">6m 05s</span></span>
+                <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
+              </div>
+            </div>
           </div>
-          <div class="meta" data-k="meta-1">
-            <span class="meta__btn"><svg class="ico ico--xs"><use href="#i-copy" /></svg></span>
-            <span class="meta__btn" data-p="fork-btn"><svg class="ico ico--xs"><use href="#i-fork" /></svg><span class="tip" data-k="fork-tip" data-gone>Fork from this response</span></span>
-            <span class="meta__time">4:12 PM</span>
+          <div class="sub sub--back" data-k="plan-back-a">
+            <span class="sub__av"><svg class="logo"><use href="#p-openai" /></svg><i class="sub__dot"></i></span>
+            <span class="sub__main"><b>Payment intents API <i>Finished</i></b><em>Opened #512. Tests pass.</em></span>
+            <span class="sub__time">4:21 PM</span>
+            <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
           </div>
-          <div class="life" data-k="forked" data-only="codex"><svg class="ico ico--xs"><use href="#i-fork" /></svg>Conversation fork<span>Open fork</span></div>
-          <div class="life" data-k="forked" data-only="fork"><svg class="ico ico--xs"><use href="#i-fork" /></svg>Forked from conversation<span>Open source conversation</span></div>
-          <div class="life" data-k="handoff" data-only="fork"><svg class="ico ico--xs"><use href="#i-right" /></svg>Context handoff</div>
-          <div class="msg msg--user" data-k="ask-2" data-only="fork">
-            Bring the Rounding page in the engineering wiki up to date with this change.
+          <div class="sub sub--back" data-k="plan-back-b">
+            <span class="sub__av"><svg class="logo"><use href="#p-claude" /></svg><i class="sub__dot"></i></span>
+            <span class="sub__main"><b>Apple Pay button <i>Finished</i></b><em>Opened #513. Falls back to the card form.</em></span>
+            <span class="sub__time">4:23 PM</span>
+            <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
           </div>
-          <div class="msg msg--agent" data-k="reply-2" data-only="fork">
-            <p>
-              The Rounding page now says rounding happens once, in the ledger, half to even. The
-              edit waits in the change request Ledger owns rounding.
-            </p>
+          <div class="msg msg--agent" data-k="plan-reply-2">
+            <p>Both pieces are in: #512 adds the endpoint and #513 the button. Next, the Payments page in the wiki.</p>
           </div>
-          <div class="meta" data-k="meta-2" data-only="fork">
-            <span class="meta__btn"><svg class="ico ico--xs"><use href="#i-copy" /></svg></span>
-            <span class="meta__btn"><svg class="ico ico--xs"><use href="#i-fork" /></svg></span>
-            <span class="meta__time">4:16 PM</span>
+          <ul class="worklog" data-k="plan-wiki">
+            <li><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Amended a wiki <code>engineering/Payments</code></span></li>
+          </ul>
+          <div class="msg msg--agent" data-k="plan-reply-3">
+            <p>The Payments page now covers Apple Pay. The edit waits in the change request Add Apple Pay to checkout.</p>
+          </div>
+        </div>
+
+        <!-- The subagents and the reviewer: each opens on its parent, then the task it was sent. -->
+        {
+          threads.map((t) => (
+            <div class="chat__log" data-only={t.id} data-off={off(t.id)}>
+              <div class="divider">
+                <svg class="ico ico--xs"><use href="#i-bot" /></svg>
+                <span>Subagent of</span>
+                <b>{t.parent}</b>
+                <span class="divider__act">Open parent thread</span>
+              </div>
+              <div class="ask" data-k={`${t.id}-ask`}>
+                <span class="ask__by">Sent by another agent</span>
+                <div class="msg msg--user">{t.ask}</div>
+              </div>
+              <ul class="worklog">
+                {t.steps.map((step) => (
+                  <li data-k={step.k} data-gone={step.gone || undefined}>
+                    <svg class="ico ico--xs"><use href={`#${step.icon}`} /></svg>
+                    <span>
+                      {step.text}
+                      {step.code ? <code>{step.code}</code> : null}
+                      {step.more}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div class="msg msg--agent" data-k={`${t.id}-reply`}>
+                <p set:html={t.reply} />
+              </div>
+            </div>
+          ))
+        }
+
+        <!-- Fix the flaky login test: Codex fixes, Claude reviews. -->
+        <div class="chat__log" data-only="flaky" data-off={off("flaky")}>
+          <div class="msg msg--user" data-k="flaky-ask">Fix the flaky login test, then have Claude review the fix.</div>
+          <ul class="worklog">
+            <li data-k="flaky-read"><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Read <code>e2e/login.spec.ts</code> +2 more</span></li>
+            <li data-k="flaky-c1"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>pnpm test login --repeat 20</code></li>
+            <li data-k="flaky-e1"><svg class="ico ico--xs"><use href="#i-square-pen" /></svg><code>e2e/login.spec.ts</code></li>
+            <li data-k="flaky-live" data-gone><svg class="ico ico--xs"><use href="#i-terminal" /></svg><span>Running command</span></li>
+            <li data-k="flaky-c2"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>pnpm test login --repeat 50</code></li>
+          </ul>
+          <div class="msg msg--agent" data-k="flaky-reply-1">
+            <p>The test clicked Sign in before the session cookie was set; 4 of 20 runs failed. It now waits for the cookie, and 50 runs pass. Asking Claude to review.</p>
+          </div>
+          <div class="sub" data-k="flaky-sub" data-p="card-rv">
+            <span class="sub__av"><svg class="logo"><use href="#p-claude" /></svg><i class="sub__dot sub__dot--run" data-k="rv-run" data-gone></i><i class="sub__dot" data-k="rv-done"></i></span>
+            <span class="sub__main">
+              <b>Review the login test fix <i data-k="rv-run" data-gone>Running</i></b>
+              <em><span data-k="rv-run" data-gone>Reading e2e/login.spec.ts</span><span data-k="rv-done">Assert the heading after the redirect.</span></em>
+            </span>
+            <span class="sub__time"><span data-k="rv-run" data-gone>24s</span><span data-k="rv-done">1m 40s</span></span>
+            <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
+          </div>
+          <div class="sub sub--back" data-k="flaky-back">
+            <span class="sub__av"><svg class="logo"><use href="#p-claude" /></svg><i class="sub__dot"></i></span>
+            <span class="sub__main"><b>Review the login test fix <i>Finished</i></b><em>Assert the heading after the redirect.</em></span>
+            <span class="sub__time">10:42 AM</span>
+            <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
+          </div>
+          <ul class="worklog">
+            <li data-k="flaky-e2"><svg class="ico ico--xs"><use href="#i-square-pen" /></svg><code>e2e/login.spec.ts</code></li>
+          </ul>
+          <div class="msg msg--agent" data-k="flaky-reply-2">
+            <p>Claude found nothing blocking. I added its assertion; 50 runs still pass. Ready for a pull request.</p>
+          </div>
+        </div>
+
+        <!-- Move uploads to S3: a pull request it watches, a task it schedules. -->
+        <div class="chat__log" data-only="s3" data-off={off("s3")}>
+          <div class="msg msg--user" data-k="s3-ask">Move uploads to S3. Copy the old files over a batch a night.</div>
+          <ul class="worklog">
+            <li data-k="s3-read"><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Read <code>storage/disk.ts</code> +4 more</span></li>
+            <li data-k="s3-e1"><svg class="ico ico--xs"><use href="#i-square-pen" /></svg><code>storage/s3.ts</code></li>
+            <li data-k="s3-e2"><svg class="ico ico--xs"><use href="#i-square-pen" /></svg><code>storage/index.ts</code></li>
+            <li data-k="s3-live" data-gone><svg class="ico ico--xs"><use href="#i-terminal" /></svg><span>Running command</span></li>
+            <li data-k="s3-run"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>pnpm test storage</code></li>
+            <li data-k="s3-pr"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>gh pr create</code></li>
+            <li data-k="s3-watch"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span>Watching a pull request <code>#530</code></span></li>
+            <li data-k="s3-sched"><svg class="ico ico--xs"><use href="#i-cal-clock" /></svg><span>Scheduled a recurring task <code>Every night 02:00</code></span></li>
+          </ul>
+          <div class="msg msg--agent" data-k="s3-reply">
+            <p>New uploads go to S3, behind the same storage interface. I opened #530 and I’m watching it. Every night at 02:00 a task copies the next 10,000 old files.</p>
+          </div>
+        </div>
+
+        <!-- The scheduled task's first run, in a thread of its own. -->
+        <div class="chat__log" data-only="nightly" data-off={off("nightly")}>
+          <div class="ask" data-k="nightly-ask">
+            <span class="ask__by">Sent by automation</span>
+            <div class="msg msg--user">Copy the next 10,000 files from disk to S3, check them, and report what is left.</div>
+          </div>
+          <ul class="worklog">
+            <li data-k="nightly-run"><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>node scripts/copy-uploads.js --batch 10000</code></li>
+          </ul>
+          <div class="msg msg--agent" data-k="nightly-reply">
+            <p>Copied 10,000 files and their checksums match. 31,200 to go, about four more nights.</p>
           </div>
         </div>
       </div>
       <div class="composer">
         <div class="composer__input">
           <span class="composer__hint" data-k="placeholder">Ask anything, @tag files/folders, $use skills, or / for commands</span>
-          <span data-k="draft-1" data-gone>Try the first option: the ledger owns rounding, and invoices pass it exact totals.</span>
-          <span data-k="draft-2" data-gone>Bring the Rounding page in the engineering wiki up to date with this change.</span>
+          <span data-k="draft-apple" data-gone>Add Apple Pay to checkout. Plan it, then hand the API and the button to two agents, each in a worktree of its own.</span>
+          <span data-k="draft-flaky" data-gone>Fix the flaky login test, then have Claude review the fix.</span>
+          <span data-k="draft-s3" data-gone>Move uploads to S3. Copy the old files over a batch a night.</span>
         </div>
         <div class="composer__row">
-          <span class="chip" data-p="model">
-            <span class="chip__model" data-only="codex"><svg class="logo"><use href="#p-openai" /></svg>GPT-6.1-Sol</span>
-            <span class="chip__model" data-only="fork" data-k="model-codex" data-gone><svg class="logo"><use href="#p-openai" /></svg>GPT-6.1-Sol</span>
-            <span class="chip__model" data-only="fork" data-k="model-claude"><svg class="logo"><use href="#p-claude" /></svg>Claude Opus 5.5</span>
-            <svg class="ico ico--xs ico--muted"><use href="#i-chevron" /></svg>
-          </span>
+          {
+            models.map((m) => (
+              <span class="chip" data-only={m.ids} data-off={off(m.ids)}>
+                <span class="chip__model">
+                  <svg class="logo">
+                    <use href={`#${m.logo}`} />
+                  </svg>
+                  {m.name}
+                </span>
+                <svg class="ico ico--xs ico--muted">
+                  <use href="#i-chevron" />
+                </svg>
+              </span>
+            ))
+          }
           <span class="chip chip--quiet"><svg class="ico ico--xs"><use href="#i-brain" /></svg>High</span>
           <span class="chip chip--quiet chip--wide"><svg class="ico ico--xs"><use href="#i-lock" /></svg>Full access</span>
           <span class="spacer"></span>
           <span class="send" data-p="send"><svg><use href="#c-send" /></svg></span>
         </div>
-      </div>
-    </div>
-
-    <div class="pane pane--lineage" data-in="threads">
-      <div class="lin">
-        <!-- The Lineage tab in the app's own pixels (a turn every 100, lanes 56 apart), scrolled to
-             its right end. Solid lines carry history; a hollow dot is a turn running; the ring is
-             the thread the chat shows. -->
-        <svg class="lin__fig" viewBox="50 0 400 252">
-          <path class="lin__line" d="M-20 58H120" />
-          <path class="lin__line" d="M120 58C155 58 155 114 190 114H220" />
-          <path class="lin__line lin__draw" data-k="lin-fork" d="M220 114C255 114 255 196 290 196H320" pathLength="1" />
-          <g class="lin__dots"><circle cx="20" cy="58" r="5.5" /><circle cx="120" cy="58" r="5.5" /></g>
-
-          <text class="lin__title" x="128" y="24">Where should rounding live?</text>
-          <text class="lin__muted" x="128" y="40">Claude · idle · 4h ago</text>
-
-          <text class="lin__title" x="190" y="84">Ledger owns rounding</text>
-          <text class="lin__muted" x="190" y="100" data-k="codex-st-new" data-gone>Codex · not started</text>
-          <text class="lin__muted" x="190" y="100" data-k="codex-st-run" data-gone>Codex · running</text>
-          <text class="lin__muted" x="190" y="100" data-k="codex-st-idle">Codex · idle · just now</text>
-          <text class="lin__mid lin__muted" x="220" y="134" data-k="codex-st-new" data-gone>You are here</text>
-          <circle class="lin__run" cx="220" cy="114" r="5.5" data-k="codex-pt-run" data-gone />
-          <circle class="lin__dot" cx="220" cy="114" r="5.5" data-k="codex-pt-done" />
-          <g class="lin__here" data-k="codex-pt-done" data-only="codex"><circle cx="220" cy="114" r="10" /><circle cx="220" cy="114" r="4.5" /></g>
-          <g class="lin__mid" data-k="codex-pt-run codex-pt-done" data-only="codex">
-            <text x="220" y="140">Try the first option</text>
-            <text class="lin__muted" x="220" y="156" data-k="codex-pt-done">You are here</text>
-          </g>
-
-          <g data-k="lin-fork">
-            <text class="lin__title" x="290" y="166">Ledger owns rounding fork</text>
-            <text class="lin__muted" x="290" y="182" data-k="fork-st-new" data-gone>Codex · not started</text>
-            <text class="lin__muted" x="290" y="182" data-k="fork-st-claude" data-gone>Claude · not started</text>
-            <text class="lin__muted" x="290" y="182" data-k="fork-st-run" data-gone>Claude · running</text>
-            <text class="lin__muted" x="290" y="182" data-k="fork-st-idle">Claude · idle · just now</text>
-            <text class="lin__mid lin__muted" x="320" y="216" data-k="fork-st-new fork-st-claude" data-gone data-only="fork">You are here</text>
-            <circle class="lin__run" cx="320" cy="196" r="5.5" data-k="fork-pt-run" data-gone />
-            <circle class="lin__dot" cx="320" cy="196" r="5.5" data-k="fork-pt-done" />
-            <g class="lin__here" data-k="fork-pt-done" data-only="fork"><circle cx="320" cy="196" r="10" /><circle cx="320" cy="196" r="4.5" /></g>
-            <g class="lin__mid" data-k="fork-pt-run fork-pt-done" data-only="fork">
-              <text x="320" y="222">Bring the Rounding page…</text>
-              <text class="lin__muted" x="320" y="238" data-k="fork-pt-done">You are here</text>
-            </g>
-          </g>
-        </svg>
-      </div>
-      <div class="lin__foot">
-        <svg class="lin__map" viewBox="0 0 450 252" preserveAspectRatio="none">
-          <path d="M0 58H120M120 58C155 58 155 114 190 114H220" />
-          <path data-k="lin-fork" d="M220 114C255 114 255 196 290 196H320" />
-          <rect x="50" y="2" width="398" height="248" />
-        </svg>
       </div>
     </div>
 
@@ -270,40 +384,39 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
       </div>
       <div class="opens"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span>Open changes · 1</span><svg class="ico ico--xs"><use href="#i-right" /></svg></div>
       <ul class="side__list side__list--slim">
-        <li class="slim is-active"><span class="tile">EN</span><span>Rounding</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>Ledger</span><em>3d</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>Invoices</span><em>3d</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>Currencies</span><em>1w</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>Reconciliation</span><em>2w</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>Webhooks</span><em>2w</em></li>
+        <li class="slim is-active"><span class="tile">EN</span><span>Payments</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
+        <li class="slim"><span class="tile tile--dim">EN</span><span>Checkout</span><em>2d</em></li>
+        <li class="slim"><span class="tile tile--dim">EN</span><span>Refunds</span><em>5d</em></li>
+        <li class="slim"><span class="tile tile--dim">EN</span><span>Webhooks</span><em>1w</em></li>
+        <li class="slim"><span class="tile tile--dim">EN</span><span>Currencies</span><em>2w</em></li>
+        <li class="slim"><span class="tile tile--dim">EN</span><span>Testing</span><em>2w</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>On call</span><em>1mo</em></li>
       </ul>
     </aside>
 
     <div class="pane pane--doc" data-in="wikis">
       <div class="note__head">
-        <b>Rounding</b>
-        <span>In “Ledger owns rounding”<span data-k="doc-working" data-gone> · agent working</span></span>
+        <b>Payments</b>
+        <span>In “Add Apple Pay to checkout”<span data-k="doc-working" data-gone> · agent working</span></span>
       </div>
       <article class="doc">
-        <h4>Rounding</h4>
+        <h4>Payments</h4>
         <p>
-          Money is stored in minor units: cents, pence, yen. Every amount that reaches the
-          <a>Ledger</a> is already an integer, so rounding happens before a value is written, never
-          after.
+          Every payment starts as a payment intent on the server, so the client never holds a secret
+          key. <a>Checkout</a> confirms the intent; <a>Webhooks</a> record the result.
         </p>
-        <h5>Where it happens</h5>
+        <h5>Payment methods</h5>
         <p class="doc__edit">
-          <span data-k="old" data-gone>Each invoice line rounds its own total. </span><span class="doc__gone" data-k="ghost" data-gone>Each invoice line rounds its own total.</span><span class="doc__typed" data-k="ins-1">Rounding happens once, in the ledger,</span><span class="doc__typed" data-k="ins-2"> using half to even.</span><span class="doc__typed" data-k="ins-3"> Invoices pass exact totals and let the ledger round them,</span><span class="doc__typed" data-k="ins-4"> so a long invoice no longer drifts a cent per line.</span><span class="cursor" data-k="cursor" data-gone><span class="cursor__flag">claude-opus-5-5</span></span>
+          <span data-k="old" data-gone>Checkout takes cards only. </span><span class="doc__gone" data-k="ghost" data-gone>Checkout takes cards only.</span><span class="doc__typed" data-k="ins-1">Checkout takes cards and Apple Pay.</span><span class="doc__typed" data-k="ins-2"> The Apple Pay button shows only where the browser can make payments,</span><span class="doc__typed" data-k="ins-3"> and asks <code>POST /payments/intents</code> for its intent</span><span class="doc__typed" data-k="ins-4">, the same path the card form uses.</span><span class="cursor" data-k="cursor" data-gone><span class="cursor__flag">claude-opus-5-5</span></span>
         </p>
-        <h5>Why half to even</h5>
+        <h5>Testing</h5>
         <p>
-          Rounding half up nudges totals upward across many entries. Half to even matches how
-          existing entries were written, which <a>Reconciliation</a> depends on.
+          Use the test cards in staging. Apple Pay needs a real device with a card in Wallet, so
+          <a>Testing</a> lists the shared phones.
         </p>
       </article>
       <div class="cbar" data-k="change-bar" data-gone>
-        <span class="cbar__count">2 agent changes</span>
+        <span class="cbar__count">4 agent changes</span>
         <span class="cbar__btn">Previous</span>
         <span class="cbar__btn">Next</span>
         <span class="cbar__btn">Revert all</span>
@@ -320,29 +433,24 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
       <div data-k="grp-groups" data-gone>
         <div class="shelf"><span>Groups · 1</span><i></i></div>
         <div class="gcard">
-          <div class="gcard__head"><i class="gcard__dot"></i><span>Ledger owns rounding</span><span class="state state--warn" data-k="grp-behind" data-gone>Docs behind</span><span class="state state--done" data-k="grp-sync" data-gone>In sync</span><span class="state state--done" data-k="grp-merged">Merged</span></div>
-          <div class="gcard__row"><span>#482 Ledger owns rounding</span><em>harbor/billing</em></div>
-          <div class="gcard__row"><span>Ledger owns rounding</span><em>engineering</em></div>
-          <div class="gcard__row"><em>2 threads</em></div>
+          <div class="gcard__head"><i class="gcard__dot"></i><span>Add Apple Pay to checkout</span><span class="state state--done" data-k="grp-sync" data-gone>In sync</span><span class="state state--done" data-k="grp-merged">Merged</span></div>
+          <div class="gcard__row"><span>#512 Payment intents API</span><em>checkout</em></div>
+          <div class="gcard__row"><span>#513 Apple Pay button</span><em>checkout</em></div>
+          <div class="gcard__row"><span>Add Apple Pay to checkout</span><em>engineering</em></div>
         </div>
       </div>
       <div class="shelf"><span>Wiki changes · <span data-k="cr-st-open" data-gone>1</span><span data-k="cr-st-merged">0</span></span><i></i></div>
-      <ul class="side__list" data-k="cr-st-open" data-gone>
-        <li class="card">
-          <div class="card__title">Ledger owns rounding</div>
-          <div class="card__head"><span class="card__repo">Open · 1 amendment</span></div>
-        </li>
-      </ul>
       <div class="shelf" data-k="cr-st-merged"><span>Merged and closed · 1</span><i></i></div>
-      <ul class="side__list" data-k="cr-st-merged">
+      <ul class="side__list" data-k="cr-st-open cr-st-merged">
         <li class="card">
-          <div class="card__title">Ledger owns rounding</div>
-          <div class="card__head"><span class="card__repo">Merged · 1 amendment</span></div>
+          <div class="card__title">Add Apple Pay to checkout</div>
+          <div class="card__head"><span class="card__repo"><span data-k="cr-st-open" data-gone>Open</span><span data-k="cr-st-merged">Merged</span> · 4 amendments</span></div>
         </li>
       </ul>
-      <div class="shelf"><span>Authored · 2</span><i></i></div>
+      <div class="shelf"><span>Authored · 3</span><i></i></div>
       <ul class="side__list side__list--slim">
-        <li class="slim"><span class="tile">HB</span><span>#482 Ledger owns rounding</span><em>2m</em></li>
+        <li class="slim"><span class="tile">HC</span><span>#513 Apple Pay button</span><em>3m</em></li>
+        <li class="slim"><span class="tile">HC</span><span>#512 Payment intents API</span><em>5m</em></li>
         <li class="slim"><span class="tile tile--dim">HB</span><span>#479 Retry webhooks once</span><em>1d</em></li>
       </ul>
     </aside>
@@ -351,27 +459,48 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
       <div class="grp">
         <div class="grp__head">
           <svg class="ico"><use href="#i-layers" /></svg>
-          <span class="grp__title">Ledger owns rounding</span>
-          <span class="state state--warn" data-k="grp-behind" data-gone>Docs behind</span>
+          <span class="grp__title">Add Apple Pay to checkout</span>
           <span class="state state--done" data-k="grp-sync" data-gone>In sync</span>
           <span class="state state--done" data-k="grp-merged">Merged</span>
         </div>
-        <p class="grp__sub">2 change requests, reviewed and merged each in its own place. 2 threads work on it.</p>
+        <p class="grp__sub">3 change requests, reviewed and merged each in its own place. 3 threads work on it.</p>
         <div class="grp__arm">
           <span class="switch" data-p="switch"><i></i></span>
           <span><b>Merge with the code</b><em>The documentation merges the moment the code has. A merge the wiki refuses stays open for you to finish.</em></span>
         </div>
-        <div class="grp__acts">
-          <span class="mini"><svg class="ico ico--xs"><use href="#i-layers" /></svg>Open as a tab group</span>
-          <span class="mini" data-k="ask-docs" data-gone><svg class="ico ico--xs"><use href="#i-book" /></svg>Ask to update the docs</span>
-        </div>
         <p class="grp__label">Code</p>
-        <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#482 Ledger owns rounding</b><em>harbor/billing · <span data-k="pr-open" data-gone>Open</span><span data-k="pr-merged">Merged</span> · From its thread</em></span></div>
+        <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#512 Payment intents API</b><em>harbor/checkout · <span data-k="pr1-open" data-gone>Open</span><span data-k="pr1-merged">Merged</span> · From the coordinator’s work</em></span></div>
+        <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#513 Apple Pay button</b><em>harbor/checkout · <span data-k="pr2-open" data-gone>Open</span><span data-k="pr2-merged">Merged</span> · From the coordinator’s work</em></span></div>
         <p class="grp__label">Documentation</p>
-        <div class="member"><svg class="ico"><use href="#i-book" /></svg><span><b>Ledger owns rounding</b><em>engineering · <span data-k="cr-open" data-gone>Open</span><span data-k="cr-merged">Merged</span> · From a fork of the thread</em></span></div>
+        <div class="member"><svg class="ico"><use href="#i-book" /></svg><span><b>Add Apple Pay to checkout</b><em>engineering · <span data-k="cr-open" data-gone>Open</span><span data-k="cr-merged">Merged</span> · From its thread</em></span></div>
         <p class="grp__label">Agents</p>
-        <div class="member"><svg class="logo"><use href="#p-openai" /></svg><span><b>Ledger owns rounding</b><em>Started the group · Idle</em></span></div>
-        <div class="member"><svg class="logo"><use href="#p-claude" /></svg><span><b>Ledger owns rounding fork</b><em>A fork · Idle</em></span></div>
+        <div class="member"><svg class="logo"><use href="#p-claude" /></svg><span><b>Add Apple Pay to checkout</b><em>Started the group · Idle</em></span></div>
+        <div class="member"><svg class="logo"><use href="#p-openai" /></svg><span><b>Payment intents API</b><em>A coordinator’s child · Idle</em></span></div>
+        <div class="member member--narrow-off"><svg class="logo"><use href="#p-claude" /></svg><span><b>Apple Pay button</b><em>A coordinator’s child · Idle</em></span></div>
+      </div>
+    </div>
+
+    <!-- A pull request's tab: its header, then Summary with the checks on the right. -->
+    <div class="pane pane--pr" data-in="changes">
+      <div class="prv">
+        <div class="prv__head">
+          <svg class="ico"><use href="#i-pr" /></svg>
+          <span class="prv__title">Payment intents API <em>#512</em></span>
+          <span class="state state--info" data-k="pr1-open" data-gone>Open</span>
+          <span class="state state--done" data-k="pr1-merged">Merged</span>
+        </div>
+        <p class="prv__meta"><code>payment-intents</code> into <code>main</code> · 4 files · <b class="add">+186</b> <b class="del">-3</b></p>
+        <div class="prv__tabs">
+          <span class="is-on">Summary</span><span>Timeline</span><span>Code</span>
+          <span class="prv__checks">
+            <span data-k="chk-run" data-gone><svg class="ico ico--xs ico--info"><use href="#i-working" /></svg>2 of 4 running</span>
+            <span class="prv__pass" data-k="chk-pass"><svg class="ico ico--xs"><use href="#i-check" /></svg>All checks passed</span>
+          </span>
+        </div>
+        <div class="prv__body">
+          <p>Adds <code>POST /payments/intents</code> for Apple Pay. It creates a payment intent for the order total and returns its client secret; the card form’s path is unchanged.</p>
+          <p>Tests: <code>pnpm test payments</code>, 14 new cases.</p>
+        </div>
       </div>
     </div>
   </div>

@@ -2151,96 +2151,12 @@ hidden, leaves the sticky stage working). */
   margin-right: 0.1em;
 }
 
-/* Lineage: the thread's family left to right, in the app's own pixels, scrolled to its right
-   end. Solid lines carry history; a filled dot is a checkpoint, a hollow one a turn running, the
-   ring the thread the chat shows. */
-.pane--lineage {
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--app-border);
-}
-.lin {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  overflow: hidden;
-}
-.lin__fig {
-  flex: none;
-  width: calc(400em / 13);
-  height: calc(252em / 13);
-  margin-right: 0.6em;
-  overflow: visible;
-}
-.lin__line {
-  fill: none;
-  stroke: var(--app-text);
-  stroke-width: 1.75;
-  stroke-linecap: round;
-}
-.lin__dots circle,
-.lin__dot {
-  fill: var(--app-text);
-}
-.lin__run {
-  fill: var(--app-surface);
-  stroke: var(--app-text);
-  stroke-width: 1.75;
-}
-.lin__here circle:first-child {
-  fill: var(--app-surface);
-  stroke: var(--app-text);
-  stroke-width: 1.75;
-}
-.lin__here circle:last-child {
-  fill: var(--app-text);
-}
-.lin__fig text {
-  font-size: 12px;
-  fill: var(--app-text);
-}
-.lin__mid,
-.lin__mid text {
-  text-anchor: middle;
-}
-.lin__fig .lin__muted {
-  fill: var(--app-muted);
-}
-.lin__foot {
-  display: flex;
-  align-items: center;
-  padding: 0.5em 0.6em;
-  border-top: 1px solid var(--app-border);
-}
-.lin__map {
-  width: 100%;
-  height: 2.5em;
-  border: 1px solid var(--app-border);
-  border-radius: 0.3em;
-}
-.lin__map path {
-  fill: none;
-  stroke: var(--app-muted);
-  stroke-width: 3;
-}
-.lin__map rect {
-  fill: oklch(0 0 0 / 0.04);
-  stroke: var(--app-faint);
-  stroke-width: 1px;
-  vector-effect: non-scaling-stroke;
-}
-
-/* Tablet widths: no rail or sidebar, as a narrow window has; the chat beside Lineage. */
+/* Tablet widths: no rail or sidebar, as a narrow window has. */
 @container (max-width: 900px) {
   .app--poster {
     --u: calc(100cqi / 56);
     --rail: 0em;
     --side: 0em;
-    --right: 26em;
-  }
-  .app--poster .tb {
-    grid-template-columns: auto minmax(0, 1fr) var(--right);
   }
   .app--poster .tb__cap > :not(.lights),
   .app--poster .rail,
@@ -2252,19 +2168,16 @@ hidden, leaves the sticky stage working). */
     left: 0;
   }
 }
-/* Phones: a crop on the Lineage tab alone, at a size that reads. */
+/* Phones: one pane, at a size that reads. */
 @container (max-width: 560px) {
   .app--poster {
     --u: calc(100cqi / 26);
-    --right: 1fr;
   }
   .app--poster .tb,
   .app--poster .pb {
     grid-template-columns: minmax(0, 1fr);
   }
   .app--poster .tb__cap,
-  .app--poster .tb__strip--chat,
-  .app--poster .pane--chat,
   .tab--narrow-off {
     display: none;
   }
@@ -2275,17 +2188,11 @@ hidden, leaves the sticky stage working). */
   .app--poster .tb__strip--pane {
     border-left: 0;
   }
-  .app--poster .pb {
-    height: 24em;
-  }
-  .app--poster .pane--lineage {
-    border-left: 0;
-  }
 }
 
 /* ───────────────────────── The hero's tour window (HeroWindow.astro, scripts/tour.js)
-   Threads, Wikis and Changes in one frame. data-section picks the rail's section; parts named
-   data-k show while the tour has shown them; data-only keeps a part to one thread's view. Without
+   Agents, Wikis and Changes in one frame. data-section picks the rail's section; parts named
+   data-k show while the tour has shown them; data-off hides a part of another thread. Without
    script the window is the finished still, less the parts marked data-gone. */
 
 .app--tour {
@@ -2298,16 +2205,21 @@ hidden, leaves the sticky stage working). */
 .app--tour:not([data-state]) [data-gone],
 .motion .app--tour:not([data-state]) [data-k],
 .app--tour[data-state] [data-k]:not(.is-shown),
-.app--tour[data-thread="fork"] [data-only="codex"],
-.app--tour[data-thread="codex"] [data-only="fork"],
-.app--tour:not([data-section="threads"]) [data-in="threads"],
+.app--tour [data-off],
+.app--tour:not([data-section="agents"]) [data-in="agents"],
 .app--tour:not([data-section="wikis"]) [data-in="wikis"],
-.app--tour:not([data-section="changes"]) [data-in="changes"] {
+.app--tour:not([data-section="changes"]) [data-in="changes"],
+.app--tour[data-cpane="pr"] .pane--group,
+.app--tour:not([data-cpane="pr"]) .pane--pr {
   display: none;
 }
 
-/* One frame for every section: Threads has the chat and the right panel, the others one pane. */
+/* One frame for every section: the rail, the sidebar, one pane with its tabs in the title bar. */
+.app--tour .tb {
+  grid-template-columns: calc(var(--rail) + var(--side)) minmax(0, 1fr);
+}
 .app--tour .pb {
+  grid-template-columns: var(--rail) var(--side) minmax(0, 1fr);
   height: 33em;
 }
 .app--tour .rail {
@@ -2319,15 +2231,6 @@ hidden, leaves the sticky stage working). */
 .app--tour .pane {
   grid-column: 3;
 }
-.app--tour .pane--lineage {
-  grid-column: 4;
-}
-.app--tour:not([data-section="threads"]) .tb {
-  grid-template-columns: calc(var(--rail) + var(--side)) minmax(0, 1fr);
-}
-.app--tour:not([data-section="threads"]) .pb {
-  grid-template-columns: var(--rail) var(--side) minmax(0, 1fr);
-}
 .tb__strip--main {
   border-left: 0 !important;
 }
@@ -2335,16 +2238,16 @@ hidden, leaves the sticky stage working). */
   flex-basis: 13em;
 }
 
-/* The rail marks the section on show; the sidebar, the thread the chat shows. */
+/* The rail marks the section on show; the sidebar, the thread on show. */
 .app--tour .rail__item {
   transition: color 0.18s;
 }
-.app--tour[data-section="threads"] [data-go="threads"],
+.app--tour[data-section="agents"] [data-go="agents"],
 .app--tour[data-section="wikis"] [data-go="wikis"],
 .app--tour[data-section="changes"] [data-go="changes"] {
   color: var(--app-text);
 }
-.app--tour[data-section="threads"] [data-go="threads"]::before,
+.app--tour[data-section="agents"] [data-go="agents"]::before,
 .app--tour[data-section="wikis"] [data-go="wikis"]::before,
 .app--tour[data-section="changes"] [data-go="changes"]::before {
   content: "";
@@ -2356,12 +2259,16 @@ hidden, leaves the sticky stage working). */
   border-radius: 1px;
   background: var(--app-text);
 }
-.app--tour[data-thread="fork"] [data-row="fork"],
-.app--tour[data-thread="codex"] [data-row="codex"] {
+.app--tour .card.is-on {
   background: var(--app-row-active);
 }
+.card__meta--ok {
+  color: var(--app-add);
+  font-weight: 500;
+}
 
-/* The chat sits on its newest message, as the app's does; older turns pass under the tab strip. */
+/* The chat sits on its newest message, as the app's does; older turns pass under the tab strip.
+   Its column keeps the app's reading width. */
 .app--tour .chat {
   justify-content: flex-end;
   padding-bottom: 0.4em;
@@ -2373,6 +2280,15 @@ hidden, leaves the sticky stage working). */
   flex-direction: column;
   gap: 1em;
 }
+.app--tour .chat__log,
+.app--tour .composer {
+  width: 100%;
+  max-width: 44em;
+  margin-inline: auto;
+}
+.app--tour .composer {
+  width: calc(100% - 3.2em);
+}
 .app--tour .msg--agent p {
   text-wrap: pretty;
 }
@@ -2383,84 +2299,11 @@ hidden, leaves the sticky stage working). */
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app--tour .changed {
-  border: 0;
-  background: var(--app-code);
+.app--tour .worklog code {
+  margin-left: 0.3em;
 }
-.app--tour .changed__head {
-  border-bottom: 1px solid var(--app-border);
-}
-.app--tour .changed__head b,
-.app--tour .changed__row b {
-  font-family: var(--mono);
-  font-size: 0.92em;
-}
-.app--tour .changed__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-  color: var(--app-text);
-  font-weight: 500;
-}
-.app--tour .changed__row {
-  align-items: center;
-  padding: 0.4em 0.85em;
-}
-.app--tour .changed__row .ico {
-  color: var(--app-muted);
-}
-.app--tour .changed__row:last-child {
-  padding-bottom: 0.6em;
-}
-/* A lifecycle row in the timeline: what happened to the thread, and where it leads. */
-.life {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  font-size: 0.82em;
-  color: var(--app-muted);
-}
-.life span {
-  margin-left: 0.4em;
-  color: var(--app-text);
-  font-weight: 500;
-}
-.meta {
-  display: flex;
-  align-items: center;
-  gap: 0.15em;
-  margin-top: -0.6em;
-  color: var(--app-muted);
-}
-.meta__btn {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 1.9em;
-  height: 1.9em;
-  border-radius: 0.45em;
-}
-.meta__time {
-  margin-left: 0.4em;
-  font-size: 0.8em;
-}
-.meta__btn:has(.tip.is-shown) {
-  background: var(--app-row-active);
-  color: var(--app-text);
-}
-.tip {
-  position: absolute;
-  bottom: calc(100% + 0.45em);
-  left: 50%;
-  translate: -50% 0;
-  padding: 0.3em 0.6em;
-  border-radius: 0.45em;
-  background: var(--app-accent);
-  color: var(--app-accent-fg);
-  font-size: 0.8em;
-  font-weight: 500;
-  white-space: nowrap;
-  pointer-events: none;
+.app--tour .worklog li > code {
+  margin-left: 0;
 }
 .app--tour .composer__input {
   overflow: hidden;
@@ -2476,14 +2319,162 @@ hidden, leaves the sticky stage working). */
   align-items: center;
   gap: 0.4em;
 }
-.app--tour .chip--quiet .ico {
-  color: var(--app-muted);
-}
 .app--tour .chip {
   gap: 0.4em;
 }
+.app--tour .chip--quiet .ico {
+  color: var(--app-muted);
+}
+.app--tour .chip .logo {
+  width: 0.9em;
+  height: 0.9em;
+}
 
-/* Wikis: the note's header line, then the page; Claude's words tinted in its author colour, at
+/* A child thread opens on its parent; its first message names who sent it. */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding-bottom: 0.7em;
+  border-bottom: 1px solid var(--app-border);
+  font-size: 0.8em;
+  color: var(--app-muted);
+  white-space: nowrap;
+}
+.divider b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--app-text);
+}
+.divider__act {
+  margin-left: auto;
+  color: var(--app-text);
+  font-weight: 500;
+}
+.ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3em;
+}
+.ask__by {
+  margin-right: 0.3em;
+  font-size: 0.72em;
+  color: var(--app-faint);
+}
+
+/* Subagents, as the app draws them: a round mark with the provider's logo and a state dot (info
+   while it runs, green once done), the title, the latest progress or result, the elapsed time.
+   Several started together sit under one row; a finished one lands back as a row of its own. */
+.subs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+.subs__head,
+.sub {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  min-width: 0;
+  padding: 0.35em 0.5em;
+  border-radius: 0.45em;
+}
+.subs__head {
+  padding-inline: 0;
+}
+.subs__list {
+  padding: 0.2em;
+  border: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+  border-radius: 0.65em;
+  background: color-mix(in srgb, var(--app-surface) 30%, transparent);
+}
+.subs__avs {
+  display: flex;
+}
+.subs__avs .sub__av + .sub__av {
+  margin-left: -0.55em;
+}
+.sub__av {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.85em;
+  height: 1.85em;
+  border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+  border-radius: 50%;
+  background: var(--app-row-active);
+  box-shadow: 0 0 0 2px var(--app-surface);
+}
+.sub__av .logo {
+  width: 0.95em;
+  height: 0.95em;
+}
+.sub__dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--app-add);
+  box-shadow: 0 0 0 2px var(--app-surface);
+}
+.sub__dot--run {
+  background: var(--app-info);
+}
+.sub__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sub__main b,
+.sub__main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub__main b {
+  font-size: 0.82em;
+  font-weight: 500;
+}
+.subs__head .sub__main b {
+  font-weight: 650;
+}
+.sub__main b i {
+  margin-left: 0.5em;
+  font-size: 0.85em;
+  font-weight: 400;
+  font-style: normal;
+  color: var(--app-muted);
+}
+.sub__main em {
+  font-size: 0.74em;
+  font-style: normal;
+  line-height: 1.5;
+  color: var(--app-muted);
+}
+.sub__main .sub__live {
+  color: var(--app-info);
+}
+.sub__time {
+  flex: none;
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-muted);
+}
+.sub__go {
+  transform: rotate(-90deg);
+  opacity: 0.6;
+}
+.sub__open {
+  transform: rotate(180deg);
+}
+
+/* Wikis: the note's header line, then the page; the agent's words tinted in its author colour, at
    22% while it writes, 10% once its turn ends, and plain once accepted. */
 .note__head {
   flex: none;
@@ -2611,14 +2602,14 @@ hidden, leaves the sticky stage working). */
   color: var(--app-muted);
 }
 .app--tour .grp {
-  gap: 0.65em;
-  padding-top: 1.5em;
+  gap: 0.5em;
+  padding-top: 1.2em;
 }
 .app--tour .grp__label {
   margin-top: 0.2em;
 }
 .app--tour .member {
-  padding-block: 0.2em;
+  padding-block: 0.15em;
 }
 .app--tour .switch,
 .app--tour .switch i {
@@ -2633,6 +2624,82 @@ hidden, leaves the sticky stage working). */
   transform: translateX(0.95em);
 }
 
+/* A pull request's tab: the header, then Summary, Timeline and Code with its checks at the right. */
+.prv {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  max-width: 44em;
+  margin-inline: auto;
+  padding: 1.6em 2.2em;
+}
+.prv__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.prv__head .ico {
+  color: var(--app-muted);
+}
+.prv__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.3em;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prv__title em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--app-muted);
+}
+.prv__meta {
+  margin-top: -0.3em;
+  font-size: 0.85em;
+  color: var(--app-muted);
+}
+.prv__tabs {
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+  margin-top: 0.4em;
+  border-bottom: 1px solid var(--app-border);
+  font-size: 0.85em;
+  color: var(--app-muted);
+}
+.prv__tabs > span:not(.prv__checks) {
+  padding: 0.5em 0 0.6em;
+}
+.prv__tabs .is-on {
+  box-shadow: inset 0 -2px 0 var(--app-text);
+  color: var(--app-text);
+  font-weight: 500;
+}
+.prv__checks {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.prv__checks > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.prv__pass {
+  color: var(--app-add);
+  font-weight: 500;
+}
+.prv__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+  font-size: 0.9em;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
 /* While it plays, a part arrives over 200 ms; a pressed control dips once. Nothing loops. */
 .app--tour[inert] {
   pointer-events: none;
@@ -2641,12 +2708,8 @@ hidden, leaves the sticky stage working). */
   animation: tour-fade 0.2s var(--ease-out) both;
 }
 .app--tour[data-state="playing"]
-  :is(.chat__log > *, .worklog > li, .cbar, .tip, .gcard, .card).is-shown:not(.is-quiet) {
+  :is(.chat__log > *, .worklog > li, .cbar, .gcard, .card, .tab).is-shown:not(.is-quiet) {
   animation-name: tour-rise;
-}
-.app--tour[data-state="playing"] .lin__draw.is-shown:not(.is-quiet) {
-  stroke-dasharray: 1 2;
-  animation: tour-draw 0.6s cubic-bezier(0.3, 0, 0.2, 1) both;
 }
 .app--tour .is-pressed {
   animation: tour-press 0.26s var(--ease-out);
@@ -2662,23 +2725,15 @@ hidden, leaves the sticky stage working). */
     transform: translateY(0.4em);
   }
 }
-@keyframes tour-draw {
-  from {
-    stroke-dashoffset: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
 @keyframes tour-press {
   45% {
-    transform: scale(0.9);
+    transform: scale(0.94);
     filter: brightness(0.85);
   }
 }
 
-/* Once it has played the window answers the pointer: the rail's sections, the two threads. */
-.app--tour[data-state="exploring"] :is([data-go], [data-row]) {
+/* Once it has played the window answers the pointer: the rail's sections, the tabs, the rows. */
+.app--tour[data-state="exploring"] :is([data-go], [data-tab], [data-row], [data-cp]) {
   cursor: pointer;
 }
 .app--tour[data-state="exploring"]
@@ -2689,80 +2744,118 @@ hidden, leaves the sticky stage working). */
     .tab:not(.is-front),
     .mini,
     .chip,
-    .meta__btn,
+    .sub,
     .cbar__btn:not(.cbar__btn--solid),
-    .life span,
-    .changed__link
+    .divider__act
   ):hover {
   background: var(--app-row-active);
 }
 .app--tour[data-state="exploring"] .rail__item:hover {
   color: var(--app-text);
 }
-.app--tour[data-state="exploring"] :is([data-row="fork"], [data-row="codex"]):hover {
+.app--tour[data-state="exploring"] .card.is-on:hover {
   background: oklch(0.925 0 0);
 }
-.app--tour[data-state="exploring"] .chip,
-.app--tour[data-state="exploring"] .life span,
-.app--tour[data-state="exploring"] .changed__link {
-  border-radius: 0.45em;
+
+/* The example prompts under the window, on the print: paper chips, the one playing marked. */
+.tour__try {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: clamp(1.25rem, 2.4vw, 2rem);
+}
+.tour__try[hidden] {
+  display: none;
+}
+.tour__try .tag {
+  color: #eaddc7;
+  opacity: 0.8;
+}
+.tour__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.tour__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 2.6rem;
+  padding: 0 1rem;
+  border: 1px solid rgb(234 221 199 / 0.35);
+  background: rgb(30 28 26 / 0.55);
+  color: #f3ead9;
+  font: inherit;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition:
+    background-color 0.18s,
+    border-color 0.18s,
+    color 0.18s;
+}
+.tour__chip .arw {
+  width: 0.9rem;
+  height: 0.9rem;
+  opacity: 0.7;
+}
+.tour__chip:hover:not(:disabled),
+.tour__chip:focus-visible {
+  border-color: #eaddc7;
+  background: rgb(30 28 26 / 0.8);
+}
+.tour__chip.tour__chip[aria-pressed="true"] {
+  border-color: #eaddc7;
+  background: #f3ead9;
+  color: var(--ink);
+}
+.tour__chip:disabled {
+  cursor: default;
+}
+.tour__chip:disabled:not([aria-pressed="true"]) {
+  opacity: 0.55;
 }
 
 @container (min-width: 901px) {
-  .app--tour {
-    --right: 28em;
+  .app--tour .chat {
+    padding-inline: 2.4em;
   }
 }
-/* Narrow windows: no rail or sidebar; Wikis and Changes keep their one pane. */
+/* Narrow windows: no rail or sidebar, the one pane across. */
 @container (max-width: 900px) {
-  .app--tour:not([data-section="threads"]) .tb {
+  .app--tour .tb {
     grid-template-columns: auto minmax(0, 1fr);
   }
-  .app--tour:not([data-section="threads"]) .pb {
+  .app--tour .pb {
     grid-template-columns: 0 0 minmax(0, 1fr);
   }
-  .app--tour .lin__fig {
-    margin-right: 0;
-  }
 }
-/* Phones: one pane at a time, at a size that reads. Threads shows the chat, then turns to
-   Lineage when the fork's lane is drawn. */
+/* Phones: one pane at a size that reads; the tabs give way to the one in front. */
 @container (max-width: 560px) {
+  .app--tour .tb {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .app--tour .pb {
     height: 36em;
   }
-  .app--tour[data-section="threads"] .pb {
-    grid-template-columns: 0 0 minmax(0, 1fr);
+  .app--tour .tb__strip--main .tab:not(.is-front) {
+    flex: 0 1 2.6em;
+    min-width: 2.6em;
   }
-  .app--tour:not([data-section="threads"]) .tb {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .app--tour .pane--lineage {
-    grid-column: 3;
-  }
-  .app--tour .tb__strip--pane {
-    border-left: 0;
-  }
-  .app--tour[data-focus="chat"] :is(.tb__strip--pane[data-in="threads"], .pane--lineage) {
+  .app--tour .tb__strip--main .tab:not(.is-front) :is(.tab__title, .ico--xs) {
     display: none;
   }
-  .app--tour[data-section="threads"][data-focus="chat"] .tb__strip--chat {
-    display: flex;
-  }
-  .app--tour[data-section="threads"][data-focus="chat"] .pane--chat {
-    display: flex;
-  }
-  .app--tour .tb__strip--chat .lights--crop {
-    display: flex;
-    margin-right: 0.6em;
-  }
   .app--tour .chat {
-    padding-inline: 1.5em;
+    padding-inline: 1.3em;
   }
   .app--tour .composer {
-    margin-inline: 1em;
+    width: calc(100% - 2em);
   }
-  .app--tour .chip--wide {
+  .app--tour .chip--wide,
+  .app--tour .chip--quiet {
+    display: none;
+  }
+  .app--tour .divider__act {
     display: none;
   }
   .app--tour .doc {
@@ -2774,8 +2867,13 @@ hidden, leaves the sticky stage working). */
   .app--tour .cbar__btn:not(.cbar__btn--solid, :nth-last-child(2)) {
     display: none;
   }
-  .app--tour .grp {
+  .app--tour .grp,
+  .prv {
     padding: 1.3em 1.4em 1.5em;
+  }
+  .app--tour .member--narrow-off,
+  .prv__tabs > span:not(.is-on, .prv__checks) {
+    display: none;
   }
 }
 
