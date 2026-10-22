@@ -3747,6 +3747,9 @@ hidden, leaves the sticky stage working). */
     padding: 0.9rem 1rem;
     font-size: 0.72rem;
   }
+  .sr__line:nth-of-type(n + 4) {
+    display: none;
+  }
   .sr__foot {
     display: none;
   }
@@ -3816,6 +3819,10 @@ hidden, leaves the sticky stage working). */
 .wake .wake__rust {
   fill: var(--rust);
 }
+/* Scaled strokes, so each line's pathLength holds and the draw-in reaches its end. */
+.wake .dw {
+  vector-effect: none;
+}
 .wake__n {
   fill: var(--ink);
 }
@@ -3833,6 +3840,20 @@ hidden, leaves the sticky stage working). */
 }
 .auto .spec {
   border-top: 1px solid var(--rule);
+}
+.wake--tall {
+  display: none;
+}
+@media (max-width: 640px) {
+  .wake {
+    display: none;
+  }
+  .wake.wake--tall {
+    display: block;
+    min-width: 0;
+    max-width: 24rem;
+    margin-inline: 0;
+  }
 }
 /* ───────────────────────────────────────── [08] One window: a compact strip of four facts */
 

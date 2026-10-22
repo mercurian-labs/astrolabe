@@ -55,10 +55,40 @@
                 <circle class="wake__fail" cx="702" cy="214" r="7" />
                 <circle class="wake__n" cx="800" cy="214" r="5" />
                 <circle class="wake__n" cx="900" cy="214" r="5" />
-                <text class="wake__who" x="210" y="242">Claude · watching #212</text>
+                <text class="wake__who" x="194" y="219" text-anchor="end">Claude · watching #212</text>
                 <text class="wake__rust" x="702" y="196" text-anchor="middle">Checks failed 15:20</text>
                 <text class="wake__who" x="714" y="242">Wakes, fixes the test</text>
                 <text class="wake__end" x="912" y="218.5">Done</text>
+              </svg>
+              <svg class="wake wake--tall" viewBox="0 0 340 300" data-draw role="img" aria-labelledby="wake-tall-title">
+                <title id="wake-tall-title">A scheduled task starts Claude at 7:00, a webhook starts Codex when GitHub opens pull request 214, and an agent watching pull request 212 wakes when its checks fail.</title>
+                <text x="16" y="22">Every weekday 07:00</text>
+                <path class="dw" pathLength="1" style="--i: 1" d="M16 40H250" />
+                <circle class="wake__n" cx="16" cy="40" r="5.5" />
+                <circle class="wake__n" cx="130" cy="40" r="4.5" />
+                <circle class="wake__n" cx="250" cy="40" r="4.5" />
+                <text class="wake__end" x="262" y="44.5">Done</text>
+                <text class="wake__who" x="16" y="66">Claude · triage new issues</text>
+
+                <text x="16" y="116">GitHub opened #214</text>
+                <path class="dw" pathLength="1" style="--i: 2" d="M16 134H250" />
+                <circle class="wake__n" cx="16" cy="134" r="5.5" />
+                <circle class="wake__n" cx="130" cy="134" r="4.5" />
+                <circle class="wake__n" cx="250" cy="134" r="4.5" />
+                <text class="wake__end" x="262" y="138.5">Done</text>
+                <text class="wake__who" x="16" y="160">Codex · review #214</text>
+
+                <text x="16" y="210">Watching #212</text>
+                <path class="dw" pathLength="1" style="--i: 3" d="M16 228H56" />
+                <path class="wake__wait" d="M56 228H150" />
+                <path class="dw" pathLength="1" style="--i: 4" d="M150 228H250" />
+                <circle class="wake__n" cx="16" cy="228" r="4.5" />
+                <circle class="wake__n" cx="56" cy="228" r="4.5" />
+                <circle class="wake__fail" cx="150" cy="228" r="6.5" />
+                <circle class="wake__n" cx="250" cy="228" r="4.5" />
+                <text class="wake__end" x="262" y="232.5">Done</text>
+                <text class="wake__rust" x="150" y="256" text-anchor="middle">Checks failed 15:20</text>
+                <text class="wake__who" x="150" y="280" text-anchor="middle">Claude wakes, fixes the test</text>
               </svg>
             </div>
             <dl class="spec">
