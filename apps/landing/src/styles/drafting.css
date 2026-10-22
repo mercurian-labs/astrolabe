@@ -4432,6 +4432,53 @@ kbd {
   background: var(--ink-2);
   opacity: 0.6;
 }
+/* Six shared-size print separations: the building keeps full ink while the DEM recedes.
+   The page's existing astrolabe palette supplies the paper/ink; this has no clock of its own. */
+.close[data-close-art="samrat"] .art--limb,
+.close[data-close-art="limb"] .close__samrat,
+.close[data-close-art="limb"] .close__samrat-credit {
+  display: none;
+}
+.close__samrat {
+  position: absolute;
+  inset: 0;
+  --pos: 50% 100%;
+  --size: 100% auto;
+}
+.samrat__ground--day {
+  --art: url("/assets/art/jaipur-balanced-ground-day.webp");
+  opacity: 0.43;
+}
+.samrat__ground--night {
+  --art: url("/assets/art/jaipur-balanced-ground-night.webp");
+  opacity: 0;
+}
+.samrat__olive {
+  --art: url("/assets/art/jaipur-balanced-olive.webp");
+  background: var(--olive);
+  opacity: 0.55;
+}
+.samrat__body {
+  --art: url("/assets/art/jaipur-balanced-body.webp");
+  background: var(--paper);
+}
+.samrat__building--day {
+  --art: url("/assets/art/jaipur-balanced-building-day.webp");
+}
+.samrat__building--night {
+  --art: url("/assets/art/jaipur-balanced-building-night.webp");
+  opacity: 0;
+}
+:root[data-theme="dark"] .samrat__ground--day,
+:root[data-theme="dark"] .samrat__building--day {
+  opacity: 0;
+}
+:root[data-theme="dark"] .samrat__ground--night {
+  opacity: 0.68;
+}
+:root[data-theme="dark"] .samrat__building--night {
+  opacity: 1;
+}
 .close__credit {
   position: absolute;
   left: 2.75rem;
