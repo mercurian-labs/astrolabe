@@ -80,7 +80,7 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
     <!-- ───────────── Threads -->
     <aside class="side" data-in="threads">
       <div class="side__head">
-        <span class="side__title">Threads</span>
+        <span class="side__title">Agents</span>
         <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
       </div>
       <ul class="side__list">
@@ -196,9 +196,9 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
         </div>
         <div class="composer__row">
           <span class="chip" data-p="model">
-            <span class="chip__model" data-only="codex"><svg class="logo"><use href="#p-openai" /></svg>gpt-5.5</span>
-            <span class="chip__model" data-only="fork" data-k="model-codex" data-gone><svg class="logo"><use href="#p-openai" /></svg>gpt-5.5</span>
-            <span class="chip__model" data-only="fork" data-k="model-claude"><svg class="logo"><use href="#p-claude" /></svg>Claude Opus 4.6</span>
+            <span class="chip__model" data-only="codex"><svg class="logo"><use href="#p-openai" /></svg>GPT-6.1-Sol</span>
+            <span class="chip__model" data-only="fork" data-k="model-codex" data-gone><svg class="logo"><use href="#p-openai" /></svg>GPT-6.1-Sol</span>
+            <span class="chip__model" data-only="fork" data-k="model-claude"><svg class="logo"><use href="#p-claude" /></svg>Claude Opus 5.5</span>
             <svg class="ico ico--xs ico--muted"><use href="#i-chevron" /></svg>
           </span>
           <span class="chip chip--quiet"><svg class="ico ico--xs"><use href="#i-brain" /></svg>High</span>
@@ -294,7 +294,7 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
         </p>
         <h5>Where it happens</h5>
         <p class="doc__edit">
-          <span data-k="old" data-gone>Each invoice line rounds its own total. </span><span class="doc__gone" data-k="ghost" data-gone>Each invoice line rounds its own total.</span><span class="doc__typed" data-k="ins-1">Rounding happens once, in the ledger,</span><span class="doc__typed" data-k="ins-2"> using half to even.</span><span class="doc__typed" data-k="ins-3"> Invoices pass exact totals and let the ledger round them,</span><span class="doc__typed" data-k="ins-4"> so a long invoice no longer drifts a cent per line.</span><span class="cursor" data-k="cursor" data-gone><span class="cursor__flag">claude-opus-4-6</span></span>
+          <span data-k="old" data-gone>Each invoice line rounds its own total. </span><span class="doc__gone" data-k="ghost" data-gone>Each invoice line rounds its own total.</span><span class="doc__typed" data-k="ins-1">Rounding happens once, in the ledger,</span><span class="doc__typed" data-k="ins-2"> using half to even.</span><span class="doc__typed" data-k="ins-3"> Invoices pass exact totals and let the ledger round them,</span><span class="doc__typed" data-k="ins-4"> so a long invoice no longer drifts a cent per line.</span><span class="cursor" data-k="cursor" data-gone><span class="cursor__flag">claude-opus-5-5</span></span>
         </p>
         <h5>Why half to even</h5>
         <p>
@@ -369,7 +369,7 @@ const removed = files.reduce((sum, file) => sum + file.removed, 0);
         <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#482 Ledger owns rounding</b><em>harbor/billing · <span data-k="pr-open" data-gone>Open</span><span data-k="pr-merged">Merged</span> · From its thread</em></span></div>
         <p class="grp__label">Documentation</p>
         <div class="member"><svg class="ico"><use href="#i-book" /></svg><span><b>Ledger owns rounding</b><em>engineering · <span data-k="cr-open" data-gone>Open</span><span data-k="cr-merged">Merged</span> · From a fork of the thread</em></span></div>
-        <p class="grp__label">Threads</p>
+        <p class="grp__label">Agents</p>
         <div class="member"><svg class="logo"><use href="#p-openai" /></svg><span><b>Ledger owns rounding</b><em>Started the group · Idle</em></span></div>
         <div class="member"><svg class="logo"><use href="#p-claude" /></svg><span><b>Ledger owns rounding fork</b><em>A fork · Idle</em></span></div>
       </div>
