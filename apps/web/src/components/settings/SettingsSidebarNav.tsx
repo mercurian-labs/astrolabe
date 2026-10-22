@@ -6,7 +6,6 @@ import {
   createLucideIcon,
   CalendarClockIcon,
   GitBranchIcon,
-  GitPullRequestIcon,
   HardDriveIcon,
   PanelsTopLeftIcon,
   KeyboardIcon,
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
+import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import {
@@ -68,7 +68,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/integrations": BlocksIcon,
   "/settings/scheduled-tasks": CalendarClockIcon,
   "/settings/source-control": GitBranchIcon,
-  "/settings/change-requests": GitPullRequestIcon,
+  "/settings/change-requests": PullRequestGlyph.pullRequest,
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
   "/settings/workspaces": UsersIcon,
