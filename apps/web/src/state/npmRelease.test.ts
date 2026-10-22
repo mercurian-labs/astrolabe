@@ -42,7 +42,7 @@ describe("npmReleasePublishedAtom", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = new Request(fetchMock.mock.calls[0]?.[0] ?? "", fetchMock.mock.calls[0]?.[1]);
-    expect(request.url).toBe(`https://registry.npmjs.org/t3/${version}`);
+    expect(request.url).toBe(`https://registry.npmjs.org/@mercurian%2Fastrolabe/${version}`);
     expect(request.headers.get("traceparent")).toBeNull();
     expect(request.headers.get("b3")).toBeNull();
     expect(AsyncResult.getOrElse(result, () => false)).toBe(true);

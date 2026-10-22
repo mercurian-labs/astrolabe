@@ -71,7 +71,9 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
 - `scripts/mobile-native-client.ts`: bundle id and the `AstrolabeDev` Xcode workspace and scheme.
   Prebuild derives the workspace name from `appName`, so this breaks whenever either changes.
 - `scripts/mobile-showcase.ts`, `.github/workflows/mobile-android-apk.yml`,
-  `.agents/skills/test-t3-mobile/`: package id and deep-link scheme.
+  `.agents/skills/test-t3-mobile/`: package id and deep-link scheme. The showcase also builds the
+  production variant's `Astrolabe` Xcode workspace, scheme and product.
+- `apps/mobile/scripts/measure-renders.mts`: the `--scheme` default.
 
 ### Desktop ids, schemes, profile
 
@@ -94,6 +96,8 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
 - `apps/server/src/httpCors.ts`: `DESKTOP_RENDERER_ORIGINS`.
 - `packages/shared/src/codexAuthHandoff.ts`, `packages/shared/src/providerAuthReturnUrl.ts`: the
   desktop schemes in auth return URLs.
+- `packages/shared/src/promptLinks.ts`: `APP_SCHEME`, the scheme of the prompt and thread links
+  the desktop app opens, and the `promptLinkDeepLink` default the hosted landing hands to the app.
 - `apps/server/src/cloud/bootService.ts`: background service unit name and launchd label.
 
 ### Home folder
@@ -125,6 +129,7 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   defaults to `~/.astrolabe`, and carries its own copy of the `ASTROLABE_*` mapping because it has
   no dependencies. `scripts/npm-launcher/bin.mjs` imports it by name.
 - `scripts/build-cli-archive.ts`, `scripts/smoke-cli-archive.ts`, `.github/workflows/release.yml`.
+- `apps/web/src/state/npmRelease.ts`: the package Update everything waits for on npm.
 - `scripts/install.sh`, `scripts/install.ps1`: executable, symlink and shim names, the npm spec.
 - `apps/desktop/src/app/DesktopCliShim.ts`, `DesktopCliCommand.ts`: the shim the desktop puts on
   PATH. `apps/desktop/src/wsl/DesktopWslEnvironment.ts`,
@@ -216,7 +221,7 @@ Run this from the repo root. Each hit is either a new upstream site to rename or
 exception from the lists above.
 
 ```sh
-git grep -nE 'com\.t3tools\.t3code|com\.t3tools\.T3Code|t3code(-dev|-preview)?://|"t3code(-dev)?:"|t3code-v2|t3code\.service|"\.t3"|\$HOME/\.t3\b|~/\.t3\b|npx t3\b|`t3 [a-z]|"t3(\.exe|\.cmd)?"|@t3code/|T3 Code|T3 Connect' \
+git grep -nE 'com\.t3tools\.t3code|com\.t3tools\.T3Code|t3code(-dev|-preview)?://|"t3code(-dev)?:"|(scheme|SCHEME)[^"]*"t3code|"t3code-(dev|preview)"|\^t3code|T3Code(Dev)?\.(xcworkspace|app)|npmjs\.org/t3/|t3code-v2|t3code\.service|"\.t3"|\$HOME/\.t3\b|~/\.t3\b|npx t3\b|`t3 [a-z]|"t3(\.exe|\.cmd)?"|@t3code/|T3 Code|T3 Connect' \
   -- apps packages scripts ':!*.test.*' ':!apps/marketing' ':!.repos' \
   | grep -vE '^[^:]+:[0-9]+:\s*(//|\*|/\*|#)'
 ```

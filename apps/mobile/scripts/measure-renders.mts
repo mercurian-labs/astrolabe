@@ -361,7 +361,7 @@ const command = Command.make(
       Flag.optional,
     ),
     metro: Flag.String("metro").pipe(Flag.withDefault("http://127.0.0.1:8081")),
-    scheme: Flag.String("scheme").pipe(Flag.withDefault("t3code-dev")),
+    scheme: Flag.String("scheme").pipe(Flag.withDefault("astrolabe-dev")),
     runs: Flag.Int("runs").pipe(Flag.withDefault(3)),
     window: Flag.Int("window").pipe(
       Flag.withDescription("Seconds to record; defaults to 12 for a reply and 6 for --route."),

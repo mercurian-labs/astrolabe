@@ -5,7 +5,7 @@ import { APP_VERSION } from "~/branding";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { isElectron } from "~/env";
 import { useEnvironments } from "~/state/environments";
-import { useNpmReleasePublished } from "~/state/npmRelease";
+import { NPM_LAUNCHER_PACKAGE, useNpmReleasePublished } from "~/state/npmRelease";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { environmentUpdateStatesAtom } from "~/state/server";
 import { environmentSessionStatesAtom } from "~/state/session";
@@ -72,7 +72,7 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
       .map((server) => ({
         environmentId: server.environmentId,
         label: server.serverLabel,
-        reason: `t3@${targetVersion} is not on npm yet`,
+        reason: `${NPM_LAUNCHER_PACKAGE}@${targetVersion} is not on npm yet`,
       })),
   ];
   const restarts = collectRestartingMachines(machines, servers, localUpdateVersion !== null);

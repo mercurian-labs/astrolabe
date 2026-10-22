@@ -200,9 +200,9 @@ describe("DesktopClerk", () => {
   it.effect("delivers queued startup links and later links once in arrival order", () => {
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const received: string[] = [];
-    const first = "t3code://new?prompt=first";
-    const second = "t3code://threads/env-1/thread-1";
-    const later = "t3code://new?prompt=later";
+    const first = "astrolabe://new?prompt=first";
+    const second = "astrolabe://threads/env-1/thread-1";
+    const later = "astrolabe://new?prompt=later";
     const delivered = Promise.withResolvers<void>();
     const electronApp = {
       on: (name: string, listener: (...args: unknown[]) => void) =>
@@ -421,16 +421,16 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
       };
       assert.strictEqual(open("https://example.com/page"), 1);
       assert.strictEqual(open("http://localhost:3000/"), 1);
-      assert.strictEqual(open("t3code://new?prompt=hi"), 1);
-      assert.strictEqual(open("t3code://threads/env-1/thread-1"), 1);
+      assert.strictEqual(open("astrolabe://new?prompt=hi"), 1);
+      assert.strictEqual(open("astrolabe://threads/env-1/thread-1"), 1);
       assert.strictEqual(open("mailto:hello@example.com"), 0);
-      assert.strictEqual(open("t3code://somewhere-else"), 0);
+      assert.strictEqual(open("astrolabe://somewhere-else"), 0);
       yield* Effect.yieldNow;
       assert.deepStrictEqual(received, [
         "https://example.com/page",
         "http://localhost:3000/",
-        "t3code://new?prompt=hi",
-        "t3code://threads/env-1/thread-1",
+        "astrolabe://new?prompt=hi",
+        "astrolabe://threads/env-1/thread-1",
       ]);
     }).pipe(
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
