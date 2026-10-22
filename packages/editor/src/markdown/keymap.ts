@@ -269,6 +269,9 @@ function enterInList(state: EditorState, pos: number, markers: LineMarkers): Ran
   const { line, listMark, item } = markers;
   if (!listMark || !item || pos < listMark.to) return null;
   const empty = state.sliceDoc(markers.textStart, line.to).trim() === "";
+  // A marker typed without the space after it (`2.`, `-`) is text being written, not an item
+  // to leave: Enter keeps it and makes a new line.
+  if (empty && !/^[ \t]/.test(state.sliceDoc(listMark.to, listMark.to + 1))) return null;
   if (empty) {
     // An empty item ends the list at this level, in one step and without a blank line.
     let parent: SyntaxNode | null = item.parent;
@@ -299,16 +302,38 @@ function enterInList(state: EditorState, pos: number, markers: LineMarkers): Ran
   return { changes: { from: pos, insert }, range: EditorSelection.cursor(pos + insert.length) };
 }
 
+/** Whether the line above `lineFrom` ends in a paragraph, which text right under it continues. */
+function continuesParagraphAbove(state: EditorState, lineFrom: number) {
+  if (lineFrom === 0) return false;
+  const above = state.doc.lineAt(lineFrom - 1);
+  const tree = syntaxTree(state);
+  for (let node: SyntaxNode | null = tree.resolveInner(above.to, -1); node; node = node.parent) {
+    if (node.name === "Paragraph") return true;
+  }
+  return false;
+}
+
 function enterInQuote(state: EditorState, pos: number, markers: LineMarkers): RangeResult {
   const last = markers.quotes.at(-1);
   if (!last) return null;
   const prefixEnd = quotePrefixEnd(state, markers);
   if (pos < prefixEnd) return null;
   if (state.sliceDoc(prefixEnd, markers.line.to).trim() === "") {
-    // An empty quote line leaves one level of quote.
+    // An empty quote line leaves one level of quote. Text written straight under a quoted
+    // paragraph would continue it (a lazy continuation), so leaving after one adds the blank
+    // line that ends it.
+    if (!continuesParagraphAbove(state, markers.line.from)) {
+      return {
+        changes: { from: last.from, to: markers.line.to },
+        range: EditorSelection.cursor(last.from),
+      };
+    }
+    const outer = state.sliceDoc(markers.line.from, last.from);
+    const from = markers.line.from + outer.trimEnd().length;
+    const insert = `\n${outer}`;
     return {
-      changes: { from: last.from, to: markers.line.to },
-      range: EditorSelection.cursor(last.from),
+      changes: { from, to: markers.line.to, insert },
+      range: EditorSelection.cursor(from + insert.length),
     };
   }
   const insert = `\n${state.sliceDoc(markers.line.from, prefixEnd)}`;

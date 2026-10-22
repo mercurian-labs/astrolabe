@@ -158,14 +158,46 @@ describe("list and quote continuation", () => {
     expect(caret(view)).toBe(14);
   });
 
-  it("A55. `> q|`, Enter: `> q/> |`; `> q/> |`, Enter: `> q/|`", () => {
+  it("A55. `> q|`, Enter: `> q/> |`; `> q/> |`, Enter: `> q//|`", () => {
     const view = mount("> q", { focused: true, selection: [3] });
-    continueMarkup(view);
+    press(view, "Enter");
     expect(docOf(view)).toBe("> q\n> ");
     expect(caret(view)).toBe(6);
-    continueMarkup(view);
-    expect(docOf(view)).toBe("> q\n");
-    expect(caret(view)).toBe(4);
+    // The blank line ends the quote, so what is written next is not quoted.
+    press(view, "Enter");
+    expect(docOf(view)).toBe("> q\n\n");
+    expect(caret(view)).toBe(5);
+  });
+
+  it("leaves a nested quote with a blank quoted line, and an empty quote with no blank line", () => {
+    const nested = mount("> > q\n> > ", { focused: true, selection: [10] });
+    press(nested, "Enter");
+    expect(docOf(nested)).toBe("> > q\n>\n> ");
+    expect(caret(nested)).toBe(10);
+
+    const alone = mount("> ", { focused: true, selection: [2] });
+    press(alone, "Enter");
+    expect(docOf(alone)).toBe("");
+
+    const afterBlank = mount("> q\n>\n> ", { focused: true, selection: [8] });
+    press(afterBlank, "Enter");
+    expect(docOf(afterBlank)).toBe("> q\n>\n");
+  });
+
+  it("keeps a list marker typed without a trailing space, and still exits an empty item", () => {
+    for (const doc of ["2.", "1)", "-", "asd\n\n2.", "- a\n-"]) {
+      const view = mount(doc, { focused: true, selection: [doc.length] });
+      press(view, "Enter");
+      expect(docOf(view), doc).toBe(`${doc}\n`);
+    }
+    const task = mount("- [ ]", { focused: true, selection: [5] });
+    press(task, "Enter");
+    expect(docOf(task).startsWith("- [ ]\n")).toBe(true);
+    for (const doc of ["- ", "1)\t", "- [ ] "]) {
+      const view = mount(doc, { focused: true, selection: [doc.length] });
+      press(view, "Enter");
+      expect(docOf(view), doc).toBe("");
+    }
   });
 
   it("A56. Tab indents a list item by its list's unit, children included; Shift-Tab reverses", () => {

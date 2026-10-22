@@ -1,4 +1,5 @@
-import type { ComposerContextClipboardFragment } from "@t3tools/contracts";
+import { isProviderSkillUserInvocable } from "@t3tools/client-runtime/providerSkills";
+import type { ComposerContextClipboardFragment, ServerProviderSkill } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
   withAssistantCitationComment,
@@ -26,7 +27,6 @@ import {
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
   expandCollapsedComposerCursor,
-  isCollapsedCursorAdjacentToInlineToken,
 } from "~/composer-logic";
 import {
   collectComposerPromptInlineTokens,
@@ -34,6 +34,7 @@ import {
 } from "~/composer-editor-mentions";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { appVimKeys } from "~/whichKey/doors";
+import { resolveAssistantCitationCommentDismissal } from "../chat/assistantCitationCommentDismissal";
 import type { ComposerCitationCommentRequest } from "../ComposerPromptEditorTiptap";
 import { importPastedComposerText } from "../composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "../composerSelection";
@@ -42,6 +43,7 @@ import {
   chipStartingAt,
   codeBlockAt,
   composerChips,
+  composerChipSkills,
   composerChipsField,
   type ComposerChipRegistry,
 } from "./composerChips";
@@ -84,6 +86,11 @@ export interface ComposerEditorHost {
   onEmptyChange: (isEmpty: boolean) => void;
   /** Opens the comment editor of the citation chip at `pos`. */
   openCitationComment: (pos: number, request: ComposerCitationCommentRequest) => void;
+  /**
+   * The prompt is about to be replaced (a question or approval takes the composer) while a
+   * citation comment is unsaved: `savedValue` is `replacedValue` with the comment saved.
+   */
+  onCitationDraftSave?: ((replacedValue: string, savedValue: string) => void) | undefined;
 }
 
 export interface ComposerEditorPresentation {
@@ -197,6 +204,15 @@ function minimalChange(from: string, to: string) {
   return { from: start, to: from.length - end, insert: to.slice(start, to.length - end) };
 }
 
+/** The skills `$name` chips for: the ones the provider offers to users. */
+function offeredSkillNames(skills: ReadonlyArray<ServerProviderSkill>): ReadonlySet<string> {
+  return new Set(skills.filter(isProviderSkillUserInvocable).map((skill) => skill.name));
+}
+
+function sameNames(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  return left.size === right.size && [...left].every((name) => right.has(name));
+}
+
 function inListItem(state: EditorState, pos: number) {
   for (
     let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, -1);
@@ -222,8 +238,13 @@ export class ComposerEditor {
   private latestValue: string;
   private hasAppliedControlledSelection = false;
   private citationRequest: ComposerCitationCommentRequest | null = null;
+  /** The open citation comment's unsaved text, kept when the prompt is replaced. */
+  private citationDraft: { dom: HTMLElement; comment: string } | null = null;
+  private skillNames: ReadonlySet<string>;
+  private readonly skillsSlot = new Compartment();
   private readonly editableSlot = new Compartment();
   private readonly presentationSlot = new Compartment();
+  private presentation: ComposerEditorPresentation;
   private readonly vimSlot = new Compartment();
   private readonly undoHistory = composerHistory(() => this.view);
   private vim: boolean;
@@ -234,8 +255,15 @@ export class ComposerEditor {
     mode: ComposerEditorMode;
     value: string;
     cursor: number;
+    /**
+     * The exact caret, when the editor replaces one showing the same value and cursor: the
+     * collapsed cursor cannot say where inside `$name` text that is not a chip it sits.
+     */
+    expandedCursor?: number | undefined;
     disabled: boolean;
     presentation: ComposerEditorPresentation;
+    /** The provider's skills; `setSkills` updates them in place. */
+    skills?: ReadonlyArray<ServerProviderSkill>;
     /** Vim mode (the device's setting); `setVim` switches it in place. */
     vim?: boolean;
     /** Astrolabe: the formatting commands' keys, from the keybindings; else the defaults. */
@@ -248,9 +276,14 @@ export class ComposerEditor {
     this.markdownKeys = options.markdownKeys;
     this.registry = options.registry;
     this.host = options.host;
+    this.skillNames = offeredSkillNames(options.skills ?? []);
+    this.presentation = options.presentation;
     const { value } = options;
     const cursor = this.clampCursor(value, options.cursor);
-    const expandedCursor = this.expand(value, cursor);
+    const expandedCursor =
+      options.expandedCursor === undefined
+        ? this.expand(value, cursor)
+        : clampOffset(value, options.expandedCursor);
     this.snapshot = { value, cursor, expandedCursor, contextIds: this.contextIdsOf(value) };
     this.selectionRange = { start: expandedCursor, end: expandedCursor };
     this.latestValue = value;
@@ -267,6 +300,8 @@ export class ComposerEditor {
   }
 
   destroy() {
+    // A remount for a question's literal answer drops the open comment editor with the view.
+    this.saveCitationDraft();
     this.view.destroy();
     this.registry.clear();
   }
@@ -294,6 +329,7 @@ export class ComposerEditor {
         ? []
         : [
             composerChips({ rich, registry: this.registry }),
+            this.skillsSlot.of(composerChipSkills.of(this.skillNames)),
             EditorView.inputHandler.of((view, from, to, text) =>
               this.surroundSelection(view, from, to, text),
             ),
@@ -398,7 +434,8 @@ export class ComposerEditor {
 
   /**
    * Whether the caret must not open a suggestion menu: literal answers, code (where `@` is a
-   * decorator, not a file), and a caret against a chip.
+   * decorator, not a file), and a caret against a chip. `$name` text that is not a chip keeps
+   * its `$` menu.
    */
   private suppressesTrigger(state: EditorState, snapshot: ComposerEditorSnapshot) {
     return (
@@ -406,8 +443,8 @@ export class ComposerEditor {
       // `@` and `$` menus open while typing, not while Vim moves the caret in normal mode.
       vimInsertMode(this.view) === false ||
       (this.mode === "rich" && codeBlockAt(state, snapshot.expandedCursor) !== null) ||
-      isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "left") ||
-      isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "right")
+      chipEndingAt(state, snapshot.expandedCursor) !== null ||
+      chipStartingAt(state, snapshot.expandedCursor) !== null
     );
   }
 
@@ -427,7 +464,11 @@ export class ComposerEditor {
     if (!initialSelection && previous.value === value && previous.cursor === normalizedCursor) {
       return;
     }
-    const expandedCursor = this.expand(value, normalizedCursor);
+    // The first sync keeps the caret the editor was created with, which can be exact.
+    const expandedCursor =
+      initialSelection && previous.value === value && previous.cursor === normalizedCursor
+        ? previous.expandedCursor
+        : this.expand(value, normalizedCursor);
     this.snapshot = {
       value,
       cursor: normalizedCursor,
@@ -441,6 +482,7 @@ export class ComposerEditor {
 
     const pendingCitation = this.citationRequest?.value === value ? this.citationRequest : null;
     const current = this.view.state.doc.toString();
+    if (current !== value) this.saveCitationDraft(value);
     this.view.dispatch({
       ...(current === value ? {} : { changes: minimalChange(current, value) }),
       selection: EditorSelection.cursor(Math.min(expandedCursor, value.length)),
@@ -469,7 +511,7 @@ export class ComposerEditor {
     return this.selectionRange;
   }
 
-  focusAt(nextCursor: number) {
+  focusAt(nextCursor: number, exactExpandedCursor?: number) {
     // Focusing writes the editor's selection to the DOM, so keys typed straight away (a
     // dictation tool) land at the caret.
     this.view.focus();
@@ -477,7 +519,7 @@ export class ComposerEditor {
     if (this.snapshot.value !== this.latestValue) return;
     const { value } = this.snapshot;
     const boundedCursor = this.clampCursor(value, nextCursor);
-    const expandedCursor = this.expand(value, boundedCursor);
+    const expandedCursor = exactExpandedCursor ?? this.expand(value, boundedCursor);
     this.view.dispatch({
       selection: EditorSelection.cursor(Math.min(expandedCursor, this.view.state.doc.length)),
       scrollIntoView: true,
@@ -496,7 +538,9 @@ export class ComposerEditor {
   }
 
   focus() {
-    this.focusAt(this.snapshot.cursor);
+    // The collapsed cursor cannot say where inside `$name` text the caret sits; the snapshot's
+    // exact offset can.
+    this.focusAt(this.snapshot.cursor, this.snapshot.expandedCursor);
   }
 
   focusAtEnd() {
@@ -541,6 +585,14 @@ export class ComposerEditor {
       : boundary.bottom - caret.bottom < threshold;
   }
 
+  /** Updates the provider's skills, which decide which `$name` text is a chip. */
+  setSkills(skills: ReadonlyArray<ServerProviderSkill>) {
+    const names = offeredSkillNames(skills);
+    if (sameNames(names, this.skillNames)) return;
+    this.skillNames = names;
+    this.view.dispatch({ effects: this.skillsSlot.reconfigure(composerChipSkills.of(names)) });
+  }
+
   setDisabled(disabled: boolean) {
     this.view.dispatch({ effects: this.editableSlot.reconfigure(editableExtension(disabled)) });
   }
@@ -553,7 +605,10 @@ export class ComposerEditor {
     if (vim) enterInsertMode(this.view);
   }
 
+  /** Applies the host's classes and attributes; the same ones again change nothing. */
   setPresentation(presentation: ComposerEditorPresentation) {
+    if (samePresentation(this.presentation, presentation)) return;
+    this.presentation = presentation;
     this.view.dispatch({
       effects: this.presentationSlot.reconfigure(presentationExtension(presentation)),
     });
@@ -579,6 +634,38 @@ export class ComposerEditor {
     const source = serializeAssistantCitation(withAssistantCitationComment(chip.citation, comment));
     this.view.dispatch({ changes: { from: chip.from, to: chip.to, insert: source } });
     return true;
+  }
+
+  /** Records the unsaved comment of the citation in `dom`; null when its editor closes. */
+  setCitationDraft(dom: HTMLElement, comment: string | null) {
+    if (comment !== null) this.citationDraft = { dom, comment };
+    else if (this.citationDraft?.dom === dom) this.citationDraft = null;
+  }
+
+  /**
+   * Saves an unsaved citation comment into the prompt being replaced, the way dismissing its
+   * editor would, and hands the result to the host to keep. A replacement that still holds
+   * the citation (`nextValue`) leaves its editor open, so there is nothing to save.
+   */
+  private saveCitationDraft(nextValue?: string) {
+    const draft = this.citationDraft;
+    const onSave = this.host().onCitationDraftSave;
+    if (!draft || !onSave) return;
+    const chip = this.citationAt(draft.dom);
+    if (chip && nextValue?.includes(chip.source)) return;
+    this.citationDraft = null;
+    if (!chip) return;
+    const dismissal = resolveAssistantCitationCommentDismissal({
+      reason: "none",
+      draft: draft.comment,
+      savedComment: chip.citation.comment,
+    });
+    if (dismissal.kind !== "commit") return;
+    const { doc } = this.view.state;
+    const source = serializeAssistantCitation(
+      withAssistantCitationComment(chip.citation, dismissal.comment),
+    );
+    onSave(doc.toString(), doc.sliceString(0, chip.from) + source + doc.sliceString(chip.to));
   }
 
   /** Removes a freshly inserted citation and the spaces inserted around it. */
@@ -670,8 +757,13 @@ export class ComposerEditor {
   /** Typing a bracket or quote over a selection wraps it, except around chips. */
   private surroundSelection(view: EditorView, from: number, to: number, text: string) {
     const closer = SURROUND_CLOSE[text];
-    if (!closer || from === to) return false;
     const { state } = view;
+    const { main } = state.selection;
+    // Dead keys, a Compose key, or an IME compose through a replaced range, with or without a
+    // selection; that text is not a typed bracket.
+    if (!closer || view.compositionStarted || main.empty || main.from !== from || main.to !== to) {
+      return false;
+    }
     const chips = state.field(composerChipsField, false)?.chips ?? [];
     if (chips.some((chip) => chip.from < to && chip.to > from)) return false;
     if (selectionTouchesMentionBoundary(state.doc.toString(), from, to)) return false;
@@ -713,16 +805,19 @@ export class ComposerEditor {
     let text = importFragment
       ? importPastedComposerText(clipboardData, importFragment)
       : pastedText;
-    // Complete chips at paste boundaries just as autocomplete does.
+    // Complete chips at paste boundaries just as autocomplete does; `$name` text that is not a
+    // skill is pasted as it is.
     const tokens = collectComposerPromptInlineTokens(`${text}\n`);
+    const isChip = (token: (typeof tokens)[number] | undefined) =>
+      token?.type === "mention" || (token?.type === "skill" && this.skillNames.has(token.value));
     const last = tokens.at(-1);
-    if ((last?.type === "mention" || last?.type === "skill") && last.end === text.length) {
+    if (isChip(last) && last?.end === text.length) {
       text += " ";
     }
     const first = tokens[0];
     if (
-      (first?.type === "mention" || first?.type === "skill") &&
-      first.start === 0 &&
+      isChip(first) &&
+      first?.start === 0 &&
       from > 0 &&
       !/\s/.test(state.sliceDoc(from - 1, from))
     ) {
@@ -762,6 +857,15 @@ export class ComposerEditor {
 
 function editableExtension(disabled: boolean): Extension {
   return [EditorView.editable.of(!disabled), EditorState.readOnly.of(disabled)];
+}
+
+function samePresentation(left: ComposerEditorPresentation, right: ComposerEditorPresentation) {
+  const keys = Object.keys(left.attributes);
+  return (
+    left.className === right.className &&
+    keys.length === Object.keys(right.attributes).length &&
+    keys.every((key) => left.attributes[key] === right.attributes[key])
+  );
 }
 
 function presentationExtension({ className, attributes }: ComposerEditorPresentation): Extension {

@@ -1,6 +1,7 @@
 import "@mercurian/editor/markdown/theme.css";
 import "@mercurian/editor/markdown/katex.css";
 
+import { isProviderSkillUserInvocable } from "@t3tools/client-runtime/providerSkills";
 import type { AssistantCitation, ClientSettings, ServerProviderSkill } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import {
@@ -8,7 +9,6 @@ import {
   use,
   useImperativeHandle,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -60,26 +60,50 @@ function resolvedThemeFromDocument(): "light" | "dark" {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+/** What an editor hands the one that replaces it. */
+interface EditorHandoff {
+  value: string;
+  cursor: number;
+  /** The exact caret, which the collapsed cursor cannot give inside `$name` text. */
+  expandedCursor: number;
+  /** Whether it had typing focus. */
+  focused: boolean;
+}
+
 /**
  * The composer editor on CodeMirror and the Atlas live preview. The prompt is the document,
  * verbatim; chips are React components drawn over their source text.
  */
 export function ComposerPromptEditorCodeMirror(props: ComposerPromptEditorProps) {
+  const handoffRef = useRef<EditorHandoff | null>(null);
   const mode: ComposerEditorMode = props.literalText
     ? "literal"
     : props.richTextEnabled
       ? "rich"
       : "plain";
-  // Extensions are creation-time, so changing text mode remounts the editor. Every mode
-  // initializes from the controlled value, preserving the draft.
-  return <ComposerPromptEditorCodeMirrorInner key={mode} mode={mode} {...props} />;
+  // A new draft gets a new editor, so undo never reaches back into another draft's history.
+  // Extensions are creation-time, so changing text mode remounts the editor too; every mode
+  // initializes from the controlled value, preserving the draft. The new editor keeps the
+  // old one's typing focus and exact caret.
+  return (
+    <ComposerPromptEditorCodeMirrorInner
+      key={`${props.draftKey ?? ""}:${mode}`}
+      mode={mode}
+      handoffRef={handoffRef}
+      {...props}
+    />
+  );
 }
 
 function ComposerPromptEditorCodeMirrorInner(
-  props: ComposerPromptEditorProps & { mode: ComposerEditorMode },
+  props: ComposerPromptEditorProps & {
+    mode: ComposerEditorMode;
+    handoffRef: React.RefObject<EditorHandoff | null>;
+  },
 ) {
   const {
     mode,
+    handoffRef,
     value,
     cursor,
     contextRecords,
@@ -116,39 +140,36 @@ function ComposerPromptEditorCodeMirrorInner(
     propsRef.current = props;
   });
 
-  const presentation = useMemo(
-    () => ({
-      className: cn(EDITOR_CLASS_NAME, className),
-      attributes: {
-        "data-testid": "composer-editor",
-        "data-composer-rich-text": mode === "rich" ? "true" : "false",
-        spellcheck: "true",
-        autocorrect: "on",
-        autocapitalize: "sentences",
-        ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
-        ...(!disabled && suggestionListId
-          ? {
-              "aria-autocomplete": "list",
-              "aria-haspopup": "listbox",
-              ...(activeSuggestionId
-                ? {
-                    "aria-controls": suggestionListId,
-                    "aria-activedescendant": activeSuggestionId,
-                  }
-                : {}),
-            }
-          : {}),
-        "aria-placeholder": placeholder,
-      },
-    }),
-    [activeSuggestionId, ariaLabel, className, disabled, mode, placeholder, suggestionListId],
-  );
+  const presentation = {
+    className: cn(EDITOR_CLASS_NAME, className),
+    attributes: {
+      "data-testid": "composer-editor",
+      "data-composer-rich-text": mode === "rich" ? "true" : "false",
+      spellcheck: "true",
+      autocorrect: "on",
+      autocapitalize: "sentences",
+      ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
+      ...(!disabled && suggestionListId
+        ? {
+            "aria-autocomplete": "list",
+            "aria-haspopup": "listbox",
+            ...(activeSuggestionId
+              ? {
+                  "aria-controls": suggestionListId,
+                  "aria-activedescendant": activeSuggestionId,
+                }
+              : {}),
+          }
+        : {}),
+      "aria-placeholder": placeholder,
+    },
+  };
 
   // The latest state to create the editor from; a remount (Strict Mode) must not start
   // from the first render's draft.
-  const creation = useRef({ value, cursor, disabled, presentation, vim });
+  const creation = useRef({ value, cursor, disabled, presentation, vim, skills });
   useLayoutEffect(() => {
-    creation.current = { value, cursor, disabled, presentation, vim };
+    creation.current = { value, cursor, disabled, presentation, vim, skills };
   });
 
   // Created in a layout effect so the composer's own layout effects, which measure the
@@ -165,6 +186,7 @@ function ComposerPromptEditorCodeMirrorInner(
         buildContextClipboardFragment: current.buildContextClipboardFragment,
         importContextFragment: current.importContextFragment,
         onEmptyChange: setIsEmpty,
+        onCitationDraftSave: current.onCitationDraftSave,
         openCitationComment: (pos, request) => {
           const entry = editorInstance.current
             ? registry.entryAt(editorInstance.current.view, pos)
@@ -178,20 +200,39 @@ function ComposerPromptEditorCodeMirrorInner(
         },
       };
     };
+    const previous = handoffRef.current;
+    handoffRef.current = null;
+    const initial = creation.current;
     const editor = new ComposerEditor({
       parent,
       mode,
-      ...creation.current,
+      ...initial,
+      ...(previous?.value === initial.value && previous.cursor === initial.cursor
+        ? { expandedCursor: previous.expandedCursor }
+        : {}),
       markdownKeys,
       registry,
       host,
     });
     editorInstance.current = editor;
+    // Typing carries on in the editor that replaces a focused one; focus elsewhere stays put.
+    if (previous?.focused) editor.view.focus();
     return () => {
+      const { value: lastValue, cursor: lastCursor, expandedCursor } = editor.readSnapshot();
+      handoffRef.current = {
+        value: lastValue,
+        cursor: lastCursor,
+        expandedCursor,
+        focused: editor.view.hasFocus,
+      };
       editorInstance.current = null;
       editor.destroy();
     };
-  }, [mode, registry, markdownKeys]);
+  }, [mode, registry, markdownKeys, handoffRef]);
+
+  useLayoutEffect(() => {
+    editorInstance.current?.setSkills(skills);
+  }, [skills]);
 
   useLayoutEffect(() => {
     editorInstance.current?.setDisabled(disabled);
@@ -377,11 +418,14 @@ function MentionChip({ path }: { path: string }) {
 
 function SkillChip({ name, skills }: { name: string; skills: ReadonlyArray<ServerProviderSkill> }) {
   const actions = use(ComposerContextActionsContext);
-  const skill = skills.find((candidate) => candidate.name === name);
+  const skill = skills.find(
+    (candidate) => candidate.name === name && isProviderSkillUserInvocable(candidate),
+  );
   const label = formatProviderSkillDisplayName(skill ?? { name });
   const description =
-    skill?.description ??
-    (skill?.shortDescription?.trim() || "No description is available for this skill.");
+    skill?.description?.trim() ||
+    skill?.shortDescription?.trim() ||
+    "No description is available for this skill.";
   return (
     <ContextChipPopover
       kind="skill"
@@ -392,7 +436,7 @@ function SkillChip({ name, skills }: { name: string; skills: ReadonlyArray<Serve
       <div className="space-y-3 p-2 text-sm">
         <p className="font-medium">{label}</p>
         <p>{description}</p>
-        {skill?.path ? (
+        {skill?.path && actions.environmentId ? (
           <Button variant="outline" size="sm" onClick={() => actions.openMention(skill.path)}>
             View instructions
           </Button>
@@ -445,6 +489,7 @@ function CitationChip({
           sourceAnchor: target?.sourceAnchor,
           onOpenChange: (open) => {
             if (open && !editable()) return;
+            if (!open) editorInstance.current?.setCitationDraft(entry.dom, null);
             // One comment editor at a time.
             setOpenCitation((current) => {
               if (open) return current?.key === entry.id ? current : { key: entry.id };
@@ -457,6 +502,8 @@ function CitationChip({
               }
             : {}),
           onSave: save,
+          // Kept so a question or approval that replaces the prompt saves it.
+          onDraftChange: (comment) => editorInstance.current?.setCitationDraft(entry.dom, comment),
           onSaveAndSend: (comment) => {
             if (!save(comment)) return false;
             propsRef.current.onCitationSubmitAndSend?.();

@@ -29,11 +29,22 @@ export type ComposerChipData =
 
 export type ComposerChip = ComposerChipData & { from: number; to: number };
 
+const NO_SKILLS: ReadonlySet<string> = new Set();
+
+/**
+ * The names of the skills `$name` chips for: the current provider's user-invocable skills.
+ * The host reconfigures it when the provider or its skills change, which rebuilds the chips.
+ */
+export const composerChipSkills = Facet.define<ReadonlySet<string>, ReadonlySet<string>>({
+  combine: (values) => values[0] ?? NO_SKILLS,
+});
+
 /**
  * The chips of a prompt: its inline tokens, found exactly as the composer's cursor helpers
- * find them, so a chip here is one collapsed position there.
+ * find them, so a chip here is one collapsed position there. `$name` is a chip only for a
+ * skill in `skills`; any other (`$HOME`, another provider's skill) stays text.
  */
-function collectComposerChips(text: string): ComposerChip[] {
+function collectComposerChips(text: string, skills: ReadonlySet<string>): ComposerChip[] {
   const chips: ComposerChip[] = [];
   let offset = 0;
   for (const segment of splitPromptIntoComposerSegments(text)) {
@@ -49,7 +60,9 @@ function collectComposerChips(text: string): ComposerChip[] {
         chips.push({ kind: "mention", source: segment.source, path: segment.path, from, to });
         break;
       case "skill":
-        chips.push({ kind: "skill", source: segment.source, name: segment.name, from, to });
+        if (skills.has(segment.name)) {
+          chips.push({ kind: "skill", source: segment.source, name: segment.name, from, to });
+        }
         break;
       case "citation":
         chips.push({
@@ -90,7 +103,7 @@ export function codeBlockAt(state: EditorState, pos: number) {
 }
 
 function chipsInState(state: EditorState, rich: boolean): ComposerChip[] {
-  const chips = collectComposerChips(state.doc.toString());
+  const chips = collectComposerChips(state.doc.toString(), state.facet(composerChipSkills));
   // A code block holds no chips: a token's source there is code.
   return rich ? chips.filter((chip) => codeBlockAt(state, chip.from + 1) === null) : chips;
 }
@@ -160,7 +173,7 @@ export interface ComposerChipEntry {
 // The chip node selection look, painted when a selection covers the chip.
 const CHIP_CLASS_NAME =
   "relative inline-flex select-none items-center align-middle leading-none data-[composer-chip-selected]:after:pointer-events-none data-[composer-chip-selected]:after:absolute data-[composer-chip-selected]:after:inset-0 data-[composer-chip-selected]:after:rounded-sm data-[composer-chip-selected]:after:bg-[Highlight] data-[composer-chip-selected]:after:opacity-30 data-[composer-chip-selected]:after:content-['']";
-const CITATION_CLASS_NAME = "inline-flex min-w-0 max-w-full select-none";
+const CITATION_CLASS_NAME = `${CHIP_CLASS_NAME} min-w-0 max-w-full`;
 
 function chipData(chip: ComposerChip): ComposerChipData {
   const { from: _from, to: _to, ...data } = chip;

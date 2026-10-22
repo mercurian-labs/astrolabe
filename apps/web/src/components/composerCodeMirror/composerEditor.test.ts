@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MessageId,
+  ThreadId,
+  type AssistantCitation,
+  type ServerProviderSkill,
+} from "@t3tools/contracts";
 import { ComposerContextId } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
@@ -24,7 +30,11 @@ import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { handleLeaderRequests, pendingExOrigin, releaseExOrigin } from "~/whichKey/doors";
 import { exLineGroups } from "~/whichKey/exPalette";
 
-import { collapseExpandedComposerCursor, expandCollapsedComposerCursor } from "~/composer-logic";
+import {
+  collapseExpandedComposerCursor,
+  detectComposerTrigger,
+  expandCollapsedComposerCursor,
+} from "~/composer-logic";
 import { ComposerChipRegistry, composerChipsField } from "./composerChips";
 import { ComposerEditor, type ComposerEditorHost, type ComposerEditorMode } from "./composerEditor";
 
@@ -42,6 +52,7 @@ function mount(
     cursor?: number;
     disabled?: boolean;
     vim?: boolean;
+    skills?: ReadonlyArray<ServerProviderSkill>;
     host?: Partial<ComposerEditorHost>;
   } = {},
 ) {
@@ -63,6 +74,7 @@ function mount(
     cursor: options.cursor ?? 0,
     disabled: options.disabled ?? false,
     vim: options.vim ?? false,
+    skills: options.skills ?? [],
     presentation: { className: "", attributes: {} },
     registry,
     host: () => host,
@@ -93,10 +105,16 @@ function type(editor: ComposerEditor, text: string, at = Date.now()) {
   });
 }
 
-/** Types one character the way the browser does, through the editor's input handlers. */
-function typeOverSelection(editor: ComposerEditor, text: string) {
+/**
+ * Types text the way the browser does, through the editor's input handlers, over the
+ * selection or over the range a composition replaces.
+ */
+function typeOverSelection(
+  editor: ComposerEditor,
+  text: string,
+  { from, to }: { from: number; to: number } = editor.view.state.selection.main,
+) {
   const { view } = editor;
-  const { from, to } = view.state.selection.main;
   const insert = () => view.state.update({ changes: { from, to, insert: text } });
   const handled = view.state
     .facet(EditorView.inputHandler)
@@ -277,7 +295,96 @@ describe("chips", () => {
   });
 });
 
+describe("skill chips", () => {
+  const babysit: ServerProviderSkill = {
+    name: "babysit",
+    path: "/skills/babysit/SKILL.md",
+    enabled: true,
+  };
+  const skillChips = (editor: ComposerEditor) =>
+    editor.view.state
+      .field(composerChipsField)
+      .chips.filter((chip) => chip.kind === "skill")
+      .map((chip) => chip.source);
+
+  it("are only the skills the provider offers to users, following the provider's skills", () => {
+    const value = "echo $HOME $babysit $review €Euro now";
+    const agentOnly = { ...babysit, name: "review", userInvocable: false };
+    const { editor } = mount(value, { skills: [babysit, agentOnly] });
+    expect(skillChips(editor)).toEqual(["$babysit"]);
+    editor.setSkills([{ ...babysit, enabled: false }, agentOnly]);
+    expect(skillChips(editor)).toEqual([]);
+    editor.setSkills([babysit, { ...agentOnly, userInvocable: true }]);
+    expect(skillChips(editor)).toEqual(["$babysit", "$review"]);
+    expect(docOf(editor)).toBe(value);
+  });
+
+  it("leave other dollar names editable: the caret steps into them", () => {
+    const { editor } = mount("echo $HOME $babysit now", { skills: [babysit] });
+    editor.view.focus();
+    select(editor, "echo $HOME".length);
+    press(editor, "ArrowLeft");
+    expect(editor.view.state.selection.main.head).toBe("echo $HOM".length);
+    select(editor, "echo $HOME $babysit".length);
+    press(editor, "ArrowLeft");
+    expect(editor.view.state.selection.main.head).toBe("echo $HOME ".length);
+  });
+
+  it("keep the $ menu on dollar text that is not a chip, before a space or a line break", () => {
+    const { editor, onChange } = mount("use  now\nfirst \n$babysit tail", { skills: [babysit] });
+    // The store takes each change and hands it back, as the composer does.
+    const trigger = () => {
+      const [value, cursor, expandedCursor, suppressTrigger] = onChange.mock.lastCall!;
+      editor.syncControlled(value, cursor);
+      return suppressTrigger ? null : detectComposerTrigger(value, expandedCursor);
+    };
+    select(editor, "use ".length);
+    type(editor, "$bab");
+    expect(trigger()).toMatchObject({ kind: "skill", query: "bab" });
+    select(editor, docOf(editor).indexOf("\n$babysit"));
+    type(editor, "$bab");
+    expect(trigger()).toMatchObject({ kind: "skill", query: "bab" });
+    const chipStart = docOf(editor).indexOf("$babysit");
+    select(editor, chipStart + "$babysit".length);
+    expect(onChange.mock.lastCall?.[3]).toBe(true);
+    select(editor, chipStart);
+    expect(onChange.mock.lastCall?.[3]).toBe(true);
+  });
+
+  it("pads a pasted skill so it completes as a chip, and pastes other dollar text as it is", () => {
+    for (const [pasted, expected] of [
+      ["$babysit", "echo $babysit "],
+      ["$HOME", "echo $HOME"],
+    ] as const) {
+      const { editor } = mount("echo ", { skills: [babysit] });
+      select(editor, 5);
+      clipboardEvent(editor, "paste", new FakeClipboard({ "text/plain": pasted }));
+      expect(docOf(editor), pasted).toBe(expected);
+    }
+  });
+});
+
 describe("surround", () => {
+  it("leaves composed text and a range other than the selection unwrapped", () => {
+    // A dead key or IME replacing the selection.
+    const composing = mount("word");
+    select(composing.editor, 0, 4);
+    composing.view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart"));
+    typeOverSelection(composing.editor, '"');
+    expect(docOf(composing.editor)).toBe('"');
+
+    // A Compose key's preedit text, replaced with no selection.
+    const preedit = mount("·");
+    select(preedit.editor, 1);
+    typeOverSelection(preedit.editor, '"', { from: 0, to: 1 });
+    expect(docOf(preedit.editor)).toBe('"');
+
+    const outside = mount("word");
+    select(outside.editor, 0, 4);
+    typeOverSelection(outside.editor, '"', { from: 1, to: 2 });
+    expect(docOf(outside.editor)).toBe('w"rd');
+  });
+
   it("wraps a selection in brackets and quotes", () => {
     const { editor } = mount("say hello now");
     select(editor, 4, 9);
@@ -431,6 +538,26 @@ describe("keys", () => {
     press(editor, "Enter");
     expect(onCommandKeyDown).toHaveBeenCalledWith("Enter", expect.anything(), true);
     expect(docOf(editor)).toBe("- one\n- ");
+  });
+
+  it("ends a quote with a blank line on leaving it, so the text after it is not quoted", () => {
+    const { editor } = mount("> quoted", { host: { onCommandKeyDown: () => false } });
+    editor.view.focus();
+    select(editor, 8);
+    press(editor, "Enter");
+    press(editor, "Enter");
+    type(editor, "my comment");
+    expect(docOf(editor)).toBe("> quoted\n\nmy comment");
+  });
+
+  it("keeps a list marker typed without its space, where Enter makes a new line", () => {
+    for (const value of ["2.", "1)", "-", "- a\n-"]) {
+      const { editor } = mount(value, { host: { onCommandKeyDown: () => false } });
+      editor.view.focus();
+      select(editor, value.length);
+      press(editor, "Enter");
+      expect(docOf(editor), value).toBe(`${value}\n`);
+    }
   });
 
   it("makes a new line on an unclaimed Enter in plain mode", () => {
@@ -767,6 +894,49 @@ describe("citation comments", () => {
     expect(registry.entryAt(view, 4)?.id).toBe(entry!.id);
     editor.removeCitation(entry!.dom, { before: true, after: true });
     expect(docOf(editor)).toBe("ask");
+  });
+
+  it("saves an unsaved comment into a prompt a question or approval replaces", () => {
+    const value = `ask ${source} `;
+    const saved = `ask ${serializeAssistantCitation(withAssistantCitationComment(citation, "why?"))} `;
+    const onCitationDraftSave = vi.fn<NonNullable<ComposerEditorHost["onCitationDraftSave"]>>();
+    const { editor, registry, view } = mount(value, { host: { onCitationDraftSave } });
+    const entry = registry.entryAt(view, 4)!;
+    editor.setCitationDraft(entry.dom, "why?");
+    // A store rewrite that keeps the citation keeps its comment editor open.
+    const longer = `${value}more`;
+    editor.syncControlled(longer, collapseExpandedComposerCursor(longer, longer.length));
+    expect(onCitationDraftSave).not.toHaveBeenCalled();
+    editor.syncControlled("", 0);
+    expect(onCitationDraftSave).toHaveBeenCalledExactlyOnceWith(longer, `${saved}more`);
+    // Once saved, a later replacement has nothing to save.
+    editor.syncControlled(value, 0);
+    editor.syncControlled("", 0);
+    expect(onCitationDraftSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves an unsaved comment when the editor is replaced, but not a closed or unchanged one", () => {
+    const value = `ask ${source} `;
+    const onCitationDraftSave = vi.fn<NonNullable<ComposerEditorHost["onCitationDraftSave"]>>();
+    const remounted = mount(value, { host: { onCitationDraftSave } });
+    remounted.editor.setCitationDraft(remounted.registry.entryAt(remounted.view, 4)!.dom, "why?");
+    editors.splice(editors.indexOf(remounted.editor), 1);
+    remounted.editor.destroy();
+    expect(onCitationDraftSave).toHaveBeenCalledExactlyOnceWith(
+      value,
+      `ask ${serializeAssistantCitation(withAssistantCitationComment(citation, "why?"))} `,
+    );
+
+    onCitationDraftSave.mockClear();
+    const closed = mount(value, { host: { onCitationDraftSave } });
+    const dom = closed.registry.entryAt(closed.view, 4)!.dom;
+    closed.editor.setCitationDraft(dom, "why?");
+    closed.editor.setCitationDraft(dom, null);
+    closed.editor.syncControlled("", 0);
+    const unchanged = mount(value, { host: { onCitationDraftSave } });
+    unchanged.editor.setCitationDraft(unchanged.registry.entryAt(unchanged.view, 4)!.dom, " ");
+    unchanged.editor.syncControlled("", 0);
+    expect(onCitationDraftSave).not.toHaveBeenCalled();
   });
 
   it("cannot change a citation while disabled", () => {
