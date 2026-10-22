@@ -92,7 +92,7 @@ describe("presentConnectionDiagnosis", () => {
 
   it("tells a working tunnel apart from T3 Code not answering", () => {
     expect(diagnose(backoff(unavailable("origin_unreachable")))?.headline).toBe(
-      "Tunnel works, but T3 Code on Mac mini did not answer",
+      "Tunnel works, but Astrolabe on Mac mini did not answer",
     );
     expect(results(backoff(unavailable("origin_unreachable")), "direct")).toEqual([
       "device:ok",
@@ -219,7 +219,7 @@ describe("presentConnectionDiagnosis", () => {
     if (diagnosis === null) throw new Error("expected a diagnosis");
     const text = connectionDiagnosisText("Mac mini", diagnosis);
     expect(text).toContain("Mac mini tunnel: FAILED");
-    expect(text).toContain("T3 Code on Mac mini: not checked");
+    expect(text).toContain("Astrolabe on Mac mini: not checked");
     expect(text).toContain("Cause: tunnel_down");
     expect(text).toContain("Attempts: 3");
   });

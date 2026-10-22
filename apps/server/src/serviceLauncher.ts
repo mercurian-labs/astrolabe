@@ -833,7 +833,7 @@ export class Launcher {
     // Signal listeners alone do not keep Node alive.
     this.#timer = setInterval(() => {}, 2_147_483_647);
     process.stderr.write(
-      "[service-launcher] Another Astrolabe server owns this T3 home. Stop it, then restart this service.\n",
+      "[service-launcher] Another Astrolabe server owns this Astrolabe home. Stop it, then restart this service.\n",
     );
   }
 

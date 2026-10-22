@@ -347,11 +347,11 @@ const command = Command.make(
   "measure-renders",
   {
     server: Flag.String("server").pipe(
-      Flag.withDescription("T3 server origin the app is paired with."),
+      Flag.withDescription("Astrolabe server origin the app is paired with."),
       Flag.withDefault(""),
     ),
     token: Flag.String("token").pipe(
-      Flag.withDescription("Bearer token from `t3 auth session issue --token-only`."),
+      Flag.withDescription("Bearer token from `astrolabe auth session issue --token-only`."),
       Flag.withDefault(""),
     ),
     route: Flag.String("route").pipe(

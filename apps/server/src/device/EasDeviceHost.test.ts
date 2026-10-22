@@ -142,7 +142,7 @@ const fakeExpo = (
                             node: {
                               id: "someone-else",
                               status: "IN_PROGRESS",
-                              name: "T3 Code · EAS Simulator · 000000",
+                              name: "Astrolabe · EAS Simulator · 000000",
                             },
                           },
                           ...(options.active ?? []).map((node) => ({ node })),
@@ -322,16 +322,16 @@ describe("EAS Simulator host", () => {
       yield* fs.writeFileString(
         ledger,
         JSON.stringify([
-          { name: "T3 Code · EAS Simulator · left", appId: APP_ID, recordedAt: 0 },
+          { name: "Astrolabe · EAS Simulator · left", appId: APP_ID, recordedAt: 0 },
           // Recorded long enough ago that Expo has ended it, so the record goes.
-          { name: "T3 Code · EAS Simulator · gone", appId: APP_ID, recordedAt: -181 * 60_000 },
+          { name: "Astrolabe · EAS Simulator · gone", appId: APP_ID, recordedAt: -181 * 60_000 },
           // Recorded just now and not listed yet: kept for a later sweep.
-          { name: "T3 Code · EAS Simulator · new", appId: APP_ID, recordedAt: 0 },
+          { name: "Astrolabe · EAS Simulator · new", appId: APP_ID, recordedAt: 0 },
         ]),
       );
       const expo = fakeExpo({
         active: [
-          { id: "left-behind", status: "IN_PROGRESS", name: "T3 Code · EAS Simulator · left" },
+          { id: "left-behind", status: "IN_PROGRESS", name: "Astrolabe · EAS Simulator · left" },
         ],
       });
       const host = yield* makeHost(expo, config(), yield* Scope.make());
@@ -349,7 +349,7 @@ describe("EAS Simulator host", () => {
         ),
       );
       expect(expo.stopped()).toEqual(["left-behind"]);
-      expect(yield* ledgerNames).toEqual(["T3 Code · EAS Simulator · new"]);
+      expect(yield* ledgerNames).toEqual(["Astrolabe · EAS Simulator · new"]);
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 
@@ -362,7 +362,7 @@ describe("EAS Simulator host", () => {
       yield* fs.makeDirectory(path.dirname(ledger), { recursive: true });
       yield* fs.writeFileString(
         ledger,
-        JSON.stringify([{ name: "T3 Code · EAS Simulator · new", appId: APP_ID, recordedAt: 0 }]),
+        JSON.stringify([{ name: "Astrolabe · EAS Simulator · new", appId: APP_ID, recordedAt: 0 }]),
       );
       const expo = fakeExpo();
       const host = yield* makeHost(expo, config({ maxConcurrentSessions: 1 }), yield* Scope.make());
@@ -387,12 +387,12 @@ describe("EAS Simulator host", () => {
       yield* fs.writeFileString(
         ledger,
         JSON.stringify([
-          { name: "T3 Code · EAS Simulator · old", appId: APP_ID, recordedAt: -10 * 60_000 },
+          { name: "Astrolabe · EAS Simulator · old", appId: APP_ID, recordedAt: -10 * 60_000 },
         ]),
       );
       const expo = fakeExpo({
         active: [
-          { id: "old-session", status: "IN_PROGRESS", name: "T3 Code · EAS Simulator · old" },
+          { id: "old-session", status: "IN_PROGRESS", name: "Astrolabe · EAS Simulator · old" },
         ],
       });
       const host = yield* makeHost(expo, config({ maxConcurrentSessions: 1 }), yield* Scope.make());
@@ -414,13 +414,13 @@ describe("EAS Simulator host", () => {
       yield* fs.writeFileString(
         ledger,
         JSON.stringify([
-          { name: "T3 Code · EAS Simulator · old", appId: APP_ID, recordedAt: -10 * 60_000 },
+          { name: "Astrolabe · EAS Simulator · old", appId: APP_ID, recordedAt: -10 * 60_000 },
         ]),
       );
       let listFails = true;
       const expo = fakeExpo({
         active: [
-          { id: "old-session", status: "IN_PROGRESS", name: "T3 Code · EAS Simulator · old" },
+          { id: "old-session", status: "IN_PROGRESS", name: "Astrolabe · EAS Simulator · old" },
         ],
         failList: () => listFails,
       });
@@ -449,16 +449,16 @@ describe("EAS Simulator host", () => {
         yield* fs.writeFileString(
           ledger,
           JSON.stringify([
-            { name: "T3 Code · EAS Simulator · gone", appId: APP_ID, recordedAt: -181 * 60_000 },
+            { name: "Astrolabe · EAS Simulator · gone", appId: APP_ID, recordedAt: -181 * 60_000 },
             {
-              name: "T3 Code · EAS Simulator · refused",
+              name: "Astrolabe · EAS Simulator · refused",
               appId: APP_ID,
               recordedAt: -181 * 60_000,
               refused: true,
             },
             // No queue holds a session for a day: forgotten unconfirmed.
             {
-              name: "T3 Code · EAS Simulator · ancient",
+              name: "Astrolabe · EAS Simulator · ancient",
               appId: APP_ID,
               recordedAt: -25 * 60 * 60_000,
             },
@@ -480,8 +480,8 @@ describe("EAS Simulator host", () => {
         // The listing never confirmed the two: a queued session could still be
         // running, so their records stay for the reaper.
         expect(names.filter((name) => !/[0-9a-f]{6}$/.test(name))).toEqual([
-          "T3 Code · EAS Simulator · gone",
-          "T3 Code · EAS Simulator · refused",
+          "Astrolabe · EAS Simulator · gone",
+          "Astrolabe · EAS Simulator · refused",
         ]);
       }).pipe(Effect.scoped, Effect.provide(layer)),
   );
@@ -645,13 +645,13 @@ describe("EAS Simulator host", () => {
       yield* fs.writeFileString(
         ledger,
         JSON.stringify([
-          { name: "T3 Code · EAS Simulator · old", appId: APP_ID, recordedAt: -181 * 60_000 },
+          { name: "Astrolabe · EAS Simulator · old", appId: APP_ID, recordedAt: -181 * 60_000 },
         ]),
       );
       // Expo still lists it (queued for hours, say) and refuses to stop it.
       const expo = fakeExpo({
         active: [
-          { id: "old-session", status: "IN_PROGRESS", name: "T3 Code · EAS Simulator · old" },
+          { id: "old-session", status: "IN_PROGRESS", name: "Astrolabe · EAS Simulator · old" },
         ],
         failStop: () => true,
       });
@@ -664,7 +664,7 @@ describe("EAS Simulator host", () => {
       const names = (JSON.parse(yield* fs.readFileString(ledger)) as Array<{ name: string }>).map(
         (entry) => entry.name,
       );
-      expect(names).toContain("T3 Code · EAS Simulator · old");
+      expect(names).toContain("Astrolabe · EAS Simulator · old");
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 

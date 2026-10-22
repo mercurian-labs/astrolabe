@@ -253,7 +253,7 @@ it.layer(NodeServices.layer)("service state persistence", (it) => {
       yield* Effect.acquireRelease(
         Effect.sync(() =>
           vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-            if (String(chunk).includes("owns this T3 home")) refused.resolve();
+            if (String(chunk).includes("owns this Astrolabe home")) refused.resolve();
             return true;
           }),
         ),

@@ -404,7 +404,7 @@ const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targ
   const platform = yield* HostProcess.Platform;
   const environment = yield* HostProcess.Environment;
   const home = yield* HostProcess.HomeDirectory;
-  const launcherName = platform === "win32" ? "t3.cmd" : "t3";
+  const launcherName = platform === "win32" ? "astrolabe.cmd" : "astrolabe";
   const launchersFile = path.join(baseDir, PINNED_RUNTIME_DIR, PINNED_RUNTIME_LAUNCHERS_FILE);
   const recorded = (yield* fs.readFileString(launchersFile).pipe(Effect.orElseSucceed(() => "")))
     .split(/\r?\n/)
