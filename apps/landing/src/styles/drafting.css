@@ -1021,23 +1021,6 @@ path.pf-rs {
   text-wrap: pretty;
 }
 
-/* Line diagrams ([09] Anywhere): one weight, one ink, rust only on the mark that matters. */
-.dw {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.25;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1;
-  vector-effect: non-scaling-stroke;
-}
-.dw.lt {
-  stroke: var(--ink-4);
-}
-.dw.rs {
-  stroke: var(--rust);
-  stroke-width: 1.75;
-}
 @keyframes draw {
   from {
     stroke-dashoffset: 1;
@@ -3843,32 +3826,71 @@ kbd {
   place-items: center;
   padding: var(--pad);
   border-left: 1px solid var(--rule);
+  container-type: inline-size;
+}
+/* The reach figure ([09] Anywhere) is drawn in the problem figures' language: the devices are
+   <g> parts in .reach__defs, placed by two compositions, wide beside the copy and tall when the
+   column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
+.reach__defs {
+  position: absolute;
 }
 .reach {
+  display: block;
   width: 100%;
-  max-width: 42rem;
   overflow: visible;
 }
-.reach text {
-  font: 500 13px var(--mono);
-  letter-spacing: 0.04em;
+.reach * {
+  vector-effect: non-scaling-stroke;
+}
+.reach--wide {
+  max-width: 48rem;
+}
+.reach--tall {
+  display: none;
+  max-width: 22rem;
+}
+@container (max-width: 520px) {
+  .reach--wide {
+    display: none;
+  }
+  .reach--tall {
+    display: block;
+  }
+}
+.reach__sel {
+  fill: var(--rule-soft);
+}
+.reach__lbl,
+.reach__tab,
+.reach__name {
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+.reach__lbl,
+.reach__tab {
+  font-size: 8.5px;
+  fill: var(--ink-3);
+}
+.reach__tab--on {
+  fill: var(--ink);
+}
+.reach__name {
+  font-size: 9.5px;
   fill: var(--ink-2);
 }
-.reach__pivot {
-  fill: var(--rust);
+.reach--tall :is(.reach__lbl, .reach__tab) {
+  font-size: 9.5px;
 }
-.motion [data-draw]:not(.is-drawn) .dw {
-  stroke-dashoffset: 1;
+.reach--tall .reach__name {
+  font-size: 10.5px;
 }
-.motion [data-draw]:not(.is-drawn) :is(text, circle:not(.dw)) {
-  opacity: 0;
+.reach__dir {
+  text-transform: none;
 }
-.motion [data-draw].is-drawn .dw {
-  animation: draw 1s var(--ease-out) calc(var(--i) * 140ms) both;
-}
-.motion [data-draw].is-drawn :is(text, circle:not(.dw)) {
-  animation: fade 0.5s ease 0.9s both;
+.anywhere__fig:hover path.pf-rs {
+  stroke-width: 2.25;
 }
 .spec {
   grid-column: 1 / -1;

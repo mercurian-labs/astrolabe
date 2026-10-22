@@ -73,7 +73,7 @@ matchMedia("(min-width: 961px)").addEventListener(
   (event) => event.matches && setMenu(false),
 );
 
-/* ───────────────────────────── Entry reveals and the drawn figures. */
+/* ───────────────────────────── Entry reveals. */
 
 const once = (targets, onEnter, options) => {
   const observer = new IntersectionObserver((entries) => {
@@ -86,7 +86,6 @@ const once = (targets, onEnter, options) => {
   for (const target of targets) observer.observe(target);
 };
 once($$("[data-reveal]"), (el) => el.classList.add("is-in"), { threshold: 0.2 });
-once($$("[data-draw]"), (el) => el.classList.add("is-drawn"), { threshold: 0.4 });
 
 /* ───────────────────────────── The astrolabe's sighting: a crosshair, rulers and a readout of the true altitude
    and azimuth under the pointer, which instrument.js reads back through the plate's projection
