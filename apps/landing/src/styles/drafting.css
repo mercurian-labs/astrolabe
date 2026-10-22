@@ -3404,13 +3404,147 @@ path.pf-rs {
   animation: rise 0.45s var(--ease-out) 2.15s both;
 }
 
-.sim--run,
-.sim--cmp {
+/* Isolate: each branch ends in a worktree, named for its branch, with its agent at the right. */
+.motion .sw .sf-branch {
+  animation-delay: var(--d);
+}
+.sw-tree rect {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.25;
+}
+.sw-tree text {
+  font: 500 12px var(--mono);
+  letter-spacing: 0.04em;
+  fill: var(--ink);
+}
+.sw-tree .sw-who {
+  text-transform: uppercase;
+  fill: var(--ink-3);
+}
+.motion .sw-tree {
+  animation: rise 0.45s var(--ease-out) var(--d) both;
+}
+
+/* Hand off: the planner's chat, drawn the way the app draws subagents. A round mark per agent with
+   its state in the corner; a result lands back as a row of its own. */
+.sh {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8rem;
+  height: 100%;
+  padding: 1.1rem 1.4rem;
+  font: 400 0.8rem/1.4 var(--sans);
+}
+.sh__ask {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+}
+.sh__group {
+  border: 1px solid var(--rule);
+}
+.sh__head,
+.sh__row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.65rem;
+}
+.sh__head {
+  border-bottom: 1px solid var(--rule-soft);
+}
+.sh__head > span:nth-child(2),
+.sh__row > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.sh b,
+.sh em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh b {
+  font-weight: 500;
+  color: var(--ink);
+}
+.sh b i {
+  margin-left: 0.4em;
+  font: 500 0.66rem var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-style: normal;
+  color: var(--ink-3);
+}
+.sh em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+}
+.sh__head em {
+  color: var(--rust);
+}
+.sh__time {
+  font: 500 0.68rem var(--mono);
+  color: var(--ink-3);
+}
+.sh__avs {
+  display: flex;
+}
+.sh__avs .sh__av + .sh__av {
+  margin-left: -0.45rem;
+}
+.sh__av {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+}
+.sh__av svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+/* The state in the corner: ink once done, rust while it works. */
+.sh__av--done::after,
+.sh__av--run::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--ink);
+}
+.sh__av--run::after {
+  background: var(--rust);
+}
+.sh__back {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+.motion .sh > * {
+  animation: rise 0.45s var(--ease-out) var(--d) both;
+}
+
+.sim--run {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
-.sr,
-.sc {
+.sr {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -3420,20 +3554,17 @@ path.pf-rs {
 .sr {
   gap: 0.85rem;
 }
-.sr__foot,
-.sc__foot {
+.sr__foot {
   margin-top: auto;
   padding-top: 0.65rem;
   border-top: 1px solid var(--rule-soft);
   color: var(--ink-3);
   white-space: nowrap;
 }
-.sr + .sr,
-.sc + .sc {
+.sr + .sr {
   border-left: 1px solid var(--rule);
 }
-.sr__head,
-.sc__head {
+.sr__head {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
@@ -3480,161 +3611,6 @@ path.pf-rs {
 }
 .motion .sr__done {
   animation: fade 0.3s ease 2.3s both;
-}
-
-.sc {
-  gap: 0.45rem;
-}
-.sc__head {
-  margin-bottom: 0.3rem;
-}
-.sc__row {
-  position: relative;
-  padding: 0.15rem 0.4rem;
-  white-space: pre;
-  background: color-mix(in srgb, var(--ink) 4.5%, transparent);
-}
-.sc__row i {
-  font-style: normal;
-  color: var(--ink-3);
-  margin-right: 0.6em;
-}
-.sc__row--del {
-  background: none;
-  color: var(--ink-3);
-  text-decoration: line-through;
-}
-.sc__row--key {
-  outline: 1px solid var(--rust);
-  outline-offset: -1px;
-}
-/* The rule between the two decisive lines. */
-.sc + .sc .sc__row--key::before {
-  content: "";
-  position: absolute;
-  right: 100%;
-  top: 50%;
-  width: 2.4rem;
-  height: 1px;
-  background: var(--rust);
-}
-.sc__foot {
-  font-size: 0.7rem;
-}
-.motion .sc__row {
-  animation: rise 0.4s var(--ease-out) var(--d) both;
-}
-.motion .sc + .sc .sc__row--key::before {
-  animation: fade 0.35s ease 1s both;
-}
-.sk {
-  position: absolute;
-  inset: 1rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--rule-soft);
-}
-.sk__crumb {
-  font: 500 0.68rem var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.sk__title {
-  font: 400 1.4rem/1.1 var(--serif);
-  letter-spacing: -0.02em;
-}
-.sk__bar {
-  height: 0.5rem;
-  width: var(--w);
-  background: color-mix(in srgb, var(--ink) 9%, transparent);
-}
-.sk__new {
-  position: relative;
-  padding-left: 0.75rem;
-  font-size: 0.85rem;
-  line-height: 1.4;
-}
-.sk__new::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.15em;
-  bottom: 0.15em;
-  width: 2px;
-  background: var(--rust);
-  transform-origin: top;
-}
-.sk__merged {
-  margin-top: auto;
-  align-self: flex-end;
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--ink);
-  font: 500 0.68rem var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.sk__note {
-  position: absolute;
-  left: 6%;
-  right: 12%;
-  top: 30%;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  box-shadow: 0.3rem 0.3rem 0 -1px var(--ink);
-  font-size: 0.82rem;
-  line-height: 1.4;
-  opacity: 0;
-}
-.sk__note span {
-  display: block;
-  margin-bottom: 0.25rem;
-  font: 500 0.64rem var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-@keyframes land {
-  0% {
-    opacity: 0;
-    transform: translate(-8%, -95%) rotate(-2deg);
-  }
-  15% {
-    opacity: 1;
-  }
-  65% {
-    opacity: 1;
-    transform: none;
-  }
-  100% {
-    opacity: 0;
-    transform: none;
-  }
-}
-@keyframes ink-in {
-  from {
-    color: transparent;
-  }
-}
-@keyframes grow {
-  from {
-    transform: scaleY(0);
-  }
-}
-.motion .sk__note {
-  animation: land 1.5s var(--ease-roll) 0.2s both;
-}
-.motion .sk__new span {
-  animation: ink-in 0.5s ease 1.25s both;
-}
-.motion .sk__new::before {
-  animation: grow 0.45s var(--ease-out) 1.25s both;
-}
-.motion .sk__merged {
-  animation: rise 0.4s var(--ease-out) 2.1s both;
 }
 
 @media (max-width: 900px) {
@@ -3690,37 +3666,12 @@ path.pf-rs {
   .sr__head {
     padding-bottom: 0.4rem;
   }
-  .sr,
-  .sc {
+  .sr {
     font-size: 0.72rem;
   }
-  .sc {
-    padding: 0.8rem 0.7rem;
-  }
-  .sim--cmp {
-    grid-template-columns: 1fr;
-  }
-  .sim--cmp .sc + .sc {
-    border-left: 0;
-    border-top: 1px solid var(--rule);
-  }
-  .sim--cmp .sc__row:not(.sc__row--key),
-  .sc + .sc .sc__row--key::before {
-    display: none;
-  }
-  .sim--cmp .sc {
-    justify-content: center;
-    gap: 0.6rem;
+  .sh {
     padding: 0.9rem 1rem;
-  }
-  .sim--cmp .sc__head {
-    margin: 0;
-    padding-bottom: 0.5rem;
-  }
-  .sim--cmp .sc__foot {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
+    font-size: 0.72rem;
   }
   .sr__foot {
     display: none;
@@ -3745,6 +3696,70 @@ path.pf-rs {
   }
 }
 
+/* ───────────────────────────────────────── [08] Automations: one day, three ways an agent starts */
+
+.auto {
+  border-top: 1px solid var(--rule);
+}
+.auto > .head {
+  border-top: 0;
+}
+.auto__fig {
+  padding: clamp(2rem, 4vw, 4rem) var(--pad);
+  border-top: 1px solid var(--rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.auto__fig::-webkit-scrollbar {
+  display: none;
+}
+.wake {
+  display: block;
+  width: 100%;
+  min-width: 46rem;
+  max-width: 76rem;
+  height: auto;
+  margin-inline: auto;
+  overflow: visible;
+}
+.wake text {
+  font: 500 13px var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  fill: var(--ink);
+}
+.wake .wake__hours text,
+.wake .wake__who,
+.wake .wake__end {
+  fill: var(--ink-3);
+}
+.wake .wake__who {
+  font: 400 15px var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+  fill: var(--ink-2);
+}
+.wake .wake__rust {
+  fill: var(--rust);
+}
+.wake__n {
+  fill: var(--ink);
+}
+.wake__fail {
+  fill: var(--paper);
+  stroke: var(--rust);
+  stroke-width: 2;
+}
+.wake__wait {
+  fill: none;
+  stroke: var(--ink-4);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 7;
+  stroke-linecap: round;
+}
+.auto .spec {
+  border-top: 1px solid var(--rule);
+}
 /* ───────────────────────────────────────── [08] One window: a compact strip of four facts */
 
 .window-strip {

@@ -1,18 +1,98 @@
-          <!-- ───────────────────────────────────────── [07] Agents and four moves -->
+          <!-- ───────────────────────────────────────── [04] Agents and four moves -->
           <section class="agents" id="agents" aria-labelledby="agents-title">
             <div class="head">
               <div class="head__main">
-                <p class="tag">[07] Agents</p>
-                <h2 id="agents-title" class="h2" data-reveal>Bring the agents you already have.</h2>
+                <p class="tag">[04] Agents</p>
+                <h2 id="agents-title" class="h2" data-reveal>Your agents, side by side.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                Astrolabe drives the coding agents on your computer, signed in with your own accounts. Your
-                code goes to the provider you chose, the same as running its command line yourself. Switch
-                agents between turns; the thread notes each handoff.
+                Astrolabe drives the coding agents on your computer: Claude Code, Codex, Cursor, Grok,
+                OpenCode and Antigravity. Your code goes to the provider you chose, the same as running its
+                command line yourself.
               </p>
             </div>
 
             <ol class="moves" data-moves>
+              <li class="move" id="move-run">
+                <div class="move__sim sim sim--run" data-sim aria-hidden="true">
+                  <div class="sr">
+                    <p class="sr__head"><span>Codex</span><span class="sr__done">Done</span></p>
+                    <p class="sr__line" style="--n: 12; --d: 0.2s">Read 4 files</p>
+                    <p class="sr__line" style="--n: 21; --d: 0.7s">Edited intents.ts <b>+86</b></p>
+                    <p class="sr__line" style="--n: 26; --d: 1.25s">Edited intents.test.ts <b>+54</b></p>
+                    <p class="sr__line" style="--n: 22; --d: 1.85s">Ran pnpm test payments</p>
+                    <p class="sr__foot">Your ChatGPT sign-in</p>
+                  </div>
+                  <div class="sr">
+                    <p class="sr__head"><span>Claude Code</span><span class="sr__live"><i></i>Working</span></p>
+                    <p class="sr__line" style="--n: 12; --d: 0.45s">Read 3 files</p>
+                    <p class="sr__line" style="--n: 25; --d: 0.95s">Edited ApplePayButton.tsx <b>+71</b></p>
+                    <p class="sr__line" style="--n: 23; --d: 1.55s">Edited PayButtons.tsx <b>+9</b></p>
+                    <p class="sr__line" style="--n: 21; --d: 2.1s">Running pnpm test …</p>
+                    <p class="sr__foot">Your Claude sign-in</p>
+                  </div>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[01]</p>
+                  <h3 class="move__verb">Run</h3>
+                  <p>Every agent gets a chat tab, signed in with your own account, and says where it stands.</p>
+                </div>
+              </li>
+              <li class="move" id="move-isolate">
+                <div class="move__sim sim" data-sim>
+                  <!-- One repository, three checkouts: each agent's worktree on a branch of its own. -->
+                  <svg class="sf sw" viewBox="0 0 400 240" aria-hidden="true">
+                    <path class="sf-main" pathLength="1" d="M28 196H372" />
+                    <circle class="sf-n" style="--d: 0.2s" cx="64" cy="196" r="6" />
+                    <circle class="sf-n" style="--d: 0.35s" cx="112" cy="196" r="6" />
+                    <circle class="sf-ring" pathLength="1" cx="112" cy="196" r="14" />
+                    <text class="sf-t" x="36" y="226">main</text>
+                    <path class="sf-branch" style="--d: 0.9s" pathLength="1" d="M112 196C146 196 142 52 176 52H196" />
+                    <path class="sf-branch" style="--d: 1.05s" pathLength="1" d="M112 196C146 196 142 106 176 106H196" />
+                    <path class="sf-branch" style="--d: 1.2s" pathLength="1" d="M112 196C146 196 142 160 176 160H196" />
+                    <g class="sw-tree" style="--d: 1.55s">
+                      <rect x="196" y="38" width="184" height="28" />
+                      <text x="208" y="56.5">apple-pay</text>
+                      <text class="sw-who" x="370" y="56.5" text-anchor="end">Claude</text>
+                    </g>
+                    <g class="sw-tree" style="--d: 1.7s">
+                      <rect x="196" y="92" width="184" height="28" />
+                      <text x="208" y="110.5">payment-intents</text>
+                      <text class="sw-who" x="370" y="110.5" text-anchor="end">Codex</text>
+                    </g>
+                    <g class="sw-tree" style="--d: 1.85s">
+                      <rect x="196" y="146" width="184" height="28" />
+                      <text x="208" y="164.5">pay-button</text>
+                      <text class="sw-who" x="370" y="164.5" text-anchor="end">Claude</text>
+                    </g>
+                  </svg>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[02]</p>
+                  <h3 class="move__verb">Isolate</h3>
+                  <p>Each works in its own git worktree, on a branch of its own, so they don’t step on each other.</p>
+                </div>
+              </li>
+              <li class="move" id="move-handoff">
+                <div class="move__sim sim sim--hand" data-sim aria-hidden="true">
+                  <!-- The planner's chat as the app draws it: the subagents it started, then a result
+                       landing back as a row of its own. -->
+                  <div class="sh">
+                    <p class="sh__ask" style="--d: 0.1s">Hand the API to Codex and the button to Claude.</p>
+                    <div class="sh__group" style="--d: 0.55s">
+                      <p class="sh__head"><span class="sh__avs"><span class="sh__av"><svg><use href="#p-openai" /></svg></span><span class="sh__av"><svg><use href="#p-claude" /></svg></span></span><span><b>2 subagents</b><em>1 working · 1 done</em></span><span class="sh__time">4m 12s</span></p>
+                      <p class="sh__row"><span class="sh__av sh__av--done"><svg><use href="#p-openai" /></svg></span><span><b>Payment intents API</b><em>Opened #512, tests pass</em></span><span class="sh__time">4m 12s</span></p>
+                      <p class="sh__row"><span class="sh__av sh__av--run"><svg><use href="#p-claude" /></svg></span><span><b>Apple Pay button</b><em>Editing ApplePayButton.tsx</em></span><span class="sh__time">2m 40s</span></p>
+                    </div>
+                    <p class="sh__row sh__back" style="--d: 1.5s"><span class="sh__av sh__av--done"><svg><use href="#p-openai" /></svg></span><span><b>Payment intents API <i>Finished</i></b><em>Opened #512, tests pass</em></span><span class="sh__time">4:21 PM</span></p>
+                  </div>
+                </div>
+                <div class="move__cap">
+                  <p class="tag">[03]</p>
+                  <h3 class="move__verb">Hand off</h3>
+                  <p>An agent can hand a task to another, on any provider, and the result comes back to its thread.</p>
+                </div>
+              </li>
               <li class="move" id="move-fork">
                 <div class="move__sim sim" data-sim>
                   <svg class="sf" viewBox="0 0 400 240" aria-hidden="true">
@@ -27,90 +107,22 @@
                     <circle class="sf-n" style="--d: 1.75s" cx="310" cy="78" r="6" />
                     <circle class="sf-head" cx="352" cy="78" r="6" />
                     <g class="sf-tag">
-                      <rect x="262" y="34" width="110" height="24" />
-                      <text x="317" y="50" text-anchor="middle">New thread</text>
+                      <rect x="282" y="34" width="90" height="24" />
+                      <text x="327" y="50" text-anchor="middle">A fork</text>
                     </g>
                   </svg>
                 </div>
                 <div class="move__cap">
-                  <p class="tag">[01]</p>
-                  <h3 class="move__verb">Fork</h3>
-                  <p>Nothing runs until you send the fork its first message, so you can open one before you decide to use it.</p>
-                </div>
-              </li>
-              <li class="move" id="move-run">
-                <div class="move__sim sim sim--run" data-sim aria-hidden="true">
-                  <div class="sr">
-                    <p class="sr__head"><span>Codex</span><span class="sr__done">Done</span></p>
-                    <p class="sr__line" style="--n: 12; --d: 0.2s">Read 6 files</p>
-                    <p class="sr__line" style="--n: 22; --d: 0.7s">Edited ledger/round.ts <b>+42</b></p>
-                    <p class="sr__line" style="--n: 25; --d: 1.25s">Edited invoices/total.ts <b>+6</b></p>
-                    <p class="sr__line" style="--n: 20; --d: 1.85s">Ran pnpm test ledger</p>
-                    <p class="sr__foot">Branch ledger-rounding</p>
-                  </div>
-                  <div class="sr">
-                    <p class="sr__head"><span>Claude Code</span><span class="sr__live"><i></i>Working</span></p>
-                    <p class="sr__line" style="--n: 12; --d: 0.45s">Read 4 files</p>
-                    <p class="sr__line" style="--n: 24; --d: 0.95s">Edited invoices/round.ts <b>+31</b></p>
-                    <p class="sr__line" style="--n: 23; --d: 1.55s">Edited round.test.ts <b>+58</b></p>
-                    <p class="sr__line" style="--n: 21; --d: 2.1s">Running pnpm test …</p>
-                    <p class="sr__foot">Branch edge-rounding</p>
-                  </div>
-                </div>
-                <div class="move__cap">
-                  <p class="tag">[02]</p>
-                  <h3 class="move__verb">Run</h3>
-                  <p>Each fork shows its own status in the sidebar, working or waiting for you, and its agent in the composer.</p>
-                </div>
-              </li>
-              <li class="move" id="move-compare">
-                <div class="move__sim sim sim--cmp" data-sim aria-hidden="true">
-                  <div class="sc">
-                    <p class="sc__head">Codex · ledger</p>
-                    <p class="sc__row sc__row--del" style="--d: 0.15s"><i>−</i>round(item.amount)</p>
-                    <p class="sc__row" style="--d: 0.3s"><i>+</i>const exact = sum(items)</p>
-                    <p class="sc__row sc__row--key" style="--d: 0.45s"><i>+</i>roundMinor(exact, currency)</p>
-                    <p class="sc__foot">ledger/src/round.ts · idle</p>
-                  </div>
-                  <div class="sc">
-                    <p class="sc__head">Claude Code · invoices</p>
-                    <p class="sc__row sc__row--del" style="--d: 0.25s"><i>−</i>round(item.amount)</p>
-                    <p class="sc__row" style="--d: 0.4s"><i>+</i>const step = currency.step</p>
-                    <p class="sc__row sc__row--key" style="--d: 0.55s"><i>+</i>roundTo(line, step)</p>
-                    <p class="sc__foot">invoices/src/round.ts · working</p>
-                  </div>
-                </div>
-                <div class="move__cap">
-                  <p class="tag">[03]</p>
-                  <h3 class="move__verb">Compare</h3>
-                  <p>Open the forks as chat tabs with a diff beside each, and choose on what actually changed.</p>
-                </div>
-              </li>
-              <li class="move" id="move-keep">
-                <div class="move__sim sim sim--keep" data-sim aria-hidden="true">
-                  <div class="sk">
-                    <p class="sk__crumb">Wiki · engineering</p>
-                    <p class="sk__title">Rounding</p>
-                    <p class="sk__bar" style="--w: 94%"></p>
-                    <p class="sk__bar" style="--w: 80%"></p>
-                    <p class="sk__new"><span>Rounding happens once, in the ledger, using half to even.</span></p>
-                    <p class="sk__bar" style="--w: 88%"></p>
-                    <p class="sk__bar" style="--w: 56%"></p>
-                    <p class="sk__merged">Merged</p>
-                  </div>
-                  <p class="sk__note"><span>From “Ledger owns rounding”</span>Rounding happens once, in the ledger, using half to even.</p>
-                </div>
-                <div class="move__cap">
                   <p class="tag">[04]</p>
-                  <h3 class="move__verb">Keep</h3>
-                  <p>The kept fork comes back as a summary. What should outlast the thread goes to the wiki, as an amendment you approve.</p>
+                  <h3 class="move__verb">Fork</h3>
+                  <p>Every turn is a checkpoint. Fork from any of them, and the Lineage tab draws the family.</p>
                 </div>
               </li>
             </ol>
             <div class="pager" data-pager hidden>
-              <button type="button" aria-label="Fork" aria-current="true"></button>
-              <button type="button" aria-label="Run"></button>
-              <button type="button" aria-label="Compare"></button>
-              <button type="button" aria-label="Keep"></button>
+              <button type="button" aria-label="Run" aria-current="true"></button>
+              <button type="button" aria-label="Isolate"></button>
+              <button type="button" aria-label="Hand off"></button>
+              <button type="button" aria-label="Fork"></button>
             </div>
           </section>

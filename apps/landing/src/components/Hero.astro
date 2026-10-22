@@ -1,23 +1,25 @@
 ---
 import HeroWindow from "./HeroWindow.astro";
 import { phases } from "../scripts/tour-scenes.js";
+import { headline } from "../site.js";
 ---
 
           <!-- ───────────────────────────────────────── [01] Hero -->
           <section class="hero" id="top" aria-labelledby="hero-title">
             <div class="hero__head">
-              <h1 id="hero-title" class="hero__title">Chart twice, build once.</h1>
+              <h1 id="hero-title" class="hero__title">{headline}</h1>
               <p class="hero__lede">
-                Astrolabe is an agent development environment: run the coding agents you already use,
-                fork any turn to try a second direction, and ship each change with its docs.
+                Astrolabe is an agent development environment. Run Claude Code, Codex and the rest side by
+                side, hand work from one agent to the next, and ship what you and your agents build as one
+                change, code and docs together.
               </p>
               <div class="hero__actions">
                 <a class="btn btn--rust px px--on-rust" href="https://app.astrolabe.sh">
                   <span class="roll"><span>Try Astrolabe</span><span aria-hidden="true">Try Astrolabe</span></span>
                   <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
                 </a>
-                <a class="btn px" href="#how">
-                  <span class="roll"><span><span class="hide-sm">See </span>how a thread works</span><span aria-hidden="true"><span class="hide-sm">See </span>how a thread works</span></span>
+                <a class="btn px" href="#tour" data-tour-run>
+                  <span class="roll"><span>See it run</span><span aria-hidden="true">See it run</span></span>
                   <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
                 </a>
               </div>
@@ -25,9 +27,9 @@ import { phases } from "../scripts/tour-scenes.js";
 
             <!-- The tour's three phases. Without script the first is shown; while the tour plays the
                  running one fills; once it has played each replays from its phase. -->
-            <div class="tour" data-tour>
+            <div class="tour" id="tour" data-tour>
               <ol class="tour__phases" aria-label="The tour's phases">
-                <li><button type="button" class="tour__phase is-on" data-tour-phase disabled aria-current="step"><i aria-hidden="true"><span></span></i><span class="tag"><b>01</b> Threads</span></button></li>
+                <li><button type="button" class="tour__phase is-on" data-tour-phase disabled aria-current="step"><i aria-hidden="true"><span></span></i><span class="tag"><b>01</b> Agents</span></button></li>
                 <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>02</b> Wikis</span></button></li>
                 <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>03</b> Changes</span></button></li>
               </ol>

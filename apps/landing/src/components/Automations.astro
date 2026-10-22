@@ -1,0 +1,78 @@
+          <!-- ───────────────────────────────────────── [08] Automations -->
+          <section class="auto" id="automations" aria-labelledby="auto-title">
+            <div class="head">
+              <div class="head__main">
+                <p class="tag">[08] Automations</p>
+                <h2 id="auto-title" class="h2" data-reveal>Agents that start themselves.</h2>
+              </div>
+              <p class="body head__aside" data-reveal>
+                Run a task every morning, or whenever GitHub opens a pull request. An agent can watch its
+                pull request and wake when checks finish or someone comments.
+              </p>
+            </div>
+            <!-- One working day: three ways an agent starts without you. Each row is a trigger, the
+                 agent it starts, and its run; the third waits on its pull request, then wakes. -->
+            <div class="auto__fig">
+              <svg class="wake" viewBox="0 0 1120 300" data-draw role="img" aria-labelledby="wake-title">
+                <title id="wake-title">One day of automations. At 7:00 a scheduled task starts Claude on the night’s new issues. At 11:40 GitHub opens pull request 214 and a webhook starts Codex on a review. An agent watching pull request 212 waits until its checks fail at 15:20, then wakes and fixes them.</title>
+                <path class="dw lt" pathLength="1" style="--i: 0" d="M40 266H1080" />
+                <g class="wake__hours">
+                  <path class="dw lt" pathLength="1" style="--i: 0" d="M40 260V272M300 260V272M560 260V272M820 260V272M1080 260V272" />
+                  <text x="40" y="292">00:00</text>
+                  <text x="300" y="292" text-anchor="middle">06:00</text>
+                  <text x="560" y="292" text-anchor="middle">12:00</text>
+                  <text x="820" y="292" text-anchor="middle">18:00</text>
+                  <text x="1080" y="292" text-anchor="end">24:00</text>
+                </g>
+
+                <!-- 07:00, a schedule -->
+                <path class="dw lt" pathLength="1" style="--i: 1" d="M343 60V266" />
+                <path class="dw" pathLength="1" style="--i: 2" d="M343 60H520" />
+                <circle class="wake__n" cx="343" cy="60" r="6" />
+                <circle class="wake__n" cx="420" cy="60" r="5" />
+                <circle class="wake__n" cx="520" cy="60" r="5" />
+                <text x="331" y="44" text-anchor="end">Every weekday 07:00</text>
+                <text class="wake__who" x="343" y="88">Claude · triage new issues</text>
+                <text class="wake__end" x="532" y="64.5">Done</text>
+
+                <!-- 11:40, a webhook -->
+                <path class="dw lt" pathLength="1" style="--i: 3" d="M545 140V266" />
+                <path class="dw" pathLength="1" style="--i: 4" d="M545 140H700" />
+                <circle class="wake__n" cx="545" cy="140" r="6" />
+                <circle class="wake__n" cx="620" cy="140" r="5" />
+                <circle class="wake__n" cx="700" cy="140" r="5" />
+                <text x="533" y="124" text-anchor="end">GitHub opened #214</text>
+                <text class="wake__who" x="545" y="168">Codex · review #214</text>
+                <text class="wake__end" x="712" y="144.5">Done</text>
+
+                <!-- Waiting on #212, then woken by its checks -->
+                <path class="dw" pathLength="1" style="--i: 5" d="M210 214H300" />
+                <path class="wake__wait" d="M300 214H702" />
+                <path class="dw lt" pathLength="1" style="--i: 6" d="M702 214V266" />
+                <path class="dw" pathLength="1" style="--i: 7" d="M702 214H900" />
+                <circle class="wake__n" cx="210" cy="214" r="5" />
+                <circle class="wake__n" cx="300" cy="214" r="5" />
+                <circle class="wake__fail" cx="702" cy="214" r="7" />
+                <circle class="wake__n" cx="800" cy="214" r="5" />
+                <circle class="wake__n" cx="900" cy="214" r="5" />
+                <text class="wake__who" x="210" y="242">Claude · watching #212</text>
+                <text class="wake__rust" x="702" y="196" text-anchor="middle">Checks failed 15:20</text>
+                <text class="wake__who" x="714" y="242">Wakes, fixes the test</text>
+                <text class="wake__end" x="912" y="218.5">Done</text>
+              </svg>
+            </div>
+            <dl class="spec">
+              <div>
+                <dt>On a schedule</dt>
+                <dd>Every few hours, or at a set time on the days you choose.</dd>
+              </div>
+              <div>
+                <dt>On a webhook</dt>
+                <dd>GitHub opens a pull request and an agent starts on it. Signed requests only.</dd>
+              </div>
+              <div>
+                <dt>On its pull request</dt>
+                <dd>An agent waits on its pull request and wakes when checks finish or someone comments.</dd>
+              </div>
+            </dl>
+          </section>

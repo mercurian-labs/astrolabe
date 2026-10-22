@@ -1,21 +1,20 @@
-          <!-- ───────────────────────────────────────── [06] Changes -->
+          <!-- ───────────────────────────────────────── [07] Changes -->
           <section class="changes" id="changes" aria-labelledby="changes-title">
             <div class="head">
               <div class="head__main">
-                <p class="tag">[06] Changes</p>
-                <h2 id="changes-title" class="h2" data-reveal>Code and its docs ship together.</h2>
+                <p class="tag">[07] Changes</p>
+                <h2 id="changes-title" class="h2" data-reveal>Many agents, one change.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                A thread's pull request and the wiki change request that documents it form a change
-                group. The group says whether the docs have kept up, and can merge them when the code
-                merges.
+                The pull requests and wiki changes from the threads on a task form one group, and the docs
+                merge when the code does. The group says whether the docs have kept up.
               </p>
             </div>
 
             <div class="changes__body">
               <div class="changes__ui">
           <figure class="window">
-            <div class="app app--poster app--group" role="img" aria-label="The Changes section of Astrolabe, on the change group Ledger owns rounding, marked Docs behind. Merge with the code is on. Its members are the pull request #482 in harbor/billing and the change request Ledger owns rounding in the engineering wiki; two threads work on it.">
+            <div class="app app--poster app--group" role="img" aria-label="The Changes section of Astrolabe, on the change group Ledger owns rounding, marked Docs behind. Merge with the code is on. Its members are the pull requests #482 and #483 in harbor/billing and the change request Ledger owns rounding in the engineering wiki; three agents work on it: Claude, which started the group, and Codex and Claude, the agents it handed work to.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -54,7 +53,7 @@
                   <div class="shelf"><span>Change groups</span><i></i></div>
                   <ul class="side__list">
                     <li class="card is-active">
-                      <div class="card__head"><svg class="ico ico--xs"><use href="#i-layers" /></svg><span class="card__repo">2 change requests</span><span class="state state--warn">Docs behind</span></div>
+                      <div class="card__head"><svg class="ico ico--xs"><use href="#i-layers" /></svg><span class="card__repo">3 change requests</span><span class="state state--warn">Docs behind</span></div>
                       <div class="card__title">Ledger owns rounding</div>
                     </li>
                     <li class="card">
@@ -78,7 +77,7 @@
                       <span class="grp__title">Ledger owns rounding</span>
                       <span class="state state--warn">Docs behind</span>
                     </div>
-                    <p class="grp__sub">2 change requests, reviewed and merged each in its own place. 2 threads work on it.</p>
+                    <p class="grp__sub">3 change requests, reviewed and merged each in its own place. 3 threads work on it.</p>
                     <div class="grp__arm">
                       <span class="switch is-on" aria-hidden="true"><i></i></span>
                       <span><b>Merge with the code</b><em>The documentation merges the moment the code has. A merge the wiki refuses stays open for you to finish.</em></span>
@@ -87,12 +86,15 @@
                       <span class="mini"><svg class="ico ico--xs"><use href="#i-layers" /></svg>Open as a tab group</span>
                       <span class="mini"><svg class="ico ico--xs"><use href="#i-book" /></svg>Ask to update the docs</span>
                     </div>
-                    <p class="grp__label">Change requests</p>
-                    <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#482 Ledger owns rounding</b><em>harbor/billing · Open · From its thread</em></span></div>
+                    <p class="grp__label">Code</p>
+                    <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#482 Ledger owns rounding</b><em>harbor/billing · Open · From the coordinator’s work</em></span></div>
+                    <div class="member"><svg class="ico"><use href="#i-pr" /></svg><span><b>#483 Invoices pass exact totals</b><em>harbor/billing · Open · From the coordinator’s work</em></span></div>
+                    <p class="grp__label">Documentation</p>
                     <div class="member"><svg class="ico"><use href="#i-book" /></svg><span><b>Ledger owns rounding</b><em>engineering · Open · From its thread</em></span></div>
                     <p class="grp__label">Agents</p>
-                    <div class="member"><svg class="logo"><use href="#p-openai" /></svg><span><b>Ledger owns rounding</b><em>Started the group</em></span></div>
-                    <div class="member"><svg class="logo"><use href="#p-claude" /></svg><span><b>Keep rounding at the edge</b><em>A fork</em></span></div>
+                    <div class="member"><svg class="logo"><use href="#p-claude" /></svg><span><b>Where should rounding live?</b><em>Started the group · Idle</em></span></div>
+                    <div class="member"><svg class="logo"><use href="#p-openai" /></svg><span><b>Ledger owns rounding</b><em>A coordinator’s child · Idle</em></span></div>
+                    <div class="member"><svg class="logo"><use href="#p-claude" /></svg><span><b>Invoices pass exact totals</b><em>A coordinator’s child · Working</em></span></div>
                   </div>
                 </div>
               </div>
@@ -101,13 +103,13 @@
               </div>
               <div class="changes__side">
                 <p class="body">
-                  Groups lead the Changes section, beside pull requests from your git host and the wikis'
-                  change requests. A group's tab lists its members and why each is there, and opens them
-                  all as a tab group. On your phone, groups lead the Changes tab.
+                  A group gathers what one task produced: the pull requests from every agent that worked on
+                  it, and the wiki change that documents them. Its tab lists each member and why it is
+                  there. On your phone, groups lead the Changes tab.
                 </p>
                 <dl class="states">
                   <div><dt><span class="state">In sync</span></dt><dd>The docs keep pace with the code.</dd></div>
-                  <div><dt><span class="state state--warn">Docs behind</span></dt><dd>The code changed after its docs did. Ask the thread to update them.</dd></div>
+                  <div><dt><span class="state state--warn">Docs behind</span></dt><dd>The code changed after its docs did. Ask an agent to update them.</dd></div>
                   <div><dt><span class="state state--info">Waiting on code</span></dt><dd>The docs have merged; the code hasn't yet.</dd></div>
                   <div><dt><span class="state state--warn">Docs missing</span></dt><dd>Code with no docs beside it. Ask for a draft.</dd></div>
                   <div><dt><span class="state state--done">Merged</span></dt><dd>Everything in the group has landed.</dd></div>

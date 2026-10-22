@@ -1,6 +1,9 @@
 ---
 import Sprite from "../components/Sprite.astro";
 import "../styles/drafting.css";
+import { description, headline } from "../site.js";
+
+const title = `Astrolabe · ${headline}`;
 ---
 
 <!doctype html>
@@ -8,11 +11,15 @@ import "../styles/drafting.css";
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Astrolabe · Chart twice, build once</title>
-    <meta
-      name="description"
-      content="Astrolabe is an agent development environment. Run the coding agents you already use, fork any turn to try a second direction, and ship each change with its docs."
-    />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Astrolabe" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#fbf9f4" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
