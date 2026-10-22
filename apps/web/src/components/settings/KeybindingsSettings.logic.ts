@@ -401,6 +401,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "commandPalette.toggle": "Search",
   "commandLine.open": "Command Palette",
   "section.new": "New Thread or Document",
+  "section.threads": "Section: Agents",
   "section.pullRequests": "Section: Changes",
   "tab.close": "Close Tab or Pane Tab",
   "draft.write": "Send Draft or Save Note",

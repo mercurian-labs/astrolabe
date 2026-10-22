@@ -45,7 +45,7 @@ interface AppSection {
 }
 
 /**
- * The app's sections: Threads and Wikis, then Change Requests (where a server supports pull
+ * The app's sections: Agents and Wikis, then Change Requests (where a server supports pull
  * requests; it lists the wikis' change requests beside them) and
  * Usage, and Settings. Each opens as the rail's button does.
  */
@@ -71,7 +71,7 @@ export function useAppSections(): readonly AppSection[] {
   return [
     {
       id: "threads",
-      label: "Threads",
+      label: "Agents",
       icon: <MessagesSquare />,
       active: onThreads,
       open: () => void navigateToMainApp(),
@@ -126,7 +126,7 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: the monogram, then the app's sections (Threads, Wikis, Repositories,
+ * The far-left icon rail: the monogram, then the app's sections (Agents, Wikis, Repositories,
  * Change Requests and Usage), and Settings at the foot, which is the account menu wherever sign-in
  * is set up. It runs from below the title bar to the
  * window's bottom edge and stays when the sidebar collapses; the sidebar opens beside it (see

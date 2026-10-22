@@ -12,7 +12,7 @@ export function WorkspaceSidebarTabs() {
       <SegmentedControl
         role="tab"
         options={[
-          { value: "threads", label: "Threads" },
+          { value: "threads", label: "Agents" },
           { value: "pullRequests", label: "Changes" },
         ]}
         selected={workspace.state.selectedTab}

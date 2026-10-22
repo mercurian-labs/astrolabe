@@ -18,7 +18,7 @@ When you change a note, **Save to change request** keeps your edit in a change r
 
 ## Documents beside your work
 
-A document can open beside a conversation, and a conversation beside a document. In a thread, **Document** in the right panel's **+** menu finds or writes one in that pane, and the thread's **Graph** tab opens the notes and change requests it names beside itself. In Wikis, a change request's **Open thread** shows its thread's conversation in a pane beside it. A tab outside its own section has **Open in Wikis**, **Open in Threads** or **Open in Changes** in its right-click menu, which moves it there.
+A document can open beside a conversation, and a conversation beside a document. In a thread, **Document** in the right panel's **+** menu finds or writes one in that pane, and the thread's **Graph** tab opens the notes and change requests it names beside itself. In Wikis, a change request's **Open thread** shows its thread's conversation in a pane beside it. A tab outside its own section has **Open in Wikis**, **Open in Agents** or **Open in Changes** in its right-click menu, which moves it there.
 
 ## Change requests
 

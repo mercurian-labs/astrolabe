@@ -1,6 +1,6 @@
 /**
  * Astrolabe: the sidebar's title row, upstream's search row with the section's name in it. The
- * name ("Threads", "Wikis") heads the list, with search, the scope filter and new item as icon
+ * name ("Agents", "Wikis") heads the list, with search, the scope filter and new item as icon
  * buttons at the row's end. Search opens upstream's own search field in the name's place, and the
  * field stays while it has focus or holds a query; Escape on an empty field, leaving it empty, or
  * picking a result puts the name back.

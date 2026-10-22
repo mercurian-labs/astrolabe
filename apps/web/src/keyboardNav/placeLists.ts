@@ -5,7 +5,7 @@ import { sidebarSectionSlot } from "~/whichKey/handles";
 import { listMoveForKey, moveListCursor } from "./listCursor.logic";
 
 /**
- * Astrolabe: moving through a place's list from the keyboard: the sidebar's rows (the Threads,
+ * Astrolabe: moving through a place's list from the keyboard: the sidebar's rows (the Agents,
  * Wikis and Pull Requests sidebars draw them) and the icon rail's buttons. While a row has focus:
  * `j`/`k` (and the arrows) step to the next or previous row, `gg`/`G` (and Home/End) jump to
  * the ends, Enter does what a click does (shows the row in the tab in front), Alt+Enter what an
@@ -48,13 +48,13 @@ const SIDEBAR_LIST: PlaceList = {
     "[data-testid='wiki-sidebar-row']:not([role='option'])",
     "[data-testid='wiki-sidebar-row-slim']:not([role='option'])",
     "[data-pull-request-key] > button",
-    // The legacy Threads sidebar's rows (Settings › Legacy sidebar).
+    // The legacy sidebar's thread rows (Settings › Legacy sidebar).
     "[data-testid^='thread-row-'][role='button']",
   ].join(", "),
   search: openSidebarSearch,
 };
 
-/** The icon rail's section buttons: Threads, Wikis, Pull Requests, Usage, Settings. */
+/** The icon rail's section buttons: Agents, Wikis, Pull Requests, Usage, Settings. */
 const RAIL_LIST: PlaceList = {
   place: "[data-app-rail]",
   // Each button is a tooltip's trigger, which takes over `data-slot`; `data-sidebar` stays.

@@ -39,7 +39,7 @@ back|not started> · <n> behind`. Quiet stretches fold into buttons named
   and a pull request named in full, beside their own tabs. A change request's **Open
   thread** opens its thread beside it. A thread's right panel takes only wiki tabs
   (Document, or a Graph tab click, which opens one beside the graph). A tab outside its
-  own section has **Open in Threads / Wikis / Repositories / Changes** first in
+  own section has **Open in Agents / Wikis / Repositories / Changes** first in
   its right-click menu: it closes here and opens there (a chat in the chat tab in front,
   a document in the Wikis tab in front, a repository tab in the Repositories panes, a
   change request or change group in Changes). The exception is a thread's

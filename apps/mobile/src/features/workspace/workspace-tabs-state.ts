@@ -13,8 +13,7 @@ export const WORKSPACE_TABS: ReadonlyArray<WorkspaceTab> = [
 
 /**
  * The roots iPhone shows. Wikis and Repositories wait on their own iPad sidebar design, so the
- * iPad sidebar picker, and the tab bar a compact iPad window shows, keep Threads and Change
- * requests.
+ * iPad sidebar picker, and the tab bar a compact iPad window shows, keep Agents and Changes.
  */
 export function workspaceTabsFor(device: "phone" | "pad"): ReadonlyArray<WorkspaceTab> {
   return device === "pad"
@@ -26,7 +25,7 @@ export function workspaceTabsFor(device: "phone" | "pad"): ReadonlyArray<Workspa
 export const WORKSPACE_TAB_LABELS: Readonly<
   Record<WorkspaceTab, { readonly title: string; readonly search: string }>
 > = {
-  threads: { title: "Threads", search: "Search threads" },
+  threads: { title: "Agents", search: "Search threads" },
   // Astrolabe: pull requests and the wikis' change requests, as web's Change Requests section.
   pullRequests: { title: "Changes", search: "Search changes" },
   wikis: { title: "Wikis", search: "Search wikis" },

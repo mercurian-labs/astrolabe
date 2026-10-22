@@ -15,7 +15,7 @@ import { surfaceIdOf } from "~/panes/arrangement";
 export type SectionId = "threads" | "wikis" | "repositories" | "change-requests";
 
 export const SECTION_LABELS: Readonly<Record<SectionId, string>> = {
-  threads: "Threads",
+  threads: "Agents",
   wikis: "Wikis",
   repositories: "Repositories",
   "change-requests": "Changes",
@@ -23,7 +23,7 @@ export const SECTION_LABELS: Readonly<Record<SectionId, string>> = {
 
 const CHAT_PREFIX = "chat:";
 
-/** A chat's tab key, for a thread shown in a pane outside Threads. */
+/** A chat's tab key, for a thread shown in a pane outside Agents. */
 export function chatTabKey(ref: ScopedThreadRef): string {
   return `${CHAT_PREFIX}${encodeURIComponent(ref.environmentId)}:${encodeURIComponent(ref.threadId)}`;
 }
@@ -45,7 +45,7 @@ export function parseChatTabKey(key: string): ScopedThreadRef | null {
 const isPullRequestKey = (key: string) => surfaceIdOf(key)?.startsWith("pull-request:") ?? false;
 
 /**
- * The section a tab belongs to: chats are Threads', documents Wikis', files and diffs
+ * The section a tab belongs to: chats are Agents', documents Wikis', files and diffs
  * Repositories', and change requests (a pull request or a wiki's) Change Requests'. Null for an
  * empty tab, and for the right panel's other surfaces, which never leave their thread.
  */

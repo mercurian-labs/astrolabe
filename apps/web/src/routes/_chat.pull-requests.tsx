@@ -1221,7 +1221,7 @@ function PullRequestsRouteView() {
     ),
   );
 
-  // Astrolabe: Cmd/Ctrl-click and Shift-click select rows, as in Threads; a drag or the menu on a
+  // Astrolabe: Cmd/Ctrl-click and Shift-click select rows, as in Agents; a drag or the menu on a
   // selected row carries the selection, in the list's order. The rows' handlers read the list as
   // it is now, and stay stable so a list change does not re-render every memoized row.
   const selectedRowKeys = useRowSelectionStore((store) =>

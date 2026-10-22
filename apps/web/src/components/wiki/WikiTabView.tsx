@@ -30,7 +30,7 @@ export interface WikiTabNav {
    * the same page under a new key (a note saved into a change request).
    */
   readonly replace: (from: string, key: string, options?: { readonly rekey?: boolean }) => void;
-  /** Shows a change request's thread; without it, its link goes to the thread in Threads. */
+  /** Shows a change request's thread; without it, its link goes to the thread in Agents. */
   readonly openThread?: (ref: ScopedThreadRef) => void;
   /** Shows one of a change request's pull requests beside it. */
   readonly openPullRequest?: (target: FullPullRequestTarget) => void;

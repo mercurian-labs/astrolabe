@@ -29,7 +29,7 @@ export function takePendingChangeRequestTabs(): readonly PendingChangeRequestTab
 }
 
 /**
- * Opens a tab in its own section and goes there: a chat in Threads (in the tab in front, as a
+ * Opens a tab in its own section and goes there: a chat in Agents (in the tab in front, as a
  * sidebar click shows it), a document in Wikis, a change request in Change Requests. A pull
  * request beside a thread is named by its thread (`pullRequest`), since its key leaves out the
  * server and host.

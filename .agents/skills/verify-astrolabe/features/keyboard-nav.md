@@ -3,7 +3,7 @@
 Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
-leftmost), the sidebar on screen (Threads, Wikis, Repositories or Changes), the chat
+leftmost), the sidebar on screen (Agents, Wikis, Repositories or Changes), the chat
 column, and each pane (the right panel's, the Wikis area's, the Repositories area's,
 the Changes area's). Never anything inside one (no stop for a tab strip, the
 timeline or the composer).
@@ -58,9 +58,9 @@ timeline or the composer).
   button under `[data-pull-request-key]`, the legacy sidebar's `thread-row-*`):
   `j`/`k`/ArrowDown/ArrowUp step, `gg`/`G`/ Home/End jump, folded and hidden rows
   skipped; Enter clicks the row, showing it in the tab in front, and keeps focus on it
-  (Threads: the opened thread's composer does not take focus, `keepsListFocus`; a click
+  (Agents: the opened thread's composer does not take focus, `keepsListFocus`; a click
   still hands it focus), Alt+Enter clicks with Alt (opens it in a new
-  tab; any other Alt chord stays the page's), Mod+Enter Mod-clicks it (Threads:
+  tab; any other Alt chord stays the page's), Mod+Enter Mod-clicks it (Agents:
   toggles selection, in Wikis and PRs too); `/` opens the sidebar's search; Escape focuses the place to the right;
   Space opens the keyboard menu. Keys act only with the row itself focused, not a
   control in it. The right panel's launcher letters leave a focused row its list keys
@@ -229,7 +229,7 @@ dark: only one pill carries the bar.
    mapping → Ctrl+H stays in the composer, Ctrl+W `h` still moves.
 9. **Rail.** From a sidebar row: Ctrl+H → the rail, on the current section's button,
    its light ring (`marked: rail`) → `j` → the next button → `G` → Settings (never
-   Toggle main sidebar) → `gg` → Threads → Enter → Threads opens, focus on the button
+   Toggle main sidebar) → `gg` → Agents → Enter → Agents opens, focus on the button
    → Escape → the sidebar.
    Collapse the sidebar → Ctrl+H from the chat → the rail → Ctrl+L → the chat. Tab
    into the rail → only one button is a tab stop.

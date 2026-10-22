@@ -28,7 +28,7 @@ export function isWikisPath(pathname: string) {
 let mainAppHref: string | null = null;
 
 // Mount once in the app shell. Records the latest threads URL so Back (and the
-// rail's Threads) can return there no matter how many utility pages, or wikis,
+// rail's Agents) can return there no matter how many utility pages, or wikis,
 // were visited since.
 export function MainAppLocationTracker() {
   const href = useLocation({

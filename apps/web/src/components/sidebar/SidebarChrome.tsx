@@ -204,7 +204,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigateToMainApp();
   };
 
-  // Astrolabe: on desktop the icon rail holds the sections, Threads among them as the way back,
+  // Astrolabe: on desktop the icon rail holds the sections, Agents among them as the way back,
   // and the update control above Settings, so the footer has no utility row.
   if (!isMobile) return null;
 
@@ -240,7 +240,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {isOnWikis ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
-              label="Threads"
+              label="Agents"
               onClick={handleBackClick}
             />
           ) : (
@@ -249,7 +249,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {isOnRepositories ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
-              label="Threads"
+              label="Agents"
               onClick={handleBackClick}
             />
           ) : (
@@ -262,7 +262,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {isOnPullRequests ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
-              label="Threads"
+              label="Agents"
               onClick={handleBackClick}
             />
           ) : pullRequestsSupported ? (

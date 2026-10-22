@@ -4807,7 +4807,7 @@ export default function Sidebar() {
               searchResultCount={threadSearchResults.length}
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
-              title="Threads"
+              title="Agents"
             />
           </SidebarGroup>
         }

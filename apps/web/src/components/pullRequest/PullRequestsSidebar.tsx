@@ -7,7 +7,7 @@ import { SidebarSectionTitle } from "../sidebar/SidebarThreadHeader";
 
 /**
  * Astrolabe: the Change Requests section's sidebar (pull requests and the wikis' change
- * requests), as Threads and Wikis have theirs. The sidebar
+ * requests), as Agents and Wikis have theirs. The sidebar
  * draws the frame (the brand row, the section's title row, the footer); the list and its
  * controls stay with the page that queries, filters and selects them, which portals them in.
  */

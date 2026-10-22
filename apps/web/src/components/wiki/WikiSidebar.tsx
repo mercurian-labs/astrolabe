@@ -166,7 +166,7 @@ export function WikiSidebar() {
 
   // Astrolabe: a click shows the document in the focused pane's tab in front; Option-click and
   // the middle button open it in a new tab there (the row's menu opens it beside, in a new
-  // pane). Cmd/Ctrl-click and Shift-click select rows, as in Threads.
+  // pane). Cmd/Ctrl-click and Shift-click select rows, as in Agents.
   const open = useCallback(
     (tab: WikiTab, event: RowClick | null) => {
       const intent =

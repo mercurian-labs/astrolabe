@@ -260,8 +260,8 @@ export function SectionTabContent({
 }
 
 /**
- * A thread's chat in a pane, as Threads shows it but without the chat tabs: the pane's own strip
- * holds the tab. Its right panel is the thread's, as in Threads.
+ * A thread's chat in a pane, as Agents shows it but without the chat tabs: the pane's own strip
+ * holds the tab. Its right panel is the thread's, as in Agents.
  */
 function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   return (

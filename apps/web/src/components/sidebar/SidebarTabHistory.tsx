@@ -8,7 +8,7 @@ import { tabHistorySlot } from "~/whichKey/handles";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 /**
- * Astrolabe: back and forward for the section's tab in front (the chat tab in Threads, the focused
+ * Astrolabe: back and forward for the section's tab in front (the chat tab in Agents, the focused
  * pane's tab in Wikis), at the end of the sidebar's title-bar row, as a browser's arrows sit in
  * its title bar. Shown only in a section with tabs, faint with nothing that way.
  */

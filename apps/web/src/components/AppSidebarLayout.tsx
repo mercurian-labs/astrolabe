@@ -273,7 +273,7 @@ function NavigationHistoryShortcuts() {
 
       event.preventDefault();
       event.stopPropagation();
-      // Astrolabe: in a section with tabs (Threads, Wikis), the tab in front's own history.
+      // Astrolabe: in a section with tabs (Agents, Wikis), the tab in front's own history.
       const tabHistory = tabHistorySlot.get();
       if (tabHistory) {
         if (!event.repeat) tabHistory.go(command === "navigation.back" ? "back" : "forward");
@@ -415,7 +415,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
                   ? "Repositories"
                   : isOnPullRequests
                     ? "Changes"
-                    : "Threads"
+                    : "Agents"
           }
           resizable={{
             maxWidth: sidebarMaximumWidth,

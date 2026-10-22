@@ -41,7 +41,7 @@ export function CompactBrandTitle(
         props.fit && showStage ? (event) => setFullWidth(event.nativeEvent.layout.width) : undefined
       }
       aria-level={1}
-      accessibilityLabel={props.accessibilityLabel ?? "Astrolabe, Threads"}
+      accessibilityLabel={props.accessibilityLabel ?? "Astrolabe, Agents"}
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"
@@ -95,7 +95,7 @@ export function getCompactBrandHeaderOptions(
   return {
     headerTitle: renderCompactBrandTitle,
     headerTitleStyle: fallbackTitleStyle,
-    title: "Threads",
+    title: "Agents",
     unstable_headerLeftItems: undefined,
   };
 }

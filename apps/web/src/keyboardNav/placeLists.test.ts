@@ -134,7 +134,7 @@ describe("which keys a sidebar row keeps from the page", () => {
     expect(takesListKey(byId("pill"), "g")).toBe(false);
   });
 
-  it("covers the legacy Threads sidebar's rows too", () => {
+  it("covers the legacy sidebar's thread rows too", () => {
     document.body.innerHTML =
       '<div data-app-sidebar><div role="button" tabindex="0" data-testid="thread-row-t1"></div></div>';
     expect(isListRow(document.querySelector("[data-testid='thread-row-t1']")!)).toBe(true);

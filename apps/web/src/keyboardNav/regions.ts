@@ -3,7 +3,7 @@ import { focusListRow, isListRow, listDefaultRow } from "./placeLists";
 
 /**
  * Astrolabe: the places the focus moves (`focus.left` …) go between: the icon rail at the far
- * left, the sidebar on screen (Threads, Wikis or Pull Requests), the chat column, and each pane
+ * left, the sidebar on screen (Agents, Wikis or Pull Requests), the chat column, and each pane
  * (the right panel's, the Wikis area's, the Pull Requests area's). Never anything inside one. Each
  * place remembers what last had focus in it, and focus returns there. The place keys act from,
  * the one last focused or pressed in, wears `data-focused-place`, which marks its tab in front

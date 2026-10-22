@@ -39,7 +39,7 @@ import { runKeybindingCommand, shortcutForCommand } from "./keybindingCommands";
  * through their own shortcut handlers (`runKeybindingCommand`), so they need a shortcut.
  */
 export interface AppCommandContext {
-  /** The sidebar section's title row, while one is mounted (Threads, Wikis): its new button. */
+  /** The sidebar section's title row, while one is mounted (Agents, Wikis): its new button. */
   readonly section: SidebarSectionHandle | null;
   readonly chatTabs: ChatTabsHandle | null;
   readonly panes: PanesHandle | null;

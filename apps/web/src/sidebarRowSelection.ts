@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 /**
  * Astrolabe: Cmd/Ctrl-click and Shift-click selection in the Wikis and Pull Requests sidebars,
- * as Threads keeps its own (`threadSelectionStore`): the rows selected, in the order they were,
+ * as Agents keeps its own (`threadSelectionStore`): the rows selected, in the order they were,
  * and the anchor a Shift-click ranges from, which a plain click sets. One section's at a time:
  * selecting in another starts over.
  */

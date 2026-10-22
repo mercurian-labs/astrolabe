@@ -2,7 +2,7 @@
 
 The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark (the
 rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds and, in
-each section with tabs (Threads, Wikis, Repositories, and Changes where the server
+each section with tabs (Agents, Wikis, Repositories, and Changes where the server
 supports pull requests), **Back** and **Forward** at its right end (`[data-tab-history]`, from
 `SidebarTabHistory.tsx`; see chat-tabs.md, wikis.md, repositories.md and pull-requests.md). It has a bottom border in
 line with the tab strip's and keeps the icon rail's colour (`bg-sidebar`), so the
@@ -13,7 +13,7 @@ sidebar colour. There is no sidebar artwork: the identification setting offers
 the version pill or none, and a stored "artwork" shows the pill.
 
 Below it, the sidebar opens on its **section title**, as ChatGPT's does: a large
-"Threads" (or "Wikis", "Repositories", "Changes"; see [wikis.md](wikis.md)) heading with the section's
+"Agents" (or "Wikis", "Repositories", "Changes"; see [wikis.md](wikis.md)) heading with the section's
 actions at its right end.
 
 ## Sub-features
@@ -24,7 +24,7 @@ actions at its right end.
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
   corner the same way, where the rail's edge meets the title bar's bottom border (strips,
   and the Settings and Usage headers).
-- Title row: heading **Threads**, then **Search threads**, **Filter threads by
+- Title row: heading **Agents**, then **Search threads**, **Filter threads by
   project**, **New thread**. The filter is a combobox (`projects/useThreadsProjectFilter.ts`
   over the shared `projects/projectFilter.ts`). Its popup has a `Search projects` field, then
   All projects, a **Repositories** heading and each repository, a **Wikis** heading and each
@@ -45,9 +45,9 @@ actions at its right end.
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
   list, the "New thread in…" picker. It is disabled with no projects. Each project row in
   the filter's popup has a `Project settings for <name>` gear.
-- **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Threads, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
+- **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
-  (Threads, Wikis, Repositories, Changes when the server supports pull requests, Usage),
+  (Agents, Wikis, Repositories, Changes when the server supports pull requests, Usage),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
   (`Check for updates`, a rail list row) and Settings sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a link (see
@@ -55,7 +55,7 @@ actions at its right end.
   Rail mark).
   Usage has no sidebar: there it shows collapsed and the toggle is gone (`mod+b` does
   nothing), and leaving Usage restores the open state. The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Threads returns to the last chat. Repositories and Changes are
+  (`useAppSections`). Agents returns to the last chat. Repositories and Changes are
   sections like Wikis, each with its own sidebar and panes ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
@@ -63,7 +63,7 @@ actions at its right end.
   monogram, is absent; the header row carries no brand at any width, and below 768px it starts
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
   account menu), Wikis, Repositories, Changes (when the server supports pull requests) and
-  Usage; while on Wikis, Repositories or Changes, that section's button reads Threads
+  Usage; while on Wikis, Repositories or Changes, that section's button reads Agents
   instead. On Settings (legacy `/projects/…` links included) and Usage it shows only Back,
   beside the account menu when there is one.
 - **Toggle main sidebar** is drawn over the rail's title-bar cell, above the monogram (same icon,
@@ -107,7 +107,7 @@ and again after dragging `Resize Sidebar` narrower.
 
 - The order of the title row's actions is a design decision still open (search,
   filter, new today). Assert presence, not order, unless the change is about order.
-- Scope locators: `navigation "Threads"` (the sidebar), the rail's `button "Threads"`
-  and `heading "Threads"` share the name.
+- Scope locators: `navigation "Agents"` (the sidebar), the rail's `button "Agents"`
+  and `heading "Agents"` share the name.
 - Upstream reworks `Sidebar.tsx` often. After a sync, check that all three
   actions still exist with these names.

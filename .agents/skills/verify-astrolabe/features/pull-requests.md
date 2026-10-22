@@ -1,6 +1,6 @@
 # Changes (pull requests and wiki change requests)
 
-Astrolabe's section after Threads, Wikis and Repositories: every pull request on the
+Astrolabe's section after Agents, Wikis and Repositories: every pull request on the
 connected git hosts, listed in its own sidebar and opened in Obsidian-style tabs and
 splits (the same panes as Wikis and the right panel, see [panes.md](panes.md)).
 Astrolabe owns the section's shell (sidebar frame, panes, tab history, selection,
@@ -92,7 +92,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a repository
   is the list's `projectId` scope. Repositories (all or one) hides Wiki changes; Wikis (all or
   one) hides the pull requests, Sort and Filters, and an empty wiki says `No change requests in
-<wiki> yet`. The Threads filter (`projects/useThreadsProjectFilter.ts`, combobox `Filter
+<wiki> yet`. The Agents filter (`projects/useThreadsProjectFilter.ts`, combobox `Filter
 threads by project: <name>`) lists the same, a wiki only once its folder is a project (one
   added through Wikis → Add a folder is). Filters still holds Host (with several hosts) and
   upstream's Project, which mirrors the same scope.
@@ -215,7 +215,7 @@ Save a screenshot of the section.
 `components/pullRequest/PullRequestsSidebar.tsx`, `PullRequestPanes.tsx`,
 `pullRequestTabs.ts`, `components/changeRequests/` (project filter, kind, Wiki changes,
 and `groups/` with the thread header's pill), `state/changeGroups.ts`,
-`components/projects/` (the project filter, shared with the Threads sidebar),
+`components/projects/` (the project filter, shared with the Agents sidebar),
 `settings/ChangeRequestSettings.tsx` and `routes/settings.change-requests.tsx`, the
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
 `packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server

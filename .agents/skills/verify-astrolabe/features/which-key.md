@@ -35,10 +35,10 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   `w` Wikis, `,` Settings. `n`'s
   label follows the section (on Wikis: "New document").
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Threads, w Wikis, r Repositories, p Changes,
+- **Groups** (defaults): `g` t Agents, w Wikis, r Repositories, p Changes,
   u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
   browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
-  `navigation.back`/`forward` through their shortcuts: in Threads, Wikis, Repositories
+  `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Repositories
   and Changes they walk the tab in front's history and are faint at either
   end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
@@ -146,9 +146,9 @@ and copy the backup back when done. The server picks changes up live.
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
    with the sixteen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
-   `Menu › Go to`, rows Threads, Wikis, Repositories, Changes (a faint row
+   `Menu › Go to`, rows Agents, Wikis, Repositories, Changes (a faint row
    where pull requests are unsupported), Usage, Settings → click **Backspace back**
-   → heading `Menu` → `g` → `z` → "Not bound", still open → click Threads, or `w`,
+   → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `w`,
    or `r` (`/repositories`) → the URL changes, menu closed.
 2. **Leader across sections.** On Wikis, click the heading → Space → menu after the
    delay, heading `Menu`, rows say "Search"/"New document" → `w` `f` →
@@ -164,7 +164,7 @@ and copy the backup back when done. The server picks changes up live.
    then Cmd+/ → Search again. On a Mac, Ctrl+N, Ctrl+N, Ctrl+P move the highlighted
    row (`[data-command-palette] [data-slot=command-item][data-active]`) down, down,
    up, as the arrows do. Type a
-   document's name from Threads → a Documents row → move the highlight onto it (Threads
+   document's name from Agents → a Documents row → move the highlight onto it (Threads
    rows arriving late can take it; check `[data-active]`) → Enter → `/wikis` with it as a
    tab. Cmd+K `:` → chevron, empty field, command rows; type `q` → one row,
    Close tab; Backspace twice → Search; type `>` → Command Palette again, field

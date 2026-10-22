@@ -60,14 +60,14 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 - **Chats and pull requests beside documents**: a change request's **Open thread** opens
   its thread's chat in a new pane to the right (`chat:<env>:<thread>` tab, a full
   ChatView without the chat tabs; it mounts only while in front). Its tab menu offers
-  **Open in Threads**. See panes.md, "Tabs from other sections".
+  **Open in Agents**. See panes.md, "Tabs from other sections".
 - **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
   files that open inside the change request).
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
-  Threads as the way back. Splits stay at every width.
+  Agents as the way back. Splits stay at every width.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
   (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
   `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open
@@ -141,7 +141,7 @@ a screenshot of the section.
 `apps/web/src/components/wiki/`, `routes/_chat.wikis*.tsx`, `components/sidebar/SidebarCard.tsx`,
 `components/sidebar/SidebarTabHistory.tsx` (Back/Forward), `panes/panesHost.ts`,
 `panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
-`NEW_TAB_CLICK`, the tab-history ops; shared with Threads, chat tabs, Repositories and
+`NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Repositories and
 Changes), `components/projects/storedChoice.ts` (behind `astrolabe:wiki-scope:v1`; shared
 with Repositories and the project filter), the Wikis branches in `AppSidebarLayout.tsx` and
 `sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;

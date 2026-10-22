@@ -46,7 +46,7 @@ describe("the Keybindings table's menu keys and aliases", () => {
       { key: "menu g", command: "chat.new" },
       { key: ":quit", command: "sidebar.toggle" },
     ];
-    expect(rowOf(rules, "chat.new", "menu g")?.conflicts).toContain("Section: Threads");
+    expect(rowOf(rules, "chat.new", "menu g")?.conflicts).toContain("Section: Agents");
     expect(rowOf(rules, "sidebar.toggle", ":quit")?.conflicts).toEqual(["Close Tab or Pane Tab"]);
     expect(triggerDraftConflicts(triggersOf([]), "chat.new", "menu t")).toContain("Chat Tab: Next");
     expect(triggerDraftConflicts(triggersOf([]), "chat.new", "menu")).toEqual([]);
