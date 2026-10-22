@@ -53,7 +53,7 @@ const pullRequestRunId = (repository: string, number: number | string) =>
  * What names an entry in its run: the group's or the wiki change request's tab key, or a pull
  * request's repository and number, whichever project and host a thread's panel names it by.
  */
-export function runEntryId(groupKey: string, entry: RunEntry): string {
+function runEntryId(groupKey: string, entry: RunEntry): string {
   switch (entry.kind) {
     case "group":
       return groupKey;
@@ -65,7 +65,7 @@ export function runEntryId(groupKey: string, entry: RunEntry): string {
 }
 
 /** The tab an entry is beside a thread. */
-export function runEntryTabKey(groupKey: string, entry: RunEntry): string {
+function runEntryTabKey(groupKey: string, entry: RunEntry): string {
   if (entry.kind !== "pull-request") return runEntryId(groupKey, entry);
   const { kind: _kind, ...pullRequest } = entry;
   return surfaceKey(pullRequestSurfaceId(pullRequest));

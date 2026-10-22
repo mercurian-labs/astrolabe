@@ -76,7 +76,7 @@ export function showKeyIn(
  * change request's thread opens beside it as a chat, unless `chats` is off (a thread's own right
  * panel), where its link goes to the thread.
  */
-export function paneTabNav(
+function paneTabNav(
   store: PaneArrangementStore,
   {
     chats = true,

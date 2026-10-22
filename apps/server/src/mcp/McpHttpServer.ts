@@ -1046,11 +1046,8 @@ export const layerPullRequestsToolkit = toolkitRegistration(
   PullRequestsHandlers.layer,
 );
 
-export const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
-export const layerChangeGroupToolkit = toolkitRegistration(
-  ChangeGroupToolkit,
-  ChangeGroupHandlers.layer,
-);
+const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
+const layerChangeGroupToolkit = toolkitRegistration(ChangeGroupToolkit, ChangeGroupHandlers.layer);
 
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,

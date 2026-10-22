@@ -11,7 +11,7 @@ import {
 } from "./projectFilter";
 
 /** Which kind of project the thread list is narrowed to while no one project is picked. */
-export const threadsProjectKindStore = projectKindStore("astrolabe:threads-project-kind:v1");
+const threadsProjectKindStore = projectKindStore("astrolabe:threads-project-kind:v1");
 const useThreadsProjectKind = threadsProjectKindStore.useValue;
 
 interface ProjectGroup {

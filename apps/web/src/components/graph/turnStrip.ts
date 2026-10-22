@@ -68,7 +68,7 @@ function readable(thread: ThreadRecord, step: PlaybackStep | null): PlaybackStep
 }
 
 /** Where Play starts: after the step last shown, else at the shown turn's first move. */
-export function playStart(
+function playStart(
   thread: ThreadRecord,
   last: PlaybackStep | null,
   checkpoint: number,
@@ -78,7 +78,7 @@ export function playStart(
 }
 
 /** The step after `step`, skipping structural ones, or null at the end of the thread. */
-export function playNext(thread: ThreadRecord, step: PlaybackStep): PlaybackStep | null {
+function playNext(thread: ThreadRecord, step: PlaybackStep): PlaybackStep | null {
   return readable(thread, nextStep(thread, step));
 }
 

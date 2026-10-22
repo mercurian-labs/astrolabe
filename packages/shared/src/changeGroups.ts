@@ -200,7 +200,7 @@ function wikiMember(
  * The thread a thread's change requests group under: up its parents while each step is one the
  * settings follow (a coordinator's child, a fork), to the first it may not climb past.
  */
-export function changeGroupRootOf(
+function changeGroupRootOf(
   threadId: string,
   threads: ReadonlyMap<string, ChangeGroupThread>,
   settings: Pick<ChangeGroupGroupingSettings, "coordinator" | "lineage">,
@@ -226,7 +226,7 @@ export function changeGroupRootOf(
 }
 
 /** The state a group's members add up to. */
-export function changeGroupState(
+function changeGroupState(
   members: ReadonlyArray<ChangeGroupMember>,
   settings: Pick<ChangeGroupGroupingSettings, "flagDocsBehind">,
 ): ChangeGroupState {
@@ -521,12 +521,4 @@ export function changeGroupCandidates(input: {
     ),
     ...input.wikiChanges.map((change) => wikiMember(change, "manual")),
   ];
-}
-
-/** The group a change request is in, if any. */
-export function changeGroupOf(
-  groups: ReadonlyArray<ChangeGroup>,
-  memberKey: string,
-): ChangeGroup | null {
-  return groups.find((group) => group.members.some((member) => member.key === memberKey)) ?? null;
 }

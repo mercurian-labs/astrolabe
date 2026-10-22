@@ -19,7 +19,7 @@ import {
 export type KeybindingKind = "shortcut" | KeybindingTriggerKind;
 export type KeybindingKindFilter = "all" | KeybindingKind;
 
-export const KEYBINDING_KINDS = [
+const KEYBINDING_KINDS = [
   "shortcut",
   "menu",
   "alias",
@@ -61,7 +61,7 @@ export function visibleKinds(filter: KeybindingKindFilter): ReadonlyArray<Keybin
 }
 
 /** A shortcut as its cell's keycaps read, for the search box and the row's menu: `⌘W`. */
-export function shortcutBindingLabel(row: KeybindingRow, platform: string): string {
+function shortcutBindingLabel(row: KeybindingRow, platform: string): string {
   return formatShortcutLabel(row.binding.shortcut, platform);
 }
 

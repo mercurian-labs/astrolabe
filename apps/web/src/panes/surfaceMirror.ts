@@ -26,10 +26,6 @@ export interface PanelRecord {
   readonly surfaceIds: readonly string[];
 }
 
-export function isTerminalSurface(surfaceId: string) {
-  return surfaceId.startsWith("terminal:");
-}
-
 /**
  * Where a surface new to the arrangement goes: the pane asked from (`targetPaneId`, as a
  * pane's New tab menu asks), else the pane of the surface that was in front, else any pane

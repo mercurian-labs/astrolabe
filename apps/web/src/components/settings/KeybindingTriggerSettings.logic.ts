@@ -51,7 +51,7 @@ export const TRIGGER_KIND_LABELS: Readonly<Record<KeybindingTriggerKind, string>
 };
 
 /** A trigger as the table shows it: menu keys without their `menu`, an alias without its colon. */
-export function triggerLabel(trigger: ResolvedKeybindingTrigger): string {
+function triggerLabel(trigger: ResolvedKeybindingTrigger): string {
   return trigger.kind === "menu" ? menuKeysLabel(trigger.sequence) : aliasLabel(trigger);
 }
 

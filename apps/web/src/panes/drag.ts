@@ -174,7 +174,7 @@ function groupPreview(marker: HTMLElement, box: DOMRect) {
 }
 
 /** Removes the drag preview, as a drop that moved the dragged tab elsewhere does. */
-export function stopTabDragPreview() {
+function stopTabDragPreview() {
   preview?.stop();
   preview = null;
 }

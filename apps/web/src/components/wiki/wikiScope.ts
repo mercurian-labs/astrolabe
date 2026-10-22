@@ -28,7 +28,7 @@ function wikiScopeStore(storageKey: string) {
 }
 
 /** The Wikis section's wiki filter. */
-export const wikisSectionScope = wikiScopeStore("astrolabe:wiki-scope:v1");
+const wikisSectionScope = wikiScopeStore("astrolabe:wiki-scope:v1");
 /** The wiki the Change Requests section's project filter picked. */
 export const changeRequestWikiScope = wikiScopeStore("astrolabe:change-request-wiki-scope:v1");
 

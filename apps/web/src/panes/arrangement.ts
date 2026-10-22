@@ -300,7 +300,7 @@ export function tabsToClose(
  * own, as dropping it on a strip does, counted before the move as the insertion line shows it.
  * The tab becomes active and its pane takes focus; a pane it leaves empty closes.
  */
-export function moveTab(
+function moveTab(
   arrangement: Arrangement,
   key: string,
   toPaneId: string,
@@ -420,7 +420,7 @@ export function splitTabs(arrangement: Arrangement, keys: readonly string[], sid
  * Divides a pane on one side and moves a tab into the new pane there, as dropping a tab on a
  * pane's content does. The new pane takes focus; a pane's only tab cannot divide its own pane.
  */
-export function splitWithTab(
+function splitWithTab(
   arrangement: Arrangement,
   key: string,
   targetId: string,

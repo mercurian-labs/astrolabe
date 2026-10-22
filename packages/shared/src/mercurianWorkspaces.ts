@@ -78,7 +78,7 @@ export const WorkspaceWriteError = Schema.Struct({
 export type WorkspaceWriteError = typeof WorkspaceWriteError.Type;
 
 /** The tables a client may sync, each scoped by the cloud to the caller. */
-export const WORKSPACE_SHAPES = [
+const WORKSPACE_SHAPES = [
   "workspaces",
   "members",
   "people",

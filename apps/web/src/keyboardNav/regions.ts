@@ -44,7 +44,7 @@ function actFrom(region: HTMLElement) {
 }
 
 /** The region `element` is in, if any. */
-export function regionOf(element: Element | null): HTMLElement | null {
+function regionOf(element: Element | null): HTMLElement | null {
   if (!element) return null;
   const region = element.closest<HTMLElement>(REGION);
   if (region) return region;

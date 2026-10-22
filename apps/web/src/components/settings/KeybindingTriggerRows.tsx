@@ -23,7 +23,7 @@ import {
  */
 
 /** Menu keys or an alias as keycaps: `t` `]`, or `q[uit]`. */
-export function TriggerPill({ row }: { row: KeybindingTriggerRow }) {
+function TriggerPill({ row }: { row: KeybindingTriggerRow }) {
   if (row.trigger.kind === "alias") return <Kbd>{row.label}</Kbd>;
   // Keys repeat (`menu g g`): each repeat is keyed by its count so far.
   const seen = new Map<string, number>();

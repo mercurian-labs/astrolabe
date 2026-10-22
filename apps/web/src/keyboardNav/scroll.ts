@@ -41,7 +41,7 @@ function scrollCandidates(place: HTMLElement): ScrollCandidate<HTMLElement>[] {
 }
 
 /** The scroll area a scroll key from `origin` moves; null where its place has none. */
-export function scrollAreaFrom(origin: Element | null): HTMLElement | null {
+function scrollAreaFrom(origin: Element | null): HTMLElement | null {
   const place = placeOf(origin);
   return place ? mainScrollArea(scrollCandidates(place)) : null;
 }

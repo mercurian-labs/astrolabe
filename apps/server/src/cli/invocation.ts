@@ -12,7 +12,7 @@ import packageJson from "../../package.json" with { type: "json" };
 
 /** The command this CLI installs as, and the npm launcher package that ships it. */
 export const CLI_COMMAND = "astrolabe";
-export const CLI_PACKAGE = "@mercurian/astrolabe";
+const CLI_PACKAGE = "@mercurian/astrolabe";
 
 export type CliRunner = "npx" | "pnpm dlx" | "bunx";
 

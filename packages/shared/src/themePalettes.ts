@@ -805,7 +805,7 @@ export const EMBER_THEME: ThemeDefinition = {
   sidebarArtwork: true,
 };
 
-export const IRIS_THEME: ThemeDefinition = {
+const IRIS_THEME: ThemeDefinition = {
   id: "iris",
   label: "Iris",
   appearance: "light",

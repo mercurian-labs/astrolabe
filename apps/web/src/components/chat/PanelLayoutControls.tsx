@@ -134,7 +134,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   );
 });
 
-export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl({
+const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl({
   maximized,
   onToggle,
 }: {

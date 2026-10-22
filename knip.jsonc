@@ -28,6 +28,8 @@
         "mobile-native-client.ts",
         "setup-worktree.ts",
         "sign-macos.ts",
+        // Astrolabe: run by hand to copy marks from the branding repository.
+        "sync-brand-marks.ts",
         "verify-windows-desktop-artifact.ts",
       ],
       "ignoreDependencies": ["esbuild"],
@@ -122,6 +124,14 @@
     },
     "infra/relay": {
       "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!"],
+    },
+    "infra/cloud": {
+      // The deploy's migrator image bundles this through vite.config.ts's pack entry.
+      "entry": ["src/migrate.ts!"],
+    },
+    "apps/cloud": {
+      // Better Auth's CLI loads the schema config by path; the waitlist tool runs by hand.
+      "entry": ["scripts/auth-schema.ts", "scripts/waitlist.ts"],
     },
     "packages/*": {
       // These workspace packages are private to this monorepo.

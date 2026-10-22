@@ -108,7 +108,7 @@ export function menuKeyLabel(key: string): string {
 }
 
 /** The root's name in the menu's header. */
-export const MENU_TITLE = "Menu";
+const MENU_TITLE = "Menu";
 
 /** The groups the menu has entered, by name, as its header shows them: `["Menu", "Go to"]`. */
 export function menuTrail(root: WhichKeyGroup, path: readonly string[]): readonly string[] {
