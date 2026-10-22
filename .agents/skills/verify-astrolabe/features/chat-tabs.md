@@ -33,7 +33,7 @@ panes.md).
   with rules between them, a fading title and an always-shown ✕. The focused place's
   mark is a 2px bar along the top edge of the tab in front (a background-image).
 - **Harness icon**: before the title, the thread's provider icon, the same one
-  its sidebar row shows (running instance, else the selected one), dimmed on
+  its sidebar hover card shows (running instance, else the selected one), dimmed on
   inactive tabs until hovered. A "New thread" tab shows the provider its
   composer has picked, else the one the composer would fall back to. The chat
   glyph shows only while no provider resolves (e.g. before the environment's

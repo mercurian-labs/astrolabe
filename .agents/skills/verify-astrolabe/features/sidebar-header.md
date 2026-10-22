@@ -77,6 +77,25 @@ actions at its right end.
   section's Back and Forward (`[data-sidebar-control] [data-tab-history]`, in sections
   with tabs only), not Search or the filter. Settings has no tabs: its header
   (Settings / page) is the title bar, as Usage's is.
+- **Thread rows** (`[data-testid=sidebar-row-card]`): one line with the project picture, the
+  title, the terminal and machine glyphs, and the age or status; a smaller second line only when
+  the thread has something particular, its parts joined by `·`: `Draft`
+  (`sidebar-draft-indicator-<id>`); the branch without its `<repository>/` prefix, hidden on the
+  default branch (main or master, or what the row's git status reports), after the worktree glyph
+  (`thread-worktree-<id>`) when the thread has its own worktree; the pull request as
+  `PR #130 open` (still the badge link, with its tooltip); and the agent's name when it is not
+  its project's usual one (the default the project's new threads start with, its own or its
+  environment's, else the most common among the environment's listed threads). In a repository
+  whose default branch is not main or master, a row on it shows the branch until its git status
+  arrives, then drops to one line. `components/sidebar/agentRowSummary.ts` decides the second
+  line; `AgentRowDetails.tsx` and `SidebarCard.tsx`'s `SidebarAgentRowItem`/
+  `SidebarAgentRowContent` draw it. Pinned rows sit under a resting **Pinned** heading
+  (`[data-testid=sidebar-pinned-header]`, `role=heading`, 24px tall) with no pin glyph, and an
+  **Active** one (`sidebar-pinned-divider`) closes them while active rows follow; hovering a pinned
+  row offers `button "Unpin thread"` beside Snooze and Settle. Draft-session rows
+  (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the
+  Pinned heading, outside the sortable rows the drag projection measures. Snoozed and settled
+  rows stay slim (`sidebar-row-slim`, with their pin glyph), and mobile rows are upstream's.
 
 ## How to get to it (user POV)
 
@@ -101,7 +120,8 @@ tree are not proof they paint: for `[data-app-rail-mark]`, `[data-app-rail-toggl
 the first search result, take the `getBoundingClientRect` centre (nonzero height) and check
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
 read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill and the Back/Forward buttons are not clipped at the default sidebar width,
-and again after dragging `Resize Sidebar` narrower.
+and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
+`getBoundingClientRect().height` is 26 with one line and 42 with two (its `li` adds 2).
 
 ## Gotchas
 

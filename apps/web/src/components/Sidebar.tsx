@@ -11,12 +11,16 @@ import {
   SIDEBAR_ROW_IDLE_CLASS,
   SIDEBAR_ROW_SELECTED_CLASS,
   SIDEBAR_ROW_SURFACE_CLASS,
-  SidebarCardContent,
-  SidebarCardFooter,
+  SidebarAgentRowContent,
+  SidebarAgentRowItem,
   SidebarCardHeader,
-  SidebarCardItem,
-  SidebarCardTitle,
 } from "./sidebar/SidebarCard";
+import { AgentRowDetails, UnpinRowAction } from "./sidebar/AgentRowDetails";
+import {
+  resolveAgentRowSummary,
+  resolveUsualAgentInstanceIds,
+  usualAgentKey,
+} from "./sidebar/agentRowSummary";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
@@ -53,7 +57,6 @@ import {
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
 import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
-import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import {
   resolveSettledThreadTimestamp,
   sortSettledThreads,
@@ -63,7 +66,6 @@ import {
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
 import {
-  resolveThreadProviderStack,
   threadRuntimeCanArchive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
@@ -264,7 +266,6 @@ import { createSidebarListMotion } from "./Sidebar.motion";
 import {
   ThreadPullRequestBadgeControl,
   ThreadPullRequestsMiniList,
-  ThreadWorktreeIndicator,
   prStatusIndicator,
   resolveThreadPullRequestBadge,
   terminalStatusFromRunningIds,
@@ -492,6 +493,8 @@ function useSidebarThreads(input: {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly routeThreadRef: ScopedThreadRef | null;
+  /** Astrolabe: for each project's default agent (agentRowSummary.ts). */
+  readonly projectByKey: ReadonlyMap<string, EnvironmentProject>;
 }) {
   const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
     input;
@@ -607,6 +610,12 @@ function useSidebarThreads(input: {
       ...snoozedThreads,
       ...settledThreads,
     ],
+    // Astrolabe: a row names its agent only when it is not its project's usual one.
+    usualAgentInstanceIds: resolveUsualAgentInstanceIds(
+      [pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads],
+      serverConfigs,
+      input.projectByKey,
+    ),
     settledVisibleCount,
     hiddenSettledCount: settledThreads.length - visibleSettledThreads.length,
     showMoreSettled: () =>
@@ -921,54 +930,6 @@ function terminalProcessLabel(count: number): string {
   return `${count} terminal ${count === 1 ? "process" : "processes"} running`;
 }
 
-function SidebarProviderStack(props: {
-  thread: SidebarThreadSummary;
-  providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-}) {
-  const stack = resolveThreadProviderStack(props.thread);
-  const currentInstanceId = stack[stack.length - 1]!;
-  const currentEntry = props.providerEntryByInstanceId.get(currentInstanceId) ?? null;
-  if (currentEntry === null) return null;
-  const showInstanceBadge = shouldShowInstanceBadge(
-    currentEntry,
-    props.providerEntryByInstanceId.values(),
-  );
-  const current = (
-    <ProviderInstanceIcon
-      driverKind={currentEntry.driverKind}
-      displayName={currentEntry.displayName}
-      accentColor={currentEntry.accentColor}
-      acpRegistryAgentId={currentEntry.acpRegistryAgentId}
-      acpRegistryIconUrl={currentEntry.acpRegistryIconUrl}
-      showBadge={showInstanceBadge}
-      size="compact"
-      iconClassName="opacity-60"
-    />
-  );
-  if (stack.length === 1) {
-    return <span className="inline-flex shrink-0 items-center">{current}</span>;
-  }
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5">
-      {stack.slice(0, -1).map((instanceId) => {
-        const entry = props.providerEntryByInstanceId.get(instanceId);
-        if (entry === undefined) return null;
-        return (
-          <ProviderInstanceIcon
-            key={instanceId}
-            driverKind={entry.driverKind}
-            displayName={entry.displayName}
-            acpRegistryAgentId={entry.acpRegistryAgentId}
-            acpRegistryIconUrl={entry.acpRegistryIconUrl}
-            iconClassName="size-3 opacity-35 grayscale"
-          />
-        );
-      })}
-      <span className="relative z-10 inline-flex items-center">{current}</span>
-    </span>
-  );
-}
-
 function SidebarThreadTooltip({
   thread,
   project,
@@ -1280,19 +1241,36 @@ function SidebarDragBoundary(props: {
   label: string;
   visible: boolean;
   isDropTarget: boolean;
+  /**
+   * Astrolabe: also shown at rest, in the shelf headers' muted tone, as the heading of the rows
+   * below it. It then takes the label's height, which the drag projection already gives it.
+   */
+  persistent?: boolean;
 }) {
+  const resting = props.persistent === true && !props.visible;
   return (
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="pointer-events-none relative mx-0.5 -mb-px h-0"
+      className={cn("pointer-events-none relative mx-0.5", props.persistent ? "h-6" : "-mb-px h-0")}
     >
-      {props.visible ? (
-        <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
+      {props.visible || resting ? (
+        <div
+          className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2"
+          // Astrolabe: a resting heading is already painted, so it skips the pickup reveal. The
+          // class stays: the collision detection finds the divider by it.
+          style={props.persistent ? { animation: "none" } : undefined}
+          role={props.persistent ? "heading" : undefined}
+          aria-level={props.persistent ? 3 : undefined}
+        >
           <span
             className={cn(
               "shrink-0 text-xs font-medium",
-              props.isDropTarget ? "text-primary" : "text-sidebar-foreground/80",
+              props.isDropTarget
+                ? "text-primary"
+                : resting
+                  ? "text-sidebar-muted-foreground/60"
+                  : "text-sidebar-foreground/80",
             )}
           >
             {props.label}
@@ -1301,7 +1279,11 @@ function SidebarDragBoundary(props: {
             aria-hidden
             className={cn(
               "h-px flex-1",
-              props.isDropTarget ? "bg-primary/50" : "bg-sidebar-foreground/25",
+              props.isDropTarget
+                ? "bg-primary/50"
+                : resting
+                  ? "bg-sidebar-border/60"
+                  : "bg-sidebar-foreground/25",
             )}
           />
         </div>
@@ -1411,7 +1393,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     onDiscard(draftId);
   };
   return (
-    <li className="list-none py-0.5">
+    <SidebarAgentRowItem twoLines>
       <div
         role="button"
         tabIndex={0}
@@ -1431,14 +1413,17 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         onKeyDown={handleKeyDown}
       >
         <span className="sr-only">{preview}</span>
-        <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
-          <div className="flex h-5 min-w-0 items-center gap-1.5">
-            <SquarePenIcon aria-hidden className={draftPenClassName} />
+        {/* Astrolabe: laid out as the thread rows are, the preview as its title and Draft below. */}
+        <SidebarAgentRowContent>
+          <SidebarCardHeader>
             {props.project ? (
               <ProjectFavicon project={props.project} className="size-4 shrink-0" />
             ) : null}
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectDisplayName}
+            <span
+              aria-hidden
+              className="min-w-0 flex-1 truncate text-sm font-medium text-foreground/90"
+            >
+              {preview}
             </span>
             <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
               <Tooltip>
@@ -1457,13 +1442,16 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                 <TooltipPopup side="top">Discard draft</TooltipPopup>
               </Tooltip>
             </span>
+          </SidebarCardHeader>
+          <div
+            aria-hidden
+            className="flex h-4 items-center text-xs font-medium text-warning-foreground"
+          >
+            Draft
           </div>
-          <div aria-hidden className="mt-0.5 truncate text-sm font-medium text-foreground/90">
-            {preview}
-          </div>
-        </div>
+        </SidebarAgentRowContent>
       </div>
-    </li>
+    </SidebarAgentRowItem>
   );
 });
 
@@ -1617,6 +1605,8 @@ type SidebarThreadRowProps = {
   project: EnvironmentProject | null;
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
+  /** Astrolabe: the agent this environment's threads usually run with (agentRowSummary.ts). */
+  usualAgentInstanceId: string | null;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
   onThreadActivate: (threadRef: ScopedThreadRef) => void;
@@ -1804,7 +1794,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     : thread.modelSelection.model;
 
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
-  const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
   const detailsTooltip = (
     <SidebarThreadTooltip
@@ -2081,6 +2070,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prBadgeShape = supportsMultiplePullRequests
     ? resolveThreadPullRequestBadge(thread.pullRequests)
     : null;
+  // Astrolabe: what the card's second line says, if anything (agentRowSummary.ts).
+  const agentRow =
+    variant === "card"
+      ? resolveAgentRowSummary({
+          thread,
+          project: props.project,
+          hasUnsentDraft,
+          checkout: visibleGitStatus ?? null,
+          pullRequest: {
+            badge: prBadgeShape,
+            status: linkedPullRequestStatus,
+            link: currentLinkedPr,
+          },
+          usualAgentInstanceId: props.usualAgentInstanceId,
+          agentName: providerEntry?.displayName ?? thread.runtime?.providerName ?? null,
+        })
+      : null;
   const handlePrListClick = () => {
     useRightPanelStore.getState().open(threadRef, "pull-requests");
     if (!props.isRouteThread) onThreadActivate(threadRef);
@@ -2096,6 +2102,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         status={prStatus}
         onOpenList={handlePrListClick}
         onOpenPullRequest={handlePrClick}
+        text={agentRow?.pullRequest ?? undefined}
       />
     ) : null;
   const terminalStatusIcon = (
@@ -2317,10 +2324,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     );
   }
 
-  const diff = latestRunDiff(thread);
+  const canUnpin = props.isPinned && props.pinningSupported && canOperateThread;
 
   return (
-    <SidebarCardItem
+    <SidebarAgentRowItem
+      twoLines={agentRow !== null}
       data-thread-item={threadKey}
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
@@ -2348,27 +2356,30 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           }
         >
           {accessibleTitle}
-          <SidebarCardContent>
+          <SidebarAgentRowContent>
             <SidebarCardHeader>
-              {draftIndicator}
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
-              {/* Left of the status slot, the pin would slide when hover swaps the
-                label for the wider row controls. */}
-              {pinIndicator}
-              {props.projectDisplayName ? (
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
-                  )}
-                >
-                  {props.projectDisplayName}
+              {title}
+              {isRegeneratingTitle ? (
+                <span role="status" className="sr-only">
+                  Regenerating title
                 </span>
-              ) : (
-                <span className="flex-1" />
-              )}
+              ) : null}
+              {terminalStatusIcon}
+              {isRemote || props.scratchMachineLabel !== null ? (
+                <span
+                  aria-hidden
+                  className="pointer-events-none inline-flex shrink-0 items-center text-sidebar-muted-foreground/70"
+                >
+                  <EnvironmentMachineIcon
+                    aria-hidden
+                    kind={props.environmentMachine}
+                    className="size-3.5"
+                  />
+                </span>
+              ) : null}
               {sortable?.isDragging ? (
                 dragDestination
               ) : (
@@ -2447,7 +2458,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
                     )}
                   </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
+                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft || canUnpin ? (
                     <span
                       className={cn(
                         // focus-visible, not focus-within: a mouse click leaves
@@ -2476,6 +2487,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           <TooltipPopup side="top">Discard draft</TooltipPopup>
                         </Tooltip>
                       ) : null}
+                      {canUnpin ? <UnpinRowAction onClick={handleUnpinClick} /> : null}
                       {showSnoozeButton ? (
                         <SnoozeMenuButton
                           open={snoozeMenuOpen}
@@ -2509,82 +2521,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )}
               {props.sweepAction !== null ? dragDestination : null}
             </SidebarCardHeader>
-            <SidebarCardTitle>
-              {title}
-              {isRegeneratingTitle ? (
-                <span role="status" className="sr-only">
-                  Regenerating title
-                </span>
-              ) : null}
-            </SidebarCardTitle>
-            <SidebarCardFooter>
-              {thread.branch ? (
-                <>
-                  <ThreadWorktreeIndicator thread={thread} />
-                  <span className="flex min-w-0 flex-1 text-muted-foreground/40">
-                    <MiddleTruncate value={thread.branch} showTitle={false} />
-                  </span>
-                </>
-              ) : showsScratchMachine ? (
-                <>
-                  <EnvironmentMachineIcon
-                    aria-hidden
-                    kind={props.environmentMachine}
-                    className="size-3 shrink-0 text-muted-foreground/40"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-                    {props.scratchMachineLabel}
-                  </span>
-                </>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {terminalStatusIcon}
-              {prBadge}
-              {diff ? (
-                <span className="shrink-0 font-mono">
-                  <span className="text-diff-addition-foreground">
-                    +{formatDiffCount(diff.insertions)}
-                  </span>{" "}
-                  <span className="text-diff-deletion-foreground">
-                    −{formatDiffCount(diff.deletions)}
-                  </span>
-                </span>
-              ) : null}
-              <span
-                aria-hidden
-                className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-              >
-                {isRemote && !showsScratchMachine ? (
-                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                    <EnvironmentMachineIcon
-                      aria-hidden
-                      kind={props.environmentMachine}
-                      className="size-3.5"
-                    />
-                  </span>
-                ) : null}
-                <SidebarProviderStack
-                  thread={thread}
-                  providerEntryByInstanceId={props.providerEntryByInstanceId}
-                />
-              </span>
-            </SidebarCardFooter>
-          </SidebarCardContent>
+            {agentRow ? (
+              <AgentRowDetails summary={agentRow} thread={thread} pullRequest={prBadge} />
+            ) : null}
+          </SidebarAgentRowContent>
           {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         </TooltipTrigger>
         {detailsTooltip}
       </Tooltip>
-    </SidebarCardItem>
+    </SidebarAgentRowItem>
   );
 });
-
-function latestRunDiff(
-  thread: SidebarThreadSummary,
-): { insertions: number; deletions: number } | null {
-  void thread;
-  return null;
-}
 
 const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   isSettled: boolean;
@@ -3046,6 +2993,7 @@ export default function Sidebar() {
     settledThreads,
     snoozeNow,
     searchableThreads,
+    usualAgentInstanceIds,
     settledVisibleCount,
     hiddenSettledCount,
     showMoreSettled,
@@ -3075,6 +3023,7 @@ export default function Sidebar() {
     serverConfigs,
     optimisticDrop,
     routeThreadRef,
+    projectByKey,
   });
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
@@ -5001,6 +4950,9 @@ export default function Sidebar() {
                               providerEntriesByEnvironment.get(thread.environmentId) ??
                               EMPTY_PROVIDER_ENTRIES
                             }
+                            usualAgentInstanceId={
+                              usualAgentInstanceIds.get(usualAgentKey(thread)) ?? null
+                            }
                             timestampFormat={timestampFormat}
                             onThreadClick={handleThreadClick}
                             onThreadActivate={navigateToThread}
@@ -5047,6 +4999,7 @@ export default function Sidebar() {
                                 marker="pinned-header"
                                 label="Pinned"
                                 visible={from !== null}
+                                persistent={pinnedThreads.length > 0}
                                 isDropTarget={dragTargetSection === "pinned"}
                               />,
                             );
@@ -5058,6 +5011,7 @@ export default function Sidebar() {
                                 marker="pinned-divider"
                                 label="Active"
                                 visible={from !== null}
+                                persistent={pinnedThreads.length > 0 && activeThreads.length > 0}
                                 isDropTarget={dragTargetSection === "active"}
                               />,
                             );

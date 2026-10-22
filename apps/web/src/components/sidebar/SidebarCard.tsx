@@ -4,8 +4,9 @@ import { cn } from "~/lib/utils";
 
 /**
  * The sidebar's card: a header line (where it lives, and its time or status), its title, and a
- * footer line, in a fixed-height row. Thread rows and the Wikis sidebar's document and change
- * rows all draw through these parts, so the lists read as one.
+ * footer line, in a fixed-height row. The Wikis sidebar's document and change rows and the
+ * Changes rows draw through these parts, so the lists read as one. Thread rows share the
+ * surface and header line but take one or two lines (`SidebarAgentRowItem`).
  */
 
 /**
@@ -57,6 +58,38 @@ export function SidebarCardFooter({ className, ...props }: ComponentProps<"div">
         "mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
         className,
       )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * A thread row's list item: its first line, and a second only when the row has something for it
+ * (`agentRowSummary.ts`). Until it has been drawn once, it holds the height its lines will take
+ * while scrolled out of view (the content box; the py-px padding is added on top).
+ */
+export function SidebarAgentRowItem({
+  twoLines,
+  className,
+  ...props
+}: ComponentProps<"li"> & { readonly twoLines: boolean }) {
+  return (
+    <li
+      className={cn(
+        "list-none py-px [content-visibility:auto]",
+        twoLines ? "[contain-intrinsic-size:auto_42px]" : "[contain-intrinsic-size:auto_26px]",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** A thread row's content: a `SidebarCardHeader` line, then `AgentRowDetails` when it has any. */
+export function SidebarAgentRowContent({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("relative z-10 px-(--sidebar-row-content-inset) py-0.75", className)}
       {...props}
     />
   );

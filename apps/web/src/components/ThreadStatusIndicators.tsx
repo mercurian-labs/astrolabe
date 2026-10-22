@@ -213,6 +213,7 @@ export function ThreadPullRequestBadgeControl({
   status,
   onOpenList,
   onOpenPullRequest,
+  text,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
   badge: ThreadPullRequestBadge | null;
@@ -222,13 +223,15 @@ export function ThreadPullRequestBadgeControl({
   status: PrStatusIndicator | null;
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
+  /** Astrolabe: in place of the number, as a sidebar thread row's "PR #130 open". */
+  text?: string | undefined;
 }) {
   const presentation = resolveThreadPullRequestBadgePresentation({ badge, number, url, status });
   if (presentation === null) return null;
   return (
     <PullRequestBadge
       render={render}
-      presentation={presentation}
+      presentation={text === undefined ? presentation : { ...presentation, text }}
       opensList={badge !== null && (badge.kind === "stack" || badge.others > 0)}
       url={url}
       number={number}
