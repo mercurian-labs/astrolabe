@@ -6,20 +6,22 @@ import { buildKeybindingRows } from "./KeybindingsSettings.logic";
 import {
   buildKeybindingCommandRows,
   commandRowActions,
+  filterKeybindingCommandRows,
   visibleKinds,
   type KeybindingKindFilter,
 } from "./KeybindingsTable.logic";
 import { buildKeybindingTriggerRows } from "./KeybindingTriggerSettings.logic";
 
-function table(rules: KeybindingRule[] = [], query = "", filter: KeybindingKindFilter = "all") {
+function allRows(rules: KeybindingRule[] = []) {
   const resolved = resolveKeybindingRules(rules);
-  return buildKeybindingCommandRows({
-    shortcutRows: buildKeybindingRows(resolved.keybindings),
-    triggerRows: buildKeybindingTriggerRows(resolved.keybindingTriggers.triggers),
-    query,
-    filter,
-    platform: "MacIntel",
-  });
+  return buildKeybindingCommandRows(
+    buildKeybindingRows(resolved.keybindings),
+    buildKeybindingTriggerRows(resolved.keybindingTriggers.triggers),
+  );
+}
+
+function table(rules: KeybindingRule[] = [], query = "", filter: KeybindingKindFilter = "all") {
+  return filterKeybindingCommandRows(allRows(rules), { query, filter, platform: "MacIntel" });
 }
 
 const rowFor = (rows: ReturnType<typeof table>, command: string) =>
@@ -73,6 +75,18 @@ describe("the Keybindings table's rows", () => {
     expect(table([], "t ]", "shortcut").map((row) => row.command)).not.toContain("chatTab.next");
     expect(visibleKinds("all")).toEqual(["shortcut", "menu", "alias"]);
     expect(visibleKinds("menu")).toEqual(["menu"]);
+  });
+
+  it("filtering keeps the row objects so unchanged rows skip rendering", () => {
+    const rows = allRows();
+    const filter = (query: string, kind: KeybindingKindFilter = "all") =>
+      filterKeybindingCommandRows(rows, { query, filter: kind, platform: "MacIntel" });
+    for (const filtered of [filter("terminal"), filter("", "alias"), filter("close", "shortcut")]) {
+      expect(filtered.length).toBeGreaterThan(0);
+      expect(filtered.length).toBeLessThan(rows.length);
+      for (const row of filtered) expect(rows).toContain(row);
+    }
+    expect(filter("  ")).toBe(rows);
   });
 
   it("lists each binding's actions in the row's menu, for the kinds shown", () => {

@@ -57,7 +57,6 @@ import { Toggle } from "../ui/toggle";
 import { toastManager } from "../ui/toast";
 import {
   buildKeybindingRows,
-  filterKeybindingRows,
   buildKeybindingCommandOptions,
   buildWhenVariableOptions,
   commandLabel,
@@ -86,6 +85,7 @@ import {
 } from "./KeybindingsTable";
 import {
   buildKeybindingCommandRows,
+  filterKeybindingCommandRows,
   KEYBINDING_FILTER_LABELS,
   KEYBINDING_KIND_LABELS,
   visibleKinds,
@@ -1386,12 +1386,16 @@ function useKeybindingCatalog() {
     serverTriggers?.unboundCommands,
   );
   const triggers = serverTriggers?.triggers ?? DEFAULT_RESOLVED_TRIGGERS;
+  const allRows = buildKeybindingRows(merged);
+  const triggerRows = buildKeybindingTriggerRows(triggers);
   return {
     keybindings: merged,
     commandOptions: buildKeybindingCommandOptions(merged),
-    allRows: buildKeybindingRows(merged),
+    allRows,
     triggers,
-    triggerRows: buildKeybindingTriggerRows(triggers),
+    triggerRows,
+    // Astrolabe: the table's rows, a command's shortcuts, menu keys, and aliases together.
+    commandRows: buildKeybindingCommandRows(allRows, triggerRows),
   };
 }
 
@@ -1436,11 +1440,10 @@ export function KeybindingsSettingsPanel() {
     }
   }
   const whenVariables = buildWhenVariableOptions();
-  const { keybindings, commandOptions, allRows, triggers, triggerRows } = useKeybindingCatalog();
+  const { keybindings, commandOptions, allRows, triggers, triggerRows, commandRows } =
+    useKeybindingCatalog();
   const groups = groupKeybindingRows(
-    buildKeybindingCommandRows({
-      shortcutRows: allRows,
-      triggerRows,
+    filterKeybindingCommandRows(commandRows, {
       query,
       filter: kindFilter,
       platform: navigator.platform,

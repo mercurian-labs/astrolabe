@@ -76,9 +76,20 @@ interface KeybindingsTableProps {
   readonly onChange: (change: KeybindingCommandRowChange) => void;
 }
 
-/** The grid at the table's full width: the command, a column per kind shown, and the `⋯`. */
+/**
+ * What a row is given: its command row and what every row shares, but not `groups`, which
+ * changes with each search keystroke, so a row that stays visible keeps its props.
+ */
+type KeybindingRowViewProps = Omit<KeybindingsTableProps, "groups"> & {
+  readonly row: KeybindingCommandRow;
+};
+
+/**
+ * The grid at the table's full width: the command, a column per kind shown, and the `⋯`. The
+ * shortcut column fits a key and `When !terminalFocus` under it beside the `+`.
+ */
 const GRID_COLUMNS = {
-  all: "@min-[44rem]/keybindings:grid @min-[44rem]/keybindings:grid-cols-[minmax(0,1fr)_minmax(0,10rem)_minmax(0,10rem)_minmax(0,8rem)_1.75rem]",
+  all: "@min-[44rem]/keybindings:grid @min-[44rem]/keybindings:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,10rem)_minmax(0,8rem)_1.75rem]",
   one: "@min-[44rem]/keybindings:grid @min-[44rem]/keybindings:grid-cols-[minmax(0,1fr)_minmax(0,18rem)_1.75rem]",
 } as const;
 
@@ -86,14 +97,14 @@ const gridFor = (kinds: ReadonlyArray<KeybindingKind>) =>
   kinds.length > 1 ? GRID_COLUMNS.all : GRID_COLUMNS.one;
 
 export function KeybindingsTable(props: KeybindingsTableProps) {
-  const { groups, kinds } = props;
+  const { groups, ...rowProps } = props;
   return (
     <div className="@container/keybindings flex flex-col gap-8">
       {groups.map((group) => (
         <SettingsSection key={group.id} id={`keybindings-${group.id}`} title={group.title}>
-          <KeybindingsTableHeader kinds={kinds} chordLabel={props.chordLabel} />
+          <KeybindingsTableHeader kinds={rowProps.kinds} chordLabel={rowProps.chordLabel} />
           {group.rows.map((row) => (
-            <KeybindingCommandRowView key={row.id} row={row} {...props} />
+            <KeybindingCommandRowView key={row.id} row={row} {...rowProps} />
           ))}
         </SettingsSection>
       ))}
@@ -144,8 +155,16 @@ function KeybindingsTableHeader({
   );
 }
 
-function KeybindingCommandRowView(props: KeybindingsTableProps & { row: KeybindingCommandRow }) {
-  const { row, kinds, savingCommand, onChange } = props;
+function KeybindingCommandRowView({
+  row,
+  kinds,
+  triggers,
+  savingCommand,
+  chordLabel,
+  editors,
+  onSaveTriggers,
+  onChange,
+}: KeybindingRowViewProps) {
   const isSaving = savingCommand === row.command;
   return (
     <SettingsSearchTarget
@@ -169,7 +188,16 @@ function KeybindingCommandRowView(props: KeybindingsTableProps & { row: Keybindi
         ) : null}
       </div>
       {kinds.map((kind) => (
-        <KeybindingCell key={kind} kind={kind} {...props} />
+        <KeybindingCell
+          key={kind}
+          kind={kind}
+          row={row}
+          triggers={triggers}
+          isSaving={isSaving}
+          chordLabel={chordLabel}
+          editors={editors}
+          onSaveTriggers={onSaveTriggers}
+        />
       ))}
       <span className="absolute top-2.5 right-2 flex items-center opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-data-popup-open:opacity-100 pointer-coarse:opacity-100 @min-[44rem]/keybindings:static">
         <KeybindingCommandRowMenu row={row} kinds={kinds} isSaving={isSaving} onChange={onChange} />
@@ -179,19 +207,32 @@ function KeybindingCommandRowView(props: KeybindingsTableProps & { row: Keybindi
 }
 
 /** One kind's bindings for a command, joined by `|`, and the `+` that adds another. */
-function KeybindingCell(
-  props: KeybindingsTableProps & { row: KeybindingCommandRow; kind: KeybindingKind },
-) {
-  const { row, kind, editors } = props;
-  const isSaving = props.savingCommand === row.command;
+function KeybindingCell({
+  row,
+  kind,
+  triggers,
+  isSaving,
+  chordLabel,
+  editors,
+  onSaveTriggers,
+}: Pick<
+  KeybindingRowViewProps,
+  "row" | "triggers" | "chordLabel" | "editors" | "onSaveTriggers"
+> & {
+  readonly kind: KeybindingKind;
+  readonly isSaving: boolean;
+}) {
   const bindings: ReadonlyArray<{ id: string; node: ReactNode }> =
     kind === "shortcut"
       ? row.shortcuts.map((shortcut) => ({
           id: shortcut.id,
           node: (
-            <span className="inline-flex items-center gap-0.5">
-              {editors.renderShortcut(shortcut)}
-              {editors.renderConflict(shortcut.conflicts)}
+            <span className="inline-flex min-w-0 max-w-full flex-col items-start">
+              <span className="inline-flex items-center gap-0.5">
+                {editors.renderShortcut(shortcut)}
+                {editors.renderConflict(shortcut.conflicts)}
+              </span>
+              <ShortcutCondition when={shortcut.when} />
             </span>
           ),
         }))
@@ -200,11 +241,11 @@ function KeybindingCell(
           node: (
             <TriggerBinding
               row={trigger}
-              triggers={props.triggers}
+              triggers={triggers}
               isSaving={isSaving}
-              chordLabel={props.chordLabel}
+              chordLabel={chordLabel}
               conflictWarning={editors.renderConflict}
-              onSave={props.onSaveTriggers}
+              onSave={onSaveTriggers}
             />
           ),
         }));
@@ -213,17 +254,22 @@ function KeybindingCell(
       <span className="w-20 shrink-0 text-xs text-muted-foreground @min-[44rem]/keybindings:hidden">
         {KEYBINDING_KIND_LABELS[kind]}
       </span>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
-        {bindings.map(({ id, node }, index) => (
-          <Fragment key={id}>
-            {index > 0 ? (
-              <span aria-hidden className="text-muted-foreground">
-                |
-              </span>
-            ) : null}
-            {node}
-          </Fragment>
-        ))}
+      {/* The `+` stays beside the bindings, not wrapped under a shortcut's condition. */}
+      <div className="flex min-w-0 items-center gap-1">
+        {bindings.length > 0 ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
+            {bindings.map(({ id, node }, index) => (
+              <Fragment key={id}>
+                {index > 0 ? (
+                  <span aria-hidden className="text-muted-foreground">
+                    |
+                  </span>
+                ) : null}
+                {node}
+              </Fragment>
+            ))}
+          </div>
+        ) : null}
         <KeybindingAddButton
           row={row}
           kind={kind}
@@ -233,6 +279,24 @@ function KeybindingCell(
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * When a shortcut applies, under its keycaps, worded as upstream's rows: `When terminalFocus`, or
+ * `Always`. A long condition is cut short; the editor its keycaps open shows it whole.
+ */
+function ShortcutCondition({ when }: { when: string }) {
+  return (
+    <span className="max-w-full truncate px-1 text-xs leading-4 text-muted-foreground/70">
+      {when ? (
+        <>
+          When <span className="font-mono text-muted-foreground">{when}</span>
+        </>
+      ) : (
+        "Always"
+      )}
+    </span>
   );
 }
 

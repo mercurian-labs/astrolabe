@@ -48,9 +48,16 @@ export interface KeybindingCommandRow {
   readonly badge: "Custom" | "Project" | null;
 }
 
-/** The columns a filter shows. */
+const VISIBLE_KINDS: Readonly<Record<KeybindingKindFilter, ReadonlyArray<KeybindingKind>>> = {
+  all: KEYBINDING_KINDS,
+  shortcut: ["shortcut"],
+  menu: ["menu"],
+  alias: ["alias"],
+};
+
+/** The columns a filter shows, the same array each time, so a search keeps the rows' props. */
 export function visibleKinds(filter: KeybindingKindFilter): ReadonlyArray<KeybindingKind> {
-  return filter === "all" ? KEYBINDING_KINDS : [filter];
+  return VISIBLE_KINDS[filter];
 }
 
 /** A shortcut as its cell's keycaps read, for the search box and the row's menu: `⌘W`. */
@@ -83,23 +90,19 @@ function matchesQuery(
 }
 
 /**
- * One row per command that has a binding of a shown kind (a removed default counts, to be
- * restored), in the page's command order, each kind's bindings in its own cell. `shortcutRows`
- * and `triggerRows` are every binding, unfiltered.
+ * One row per command with a binding (a removed default counts, to be restored), in the page's
+ * command order, each kind's bindings in its own cell. `shortcutRows` and `triggerRows` are every
+ * binding, unfiltered; the page builds these once and filters them as the search changes.
  */
-export function buildKeybindingCommandRows(input: {
-  readonly shortcutRows: ReadonlyArray<KeybindingRow>;
-  readonly triggerRows: ReadonlyArray<KeybindingTriggerRow>;
-  readonly query: string;
-  readonly filter: KeybindingKindFilter;
-  readonly platform: string;
-}): ReadonlyArray<KeybindingCommandRow> {
-  const kinds = visibleKinds(input.filter);
+export function buildKeybindingCommandRows(
+  shortcutRows: ReadonlyArray<KeybindingRow>,
+  triggerRows: ReadonlyArray<KeybindingTriggerRow>,
+): ReadonlyArray<KeybindingCommandRow> {
   const byCommand = new Map<
     KeybindingCommand,
     { shortcuts: KeybindingRow[]; menu: KeybindingTriggerRow[]; alias: KeybindingTriggerRow[] }
   >();
-  for (const binding of mergeKeybindingRows(input.shortcutRows, input.triggerRows)) {
+  for (const binding of mergeKeybindingRows(shortcutRows, triggerRows)) {
     let cells = byCommand.get(binding.command);
     if (!cells) {
       cells = { shortcuts: [], menu: [], alias: [] };
@@ -108,17 +111,11 @@ export function buildKeybindingCommandRows(input: {
     if ("trigger" in binding) cells[binding.kind].push(binding);
     else cells.shortcuts.push(binding);
   }
-  const query = input.query.trim().toLowerCase();
-  return [...byCommand].flatMap(([command, cells]): KeybindingCommandRow[] => {
-    const shown =
-      (kinds.includes("shortcut") && cells.shortcuts.length > 0) ||
-      (kinds.includes("menu") && cells.menu.length > 0) ||
-      (kinds.includes("alias") && cells.alias.length > 0);
-    if (!shown) return [];
+  return [...byCommand].map(([command, cells]): KeybindingCommandRow => {
     const custom =
       cells.shortcuts.some((row) => row.source === "Custom") ||
       [...cells.menu, ...cells.alias].some((row) => row.source !== "Default");
-    const row: KeybindingCommandRow = {
+    return {
       id: command,
       command,
       ...cells,
@@ -128,8 +125,31 @@ export function buildKeybindingCommandRows(input: {
           ? "Custom"
           : null,
     };
-    return query === "" || matchesQuery(row, kinds, query, input.platform) ? [row] : [];
   });
+}
+
+/**
+ * The rows with a binding of a kind the filter shows that match the search box. Filtering keeps
+ * the row objects, so rows that stay visible while the query changes keep their props and skip
+ * rendering.
+ */
+export function filterKeybindingCommandRows(
+  rows: ReadonlyArray<KeybindingCommandRow>,
+  input: {
+    readonly query: string;
+    readonly filter: KeybindingKindFilter;
+    readonly platform: string;
+  },
+): ReadonlyArray<KeybindingCommandRow> {
+  const kinds = visibleKinds(input.filter);
+  const query = input.query.trim().toLowerCase();
+  // Every row has a binding of some kind, so showing them all filters nothing.
+  if (query === "" && input.filter === "all") return rows;
+  return rows.filter(
+    (row) =>
+      kinds.some((kind) => (kind === "shortcut" ? row.shortcuts : row[kind]).length > 0) &&
+      (query === "" || matchesQuery(row, kinds, query, input.platform)),
+  );
 }
 
 /** What an entry of a row's `⋯` menu does: upstream's reset or remove, or a trigger's change. */
