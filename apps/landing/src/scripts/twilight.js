@@ -12,7 +12,7 @@
 // crossfades that one step). The softer inks are the ink moved toward the paper only as far as their
 // contrast allows, so every step keeps body text at 4.5:1 (scripts/twilight-contrast.mjs checks).
 //
-// The altitude is quantised to half degrees and the page is written only when the step changes, so
+// The altitude is quantised to whole degrees and the page is written only when the step changes, so
 // turning the rete restyles the page a few times a second at most, and never outside the bands.
 // `node` can import this file.
 
@@ -192,7 +192,7 @@ const Twilight = (() => {
     };
   }
 
-  // The step an altitude shows: half degrees through the bands, one state above the horizon and one
+  // The step an altitude shows: whole degrees through the bands, one state above the horizon and one
   // below −18°.
   const step = (alt) => Math.min(0, Math.max(-18, Math.round(alt / STEP) * STEP));
   const band = (alt) =>

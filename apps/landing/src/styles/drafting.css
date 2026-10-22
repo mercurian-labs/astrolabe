@@ -136,7 +136,7 @@
 }
 
 /* Crossing the flip, the palette crossfades (twilight.js turns the class on for a moment). Every
-   other step lands at once: they are a half degree apart and read as one continuous dusk. */
+   other step lands at once: they are a degree apart and read as one continuous dusk. */
 @property --paper {
   syntax: "<color>";
   inherits: true;
