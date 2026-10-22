@@ -51,6 +51,7 @@ import {
   showPullRequest,
   showChangeRequestTab,
   pullRequestTargetOfKey,
+  PULL_REQUEST_PANES_LAYOUT_KEY,
   stepPullRequestTab,
   usePullRequestTabHistory,
 } from "./pullRequestTabs";
@@ -78,7 +79,7 @@ export interface PullRequestPanesProps {
   readonly emptyState?: ReactNode;
 }
 
-const LAYOUT_KEY = "pull-requests";
+const LAYOUT_KEY = PULL_REQUEST_PANES_LAYOUT_KEY;
 const PullRequestPanesContext = createContext<PullRequestPanesProps | null>(null);
 
 function usePullRequestPanesProps(): PullRequestPanesProps {

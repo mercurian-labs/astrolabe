@@ -1,17 +1,23 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   activateTab,
   focusedPane,
+  openBeside,
   openTab,
   startingArrangement,
   surfaceKey,
+  type Arrangement,
 } from "~/panes/arrangement";
+import { useMaximizedPaneStore } from "~/panes/maximize";
+import type { PaneArrangementStore } from "~/panes/panesHost";
 import { followRecord } from "~/panes/surfaceMirror";
 import { pullRequestSurface } from "~/rightPanelStore";
 import {
   keepStoredHistory,
+  maximizeForGuide,
   parseStoredHistory,
+  PULL_REQUEST_PANES_LAYOUT_KEY,
   pullRequestOpenFor,
   pullRequestsToRestore,
   pullRequestTargetOfKey,
@@ -150,5 +156,67 @@ describe("pull request tabs saved by key", () => {
     expect(restored.targets.map((target) => target.number)).toEqual([1]);
     expect(restored.front).toBe(full(1).id);
     expect(pullRequestsToRestore(arrangement, [full(1).id, full(2).id]).targets).toEqual([]);
+  });
+});
+
+describe("a review's Guide taking the Change Requests area", () => {
+  afterEach(() => useMaximizedPaneStore.getState().restore());
+
+  /** Panes holding `arrangement`, as the area's attached panes do. */
+  const panesOf = (arrangement: Arrangement): PaneArrangementStore => {
+    let snapshot = { arrangement, hostPaneId: null };
+    return {
+      update: (change) => {
+        snapshot = { ...snapshot, arrangement: change(snapshot.arrangement) };
+      },
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+    };
+  };
+  /** #1 in one pane, and #2 beside it in the focused one. */
+  const twoPanes = () =>
+    openBeside(
+      openTab(startingArrangement(), surfaceKey(pr(1).id)),
+      surfaceKey(pr(2).id),
+      "p0",
+      "right",
+    );
+  const maximized = () => useMaximizedPaneStore.getState().maximized;
+
+  it("folds the list away and maximizes the focused pane showing the tour", () => {
+    const arrangement = twoPanes();
+    const hideList = vi.fn();
+    maximizeForGuide(pr(2).id, hideList, panesOf(arrangement));
+    expect(hideList).toHaveBeenCalledOnce();
+    expect(maximized()).toEqual({
+      layoutKey: PULL_REQUEST_PANES_LAYOUT_KEY,
+      paneId: arrangement.focused,
+    });
+  });
+
+  it("only folds the list away beside a lone pane, which already fills the area", () => {
+    const hideList = vi.fn();
+    maximizeForGuide(
+      pr(1).id,
+      hideList,
+      panesOf(openTab(startingArrangement(), surfaceKey(pr(1).id))),
+    );
+    expect(hideList).toHaveBeenCalledOnce();
+    expect(maximized()).toBeNull();
+  });
+
+  it("leaves everything as it is for a tour outside the focused pane", () => {
+    const hideList = vi.fn();
+    maximizeForGuide(pr(1).id, hideList, panesOf(twoPanes()));
+    maximizeForGuide(pr(2).id, hideList, null);
+    expect(hideList).not.toHaveBeenCalled();
+    expect(maximized()).toBeNull();
+  });
+
+  it("keeps a pane maximized by hand before the tour showed", () => {
+    const arrangement = twoPanes();
+    useMaximizedPaneStore.getState().toggle(PULL_REQUEST_PANES_LAYOUT_KEY, arrangement.focused);
+    maximizeForGuide(pr(2).id, () => {}, panesOf(arrangement));
+    expect(maximized()?.paneId).toBe(arrangement.focused);
   });
 });

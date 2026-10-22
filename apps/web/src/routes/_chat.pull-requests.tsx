@@ -113,7 +113,11 @@ import { ChangeRequestSourceFilter } from "../components/changeRequests/ChangeRe
 import { WikiChangesGroup } from "../components/changeRequests/WikiChangesGroup";
 import { ChangeGroupsSection } from "../components/changeRequests/groups/ChangeGroupsSection";
 import { PullRequestPanes } from "../components/pullRequest/PullRequestPanes";
-import { placePullRequests, showPullRequest } from "../components/pullRequest/pullRequestTabs";
+import {
+  maximizeForGuide,
+  placePullRequests,
+  showPullRequest,
+} from "../components/pullRequest/pullRequestTabs";
 import { startDrag } from "../panes/drag";
 import { readLocalApi } from "../localApi";
 import {
@@ -148,7 +152,7 @@ import { resolveShortcutCommand } from "../keybindings";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { Button } from "../components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
-import { SidebarInset } from "../components/ui/sidebar";
+import { SidebarInset, useSidebar } from "../components/ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import { useLiveRefresh } from "../hooks/useLiveRefresh";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -351,6 +355,8 @@ function PullRequestsRouteView() {
     sort === "ready" || sort === "largest" || sort === "smallest" ? "eager" : "visible";
   const navigate = useNavigate({ from: Route.fullPath });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  // Astrolabe: the list lives in the sidebar, a sheet over the review on narrow windows.
+  const { isMobile, open: sidebarOpen, setOpen: setSidebarOpen, setOpenMobile } = useSidebar();
   const {
     capableEnvironments,
     scopedEnvironmentId,
@@ -1265,6 +1271,7 @@ function PullRequestsRouteView() {
         .then((picked) => {
           if (picked !== "new-tab") return;
           for (const each of carried) showPullRequest(each, "new-tab");
+          if (isMobile) setOpenMobile(false);
         });
     },
   );
@@ -1284,8 +1291,10 @@ function PullRequestsRouteView() {
       return;
     }
     change(() => anchorRow(PULL_REQUEST_SELECTION, key));
-    // Astrolabe: in the tab in front, or as the click asks (see `pullRequestTabs`).
+    // Astrolabe: in the tab in front, or as the click asks (see `pullRequestTabs`); the narrow
+    // sheet steps aside for it, as it does for a thread or a document.
     showPullRequest(entry, intent);
+    if (isMobile) setOpenMobile(false);
     updateSearch({
       repository: entry.repository,
       number: entry.number,
@@ -1302,19 +1311,28 @@ function PullRequestsRouteView() {
       onChange={(query) => updateListScope({ q: query || undefined })}
     />
   );
+  // Astrolabe: find (Mod+F) searches the list, opening the sidebar first when it is closed; the
+  // field takes focus once it is on screen (`PullRequestsSidebarList`).
+  const [searchFocusPending, setSearchFocusPending] = useState(false);
+  const onSearchFocused = useStableCallback(() => setSearchFocusPending(false));
   const carriedToNothing =
     shownCount === 0 &&
     typedQuery.length === 0 &&
     (!querySettled || (showingCarried && listQuery.isPending));
+  // Astrolabe: in the sidebar's list and in the main area, so a closed sidebar or the narrow
+  // sheet does not leave a blank page.
+  const unsupportedState = (
+    <PullRequestsUnavailableState
+      title="Pull requests unavailable"
+      error="Update your Astrolabe servers to browse pull requests."
+    />
+  );
   const listBody = (
     <>
       {!capabilityKnown ? (
         <PullRequestListGhost rows={7} />
       ) : !pullRequestsSupported ? (
-        <PullRequestsUnavailableState
-          title="Pull requests unavailable"
-          error="Update your Astrolabe servers to browse pull requests."
-        />
+        unsupportedState
       ) : firstLoad ? (
         <PullRequestListGhost rows={7} />
       ) : listQuery.error && shownCount === 0 ? (
@@ -1517,6 +1535,8 @@ function PullRequestsRouteView() {
     filtersMenu,
     listBody,
     scrollRef,
+    searchFocusPending,
+    onSearchFocused,
   };
 
   const closeSurface = (surface: PullRequestSurface) => {
@@ -1555,6 +1575,29 @@ function PullRequestsRouteView() {
     event.stopPropagation();
     if (!event.repeat) closeSurface(activePullRequestSurface);
   });
+  // Astrolabe: a review's Guide folds the sidebar's list away (`maximizeForGuide`), as T3 Code
+  // hid its list for the tour. The sidebar is every section's, so leaving Changes opens it again
+  // unless it was opened by hand since.
+  const sidebarFoldedForGuide = useRef(false);
+  const foldSidebarForGuide = () => {
+    if (isMobile || !sidebarOpen) return;
+    sidebarFoldedForGuide.current = true;
+    void setSidebarOpen(false);
+  };
+  useEffect(() => {
+    if (sidebarOpen) sidebarFoldedForGuide.current = false;
+  }, [sidebarOpen]);
+  const reopenSidebarFoldedForGuide = useEffectEvent(() => {
+    if (sidebarFoldedForGuide.current) void setSidebarOpen(true);
+  });
+  useEffect(() => () => reopenSidebarFoldedForGuide(), []);
+  const focusSearchFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isMobile) setOpenMobile(true);
+    else if (!sidebarOpen) void setSidebarOpen(true);
+    setSearchFocusPending(true);
+  });
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isCommandPaletteOpen()) return;
@@ -1563,6 +1606,8 @@ function PullRequestsRouteView() {
       });
       if (command === "rightPanel.close") closeActiveSurfaceFromShortcut(event);
       if (command === "thread.copyReference") copyPullRequestFromShortcut(event);
+      // A chat shown in these panes takes find for itself first (`ChatView`).
+      if (command === "chat.find") focusSearchFromShortcut(event);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -1615,6 +1660,8 @@ function PullRequestsRouteView() {
         }}
         listEntry={listedPullRequestsBySurface.get(pullRequestListEntryId(surface)) ?? null}
         refreshToken={detailRefreshToken}
+        // Astrolabe: the Guide's tour gets the window, as T3 Code maximized the review for it.
+        onGuideShown={() => maximizeForGuide(surface.id, foldSidebarForGuide)}
         onActed={(action, phase = "done") => {
           // From every row held, not the ones on screen: a pull request closed from an open
           // list has left the screen, and reopening it has to find it anyway.
@@ -1669,6 +1716,8 @@ function PullRequestsRouteView() {
           onClose={closeSurface}
           onFocus={onPanesFocus}
         />
+      ) : capabilityKnown ? (
+        unsupportedState
       ) : null}
     </SidebarInset>
   );
@@ -2156,6 +2205,8 @@ function PullRequestsSidebarList({
   filtersMenu,
   listBody,
   scrollRef,
+  searchFocusPending,
+  onSearchFocused,
 }: {
   host: string | undefined;
   searchQuery: string;
@@ -2168,12 +2219,24 @@ function PullRequestsSidebarList({
   filtersMenu: ReactNode;
   listBody: ReactNode;
   scrollRef: RefObject<HTMLDivElement | null>;
+  /** Find asked for the search field; it takes focus, with its query selected, once mounted. */
+  searchFocusPending: boolean;
+  onSearchFocused: () => void;
 }) {
   const kind = useChangeRequestKind();
   const wikisOnly = kind === "wikis";
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!searchFocusPending) return;
+    const input = controlsRef.current?.querySelector<HTMLInputElement>("input[type='search']");
+    // The sidebar may still be sliding in; focusing must not scroll it.
+    input?.focus({ preventScroll: true });
+    input?.select();
+    onSearchFocused();
+  }, [searchFocusPending, onSearchFocused]);
   return (
     <>
-      <div className="flex shrink-0 flex-col gap-2 px-2 pb-2">
+      <div ref={controlsRef} className="flex shrink-0 flex-col gap-2 px-2 pb-2">
         {searchInput}
         <div className="flex flex-wrap items-center gap-1.5">
           <ChangeRequestSourceFilter

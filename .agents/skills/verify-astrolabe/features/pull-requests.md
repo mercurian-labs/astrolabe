@@ -107,7 +107,8 @@ threads by project: <name>`) lists the same, a wiki only once its folder is a pr
   **Refresh pull requests**; no New or Link button. Under it `searchbox "Search pull
 requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by project:
 <name>`, `Sort pull requests: <sort>` and **Filters** (a count badge per non-default
-  filter; Sort and Filters are hidden while Wikis is picked).
+  filter; Sort and Filters are hidden while Wikis is picked). `mod+f` (find) focuses and
+  selects the search, opening the sidebar, or the narrow window's sheet, first.
   - Search matches number, title, repository, branch and author, and takes GitHub-style
     qualifiers: `label:`, `-label:`, `author:`, `draft:`, `review:`, `checks:`/`status:`;
     an unknown `key:value` is read as that label. The query is the URL's `q`. No match
@@ -116,14 +117,17 @@ requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by p
     updated, Newest/Oldest shown, Largest/Smallest shown.
   - Filters submenus: State (All/Open/Closed/Merged), Involvement (All/Reviewing/
     Authored), Author, Labels (both built from what is loaded), Draft, Review, Checks,
-    Project; Host and Server only when there are several.
+    Project; Server only when there are several, Host when there are several or one cannot
+    be read (marked `· Unavailable`, the reason in its tooltip).
   - Groups, only with Involvement All: **Authored**, **Review requested**, **Others**
     (an `h2` with the count beside it), empty ones hidden. 99 rows per repository's page with **Load more pull
     requests**; refreshes on focus and every minute, so rows reorder while you look.
-  - Rows: `[data-pull-request-key] > button`, named `#<n> <title>`: state glyph,
-    `owner/repo`, time; `#n` and title; author, a **Checks: …** popover button, the
-    review glyph and `+a −d`. No hover card, labels or stack grouping (the thread's
-    list has those). The open one is `aria-current="page"`.
+  - Rows: `[data-pull-request-key] > button`, named `#<n> <title>`: state glyph, the
+    host's icon (labelled GitHub, GitLab …) when several hosts are listed, `owner/repo`,
+    time; `#n` and title; author, the first label (`+N` for the rest), for a stacked one
+    `button "Stack <n>, layer <i> of <size>"` whose menu lists and opens the layers, a
+    **Checks: …** popover button, the review glyph and `+a −d`. No hover card. The open one
+    is `aria-current="page"`.
   - Quick actions: holding Shift shows `group "Quick actions for pull request #n"` on
     each row (Close/Merge, Ready for review, Reopen, as the host allows); they are in
     the DOM but `display: none` otherwise. They write to the host.
@@ -138,6 +142,8 @@ requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by p
   tab reads "No change request open". **Pane actions**: Split right / Split down (disabled
   for a pane's only tab), Close pane. The URL follows the focused pane's pull request
   (`repository`, `number`, `selectedHost`, `selectedProjectId`, `selectedEnvironmentId`).
+  With servers too old for pull requests it reads "Pull requests unavailable", as the
+  sidebar does. Below the md width the sidebar is a sheet, and opening a row closes it.
 - **History**: each tab walks back and forward through what it showed (localStorage
   `astrolabe:pull-request-tab-history:v1`) with the title bar's **Back**/**Forward**,
   `mod+[`/`mod+]` and Space `t h`/`t l`. A pull request picked inside a review (stack
@@ -145,9 +151,12 @@ requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by p
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
   labels, description, checks, comments), **Guide** (only with Settings → Source Control
   → review guides on), **Timeline** and **Code** (the diff, with scope, split/stacked,
-  file tree, Viewed). Every review opens on Summary. **More pull request actions**: Link
-  to thread, Refresh, Ask a question, Explain this PR, Fix findings in a thread, Open on
-  GitHub, Copy link, Copy PR number. Commenting and reviewing use the floating
+  file tree, Viewed). Every review opens on Summary. A written guide coming on screen in
+  the focused pane collapses the sidebar (wide windows only) and maximizes the pane when
+  other panes share the area (`maximizeForGuide`). Leaving the Guide gives nothing back,
+  as in T3 Code; leaving Changes opens the sidebar again unless it was opened by hand
+  since. **More pull request actions**: Link to thread, Refresh, Ask a question, Explain
+  this PR, Fix findings in a thread, Open on GitHub, Copy link, Copy PR number. Commenting and reviewing use the floating
   **Comment on pull request** button.
 
 ## How to get to it (user POV)

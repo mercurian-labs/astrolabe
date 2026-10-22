@@ -75,6 +75,17 @@ function PullRequestRowLabels({ labels }: { labels: EnvironmentPullRequestEntry[
   );
 }
 
+/** Astrolabe: a sidebar card's labels, which have room for one: the first, and how many more. */
+function PullRequestCardLabel({ labels }: { labels: EnvironmentPullRequestEntry["labels"] }) {
+  const [first] = labels;
+  if (!first) return null;
+  return (
+    <PullRequestLabelChip label={first} className="max-w-24">
+      {labels.length > 1 ? <span className="shrink-0">+{labels.length - 1}</span> : null}
+    </PullRequestLabelChip>
+  );
+}
+
 const PAGE_ROW_CLASS = "px-3 py-2.5";
 
 export type PullRequestRowTarget = Pick<
@@ -130,7 +141,8 @@ function PullRequestRowImpl({
   onCloseSweepStart?: (entry: EnvironmentPullRequestEntry, event: PointerEvent) => void;
   /**
    * Astrolabe: `card` draws the row as the sidebar's thread and document cards are drawn (where
-   * it lives and when, the title, then who and how it stands), for the Pull Requests sidebar.
+   * it lives, on which host when several are listed, and when; the title; then who, its first
+   * label, its stack and how it stands), for the Pull Requests sidebar.
    */
   layout?: "row" | "card";
 }) {
@@ -241,6 +253,14 @@ function PullRequestRowImpl({
           <SidebarCardContent>
             <SidebarCardHeader>
               {glyph}
+              {showProvider ? (
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+                    <Icon aria-label={providerName} className="size-3" />
+                  </TooltipTrigger>
+                  <TooltipPopup>{providerName}</TooltipPopup>
+                </Tooltip>
+              ) : null}
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
                 {entry.repository}
                 {environmentLabel ? ` · ${environmentLabel}` : null}
@@ -263,10 +283,26 @@ function PullRequestRowImpl({
                 className="min-w-3.5 max-w-32"
                 labelClassName="truncate"
               />
+              <PullRequestCardLabel labels={entry.labels} />
               {matchedElsewhere ? (
                 <SearchIcon aria-label="Matched in the description" className="size-3 shrink-0" />
               ) : null}
               <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {entry.stack ? (
+                  <PullRequestStackPopover
+                    environmentId={entry.environmentId}
+                    reference={{
+                      projectId: entry.projectId,
+                      host: entry.host,
+                      repository: entry.repository,
+                      number: entry.number,
+                    }}
+                    membership={entry.stack}
+                    onSelect={(target) =>
+                      onSelect({ ...target, host: entry.host, environmentId: entry.environmentId })
+                    }
+                  />
+                ) : null}
                 {signals}
                 <PullRequestChangeBreakdownStat
                   environmentId={entry.environmentId}

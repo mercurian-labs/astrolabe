@@ -12,7 +12,9 @@ import {
   surfaceKey,
   type Arrangement,
 } from "~/panes/arrangement";
+import { focusedPaneOf, isPaneMaximized, toggleMaximizedPane } from "~/panes/paneCommands";
 import type { PanesController } from "~/panes/panesController";
+import type { PaneArrangementStore } from "~/panes/panesHost";
 import { leafWithTab, leaves, type Side } from "~/panes/tree";
 import {
   PULL_REQUESTS_PANEL_REF,
@@ -45,6 +47,9 @@ import {
  */
 
 const HISTORY_STORAGE_KEY = "astrolabe:pull-request-tab-history:v1";
+
+/** The Change Requests area's panes, as their saved arrangement and maximized pane name them. */
+export const PULL_REQUEST_PANES_LAYOUT_KEY = "pull-requests";
 
 /** What names a pull request: the server, project, host, repository and number. */
 export type PullRequestTarget = Parameters<typeof pullRequestSurface>[0];
@@ -424,6 +429,26 @@ export function stepPullRequestTab(direction: HistoryDirection) {
     histories: stepped.histories,
     surfaces: current ? { ...surfaces, [active]: current } : surfaces,
   });
+}
+
+/**
+ * Astrolabe: a review's Guide gets the window for its tour, as T3 Code hid the pull request list
+ * for it. Called as the tour of `surfaceId` comes on screen: when that pull request is the
+ * focused pane's tab in front, `hideList` folds the sidebar's list away, and the pane is
+ * maximized, as its Maximize pane does, when other panes share the area. As in T3 Code, nothing
+ * comes back as the tour leaves. `panes` are the attached ones unless a test passes its own.
+ */
+export function maximizeForGuide(
+  surfaceId: string,
+  hideList: () => void,
+  panes: PaneArrangementStore | null = controller,
+) {
+  const focused = panes ? focusedPaneOf(panes) : null;
+  if (!panes || !focused || surfaceIdOf(focused.leaf.active) !== surfaceId) return;
+  hideList();
+  const paneId = focused.leaf.id;
+  if (focused.alone || isPaneMaximized(PULL_REQUEST_PANES_LAYOUT_KEY, paneId)) return;
+  toggleMaximizedPane(panes, PULL_REQUEST_PANES_LAYOUT_KEY, paneId);
 }
 
 /** Whether the focused pane's tab in front has anything back (or forward) to show. */

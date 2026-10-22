@@ -109,6 +109,24 @@ describe("pull request filters menu", () => {
     expect(onFilters).toHaveBeenCalledWith({ checks: "failing" });
   });
 
+  it("offers a lone host only when it cannot be read, so its reason is in reach", () => {
+    const all = { value: "", label: "All", Icon: CircleIcon };
+    const gitHub = { value: "github.com", label: "GitHub", Icon: CircleIcon };
+    expect(findLabeledGroup(menu({ hostOptions: [all, gitHub] }), "Host")).toBeUndefined();
+
+    const onHost = vi.fn();
+    const unreadable = { ...gitHub, unavailable: "Sign in with `gh auth login`." };
+    const group = findValueChange(
+      findLabeledGroup(
+        menu({ hostOptions: [all, unreadable], host: "github.com", onHost }),
+        "Host",
+      ),
+    );
+    expect(group).toBeDefined();
+    group?.props.onValueChange("");
+    expect(onHost).toHaveBeenCalledWith(undefined);
+  });
+
   it("does not emit a change when the selected project is chosen again", () => {
     const projectId = "project-1" as ProjectId;
     const environmentId = "env-1" as EnvironmentId;
