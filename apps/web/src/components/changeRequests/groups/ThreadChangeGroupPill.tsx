@@ -2,8 +2,6 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { CHANGE_GROUP_STATE_LABELS } from "@t3tools/shared/changeGroups";
 import { useNavigate } from "@tanstack/react-router";
 
-import { cn } from "~/lib/utils";
-import { changeGroupColor, tabGroupId } from "~/panes/tabGroups";
 import { openInSection } from "~/sectionTabs/openInSection";
 import { useChangeGroups } from "~/state/changeGroups";
 import { Badge } from "../../ui/badge";
@@ -42,10 +40,7 @@ export function ThreadChangeGroupPill({
           />
         }
       >
-        <span
-          aria-hidden
-          className={cn("size-2 shrink-0 rounded-full", changeGroupColor(tabGroupId(group)))}
-        />
+        <span aria-hidden className="size-2 shrink-0 rounded-full bg-primary" />
         <Badge size="sm" variant={changeGroupStateVariant(group.state)}>
           {CHANGE_GROUP_STATE_LABELS[group.state]}
         </Badge>

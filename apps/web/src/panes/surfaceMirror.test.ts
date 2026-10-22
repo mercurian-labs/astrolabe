@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   activateTab,
   openBeside,
+  openTab,
   startingArrangement,
   surfaceKey,
   type Arrangement,
@@ -181,5 +182,20 @@ describe("loading a thread", () => {
     const next = followRecord(startingArrangement(), null, record("files", ["diff", "files"]));
     expect(panes(next.arrangement)).toEqual([[diff, files]]);
     expect(actives(next.arrangement)).toEqual([files]);
+  });
+
+  it("keeps a document the pane was left showing in front, over the record's surface", () => {
+    const doc = "wiki:env:handbook:note";
+    const saved = openTab(follow(startingArrangement(), record("diff", ["diff"])), doc);
+    expect(actives(saved)).toEqual([doc]);
+    const next = followRecord(saved, null, record("diff", ["diff"]));
+    expect(actives(next.arrangement)).toEqual([doc]);
+    // Once loaded, the record choosing its surface again brings it to the front.
+    const chosen = followRecord(
+      next.arrangement,
+      record("files", ["diff", "files"]),
+      record("diff", ["diff", "files"]),
+    );
+    expect(actives(chosen.arrangement)).toEqual([diff]);
   });
 });

@@ -8,6 +8,7 @@ import {
   RightPanelHostContext,
   type RightPanelHost,
 } from "./PaneSurfaceHost";
+import { GroupPanelRunsSync } from "./GroupPanelRunsSync";
 import { createPanesController } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { createRightPanelHost, RightPanelSectionTabs } from "./rightPanelPaneTabs";
@@ -26,7 +27,9 @@ function deviceStorage(): StorageLike | null {
 /**
  * Gives a thread's view its right panel as panes: one controller following the thread on
  * screen, its arrangement loaded and saved as the thread changes, so ChatView stays mounted
- * across the switch as T3 Code keeps it. Inside, ChatView draws its panel as `RightPanelPanes`.
+ * across the switch as T3 Code keeps it. Inside, ChatView draws its panel as `RightPanelPanes`,
+ * and the panel shows the shared runs of the change groups the thread works in
+ * (`GroupPanelRunsSync`).
  */
 export function ThreadPanesProvider({
   threadRef,
@@ -81,6 +84,7 @@ export function ThreadPanesProvider({
             <PaneSurfaceHostProvider>
               {children}
               <RightPanelSectionTabs />
+              <GroupPanelRunsSync controller={controller} threadRef={threadRef} />
             </PaneSurfaceHostProvider>
           </PanesThreadContext.Provider>
         </PanesLayoutKeyContext.Provider>

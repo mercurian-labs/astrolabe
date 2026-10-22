@@ -28,6 +28,7 @@ import {
   THREAD_HISTORY_PAGE_POLICY,
   OLDER_THREAD_USER_TURN_LIMIT,
 } from "./threadHistoryPaging.ts";
+import * as ThreadLineage from "./ThreadLineage.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import { buildActiveShellSnapshot, loadShellSnapshotParts } from "./ShellStream.ts";
@@ -53,6 +54,7 @@ export const layer = HttpApiBuilder.group(
     const sql = yield* SqlClient.SqlClient;
     const environment = yield* ServerEnvironment.ServerEnvironmentIdentity;
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+    const threadLineage = yield* ThreadLineage.ThreadLineage;
     const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
     const projectStore = yield* ProjectStore.ProjectStoreV2;
     const projectEnrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
@@ -255,6 +257,21 @@ export const layer = HttpApiBuilder.group(
                 }),
               ),
             );
+        }),
+      )
+      .handle(
+        "threadLineage",
+        Effect.fn("environment.orchestration.threadLineage")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          return yield* threadLineage.read(args.params.threadId).pipe(
+            traceLocalHandlerWork,
+            Effect.catchTags({
+              ThreadLineageThreadNotFoundError: () => failEnvironmentNotFound("thread_not_found"),
+              ThreadLineageReadError: (cause) =>
+                failEnvironmentInternal("orchestration_thread_lineage_failed", cause),
+            }),
+          );
         }),
       );
   }),

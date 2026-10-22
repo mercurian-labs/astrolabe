@@ -2478,6 +2478,27 @@ code {
    (`gap-1`). */
 :is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
   --tab-ear: var(--radius-md);
+  --tab-rule: 1px;
+  --tab-rule-color: var(--border);
+}
+
+/* A tab group's run (`panes/tabGroups.tsx`), in a pane's strip or the chat tabs, is underlined in
+   the theme's primary colour (`--tab-group`, the same for every group) as Chrome's are, a 2px
+   line along the strip's foot. Its tab in front is outlined in that line, so the line rises
+   around the tab and its feet carry it on. */
+[data-tab-group-run] {
+  --tab-group: var(--primary);
+}
+
+[data-tab-group-run] > :is([data-pane-tab], [data-chat-tab]) {
+  width: auto;
+}
+
+[data-tab-group-run] > :is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
+  --tab-rule: 2px;
+  --tab-rule-color: var(--tab-group);
+  border-color: var(--tab-group);
+  border-width: 2px 2px 0;
 }
 
 :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::before,
@@ -2485,30 +2506,30 @@ code {
   content: "";
   position: absolute;
   bottom: 0;
-  width: calc(var(--tab-ear) + 1px);
-  height: calc(var(--tab-ear) + 1px);
+  width: calc(var(--tab-ear) + var(--tab-rule));
+  height: calc(var(--tab-ear) + var(--tab-rule));
   pointer-events: none;
 }
 
 :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::before {
-  left: calc(-1px - var(--tab-ear));
+  left: calc(-1 * var(--tab-rule) - var(--tab-ear));
   background: radial-gradient(
     circle at 0 0,
     transparent calc(var(--tab-ear) - 0.5px),
-    var(--border) calc(var(--tab-ear) + 0.25px),
-    var(--border) calc(var(--tab-ear) + 0.75px),
-    var(--tab-join) calc(var(--tab-ear) + 1.5px)
+    var(--tab-rule-color) calc(var(--tab-ear) + 0.25px),
+    var(--tab-rule-color) calc(var(--tab-ear) + var(--tab-rule) - 0.25px),
+    var(--tab-join) calc(var(--tab-ear) + var(--tab-rule) + 0.5px)
   );
 }
 
 :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
-  right: calc(-1px - var(--tab-ear));
+  right: calc(-1 * var(--tab-rule) - var(--tab-ear));
   background: radial-gradient(
     circle at 100% 0,
     transparent calc(var(--tab-ear) - 0.5px),
-    var(--border) calc(var(--tab-ear) + 0.25px),
-    var(--border) calc(var(--tab-ear) + 0.75px),
-    var(--tab-join) calc(var(--tab-ear) + 1.5px)
+    var(--tab-rule-color) calc(var(--tab-ear) + 0.25px),
+    var(--tab-rule-color) calc(var(--tab-ear) + var(--tab-rule) - 0.25px),
+    var(--tab-join) calc(var(--tab-ear) + var(--tab-rule) + 0.5px)
   );
 }
 
@@ -2566,7 +2587,8 @@ code {
    root's `--background`, captured as `--astrolabe-canvas` before the sidebar's palette redefines
    it), while the rail, its title-bar cell and the sidebar's own title-bar row (the wordmark's)
    keep the rail's `bg-sidebar` (`--astrolabe-rail`), so the title bar reads as one band over the
-   rail and the sidebar. The narrow window's sheet keeps the sidebar colour. T3 Code's default light palette fills hovered and current rows a step lighter
+   rail and the sidebar. The content's title bars (tab strips, page headers) paint
+   `--astrolabe-rail` too, so the band carries on across the window. The narrow window's sheet keeps the sidebar colour. T3 Code's default light palette fills hovered and current rows a step lighter
    than its sidebar colour, which the canvas would swallow, so they move a step darker; themes
    derive their row fills from the canvas already. */
 :root {

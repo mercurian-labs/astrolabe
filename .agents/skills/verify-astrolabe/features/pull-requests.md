@@ -44,7 +44,7 @@ thread's own Pull request tab. Shown only when a connected server reports
 - **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
   server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`):
   `ul[aria-label="Change groups"]` heads the list (a collapsible `button "Groups · N"`; merged groups are hidden),
-  each card `button "<title>, change group, <state>"` with a coloured dot, its members as
+  each card `button "<title>, change group, <state>"` with a primary-colour dot, its members as
   buttons (`<member>, in <group>`) and `button "N threads in <group>"`. A group needs two
   members (or a decision); its id is the root thread. Its threads: the root, those that opened
   members, their forks and coordinator's children (even ones that opened nothing), threads on a
@@ -61,12 +61,13 @@ thread's own Pull request tab. Shown only when a connected server reports
   **Draft the docs** on Docs missing with drafts on. The server sweeps armed groups each minute
   and merges their open docs once all live code merged. A thread's header shows
   `button "Change group: <title>, <state>"`, which opens the tab here. Tab groups
-  (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs is headed by
-  `button[data-tab-group]` named `<title>, tab group, <state>` (`, collapsed` appended) with
-  `aria-expanded`. Click collapses the run into the label (only the pane's front tab stays)
-  or expands it; right-click (plain buttons on web): Expand the group / Collapse the group,
-  Merge with the code (Stop merging with the code once armed), Open the group, Close the
-  group's tabs.
+  (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs is headed by a
+  marker, `button[data-tab-group]` named `<title>, tab group <n>, <state>` (`, collapsed`
+  appended): a stack icon with the group's number (the same in every pane and section), in
+  the primary colour as every group is. Click shows the group's tab, opening it at the head
+  of the run when it is not open; right-click (plain buttons on web): Expand the group /
+  Collapse the group (only the pane's front tab stays beside the marker), Merge with the code
+  (Stop merging with the code once armed), Close the group's tabs.
   MCP: `t3_change_groups`, `t3_change_group_suggest`, `t3_change_group_update`.
   Mobile: the Changes tab leads with `Groups · N` and cards
   `button "<title>, change group, <state>"` (route `ChangeGroup`: Merge with the code switch,

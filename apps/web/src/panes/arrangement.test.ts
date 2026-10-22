@@ -6,6 +6,7 @@ import {
   openBeside,
   openTab,
   placeTabs,
+  showTabBefore,
   splitTab,
   splitTabs,
   splitWithTabs,
@@ -56,6 +57,26 @@ describe("opening tabs", () => {
   });
 });
 
+describe("showing a tab group's own tab from its marker", () => {
+  const group = surfaceKey("group");
+
+  it("brings it to the front where it is open, focusing its pane", () => {
+    const opened = openTab(sideBySide(), group, "p1", false);
+    expect(opened.focused).toBe("p0");
+    const next = showTabBefore(opened, group, diff);
+    expect(panes(next)).toEqual([[diff], [files, group]]);
+    expect(leaves(next.root)[1]?.active).toBe(group);
+    expect(next.focused).toBe("p1");
+  });
+
+  it("opens it at the head of the run when it is not open, and shows it", () => {
+    const three = openTab(openTab(openTab(startingArrangement(), diff), files), browser);
+    const next = showTabBefore(three, group, files);
+    expect(panes(next)).toEqual([[diff, group, files, browser]]);
+    expect(leaves(next.root)[0]?.active).toBe(group);
+  });
+});
+
 describe("closing tabs", () => {
   it("leaves the last pane an empty tab, as an empty panel shows, and keeps that one", () => {
     const closed = closeTab(openTab(startingArrangement(), diff), diff);
@@ -94,6 +115,16 @@ describe("moving a selection of tabs together", () => {
     const three = openTab(openTab(openTab(startingArrangement(), diff), files), browser);
     expect(panes(moveTabs(three, [files, browser], "p0", 0))).toEqual([[files, browser, diff]]);
     expect(panes(moveTabs(three, [diff, browser], "p0", 3))).toEqual([[files, diff, browser]]);
+  });
+
+  it("leaves the tab in front as it was when that is one of the pane's own", () => {
+    const three = openTab(openTab(openTab(startingArrangement(), diff), files), browser);
+    const run = moveTabs(three, [diff, files], "p0", 3, browser);
+    expect(panes(run)).toEqual([[browser, diff, files]]);
+    expect(leaves(run.root)[0]?.active).toBe(browser);
+    const one = moveTabs(three, [diff], "p0", 3, browser);
+    expect(panes(one)).toEqual([[files, browser, diff]]);
+    expect(leaves(one.root)[0]?.active).toBe(browser);
   });
 
   it("opens them in a new pane on a pane's edge", () => {

@@ -16,6 +16,11 @@ export interface DragItem {
    * a new pane on `side`.
    */
   readonly place?: (paneId: string, drop: { side: Side | null; index: number }) => void;
+  /**
+   * Astrolabe: a tab group dragged by its marker (`tabGroups`), by its id: `keys` are its run's
+   * tabs, which hide behind the marker until the drop, and it lands between whole runs.
+   */
+  readonly group?: string;
 }
 
 let current: DragItem | null = null;
@@ -64,6 +69,19 @@ export function useDragging(key: string): boolean {
   );
 }
 
+/** The tab group being dragged by its marker, if one is: its run shows the marker alone. */
+export function useDraggedGroup(): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    () => current?.group ?? null,
+  );
+}
+
 /** Stands in for the browser's own drag image, which the page draws instead. */
 const BLANK =
   typeof Image === "undefined"
@@ -78,38 +96,19 @@ let preview: { readonly element: HTMLElement; readonly stop: () => void } | null
  * Draws a tab's drag preview in the page: a pill with the tab's icon and title, held under the
  * pointer where it grabbed the tab, with a count and stacked cards behind it when `count` tabs
  * travel. The browser's own snapshot of a tab takes the strip around it (square corners, the
- * tab in front's feet), so it is replaced by a blank image. Ends on drop, on the drag's end, or
- * with `stopTabDragPreview`.
+ * tab in front's feet), so it is replaced by a blank image. A tab group's marker is its own
+ * preview, as it stands, on a card's fill. Ends on drop, on the drag's end, or with
+ * `stopTabDragPreview`.
  */
 export function startTabDragPreview(event: DragEvent<HTMLElement>, count = 1) {
   stopTabDragPreview();
   const tab = event.currentTarget;
   const box = tab.getBoundingClientRect();
   const grab = { x: event.clientX - box.left, y: Math.min(event.clientY - box.top, 28) };
-  const element = document.createElement("div");
+  const element = tab.hasAttribute("data-tab-group")
+    ? groupPreview(tab, box)
+    : tabPreview(tab, box, count);
   element.setAttribute("aria-hidden", "true");
-  element.className =
-    // Its icon at full strength, as the tab in front draws it.
-    "pointer-events-none fixed top-0 left-0 z-[100] flex h-7 items-center gap-1.5 rounded-md border border-border bg-popover px-2.25 text-xs font-medium text-foreground shadow-md [&_img]:opacity-100 [&_svg]:opacity-100 [&>[data-tab-icon]]:opacity-100";
-  element.style.width = `${Math.min(box.width, 240)}px`;
-  // Two cards behind it, offset down and right.
-  if (count > 1) {
-    element.style.boxShadow =
-      "3px 3px 0 -1px var(--popover), 3px 3px 0 0 var(--border), 6px 6px 0 -1px var(--popover), 6px 6px 0 0 var(--border)";
-  }
-  const icon = tab.querySelector("[data-tab-icon]");
-  if (icon) element.append(icon.cloneNode(true));
-  const title = document.createElement("span");
-  title.className = "min-w-0 flex-1 truncate";
-  title.textContent = tab.getAttribute("aria-label");
-  element.append(title);
-  if (count > 1) {
-    const badge = document.createElement("span");
-    badge.className =
-      "flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-primary px-1.25 text-[11px] text-primary-foreground";
-    badge.textContent = String(count);
-    element.append(badge);
-  }
   const place = (x: number, y: number) => {
     element.style.translate = `${x - grab.x}px ${y - grab.y}px`;
   };
@@ -133,6 +132,45 @@ export function startTabDragPreview(event: DragEvent<HTMLElement>, count = 1) {
       element.remove();
     },
   };
+}
+
+function tabPreview(tab: HTMLElement, box: DOMRect, count: number) {
+  const element = document.createElement("div");
+  element.className =
+    // Its icon at full strength, as the tab in front draws it.
+    "pointer-events-none fixed top-0 left-0 z-[100] flex h-7 items-center gap-1.5 rounded-md border border-border bg-popover px-2.25 text-xs font-medium text-foreground shadow-md [&_img]:opacity-100 [&_svg]:opacity-100 [&>[data-tab-icon]]:opacity-100";
+  element.style.width = `${Math.min(box.width, 240)}px`;
+  // Two cards behind it, offset down and right.
+  if (count > 1) {
+    element.style.boxShadow =
+      "3px 3px 0 -1px var(--popover), 3px 3px 0 0 var(--border), 6px 6px 0 -1px var(--popover), 6px 6px 0 0 var(--border)";
+  }
+  const icon = tab.querySelector("[data-tab-icon]");
+  if (icon) element.append(icon.cloneNode(true));
+  const title = document.createElement("span");
+  title.className = "min-w-0 flex-1 truncate";
+  title.textContent = tab.getAttribute("aria-label");
+  element.append(title);
+  if (count > 1) {
+    const badge = document.createElement("span");
+    badge.className =
+      "flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-primary px-1.25 text-[11px] text-primary-foreground";
+    badge.textContent = String(count);
+    element.append(badge);
+  }
+  return element;
+}
+
+function groupPreview(marker: HTMLElement, box: DOMRect) {
+  const element = marker.cloneNode(true) as HTMLElement;
+  element.removeAttribute("data-tab-group");
+  element.removeAttribute("draggable");
+  element.classList.add("pointer-events-none", "fixed", "top-0", "left-0", "z-[100]", "shadow-md");
+  element.style.width = `${box.width}px`;
+  // The marker is bare in its strip, as the tabs behind the one in front are.
+  element.style.background = "var(--popover)";
+  element.style.borderColor = "var(--border)";
+  return element;
 }
 
 /** Removes the drag preview, as a drop that moved the dragged tab elsewhere does. */

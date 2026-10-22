@@ -74,7 +74,7 @@ export function ChangeGroupView({
   /** Opens a member's tab beside the group. */
   readonly open: (key: string) => void;
   /** Opens tabs together, the group's own first, as one tab group. */
-  readonly openAll?: (keys: ReadonlyArray<string>) => void;
+  readonly openAll?: (keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void;
 }) {
   const groups = useChangeGroups();
   const group = groups.find(
@@ -100,7 +100,9 @@ function GroupDetails({
   readonly group: EnvironmentChangeGroup;
   readonly groups: ReadonlyArray<EnvironmentChangeGroup>;
   readonly open: (key: string) => void;
-  readonly openAll: ((keys: ReadonlyArray<string>) => void) | undefined;
+  readonly openAll:
+    | ((keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void)
+    | undefined;
 }) {
   const { environmentId } = group;
   const settings = useEnvironmentSettings(environmentId, (all) => all.changeGroupGrouping);
@@ -239,16 +241,19 @@ function GroupDetails({
               size="sm"
               variant="outline"
               onClick={() =>
-                openAll([
-                  changeGroupTabKey(group),
-                  ...group.threadIds.map((threadId) =>
-                    chatTabKey(scopeThreadRef(environmentId, ThreadId.make(threadId))),
-                  ),
-                  ...group.members.flatMap((member) => {
-                    const key = changeGroupMemberTabKey(environmentId, member);
-                    return key === null ? [] : [key];
-                  }),
-                ])
+                openAll(
+                  [
+                    changeGroupTabKey(group),
+                    ...group.threadIds.map((threadId) =>
+                      chatTabKey(scopeThreadRef(environmentId, ThreadId.make(threadId))),
+                    ),
+                    ...group.members.flatMap((member) => {
+                      const key = changeGroupMemberTabKey(environmentId, member);
+                      return key === null ? [] : [key];
+                    }),
+                  ],
+                  group,
+                )
               }
             >
               <LayersIcon />

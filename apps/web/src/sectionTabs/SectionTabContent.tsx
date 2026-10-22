@@ -6,6 +6,8 @@ import {
   RepositoryTabView,
   useRepositoryTabLabel,
 } from "~/components/repositories/RepositoryTabView";
+import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
@@ -28,6 +30,7 @@ import {
 import { hasUnsavedEdits } from "~/components/wiki/wikiPanes";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { ChatTabStripContext } from "~/chatTabs/ChatTabStrip";
+import { useChatTabsStore } from "~/chatTabs/chatTabsStore";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import { ensureLocalApi } from "~/localApi";
@@ -201,7 +204,7 @@ export function SectionTabContent({
   /** Where a change request's pull request opens, for panes that hold them their own way. */
   readonly openPullRequest?: (target: FullPullRequestTarget) => void;
   /** How tabs open together (a change group's tab group), for panes that hold them their own way. */
-  readonly openAll?: (keys: ReadonlyArray<string>) => void;
+  readonly openAll?: (keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void;
 }) {
   const chat = parseChatTabKey(tabKey);
   if (chat !== null) return chats ? <PaneChat threadRef={chat} /> : null;
@@ -212,7 +215,19 @@ export function SectionTabContent({
     return (
       <ChangeGroupView
         tab={group}
-        open={(key) => store.update((arrangement) => showKeyIn(arrangement, key, "beside"))}
+        open={(key) => {
+          // Beside a thread, which holds no chats, a thread opens in the chat tabs after the chat
+          // in front, and a pull request as the thread's own.
+          const thread = chats ? null : parseChatTabKey(key);
+          const pullRequest = chats ? null : pullRequestTargetOfKey(key);
+          if (thread !== null) {
+            useChatTabsStore.getState().openBesideFront([scopedThreadKey(thread)]);
+          } else if (pullRequest !== null && openPullRequest) {
+            openPullRequest(pullRequest);
+          } else {
+            store.update((arrangement) => showKeyIn(arrangement, key, "beside"));
+          }
+        }}
         openAll={
           openAll ??
           ((keys) =>

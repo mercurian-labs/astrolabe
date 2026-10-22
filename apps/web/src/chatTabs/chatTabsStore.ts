@@ -48,6 +48,8 @@ interface ChatTabsState extends ChatTabsLayout {
   readonly move: (key: string, index: number) => void;
   /** Opens chats as tabs together at `index`, as `openTabsAt` does; the route shows one next. */
   readonly openAt: (keys: readonly string[], index: number) => void;
+  /** Opens chats as tabs together after the one in front, which stays (`openTabsBesideFront`). */
+  readonly openBesideFront: (keys: readonly string[]) => void;
 }
 
 export const CHAT_TABS_STORAGE_KEY = "t3code:chat-tabs:v1";
@@ -128,6 +130,7 @@ export const useChatTabsStore = create<ChatTabsState>()(
         }),
       move: (key, index) => set(({ keys }) => ({ keys: moveKey(keys, key, index) })),
       openAt: (keys, index) => set((state) => openTabsAt(state, keys, index)),
+      openBesideFront: (keys) => set((state) => openTabsBesideFront(state, keys)),
     }),
     {
       name: CHAT_TABS_STORAGE_KEY,
@@ -178,6 +181,18 @@ export function openTabsAt(
   const before = layout.keys.slice(0, at).filter((key) => !moving.has(key));
   const after = layout.keys.slice(at).filter((key) => !moving.has(key));
   return { ...layout, keys: [...before, ...moving, ...after] };
+}
+
+/**
+ * Astrolabe: the tabs with `opened` side by side right after the one in front (at the end with
+ * none), as a change group's threads open from its tab beside a thread; the tab in front stays.
+ */
+export function openTabsBesideFront(
+  layout: ChatTabsLayout,
+  opened: readonly string[],
+): ChatTabsLayout {
+  const at = layout.active === null ? -1 : layout.keys.indexOf(layout.active);
+  return openTabsAt(layout, opened, at === -1 ? layout.keys.length : at + 1);
 }
 
 /**

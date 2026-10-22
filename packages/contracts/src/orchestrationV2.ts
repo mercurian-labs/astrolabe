@@ -3254,6 +3254,67 @@ export const OrchestrationV2ThreadHistoryPage = Schema.Struct({
 });
 export type OrchestrationV2ThreadHistoryPage = typeof OrchestrationV2ThreadHistoryPage.Type;
 
+/** One run of a lineage thread: every turn, not the bounded window a projection holds. */
+export const OrchestrationV2ThreadLineageRun = Schema.Struct({
+  id: RunId,
+  ordinal: PositiveInt,
+  requestedAt: Schema.DateTimeUtc,
+  status: OrchestrationV2RunStatus,
+  userMessageId: MessageId,
+  /** The start of the run's user message, cut short; empty when the message is gone. */
+  text: Schema.String,
+  /** When the run ended; null while it works. */
+  completedAt: Schema.NullOr(Schema.DateTimeUtc),
+  /** The model the run asked for, when it named one. */
+  model: Schema.NullOr(Schema.String),
+  /** The start of the run's last agent message, cut short; empty when it has none. */
+  reply: Schema.String,
+  /** Line and file totals across the run's checkpoints. */
+  additions: NonNegativeInt,
+  deletions: NonNegativeInt,
+  files: NonNegativeInt,
+});
+export type OrchestrationV2ThreadLineageRun = typeof OrchestrationV2ThreadLineageRun.Type;
+
+export const OrchestrationV2ThreadLineageThread = Schema.Struct({
+  id: ThreadId,
+  title: Schema.String,
+  /** The fork parent; null for the family's root. */
+  parentId: Schema.NullOr(ThreadId),
+  /** The parent's run the fork left from, when it forked from one. */
+  forkRunId: Schema.NullOr(RunId),
+  createdAt: Schema.DateTimeUtc,
+  providerInstanceId: ProviderInstanceId,
+  archived: Schema.Boolean,
+  /** In ordinal order. */
+  runs: Schema.Array(OrchestrationV2ThreadLineageRun),
+});
+export type OrchestrationV2ThreadLineageThread = typeof OrchestrationV2ThreadLineageThread.Type;
+
+/** A fork's context carried back into another family thread. */
+export const OrchestrationV2ThreadLineageMergeBack = Schema.Struct({
+  id: ContextTransferId,
+  sourceThreadId: ThreadId,
+  sourceRunId: Schema.NullOr(RunId),
+  targetThreadId: ThreadId,
+  /** The target's run that took the context; null while it waits for one. */
+  targetRunId: Schema.NullOr(RunId),
+  createdAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2ThreadLineageMergeBack =
+  typeof OrchestrationV2ThreadLineageMergeBack.Type;
+
+/**
+ * A thread's fork family: its fork ancestors up to the root and every fork below that root, root
+ * first. Subagent children and deleted threads are left out; archived forks are kept.
+ */
+export const OrchestrationV2ThreadLineage = Schema.Struct({
+  threads: Schema.Array(OrchestrationV2ThreadLineageThread),
+  /** Merge-backs between family threads that carried or will carry context. */
+  mergeBacks: Schema.Array(OrchestrationV2ThreadLineageMergeBack),
+});
+export type OrchestrationV2ThreadLineage = typeof OrchestrationV2ThreadLineage.Type;
+
 const knownDomainEventTypes: ReadonlySet<string> = new Set(
   OrchestrationV2DomainEvent.members.flatMap((member) => {
     const type = member.fields.type;

@@ -32,6 +32,8 @@ const DevicePanel = lazy(() =>
 );
 const FilePreviewPanel = lazy(() => import("../files/FilePreviewPanel"));
 const GraphPanel = lazy(() => import("../graph/GraphPanel"));
+const LineagePanel = lazy(() => import("../lineage/LineagePanel"));
+const ignoreTurn = (_messageId: string) => {};
 
 export type RightPanelTerminalProps = Omit<
   PersistentThreadTerminalPanelProps,
@@ -75,6 +77,11 @@ export function RightPanelSurfaceContent(props: {
     image: ComposerImageAttachment | null,
   ) => void;
   readonly onCloseSurface: (surface: RightPanelSurface) => void;
+  /** Astrolabe: the Lineage tab remounts per thread and scrolls the chat to a checkpoint's turn. */
+  readonly lineage?: {
+    readonly threadKey: string | null;
+    readonly onShowTurn: (messageId: string) => void;
+  };
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
@@ -172,6 +179,16 @@ export function RightPanelSurfaceContent(props: {
       return (
         <Suspense fallback={null}>
           <GraphPanel threadRef={threadRef} />
+        </Suspense>
+      );
+    case "lineage":
+      return (
+        <Suspense fallback={null}>
+          <LineagePanel
+            key={props.lineage?.threadKey}
+            threadRef={threadRef}
+            onShowTurn={props.lineage?.onShowTurn ?? ignoreTurn}
+          />
         </Suspense>
       );
     case "device":

@@ -3,6 +3,7 @@ import {
   allTabs,
   closeTabs,
   focusedPane,
+  isEmptyTab,
   openTab,
   replaceTab,
   surfaceIdOf,
@@ -58,7 +59,9 @@ function surfacePane(
  * - Every surface in the record has a tab. A new one opens in the pane asked from, else beside
  *   the others, else in the focused pane.
  * - The record's active surface comes to the front of its pane when it changes or the panel
- *   opens. Pane focus stays where it was, unless the surface opened in the pane asked from.
+ *   opens. Pane focus stays where it was, unless the surface opened in the pane asked from. As a
+ *   thread loads (`previous` null), a document the pane was left showing (a wiki page, a change
+ *   group) stays in front: the record, which knows only surfaces, did not choose otherwise.
  *
  * A closed panel is not drawn, so its tabs simply stay where they stood until it opens again.
  * `consumedTarget` says whether a new surface landed in `targetPaneId`.
@@ -107,9 +110,14 @@ export function followRecord(
 
   const opening = record.isOpen && !previous?.isOpen;
   const active = record.activeSurfaceId;
+  const front =
+    active === null ? undefined : leafWithTab(arrangement.root, surfaceKey(active))?.active;
+  const documentLeftInFront =
+    previous === null && front !== undefined && surfaceIdOf(front) === null && !isEmptyTab(front);
   if (
     active !== null &&
     present.has(active) &&
+    !documentLeftInFront &&
     (opening || previous?.activeSurfaceId !== active || arriving.includes(active))
   ) {
     arrangement = activateTab(arrangement, surfaceKey(active), consumedTarget);

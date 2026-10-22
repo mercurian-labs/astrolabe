@@ -508,6 +508,8 @@ interface MessagesTimelineProps {
   onAnchorSizeChanged: (messageId: MessageId, size: number) => void;
   contentInsetEndAdjustment: number;
   onIsAtEndChange: (isAtEnd: boolean) => void;
+  /** The user message of the turn the minimap marks current, each time that changes. */
+  onCurrentTurnChange?: ((messageId: string | null) => void) | undefined;
   /**
    * Off while the user is reading history; LegendList's own maintainScrollAtEnd
    * would otherwise re-pin regardless of ChatView's scroll-mode refs whenever
@@ -608,6 +610,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onAnchorSizeChanged,
   contentInsetEndAdjustment,
   onIsAtEndChange,
+  onCurrentTurnChange,
   onContentOverflowChange,
   liveFollowEnabled,
   onToolOutputCollapsedAtEnd,
@@ -1066,6 +1069,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
         };
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
+  const currentTurnId =
+    minimapCurrentIndex === null ? null : (minimapItems[minimapCurrentIndex]?.id ?? null);
+  useEffect(() => {
+    onCurrentTurnChange?.(currentTurnId);
+  }, [currentTurnId, onCurrentTurnChange]);
   const handleAnchorReady = (info: { anchorIndex: number | undefined }) => {
     if (anchorMessageId !== null && info.anchorIndex !== undefined) {
       onAnchorReady(anchorMessageId, info.anchorIndex);

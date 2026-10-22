@@ -32,6 +32,7 @@ import {
   ChevronRight,
   FileDiff,
   Files,
+  GitFork,
   Globe2,
   Plus,
   TerminalSquare,
@@ -140,6 +141,7 @@ interface RightPanelTabsProps {
   onAddPullRequests: () => void;
   onAddDevice: () => void;
   onAddGraph: () => void;
+  onAddLineage: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -148,6 +150,7 @@ interface RightPanelTabsProps {
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   graphAvailable: boolean;
+  lineageAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   children: ReactNode;
 }
@@ -177,6 +180,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequests: "No linked pull requests are available for this thread.",
   device: "Devices are only available from a thread.",
   graph: "The graph is only available from a thread.",
+  lineage: "Lineage is only available for a thread that has started.",
 } as const;
 
 // Closed keepMounted popups must stop blocking shortcuts once their exit transition ends.
@@ -202,6 +206,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequests: "No linked pull requests available.",
   device: "Available from a thread.",
   graph: "Available from a thread.",
+  lineage: "Available once the thread has started.",
 } as const;
 
 type TabContextMenuAction =
@@ -324,6 +329,7 @@ export function RightPanelEmptyState(props: {
   onAddPullRequests: () => void;
   onAddDevice: () => void;
   onAddGraph: () => void;
+  onAddLineage: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -332,6 +338,7 @@ export function RightPanelEmptyState(props: {
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   graphAvailable: boolean;
+  lineageAvailable: boolean;
 }) {
   const [highlight, setHighlight] = useState(-1);
 
@@ -400,6 +407,14 @@ export function RightPanelEmptyState(props: {
       available: props.graphAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.graph,
       onClick: props.onAddGraph,
+    },
+    {
+      label: "Lineage",
+      icon: GitFork,
+      shortcut: "I",
+      available: props.lineageAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.lineage,
+      onClick: props.onAddLineage,
     },
   ] as const;
 
@@ -587,6 +602,8 @@ export function surfaceTitle(
       return "Pull requests";
     case "graph":
       return "Graph";
+    case "lineage":
+      return "Lineage";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -679,6 +696,8 @@ export function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "graph":
       return <Waypoints className="size-3 shrink-0" />;
+    case "lineage":
+      return <GitFork className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1116,6 +1135,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       disabledReason: SURFACE_DISABLED_REASONS.graph,
       onClick: props.onAddGraph,
     },
+    {
+      label: "Lineage",
+      icon: GitFork,
+      shortcut: "I",
+      available: props.lineageAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.lineage,
+      onClick: props.onAddLineage,
+    },
   ] as const;
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1490,6 +1517,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
             onAddGraph={props.onAddGraph}
+            onAddLineage={props.onAddLineage}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1498,6 +1526,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestsAvailable={props.pullRequestsAvailable}
             deviceAvailable={props.deviceAvailable}
             graphAvailable={props.graphAvailable}
+            lineageAvailable={props.lineageAvailable}
           />
         ) : (
           props.children

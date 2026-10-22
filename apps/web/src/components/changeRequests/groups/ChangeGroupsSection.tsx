@@ -6,7 +6,6 @@ import { BookOpenIcon, MessagesSquareIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
-import { changeGroupColor, tabGroupId } from "~/panes/tabGroups";
 import { useChangeGroups } from "~/state/changeGroups";
 import { readThreadShell } from "~/state/entities";
 import {
@@ -132,10 +131,7 @@ function GroupCard({
           onClick={() => showChangeRequestTab(key, "replace")}
           className="flex w-full cursor-pointer items-center gap-2 text-left"
         >
-          <span
-            aria-hidden
-            className={cn("size-2 shrink-0 rounded-full", changeGroupColor(tabGroupId(group)))}
-          />
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-primary" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{group.title}</span>
           <Badge size="sm" variant={changeGroupStateVariant(group.state)}>
             {CHANGE_GROUP_STATE_LABELS[group.state]}

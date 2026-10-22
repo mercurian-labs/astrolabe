@@ -127,6 +127,7 @@ function tabs(
       onAddFiles={noop}
       onAddDevice={noop}
       onAddGraph={noop}
+      onAddLineage={noop}
       browserAvailable
       terminalAvailable={false}
       diffAvailable={false}
@@ -135,6 +136,7 @@ function tabs(
       pullRequestsAvailable={false}
       deviceAvailable={false}
       graphAvailable={false}
+      lineageAvailable={false}
     >
       <div>content</div>
     </RightPanelTabs>

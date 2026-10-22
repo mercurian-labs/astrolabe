@@ -245,6 +245,19 @@ Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it
 finishes; the call's own result shows its status.
 
+## See a thread's forks
+
+On web and desktop, the **Lineage** tab in a thread's right panel, also opened by **Show lineage**
+in thread details, draws the thread with its forks and merge-backs, left to right. Click one of
+your thread's turns to scroll the chat to it, or another thread to open it in a chat tab. Hover a
+turn to see what was asked, the start of the reply and what it changed. The turn you're reading in
+the chat is marked as you scroll.
+
+Stretches without forks or merge-backs fold into a count of turns: click the count to unfold it,
+or use **Show every turn**. When the drawing is wider than the panel, the strip beside that button
+shows all of it: click or drag there to move along. Each fork's label says whether it's running, waiting on you, idle or
+merged back, and how many turns its parent has taken since it forked.
+
 ## Snooze until later
 
 Choose **Snooze → Custom…** from a thread's menu to pick a date and time in your

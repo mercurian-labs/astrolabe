@@ -228,8 +228,12 @@ documentation the moment the code has; a merge the wiki refuses stays open for y
 you can add a change request or a thread by hand or take one out, ask an agent for suggestions of
 either (you accept or dismiss each), and ask a thread to update documentation that fell behind or to
 draft missing documentation. **Open as a tab group** opens the group's threads, pull requests and
-documentation together: the label before them collapses them, and its menu merges the group with the code or
-closes its tabs.
+documentation together behind a numbered marker. Beside a thread, the group's threads open as chat
+tabs after the one you're in, and its other tabs open beside every thread in the group: open or close
+one of them beside any of those threads and it opens or closes beside all of them, while each thread
+keeps its own layout. Clicking the marker shows the group's tab (a marker in the chat tabs shows it
+in the right panel); its menu collapses the group, merges it with the code or closes its tabs.
+Dragging a tab away doesn't take it out of the group: it gets a marker of its own where it lands.
 
 Which rules group change requests and threads, including **Same branch**, and what an agent may do,
 are under **Settings → Changes → Grouping**, for each environment. Turning a rule off keeps the

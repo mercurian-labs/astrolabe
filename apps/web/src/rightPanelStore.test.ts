@@ -514,6 +514,29 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
   });
 
+  it("shares a change group's pull requests quietly, the panel and its front as they were", () => {
+    const store = useRightPanelStore.getState();
+    const pr = pullRequestSurface({ projectId: "project-a", repository: "o/r", number: 7 });
+    store.openFile(refA, "src/app.ts");
+    store.close(refA);
+    const revision = store.getUserActionRevision(refA);
+    store.shareSurfaces(refA, [pr], []);
+    let state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.isOpen).toBe(false);
+    expect(state.activeSurfaceId).toBe("file:src/app.ts");
+    expect(state.surfaces.map((surface) => surface.id)).toEqual(["file:src/app.ts", pr.id]);
+    expect(store.getUserActionRevision(refA)).toBe(revision);
+
+    store.shareSurfaces(refB, [pr], []);
+    store.activateSurface(refB, pr.id);
+    store.shareSurfaces(refB, [], [pr.id]);
+    state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refB);
+    expect(state.isOpen).toBe(true);
+    expect(state.activeSurfaceId).toBeNull();
+    expect(state.surfaces).toEqual([]);
+    expect(useClosedViewStore.getState().entries).toEqual([]);
+  });
+
   it("keeps a maximized panel per thread without counting it as a manual choice", () => {
     const store = useRightPanelStore.getState();
     store.open(refA, "preview");
@@ -564,6 +587,21 @@ describe("rightPanelStore", () => {
         { id: "graph", kind: "graph" },
       ],
     });
+  });
+
+  it("keeps a saved lineage surface during migration", () => {
+    const saved = {
+      isOpen: true,
+      activeSurfaceId: "lineage",
+      surfaces: [
+        { id: "graph", kind: "graph" },
+        { id: "lineage", kind: "lineage" },
+      ],
+    };
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: { "env-1:thread-A": saved },
+    });
+    expect(selectThreadRightPanelState(migrated.byThreadKey, refA)).toEqual(saved);
   });
 
   it("drops the legacy singleton terminal surface during migration", () => {
@@ -897,6 +935,21 @@ describe("rightPanelStore", () => {
     expect(
       selectSelectedRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id,
     ).toBe("graph");
+  });
+
+  it("opens the lineage once, bringing its tab to the front when asked again", () => {
+    const store = useRightPanelStore.getState();
+    store.open(refA, "lineage");
+    store.open(refA, "diff");
+    store.open(refA, "lineage");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "lineage",
+      surfaces: [
+        { id: "lineage", kind: "lineage" },
+        { id: "diff", kind: "diff" },
+      ],
+    });
   });
 
   it("opens workspace-root links as the singleton files explorer", () => {

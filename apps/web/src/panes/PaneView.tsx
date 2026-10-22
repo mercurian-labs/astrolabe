@@ -2,7 +2,6 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Columns2, Maximize2, Minimize2, MoreHorizontal, Rows2, SquareX } from "lucide-react";
 import {
-  Fragment,
   memo,
   useEffect,
   useLayoutEffect,
@@ -14,7 +13,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { TabGroupLabel, tabGroupId, useTabGroupCollapsed, useTabGroupLookup } from "./tabGroups";
+import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import { TabGroupRun, tabGroupId, useTabGroupCollapsed, useTabGroupLookup } from "./tabGroups";
+import { tabGroupRuns } from "./tabGroupRuns";
 import { Button } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -27,7 +28,7 @@ import {
   focusPane,
   isEmptyTab,
   moveTabs,
-  openTab,
+  showTabBefore,
   splitTab,
   splitTabs,
   splitWithTabs,
@@ -40,7 +41,9 @@ import {
   insertionLineX,
   paneDropZone,
   startDrag,
+  useDraggedGroup,
   useDragging,
+  type DragItem,
   type DropZone,
 } from "./drag";
 import {
@@ -64,6 +67,7 @@ import {
   toggleTab,
   useTabSelectionStore,
 } from "./tabSelection";
+import { noteTabGroupRuns, useTabGroupRelease } from "./tabGroupNumbers";
 import { TabCloseButton, TabTitle } from "./TabParts";
 import { findLeaf, leaves, type Leaf } from "./tree";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
@@ -326,20 +330,19 @@ function TabStrip({
   const { active } = leaf;
   const { controller, tabs } = usePanesHost();
   const NewTab = tabs.NewTab;
-  const groupOf = useTabGroupLookup();
+  const groupsOf = useTabGroupLookup();
   const isCollapsed = useTabGroupCollapsed();
-  const groupsOfTabs = useMemo(() => leaf.tabs.map(groupOf), [groupOf, leaf.tabs]);
-  /** The keys of the group run starting at `start`. */
-  const runFrom = (start: number) => {
-    const first = groupsOfTabs[start];
-    const keys: string[] = [];
-    for (let index = start; index < leaf.tabs.length; index += 1) {
-      const group = groupsOfTabs[index];
-      if (!group || !first || tabGroupId(group) !== tabGroupId(first)) break;
-      keys.push(leaf.tabs[index]!);
-    }
-    return keys;
-  };
+  const draggedGroup = useDraggedGroup();
+  // Astrolabe: the strip in runs, a change group's tabs together behind its marker (`tabGroups`).
+  const runs = useMemo(() => tabGroupRuns(leaf.tabs, groupsOf, tabGroupId), [groupsOf, leaf.tabs]);
+  // The groups shown here take their numbers before the strip paints (`tabGroupNumbers`).
+  useLayoutEffect(() => {
+    noteTabGroupRuns(
+      runs.flatMap(({ group, keys }) => (group ? [{ id: tabGroupId(group), keys }] : [])),
+    );
+  }, [runs]);
+  // A tab leaving this strip may have been its group's last anywhere.
+  useTabGroupRelease(controller, leaf.tabs);
   // A lone pane already fills the panel: there is nothing to maximize it over.
   const alone = useSyncExternalStore(controller.subscribe, () => {
     const snapshot = controller.getSnapshot();
@@ -351,7 +354,7 @@ function TabStrip({
     const show = () =>
       scrollIntoStrip(
         element,
-        [...element.querySelectorAll<HTMLElement>(":scope > [data-pane-tab]")].find(
+        [...element.querySelectorAll<HTMLElement>("[data-pane-tab]")].find(
           (pill) => pill.dataset.key === active,
         ),
       );
@@ -359,11 +362,24 @@ function TabStrip({
     return observeResize(element, show);
   }, [active]);
 
+  const renderTab = (key: string) => (
+    <TabPill
+      key={key}
+      tabKey={key}
+      paneId={leaf.id}
+      active={key === active}
+      paneFocused={focused}
+      only={leaf.tabs.length === 1}
+      last={key === leaf.tabs.at(-1)}
+      draggableInTitlebar={titlebar}
+    />
+  );
+
   return (
     <div
       data-pane-strip
       className={cn(
-        "relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1.5 border-b border-border bg-muted px-2 [--tab-join:var(--background)]",
+        "relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1.5 border-b border-border bg-(--astrolabe-rail) px-2 [--tab-join:var(--background)]",
         titlebar && "drag-region",
         atTop && atRight && tabs.reservesTopRight && "pe-20",
         titlebar && atRight && "wco:pe-(--workspace-native-controls-inset)",
@@ -386,38 +402,40 @@ function TabStrip({
           }
         }}
       >
-        {leaf.tabs.map((key, index) => {
-          // Astrolabe: a change group's tabs stand together behind its label (`tabGroups`).
-          const group = groupsOfTabs[index] ?? null;
-          const id = group ? tabGroupId(group) : null;
-          const previous = groupsOfTabs[index - 1] ?? null;
-          const starts = group !== null && (previous === null || tabGroupId(previous) !== id);
-          const hidden = id !== null && isCollapsed(id) && key !== active;
+        {runs.map(({ group, keys }) => {
+          if (group === null) return keys.map(renderTab);
+          const id = tabGroupId(group);
+          const collapsedNow = isCollapsed(id) || draggedGroup === id;
           return (
-            <Fragment key={key}>
-              {starts && group ? (
-                <TabGroupLabel
-                  group={group}
-                  tabKeys={runFrom(index)}
-                  controller={controller}
-                  collapsedNow={isCollapsed(tabGroupId(group))}
-                  onOpenGroup={(groupKey) =>
-                    controller.update((arrangement) => openTab(arrangement, groupKey, leaf.id))
-                  }
-                />
-              ) : null}
-              {hidden ? null : (
-                <TabPill
-                  tabKey={key}
-                  paneId={leaf.id}
-                  active={key === active}
-                  paneFocused={focused}
-                  only={leaf.tabs.length === 1}
-                  last={index === leaf.tabs.length - 1}
-                  draggableInTitlebar={titlebar}
-                />
-              )}
-            </Fragment>
+            <TabGroupRun
+              key={`${id}:${keys[0]}`}
+              group={group}
+              firstKey={keys[0]}
+              shownKeys={
+                draggedGroup === id ? [] : keys.filter((key) => !collapsedNow || key === active)
+              }
+              collapsedNow={collapsedNow}
+              dragging={draggedGroup === id}
+              actions={{
+                // The group's own tab, in front where these panes have it, else at the run's head.
+                show: () =>
+                  controller.update((arrangement) =>
+                    showTabBefore(arrangement, changeGroupTabKey(group), keys[0] ?? ""),
+                  ),
+                // As each tab's own close does, so a surface leaves its thread's record too.
+                close: () => {
+                  for (const key of keys) tabs.close(key);
+                },
+                dragStart: (event) =>
+                  startDrag(
+                    event,
+                    { key: keys.includes(active) ? active : (keys[0] ?? active), keys, group: id },
+                    group.title,
+                  ),
+                dragEnd: endDrag,
+              }}
+              renderTab={renderTab}
+            />
           );
         })}
       </div>
@@ -523,19 +541,19 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null) {
 }
 
 /**
- * Where tabs (`keys`) dragged over `pane` at (clientX, clientY) would land: over the strip they
- * join the pane's tabs at the insertion line, over the content they divide the pane on the
+ * Where the tabs of `item` dragged over `pane` at (clientX, clientY) would land: over the strip
+ * they join the pane's tabs at the insertion line, over the content they divide the pane on the
  * nearest half. Null for every tab of a pane over its own pane.
  */
 function dropTargetAt(
   pane: HTMLElement,
   leaf: Leaf,
-  keys: readonly string[],
+  item: DragItem,
   clientX: number,
   clientY: number,
 ): DropTarget | null {
   // Every tab of a pane dragged over that pane has nowhere to go.
-  if (leaf.tabs.every((key) => keys.includes(key))) return null;
+  if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
   const rect = pane.getBoundingClientRect();
   const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
   const zone = paneDropZone(
@@ -545,7 +563,7 @@ function dropTargetAt(
     rect.height,
     stripSize,
   );
-  if (zone === "center") return stripTargetAt(pane, rect, clientX);
+  if (zone === "center") return stripTargetAt(pane, rect, leaf, item, clientX);
   const halfWidth = Math.round(rect.width / 2);
   const content = rect.height - stripSize;
   const halfHeight = Math.round(content / 2);
@@ -561,26 +579,43 @@ function dropTargetAt(
 
 /**
  * Joining the strip: the index among its tabs, and the insertion line in the gap before it, as
- * tall as a rule between tabs and centred on the strip.
+ * tall as a rule between tabs and centred on the strip. The line goes between the tabs shown, or
+ * for a dragged tab group between whole runs, so groups stay together; the index counts the
+ * pane's tabs, a collapsed group's hidden ones too.
  */
-function stripTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropTarget | null {
+function stripTargetAt(
+  pane: HTMLElement,
+  rect: DOMRect,
+  leaf: Leaf,
+  item: DragItem,
+  clientX: number,
+): DropTarget | null {
   const list = pane.querySelector<HTMLElement>("[data-pane-tabs]");
   if (!list) return null;
   const listRect = list.getBoundingClientRect();
-  const tabs = [...list.querySelectorAll(":scope > [data-pane-tab]")].map((tab) =>
-    tab.getBoundingClientRect(),
-  );
-  const index = insertIndex(
-    tabs.map((box) => box.left + box.width / 2),
+  const places = [
+    ...list.querySelectorAll<HTMLElement>(
+      item.group === undefined
+        ? "[data-pane-tab]"
+        : ":scope > [data-pane-tab], :scope > [data-tab-group-run]",
+    ),
+  ];
+  const boxes = places.map((place) => place.getBoundingClientRect());
+  const at = insertIndex(
+    boxes.map((box) => box.left + box.width / 2),
     clientX,
   );
+  const before = places[at];
+  const index = before
+    ? leaf.tabs.indexOf(before.dataset.key ?? before.dataset.firstKey ?? "")
+    : leaf.tabs.length;
   const gap = Number.parseFloat(getComputedStyle(list).gap) || 0;
-  const at = insertionLineX(tabs, index, gap, listRect.left + gap);
+  const x = insertionLineX(boxes, at, gap, listRect.left + gap);
   return {
     zone: "center",
-    index,
+    index: index === -1 ? leaf.tabs.length : index,
     top: Math.round(listRect.top + (listRect.height - INSERTION_LINE_HEIGHT) / 2 - rect.top),
-    left: Math.round(at - rect.left - 1),
+    left: Math.round(x - rect.left - 1),
     width: 2,
     height: INSERTION_LINE_HEIGHT,
   };
@@ -685,7 +720,7 @@ export const PaneView = memo(function PaneView({
       const item = currentDrag();
       if (!item) return;
       event.stopPropagation();
-      const next = dropTargetAt(pane, latest.current.leaf, item.keys, event.clientX, event.clientY);
+      const next = dropTargetAt(pane, latest.current.leaf, item, event.clientX, event.clientY);
       if (!next) {
         if (latest.current.target) setTarget(null);
         return;
@@ -702,7 +737,7 @@ export const PaneView = memo(function PaneView({
       if (!item) return;
       event.stopPropagation();
       const { leaf: current } = latest.current;
-      const drop = dropTargetAt(pane, current, item.keys, event.clientX, event.clientY);
+      const drop = dropTargetAt(pane, current, item, event.clientX, event.clientY);
       setTarget(null);
       if (!drop) return;
       event.preventDefault();
@@ -715,9 +750,18 @@ export const PaneView = memo(function PaneView({
         });
         return;
       }
+      // A tab group moved along its own strip leaves the tab in front as it was.
+      const reordering =
+        item.group !== undefined && item.keys.every((key) => current.tabs.includes(key));
       controller.update((arrangement) =>
         drop.zone === "center"
-          ? moveTabs(arrangement, item.keys, current.id, drop.index, item.key)
+          ? moveTabs(
+              arrangement,
+              item.keys,
+              current.id,
+              drop.index,
+              reordering ? current.active : item.key,
+            )
           : splitWithTabs(arrangement, item.keys, current.id, drop.zone, item.key),
       );
       // The tabs moved together; their selection ends with the move.

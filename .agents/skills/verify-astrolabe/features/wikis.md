@@ -108,10 +108,10 @@ preview_click     role=button[name='Find or create a document']  # in an empty t
 `JSON.parse(localStorage['astrolabe:wiki-panes:v1'])` (written within 150 ms; absent while
 the arrangement is the starting one), and the lit row
 (`[data-testid^=wiki-sidebar-row][aria-current=page]`). A change group's tabs here (its wiki
-change requests, its threads' chats, its pull requests, and the `change-group:` tab from the
-label's right-click **Open the group**) sit behind a `[data-tab-group]` label; while the group
-is collapsed (`aria-expanded="false"`) only its front tab has a `[data-pane-tab]`, so click
-the label to expand it before counting. Prove it paints: `document.elementFromPoint` at the
+change requests, its threads' chats, its pull requests, and the `change-group:` tab a click on
+the marker opens) sit behind a `[data-tab-group]` marker; while the group is collapsed (its
+`aria-label` ends `, collapsed`) only its front tab has a `[data-pane-tab]`, so expand it from
+the marker's right-click menu before counting. Prove it paints: `document.elementFromPoint` at the
 centre of the front note's title (the `h2` in `[data-pane-id][data-focused]` with a non-zero
 rect; tabs behind it are `display: none`) returns that `h2`, and at the lit row's centre
 returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row.

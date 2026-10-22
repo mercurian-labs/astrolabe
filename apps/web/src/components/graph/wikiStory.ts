@@ -1,13 +1,14 @@
 import type { Memory, MemoryNote, ThreadEvent, ThreadRecord } from "@mercurian/graph";
 import { links } from "@mercurian/wiki";
 import type {
-  OrchestrationV2ConversationMessage,
   OrchestrationV2Run,
   OrchestrationV2TurnItem,
   WikiIndexResult,
   WikiSummary,
 } from "@t3tools/contracts";
 import { t3ToolResultIndicatesFailure } from "@t3tools/client-runtime/t3ToolSummary";
+
+import type { StoryRun } from "~/threadTurns";
 
 /**
  * A thread told as an Atlas Graph over the wikis it worked in. Each run is a turn; its moves are
@@ -28,8 +29,6 @@ const WIKI_TOOLS = [
 ] as const;
 export type WikiTool = (typeof WIKI_TOOLS)[number];
 
-const LABEL_LENGTH = 48;
-const ACTIVE_RUN = new Set(["preparing", "queued", "starting", "running", "waiting"]);
 const WORKING_RUN = new Set(["preparing", "starting", "running", "waiting"]);
 
 /** The wiki tool a provider's tool name calls, matched by suffix (`mcp__t3-code__t3_wiki_read`). */
@@ -221,20 +220,6 @@ export function notesNeedingMainText(memory: Memory, calls: ReadonlyArray<WikiTo
   return needed;
 }
 
-/** One turn's input: its run and whether it is still being worked. */
-export interface StoryRun {
-  readonly id: string;
-  readonly active: boolean;
-}
-
-/** The runs the conversation shows, in order: a rolled-back run is not one. */
-export function storyRuns(runs: ReadonlyArray<OrchestrationV2Run>): StoryRun[] {
-  return runs
-    .filter((run) => run.status !== "rolled_back")
-    .toSorted((left, right) => left.ordinal - right.ordinal)
-    .map((run) => ({ id: run.id, active: ACTIVE_RUN.has(run.status) }));
-}
-
 /** The turn the graph shows by default: the one being worked, else the last. */
 export function shownTurn(
   turns: ReadonlyArray<StoryRun>,
@@ -245,22 +230,6 @@ export function shownTurn(
   );
   const index = turns.findIndex((turn) => working.has(turn.id));
   return index >= 0 ? index : Math.max(0, turns.length - 1);
-}
-
-/** Each turn's label: the first line of what the person asked in its run, shortened. */
-export function turnLabels(
-  turns: ReadonlyArray<StoryRun>,
-  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
-): string[] {
-  return turns.map((turn, index) => {
-    const asked = messages.find((message) => message.runId === turn.id && message.role === "user");
-    const line =
-      asked?.text
-        .split("\n")
-        .map((each) => each.trim())
-        .find((each) => each !== "") ?? `Turn ${index + 1}`;
-    return line.length > LABEL_LENGTH ? `${line.slice(0, LABEL_LENGTH - 1)}…` : line;
-  });
 }
 
 export interface WikiStory {

@@ -30,6 +30,7 @@ import { showKeyIn } from "~/sectionTabs/SectionTabContent";
 import { useThreadProjection, useThreadShell, useThreadShells } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
+import { storyRuns, turnLabels, type StoryRun } from "~/threadTurns";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -51,13 +52,10 @@ import {
   notesNeedingMainText,
   resolveWiki,
   shownTurn,
-  storyRuns,
   touchedWikis,
-  turnLabels,
   wikiMemory,
   wikiStory,
   wikiToolCalls,
-  type StoryRun,
   type WikiToolCall,
 } from "./wikiStory";
 

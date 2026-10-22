@@ -1,24 +1,42 @@
 import { useAtomValue } from "@effect/atom-react";
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
+import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useNavigate } from "@tanstack/react-router";
 import { MessagesSquare } from "lucide-react";
 import {
   createContext,
+  memo,
   useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type ReactNode,
 } from "react";
 
 import { resolveComposerProviderSelection } from "~/components/ChatView.logic";
 import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
+import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { isElectron } from "~/env";
 import { cn } from "~/lib/utils";
+import { allTabs, showTabBefore } from "~/panes/arrangement";
+import { RightPanelHostContext } from "~/panes/PaneSurfaceHost";
+import { noteTabGroupRuns, useTabGroupRelease } from "~/panes/tabGroupNumbers";
+import { tabGroupRuns } from "~/panes/tabGroupRuns";
+import {
+  TabGroupRun,
+  tabGroupId,
+  useTabGroupCollapsed,
+  useTabGroupLookup,
+  type TabGroupLookup,
+  type TabGroupRunActions,
+} from "~/panes/tabGroups";
 import { sortProviderInstanceEntries, type ProviderInstanceEntry } from "~/providerInstances";
+import { useRightPanelStore } from "~/rightPanelStore";
+import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { readThreadShell, useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { providerEntriesByEnvironmentAtom } from "~/state/server";
@@ -42,6 +60,18 @@ type ChatRoute =
   | { readonly kind: "draft"; readonly draftId: DraftId };
 
 const DRAG_TYPE = "application/x-astrolabe-chat-tab";
+/** Astrolabe: a tab group dragged by its marker, by its id (`tabGroupId`). */
+const RUN_DRAG_TYPE = "application/x-astrolabe-chat-tab-group";
+
+const NO_GROUPS: readonly EnvironmentChangeGroup[] = [];
+/** How long a marker waits for the right panel to show the chat it brought to the front. */
+const SHOW_GROUP_TIMEOUT_MS = 5_000;
+
+/** The change groups a chat's tab is in, as its chat's tab in a pane is (`useTabGroupLookup`). */
+function chatGroupsOf(groupsOf: TabGroupLookup, key: string): readonly EnvironmentChangeGroup[] {
+  const ref = parseScopedThreadKey(key);
+  return ref ? groupsOf(chatTabKey(ref)) : NO_GROUPS;
+}
 
 /**
  * Where a chat leads, read now: its server thread while it exists, else its draft; null for a
@@ -97,6 +127,27 @@ export function ChatTabStrip({
   const list = useRef<HTMLDivElement>(null);
   // Where a dragged tab would land: its index, and the insertion line's place along the list.
   const [insertAt, setInsertAt] = useState<{ index: number; x: number } | null>(null);
+  // Astrolabe: the chat in front's right panel, where a tab group's marker shows the group's tab.
+  const panes = useContext(RightPanelHostContext)?.controller ?? null;
+  // Astrolabe: the strip in runs, a change group's threads together behind its marker, as a
+  // pane's strip shows them (`tabGroups`).
+  const groupsOf = useTabGroupLookup();
+  const runs = useMemo(
+    () => tabGroupRuns(keys, (key) => chatGroupsOf(groupsOf, key), tabGroupId),
+    [groupsOf, keys],
+  );
+  // The groups shown here take their numbers before the strip paints (`tabGroupNumbers`).
+  useLayoutEffect(() => {
+    noteTabGroupRuns(
+      runs.flatMap(({ group, keys: run }) => (group ? [{ id: tabGroupId(group), keys: run }] : [])),
+    );
+  }, [runs]);
+  // A tab leaving the strip may have been its group's last anywhere.
+  useTabGroupRelease(null, keys);
+  const isCollapsed = useTabGroupCollapsed();
+  // The run dragged by its marker, which shows the marker alone until the drag ends.
+  const [draggedRun, setDraggedRun] = useState<string | null>(null);
+  const dragged = useRef<{ readonly id: string; readonly keys: readonly string[] } | null>(null);
 
   const go = (route: ChatRoute | undefined) => {
     if (!route) return void navigate({ to: "/" });
@@ -119,6 +170,11 @@ export function ChatTabStrip({
     }
     store.close(key);
   };
+  const open = (key: string, route: ChatRoute | null) => {
+    if (route) go(route);
+    // A chat that is neither a thread nor a draft any more has nothing to show.
+    else useChatTabsStore.getState().close(key);
+  };
 
   // Astrolabe: the keyboard menu and the Command Palette select and close tabs as the strip does.
   const select = (key: string) => {
@@ -132,20 +188,34 @@ export function ChatTabStrip({
       .step(direction, (key) => routes.current.has(key) || chatRouteOf(key) !== null);
     if (target !== null) go(routes.current.get(target) ?? chatRouteOf(target) ?? undefined);
   };
-  const dropTarget = (clientX: number) => {
+  /**
+   * Where a tab dragged to `clientX` lands: its index among the open chats, and the insertion
+   * line's place. The line goes between the tabs shown, or for a tab group dragged by its marker
+   * (`wholeRuns`) between whole runs; the index counts a collapsed group's hidden tabs too.
+   */
+  const dropTarget = (clientX: number, wholeRuns = false) => {
     const element = list.current;
-    const tabs = [...(element?.querySelectorAll("[data-chat-tab]") ?? [])].map((tab) =>
-      tab.getBoundingClientRect(),
-    );
-    const index = insertIndex(
+    const places = [
+      ...(element?.querySelectorAll<HTMLElement>(
+        wholeRuns ? ":scope > [data-chat-tab], :scope > [data-tab-group-run]" : "[data-chat-tab]",
+      ) ?? []),
+    ];
+    const tabs = places.map((place) => place.getBoundingClientRect());
+    const at = insertIndex(
       tabs.map((box) => box.left + box.width / 2),
       clientX,
     );
+    const openKeys = useChatTabsStore.getState().keys;
+    const before = places[at];
+    const found = before
+      ? openKeys.indexOf(before.dataset.key ?? before.dataset.firstKey ?? "")
+      : -1;
+    const index = found === -1 ? openKeys.length : found;
     if (!element) return { index, x: 0 };
     const box = element.getBoundingClientRect();
     const gap = Number.parseFloat(getComputedStyle(element).gap) || 0;
-    const at = insertionLineX(tabs, index, gap, box.left + gap);
-    return { index, x: Math.round(at - box.left + element.scrollLeft) };
+    const x = insertionLineX(tabs, at, gap, box.left + gap);
+    return { index, x: Math.round(x - box.left + element.scrollLeft) };
   };
 
   // Astrolabe: threads dragged from the sidebar open at the insertion line, the one it was
@@ -160,10 +230,24 @@ export function ChatTabStrip({
     useChatTabsStore.getState().openAt(dropped, dropTarget(x).index);
     go(routes.current.get(front) ?? chatRouteOf(front) ?? undefined);
   };
-  const handle = useRef({ select, close, goInHistory, showDragOver, openDropped });
+  const handle = useRef({ select, close, open, goInHistory, showDragOver, openDropped });
   useLayoutEffect(() => {
-    handle.current = { select, close, goInHistory, showDragOver, openDropped };
+    handle.current = { select, close, open, goInHistory, showDragOver, openDropped };
   });
+  // What each tab asks of the strip, the same across renders so the tabs render only for their own
+  // changes.
+  const tabActions = useMemo<ChatTabActions>(
+    () => ({
+      route: (key, route) => {
+        if (route) routes.current.set(key, route);
+        else routes.current.delete(key);
+      },
+      open: (key, route) => handle.current.open(key, route),
+      close: (key) => handle.current.close(key),
+      dragEnd: () => setInsertAt(null),
+    }),
+    [],
+  );
   const strip = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = strip.current;
@@ -206,12 +290,90 @@ export function ChatTabStrip({
     pill?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeKey, keys]);
 
+  /**
+   * Astrolabe: a tab group's marker here, for its run of chats (`run`). It shows the group's tab
+   * beside a chat of the group, opening its right panel, and in front there: beside the chat in
+   * front when that chat is in the group, else beside the run's first chat, which comes to the
+   * front first. The group's tab is its shared run's (`groupPanelRuns.ts`), so it opens beside
+   * every thread in the group, and never beside a thread outside it. It closes the run's chats,
+   * leaving the panels' runs as they are, and drags the run along the strip only.
+   */
+  const runActions = (
+    group: EnvironmentChangeGroup,
+    run: readonly string[],
+  ): TabGroupRunActions => ({
+    show: () => {
+      if (!panes) return;
+      const id = tabGroupId(group);
+      const inGroup = (key: string) =>
+        chatGroupsOf(groupsOf, key).some((each) => tabGroupId(each) === id);
+      const beside = activeKey !== null && inGroup(activeKey) ? activeKey : run[0];
+      if (beside === undefined) return;
+      // Once the panel shows `beside`'s thread: the route may still be on its way there.
+      const showHere = () => {
+        const ref = panes.threadRef();
+        if (!ref || scopedThreadKey(ref) !== beside || panes.getSnapshot() === null) return false;
+        useRightPanelStore.getState().show(ref);
+        panes.update((arrangement) =>
+          showTabBefore(
+            arrangement,
+            changeGroupTabKey(group),
+            allTabs(arrangement).find((tab) =>
+              groupsOf(tab).some((each) => tabGroupId(each) === id),
+            ) ?? "",
+          ),
+        );
+        return true;
+      };
+      if (showHere()) return;
+      go(routes.current.get(beside) ?? chatRouteOf(beside) ?? undefined);
+      const stop = panes.subscribe(() => {
+        if (showHere()) stop();
+      });
+      // A route that never arrives there leaves nothing waiting.
+      setTimeout(stop, SHOW_GROUP_TIMEOUT_MS);
+    },
+    close: () => {
+      const store = useChatTabsStore.getState();
+      if (activeKey !== null && run.includes(activeKey)) {
+        const rest = store.keys.filter((key) => key === activeKey || !run.includes(key));
+        const next = neighbourOf(rest, activeKey);
+        go(next === null ? undefined : routes.current.get(next));
+      }
+      for (const key of run) store.close(key);
+    },
+    dragStart: (event: DragEvent<HTMLElement>) => {
+      const id = tabGroupId(group);
+      dragged.current = { id, keys: run };
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData(RUN_DRAG_TYPE, id);
+      startTabDragPreview(event);
+      // After the drag has started, so the run collapses without disturbing it.
+      setTimeout(() => setDraggedRun(dragged.current?.id ?? null));
+    },
+    dragEnd: () => {
+      dragged.current = null;
+      setDraggedRun(null);
+      setInsertAt(null);
+    },
+  });
+
+  const renderTab = (key: string) => (
+    <ChatTab
+      key={key}
+      tabKey={key}
+      active={key === activeKey}
+      providerEntriesByEnvironment={providerEntriesByEnvironment}
+      actions={tabActions}
+    />
+  );
+
   return (
     <div
       ref={strip}
       data-chat-tab-strip
       className={cn(
-        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center border-b border-border bg-muted pe-2 [--tab-join:var(--toolbar-background)]",
+        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center border-b border-border bg-(--astrolabe-rail) pe-2 [--tab-join:var(--toolbar-background)]",
         isElectron && "drag-region",
         isElectron && atWindowEdge && "wco:pe-(--workspace-native-controls-inset)",
         COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
@@ -220,18 +382,26 @@ export function ChatTabStrip({
       // padding, puts it at the start. Astrolabe: the first tab sits as far from the sidebar's
       // edge as a pane strip's first tab does.
       onDragOver={(event) => {
-        if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
+        const wholeRuns = event.dataTransfer.types.includes(RUN_DRAG_TYPE);
+        if (!wholeRuns && !event.dataTransfer.types.includes(DRAG_TYPE)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
-        const next = dropTarget(event.clientX);
+        const next = dropTarget(event.clientX, wholeRuns);
         if (next.index !== insertAt?.index || next.x !== insertAt.x) setInsertAt(next);
       }}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setInsertAt(null);
       }}
       onDrop={(event) => {
-        const key = event.dataTransfer.getData(DRAG_TYPE);
         setInsertAt(null);
+        // Astrolabe: a tab group dragged by its marker lands whole, between runs.
+        const run = event.dataTransfer.types.includes(RUN_DRAG_TYPE) ? dragged.current : null;
+        if (run) {
+          event.preventDefault();
+          useChatTabsStore.getState().openAt(run.keys, dropTarget(event.clientX, true).index);
+          return;
+        }
+        const key = event.dataTransfer.getData(DRAG_TYPE);
         if (!key) return;
         event.preventDefault();
         useChatTabsStore.getState().move(key, dropTarget(event.clientX).index);
@@ -253,25 +423,25 @@ export function ChatTabStrip({
           }
         }}
       >
-        {keys.map((key) => (
-          <ChatTab
-            key={key}
-            tabKey={key}
-            active={key === activeKey}
-            providerEntriesByEnvironment={providerEntriesByEnvironment}
-            onRoute={(route) => {
-              if (route) routes.current.set(key, route);
-              else routes.current.delete(key);
-            }}
-            onOpen={(route) => {
-              if (route) go(route);
-              // A chat that is neither a thread nor a draft any more has nothing to show.
-              else useChatTabsStore.getState().close(key);
-            }}
-            onClose={() => close(key)}
-            onDragEnd={() => setInsertAt(null)}
-          />
-        ))}
+        {runs.map(({ group, keys: run }) => {
+          if (group === null) return run.map(renderTab);
+          const id = tabGroupId(group);
+          const collapsedNow = isCollapsed(id) || draggedRun === id;
+          return (
+            <TabGroupRun
+              key={`${id}:${run[0]}`}
+              group={group}
+              firstKey={run[0]}
+              shownKeys={
+                draggedRun === id ? [] : run.filter((key) => !collapsedNow || key === activeKey)
+              }
+              collapsedNow={collapsedNow}
+              dragging={draggedRun === id}
+              actions={runActions(group, run)}
+              renderTab={renderTab}
+            />
+          );
+        })}
         {insertAt ? (
           // As tall as a rule between tabs and centred on the strip (`index.css`).
           <span
@@ -285,22 +455,25 @@ export function ChatTabStrip({
   );
 }
 
-function ChatTab({
+/** What a tab asks of its strip, by its key. */
+interface ChatTabActions {
+  /** Where the tab leads now, or null for a chat gone. */
+  readonly route: (key: string, route: ChatRoute | null) => void;
+  readonly open: (key: string, route: ChatRoute | null) => void;
+  readonly close: (key: string) => void;
+  readonly dragEnd: () => void;
+}
+
+const ChatTab = memo(function ChatTab({
   tabKey,
   active,
   providerEntriesByEnvironment,
-  onRoute,
-  onOpen,
-  onClose,
-  onDragEnd,
+  actions,
 }: {
   tabKey: string;
   active: boolean;
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
-  onRoute: (route: ChatRoute | null) => void;
-  onOpen: (route: ChatRoute | null) => void;
-  onClose: () => void;
-  onDragEnd: () => void;
+  actions: ChatTabActions;
 }) {
   const ref = useMemo(() => parseScopedThreadKey(tabKey), [tabKey]);
   const shell = useThreadShell(ref);
@@ -315,7 +488,7 @@ function ChatTab({
     () => (exists ? { kind: "thread", key: tabKey } : draftId ? { kind: "draft", draftId } : null),
     [draftId, exists, tabKey],
   );
-  useEffect(() => onRoute(route), [onRoute, route]);
+  useEffect(() => actions.route(tabKey, route), [actions, route, tabKey]);
   // A chat deleted, or a draft discarded, closes its tab once its environment's threads are known.
   // The chat in front leaves through ThreadRouteView's own redirect first.
   const gone = live && route === null;
@@ -365,13 +538,13 @@ function ChatTab({
           : "h-7 rounded-md text-muted-foreground hover:bg-foreground/6 hover:text-foreground",
       )}
       onClick={() => {
-        if (!active) onOpen(route);
+        if (!active) actions.open(tabKey, route);
       }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          if (!active) onOpen(route);
+          if (!active) actions.open(tabKey, route);
         }
       }}
       onMouseDown={(event) => {
@@ -379,14 +552,14 @@ function ChatTab({
         if (event.button === 1) event.preventDefault();
       }}
       onAuxClick={(event) => {
-        if (event.button === 1) onClose();
+        if (event.button === 1) actions.close(tabKey);
       }}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData(DRAG_TYPE, tabKey);
         startTabDragPreview(event);
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={actions.dragEnd}
     >
       <span data-tab-icon className="flex size-4 shrink-0 items-center justify-center">
         {providerEntry ? (
@@ -408,9 +581,9 @@ function ChatTab({
         label={`Close ${title}`}
         onClick={(event) => {
           event.stopPropagation();
-          onClose();
+          actions.close(tabKey);
         }}
       />
     </div>
   );
-}
+});

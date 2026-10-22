@@ -3,6 +3,7 @@ import {
   Files,
   FileDiff,
   FileText,
+  GitFork,
   Globe2,
   Plus,
   Smartphone,
@@ -43,6 +44,7 @@ import {
 import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
 import { WikiFinder } from "~/components/wiki/WikiFinder";
 import { parseWikiTabKey, wikiTabKey } from "~/components/wiki/wikiTabs";
+import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import {
   closeSectionTab,
   SectionTabContent,
@@ -58,6 +60,7 @@ import {
   surfaceIdOf,
   surfaceKey,
 } from "./arrangement";
+import { openTabGroupBesideThread } from "./GroupPanelRunsSync";
 import type { PanelProps, PanesController } from "./panesController";
 import type { PaneTabs } from "./panesHost";
 import { useRightPanelHost, usePanesThreadRef, type RightPanelHost } from "./PaneSurfaceHost";
@@ -156,15 +159,21 @@ function pullRequestOfSurface(controller: PanesController, tabKey: string) {
 }
 
 /**
- * Astrolabe: the documents open beside the thread, each rendered once into its container. A
- * change request's thread link goes to the thread, rather than opening a chat inside a chat.
+ * Astrolabe: the documents and change groups open beside the thread, each rendered once into its
+ * container. A change request's thread link goes to the thread, rather than opening a chat inside
+ * a chat; a change group's threads open in the chat tabs, and its other tabs in its shared run.
  */
 export function RightPanelSectionTabs() {
   const host = useRightPanelHost();
   const { controller } = host;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const keys = useMemo(
-    () => (snapshot ? allTabs(snapshot.arrangement).filter((key) => parseWikiTabKey(key)) : []),
+    () =>
+      snapshot
+        ? allTabs(snapshot.arrangement).filter(
+            (key) => parseWikiTabKey(key) !== null || parseChangeGroupTabKey(key) !== null,
+          )
+        : [],
     [snapshot],
   );
   const focusedKey = snapshot ? focusedPane(snapshot.arrangement).active : null;
@@ -180,6 +189,7 @@ export function RightPanelSectionTabs() {
             store={controller}
             active={key === focusedKey}
             chats={false}
+            openAll={(tabKeys, group) => openTabGroupBesideThread(controller, group, tabKeys)}
             openPullRequest={(target) => {
               // Beside a thread, its pull requests are the thread's own surfaces.
               const ref = controller.threadRef();
@@ -346,6 +356,14 @@ function addActions(panel: PanelProps | null): AddAction[] {
       available: panel.graphAvailable,
       singleton: "graph",
       invoke: (current) => current.onAddGraph(),
+    },
+    {
+      label: "Lineage",
+      icon: GitFork,
+      shortcut: "I",
+      available: panel.lineageAvailable,
+      singleton: "lineage",
+      invoke: (current) => current.onAddLineage(),
     },
   ];
 }
@@ -544,6 +562,7 @@ function EmptyTab({ paneId }: { paneId: string }) {
       onAddPullRequests={run("Linked pull requests")}
       onAddDevice={run("Device")}
       onAddGraph={run("Graph")}
+      onAddLineage={run("Lineage")}
       browserAvailable={available("Browser")}
       terminalAvailable={available("Terminal")}
       diffAvailable={available("Diff")}
@@ -552,6 +571,7 @@ function EmptyTab({ paneId }: { paneId: string }) {
       pullRequestsAvailable={available("Linked pull requests")}
       deviceAvailable={available("Device")}
       graphAvailable={available("Graph")}
+      lineageAvailable={available("Lineage")}
     />
   );
 }

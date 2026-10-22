@@ -6,6 +6,7 @@ import {
   neighbourOf,
   openNewTab,
   openTabsAt,
+  openTabsBesideFront,
   stepTab,
   type ChatTabsLayout,
 } from "./chatTabsStore";
@@ -117,5 +118,25 @@ describe("stepping the tab in front", () => {
     const none = stepTab(walked(), "back", () => false);
     expect(none.target).toBeNull();
     expect(none.layout.histories).toEqual({ c: { back: [], forward: [] } });
+  });
+});
+
+describe("a change group's threads opening beside the chat in front", () => {
+  it("open together right after the tab in front, which stays in front", () => {
+    const layout: ChatTabsLayout = { keys: ["a", "b", "c"], active: "b", histories: {} };
+    expect(openTabsBesideFront(layout, ["x", "c", "y"])).toEqual({
+      ...layout,
+      keys: ["a", "b", "x", "c", "y"],
+    });
+  });
+
+  it("gather around the tab in front when it is one of them", () => {
+    const layout: ChatTabsLayout = { keys: ["a", "b", "c", "d"], active: "b", histories: {} };
+    expect(openTabsBesideFront(layout, ["b", "d"]).keys).toEqual(["a", "b", "d", "c"]);
+  });
+
+  it("open at the end with no tab in front", () => {
+    const layout: ChatTabsLayout = { keys: ["a"], active: null, histories: {} };
+    expect(openTabsBesideFront(layout, ["x"]).keys).toEqual(["a", "x"]);
   });
 });

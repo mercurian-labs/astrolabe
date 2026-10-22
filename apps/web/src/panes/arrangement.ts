@@ -143,6 +143,22 @@ export function openTab(
 }
 
 /**
+ * Astrolabe: shows `key` as a tab group's marker shows its group's own tab: in front where it is
+ * open, its pane taking focus, else opened just before `beforeKey` in that tab's pane (the head of
+ * the marker's run) and shown there.
+ */
+export function showTabBefore(
+  arrangement: Arrangement,
+  key: string,
+  beforeKey: string,
+): Arrangement {
+  if (leafWithTab(arrangement.root, key)) return activateTab(arrangement, key);
+  const pane = leafWithTab(arrangement.root, beforeKey);
+  if (!pane) return openTab(arrangement, key);
+  return insertTab(arrangement, key, pane.id, pane.tabs.indexOf(beforeKey));
+}
+
+/**
  * Divides a pane on one side and opens a tab in the new pane there. A tab open elsewhere moves. The new pane takes focus unless `focus` is
  * false. `weight` is the new pane's share of the divided pane's room, out of 1.
  */
@@ -304,8 +320,9 @@ export function moveTab(
 /**
  * Moves several tabs, in the order given, into a pane's tabs at `index` (the end by default),
  * as dropping a selection of tabs on a strip does. `index` is counted before the move, as the
- * insertion line shows it. `activeKey` (the first by default) becomes active and the pane takes
- * focus; panes the tabs leave empty close.
+ * insertion line shows it. `activeKey` (the first by default; one of the pane's own tabs keeps a
+ * moved run from taking the front) becomes active and the pane takes focus; panes the tabs leave
+ * empty close.
  */
 export function moveTabs(
   arrangement: Arrangement,
@@ -318,11 +335,14 @@ export function moveTabs(
   const [first] = moving;
   const target = findLeaf(arrangement.root, toPaneId);
   if (first === undefined || !target) return arrangement;
-  if (moving.length === 1) return moveTab(arrangement, first, toPaneId, index);
+  const active =
+    activeKey !== undefined && (moving.includes(activeKey) || target.tabs.includes(activeKey))
+      ? activeKey
+      : first;
+  if (moving.length === 1 && active === first) return moveTab(arrangement, first, toPaneId, index);
   const at = index ?? target.tabs.length;
   const staying = target.tabs.slice(0, at).filter((key) => !moving.includes(key)).length;
   const detached = moving.reduce((next, key) => detachTab(next, key, toPaneId), arrangement);
-  const active = activeKey !== undefined && moving.includes(activeKey) ? activeKey : first;
   const root = mapLeaf(detached.root, toPaneId, (pane) => ({
     ...pane,
     tabs: [...pane.tabs.slice(0, staying), ...moving, ...pane.tabs.slice(staying)],

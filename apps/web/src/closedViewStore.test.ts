@@ -63,6 +63,12 @@ describe("closedViewStore", () => {
       id: "bad",
       kind: "panel-tab",
       threadRef: refA,
+      surface: { kind: "lineage", id: "lineage:x" },
+    },
+    {
+      id: "bad",
+      kind: "panel-tab",
+      threadRef: refA,
       surface: { kind: "device", id: "device:x", target: {} },
     },
     {
@@ -90,6 +96,7 @@ describe("closedViewStore", () => {
       { kind: "files", id: "files" },
       { kind: "pull-requests", id: "pull-requests" },
       { kind: "graph", id: "graph" },
+      { kind: "lineage", id: "lineage" },
       { kind: "preview", id: "browser:new", resourceId: null },
       { kind: "preview", id: "browser:saved", resourceId: "saved" },
       { kind: "device", id: "device" },

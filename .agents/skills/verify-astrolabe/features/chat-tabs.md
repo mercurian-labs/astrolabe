@@ -44,6 +44,24 @@ panes.md).
   before it, else `/` (also when the neighbour's route is not known yet). Clicking
   a tab whose thread is gone closes it.
 - **Reorder**: dragging a tab along the strip.
+- **Tab groups**: neighbouring chats of one change group stand behind the marker pane
+  strips use (panes.md, Tab groups): `button[data-tab-group]` heading a
+  `[data-tab-group-run]` inside the `Open chats` tablist, the window's number on its badge,
+  the 2px primary line under the run and the chat in front outlined in it. A chat in
+  several groups joins the run before it when it shares that group. Click the marker: when
+  the chat in front is in the group, its right panel opens if closed and the group's tab
+  comes to the front there (the group's shared run, beside every thread in it); otherwise
+  the run's first chat comes to the front first and the tab opens beside it. A thread outside
+  the group never gets the group's tab from the marker. Right-click: Expand/Collapse the
+  group (collapsed shows the marker and the chat in front if the run holds it; the same
+  collapse as the panes' on this page), Merge with the code / Stop merging with the code,
+  Close the group's tabs (the run's chat tabs only, the panels' runs stay; closing the chat
+  in front goes to the nearest tab outside the run). Dragging the marker moves the run's
+  chats whole along the strip: mid-drag the run shows the dimmed marker alone, the
+  insertion line goes only between runs, and panes ignore the drop. A member dragged out
+  keeps its group and gets its own marker. Its number holds across the chat tabs, panes
+  and right panels: the chat tabs count as open for its release. Open a group's threads
+  together with **Open as a tab group** in its tab beside a thread (panes.md, Shared run).
 - **Drag from the sidebar**: a thread row dragged past the sidebar onto the strip shows the
   insertion line and opens there as a tab, in front (`chatTabs/threadTabDrop.ts`, fed by the
   sidebar's drag past its list, as the composer's context drop is). A Cmd/Shift selection
@@ -95,6 +113,18 @@ preview_click  [data-tab-history] >> role=button[name='Back']      # the tab in 
 preview_click  [data-tab-history] >> role=button[name='Forward']
 # unscoped, a Browser tab in the right panel's own Back/Forward makes it ambiguous
 ```
+
+Read the strip's tab groups (each run's first chat key and the marker's name):
+
+```js
+[...document.querySelectorAll('[aria-label="Open chats"] > [data-tab-group-run]')].map((run) => [
+  run.dataset.firstKey,
+  run.querySelector("[data-tab-group]")?.getAttribute("aria-label"),
+]);
+```
+
+Drag a run by its marker as panes.md's Tab groups describes, dispatching `dragover` and
+`drop` on `[data-chat-tab-strip]` at a `clientX` between two runs.
 
 Read the strip (`*` marks the tab in front):
 

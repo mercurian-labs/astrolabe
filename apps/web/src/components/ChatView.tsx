@@ -420,6 +420,7 @@ import {
 } from "./chat/ChatOverlayHosts";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
+import { setReadingTurn } from "./lineage/readingTurn";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
@@ -3822,6 +3823,12 @@ export default function ChatView(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "graph");
   };
   const addGraphSurfaceStable = useStableCallback(addGraphSurface);
+  const lineageSurfaceAvailable = activeThreadRef !== null && isServerThread;
+  const addLineageSurface = () => {
+    if (!activeThreadRef || !isServerThread) return;
+    useRightPanelStore.getState().open(activeThreadRef, "lineage");
+  };
+  const addLineageSurfaceStable = useStableCallback(addLineageSurface);
   const { state: deviceState, loaded: deviceStateLoaded } = useDeviceState(
     activeThreadRef?.environmentId ?? null,
   );
@@ -4248,6 +4255,24 @@ export default function ChatView(props: ChatViewProps) {
     cancelTimelineLiveFollowForUserNavigationRef.current =
       cancelTimelineLiveFollowForUserNavigationStable;
   }, [cancelTimelineLiveFollowForUserNavigationStable]);
+  // The Lineage tab's checkpoints scroll the chat to their turn's message, as the minimap's
+  // marks do. A turn older than the loaded history goes to the top, where earlier turns load.
+  const scrollTimelineToMessage = (messageId: string) => {
+    const list = legendListRef.current;
+    if (!list) return;
+    cancelTimelineLiveFollowForUserNavigationStable();
+    const animated = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const index = list.getState().indexByKey(messageId);
+    void (index === undefined
+      ? list.scrollToOffset({ offset: 0, animated })
+      : list.scrollToIndex({ index, animated, viewOffset: 24 }));
+  };
+  const scrollTimelineToMessageStable = useStableCallback(scrollTimelineToMessage);
+  // And the turn being read moves the Lineage tab's mark, without re-rendering the chat.
+  const reportReadingTurn = (messageId: string | null) => {
+    if (activeThreadKey !== null) setReadingTurn(activeThreadKey, messageId);
+  };
+  const reportReadingTurnStable = useStableCallback(reportReadingTurn);
   useEffect(() => {
     const previous = observedTimelineActivityRef.current;
     const dispatchedUserItem =
@@ -8005,6 +8030,7 @@ export default function ChatView(props: ChatViewProps) {
       getShortcutContext={getShortcutContextStable}
       onSendAnnotation={sendPreviewAnnotationStable}
       onCloseSurface={closeRightPanelSurface}
+      lineage={{ threadKey: activeThreadKey, onShowTurn: scrollTimelineToMessageStable }}
       terminal={{
         launchContext: activeTerminalLaunchContext ?? null,
         focusRequestId: terminalFocusRequestId,
@@ -8362,6 +8388,9 @@ export default function ChatView(props: ChatViewProps) {
                 contentInsetEndAdjustment={composerTimelineInset}
                 liveFollowEnabled={!paintOnlyDisplayedTimeline && timelineLiveFollowEnabled}
                 onIsAtEndChange={onIsAtEndChangeStable}
+                {...(paintOnlyDisplayedTimeline
+                  ? {}
+                  : { onCurrentTurnChange: reportReadingTurnStable })}
                 onContentOverflowChange={setTimelineOverflows}
                 onToolOutputCollapsedAtEnd={onToolOutputCollapsedAtEndStable}
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigationStable}
@@ -8871,6 +8900,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequests={addPullRequestsSurfaceStable}
           onAddDevice={addDeviceSurfaceStable}
           onAddGraph={addGraphSurfaceStable}
+          onAddLineage={addLineageSurfaceStable}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}
           diffAvailable={isServerThread && isGitRepo}
@@ -8879,6 +8909,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           deviceAvailable={activeThreadRef !== null}
           graphAvailable={graphSurfaceAvailable}
+          lineageAvailable={lineageSurfaceAvailable}
         >
           {rightPanelContent}
         </RightPanelTabsOrPanes>
@@ -8928,6 +8959,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequests={addPullRequestsSurfaceStable}
             onAddDevice={addDeviceSurfaceStable}
             onAddGraph={addGraphSurfaceStable}
+            onAddLineage={addLineageSurfaceStable}
             browserAvailable={canOperatePreview && browserAvailable}
             terminalAvailable={activeProject !== null && canOperateTerminal}
             diffAvailable={isServerThread && isGitRepo}
@@ -8936,6 +8968,7 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             deviceAvailable={activeThreadRef !== null}
             graphAvailable={graphSurfaceAvailable}
+            lineageAvailable={lineageSurfaceAvailable}
           >
             {rightPanelContent}
           </RightPanelTabs>

@@ -22,6 +22,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-request",
   "pull-requests",
   "graph",
+  "lineage",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -82,10 +83,11 @@ export type RightPanelSurface =
       detailTab?: PullRequestDetailTab;
     }
   | { id: "pull-requests"; kind: "pull-requests" }
-  | { id: "graph"; kind: "graph" };
+  | { id: "graph"; kind: "graph" }
+  | { id: "lineage"; kind: "lineage" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
-const RIGHT_PANEL_STORAGE_VERSION = 15;
+const RIGHT_PANEL_STORAGE_VERSION = 16;
 
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
   EnvironmentId.make("pull-requests-panel"),
@@ -185,6 +187,17 @@ interface RightPanelStoreState {
    * `surfaceId` is not open.
    */
   replaceSurface: (ref: ScopedThreadRef, surfaceId: string, surface: RightPanelSurface) => void;
+  /**
+   * Astrolabe: adds and drops the pull requests a change group shares across its threads' panels
+   * (`panes/groupPanelRuns.ts`), on the app's behalf: the panel stays open or closed and keeps the
+   * surface in front, unless that one is dropped, which leaves none in front for the panes to
+   * choose. Not a user choice, and nothing dropped is remembered as closed.
+   */
+  shareSurfaces: (
+    ref: ScopedThreadRef,
+    add: readonly RightPanelSurface[],
+    removeIds: readonly string[],
+  ) => void;
   closeOtherSurfaces: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
@@ -235,6 +248,8 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "graph":
       return { id: "graph", kind };
+    case "lineage":
+      return { id: "lineage", kind };
     case "device":
       return { id: "device", kind };
   }
@@ -924,6 +939,24 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               isOpen: true,
               surfaces: current.surfaces.map((entry, at) => (at === index ? surface : entry)),
               activeSurfaceId: surface.id,
+            };
+          }),
+        ),
+      shareSurfaces: (ref, add, removeIds) =>
+        set((state) =>
+          automaticUpdate(state, scopedThreadKey(ref), (current) => {
+            const removing = new Set(removeIds);
+            const kept = current.surfaces.filter((surface) => !removing.has(surface.id));
+            const known = new Set(kept.map((surface) => surface.id));
+            const added = add.filter((surface) => !known.has(surface.id));
+            if (added.length === 0 && kept.length === current.surfaces.length) return current;
+            return {
+              ...current,
+              surfaces: [...kept, ...added],
+              activeSurfaceId:
+                current.activeSurfaceId !== null && removing.has(current.activeSurfaceId)
+                  ? null
+                  : current.activeSurfaceId,
             };
           }),
         ),
