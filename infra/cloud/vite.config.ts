@@ -15,4 +15,7 @@ export default defineConfig({
       onlyBundle: false,
     },
   },
+  // test/stack.integ.test.ts drives a deployed stack: two sign-ins and Electric's replication
+  // and long-polls take longer than Vitest's default. Its deploy hook sets its own timeout.
+  test: { testTimeout: 120_000 },
 });

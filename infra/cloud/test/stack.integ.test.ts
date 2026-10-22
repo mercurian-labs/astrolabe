@@ -12,6 +12,7 @@ import * as Test from "alchemy/Test/Vitest";
 import { PgClient } from "@effect/sql-pg";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Random from "effect/Random";
 import * as Redacted from "effect/Redacted";
 import { expect } from "vite-plus/test";
 
@@ -69,6 +70,7 @@ const signIn = (api: string, email: string) =>
         const mine = html.split("<article>").find((article) => article.includes(email));
         const match = mine?.match(/(\d{6}) is your Astrolabe sign-in code/);
         if (match) return match[1]!;
+        // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- polls the deployed stack's dev mailbox over HTTP; nothing tells the test when the mail lands.
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
       throw new Error(`no sign-in code reached ${email}`);
@@ -140,10 +142,16 @@ const eventuallyRows = (api: string, token: string, shape: string, count: number
     for (let attempt = 0; attempt < 30; attempt++) {
       rows = (yield* readShape(api, token, shape)).rows;
       if (rows.length === count) return rows;
+      // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- the deployed Electric replicates a moment after the write; nothing the test can await marks it.
       yield* Effect.sleep("500 millis");
     }
     return rows;
   });
+
+/** Keeps each run's addresses and slugs apart; Better Auth limits codes sent to one address. */
+const uniqueSuffix = Random.nextIntBetween(0, 2 ** 40).pipe(
+  Effect.map((value) => value.toString(36)),
+);
 
 const apiOf = (outputs: { readonly apiUrl?: string | undefined }) => {
   if (!outputs.apiUrl) throw new Error("the stack reported no API URL");
@@ -154,12 +162,14 @@ const apiOf = (outputs: { readonly apiUrl?: string | undefined }) => {
 const quietLiveRequest = (api: string, token: string) =>
   Effect.gen(function* () {
     const { handle, offset, cursor } = yield* readShape(api, token, "workspaces");
+    // oxlint-disable-next-line t3code/no-wall-clock-in-tests -- how long the deployed stack holds a live request is what the suite checks.
     const started = Date.now();
     const live = yield* call(
       api,
       `/api/workspaces/shape?shape=workspaces&live=true&handle=${handle}&offset=${offset}&cursor=${cursor}`,
       { token },
     );
+    // oxlint-disable-next-line t3code/no-wall-clock-in-tests -- the end of the hold measured above.
     return { status: live.status, waited: Date.now() - started };
   });
 
@@ -171,7 +181,7 @@ const quietLiveRequest = (api: string, token: string) =>
  */
 const settled = (api: string) =>
   Effect.gen(function* () {
-    const token = yield* signIn(api, `settle-${Date.now().toString(36)}@it.test`);
+    const token = yield* signIn(api, `settle-${yield* uniqueSuffix}@it.test`);
     for (let attempt = 0; attempt < 10; attempt++) {
       if ((yield* quietLiveRequest(api, token)).status === 200) return token;
     }
@@ -187,14 +197,13 @@ test(
     expect(body.runtime).toBe("bun");
     expect(body.electric.body.status).toBe("active");
   }),
-  { timeout: 60_000 },
 );
 
 test(
   "a workspace reaches only the people in it",
   Effect.gen(function* () {
     const { apiUrl } = yield* stack;
-    const run = Date.now().toString(36);
+    const run = yield* uniqueSuffix;
     const ada = `ada-${run}@it.test`;
     const bo = `bo-${run}@it.test`;
     const adaToken = yield* signIn(apiUrl, ada);
@@ -216,7 +225,6 @@ test(
     yield* write(apiUrl, boToken, "acceptInvitation", { invitationId: invitation.id });
     expect(yield* eventuallyRows(apiUrl, boToken, "workspaces", 1)).toHaveLength(1);
   }),
-  { timeout: 120_000 },
 );
 
 test(
@@ -229,5 +237,4 @@ test(
     expect(status, `after ${waited}ms`).toBe(200);
     expect(waited).toBeGreaterThan(5_000);
   }),
-  { timeout: 60_000 },
 );
