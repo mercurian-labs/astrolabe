@@ -318,6 +318,15 @@ section {
   scroll-margin-top: var(--inset);
 }
 
+/* Off screen, a section skips its style and paint, at the size it last had (drafting.js turns this on
+   once each has been laid out, so every size is known). */
+:is(main > section, .foot) {
+  contain-intrinsic-size: auto none;
+}
+.laid-out :is(main > section, .foot) {
+  content-visibility: auto;
+}
+
 /* ───────────────────────────────────────── Type */
 
 .tag {

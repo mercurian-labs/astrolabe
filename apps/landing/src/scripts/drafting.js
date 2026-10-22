@@ -36,6 +36,15 @@ function requestFrame() {
 addEventListener("scroll", requestFrame, { passive: true });
 addEventListener("resize", requestFrame);
 
+/* ───────────────────────────── Once every section has been laid out (with the fonts), the ones off screen
+   skip their style and paint (drafting.css): a twilight step then restyles only what is in view. */
+
+addEventListener("load", () =>
+  document.fonts.ready.then(() =>
+    requestAnimationFrame(() => document.documentElement.classList.add("laid-out")),
+  ),
+);
+
 /* ───────────────────────────── Header: hides going down past a few header heights, returns going up. */
 
 const mast = $("[data-mast]");

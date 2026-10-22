@@ -18,7 +18,7 @@
 
 const Twilight = (() => {
   const FLIP = -10;
-  const STEP = 0.5;
+  const STEP = 1;
   // alt° → paper, either side of the flip. Day above the horizon, night below −18°.
   const DUSK = [
     [0, "#fbf9f4"],
