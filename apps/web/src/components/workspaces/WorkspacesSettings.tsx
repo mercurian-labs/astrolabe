@@ -10,7 +10,7 @@ import {
 } from "@t3tools/shared/mercurianWorkspaces";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, UserPlusIcon, XIcon } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { startCloudSignIn, useCloudAccountState } from "../../cloud/account";
 import { hasCloudPublicConfig } from "../../cloud/publicConfig";
@@ -98,11 +98,8 @@ function SignedInWorkspaces({
   canStartWorkspace: boolean;
 }) {
   const { rows, ready } = useWorkspaceRows(sync);
-  const views = useMemo(() => buildWorkspaceViews(rows, sync.userId), [rows, sync.userId]);
-  const invitations = useMemo(
-    () => invitationsForYou(rows, sync.userId, email),
-    [rows, sync.userId, email],
-  );
+  const views = buildWorkspaceViews(rows, sync.userId);
+  const invitations = invitationsForYou(rows, sync.userId, email);
   const search = useSearch({ strict: false }) as { w?: string };
   const navigate = useNavigate();
   const selectSlug = (slug: string) =>

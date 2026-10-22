@@ -19,6 +19,7 @@ import { createPanesController, type PanesController } from "~/panes/panesContro
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
+  type PaneTabLabelProps,
   type PaneTabs,
   type PanesHost,
 } from "~/panes/panesHost";
@@ -262,7 +263,7 @@ function createPullRequestHost() {
     else closeSectionTab(controller, tabKey);
   };
   const tabs: PaneTabs = {
-    useLabel: usePullRequestTabLabel,
+    Label: PullRequestTabLabel,
     close,
     NewTab: NewTabButton,
     place(slot: HTMLElement, leaf: Leaf) {
@@ -290,6 +291,10 @@ function createPullRequestHost() {
       closer = next;
     },
   };
+}
+
+function PullRequestTabLabel({ tabKey, children }: PaneTabLabelProps) {
+  return children(usePullRequestTabLabel(tabKey));
 }
 
 function usePullRequestTabLabel(tabKey: string): { title: string; icon: ReactNode } {

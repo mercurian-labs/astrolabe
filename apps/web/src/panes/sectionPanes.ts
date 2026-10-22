@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { hasUnsavedEdits } from "~/components/wiki/wikiPanes";
 import {
@@ -234,7 +234,7 @@ export function useSectionArrangement(panes: SectionPanes) {
 /** Every open tab's key, in pane order. */
 export function useSectionOpenKeys(panes: SectionPanes) {
   const arrangement = useSectionArrangement(panes);
-  return useMemo(() => allTabs(arrangement), [arrangement]);
+  return allTabs(arrangement);
 }
 
 /** The key of the focused pane's tab in front. */

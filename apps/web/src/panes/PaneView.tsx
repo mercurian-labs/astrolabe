@@ -5,7 +5,6 @@ import {
   memo,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -57,6 +56,7 @@ import {
   usePanesHost,
   usePanesLayoutKey,
   type PaneArrangementStore,
+  type PaneTabLabel,
   type PaneTabs,
 } from "./panesHost";
 import {
@@ -101,15 +101,7 @@ async function showSelectionMenu(
   );
 }
 
-const TabPill = memo(function TabPill({
-  tabKey,
-  paneId,
-  active,
-  paneFocused,
-  only,
-  last,
-  draggableInTitlebar,
-}: {
+interface TabPillProps {
   tabKey: string;
   paneId: string;
   active: boolean;
@@ -120,9 +112,27 @@ const TabPill = memo(function TabPill({
   last: boolean;
   /** Whether its strip is part of the window's title bar, which drags the window. */
   draggableInTitlebar: boolean;
-}) {
+}
+
+const TabPill = memo(function TabPill(props: TabPillProps) {
+  const Label = usePanesHost().tabs.Label;
+  return (
+    <Label tabKey={props.tabKey}>{(label) => <LabeledTabPill {...props} label={label} />}</Label>
+  );
+});
+
+function LabeledTabPill({
+  tabKey,
+  paneId,
+  active,
+  paneFocused,
+  only,
+  last,
+  draggableInTitlebar,
+  label,
+}: TabPillProps & { readonly label: PaneTabLabel }) {
   const { controller, tabs } = usePanesHost();
-  const { title, icon, tooltip, accessory, rename } = tabs.useLabel(tabKey);
+  const { title, icon, tooltip, accessory, rename } = label;
   const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
   const dragging = useDragging(tabKey);
@@ -321,7 +331,7 @@ const TabPill = memo(function TabPill({
       ) : null}
     </div>
   );
-});
+}
 
 /** Keeps this much of the neighbouring tabs in view when scrolling the active tab into view. */
 const SCROLL_MARGIN = 6;
@@ -368,7 +378,7 @@ function TabStrip({
   const isCollapsed = useTabGroupCollapsed();
   const draggedGroup = useDraggedGroup();
   // Astrolabe: the strip in runs, a change group's tabs together behind its marker (`tabGroups`).
-  const runs = useMemo(() => tabGroupRuns(leaf.tabs, groupsOf, tabGroupId), [groupsOf, leaf.tabs]);
+  const runs = tabGroupRuns(leaf.tabs, groupsOf, tabGroupId);
   // The groups shown here take their numbers before the strip paints (`tabGroupNumbers`).
   useLayoutEffect(() => {
     noteTabGroupRuns(

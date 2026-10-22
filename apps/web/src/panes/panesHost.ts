@@ -29,6 +29,12 @@ export interface PaneTabLabel {
   readonly rename?: (title: string) => void;
 }
 
+/** What a set of panes' `Label` is given: the tab, and what draws its label. */
+export interface PaneTabLabelProps {
+  readonly tabKey: string;
+  readonly children: (label: PaneTabLabel) => ReactNode;
+}
+
 /** One of a tab's own items in its right-click menu. */
 export interface PaneTabMenuItem {
   readonly label: string;
@@ -42,8 +48,12 @@ export interface PaneTabMenuItem {
  * arrange keys.
  */
 export interface PaneTabs {
-  /** A tab's label (see `PaneTabLabel`). A hook: it may subscribe to whatever the title comes from. */
-  readonly useLabel: (tabKey: string) => PaneTabLabel;
+  /**
+   * Hands a tab's label (see `PaneTabLabel`) to its children. A component, not a hook the panes
+   * pick at render, so the React Compiler can compile them; it may subscribe to whatever the
+   * title comes from.
+   */
+  readonly Label: ComponentType<PaneTabLabelProps>;
   /** What a tab's menu offers of its own, ahead of closing and splitting it, as a file's Copy path. */
   readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */

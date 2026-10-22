@@ -41,6 +41,7 @@ import {
   panesSlot,
   sidebarSectionSlot,
   tabHistorySlot,
+  type AppCommandsHandle,
 } from "./handles";
 import { isSyntheticKeybinding } from "./keybindingCommands";
 import { isInDialog, isLeaderKey, leaderKeyLabel, menuKeyOf } from "./leader";
@@ -70,6 +71,21 @@ const INSET_PX = 12;
 
 /** Applies the server's vimrc to every Vim editor on the page, each in place of the last. */
 const applyVimrc = createVimrcApplier(vimConfiguration);
+
+/** The registry entry for the Command Palette, reading the menu's latest render at each use. */
+function latestAppCommands(latest: {
+  readonly current: {
+    readonly context: (origin: KeyOrigin | null) => AppCommandContext;
+    readonly leaderLabel: string;
+  };
+}): AppCommandsHandle {
+  return {
+    command: (id, origin) => appCommand(id, latest.current.context(origin)),
+    get leaderLabel() {
+      return latest.current.leaderLabel;
+    },
+  };
+}
 
 function focusOrigin(): KeyOrigin {
   return { element: document.activeElement, view: null, write: null };
@@ -151,16 +167,7 @@ export function WhichKey() {
   useLayoutEffect(() => {
     latest.current = { context, leaderLabel };
   });
-  useEffect(
-    () =>
-      appCommandsSlot.register({
-        command: (id, origin) => appCommand(id, latest.current.context(origin)),
-        get leaderLabel() {
-          return latest.current.leaderLabel;
-        },
-      }),
-    [],
-  );
+  useEffect(() => appCommandsSlot.register(latestAppCommands(latest)), []);
 
   // The server's vimrc, in place of the last one, for every Vim editor on the page.
   useEffect(() => {
@@ -257,7 +264,7 @@ export function WhichKey() {
       window.removeEventListener("keydown", bubble);
       stop();
     };
-  }, [menu]);
+  }, []);
 
   // It closes as it loses focus: a click outside it, or the window losing focus. Either ends a
   // repeat window too.

@@ -2,7 +2,6 @@ import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroup
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ChangeGroupChange, type EnvironmentId } from "@t3tools/contracts";
 import type { ChangeGroupMember } from "@t3tools/shared/changeGroups";
-import { useCallback } from "react";
 
 import { newMessageId } from "~/lib/utils";
 import { surfaceKey } from "~/panes/arrangement";
@@ -56,22 +55,19 @@ export function changeGroupMemberTabKey(
 /** Records one decision about a group, then reads the group's decisions again. */
 export function useUpdateChangeGroup() {
   const update = useAtomCommand(changeGroupEnvironment.update);
-  return useCallback(
-    async (
-      group: Pick<EnvironmentChangeGroup, "environmentId" | "groupId">,
-      change: ChangeGroupChange,
-    ) => {
-      const result = await update({
-        environmentId: group.environmentId,
-        input: { groupId: group.groupId, change },
-      });
-      appAtomRegistry.refresh(
-        changeGroupEnvironment.decisions({ environmentId: group.environmentId, input: {} }),
-      );
-      return result._tag === "Success";
-    },
-    [update],
-  );
+  return async (
+    group: Pick<EnvironmentChangeGroup, "environmentId" | "groupId">,
+    change: ChangeGroupChange,
+  ) => {
+    const result = await update({
+      environmentId: group.environmentId,
+      input: { groupId: group.groupId, change },
+    });
+    appAtomRegistry.refresh(
+      changeGroupEnvironment.decisions({ environmentId: group.environmentId, input: {} }),
+    );
+    return result._tag === "Success";
+  };
 }
 
 /**
@@ -80,28 +76,25 @@ export function useUpdateChangeGroup() {
  */
 export function useAskThread() {
   const startTurn = useOrchestrationCommand(threadEnvironment.startTurn, { reportFailure: false });
-  return useCallback(
-    async (environmentId: EnvironmentId, threadId: string, text: string) => {
-      const thread = readThreadShell(scopeThreadRef(environmentId, ThreadId.make(threadId)));
-      if (thread === null) return false;
-      const result = await startTurn({
-        environmentId,
-        input: {
-          threadId: thread.id,
-          message: { messageId: newMessageId(), role: "user", text, attachments: [] },
-          runtimeMode: thread.runtimeMode,
-          interactionMode: thread.interactionMode,
-          dispatchMode: "queue",
-        },
-      });
-      const sent = result._tag === "Success";
-      toastManager.add(
-        sent
-          ? { type: "success", title: `Asked “${thread.title}”` }
-          : { type: "error", title: "The message could not be sent" },
-      );
-      return sent;
-    },
-    [startTurn],
-  );
+  return async (environmentId: EnvironmentId, threadId: string, text: string) => {
+    const thread = readThreadShell(scopeThreadRef(environmentId, ThreadId.make(threadId)));
+    if (thread === null) return false;
+    const result = await startTurn({
+      environmentId,
+      input: {
+        threadId: thread.id,
+        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        runtimeMode: thread.runtimeMode,
+        interactionMode: thread.interactionMode,
+        dispatchMode: "queue",
+      },
+    });
+    const sent = result._tag === "Success";
+    toastManager.add(
+      sent
+        ? { type: "success", title: `Asked “${thread.title}”` }
+        : { type: "error", title: "The message could not be sent" },
+    );
+    return sent;
+  };
 }

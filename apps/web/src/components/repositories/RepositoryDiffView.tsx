@@ -2,7 +2,7 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import * as DateTime from "effect/DateTime";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
@@ -48,15 +48,11 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
   }, [refresh]);
   const source = preview.data?.sources.find((candidate) => candidate.kind === sourceKind) ?? null;
   const lazySource = source?.truncated && source.files ? source : null;
-  const renderablePatch = useMemo(
-    () =>
-      lazySource
-        ? null
-        : getRenderablePatch(source?.diff, `repository-diff:${resolvedTheme}`, {
-            compactPartialHunkOffsets: true,
-          }),
-    [lazySource, resolvedTheme, source?.diff],
-  );
+  const renderablePatch = lazySource
+    ? null
+    : getRenderablePatch(source?.diff, `repository-diff:${resolvedTheme}`, {
+        compactPartialHunkOffsets: true,
+      });
   const { renderableFiles, readyFilePaths, settledFileCount, loadNextFiles } = useReviewFilePatches(
     {
       environmentId,
@@ -70,22 +66,18 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
     },
   );
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const files = useMemo(
-    () =>
-      renderableFiles
-        .filter((fileDiff) => !lazySource || readyFilePaths.has(resolveFileDiffPath(fileDiff)))
-        .map((fileDiff) => {
-          const fileKey = buildFileDiffIdentityKey(fileDiff);
-          return {
-            fileDiff,
-            filePath: resolveFileDiffPath(fileDiff),
-            fileKey,
-            fileVersion: buildFileDiffContentVersion(fileDiff),
-            collapsed: collapsed.has(fileKey) || fileDiff.cacheKey?.endsWith(":pending") === true,
-          };
-        }),
-    [collapsed, lazySource, readyFilePaths, renderableFiles],
-  );
+  const files = renderableFiles
+    .filter((fileDiff) => !lazySource || readyFilePaths.has(resolveFileDiffPath(fileDiff)))
+    .map((fileDiff) => {
+      const fileKey = buildFileDiffIdentityKey(fileDiff);
+      return {
+        fileDiff,
+        filePath: resolveFileDiffPath(fileDiff),
+        fileKey,
+        fileVersion: buildFileDiffContentVersion(fileDiff),
+        collapsed: collapsed.has(fileKey) || fileDiff.cacheKey?.endsWith(":pending") === true,
+      };
+    });
   const pendingFiles = renderableFiles.filter((file) => file.cacheKey?.endsWith(":pending"));
   const target = useCommentTarget(tab);
   const title =
@@ -214,17 +206,14 @@ function useCommentTarget(tab: DiffTab) {
       store.getDraftThreadByProjectRef(scopeProjectRef(tab.environmentId, tab.projectId))
         ?.draftId ?? null,
   );
-  return useMemo(() => {
-    const own = threads
-      .filter(
-        (thread) =>
-          thread.environmentId === tab.environmentId && thread.projectId === tab.projectId,
-      )
-      .toSorted((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-    const here = own.find((thread) => (thread.worktreePath ?? project?.workspaceRoot) === tab.cwd);
-    if (here) return scopeThreadRef(here.environmentId, here.id);
-    if (draftId !== null) return draftId;
-    const newest = own[0];
-    return newest ? scopeThreadRef(newest.environmentId, newest.id) : null;
-  }, [draftId, project?.workspaceRoot, tab, threads]);
+  const own = threads
+    .filter(
+      (thread) => thread.environmentId === tab.environmentId && thread.projectId === tab.projectId,
+    )
+    .toSorted((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  const here = own.find((thread) => (thread.worktreePath ?? project?.workspaceRoot) === tab.cwd);
+  if (here) return scopeThreadRef(here.environmentId, here.id);
+  if (draftId !== null) return draftId;
+  const newest = own[0];
+  return newest ? scopeThreadRef(newest.environmentId, newest.id) : null;
 }

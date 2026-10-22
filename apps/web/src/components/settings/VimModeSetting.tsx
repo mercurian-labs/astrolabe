@@ -1,7 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { Button } from "../ui/button";
@@ -24,11 +24,11 @@ export function VimModeSettingsRow() {
   if (asking && on) setAsking(false);
   const confirming = asking && !on;
 
-  const confirm = useCallback(() => {
+  const confirm = () => {
     updateClientSettings({ vimModeEnabled: true });
     setAsking(false);
-  }, []);
-  const cancel = useCallback(() => setAsking(false), []);
+  };
+  const cancel = () => setAsking(false);
 
   // The gate takes focus while it is open and gives it back to the switch as it closes.
   const wasConfirming = useRef(false);

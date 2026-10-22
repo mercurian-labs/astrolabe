@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useThreadShells } from "~/state/entities";
@@ -111,23 +111,16 @@ function GroupDetails({
   );
   const candidates = useEnvironmentChangeRequests(environmentId);
   const shells = useThreadShells();
-  const threadsHere = useMemo(
-    () =>
-      new Map(
-        shells
-          .filter((shell) => shell.environmentId === environmentId && shell.archivedAt === null)
-          .map((shell) => [shell.id as string, shell]),
-      ),
-    [shells, environmentId],
+  const threadsHere = new Map(
+    shells
+      .filter((shell) => shell.environmentId === environmentId && shell.archivedAt === null)
+      .map((shell) => [shell.id as string, shell]),
   );
   const update = useUpdateChangeGroup();
   const ask = useAskThread();
   const code = group.members.filter((member) => member.side === "code");
   const docs = group.members.filter((member) => member.side === "docs");
-  const byKey = useMemo(
-    () => new Map(candidates.map((member) => [member.key, member])),
-    [candidates],
-  );
+  const byKey = new Map(candidates.map((member) => [member.key, member]));
   const pending = (decisions?.pending ?? [])
     .map((entry) => ({ entry, member: byKey.get(changeGroupMemberKey(entry.member)) }))
     .filter(
@@ -153,6 +146,10 @@ function GroupDetails({
   const threadKey = (threadId: string) => changeGroupMemberKey({ kind: "thread", threadId });
   const openThread = (threadId: string) =>
     open(chatTabKey(scopeThreadRef(environmentId, ThreadId.make(threadId))));
+  const openMember = (member: ChangeGroupMember) => {
+    const key = changeGroupMemberTabKey(environmentId, member);
+    if (key) open(key);
+  };
   const list = (members: ReadonlyArray<ChangeGroupMember>) =>
     members
       .map((member) => `- ${member.title} (${member.place}${member.url ? `, ${member.url}` : ""})`)
@@ -438,11 +435,6 @@ function GroupDetails({
       </div>
     </div>
   );
-
-  function openMember(member: ChangeGroupMember) {
-    const key = changeGroupMemberTabKey(environmentId, member);
-    if (key) open(key);
-  }
 }
 
 function MemberRow({
@@ -534,15 +526,12 @@ function AddThread({
 }) {
   const [query, setQuery] = useState("");
   const filter = useComboboxFilter();
-  const filtered = useMemo(
-    () =>
-      query.trim() === ""
-        ? candidates
-        : candidates.filter((shell) =>
-            filter.contains(shell, query, (item) => `${item.title} ${item.branch ?? ""}`),
-          ),
-    [candidates, filter, query],
-  );
+  const filtered =
+    query.trim() === ""
+      ? candidates
+      : candidates.filter((shell) =>
+          filter.contains(shell, query, (item) => `${item.title} ${item.branch ?? ""}`),
+        );
   return (
     <Combobox
       items={candidates}
@@ -596,15 +585,12 @@ function AddMember({
 }) {
   const [query, setQuery] = useState("");
   const filter = useComboboxFilter();
-  const filtered = useMemo(
-    () =>
-      query.trim() === ""
-        ? candidates
-        : candidates.filter((member) =>
-            filter.contains(member, query, (item) => `${item.title} ${item.place}`),
-          ),
-    [candidates, filter, query],
-  );
+  const filtered =
+    query.trim() === ""
+      ? candidates
+      : candidates.filter((member) =>
+          filter.contains(member, query, (item) => `${item.title} ${item.place}`),
+        );
   return (
     <Combobox
       items={candidates}

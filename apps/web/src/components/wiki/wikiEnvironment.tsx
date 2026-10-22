@@ -6,7 +6,6 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
-import { useCallback, useMemo } from "react";
 
 import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -44,13 +43,10 @@ export function useWikiOverviews(enabled = true): {
     enabled ? environments.map((environment) => environment.environmentId) : [],
   );
   const lists = useAtomValue(wikiOverviewsAtom(key));
-  return useMemo(
-    () => ({
-      overviews: lists.flatMap((list) => list ?? []),
-      loading: lists.some((list) => list === null),
-    }),
-    [lists],
-  );
+  return {
+    overviews: lists.flatMap((list) => list ?? []),
+    loading: lists.some((list) => list === null),
+  };
 }
 
 export type WikiCommandOutcome<A> =
@@ -63,17 +59,14 @@ export type WikiCommandOutcome<A> =
  */
 export function useWikiCommand<W, A, E>(command: AtomCommand<W, A, E>, failureToast?: string) {
   const run = useAtomCommand(command, { reportFailure: false });
-  return useCallback(
-    async (value: W): Promise<WikiCommandOutcome<A>> => {
-      const result = await run(value);
-      if (result._tag === "Success") return { ok: true, value: result.value };
-      if (isAtomCommandInterrupted(result)) return { ok: false, message: null };
-      const message = describeWikiFailure(squashAtomCommandFailure(result));
-      if (failureToast !== undefined) {
-        toastManager.add({ type: "error", title: failureToast, description: message });
-      }
-      return { ok: false, message };
-    },
-    [failureToast, run],
-  );
+  return async (value: W): Promise<WikiCommandOutcome<A>> => {
+    const result = await run(value);
+    if (result._tag === "Success") return { ok: true, value: result.value };
+    if (isAtomCommandInterrupted(result)) return { ok: false, message: null };
+    const message = describeWikiFailure(squashAtomCommandFailure(result));
+    if (failureToast !== undefined) {
+      toastManager.add({ type: "error", title: failureToast, description: message });
+    }
+    return { ok: false, message };
+  };
 }

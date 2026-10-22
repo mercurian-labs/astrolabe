@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import {
   activateTab,
@@ -456,17 +456,14 @@ export function usePullRequestTabHistory(panes: PanesController): {
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
 } {
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      listeners.add(listener);
-      const stopPanes = panes.subscribe(listener);
-      return () => {
-        listeners.delete(listener);
-        stopPanes();
-      };
-    },
-    [panes],
-  );
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    const stopPanes = panes.subscribe(listener);
+    return () => {
+      listeners.delete(listener);
+      stopPanes();
+    };
+  };
   const read = (direction: HistoryDirection) => () => {
     const arrangement = panes.getSnapshot()?.arrangement;
     if (!arrangement) return false;

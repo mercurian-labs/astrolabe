@@ -1,7 +1,7 @@
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { useChatTabsStore } from "~/chatTabs/chatTabsStore";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
@@ -75,6 +75,16 @@ function applyPanelRuns(
   }
 }
 
+/** Runs `apply` with `guard.applying` set; outside the component, where `finally` compiles. */
+function whileApplying(guard: { applying: boolean }, apply: () => void) {
+  guard.applying = true;
+  try {
+    apply();
+  } finally {
+    guard.applying = false;
+  }
+}
+
 /**
  * Astrolabe: keeps a thread's right panel in line with the shared runs of the change groups it
  * works in (`groupPanelRuns.ts`), for as long as `ThreadPanesProvider` shows it: as the thread
@@ -90,10 +100,7 @@ export function GroupPanelRunsSync({
 }) {
   const groups = useChangeGroups();
   const { environmentId, threadId } = threadRef;
-  const runGroups = useMemo(
-    () => threadRunGroups(groups, { environmentId, threadId }),
-    [environmentId, groups, threadId],
-  );
+  const runGroups = threadRunGroups(groups, { environmentId, threadId });
   // The effect follows what the runs need of the groups, not every change to them.
   const signature = runGroups
     .map((group) => `${group.key}=${[...group.entryIds].join(",")}`)
@@ -108,12 +115,12 @@ export function GroupPanelRunsSync({
 
   useEffect(() => {
     if (signature === "") return;
-    let applying = false;
+    const guard = { applying: false };
     const sync = () => {
       const snapshot = controller.getSnapshot();
       const ref = controller.threadRef();
       // Its own changes, made while it applies one, are the ones it made.
-      if (applying || !snapshot || !ref || snapshot.threadKey !== threadKey) return;
+      if (guard.applying || !snapshot || !ref || snapshot.threadKey !== threadKey) return;
       if (seen.current.threadKey !== threadKey) seen.current = { threadKey, runs: {} };
       const change = reconcilePanelRuns({
         arrangement: snapshot.arrangement,
@@ -123,12 +130,7 @@ export function GroupPanelRunsSync({
         seen: seen.current.runs,
       });
       seen.current = { threadKey, runs: change.seen };
-      applying = true;
-      try {
-        applyPanelRuns(controller, ref, snapshot.arrangement, change);
-      } finally {
-        applying = false;
-      }
+      whileApplying(guard, () => applyPanelRuns(controller, ref, snapshot.arrangement, change));
     };
     sync();
     const stopPanes = controller.subscribe(sync);

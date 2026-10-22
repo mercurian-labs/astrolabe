@@ -9,7 +9,6 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -132,10 +131,7 @@ export function ChatTabStrip({
   // Astrolabe: the strip in runs, a change group's threads together behind its marker, as a
   // pane's strip shows them (`tabGroups`).
   const groupsOf = useTabGroupLookup();
-  const runs = useMemo(
-    () => tabGroupRuns(keys, (key) => chatGroupsOf(groupsOf, key), tabGroupId),
-    [groupsOf, keys],
-  );
+  const runs = tabGroupRuns(keys, (key) => chatGroupsOf(groupsOf, key), tabGroupId);
   // The groups shown here take their numbers before the strip paints (`tabGroupNumbers`).
   useLayoutEffect(() => {
     noteTabGroupRuns(
@@ -236,18 +232,15 @@ export function ChatTabStrip({
   });
   // What each tab asks of the strip, the same across renders so the tabs render only for their own
   // changes.
-  const tabActions = useMemo<ChatTabActions>(
-    () => ({
-      route: (key, route) => {
-        if (route) routes.current.set(key, route);
-        else routes.current.delete(key);
-      },
-      open: (key, route) => handle.current.open(key, route),
-      close: (key) => handle.current.close(key),
-      dragEnd: () => setInsertAt(null),
-    }),
-    [],
-  );
+  const tabActions: ChatTabActions = {
+    route: (key, route) => {
+      if (route) routes.current.set(key, route);
+      else routes.current.delete(key);
+    },
+    open: (key, route) => handle.current.open(key, route),
+    close: (key) => handle.current.close(key),
+    dragEnd: () => setInsertAt(null),
+  };
   const strip = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = strip.current;
@@ -280,10 +273,10 @@ export function ChatTabStrip({
     [canGoBack, canGoForward],
   );
 
-  // The tab in front scrolls into view.
+  // The tab in front scrolls into view, again as the tabs change around it.
   useEffect(() => {
     const element = list.current;
-    if (!element || activeKey === null) return;
+    if (!element || activeKey === null || !keys.includes(activeKey)) return;
     const pill = [...element.querySelectorAll<HTMLElement>("[data-chat-tab]")].find(
       (tab) => tab.dataset.key === activeKey,
     );
@@ -475,7 +468,7 @@ const ChatTab = memo(function ChatTab({
   providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderInstanceEntry>>;
   actions: ChatTabActions;
 }) {
-  const ref = useMemo(() => parseScopedThreadKey(tabKey), [tabKey]);
+  const ref = parseScopedThreadKey(tabKey);
   const shell = useThreadShell(ref);
   const draftId = useComposerDraftStore((store) =>
     shell || !ref ? null : store.getDraftIdByRef(ref),
@@ -484,10 +477,11 @@ const ChatTab = memo(function ChatTab({
     useEnvironmentQuery(ref ? environmentShell.stateAtom(ref.environmentId) : null).data?.status,
   );
   const exists = shell !== null && shell.deletedAt == null;
-  const route = useMemo<ChatRoute | null>(
-    () => (exists ? { kind: "thread", key: tabKey } : draftId ? { kind: "draft", draftId } : null),
-    [draftId, exists, tabKey],
-  );
+  const route: ChatRoute | null = exists
+    ? { kind: "thread", key: tabKey }
+    : draftId
+      ? { kind: "draft", draftId }
+      : null;
   useEffect(() => actions.route(tabKey, route), [actions, route, tabKey]);
   // A chat deleted, or a draft discarded, closes its tab once its environment's threads are known.
   // The chat in front leaves through ThreadRouteView's own redirect first.
@@ -506,19 +500,18 @@ const ChatTab = memo(function ChatTab({
     ? (shell.runtime?.providerInstanceId ?? shell.modelSelection.instanceId)
     : null;
   const providerEntries = ref ? providerEntriesByEnvironment.get(ref.environmentId) : undefined;
-  const providerEntry = useMemo(() => {
-    if (!providerEntries) return null;
-    if (threadProvider !== null) return providerEntries.get(threadProvider) ?? null;
-    if (!draftId) return null;
-    return (
-      resolveComposerProviderSelection({
-        entries: sortProviderInstanceEntries([...providerEntries.values()]),
-        candidateInstanceIds: [draftProvider],
-        lockedProvider: null,
-        lockedInstanceId: null,
-      }).selectedProviderEntry ?? null
-    );
-  }, [draftId, draftProvider, providerEntries, threadProvider]);
+  const providerEntry = !providerEntries
+    ? null
+    : threadProvider !== null
+      ? (providerEntries.get(threadProvider) ?? null)
+      : !draftId
+        ? null
+        : (resolveComposerProviderSelection({
+            entries: sortProviderInstanceEntries([...providerEntries.values()]),
+            candidateInstanceIds: [draftProvider],
+            lockedProvider: null,
+            lockedInstanceId: null,
+          }).selectedProviderEntry ?? null);
 
   return (
     <div

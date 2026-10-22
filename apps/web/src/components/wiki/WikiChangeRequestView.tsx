@@ -12,7 +12,7 @@ import { FileDiff } from "@pierre/diffs/react";
 import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
 import { CircleCheckIcon, TriangleAlertIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 
@@ -484,13 +484,9 @@ function FileChange({
   readonly onOpen: (() => void) | undefined;
 }) {
   const { resolvedTheme } = useTheme();
-  const diff = useMemo(
-    () =>
-      parseDiffFromFile(
-        { name: change.file, contents: change.before ?? "" },
-        { name: change.file, contents: change.after ?? "" },
-      ),
-    [change.after, change.before, change.file],
+  const diff = parseDiffFromFile(
+    { name: change.file, contents: change.before ?? "" },
+    { name: change.file, contents: change.after ?? "" },
   );
   const label = change.before === null ? "Added" : change.after === null ? "Deleted" : "Changed";
   return (

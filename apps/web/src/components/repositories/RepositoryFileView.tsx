@@ -9,9 +9,10 @@ import { livePreview } from "@mercurian/editor/markdown";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { useEnvironmentScope } from "~/state/session";
 import { useProject, useThreadShells } from "~/state/entities";
 import { useVimScreenLines } from "~/vimScreenLines";
@@ -76,10 +77,11 @@ export function RepositoryFileView({
   const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
-  const onPendingChange = useCallback((_path: string, next: boolean) => {
+  // One identity: the save coordinator starts over when its pending callback changes.
+  const onPendingChange = useStableCallback((_path: string, next: boolean) => {
     pendingRef.current = next;
     setPending(next);
-  }, []);
+  });
   const save = useFileSaveCoordinator({
     environmentId,
     cwd,
@@ -176,15 +178,18 @@ function FileEditor({
   }, [onChange]);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
-  const compartments = useMemo(
-    () => ({ vim: new Compartment(), language: new Compartment(), readOnly: new Compartment() }),
-    [],
-  );
-  const markdown = isMarkdownPath(path);
+  const [compartments] = useState(() => ({
+    vim: new Compartment(),
+    language: new Compartment(),
+    readOnly: new Compartment(),
+  }));
+  // The view is built from the file as it first shows (the parent keys it by path).
+  const [initial] = useState(() => ({ path, contents, readOnly, vim }));
 
   useLayoutEffect(() => {
     const element = host.current;
     if (!element) return;
+    const markdown = isMarkdownPath(initial.path);
     const history = composerHistory(() => viewRef.current!);
     const vimExtension = (): Extension => [
       vimMode(history.vim, { panel: false }),
@@ -194,16 +199,16 @@ function FileEditor({
     const view = new EditorView({
       parent: element,
       state: EditorState.create({
-        doc: contents,
+        doc: initial.contents,
         extensions: [
           FILE_EDITOR_THEME,
           history.extension,
-          compartments.vim.of(vim ? vimExtension() : []),
+          compartments.vim.of(initial.vim ? vimExtension() : []),
           appVimKeys(() => null),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
           compartments.language.of([]),
-          compartments.readOnly.of(readOnlyExtension(readOnly)),
+          compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           }),
@@ -212,7 +217,7 @@ function FileEditor({
     });
     viewRef.current = view;
     let cancelled = false;
-    const language = markdown ? null : codeLanguageFor(path);
+    const language = markdown ? null : codeLanguageFor(initial.path);
     if (language) {
       void language.load().then((support) => {
         if (!cancelled) view.dispatch({ effects: compartments.language.reconfigure(support) });
@@ -223,8 +228,7 @@ function FileEditor({
       view.destroy();
       viewRef.current = null;
     };
-    // Built once per file (the parent keys it by path); later changes go through compartments.
-  }, []);
+  }, [compartments, initial]);
 
   useEffect(() => {
     const view = viewRef.current;

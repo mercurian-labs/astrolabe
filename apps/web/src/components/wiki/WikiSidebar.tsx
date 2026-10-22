@@ -17,10 +17,8 @@ import {
 } from "lucide-react";
 import {
   memo,
-  useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useReducer,
   useRef,
   useState,
@@ -146,9 +144,9 @@ export function WikiSidebar() {
   const navigate = useNavigate();
   // Change requests live in the Change Requests section; this lists the documents, with the
   // open changes' count as the way there.
-  const allLists = useMemo(() => wikiSidebarItems(overviews, scope), [overviews, scope]);
+  const allLists = wikiSidebarItems(overviews, scope);
   const changes = allLists.changes;
-  const lists = useMemo(() => ({ ...allLists, changes: [], settled: [] }), [allLists]);
+  const lists = { ...allLists, changes: [], settled: [] };
   const { documents } = lists;
   const scoped =
     overviews.find(
@@ -167,58 +165,52 @@ export function WikiSidebar() {
   // Astrolabe: a click shows the document in the focused pane's tab in front; Option-click and
   // the middle button open it in a new tab there (the row's menu opens it beside, in a new
   // pane). Cmd/Ctrl-click and Shift-click select rows, as in Agents.
-  const open = useCallback(
-    (tab: WikiTab, event: RowClick | null) => {
-      const intent =
-        event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
-      const key = wikiTabKey(tab);
-      const { change } = useRowSelectionStore.getState();
-      if (intent === "mod") {
-        change((now) => toggleRow(now, SELECTION_SECTION, key));
-        return;
-      }
-      if (intent === "range") {
-        change((now) => rangeToRow(now, SELECTION_SECTION, key, shown.current.keys));
-        return;
-      }
-      change(() => anchorRow(SELECTION_SECTION, key));
-      if (intent === "new-tab") openWikiTab(tab);
-      else showWikiTab(tab);
-      if (isMobile) setOpenMobile(false);
-    },
-    [isMobile, setOpenMobile],
-  );
+  const open = (tab: WikiTab, event: RowClick | null) => {
+    const intent =
+      event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
+    const key = wikiTabKey(tab);
+    const { change } = useRowSelectionStore.getState();
+    if (intent === "mod") {
+      change((now) => toggleRow(now, SELECTION_SECTION, key));
+      return;
+    }
+    if (intent === "range") {
+      change((now) => rangeToRow(now, SELECTION_SECTION, key, shown.current.keys));
+      return;
+    }
+    change(() => anchorRow(SELECTION_SECTION, key));
+    if (intent === "new-tab") openWikiTab(tab);
+    else showWikiTab(tab);
+    if (isMobile) setOpenMobile(false);
+  };
   // What a row's drag or menu acts on: the selection when the row is in it.
-  const actedOn = useCallback((tab: WikiTab) => {
+  const actedOn = (tab: WikiTab) => {
     const { keys, tabs } = shown.current;
     const { selection } = useRowSelectionStore.getState();
     return rowsActedOn(selection, SELECTION_SECTION, wikiTabKey(tab), keys).map(
       (key) => tabs.get(key) ?? tab,
     );
-  }, []);
-  const rowActions = useMemo<WikiRowActions>(
-    () => ({
-      // Dropped on a pane's strip, they open there; on its content, in a new pane.
-      drag: (tab, event) => {
-        const carried = actedOn(tab);
-        startDrag(
-          event,
-          {
-            key: wikiTabKey(tab),
-            keys: [],
-            place: (paneId, drop) => placeWikiTabs(carried, tab, paneId, drop),
-          },
-          event.currentTarget.getAttribute("aria-label") ?? "",
-          carried.length > 1 ? carried.length : 0,
-        );
-      },
-      openAll: (tab) => {
-        for (const each of actedOn(tab)) openWikiTab(each);
-      },
-      count: (tab) => actedOn(tab).length,
-    }),
-    [actedOn],
-  );
+  };
+  const rowActions: WikiRowActions = {
+    // Dropped on a pane's strip, they open there; on its content, in a new pane.
+    drag: (tab, event) => {
+      const carried = actedOn(tab);
+      startDrag(
+        event,
+        {
+          key: wikiTabKey(tab),
+          keys: [],
+          place: (paneId, drop) => placeWikiTabs(carried, tab, paneId, drop),
+        },
+        event.currentTarget.getAttribute("aria-label") ?? "",
+        carried.length > 1 ? carried.length : 0,
+      );
+    },
+    openAll: (tab) => {
+      for (const each of actedOn(tab)) openWikiTab(each);
+    },
+    count: (tab) => actedOn(tab).length,
+  };
   // Escape lets go of the selection.
   const selecting = selectedKeys.length > 0;
   useEffect(() => {
@@ -235,7 +227,7 @@ export function WikiSidebar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const isSearching = searchQuery.trim().length > 0;
-  const results = useMemo(() => searchWikiSidebarItems(lists, searchQuery), [lists, searchQuery]);
+  const results = searchWikiSidebarItems(lists, searchQuery);
   // The lists refresh under a query, so the highlight holds within whatever matches now.
   const activeIndex = Math.min(activeResultIndex, Math.max(results.length - 1, 0));
   useEffect(() => {
@@ -244,20 +236,17 @@ export function WikiSidebar() {
       .getElementById(`sidebar-thread-search-result-${activeIndex}`)
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, isSearching]);
-  const clearSearch = useCallback(() => {
+  const clearSearch = () => {
     setSearchQuery("");
     setActiveResultIndex(0);
-  }, []);
-  const openResult = useCallback(
-    (entry: WikiSidebarEntry, event: RowClick | null) => {
-      // Selecting among the matches keeps them; opening one puts the lists back.
-      const intent =
-        event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
-      if (intent !== "mod" && intent !== "range") clearSearch();
-      open(wikiSidebarEntryTab(entry), event);
-    },
-    [clearSearch, open],
-  );
+  };
+  const openResult = (entry: WikiSidebarEntry, event: RowClick | null) => {
+    // Selecting among the matches keeps them; opening one puts the lists back.
+    const intent =
+      event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
+    if (intent !== "mod" && intent !== "range") clearSearch();
+    open(wikiSidebarEntryTab(entry), event);
+  };
   const shownEntries: readonly WikiSidebarEntry[] = isSearching
     ? results
     : documents.map((item) => ({ kind: "document" as const, item }));
@@ -521,34 +510,23 @@ function WikiScopeFilter({
     query: "",
   });
   const filter = useComboboxFilter();
-  const items = useMemo(
-    () => [
-      { value: "all", label: "All wikis" },
-      ...overviews.map((overview) => ({
-        value: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
-        label: overview.wiki.name,
-      })),
-    ],
-    [overviews],
-  );
-  const filtered = useMemo(
-    () =>
-      filterSidebarProjectScopeItems({
-        items,
-        query: menu.query,
-        matches: (item, query) => filter.contains(item, query, (candidate) => candidate.label),
-      }),
-    [filter, items, menu.query],
-  );
-  const overviewByKey = useMemo(
-    () =>
-      new Map(
-        overviews.map((overview) => [
-          wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
-          overview,
-        ]),
-      ),
-    [overviews],
+  const items = [
+    { value: "all", label: "All wikis" },
+    ...overviews.map((overview) => ({
+      value: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
+      label: overview.wiki.name,
+    })),
+  ];
+  const filtered = filterSidebarProjectScopeItems({
+    items,
+    query: menu.query,
+    matches: (item, query) => filter.contains(item, query, (candidate) => candidate.label),
+  });
+  const overviewByKey = new Map(
+    overviews.map((overview) => [
+      wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
+      overview,
+    ]),
   );
   const selected = items.find((item) => item.value === (scope ?? "all")) ?? items[0];
   const closeAnd = (then: () => void) => {
@@ -922,7 +900,7 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
 }) {
   const change = item.changes[0];
   const working = useAgentWorking(item.environmentId, change?.threadId);
-  const tab = useMemo(() => wikiSidebarEntryTab({ kind: "document", item }), [item]);
+  const tab = wikiSidebarEntryTab({ kind: "document", item });
   return (
     <CardRow
       label={`${item.name}, ${item.wiki.name}`}
@@ -986,7 +964,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
 }) {
   const { changeRequest } = item;
   const working = useAgentWorking(item.environmentId, changeRequest.threadId);
-  const tab = useMemo(() => wikiSidebarEntryTab({ kind: "change", item }), [item]);
+  const tab = wikiSidebarEntryTab({ kind: "change", item });
   const openTab = (event: RowClick) => onOpen(tab, event);
   const amendments = changeRequest.amendments.length;
   const actors = [...new Set(changeRequest.amendments.map((amendment) => amendment.actor))];

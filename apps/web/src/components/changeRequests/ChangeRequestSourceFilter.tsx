@@ -1,6 +1,6 @@
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { ChevronDownIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import type { ProjectFaviconProject } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "../projects/ProjectFilterIcon";
@@ -61,25 +61,19 @@ export function ChangeRequestSourceFilter({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const filter = useComboboxFilter();
-  const options = useMemo(() => {
-    const checkouts = wikiCheckoutKeys(overviews);
-    return projectFilterOptions({
-      repositories: projects
-        .filter((project) => !checkouts.has(projectKey(project)))
-        .map((project) => ({
-          key: projectKey(project),
-          label: project.title,
-          repository: project,
-        })),
-      wikis: overviews,
-    });
-  }, [projects, overviews]);
-  const filtered = useMemo(
-    () =>
-      searchProjectFilterOptions(options, query, (option, text) =>
-        filter.contains(option, text, (item) => item.label),
-      ),
-    [filter, options, query],
+  const checkouts = wikiCheckoutKeys(overviews);
+  const options = projectFilterOptions({
+    repositories: projects
+      .filter((project) => !checkouts.has(projectKey(project)))
+      .map((project) => ({
+        key: projectKey(project),
+        label: project.title,
+        repository: project,
+      })),
+    wikis: overviews,
+  });
+  const filtered = searchProjectFilterOptions(options, query, (option, text) =>
+    filter.contains(option, text, (item) => item.label),
   );
   const current: ProjectFilterChoice =
     projectId !== undefined && projectEnvironmentId !== undefined

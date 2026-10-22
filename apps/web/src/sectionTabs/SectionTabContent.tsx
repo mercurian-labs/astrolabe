@@ -2,10 +2,7 @@ import { ChangeGroupView } from "~/components/changeRequests/groups/ChangeGroupV
 import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { useChangeGroupTabLabel } from "~/components/changeRequests/groups/useChangeGroupTabLabel";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
-import {
-  RepositoryTabView,
-  useRepositoryTabLabel,
-} from "~/components/repositories/RepositoryTabView";
+import { RepositoryTabView, repositoryTabLabel } from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ProjectId, ScopedThreadRef } from "@t3tools/contracts";
@@ -163,7 +160,7 @@ export function useSectionTabLabel(key: string): { title: string; icon: ReactNod
   const chat = parseChatTabKey(key);
   const thread = useThreadShell(chat);
   const wikiLabel = useWikiTabLabel(key);
-  const repositoryLabel = useRepositoryTabLabel(key);
+  const repositoryLabel = repositoryTabLabel(key);
   const groupLabel = useChangeGroupTabLabel(key);
   if (repositoryLabel !== null) return repositoryLabel;
   if (groupLabel !== null) return groupLabel;

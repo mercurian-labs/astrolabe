@@ -1,11 +1,12 @@
 import { Plus } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { focusedPane, isEmptyTab, newTab } from "~/panes/arrangement";
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
+  type PaneTabLabelProps,
   type PaneTabs,
   type PanesHost,
 } from "~/panes/panesHost";
@@ -31,7 +32,7 @@ import {
 } from "~/panes/sectionPanes";
 import { repositoryPanes } from "./repositoryPanes";
 import { parseRepositoryTabKey } from "./repositoryTabs";
-import { RepositoryTabView, useRepositoryTabLabel } from "./RepositoryTabView";
+import { RepositoryTabView, repositoryTabLabel } from "./RepositoryTabView";
 
 const LAYOUT_KEY = "repositories";
 
@@ -43,7 +44,7 @@ const LAYOUT_KEY = "repositories";
 export function RepositoryWorkspace() {
   const [{ host, containerFor, prune }] = useState(createRepositoryPanesHost);
   const arrangement = useSectionArrangement(repositoryPanes);
-  const snapshot = useMemo(() => ({ arrangement, hostPaneId: null }), [arrangement]);
+  const snapshot = { arrangement, hostPaneId: null };
 
   const { canGoBack, canGoForward } = useSectionTabHistory(repositoryPanes);
   useEffect(
@@ -99,7 +100,7 @@ function createRepositoryPanesHost() {
     }
   };
   const tabs: PaneTabs = {
-    useLabel: useRepositoryAreaTabLabel,
+    Label: RepositoryAreaTabLabel,
     close: closeRepositoryTab,
     openElsewhere: (tabKey) => sectionTabMove(tabKey, "repositories", closeRepositoryTab),
     NewTab: NewTabButton,
@@ -128,14 +129,10 @@ function RepositoryTabContents({
 }) {
   const keys = useSectionOpenKeys(repositoryPanes);
   const arrangement = useSectionArrangement(repositoryPanes);
-  const fronts = useMemo(
-    () => new Set(leaves(arrangement.root).map((leaf) => leaf.active)),
-    [arrangement],
-  );
+  const fronts = new Set(leaves(arrangement.root).map((leaf) => leaf.active));
   const focusedFront = focusedPane(arrangement).active;
-  const shown = useMemo(
-    () => keys.filter((key) => !isEmptyTab(key) && (fronts.has(key) || !parseChatTabKey(key))),
-    [fronts, keys],
+  const shown = keys.filter(
+    (key) => !isEmptyTab(key) && (fronts.has(key) || !parseChatTabKey(key)),
   );
   useEffect(() => {
     prune(new Set(shown));
@@ -162,8 +159,12 @@ function RepositoryTabContents({
   );
 }
 
+function RepositoryAreaTabLabel({ tabKey, children }: PaneTabLabelProps) {
+  return children(useRepositoryAreaTabLabel(tabKey));
+}
+
 function useRepositoryAreaTabLabel(tabKey: string): { title: string; icon: ReactNode } {
-  const repository = useRepositoryTabLabel(tabKey);
+  const repository = repositoryTabLabel(tabKey);
   const other = useSectionTabLabel(tabKey);
   return repository ?? other ?? { title: "New tab", icon: null };
 }

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { PreviewPanelShell } from "../components/preview/PreviewPanelShell";
@@ -23,16 +23,13 @@ export function RightPanelPanes(props: PanelProps) {
   const hostPaneId = snapshot?.hostPaneId ?? null;
   const maximized = props.maximized === true;
   // The keyboard menu's full screen maximizes the panel too, as its maximize control does.
-  const panel = useMemo(
-    () => ({
-      maximized,
-      setMaximized: (next: boolean) => {
-        const ref = controller.threadRef();
-        if (ref) useRightPanelStore.getState().setMaximized(ref, next);
-      },
-    }),
-    [controller, maximized],
-  );
+  const panel = {
+    maximized,
+    setMaximized: (next: boolean) => {
+      const ref = controller.threadRef();
+      if (ref) useRightPanelStore.getState().setMaximized(ref, next);
+    },
+  };
   // The active surface's content shows only in the pane showing its tab.
   useLayoutEffect(() => {
     if (hostPaneId === null) host.hide();

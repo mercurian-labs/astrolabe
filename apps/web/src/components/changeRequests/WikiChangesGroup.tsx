@@ -1,5 +1,5 @@
 import { XIcon } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { isMacPlatform } from "~/lib/utils";
 import { startDrag } from "~/panes/drag";
@@ -35,6 +35,8 @@ import {
 const SELECTION_SECTION = "change-requests:wikis";
 const NO_KEYS: readonly string[] = [];
 
+const isOpenChange = (item: WikiChangeItem) => item.changeRequest.status === "open";
+
 /**
  * Astrolabe: the wikis' change requests in the Change Requests sidebar, a group of their own
  * beside the pull requests': the open ones as cards, then the merged and closed ones on a folded
@@ -55,16 +57,15 @@ export function WikiChangesGroup({
   const focusedKey = useFocusedChangeRequestTabKey();
   const [openExpanded, setOpenExpanded] = useState(true);
   const [settledExpanded, setSettledExpanded] = useState(false);
-  const lists = useMemo(() => wikiSidebarItems(overviews, scope), [overviews, scope]);
+  const lists = wikiSidebarItems(overviews, scope);
   const searching = query.trim().length > 0;
-  const { open, settled } = useMemo(() => {
-    if (!searching) return { open: lists.changes, settled: lists.settled };
-    const matches = searchWikiSidebarItems({ ...lists, documents: [] }, query).flatMap((entry) =>
-      entry.kind === "change" ? [entry.item] : [],
-    );
-    const isOpen = (item: WikiChangeItem) => item.changeRequest.status === "open";
-    return { open: matches.filter(isOpen), settled: matches.filter((item) => !isOpen(item)) };
-  }, [lists, query, searching]);
+  const matches = searching
+    ? searchWikiSidebarItems({ ...lists, documents: [] }, query).flatMap((entry) =>
+        entry.kind === "change" ? [entry.item] : [],
+      )
+    : null;
+  const open = matches ? matches.filter(isOpenChange) : lists.changes;
+  const settled = matches ? matches.filter((item) => !isOpenChange(item)) : lists.settled;
   const scoped =
     overviews.find(
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
@@ -92,7 +93,7 @@ export function WikiChangesGroup({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selecting]);
 
-  const onOpen = useCallback((tab: WikiTab, event: RowClick | null) => {
+  const onOpen = (tab: WikiTab, event: RowClick | null) => {
     const intent =
       event === null ? "replace" : rowClickIntent(event, isMacPlatform(navigator.platform));
     const key = wikiTabKey(tab);
@@ -107,34 +108,31 @@ export function WikiChangesGroup({
     }
     change(() => anchorRow(SELECTION_SECTION, key));
     showChangeRequestTab(key, intent === "new-tab" ? "new-tab" : "replace");
-  }, []);
-  const actedOn = useCallback((tab: WikiTab) => {
+  };
+  const actedOn = (tab: WikiTab) => {
     const { selection } = useRowSelectionStore.getState();
     return rowsActedOn(selection, SELECTION_SECTION, wikiTabKey(tab), shown.current);
-  }, []);
-  const actions = useMemo<WikiRowActions>(
-    () => ({
-      drag: (tab, event) => {
-        const carried = actedOn(tab);
-        const key = wikiTabKey(tab);
-        startDrag(
-          event,
-          {
-            key,
-            keys: [],
-            place: (paneId, drop) => placeChangeRequestTabs(carried, key, paneId, drop),
-          },
-          event.currentTarget.getAttribute("aria-label") ?? "",
-          carried.length > 1 ? carried.length : 0,
-        );
-      },
-      openAll: (tab) => {
-        for (const key of actedOn(tab)) showChangeRequestTab(key, "new-tab");
-      },
-      count: (tab) => actedOn(tab).length,
-    }),
-    [actedOn],
-  );
+  };
+  const actions: WikiRowActions = {
+    drag: (tab, event) => {
+      const carried = actedOn(tab);
+      const key = wikiTabKey(tab);
+      startDrag(
+        event,
+        {
+          key,
+          keys: [],
+          place: (paneId, drop) => placeChangeRequestTabs(carried, key, paneId, drop),
+        },
+        event.currentTarget.getAttribute("aria-label") ?? "",
+        carried.length > 1 ? carried.length : 0,
+      );
+    },
+    openAll: (tab) => {
+      for (const key of actedOn(tab)) showChangeRequestTab(key, "new-tab");
+    },
+    count: (tab) => actedOn(tab).length,
+  };
 
   const none =
     (lists.changes.length === 0 && lists.settled.length === 0) ||

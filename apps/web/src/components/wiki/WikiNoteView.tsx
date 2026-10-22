@@ -9,7 +9,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
 import { useBlocker } from "@tanstack/react-router";
 import { TriangleAlertIcon } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { ensureLocalApi } from "~/localApi";
 import { useThreadShell } from "~/state/entities";
@@ -182,10 +182,7 @@ export function WikiNoteView({
   }, [queued, queuedTurn.running, commit]);
 
   const [saving, setSaving] = useState(false);
-  const known = useMemo(
-    () => new Set((index.data?.notes ?? []).map((entry) => noteKey(entry.name))),
-    [index.data],
-  );
+  const known = new Set((index.data?.notes ?? []).map((entry) => noteKey(entry.name)));
 
   if (note.data === null) {
     return note.error !== null ? (

@@ -1,7 +1,7 @@
 import type { WorkspaceSync } from "@t3tools/client-runtime/workspaces";
 import { WorkspaceWriteRefused } from "@t3tools/client-runtime/workspaces";
 import { useLiveQuery } from "@tanstack/react-db";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import { toastManager } from "../ui/toast";
 import type { WorkspaceRows } from "@t3tools/client-runtime/workspaces";
@@ -39,30 +39,35 @@ export function useWorkspaceRows(sync: WorkspaceSync | null): {
   };
 }
 
+/** Runs a workspace write, telling the person why the cloud refused it. True once it lands. */
+async function runWorkspaceWrite(title: string, action: () => Promise<unknown>) {
+  try {
+    await action();
+    return true;
+  } catch (error) {
+    toastManager.add({
+      type: "error",
+      title,
+      description:
+        error instanceof WorkspaceWriteRefused
+          ? error.message
+          : "Astrolabe couldn't reach the cloud. Try again.",
+    });
+    return false;
+  }
+}
+
 /**
  * Runs a workspace write with a pending state, and tells the person why the
  * cloud refused it. Resolves true once the change is on this device.
  */
 export function useWorkspaceAction() {
   const [pending, setPending] = useState(false);
-  const run = useCallback(async (title: string, action: () => Promise<unknown>) => {
+  const run = async (title: string, action: () => Promise<unknown>) => {
     setPending(true);
-    try {
-      await action();
-      return true;
-    } catch (error) {
-      toastManager.add({
-        type: "error",
-        title,
-        description:
-          error instanceof WorkspaceWriteRefused
-            ? error.message
-            : "Astrolabe couldn't reach the cloud. Try again.",
-      });
-      return false;
-    } finally {
-      setPending(false);
-    }
-  }, []);
+    const done = await runWorkspaceWrite(title, action);
+    setPending(false);
+    return done;
+  };
   return { pending, run };
 }

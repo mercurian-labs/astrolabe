@@ -25,7 +25,7 @@ export function RepositoryTabView({
 }
 
 /** A repository tab's title and icon: a file's name, a checkout's changes, or Manage. */
-export function useRepositoryTabLabel(tabKey: string): { title: string; icon: ReactNode } | null {
+export function repositoryTabLabel(tabKey: string): { title: string; icon: ReactNode } | null {
   const tab = parseRepositoryTabKey(tabKey);
   if (tab === null) return null;
   switch (tab.kind) {

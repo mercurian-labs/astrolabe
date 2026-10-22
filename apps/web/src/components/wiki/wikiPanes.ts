@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import {
   activateTab,
@@ -302,7 +302,7 @@ export function useWikiArrangement(): Arrangement {
 /** Every open tab's key, in pane order. */
 export function useOpenWikiTabKeys(): readonly string[] {
   const arrangement = useWikiArrangement();
-  return useMemo(() => allTabs(arrangement), [arrangement]);
+  return allTabs(arrangement);
 }
 
 /**

@@ -8,7 +8,7 @@ import type { LivePreviewOptions } from "@mercurian/editor/markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ClientSettings } from "@t3tools/contracts";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { useMarkdownEditorKeys } from "~/editorKeybindings";
 import { useVimScreenLines } from "~/vimScreenLines";
@@ -95,31 +95,25 @@ export function WikiNoteEditor({
     writeRef.current = onWrite;
   }, [onWrite]);
   // One array for the editor's life: a new one would remount it.
-  const editableExtensions = useMemo(
-    () => [
-      WIKI_EDITOR_THEME,
-      vimNormalModeFont,
-      agentChangeBar(),
-      appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
-    ],
-    [],
-  );
+  const [editableExtensions] = useState(() => [
+    WIKI_EDITOR_THEME,
+    vimNormalModeFont,
+    agentChangeBar(),
+    appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
+  ]);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
   const keys = useMarkdownEditorKeys(NOTE_EDITOR);
-  const livePreview = useMemo<LivePreviewOptions>(
-    () => ({
-      openWikilink: (target) => {
-        const name = wikilinkNoteName(target);
-        if (name !== null) openNoteRef.current(name);
-      },
-      // Embeds name wiki files, which the page cannot serve as images yet.
-      resolveEmbed: () => null,
-      keys,
-    }),
-    [keys],
-  );
+  const livePreview: LivePreviewOptions = {
+    openWikilink: (target) => {
+      const name = wikilinkNoteName(target);
+      if (name !== null) openNoteRef.current(name);
+    },
+    // Embeds name wiki files, which the page cannot serve as images yet.
+    resolveEmbed: () => null,
+    keys,
+  };
   return (
     <div
       className="min-h-full text-base leading-relaxed text-foreground"

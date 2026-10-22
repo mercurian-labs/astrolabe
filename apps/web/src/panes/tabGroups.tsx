@@ -1,14 +1,7 @@
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { CHANGE_GROUP_STATE_LABELS } from "@t3tools/shared/changeGroups";
 import { LayersIcon } from "lucide-react";
-import {
-  useCallback,
-  useMemo,
-  useSyncExternalStore,
-  type DragEvent,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
+import { useSyncExternalStore, type DragEvent, type MouseEvent, type ReactNode } from "react";
 
 import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { useUpdateChangeGroup } from "~/components/changeRequests/groups/useChangeGroupActions";
@@ -41,55 +34,56 @@ export type TabGroupLookup = (tabKey: string) => readonly EnvironmentChangeGroup
 const NO_GROUPS: readonly EnvironmentChangeGroup[] = [];
 
 export function useTabGroupLookup(): TabGroupLookup {
-  const groups = useChangeGroups();
-  return useMemo((): TabGroupLookup => {
-    if (groups.length === 0) return () => NO_GROUPS;
-    const byMember = new Map<string, EnvironmentChangeGroup>();
-    const byPullRequest = new Map<string, EnvironmentChangeGroup>();
-    const byThread = new Map<string, EnvironmentChangeGroup[]>();
-    for (const group of groups) {
-      for (const member of group.members) {
-        byMember.set(member.key, group);
-        if (member.ref.kind === "pull-request") {
-          byPullRequest.set(`${member.ref.repository}#${member.ref.number}`, group);
-        }
-      }
-      for (const threadId of group.threadIds) {
-        const key = `${group.environmentId}:${threadId}`;
-        byThread.set(key, [...(byThread.get(key) ?? []), group]);
+  return tabGroupLookup(useChangeGroups());
+}
+
+function tabGroupLookup(groups: readonly EnvironmentChangeGroup[]): TabGroupLookup {
+  if (groups.length === 0) return () => NO_GROUPS;
+  const byMember = new Map<string, EnvironmentChangeGroup>();
+  const byPullRequest = new Map<string, EnvironmentChangeGroup>();
+  const byThread = new Map<string, EnvironmentChangeGroup[]>();
+  for (const group of groups) {
+    for (const member of group.members) {
+      byMember.set(member.key, group);
+      if (member.ref.kind === "pull-request") {
+        byPullRequest.set(`${member.ref.repository}#${member.ref.number}`, group);
       }
     }
-    const one = (group: EnvironmentChangeGroup | undefined) => (group ? [group] : NO_GROUPS);
-    return (tabKey: string) => {
-      const own = parseChangeGroupTabKey(tabKey);
-      if (own) {
-        return one(
-          groups.find(
-            (group) => group.environmentId === own.environmentId && group.groupId === own.groupId,
-          ),
-        );
+    for (const threadId of group.threadIds) {
+      const key = `${group.environmentId}:${threadId}`;
+      byThread.set(key, [...(byThread.get(key) ?? []), group]);
+    }
+  }
+  const one = (group: EnvironmentChangeGroup | undefined) => (group ? [group] : NO_GROUPS);
+  return (tabKey: string) => {
+    const own = parseChangeGroupTabKey(tabKey);
+    if (own) {
+      return one(
+        groups.find(
+          (group) => group.environmentId === own.environmentId && group.groupId === own.groupId,
+        ),
+      );
+    }
+    const chat = parseChatTabKey(tabKey);
+    if (chat) return byThread.get(`${chat.environmentId}:${chat.threadId}`) ?? NO_GROUPS;
+    const wiki = parseWikiTabKey(tabKey);
+    if (wiki?.kind === "change-request") {
+      return one(byMember.get(`wiki:${wiki.wikiId}/${wiki.changeRequestId}`));
+    }
+    // A pull request's surface id ends with its repository and number, whatever names its
+    // server and host before them (a thread's right panel leaves those out).
+    const surfaceId = surfaceIdOf(tabKey);
+    if (surfaceId?.startsWith("pull-request:")) {
+      const parts = surfaceId.split(":");
+      try {
+        const repository = decodeURIComponent(parts.at(-2) ?? "");
+        return one(byPullRequest.get(`${repository}#${parts.at(-1)}`));
+      } catch {
+        return NO_GROUPS;
       }
-      const chat = parseChatTabKey(tabKey);
-      if (chat) return byThread.get(`${chat.environmentId}:${chat.threadId}`) ?? NO_GROUPS;
-      const wiki = parseWikiTabKey(tabKey);
-      if (wiki?.kind === "change-request") {
-        return one(byMember.get(`wiki:${wiki.wikiId}/${wiki.changeRequestId}`));
-      }
-      // A pull request's surface id ends with its repository and number, whatever names its
-      // server and host before them (a thread's right panel leaves those out).
-      const surfaceId = surfaceIdOf(tabKey);
-      if (surfaceId?.startsWith("pull-request:")) {
-        const parts = surfaceId.split(":");
-        try {
-          const repository = decodeURIComponent(parts.at(-2) ?? "");
-          return one(byPullRequest.get(`${repository}#${parts.at(-1)}`));
-        } catch {
-          return NO_GROUPS;
-        }
-      }
-      return NO_GROUPS;
-    };
-  }, [groups]);
+    }
+    return NO_GROUPS;
+  };
 }
 
 const collapsed = new Set<string>();
@@ -111,7 +105,7 @@ const toggleCollapsed = (id: string) => {
 /** Whether a tab group is collapsed into its marker, on this page. */
 export function useTabGroupCollapsed(): (id: string) => boolean {
   const current = useSyncExternalStore(subscribe, () => version);
-  return useCallback((id: string) => current >= 0 && collapsed.has(id), [current]);
+  return (id: string) => current >= 0 && collapsed.has(id);
 }
 
 export const tabGroupId = (group: Pick<EnvironmentChangeGroup, "environmentId" | "groupId">) =>

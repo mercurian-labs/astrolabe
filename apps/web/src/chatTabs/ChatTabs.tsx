@@ -1,6 +1,6 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useLayoutEffect, useMemo } from "react";
+import { useLayoutEffect } from "react";
 
 import { ThreadRouteView } from "~/components/ThreadRouteView";
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -18,10 +18,7 @@ function useRouteThreadRef(target: ThreadRouteTarget): ScopedThreadRef | null {
   const environmentId =
     target.kind === "server" ? target.threadRef.environmentId : draft?.environmentId;
   const threadId = target.kind === "server" ? target.threadRef.threadId : draft?.threadId;
-  return useMemo(
-    () => (environmentId && threadId ? scopeThreadRef(environmentId, threadId) : null),
-    [environmentId, threadId],
-  );
+  return environmentId && threadId ? scopeThreadRef(environmentId, threadId) : null;
 }
 
 /**
@@ -38,11 +35,8 @@ export function ChatTabs({ target }: { target: ThreadRouteTarget }) {
   useLayoutEffect(() => {
     if (threadKey !== null) useChatTabsStore.getState().arrive(threadKey);
   }, [threadKey]);
-  const strip = useCallback<ChatTabStripSlot>(
-    ({ atWindowEdge, trailing }) => (
-      <ChatTabStrip activeKey={threadKey} atWindowEdge={atWindowEdge} trailing={trailing} />
-    ),
-    [threadKey],
+  const strip: ChatTabStripSlot = ({ atWindowEdge, trailing }) => (
+    <ChatTabStrip activeKey={threadKey} atWindowEdge={atWindowEdge} trailing={trailing} />
   );
 
   return (

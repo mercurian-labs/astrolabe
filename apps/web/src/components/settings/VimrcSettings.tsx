@@ -21,7 +21,7 @@ import {
 } from "@t3tools/shared/vimrc";
 import { Atom } from "effect/reactivity";
 import { EllipsisIcon, PlusIcon, XIcon } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { useOpenInPreferredEditor } from "~/editorPreferences";
 import { serverEnvironment } from "~/state/server";
@@ -64,19 +64,15 @@ export function VimrcSection() {
   const serverConfig = primaryEnvironment?.serverConfig;
   const text = serverConfig?.vimrc?.text ?? "";
   const supported = serverConfig?.vimrc !== undefined;
-  const mappings = useMemo(() => vimrcMappings(text), [text]);
-  const options = useMemo(() => vimrcOptions(text), [text]);
+  const mappings = vimrcMappings(text);
+  const options = vimrcOptions(text);
   const canWrite = useAtomValue(
-    useMemo(
-      () =>
-        Atom.make(
-          (get) =>
-            connectedEnvironments.length > 0 &&
-            connectedEnvironments.every((environment) =>
-              get(serverEnvironment.upsertVimMapping.permissionAtom(environment.environmentId)),
-            ),
+    Atom.make(
+      (get) =>
+        connectedEnvironments.length > 0 &&
+        connectedEnvironments.every((environment) =>
+          get(serverEnvironment.upsertVimMapping.permissionAtom(environment.environmentId)),
         ),
-      [connectedEnvironments],
     ),
   );
   const upsertMapping = useAtomCommand(serverEnvironment.upsertVimMapping, {

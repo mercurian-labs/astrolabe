@@ -6,7 +6,7 @@ import type {
   WikiId,
 } from "@t3tools/contracts";
 import { FilePenLineIcon, FileTextIcon, SquareDashed } from "lucide-react";
-import { useCallback, useMemo, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { ensureLocalApi } from "~/localApi";
 import { useEnvironmentQuery } from "~/state/query";
@@ -70,14 +70,8 @@ function NoteTab({
   readonly nav: WikiTabNav;
 }) {
   const all = useChangeRequests(tab.environmentId, tab.wikiId);
-  const openChangeRequests = useMemo(
-    () => (all ?? []).filter((changeRequest) => changeRequest.status === "open"),
-    [all],
-  );
-  const registerUnsaved = useCallback(
-    (check: () => boolean) => registerUnsavedCheck(tabKey, check),
-    [tabKey],
-  );
+  const openChangeRequests = (all ?? []).filter((changeRequest) => changeRequest.status === "open");
+  const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
   return (
     <WikiNoteView
       environmentId={tab.environmentId}

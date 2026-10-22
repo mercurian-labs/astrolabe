@@ -13,7 +13,6 @@ import {
   SettingsIcon,
 } from "lucide-react";
 import {
-  useMemo,
   useReducer,
   useRef,
   useState,
@@ -84,29 +83,27 @@ interface Checkout {
 /** The repository's checkouts: its own first, then each thread's working tree, newest first. */
 function useCheckouts(repository: EnvironmentProject | null): ReadonlyArray<Checkout> {
   const threads = useThreadShells();
-  return useMemo(() => {
-    if (repository === null) return [];
-    const seen = new Set([repository.workspaceRoot]);
-    const own: Checkout[] = [{ cwd: repository.workspaceRoot, label: "Repository checkout" }];
-    const trees = threads
-      .filter(
-        (thread) =>
-          thread.environmentId === repository.environmentId &&
-          thread.projectId === repository.id &&
-          thread.worktreePath !== null &&
-          thread.archivedAt === null,
-      )
-      .toSorted((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-    for (const thread of trees) {
-      if (thread.worktreePath === null || seen.has(thread.worktreePath)) continue;
-      seen.add(thread.worktreePath);
-      own.push({
-        cwd: thread.worktreePath,
-        label: thread.branch ? `${thread.title} · ${thread.branch}` : thread.title,
-      });
-    }
-    return own;
-  }, [repository, threads]);
+  if (repository === null) return [];
+  const seen = new Set([repository.workspaceRoot]);
+  const own: Checkout[] = [{ cwd: repository.workspaceRoot, label: "Repository checkout" }];
+  const trees = threads
+    .filter(
+      (thread) =>
+        thread.environmentId === repository.environmentId &&
+        thread.projectId === repository.id &&
+        thread.worktreePath !== null &&
+        thread.archivedAt === null,
+    )
+    .toSorted((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  for (const thread of trees) {
+    if (thread.worktreePath === null || seen.has(thread.worktreePath)) continue;
+    seen.add(thread.worktreePath);
+    own.push({
+      cwd: thread.worktreePath,
+      label: thread.branch ? `${thread.title} · ${thread.branch}` : thread.title,
+    });
+  }
+  return own;
 }
 
 /**
@@ -612,25 +609,17 @@ function RepositoryFilter({
   });
   const filter = useComboboxFilter();
   const view = repositoryView.useValue();
-  const items = useMemo(
-    () =>
-      projectFilterOptions({
-        repositories: repositories.map((repository) => ({
-          key: repositoryKey(repository),
-          label: repository.title,
-          repository,
-        })),
-        wikis: [],
-        kinds: "repositories",
-      }),
-    [repositories],
-  );
-  const filtered = useMemo(
-    () =>
-      searchProjectFilterOptions(items, menu.query, (item, query) =>
-        filter.contains(item, query, (candidate) => candidate.label),
-      ),
-    [filter, items, menu.query],
+  const items = projectFilterOptions({
+    repositories: repositories.map((repository) => ({
+      key: repositoryKey(repository),
+      label: repository.title,
+      repository,
+    })),
+    wikis: [],
+    kinds: "repositories",
+  });
+  const filtered = searchProjectFilterOptions(items, menu.query, (item, query) =>
+    filter.contains(item, query, (candidate) => candidate.label),
   );
   const value = scoped
     ? projectFilterValue({ kind: "repository", key: repositoryKey(scoped) })

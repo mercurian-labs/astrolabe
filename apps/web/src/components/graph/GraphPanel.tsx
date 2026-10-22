@@ -22,7 +22,7 @@ import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon } from "lucide-react";
-import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { PanesHostContext } from "~/panes/panesHost";
@@ -121,37 +121,30 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
   const callsKey = JSON.stringify(
     projection === null ? NO_CALLS : wikiToolCalls(projection.turnItems),
   );
-  const calls = useMemo(() => JSON.parse(callsKey) as WikiToolCall[], [callsKey]);
+  const calls = JSON.parse(callsKey) as WikiToolCall[];
   const runsKey = JSON.stringify(projection === null ? NO_RUNS : storyRuns(projection.runs));
-  const runs = useMemo(() => JSON.parse(runsKey) as StoryRun[], [runsKey]);
+  const runs = JSON.parse(runsKey) as StoryRun[];
   const labelKey = turnLabels(runs, projection?.messages ?? [])
     .map((label) => label.replaceAll("\u0000", ""))
     .join("\u0000");
-  const labels = useMemo(() => labelKey.split("\u0000"), [labelKey]);
+  const labels = labelKey.split("\u0000");
   const live = shownTurn(runs, projection?.runs ?? []);
 
   const listed = wikis.data?.wikis ?? [];
-  const touched = useMemo(() => touchedWikis(listed, calls), [listed, calls]);
+  const touched = touchedWikis(listed, calls);
   const [chosenWiki, setChosenWiki] = useState<string | null>(null);
   const wiki = touched.find((entry) => entry.wikiId === chosenWiki) ?? touched[0] ?? null;
-  const wikiCalls = useMemo(
-    () =>
-      wiki === null
-        ? NO_CALLS
-        : calls.filter((call) => resolveWiki(listed, call.wiki)?.wikiId === wiki.wikiId),
-    [calls, listed, wiki],
-  );
+  const wikiCalls =
+    wiki === null
+      ? NO_CALLS
+      : calls.filter((call) => resolveWiki(listed, call.wiki)?.wikiId === wiki.wikiId);
 
-  const work = useMemo(
-    () =>
-      coordinatorWork({
-        threadId,
-        self,
-        threads: shells.filter((shell) => shell.environmentId === environmentId),
-        changeRequests: allChangeRequests.data?.changeRequests ?? [],
-      }),
-    [threadId, self, shells, environmentId, allChangeRequests.data],
-  );
+  const work = coordinatorWork({
+    threadId,
+    self,
+    threads: shells.filter((shell) => shell.environmentId === environmentId),
+    changeRequests: allChangeRequests.data?.changeRequests ?? [],
+  });
   const hasWork = work.children.length > 0 || work.changeRequests.length > 0;
   const [view, setView] = useState<"story" | "work" | null>(null);
   const shownView = !hasWork ? "story" : (view ?? (wikiCalls.length === 0 ? "work" : "story"));
@@ -322,22 +315,22 @@ function WikiStoryGraph({
 }) {
   const { theme, resolvedTheme } = useTheme();
   const index = useEnvironmentQuery(wikiEnvironment.index({ environmentId, input: { wikiId } }));
-  const memory = useMemo(() => (index.data === null ? null : wikiMemory(index.data)), [index.data]);
+  const memory = index.data === null ? null : wikiMemory(index.data);
   const needed = memory === null ? [] : notesNeedingMainText(memory, calls);
   const mainTexts = useAtomValue(mainTextsAtom(JSON.stringify([environmentId, wikiId, needed])));
   const mainKey = mainTexts === null ? null : JSON.stringify(mainTexts);
-  const story = useMemo(() => {
-    if (memory === null || mainKey === null) return null;
-    const texts = JSON.parse(mainKey) as Record<string, string>;
-    return wikiStory({
-      threadId,
-      memory,
-      runs,
-      labels,
-      calls,
-      mainText: (name) => texts[name] ?? "",
-    });
-  }, [memory, mainKey, threadId, runs, labels, calls]);
+  const texts = mainKey === null ? null : (JSON.parse(mainKey) as Record<string, string>);
+  const story =
+    memory === null || texts === null
+      ? null
+      : wikiStory({
+          threadId,
+          memory,
+          runs,
+          labels,
+          calls,
+          mainText: (name) => texts[name] ?? "",
+        });
 
   const saved = useGraphPanelStore((store) => store.byThread[threadKey]);
   const panel: GraphPanelState = saved ?? CLOSED_PANEL;
@@ -357,13 +350,10 @@ function WikiStoryGraph({
   const turnRunning = strip.playing || (runs[checkpoint]?.active ?? false);
   const [following, setFollowing] = useState(true);
   const graph = useRef<AtlasGraphHandle>(null);
-  const settings = useMemo(
-    () =>
-      story === null
-        ? DEFAULT_SETTINGS
-        : { ...DEFAULT_SETTINGS, depth: defaultDepth(story.memory, story.thread) },
-    [story],
-  );
+  const settings =
+    story === null
+      ? DEFAULT_SETTINGS
+      : { ...DEFAULT_SETTINGS, depth: defaultDepth(story.memory, story.thread) };
 
   // Playback holds each move, then asks for the next; a write arriving mid-hold does not restart it.
   const thread = useRef(story?.thread ?? null);

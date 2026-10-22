@@ -1,6 +1,6 @@
 import type { WikiId } from "@t3tools/contracts";
 import { Plus, SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { closeTab, focusedPane, isEmptyTab, newTab, surfaceKey } from "~/panes/arrangement";
@@ -8,6 +8,7 @@ import { pullRequestSurface } from "~/rightPanelStore";
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
+  type PaneTabLabelProps,
   type PaneTabs,
   type PanesHost,
 } from "~/panes/panesHost";
@@ -127,7 +128,7 @@ function createWikiPanesHost() {
     }
   };
   const tabs: PaneTabs = {
-    useLabel: useWikiAreaTabLabel,
+    Label: WikiAreaTabLabel,
     close: closeWikiTab,
     openElsewhere: (tabKey) => sectionTabMove(tabKey, "wikis", closeWikiTab),
     NewTab: NewTabButton,
@@ -160,14 +161,10 @@ function WikiTabContents({
 }) {
   const keys = useOpenWikiTabKeys();
   const arrangement = useWikiArrangement();
-  const fronts = useMemo(
-    () => new Set(leaves(arrangement.root).map((leaf) => leaf.active)),
-    [arrangement],
-  );
+  const fronts = new Set(leaves(arrangement.root).map((leaf) => leaf.active));
   const focusedFront = focusedPane(arrangement).active;
-  const shown = useMemo(
-    () => keys.filter((key) => !isEmptyTab(key) && (fronts.has(key) || !parseChatTabKey(key))),
-    [fronts, keys],
+  const shown = keys.filter(
+    (key) => !isEmptyTab(key) && (fronts.has(key) || !parseChatTabKey(key)),
   );
   useEffect(() => {
     prune(new Set(shown));
@@ -208,6 +205,10 @@ const wikiAreaNav: WikiTabNav = {
       showKeyIn(arrangement, surfaceKey(pullRequestSurface(target).id), "beside"),
     ),
 };
+
+function WikiAreaTabLabel({ tabKey, children }: PaneTabLabelProps) {
+  return children(useWikiAreaTabLabel(tabKey));
+}
 
 /** A tab's title and icon: a document's or change request's, or a chat's or pull request's. */
 function useWikiAreaTabLabel(tabKey: string): { title: string; icon: ReactNode } {

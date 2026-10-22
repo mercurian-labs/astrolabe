@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { FilePenLineIcon, FilePlusIcon, FileTextIcon } from "lucide-react";
 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -87,10 +87,7 @@ function WikiFinderContent({
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const groups = useMemo(
-    () => finderGroups({ overviews, scope, mode, query, onPick }),
-    [mode, onPick, overviews, query, scope],
-  );
+  const groups = finderGroups({ overviews, scope, mode, query, onPick });
   return (
     <CommandPaletteContent
       aria-label={mode === "new" ? "New document" : "Find or create a document"}
@@ -175,14 +172,12 @@ export function useDocumentSearchRows(enabled: boolean): ReadonlyArray<CommandPa
   const { overviews } = useWikiOverviews(enabled);
   const navigate = useNavigate();
   const onWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
-  return useMemo(() => {
-    const { documents } = wikiSidebarItems(overviews, null);
-    const onPick = (tab: WikiTab) => {
-      showWikiTab(tab);
-      if (!onWikis) void navigate({ to: "/wikis" });
-    };
-    return documents.map((document) => documentRow(document, overviews.length > 1, onPick));
-  }, [navigate, onWikis, overviews]);
+  const { documents } = wikiSidebarItems(overviews, null);
+  const onPick = (tab: WikiTab) => {
+    showWikiTab(tab);
+    if (!onWikis) void navigate({ to: "/wikis" });
+  };
+  return documents.map((document) => documentRow(document, overviews.length > 1, onPick));
 }
 
 /**

@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Volume2, VolumeOff } from "lucide";
-import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
@@ -74,7 +74,7 @@ import {
 } from "./arrangement";
 import { openTabGroupBesideThread } from "./GroupPanelRunsSync";
 import type { PanelProps, PanesController } from "./panesController";
-import type { PaneTabLabel, PaneTabMenuItem, PaneTabs } from "./panesHost";
+import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import { useRightPanelHost, usePanesThreadRef, type RightPanelHost } from "./PaneSurfaceHost";
 import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
@@ -107,7 +107,7 @@ export function createRightPanelHost(controller: PanesController): RightPanelHos
   };
   const close = (tabKey: string) => closeTabOf(controller, tabKey);
   const tabs: PaneTabs = {
-    useLabel: useTabLabel,
+    Label: TabLabel,
     menuItems: (tabKey) => surfaceMenuItems(controller, tabKey),
     close,
     NewTab: NewTabMenu,
@@ -221,15 +221,11 @@ export function RightPanelSectionTabs() {
   const host = useRightPanelHost();
   const { controller } = host;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const keys = useMemo(
-    () =>
-      snapshot
-        ? allTabs(snapshot.arrangement).filter(
-            (key) => parseWikiTabKey(key) !== null || parseChangeGroupTabKey(key) !== null,
-          )
-        : [],
-    [snapshot],
-  );
+  const keys = snapshot
+    ? allTabs(snapshot.arrangement).filter(
+        (key) => parseWikiTabKey(key) !== null || parseChangeGroupTabKey(key) !== null,
+      )
+    : [];
   const focusedKey = snapshot ? focusedPane(snapshot.arrangement).active : null;
   useEffect(() => {
     host.pruneSectionTabs(new Set(keys));
@@ -276,6 +272,10 @@ function useSurface(surfaceId: string | null) {
           (surface) => surface.id === surfaceId,
         ) ?? null),
   );
+}
+
+function TabLabel({ tabKey, children }: PaneTabLabelProps) {
+  return children(useTabLabel(tabKey));
 }
 
 /**
