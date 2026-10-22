@@ -19,17 +19,16 @@ const update = (groupId: string, change: ChangeGroupChange) =>
     Effect.mapError(failure),
   );
 
-const memberOf = (memberKey: string) =>
-  Effect.gen(function* () {
-    const member = changeGroupMemberRefOfKey(memberKey);
-    if (member === null) {
-      return yield* new OrchestratorMcpFailure({
-        code: "invalid_request",
-        message: `"${memberKey}" names no change request or thread; use a key t3_change_groups shows.`,
-      });
-    }
-    return member;
-  });
+const memberOf = Effect.fn("ChangeGroupToolkit.memberOf")(function* (memberKey: string) {
+  const member = changeGroupMemberRefOfKey(memberKey);
+  if (member === null) {
+    return yield* new OrchestratorMcpFailure({
+      code: "invalid_request",
+      message: `"${memberKey}" names no change request or thread; use a key t3_change_groups shows.`,
+    });
+  }
+  return member;
+});
 
 export const layer = McpToolAccess.toLayer(ChangeGroupToolkit, {
   t3_change_groups: McpToolAccess.reads(() =>

@@ -86,15 +86,14 @@ function forkFamily(threadId: ThreadId, edges: ReadonlyArray<ForkEdge>): ThreadI
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
-  const readRows = (threadId: ThreadId) =>
-    Effect.gen(function* () {
-      const viewed = yield* sql<{ readonly thread_id: string }>`
+  const readRows = Effect.fn("ThreadLineage.readRows")(function* (threadId: ThreadId) {
+    const viewed = yield* sql<{ readonly thread_id: string }>`
         SELECT thread_id FROM orchestration_v2_projection_threads
         WHERE thread_id = ${threadId} AND deleted_at IS NULL
       `;
-      if (viewed.length === 0) return null;
-      // Fork edges whose two ends both survive: a deleted parent ends the climb at its fork.
-      const edges = yield* sql<{ readonly id: string; readonly parent_id: string }>`
+    if (viewed.length === 0) return null;
+    // Fork edges whose two ends both survive: a deleted parent ends the climb at its fork.
+    const edges = yield* sql<{ readonly id: string; readonly parent_id: string }>`
         SELECT fork.thread_id AS id, parent.thread_id AS parent_id
         FROM orchestration_v2_projection_threads AS fork
         JOIN orchestration_v2_projection_threads AS parent
@@ -104,23 +103,23 @@ const make = Effect.gen(function* () {
           AND json_extract(fork.payload_json, '$.lineage.relationshipToParent') = 'fork'
         ORDER BY fork.created_at ASC, fork.thread_id ASC
       `;
-      const family = forkFamily(
-        threadId,
-        edges.map((edge) => ({
-          id: ThreadId.make(edge.id),
-          parentId: ThreadId.make(edge.parent_id),
-        })),
-      );
-      const threads = yield* sql<{
-        readonly id: string;
-        readonly title: string;
-        readonly created_at: string;
-        readonly archived_at: string | null;
-        readonly provider_instance_id: string;
-        readonly parent_id: string | null;
-        readonly fork_type: string | null;
-        readonly fork_run_id: string | null;
-      }>`
+    const family = forkFamily(
+      threadId,
+      edges.map((edge) => ({
+        id: ThreadId.make(edge.id),
+        parentId: ThreadId.make(edge.parent_id),
+      })),
+    );
+    const threads = yield* sql<{
+      readonly id: string;
+      readonly title: string;
+      readonly created_at: string;
+      readonly archived_at: string | null;
+      readonly provider_instance_id: string;
+      readonly parent_id: string | null;
+      readonly fork_type: string | null;
+      readonly fork_run_id: string | null;
+    }>`
         SELECT thread_id AS id, title, created_at, archived_at,
           json_extract(payload_json, '$.providerInstanceId') AS provider_instance_id,
           json_extract(payload_json, '$.lineage.parentThreadId') AS parent_id,
@@ -129,21 +128,21 @@ const make = Effect.gen(function* () {
         FROM orchestration_v2_projection_threads
         WHERE thread_id IN ${sql.in(family)}
       `;
-      const runs = yield* sql<{
-        readonly thread_id: string;
-        readonly run_id: string;
-        readonly ordinal: number;
-        readonly status: OrchestrationV2RunStatus;
-        readonly requested_at: string;
-        readonly completed_at: string | null;
-        readonly model: string | null;
-        readonly user_message_id: string;
-        readonly text: string;
-        readonly reply: string;
-        readonly additions: number;
-        readonly deletions: number;
-        readonly files: number;
-      }>`
+    const runs = yield* sql<{
+      readonly thread_id: string;
+      readonly run_id: string;
+      readonly ordinal: number;
+      readonly status: OrchestrationV2RunStatus;
+      readonly requested_at: string;
+      readonly completed_at: string | null;
+      readonly model: string | null;
+      readonly user_message_id: string;
+      readonly text: string;
+      readonly reply: string;
+      readonly additions: number;
+      readonly deletions: number;
+      readonly files: number;
+    }>`
         WITH lines AS (
           SELECT checkpoint.run_id,
             SUM(json_extract(file.value, '$.additions')) AS additions,
@@ -176,14 +175,14 @@ const make = Effect.gen(function* () {
         WHERE run.thread_id IN ${sql.in(family)}
         ORDER BY run.thread_id ASC, run.ordinal ASC
       `;
-      const mergeBacks = yield* sql<{
-        readonly id: string;
-        readonly source_thread_id: string;
-        readonly source_run_id: string | null;
-        readonly target_thread_id: string;
-        readonly target_run_id: string | null;
-        readonly created_at: string;
-      }>`
+    const mergeBacks = yield* sql<{
+      readonly id: string;
+      readonly source_thread_id: string;
+      readonly source_run_id: string | null;
+      readonly target_thread_id: string;
+      readonly target_run_id: string | null;
+      readonly created_at: string;
+    }>`
         SELECT context_transfer_id AS id, source_thread_id, target_thread_id, target_run_id,
           json_extract(payload_json, '$.sourcePoint.runId') AS source_run_id,
           json_extract(payload_json, '$.createdAt') AS created_at
@@ -194,8 +193,8 @@ const make = Effect.gen(function* () {
           AND source_thread_id IN ${sql.in(family)}
         ORDER BY created_at ASC, context_transfer_id ASC
       `;
-      return { family, threads, runs, mergeBacks };
-    });
+    return { family, threads, runs, mergeBacks };
+  });
 
   const read: ThreadLineage["Service"]["read"] = Effect.fn("ThreadLineage.read")(
     function* (threadId) {

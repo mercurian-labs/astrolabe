@@ -337,8 +337,6 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
     );
 
-  // --- git ---------------------------------------------------------------------------------
-
   const runGit = (
     operation: string,
     cwd: string,
@@ -452,42 +450,46 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.map((result) => result.exitCode === 0));
 
   /** Object contents for `<oid>` or `<rev>:<path>` specs; `null` for a missing one. */
-  const readObjects = (cwd: string, specs: ReadonlyArray<string>) =>
-    Effect.gen(function* () {
-      if (!specs.length) return [] as ReadonlyArray<string | null>;
-      const batch = yield* runGit("catFileBatch", cwd, ["cat-file", "--batch"], {
-        stdin: `${specs.join("\n")}\n`,
-      });
-      const parsed = parseBatchOutput(batch.stdout, specs.length);
-      if (parsed !== undefined) return parsed;
-      return yield* Effect.forEach(specs, (spec) =>
-        runGit("catFile", cwd, ["cat-file", "blob", spec], { allowExitCodes: [128] }).pipe(
-          Effect.map((result) => (result.exitCode === 0 ? result.stdout : null)),
-        ),
-      );
+  const readObjects = Effect.fn("WikiService.readObjects")(function* (
+    cwd: string,
+    specs: ReadonlyArray<string>,
+  ) {
+    if (!specs.length) return [] as ReadonlyArray<string | null>;
+    const batch = yield* runGit("catFileBatch", cwd, ["cat-file", "--batch"], {
+      stdin: `${specs.join("\n")}\n`,
     });
+    const parsed = parseBatchOutput(batch.stdout, specs.length);
+    if (parsed !== undefined) return parsed;
+    return yield* Effect.forEach(specs, (spec) =>
+      runGit("catFile", cwd, ["cat-file", "blob", spec], { allowExitCodes: [128] }).pipe(
+        Effect.map((result) => (result.exitCode === 0 ? result.stdout : null)),
+      ),
+    );
+  });
 
   /** The wiki's documents at a commit or tree, and their index. */
-  const snapshotAt = (wiki: WikiRecord, treeish: string) =>
-    Effect.gen(function* () {
-      const cached = snapshots.get(treeish);
-      if (cached !== undefined) return cached;
-      const listing = parseDocumentListing(
-        (yield* runGit("lsTree", wiki.root, ["ls-tree", "-z", treeish])).stdout,
-      );
-      const contents = yield* readObjects(
-        wiki.root,
-        listing.map((entry) => entry.oid),
-      );
-      const files: Record<string, string> = {};
-      listing.forEach((entry, position) => {
-        files[entry.file] = contents[position] ?? "";
-      });
-      const index = yield* Effect.try({ try: () => indexFiles(files), catch: planningError });
-      const snapshot: Snapshot = { files, index };
-      snapshots.set(treeish, snapshot);
-      return snapshot;
+  const snapshotAt = Effect.fn("WikiService.snapshotAt")(function* (
+    wiki: WikiRecord,
+    treeish: string,
+  ) {
+    const cached = snapshots.get(treeish);
+    if (cached !== undefined) return cached;
+    const listing = parseDocumentListing(
+      (yield* runGit("lsTree", wiki.root, ["ls-tree", "-z", treeish])).stdout,
+    );
+    const contents = yield* readObjects(
+      wiki.root,
+      listing.map((entry) => entry.oid),
+    );
+    const files: Record<string, string> = {};
+    listing.forEach((entry, position) => {
+      files[entry.file] = contents[position] ?? "";
     });
+    const index = yield* Effect.try({ try: () => indexFiles(files), catch: planningError });
+    const snapshot: Snapshot = { files, index };
+    snapshots.set(treeish, snapshot);
+    return snapshot;
+  });
 
   /** A tree of `base` with `changes` applied, built on a private index. */
   const buildTree = (cwd: string, base: string, changes: WikiChanges) =>
@@ -552,48 +554,47 @@ const make = Effect.gen(function* () {
    * conflicts only on notes, each conflicted note is merged again by paragraph and sentence,
    * so edits to different sentences of one paragraph still merge.
    */
-  const mergeIntoMain = (wiki: WikiRecord, main: string, head: string) =>
-    Effect.gen(function* (): Effect.fn.Return<
-      | { readonly tree: string; readonly conflicts: readonly [] }
-      | { readonly tree: null; readonly conflicts: ReadonlyArray<string> },
-      WikiError
-    > {
-      const merged = yield* runGit(
-        "mergeTree",
-        wiki.root,
-        ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", main, head],
-        { allowExitCodes: [1] },
-      );
-      const { tree, conflicts } = parseMergeTree(merged.stdout);
-      if (merged.exitCode === 0) return { tree, conflicts: [] };
-      if (!conflicts.length || !conflicts.every(isWikiDocument)) return { tree: null, conflicts };
-      const base = yield* runGit("mergeBase", wiki.root, ["merge-base", main, head], {
-        allowExitCodes: [1],
-      });
-      if (base.exitCode !== 0) return { tree: null, conflicts };
-      const baseCommit = base.stdout.trim();
-      const sides = yield* readObjects(
-        wiki.root,
-        conflicts.flatMap((file) => [
-          `${baseCommit}:${file}`,
-          `${main}:${file}`,
-          `${head}:${file}`,
-        ]),
-      );
-      const resolved: Record<string, string> = {};
-      const unresolved: string[] = [];
-      conflicts.forEach((file, position) => {
-        const [ancestor, ours, theirs] = sides.slice(position * 3, position * 3 + 3);
-        const outcome =
-          ancestor != null && ours != null && theirs != null
-            ? mergeMarkdown(ancestor, ours, theirs)
-            : ({ status: "conflict" } as const);
-        if (outcome.status === "merged") resolved[file] = outcome.text;
-        else unresolved.push(file);
-      });
-      if (unresolved.length) return { tree: null, conflicts: unresolved };
-      return { tree: yield* buildTree(wiki.root, tree, resolved), conflicts: [] };
+  const mergeIntoMain = Effect.fn("WikiService.mergeIntoMain")(function* (
+    wiki: WikiRecord,
+    main: string,
+    head: string,
+  ): Effect.fn.Return<
+    | { readonly tree: string; readonly conflicts: readonly [] }
+    | { readonly tree: null; readonly conflicts: ReadonlyArray<string> },
+    WikiError
+  > {
+    const merged = yield* runGit(
+      "mergeTree",
+      wiki.root,
+      ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", main, head],
+      { allowExitCodes: [1] },
+    );
+    const { tree, conflicts } = parseMergeTree(merged.stdout);
+    if (merged.exitCode === 0) return { tree, conflicts: [] };
+    if (!conflicts.length || !conflicts.every(isWikiDocument)) return { tree: null, conflicts };
+    const base = yield* runGit("mergeBase", wiki.root, ["merge-base", main, head], {
+      allowExitCodes: [1],
     });
+    if (base.exitCode !== 0) return { tree: null, conflicts };
+    const baseCommit = base.stdout.trim();
+    const sides = yield* readObjects(
+      wiki.root,
+      conflicts.flatMap((file) => [`${baseCommit}:${file}`, `${main}:${file}`, `${head}:${file}`]),
+    );
+    const resolved: Record<string, string> = {};
+    const unresolved: string[] = [];
+    conflicts.forEach((file, position) => {
+      const [ancestor, ours, theirs] = sides.slice(position * 3, position * 3 + 3);
+      const outcome =
+        ancestor != null && ours != null && theirs != null
+          ? mergeMarkdown(ancestor, ours, theirs)
+          : ({ status: "conflict" } as const);
+      if (outcome.status === "merged") resolved[file] = outcome.text;
+      else unresolved.push(file);
+    });
+    if (unresolved.length) return { tree: null, conflicts: unresolved };
+    return { tree: yield* buildTree(wiki.root, tree, resolved), conflicts: [] };
+  });
 
   /** Applies several ref moves at once; each checks its old value, so a racing writer fails. */
   const updateRefs = (
@@ -634,8 +635,6 @@ const make = Effect.gen(function* () {
             ),
       ),
     );
-
-  // --- registry ----------------------------------------------------------------------------
 
   const registryError = (cause: unknown) =>
     new WikiError({
@@ -689,21 +688,20 @@ const make = Effect.gen(function* () {
     );
 
   /** A wiki by id, or by name for agents that know it by name. */
-  const lookup = (reference: string) =>
-    Effect.gen(function* () {
-      const { wikis } = yield* loadRegistry;
-      const byId = wikis.find((wiki) => wiki.wikiId === reference);
-      if (byId !== undefined) return byId;
-      const byName = wikis.filter((wiki) => wiki.name.toLowerCase() === reference.toLowerCase());
-      if (byName.length === 1 && byName[0] !== undefined) return byName[0];
-      return yield* new WikiError({
-        reason: "not-found",
-        message:
-          byName.length > 1
-            ? "Several wikis have this name; use the wiki's id."
-            : "No wiki has this id or name.",
-      });
+  const lookup = Effect.fn("WikiService.lookup")(function* (reference: string) {
+    const { wikis } = yield* loadRegistry;
+    const byId = wikis.find((wiki) => wiki.wikiId === reference);
+    if (byId !== undefined) return byId;
+    const byName = wikis.filter((wiki) => wiki.name.toLowerCase() === reference.toLowerCase());
+    if (byName.length === 1 && byName[0] !== undefined) return byName[0];
+    return yield* new WikiError({
+      reason: "not-found",
+      message:
+        byName.length > 1
+          ? "Several wikis have this name; use the wiki's id."
+          : "No wiki has this id or name.",
     });
+  });
 
   /** Runs `body` against a known wiki, with git checked and failures naming the wiki. */
   const withWiki = <A>(
@@ -744,54 +742,54 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  // --- change requests ---------------------------------------------------------------------
-
-  const readChangeRequests = (wiki: WikiRecord, only?: string) =>
-    Effect.gen(function* () {
-      const patterns =
-        only === undefined
-          ? [CHANGE_REQUEST_METADATA_PREFIX, CHANGE_REQUEST_BRANCH_PREFIX]
-          : [changeRequestMetadataRef(only), changeRequestBranch(only)];
-      const refs = yield* gitOut("forEachRef", wiki.root, [
-        "for-each-ref",
-        "--format=%(refname)%00%(objectname)",
-        ...patterns,
-      ]);
-      const metadata = new Map<string, string>();
-      const heads = new Map<string, string>();
-      for (const line of refs.split("\n")) {
-        const [ref, oid] = line.split("\0");
-        if (!ref || !oid) continue;
-        if (ref.startsWith(CHANGE_REQUEST_METADATA_PREFIX)) {
-          metadata.set(ref.slice(CHANGE_REQUEST_METADATA_PREFIX.length), oid);
-        } else if (ref.startsWith(CHANGE_REQUEST_BRANCH_PREFIX)) {
-          heads.set(ref.slice(CHANGE_REQUEST_BRANCH_PREFIX.length), oid);
-        }
+  const readChangeRequests = Effect.fn("WikiService.readChangeRequests")(function* (
+    wiki: WikiRecord,
+    only?: string,
+  ) {
+    const patterns =
+      only === undefined
+        ? [CHANGE_REQUEST_METADATA_PREFIX, CHANGE_REQUEST_BRANCH_PREFIX]
+        : [changeRequestMetadataRef(only), changeRequestBranch(only)];
+    const refs = yield* gitOut("forEachRef", wiki.root, [
+      "for-each-ref",
+      "--format=%(refname)%00%(objectname)",
+      ...patterns,
+    ]);
+    const metadata = new Map<string, string>();
+    const heads = new Map<string, string>();
+    for (const line of refs.split("\n")) {
+      const [ref, oid] = line.split("\0");
+      if (!ref || !oid) continue;
+      if (ref.startsWith(CHANGE_REQUEST_METADATA_PREFIX)) {
+        metadata.set(ref.slice(CHANGE_REQUEST_METADATA_PREFIX.length), oid);
+      } else if (ref.startsWith(CHANGE_REQUEST_BRANCH_PREFIX)) {
+        heads.set(ref.slice(CHANGE_REQUEST_BRANCH_PREFIX.length), oid);
       }
-      const unread = [...metadata.values()].filter((oid) => metadataRecords.get(oid) === undefined);
-      const contents = yield* readObjects(
-        wiki.root,
-        unread.map((oid) => `${oid}:${CHANGE_REQUEST_FILE}`),
-      );
-      yield* Effect.forEach(unread, (oid, position) =>
-        decodeChangeRequest(contents[position] ?? "").pipe(
-          Effect.tap((record) => Effect.sync(() => metadataRecords.set(oid, record))),
-          // A record this version cannot read is left alone, not dropped from the repository.
-          Effect.catch((cause) =>
-            Effect.logWarning("Skipping an unreadable wiki change request").pipe(
-              Effect.annotateLogs({ wikiId: wiki.wikiId, cause }),
-            ),
+    }
+    const unread = [...metadata.values()].filter((oid) => metadataRecords.get(oid) === undefined);
+    const contents = yield* readObjects(
+      wiki.root,
+      unread.map((oid) => `${oid}:${CHANGE_REQUEST_FILE}`),
+    );
+    yield* Effect.forEach(unread, (oid, position) =>
+      decodeChangeRequest(contents[position] ?? "").pipe(
+        Effect.tap((record) => Effect.sync(() => metadataRecords.set(oid, record))),
+        // A record this version cannot read is left alone, not dropped from the repository.
+        Effect.catch((cause) =>
+          Effect.logWarning("Skipping an unreadable wiki change request").pipe(
+            Effect.annotateLogs({ wikiId: wiki.wikiId, cause }),
           ),
         ),
-      );
-      return [...metadata].flatMap(([id, metadataCommit]): ReadonlyArray<StoredChangeRequest> => {
-        const record = metadataRecords.get(metadataCommit);
-        const head = heads.get(id);
-        return record === undefined || head === undefined || record.changeRequestId !== id
-          ? []
-          : [{ record, metadataCommit, head }];
-      });
+      ),
+    );
+    return [...metadata].flatMap(([id, metadataCommit]): ReadonlyArray<StoredChangeRequest> => {
+      const record = metadataRecords.get(metadataCommit);
+      const head = heads.get(id);
+      return record === undefined || head === undefined || record.changeRequestId !== id
+        ? []
+        : [{ record, metadataCommit, head }];
     });
+  });
 
   const loadChangeRequest = (wiki: WikiRecord, changeRequestId: WikiChangeRequestId) =>
     readChangeRequests(wiki, changeRequestId).pipe(
@@ -819,24 +817,26 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const amendmentsOf = (wiki: WikiRecord, stored: StoredChangeRequest) =>
-    Effect.gen(function* () {
-      const range = `${stored.record.base}..${stored.head}`;
-      const cached = amendmentLogs.get(range);
-      if (cached !== undefined) return cached;
-      const log = yield* runGit("log", wiki.root, [
-        "log",
-        "--reverse",
-        "--no-renames",
-        `--format=${AMENDMENT_LOG_FORMAT}`,
-        "--name-only",
-        "-z",
-        range,
-      ]);
-      const amendments = parseAmendmentLog(log.stdout);
-      amendmentLogs.set(range, amendments);
-      return amendments;
-    });
+  const amendmentsOf = Effect.fn("WikiService.amendmentsOf")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+  ) {
+    const range = `${stored.record.base}..${stored.head}`;
+    const cached = amendmentLogs.get(range);
+    if (cached !== undefined) return cached;
+    const log = yield* runGit("log", wiki.root, [
+      "log",
+      "--reverse",
+      "--no-renames",
+      `--format=${AMENDMENT_LOG_FORMAT}`,
+      "--name-only",
+      "-z",
+      range,
+    ]);
+    const amendments = parseAmendmentLog(log.stdout);
+    amendmentLogs.set(range, amendments);
+    return amendments;
+  });
 
   const view = (wiki: WikiRecord, stored: StoredChangeRequest) =>
     amendmentsOf(wiki, stored).pipe(
@@ -857,80 +857,77 @@ const make = Effect.gen(function* () {
       })),
     );
 
-  const metadataCommit = (
+  const metadataCommit = Effect.fn("WikiService.metadataCommit")(function* (
     wiki: WikiRecord,
     record: ChangeRequestRecord,
     parent: string | null,
     message: string,
     env: Readonly<Record<string, string>>,
-  ) =>
-    Effect.gen(function* () {
-      const json = yield* encodeChangeRequest(record).pipe(
-        Effect.mapError(
-          (cause) =>
-            new WikiError({
-              reason: "invalid",
-              message: "The change request could not be recorded.",
-              cause,
-            }),
-        ),
-      );
-      const blob = yield* gitOut("hashMetadata", wiki.root, ["hash-object", "-w", "--stdin"], {
-        stdin: `${json}\n`,
-      });
-      const tree = yield* gitOut("mkTree", wiki.root, ["mktree"], {
-        stdin: `100644 blob ${blob}\t${CHANGE_REQUEST_FILE}\n`,
-      });
-      return yield* commitTree(wiki.root, tree, parent === null ? [] : [parent], message, env);
+  ) {
+    const json = yield* encodeChangeRequest(record).pipe(
+      Effect.mapError(
+        (cause) =>
+          new WikiError({
+            reason: "invalid",
+            message: "The change request could not be recorded.",
+            cause,
+          }),
+      ),
+    );
+    const blob = yield* gitOut("hashMetadata", wiki.root, ["hash-object", "-w", "--stdin"], {
+      stdin: `${json}\n`,
     });
+    const tree = yield* gitOut("mkTree", wiki.root, ["mktree"], {
+      stdin: `100644 blob ${blob}\t${CHANGE_REQUEST_FILE}\n`,
+    });
+    return yield* commitTree(wiki.root, tree, parent === null ? [] : [parent], message, env);
+  });
 
   /** Records new metadata for a stored change request, optionally moving its branch too. */
-  const recordChangeRequest = (
+  const recordChangeRequest = Effect.fn("WikiService.recordChangeRequest")(function* (
     wiki: WikiRecord,
     stored: StoredChangeRequest,
     record: ChangeRequestRecord,
     message: string,
     env: Readonly<Record<string, string>>,
     head: string = stored.head,
-  ) =>
-    Effect.gen(function* () {
-      const next = yield* metadataCommit(wiki, record, stored.metadataCommit, message, env);
-      yield* updateRefs(wiki.root, [
-        ...(head === stored.head
-          ? []
-          : [
-              {
-                ref: changeRequestBranch(record.changeRequestId),
-                next: head,
-                previous: stored.head,
-              },
-            ]),
-        {
-          ref: changeRequestMetadataRef(record.changeRequestId),
-          next,
-          previous: stored.metadataCommit,
-        },
-      ]);
-      metadataRecords.set(next, record);
-      return { record, metadataCommit: next, head } satisfies StoredChangeRequest;
-    });
+  ) {
+    const next = yield* metadataCommit(wiki, record, stored.metadataCommit, message, env);
+    yield* updateRefs(wiki.root, [
+      ...(head === stored.head
+        ? []
+        : [
+            {
+              ref: changeRequestBranch(record.changeRequestId),
+              next: head,
+              previous: stored.head,
+            },
+          ]),
+      {
+        ref: changeRequestMetadataRef(record.changeRequestId),
+        next,
+        previous: stored.metadataCommit,
+      },
+    ]);
+    metadataRecords.set(next, record);
+    return { record, metadataCommit: next, head } satisfies StoredChangeRequest;
+  });
 
   /** Creates a change request's branch at `head` and its first metadata record together. */
-  const createChangeRequest = (
+  const createChangeRequest = Effect.fn("WikiService.createChangeRequest")(function* (
     wiki: WikiRecord,
     record: ChangeRequestRecord,
     head: string,
     env: Readonly<Record<string, string>>,
-  ) =>
-    Effect.gen(function* () {
-      const meta = yield* metadataCommit(wiki, record, null, "Open change request", env);
-      yield* updateRefs(wiki.root, [
-        { ref: changeRequestBranch(record.changeRequestId), next: head, previous: null },
-        { ref: changeRequestMetadataRef(record.changeRequestId), next: meta, previous: null },
-      ]);
-      metadataRecords.set(meta, record);
-      return { record, metadataCommit: meta, head } satisfies StoredChangeRequest;
-    });
+  ) {
+    const meta = yield* metadataCommit(wiki, record, null, "Open change request", env);
+    yield* updateRefs(wiki.root, [
+      { ref: changeRequestBranch(record.changeRequestId), next: head, previous: null },
+      { ref: changeRequestMetadataRef(record.changeRequestId), next: meta, previous: null },
+    ]);
+    metadataRecords.set(meta, record);
+    return { record, metadataCommit: meta, head } satisfies StoredChangeRequest;
+  });
 
   const requireOpen = (stored: StoredChangeRequest) =>
     stored.record.status === "open"
@@ -944,17 +941,19 @@ const make = Effect.gen(function* () {
         );
 
   /** The commit a read sees: a named change request's head, the thread's, else main. */
-  const readCommit = (wiki: WikiRecord, target: WikiReadTarget) =>
-    Effect.gen(function* () {
-      if (target.changeRequestId !== undefined) {
-        return (yield* loadChangeRequest(wiki, target.changeRequestId)).head;
-      }
-      if (target.threadId !== undefined) {
-        const own = yield* threadChangeRequest(wiki, target.threadId);
-        if (own !== undefined) return own.head;
-      }
-      return yield* mainTip(wiki);
-    });
+  const readCommit = Effect.fn("WikiService.readCommit")(function* (
+    wiki: WikiRecord,
+    target: WikiReadTarget,
+  ) {
+    if (target.changeRequestId !== undefined) {
+      return (yield* loadChangeRequest(wiki, target.changeRequestId)).head;
+    }
+    if (target.threadId !== undefined) {
+      const own = yield* threadChangeRequest(wiki, target.threadId);
+      if (own !== undefined) return own.head;
+    }
+    return yield* mainTip(wiki);
+  });
 
   const readAt = <A>(
     target: WikiReadTarget,
@@ -970,8 +969,6 @@ const make = Effect.gen(function* () {
       target.changeRequestId,
     );
 
-  // --- amendments --------------------------------------------------------------------------
-
   type Target =
     | { readonly kind: "existing"; readonly stored: StoredChangeRequest }
     | {
@@ -981,7 +978,7 @@ const make = Effect.gen(function* () {
         readonly title: string;
       };
 
-  const resolveTarget = (
+  const resolveTarget = Effect.fn("WikiService.resolveTarget")(function* (
     wiki: WikiRecord,
     input: {
       readonly changeRequestId?: WikiChangeRequestId | undefined;
@@ -989,112 +986,110 @@ const make = Effect.gen(function* () {
       readonly message: string;
     },
     author: WikiAuthor,
-  ) =>
-    Effect.gen(function* (): Effect.fn.Return<Target, WikiError> {
-      if (input.changeRequestId !== undefined) {
-        const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
-        yield* requireOpen(stored);
-        return { kind: "existing", stored };
-      }
-      if (author.threadId !== null) {
-        const own = yield* threadChangeRequest(wiki, author.threadId);
-        if (own !== undefined) return { kind: "existing", stored: own };
-      }
-      return {
-        kind: "new",
-        changeRequestId: WikiChangeRequestId.make(yield* newId),
-        base: yield* mainTip(wiki),
-        title: input.title ?? (subjectOf(input.message) || "Wiki change"),
-      };
-    });
+  ): Effect.fn.Return<Target, WikiError> {
+    if (input.changeRequestId !== undefined) {
+      const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+      yield* requireOpen(stored);
+      return { kind: "existing", stored };
+    }
+    if (author.threadId !== null) {
+      const own = yield* threadChangeRequest(wiki, author.threadId);
+      if (own !== undefined) return { kind: "existing", stored: own };
+    }
+    return {
+      kind: "new",
+      changeRequestId: WikiChangeRequestId.make(yield* newId),
+      base: yield* mainTip(wiki),
+      title: input.title ?? (subjectOf(input.message) || "Wiki change"),
+    };
+  });
 
   /**
    * Plans an amendment on the target's head and lands it as one commit, moving the branch and
    * the metadata together. Callers hold the wiki's lock.
    */
-  const land = (
+  const land = Effect.fn("WikiService.land")(function* (
     wiki: WikiRecord,
     target: Target,
     author: WikiAuthor,
     message: string,
     plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment,
     reverts?: string,
-  ) =>
-    Effect.gen(function* () {
-      const now = yield* DateTime.now;
-      const at = DateTime.formatIso(now);
-      const amendment = yield* newId;
-      const env = identity(author.actor, now);
-      const changeRequestId =
-        target.kind === "existing" ? target.stored.record.changeRequestId : target.changeRequestId;
-      const parent = target.kind === "existing" ? target.stored.head : target.base;
-      const snapshot = yield* snapshotAt(wiki, parent);
-      let warnings = 0;
-      const stamp: AmendmentStamp = {
-        amendment,
-        at,
-        newId: () => `${amendment}-${++warnings}`,
-      };
-      const planned = yield* Effect.try({
-        try: () => plan(snapshot.files, stamp),
-        catch: planningError,
-      });
-      const tree = yield* buildTree(wiki.root, parent, planned.changes);
-      if (tree === (yield* gitOut("parentTree", wiki.root, ["rev-parse", `${parent}^{tree}`]))) {
-        return yield* new WikiError({
-          reason: "invalid",
-          message: "This amendment changes nothing.",
-        });
-      }
-      const commit = yield* commitTree(
-        wiki.root,
-        tree,
-        [parent],
-        amendmentMessage(message, {
-          amendment,
-          actor: oneLine(author.actor) || "Agent",
-          changeRequest: changeRequestId,
-          ...(author.threadId === null ? {} : { thread: author.threadId }),
-          ...(reverts === undefined ? {} : { reverts }),
-        }),
-        env,
-      );
-      const stored =
-        target.kind === "existing"
-          ? yield* recordChangeRequest(
-              wiki,
-              target.stored,
-              { ...target.stored.record, updatedAt: at },
-              "Amend change request",
-              env,
-              commit,
-            )
-          : yield* createChangeRequest(
-              wiki,
-              {
-                version: 1,
-                changeRequestId,
-                title: target.title,
-                status: "open",
-                branch: changeRequestBranch(changeRequestId),
-                base: target.base,
-                threadId: author.threadId,
-                createdBy: oneLine(author.actor) || "Agent",
-                createdAt: at,
-                updatedAt: at,
-                mergedCommit: null,
-              },
-              commit,
-              env,
-            );
-      yield* publish("amended", wiki.wikiId, changeRequestId);
-      return {
-        changeRequest: yield* view(wiki, stored),
-        commit,
-        amendment,
-        errors: planned.errors,
-      } satisfies WikiAmendResult;
+  ) {
+    const now = yield* DateTime.now;
+    const at = DateTime.formatIso(now);
+    const amendment = yield* newId;
+    const env = identity(author.actor, now);
+    const changeRequestId =
+      target.kind === "existing" ? target.stored.record.changeRequestId : target.changeRequestId;
+    const parent = target.kind === "existing" ? target.stored.head : target.base;
+    const snapshot = yield* snapshotAt(wiki, parent);
+    let warnings = 0;
+    const stamp: AmendmentStamp = {
+      amendment,
+      at,
+      newId: () => `${amendment}-${++warnings}`,
+    };
+    const planned = yield* Effect.try({
+      try: () => plan(snapshot.files, stamp),
+      catch: planningError,
     });
+    const tree = yield* buildTree(wiki.root, parent, planned.changes);
+    if (tree === (yield* gitOut("parentTree", wiki.root, ["rev-parse", `${parent}^{tree}`]))) {
+      return yield* new WikiError({
+        reason: "invalid",
+        message: "This amendment changes nothing.",
+      });
+    }
+    const commit = yield* commitTree(
+      wiki.root,
+      tree,
+      [parent],
+      amendmentMessage(message, {
+        amendment,
+        actor: oneLine(author.actor) || "Agent",
+        changeRequest: changeRequestId,
+        ...(author.threadId === null ? {} : { thread: author.threadId }),
+        ...(reverts === undefined ? {} : { reverts }),
+      }),
+      env,
+    );
+    const stored =
+      target.kind === "existing"
+        ? yield* recordChangeRequest(
+            wiki,
+            target.stored,
+            { ...target.stored.record, updatedAt: at },
+            "Amend change request",
+            env,
+            commit,
+          )
+        : yield* createChangeRequest(
+            wiki,
+            {
+              version: 1,
+              changeRequestId,
+              title: target.title,
+              status: "open",
+              branch: changeRequestBranch(changeRequestId),
+              base: target.base,
+              threadId: author.threadId,
+              createdBy: oneLine(author.actor) || "Agent",
+              createdAt: at,
+              updatedAt: at,
+              mergedCommit: null,
+            },
+            commit,
+            env,
+          );
+    yield* publish("amended", wiki.wikiId, changeRequestId);
+    return {
+      changeRequest: yield* view(wiki, stored),
+      commit,
+      amendment,
+      errors: planned.errors,
+    } satisfies WikiAmendResult;
+  });
 
   const amendWith = (
     input: WikiAmendInput | WikiTransformInput,
@@ -1225,130 +1220,130 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  // --- merging -----------------------------------------------------------------------------
-
   /** Moves main from `from` to `to`, and the root checkout with it when main is checked out. */
-  const moveMain = (wiki: WikiRecord, from: string, to: string) =>
-    Effect.gen(function* () {
-      const head = yield* runGit("symbolicRef", wiki.root, ["symbolic-ref", "-q", "HEAD"], {
-        allowExitCodes: [1, 128],
-      });
-      const stale = (cause: unknown, rolledBack: boolean) =>
-        new WikiError({
-          reason: "stale",
-          message: rolledBack
-            ? "Main moved while merging, so nothing was merged. Merge again."
-            : "Main moved while merging and the wiki folder could not be put back; check its files before merging again.",
-          cause,
-        });
-      const casMain = runGit(
-        "updateMain",
-        wiki.root,
-        ["update-ref", "-m", "wiki: merge change request", mainRef(wiki), to, from],
-        { allowExitCodes: [1, 128] },
-      );
-      if (head.exitCode !== 0 || head.stdout.trim() !== mainRef(wiki)) {
-        const moved = yield* casMain;
-        if (moved.exitCode !== 0) return yield* stale(moved.stderr, true);
-        return;
-      }
-      // Stat-only differences would otherwise read as local edits.
-      yield* runGit("refreshIndex", wiki.root, ["update-index", "-q", "--refresh"], {
-        allowExitCodes: [1],
-      });
-      const checkout = yield* runGit("checkout", wiki.root, ["read-tree", "-u", "-m", from, to], {
-        allowExitCodes: [1, 128],
-      });
-      if (checkout.exitCode !== 0) {
-        const busy = parseBusyPaths(checkout.stderr);
-        return yield* new WikiError({
-          reason: "checkout-busy",
-          message: busy.length
-            ? `Local edits in the wiki folder overlap this merge: ${busy.join(", ")}. Commit or set them aside, then merge again.`
-            : "Local edits in the wiki folder overlap this merge. Commit or set them aside, then merge again.",
-          cause: new WikiGitExitError({
-            operation: "checkout",
-            exitCode: checkout.exitCode,
-            stderr: checkout.stderr,
-          }),
-        });
-      }
-      const moved = yield* casMain;
-      if (moved.exitCode === 0) return;
-      // Only our own checkout is reversed; git refuses if an editor changed those files since.
-      const rollback = yield* runGit("rollback", wiki.root, ["read-tree", "-u", "-m", to, from], {
-        allowExitCodes: [1, 128],
-      });
-      return yield* stale(moved.stderr, rollback.exitCode === 0);
+  const moveMain = Effect.fn("WikiService.moveMain")(function* (
+    wiki: WikiRecord,
+    from: string,
+    to: string,
+  ) {
+    const head = yield* runGit("symbolicRef", wiki.root, ["symbolic-ref", "-q", "HEAD"], {
+      allowExitCodes: [1, 128],
     });
+    const stale = (cause: unknown, rolledBack: boolean) =>
+      new WikiError({
+        reason: "stale",
+        message: rolledBack
+          ? "Main moved while merging, so nothing was merged. Merge again."
+          : "Main moved while merging and the wiki folder could not be put back; check its files before merging again.",
+        cause,
+      });
+    const casMain = runGit(
+      "updateMain",
+      wiki.root,
+      ["update-ref", "-m", "wiki: merge change request", mainRef(wiki), to, from],
+      { allowExitCodes: [1, 128] },
+    );
+    if (head.exitCode !== 0 || head.stdout.trim() !== mainRef(wiki)) {
+      const moved = yield* casMain;
+      if (moved.exitCode !== 0) return yield* stale(moved.stderr, true);
+      return;
+    }
+    // Stat-only differences would otherwise read as local edits.
+    yield* runGit("refreshIndex", wiki.root, ["update-index", "-q", "--refresh"], {
+      allowExitCodes: [1],
+    });
+    const checkout = yield* runGit("checkout", wiki.root, ["read-tree", "-u", "-m", from, to], {
+      allowExitCodes: [1, 128],
+    });
+    if (checkout.exitCode !== 0) {
+      const busy = parseBusyPaths(checkout.stderr);
+      return yield* new WikiError({
+        reason: "checkout-busy",
+        message: busy.length
+          ? `Local edits in the wiki folder overlap this merge: ${busy.join(", ")}. Commit or set them aside, then merge again.`
+          : "Local edits in the wiki folder overlap this merge. Commit or set them aside, then merge again.",
+        cause: new WikiGitExitError({
+          operation: "checkout",
+          exitCode: checkout.exitCode,
+          stderr: checkout.stderr,
+        }),
+      });
+    }
+    const moved = yield* casMain;
+    if (moved.exitCode === 0) return;
+    // Only our own checkout is reversed; git refuses if an editor changed those files since.
+    const rollback = yield* runGit("rollback", wiki.root, ["read-tree", "-u", "-m", to, from], {
+      allowExitCodes: [1, 128],
+    });
+    return yield* stale(moved.stderr, rollback.exitCode === 0);
+  });
 
   /** Pushes main to the mirror and records how it went; never fails for the push itself. */
-  const pushToMirror = (wiki: WikiRecord) =>
-    Effect.gen(function* () {
-      const mirror = wiki.mirror;
-      if (mirror === null) return wiki;
-      const at = yield* nowIso;
-      const attempt = Effect.gen(function* () {
-        const local = yield* mainTip(wiki);
-        const remote = yield* gitOut(
-          "lsRemote",
-          wiki.root,
-          ["ls-remote", mirror.url, mainRef(wiki)],
-          { timeoutMs: REMOTE_TIMEOUT_MS },
-        );
-        const remoteTip = remote.split("\t")[0]?.trim() || undefined;
-        // A remote commit this repository lacks, or one main does not contain, is work made on
-        // the mirror directly that this push replaces.
-        const overwrote =
-          remoteTip !== undefined &&
-          remoteTip !== local &&
-          !(
-            (yield* revParse(wiki.root, remoteTip)) !== undefined &&
-            (yield* isAncestor(wiki.root, remoteTip, local))
-          );
-        yield* runGit(
-          "push",
-          wiki.root,
-          ["push", "--force", "--no-verify", mirror.url, `${mainRef(wiki)}:${mainRef(wiki)}`],
-          { timeoutMs: REMOTE_TIMEOUT_MS },
-        );
-        return {
-          ...mirror,
-          lastPushedAt: at,
-          lastPushedCommit: local,
-          lastError: null,
-          overwroteRemoteAt: overwrote ? at : mirror.overwroteRemoteAt,
-        };
-      });
-      const status = yield* attempt.pipe(
-        Effect.catchTags({
-          WikiError: (error) =>
-            Effect.logWarning("Wiki mirror push failed").pipe(
-              Effect.annotateLogs({ wikiId: wiki.wikiId, cause: error }),
-              Effect.as({ ...mirror, lastError: "The push to the mirror failed." }),
-            ),
-        }),
+  const pushToMirror = Effect.fn("WikiService.pushToMirror")(function* (wiki: WikiRecord) {
+    const mirror = wiki.mirror;
+    if (mirror === null) return wiki;
+    const at = yield* nowIso;
+    const attempt = Effect.gen(function* () {
+      const local = yield* mainTip(wiki);
+      const remote = yield* gitOut(
+        "lsRemote",
+        wiki.root,
+        ["ls-remote", mirror.url, mainRef(wiki)],
+        { timeoutMs: REMOTE_TIMEOUT_MS },
       );
-      const next = yield* updateRegistry((registry) => {
-        const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId);
-        // The mirror was changed or removed meanwhile; this push's status no longer applies.
-        const updated =
-          current === undefined || current.mirror?.url !== mirror.url
-            ? current
-            : { ...current, mirror: status };
-        return Effect.succeed([
-          {
-            ...registry,
-            wikis: registry.wikis.map((entry) =>
-              entry.wikiId === wiki.wikiId && updated !== undefined ? updated : entry,
-            ),
-          },
-          updated ?? wiki,
-        ] as const);
-      });
-      yield* publish("mirror", wiki.wikiId, null);
-      return next;
+      const remoteTip = remote.split("\t")[0]?.trim() || undefined;
+      // A remote commit this repository lacks, or one main does not contain, is work made on
+      // the mirror directly that this push replaces.
+      const overwrote =
+        remoteTip !== undefined &&
+        remoteTip !== local &&
+        !(
+          (yield* revParse(wiki.root, remoteTip)) !== undefined &&
+          (yield* isAncestor(wiki.root, remoteTip, local))
+        );
+      yield* runGit(
+        "push",
+        wiki.root,
+        ["push", "--force", "--no-verify", mirror.url, `${mainRef(wiki)}:${mainRef(wiki)}`],
+        { timeoutMs: REMOTE_TIMEOUT_MS },
+      );
+      return {
+        ...mirror,
+        lastPushedAt: at,
+        lastPushedCommit: local,
+        lastError: null,
+        overwroteRemoteAt: overwrote ? at : mirror.overwroteRemoteAt,
+      };
     });
+    const status = yield* attempt.pipe(
+      Effect.catchTags({
+        WikiError: (error) =>
+          Effect.logWarning("Wiki mirror push failed").pipe(
+            Effect.annotateLogs({ wikiId: wiki.wikiId, cause: error }),
+            Effect.as({ ...mirror, lastError: "The push to the mirror failed." }),
+          ),
+      }),
+    );
+    const next = yield* updateRegistry((registry) => {
+      const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId);
+      // The mirror was changed or removed meanwhile; this push's status no longer applies.
+      const updated =
+        current === undefined || current.mirror?.url !== mirror.url
+          ? current
+          : { ...current, mirror: status };
+      return Effect.succeed([
+        {
+          ...registry,
+          wikis: registry.wikis.map((entry) =>
+            entry.wikiId === wiki.wikiId && updated !== undefined ? updated : entry,
+          ),
+        },
+        updated ?? wiki,
+      ] as const);
+    });
+    yield* publish("mirror", wiki.wikiId, null);
+    return next;
+  });
 
   const merge: WikiService["Service"]["merge"] = (input) =>
     withWiki(
@@ -1404,8 +1399,6 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  // --- reads -------------------------------------------------------------------------------
-
   const summary = (wiki: WikiRecord) =>
     readChangeRequests(wiki).pipe(
       Effect.map((all) => all.filter((cr) => cr.record.status === "open").length),
@@ -1429,24 +1422,26 @@ const make = Effect.gen(function* () {
   );
 
   /** When each file was last changed on the line ending at `commit`. */
-  const editTimesAt = (wiki: WikiRecord, commit: string) =>
-    Effect.gen(function* () {
-      const cached = editTimes.get(commit);
-      if (cached !== undefined) return cached;
-      const log = yield* runGit("editTimes", wiki.root, [
-        "log",
-        "--no-renames",
-        `--max-count=${EDIT_TIMES_DEPTH}`,
-        `--format=${EDIT_TIMES_FORMAT}`,
-        "--name-only",
-        "-z",
-        commit,
-        "--",
-      ]);
-      const times = parseEditTimes(log.stdout);
-      editTimes.set(commit, times);
-      return times;
-    });
+  const editTimesAt = Effect.fn("WikiService.editTimesAt")(function* (
+    wiki: WikiRecord,
+    commit: string,
+  ) {
+    const cached = editTimes.get(commit);
+    if (cached !== undefined) return cached;
+    const log = yield* runGit("editTimes", wiki.root, [
+      "log",
+      "--no-renames",
+      `--max-count=${EDIT_TIMES_DEPTH}`,
+      `--format=${EDIT_TIMES_FORMAT}`,
+      "--name-only",
+      "-z",
+      commit,
+      "--",
+    ]);
+    const times = parseEditTimes(log.stdout);
+    editTimes.set(commit, times);
+    return times;
+  });
 
   const index: WikiService["Service"]["index"] = (input) =>
     withWiki(
@@ -1526,19 +1521,22 @@ const make = Effect.gen(function* () {
       })),
     );
 
-  const mergePreview = (wiki: WikiRecord, stored: StoredChangeRequest, main: string) =>
-    Effect.gen(function* (): Effect.fn.Return<WikiMergePreview, WikiError> {
-      if (yield* isAncestor(wiki.root, stored.head, main)) {
-        return { status: "up-to-date", conflicts: [], errors: [] };
-      }
-      const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
-      if (tree === null) return { status: "conflict", conflicts, errors: [] };
-      return {
-        status: "clean",
-        conflicts: [],
-        errors: (yield* snapshotAt(wiki, tree)).index.errors,
-      };
-    });
+  const mergePreview = Effect.fn("WikiService.mergePreview")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+    main: string,
+  ): Effect.fn.Return<WikiMergePreview, WikiError> {
+    if (yield* isAncestor(wiki.root, stored.head, main)) {
+      return { status: "up-to-date", conflicts: [], errors: [] };
+    }
+    const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
+    if (tree === null) return { status: "conflict", conflicts, errors: [] };
+    return {
+      status: "clean",
+      conflicts: [],
+      errors: (yield* snapshotAt(wiki, tree)).index.errors,
+    };
+  });
 
   const changeRequestsGet: WikiService["Service"]["changeRequestsGet"] = (input) =>
     withWiki(
@@ -1595,8 +1593,6 @@ const make = Effect.gen(function* () {
         }),
       input.changeRequestId,
     );
-
-  // --- change request lifecycle ------------------------------------------------------------
 
   const changeRequestsOpen: WikiService["Service"]["changeRequestsOpen"] = (input, author) =>
     withWiki(input.wikiId, (wiki) =>
@@ -1661,8 +1657,6 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  // --- registration ------------------------------------------------------------------------
-
   /** The T3 project in the wiki's folder, made if none exists. Never fails the registration. */
   const linkProject = (root: string, name: string) =>
     projects.getByWorkspaceRoot(root).pipe(
@@ -1694,30 +1688,33 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const addRecord = (root: string, name: string, mainBranch: string) =>
-    Effect.gen(function* () {
-      const projectId = yield* linkProject(root, name);
-      const wikiId = WikiId.make(yield* newId);
-      const createdAt = yield* nowIso;
-      const record: WikiRecord = {
-        wikiId,
-        name,
-        root,
-        mainBranch,
-        projectId,
-        mirror: null,
-        createdAt,
-      };
-      yield* updateRegistry((registry) =>
-        registry.wikis.some((wiki) => wiki.root === root)
-          ? Effect.fail(
-              new WikiError({ reason: "invalid", message: "This folder is already a wiki." }),
-            )
-          : Effect.succeed([{ ...registry, wikis: [...registry.wikis, record] }, record] as const),
-      );
-      yield* publish("registered", wikiId, null);
-      return yield* summary(record);
-    });
+  const addRecord = Effect.fn("WikiService.addRecord")(function* (
+    root: string,
+    name: string,
+    mainBranch: string,
+  ) {
+    const projectId = yield* linkProject(root, name);
+    const wikiId = WikiId.make(yield* newId);
+    const createdAt = yield* nowIso;
+    const record: WikiRecord = {
+      wikiId,
+      name,
+      root,
+      mainBranch,
+      projectId,
+      mirror: null,
+      createdAt,
+    };
+    yield* updateRegistry((registry) =>
+      registry.wikis.some((wiki) => wiki.root === root)
+        ? Effect.fail(
+            new WikiError({ reason: "invalid", message: "This folder is already a wiki." }),
+          )
+        : Effect.succeed([{ ...registry, wikis: [...registry.wikis, record] }, record] as const),
+    );
+    yield* publish("registered", wikiId, null);
+    return yield* summary(record);
+  });
 
   const register: WikiService["Service"]["register"] = (input) =>
     requireGit.pipe(
