@@ -924,8 +924,8 @@ section {
 .pcard__rail span:last-child {
   color: var(--ink-3);
 }
-/* Four figures on one field (240 × 160, an 8-unit grid): chats are framed windows with a title rule,
-   turns are dots on a line, a checkpoint is a ringed turn, diffs are rows marked + and −. Three weights
+/* Four figures on one field (240 × 160, an 8-unit grid): terminals and chats are framed windows
+   with a title rule, output is rows of rule, time runs along a thin axis. Three weights
    (ink 1.5, secondary 1, construction 0.75) that hold at any size; rust marks the one thing that goes
    wrong. The figures are complete at rest. */
 .pcard__fig {
@@ -985,7 +985,8 @@ path.pf-rs {
 .pf-dot {
   fill: var(--ink);
 }
-.pf-dot.pf-rs {
+.pf-dot.pf-rs,
+.pf-lbl.pf-rs {
   fill: var(--rust);
 }
 .pf-lbl {
