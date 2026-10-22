@@ -1,8 +1,6 @@
-// @vitest-environment jsdom
-
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import { appCommand, type AppCommandContext } from "~/whichKey/commands";
 import { pressRepeat } from "~/whichKey/menu";
@@ -16,19 +14,15 @@ import {
   takesListKey,
 } from "./placeLists";
 
-// jsdom lays nothing out and scrolls nothing; every row is on screen here.
-Element.prototype.scrollIntoView ??= () => {};
-beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([
-    new DOMRect(0, 0, 10, 10),
-  ] as unknown as DOMRectList);
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  forgetEnteredRow();
-  document.body.replaceChildren();
-});
+/** Forgets, as a test ends, the row it entered and what it put on the page. */
+function cleanup(): Disposable {
+  return {
+    [Symbol.dispose]() {
+      forgetEnteredRow();
+      document.body.replaceChildren();
+    },
+  };
+}
 
 /** Presses `key` on `element` with the lists reading it; what Escape handed on, if anything. */
 function press(element: HTMLElement, key: string, modifiers: KeyboardEventInit = {}) {
@@ -48,12 +42,15 @@ function press(element: HTMLElement, key: string, modifiers: KeyboardEventInit =
   return { taken: event.defaultPrevented, escaped };
 }
 
+// The sidebar beside a pane, as the app lays them out.
 const SIDEBAR = `
-  <div data-app-sidebar>
-    <div role="button" tabindex="0" data-testid="sidebar-row-card" id="a">a</div>
-    <div role="button" tabindex="0" data-testid="sidebar-row-card" id="b">b</div>
-  </div>
-  <div data-pane-id="p"><div role="tab" tabindex="0" data-pane-tab id="pill">tab</div></div>`;
+  <div style="display: flex">
+    <div data-app-sidebar>
+      <div role="button" tabindex="0" data-testid="sidebar-row-card" id="a">a</div>
+      <div role="button" tabindex="0" data-testid="sidebar-row-card" id="b">b</div>
+    </div>
+    <div data-pane-id="p"><div role="tab" tabindex="0" data-pane-tab id="pill">tab</div></div>
+  </div>`;
 
 const byId = (id: string) => document.getElementById(id)!;
 
@@ -76,6 +73,7 @@ function rootFrom(element: Element) {
 
 describe("the sidebar list's keys after a focus move from the menu", () => {
   it("go on to the list: up or down with nowhere to go ends the window rather than being spent", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = SIDEBAR;
     // The bug: after Space h into the sidebar, j/k (and the arrows) restarted the window and
     // moved nothing, so the list never stepped while they came faster than the window.
@@ -94,6 +92,7 @@ describe("the sidebar list's keys after a focus move from the menu", () => {
 
 describe("Enter on a sidebar row", () => {
   it("keeps focus in the list while what it opened appears, until a press elsewhere", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = SIDEBAR;
     const row = byId("a");
     let clicked = 0;
@@ -110,6 +109,7 @@ describe("Enter on a sidebar row", () => {
     expect(keepsListFocus()).toBe(false);
   });
   it("clicks with Alt held for Alt+Enter, which opens the row in a new tab", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = SIDEBAR;
     const row = byId("a");
     const clicks: boolean[] = [];
@@ -125,6 +125,7 @@ describe("Enter on a sidebar row", () => {
 
 describe("which keys a sidebar row keeps from the page", () => {
   it("is its list's moves, which the right panel's launcher letters leave to it", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = SIDEBAR;
     for (const key of ["g", "G", "j", "k", "Home", "End", "ArrowDown"]) {
       expect(takesListKey(byId("a"), key), key).toBe(true);
@@ -135,6 +136,7 @@ describe("which keys a sidebar row keeps from the page", () => {
   });
 
   it("covers the legacy sidebar's thread rows too", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML =
       '<div data-app-sidebar><div role="button" tabindex="0" data-testid="thread-row-t1"></div></div>';
     expect(isListRow(document.querySelector("[data-testid='thread-row-t1']")!)).toBe(true);
@@ -152,6 +154,7 @@ const RAIL = `
 
 describe("the icon rail's buttons, a list", () => {
   it("lands on the current section's button, then on the one last focused", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = RAIL;
     const rail = document.querySelector("[data-app-rail]")!;
     expect(listDefaultRow(rail)?.id).toBe("wikis");
@@ -163,6 +166,7 @@ describe("the icon rail's buttons, a list", () => {
   });
 
   it("steps with j/k and the arrows, jumps with gg/G and Home/End, and stops at the ends", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = RAIL;
     byId("threads").focus();
     press(byId("threads"), "ArrowDown");
@@ -184,6 +188,7 @@ describe("the icon rail's buttons, a list", () => {
   });
 
   it("is one tab stop, the button last focused", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = RAIL;
     press(byId("threads"), "j");
     const stops = [...document.querySelectorAll("button")].filter(
@@ -193,6 +198,7 @@ describe("the icon rail's buttons, a list", () => {
   });
 
   it("opens a section on Enter, hands Escape on, and leaves `/` to the page", () => {
+    using _cleanup = cleanup();
     document.body.innerHTML = RAIL;
     const opened: string[] = [];
     byId("usage").addEventListener("click", () => void opened.push("usage"));

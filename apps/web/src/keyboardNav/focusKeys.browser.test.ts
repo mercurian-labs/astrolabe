@@ -1,12 +1,13 @@
-// @vitest-environment jsdom
-
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import { resolveShortcutCommand } from "~/keybindings";
 import { isEditableFocused } from "~/lib/editableFocus";
 
-afterEach(() => document.body.replaceChildren());
+/** Empties the page as a test ends. */
+function cleanup(): Disposable {
+  return { [Symbol.dispose]: () => document.body.replaceChildren() };
+}
 
 const ctrl = (key: string) => ({
   key,
@@ -34,6 +35,7 @@ function commandOn(
 
 describe("Ctrl+H/J/K/L", () => {
   it("move between regions from what takes no typing: a row, a tab, the page", () => {
+    using _cleanup = cleanup();
     expect(commandOn('<div role="button" tabindex="0">row</div>', "h")).toBe("focus.left");
     expect(commandOn('<div role="tab" tabindex="0">tab</div>', "j")).toBe("focus.down");
     expect(commandOn("<p>text</p>", "k")).toBe("focus.up");
@@ -41,6 +43,7 @@ describe("Ctrl+H/J/K/L", () => {
   });
 
   it("stay the field's, the editor's, and the terminal's while typing there", () => {
+    using _cleanup = cleanup();
     expect(commandOn("<input />", "h")).toBeNull();
     expect(commandOn("<textarea></textarea>", "l")).toBeNull();
     // A CodeMirror editor, Vim or not: its content is contenteditable.
@@ -55,6 +58,7 @@ describe("Ctrl+H/J/K/L", () => {
   });
 
   it("leave Ctrl+K to the keyboard menu and Ctrl+J to the terminal where mod is Ctrl", () => {
+    using _cleanup = cleanup();
     expect(commandOn("<p>text</p>", "k", { platform: "Win32" })).toBe("whichKey.open");
     expect(commandOn("<p>text</p>", "j", { platform: "Linux x86_64" })).toBe("terminal.toggle");
     expect(commandOn("<p>text</p>", "h", { platform: "Win32" })).toBe("focus.left");
@@ -63,6 +67,7 @@ describe("Ctrl+H/J/K/L", () => {
 
 describe("Ctrl+D/U", () => {
   it("scroll from what takes no typing, and stay the editor's and the terminal's", () => {
+    using _cleanup = cleanup();
     expect(commandOn('<div role="button" tabindex="0">row</div>', "d")).toBe("scroll.down");
     expect(commandOn("<p>text</p>", "u")).toBe("scroll.up");
     // Vim's Ctrl-D and Ctrl-U in the composer and notes, never shadowed.
@@ -74,6 +79,7 @@ describe("Ctrl+D/U", () => {
   });
 
   it("leave Ctrl+D to the diff and Ctrl+U to Usage where mod is Ctrl", () => {
+    using _cleanup = cleanup();
     expect(commandOn("<p>text</p>", "d", { platform: "Win32" })).toBe("diff.toggle");
     expect(commandOn("<p>text</p>", "u", { platform: "Linux x86_64" })).toBe("usage.open");
   });

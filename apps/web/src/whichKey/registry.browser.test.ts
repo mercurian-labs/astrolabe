@@ -1,9 +1,7 @@
-// @vitest-environment jsdom
-
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/panes/arrangement";
 import { useMaximizedPaneStore } from "~/panes/maximize";
@@ -22,10 +20,15 @@ import {
 import { whichKeyRoot } from "./registry";
 
 const stops: Array<() => void> = [];
-afterEach(() => {
-  useMaximizedPaneStore.getState().restore();
-  for (const stop of stops.splice(0)) stop();
-});
+/** Undoes, as a test ends, a maximized pane and the handles it registered. */
+function cleanup(): Disposable {
+  return {
+    [Symbol.dispose]() {
+      useMaximizedPaneStore.getState().restore();
+      for (const stop of stops.splice(0)) stop();
+    },
+  };
+}
 
 /** Presses `keys` from the root; what ran, or the note the last key left. */
 function press(root: WhichKeyGroup, keys: string[]) {
@@ -126,6 +129,7 @@ const menuKeys = (
 
 describe("the keyboard menu built from the menu rules", () => {
   it("has the default rows at its root, the built-in groups named", () => {
+    using _cleanup = cleanup();
     const { root } = context();
     expect(root.items.map((item) => [item.keys.join(" "), item.label])).toEqual([
       [":", "Command palette"],
@@ -161,6 +165,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("names a prefix a user made by its count, and shares a row between keys for one command", () => {
+    using _cleanup = cleanup();
     const { root } = context({}, [
       ...DEFAULT_RESOLVED_TRIGGERS,
       menuKeys("chat.new", "x", "n"),
@@ -180,6 +185,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("makes a key that leads on a group, over a shorter sequence ending on it", () => {
+    using _cleanup = cleanup();
     const { root } = context({}, [menuKeys("chat.new", "g"), menuKeys("section.wikis", "g", "w")]);
     expect(root.items.find((item) => item.keys[0] === "g")?.group?.items).toHaveLength(1);
     // Without a rule for Search, the chord still opens it, and shows on its row.
@@ -188,6 +194,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("opens the Command Palette from :, Search from / and the chord's second press, and f", () => {
+    using _cleanup = cleanup();
     const { root, ran } = context();
     press(root, [":"]);
     press(root, ["/"]);
@@ -198,6 +205,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("runs upstream commands through their shortcuts, and greys out one without a shortcut", () => {
+    using _cleanup = cleanup();
     const pressed = pressedCommands();
     const { root } = context({
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS.filter(
@@ -210,6 +218,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("goes to each section as the icon rail opens it, and opens Wikis' finder", () => {
+    using _cleanup = cleanup();
     const { root, ran } = context();
     for (const key of ["t", "w", "p", "u", "s"]) press(root, ["g", key]);
     press(root, [","]);
@@ -228,6 +237,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("adds through the sidebar section's title row while one is mounted", () => {
+    using _cleanup = cleanup();
     const newItem = vi.fn();
     const { root } = context({
       section: { newItem, newItemLabel: "New document", newItemDisabled: false },
@@ -238,6 +248,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("steps, closes, and reopens chat tabs", () => {
+    using _cleanup = cleanup();
     const pressed = pressedCommands();
     const select = vi.fn();
     const close = vi.fn();
@@ -259,6 +270,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("splits, maximizes, and closes the focused pane on screen", () => {
+    using _cleanup = cleanup();
     const panes = twoPanes();
     const focusedId = () => panes.arrangement().focused;
     expect(leaves(panes.arrangement().root)).toHaveLength(2);
@@ -287,6 +299,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("takes the focused pane full screen, maximizing the right panel too, and back", () => {
+    using _cleanup = cleanup();
     const panes = twoPanes();
     let panelMaximized = false;
     const inPanel = () => ({
@@ -311,6 +324,7 @@ describe("the keyboard menu built from the menu rules", () => {
   });
 
   it("toggles the right panel from p r only with a chat on screen", () => {
+    using _cleanup = cleanup();
     const pressed = pressedCommands();
     const select = vi.fn();
     const close = vi.fn();
@@ -322,6 +336,7 @@ describe("the keyboard menu built from the menu rules", () => {
 
 describe("full screen for the focused pane", () => {
   it("maximizes what does not fill yet, and restores both once full", () => {
+    using _cleanup = cleanup();
     // A right panel's lone pane: only the panel maximizes, and back.
     expect(fullScreenState({ alone: true, paneMaximized: false, panelMaximized: false })).toEqual({
       full: false,
@@ -343,6 +358,7 @@ describe("full screen for the focused pane", () => {
   });
 
   it("is maximizing the pane in the Wikis area, with nothing to do for a lone pane", () => {
+    using _cleanup = cleanup();
     expect(fullScreenState({ alone: false, paneMaximized: false, panelMaximized: null })).toEqual({
       full: false,
       change: { pane: true, panel: null },

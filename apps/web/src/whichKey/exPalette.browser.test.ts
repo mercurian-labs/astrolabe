@@ -1,6 +1,4 @@
-// @vitest-environment jsdom
-
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
@@ -14,10 +12,15 @@ import { exLineGroups, type ExLineContext } from "./exPalette";
 import { chatTabsSlot, panesSlot } from "./handles";
 
 const stops: Array<() => void> = [];
-afterEach(() => {
-  for (const stop of stops.splice(0)) stop();
-  document.body.replaceChildren();
-});
+/** Undoes, as a test ends, the handles it registered and what it put on the page. */
+function cleanup(): Disposable {
+  return {
+    [Symbol.dispose]() {
+      for (const stop of stops.splice(0)) stop();
+      document.body.replaceChildren();
+    },
+  };
+}
 
 const context = (overrides: Partial<ExLineContext> = {}): ExLineContext => {
   const origin = overrides.origin ?? null;
@@ -100,6 +103,7 @@ function thread(id: string, title: string): CommandPaletteActionItem {
 
 describe("the palette's ex commands", () => {
   it("closes the focused pane's tab with :q where only panes are on screen", async () => {
+    using _cleanup = cleanup();
     const { closed } = panes();
     await run("q");
     await run("quit!");
@@ -107,6 +111,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("closes the chat tab in front with :q, unless focus is in the panes beside it", async () => {
+    using _cleanup = cleanup();
     const { closed, element } = panes();
     const close = vi.fn();
     stops.push(chatTabsSlot.register({ keys: ["x", "y"], activeKey: "y", select: vi.fn(), close }));
@@ -118,6 +123,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("splits the focused pane with :sp and :vs, and offers nothing to split without panes", async () => {
+    using _cleanup = cleanup();
     expect(rows("vs")[0]?.disabled).toBe(true);
     const { arrangement } = panes();
     await run("sp");
@@ -126,6 +132,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("writes through the editor it came from, else sends the composer on screen", async () => {
+    using _cleanup = cleanup();
     const write = vi.fn();
     const view = {} as NonNullable<ExLineContext["origin"]>["view"];
     await run("w", { origin: { element: null, view, write: { label: "Save", run: write } } });
@@ -141,6 +148,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("switches threads by name with :b, open chat tabs first, and lists the open ones bare", () => {
+    using _cleanup = cleanup();
     const threadItems = [thread("t1", "Release notes"), thread("t2", "Fix release script")];
     const titles = (line: string, chatTabThreadIds: string[]) =>
       rows(line, { threadItems, chatTabThreadIds }).map((item) => item.title);
@@ -150,6 +158,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("offers an editor's own commands to the editor, and says Vim's words elsewhere", () => {
+    using _cleanup = cleanup();
     expect(rows("s/a/b/")[0]).toMatchObject({ title: "Not an editor command", disabled: true });
     expect(rows("noh")[0]).toMatchObject({ disabled: true });
     const view = {} as NonNullable<ExLineContext["origin"]>["view"];
@@ -159,6 +168,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("lists every command for a bare colon, with its alias or menu keys and its shortcut", () => {
+    using _cleanup = cleanup();
     const listed = rows("");
     expect(listed.find((item) => item.value === "ex:tab.close")).toMatchObject({
       title: "Close tab",
@@ -174,6 +184,7 @@ describe("the palette's ex commands", () => {
   });
 
   it("puts an argument command's name on the line, and lists upstream's actions beside", async () => {
+    using _cleanup = cleanup();
     const setLine = vi.fn();
     const action = thread("theme", "Change theme");
     const listed = rows("", { setLine, actionItems: [action] });

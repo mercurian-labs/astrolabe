@@ -1,11 +1,12 @@
-// @vitest-environment jsdom
-
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import { isLeaderKey, menuKeyOf } from "./leader";
 import { CHORD, CURSOR_DOWN, CURSOR_UP } from "./menu";
 
-afterEach(() => document.body.replaceChildren());
+/** Empties the page as a test ends. */
+function cleanup(): Disposable {
+  return { [Symbol.dispose]: () => document.body.replaceChildren() };
+}
 
 const space = (modifiers: Partial<KeyboardEvent> = {}) =>
   ({
@@ -31,12 +32,14 @@ function element(html: string) {
 
 describe("Space as the leader key", () => {
   it("leads from the page and from what takes no keys of its own", () => {
+    using _cleanup = cleanup();
     expect(isLeaderKey(space(), document.body, on)).toBe(true);
     expect(isLeaderKey(space(), element("<div><p data-target>text</p></div>"), on)).toBe(true);
     expect(isLeaderKey(space(), element('<div tabindex="-1">pane</div>'), on)).toBe(true);
   });
 
   it("stays with text fields, editors, and controls, which Space types into or presses", () => {
+    using _cleanup = cleanup();
     for (const html of [
       "<input />",
       "<textarea></textarea>",
@@ -52,6 +55,7 @@ describe("Space as the leader key", () => {
   });
 
   it("is off with the setting, in a dialog, with a modifier, or held", () => {
+    using _cleanup = cleanup();
     expect(isLeaderKey(space(), document.body, { leaderKey: null })).toBe(false);
     const dialog = element('<div role="dialog"><div tabindex="-1" data-target>body</div></div>');
     expect(isLeaderKey(space(), dialog, on)).toBe(false);
@@ -64,6 +68,7 @@ describe("Space as the leader key", () => {
 
 describe("another leader key", () => {
   it("leads with the key it names, shifted or not, and never with none", () => {
+    using _cleanup = cleanup();
     const comma = { leaderKey: "," };
     expect(isLeaderKey(space({ key: "," }), document.body, comma)).toBe(true);
     expect(
@@ -77,6 +82,7 @@ describe("another leader key", () => {
 
 describe("the keys the open menu reads", () => {
   it("reads plain keys, the chord, and nothing for a modifier alone or a held key", () => {
+    using _cleanup = cleanup();
     const mac = { mac: true };
     expect(menuKeyOf(space({ key: "g" }), false, mac)).toBe("g");
     expect(menuKeyOf(space({ key: ":", shiftKey: true }), false, mac)).toBe(":");
@@ -90,6 +96,7 @@ describe("the keys the open menu reads", () => {
   });
 
   it("steps the cursor on Ctrl+N and Ctrl+P on a Mac only", () => {
+    using _cleanup = cleanup();
     // The cursor's own keys, not the arrows, which the root binds to focus moves.
     expect(menuKeyOf(space({ key: "n", ctrlKey: true }), false, { mac: true })).toBe(CURSOR_DOWN);
     expect(menuKeyOf(space({ key: "p", ctrlKey: true }), false, { mac: true })).toBe(CURSOR_UP);

@@ -1,17 +1,20 @@
-// @vitest-environment jsdom
-
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { vimInsertMode } from "@mercurian/editor/vim";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { isVimQuit, vimQuitGate } from "./vimQuitGate";
 
 const views: EditorView[] = [];
-afterEach(() => {
-  for (const view of views.splice(0)) view.destroy();
-  document.body.replaceChildren();
-});
+/** Destroys a test's editors as it ends. */
+function cleanup(): Disposable {
+  return {
+    [Symbol.dispose]() {
+      for (const view of views.splice(0)) view.destroy();
+      document.body.replaceChildren();
+    },
+  };
+}
 
 function gate() {
   const onConfirm = vi.fn();
@@ -49,6 +52,7 @@ function prompt(view: EditorView, key: string, value: string, finish: "Enter" | 
 
 describe("isVimQuit", () => {
   it("accepts :q as Vim reads it and nothing else", () => {
+    using _cleanup = cleanup();
     for (const input of ["q", "qu", "qui", "quit", "q!", "quit!", " q ", ":q"]) {
       expect(isVimQuit(input), input).toBe(true);
     }
@@ -60,6 +64,7 @@ describe("isVimQuit", () => {
 
 describe("the :q gate", () => {
   it("confirms on :q, once", () => {
+    using _cleanup = cleanup();
     const { view, onConfirm, onCancel } = gate();
     prompt(view, ":", "q", "Enter");
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -71,6 +76,7 @@ describe("the :q gate", () => {
   });
 
   it("backs out on any other ex command", () => {
+    using _cleanup = cleanup();
     const { view, onConfirm, onCancel } = gate();
     prompt(view, ":", "w", "Enter");
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -78,6 +84,7 @@ describe("the :q gate", () => {
   });
 
   it("backs out on Escape in normal mode, and only there", () => {
+    using _cleanup = cleanup();
     const { view, onCancel } = gate();
     press(view, "i");
     expect(vimInsertMode(view)).toBe(true);
@@ -91,6 +98,7 @@ describe("the :q gate", () => {
   });
 
   it("decides nothing on a search, an empty ex line, or Escape on the ex line", () => {
+    using _cleanup = cleanup();
     const { view, onConfirm, onCancel } = gate();
     prompt(view, "/", "q", "Enter");
     prompt(view, ":", "", "Enter");
@@ -100,6 +108,7 @@ describe("the :q gate", () => {
   });
 
   it("keeps to one line", () => {
+    using _cleanup = cleanup();
     const { view } = gate();
     press(view, "i");
     view.dispatch(view.state.replaceSelection("q"));

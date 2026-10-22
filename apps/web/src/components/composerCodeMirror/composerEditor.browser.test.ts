@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import {
   EnvironmentId,
   MessageId,
@@ -22,7 +20,7 @@ import { undo } from "@codemirror/commands";
 import { forceParsing } from "@codemirror/language";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { vimInsertMode } from "@mercurian/editor/vim";
 
@@ -40,10 +38,20 @@ import { ComposerEditor, type ComposerEditorHost, type ComposerEditorMode } from
 
 const editors: ComposerEditor[] = [];
 
-afterEach(() => {
-  for (const editor of editors.splice(0)) editor.destroy();
-  document.body.replaceChildren();
-});
+/** When the tests type: the clock stands still here, and a pause is added to it. */
+const TYPED_AT = Date.UTC(2026, 0, 1);
+
+/** Stops the clock at `TYPED_AT` for a test, and destroys its editors as it ends. */
+function cleanup(): Disposable {
+  vi.setSystemTime(TYPED_AT);
+  return {
+    [Symbol.dispose]() {
+      for (const editor of editors.splice(0)) editor.destroy();
+      document.body.replaceChildren();
+      vi.useRealTimers();
+    },
+  };
+}
 
 function mount(
   value: string,
@@ -94,7 +102,7 @@ function select(editor: ComposerEditor, anchor: number, head = anchor) {
   });
 }
 
-function type(editor: ComposerEditor, text: string, at = Date.now()) {
+function type(editor: ComposerEditor, text: string, at = TYPED_AT) {
   const { view } = editor;
   const { from, to } = view.state.selection.main;
   view.dispatch({
@@ -162,6 +170,7 @@ const PROMPT = `Look at ${MENTION} and $review-skill please`;
 
 describe("cursor spaces", () => {
   it("agrees with the composer's cursor helpers at every position", () => {
+    using _cleanup = cleanup();
     const { editor } = mount(PROMPT, { mode: "plain" });
     for (let offset = 0; offset <= PROMPT.length; offset++) {
       select(editor, offset);
@@ -178,6 +187,7 @@ describe("cursor spaces", () => {
   });
 
   it("uses plain offsets in literal mode, where nothing is a chip", () => {
+    using _cleanup = cleanup();
     const { editor } = mount(PROMPT, { mode: "literal" });
     select(editor, 12);
     expect(editor.readSnapshot()).toEqual({
@@ -192,6 +202,7 @@ describe("cursor spaces", () => {
 
 describe("reporting changes", () => {
   it("reports typing with both cursors and the referenced context ids", () => {
+    using _cleanup = cleanup();
     const reference = formatComposerContextReference({
       kind: "terminal",
       contextId: ComposerContextId.make("term-1"),
@@ -213,6 +224,7 @@ describe("reporting changes", () => {
   });
 
   it("reports a selection change once, and a selection that keeps the snapshot as a visible change", () => {
+    using _cleanup = cleanup();
     const onVisibleSelectionChange = vi.fn();
     const { editor, onChange } = mount("hello world", { host: { onVisibleSelectionChange } });
     select(editor, 2);
@@ -226,6 +238,7 @@ describe("reporting changes", () => {
   });
 
   it("suppresses the trigger next to a chip and inside code", () => {
+    using _cleanup = cleanup();
     const value = `${MENTION} x\n\`\`\`\n@co\n\`\`\``;
     const { editor, onChange } = mount(value);
     select(editor, MENTION.length);
@@ -239,6 +252,7 @@ describe("reporting changes", () => {
 
 describe("controlled value", () => {
   it("applies a store rewrite without echoing it, and undo takes it back as one step", () => {
+    using _cleanup = cleanup();
     const { editor, onChange } = mount("fix @src", { cursor: 8 });
     editor.view.focus();
     onChange.mockClear();
@@ -252,6 +266,7 @@ describe("controlled value", () => {
   });
 
   it("moves the caret for a cursor-only change only while focused", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("hello world", { cursor: 0 });
     editor.syncControlled("hello world", 5);
     expect(editor.view.state.selection.main.head).toBe(0);
@@ -261,6 +276,7 @@ describe("controlled value", () => {
   });
 
   it("keeps a CRLF draft verbatim", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("a\r\nb");
     expect(docOf(editor)).toBe("a\r\nb");
     expect(editor.readSnapshot().value).toBe("a\r\nb");
@@ -269,6 +285,7 @@ describe("controlled value", () => {
 
 describe("chips", () => {
   it("are atomic: arrows skip a chip and Backspace removes it whole", () => {
+    using _cleanup = cleanup();
     for (const mode of ["rich", "plain"] as const) {
       const value = `x ${MENTION} y`;
       const { editor } = mount(value, { mode });
@@ -285,6 +302,7 @@ describe("chips", () => {
   });
 
   it("stay source text inside a code block in rich mode, and are chips in plain mode", () => {
+    using _cleanup = cleanup();
     const value = `\`\`\`\n${MENTION} \n\`\`\`\n${MENTION} `;
     const rich = mount(value, { mode: "rich" });
     expect(rich.view.state.field(composerChipsField).chips.map((chip) => chip.from)).toEqual([
@@ -308,6 +326,7 @@ describe("skill chips", () => {
       .map((chip) => chip.source);
 
   it("are only the skills the provider offers to users, following the provider's skills", () => {
+    using _cleanup = cleanup();
     const value = "echo $HOME $babysit $review €Euro now";
     const agentOnly = { ...babysit, name: "review", userInvocable: false };
     const { editor } = mount(value, { skills: [babysit, agentOnly] });
@@ -320,6 +339,7 @@ describe("skill chips", () => {
   });
 
   it("leave other dollar names editable: the caret steps into them", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("echo $HOME $babysit now", { skills: [babysit] });
     editor.view.focus();
     select(editor, "echo $HOME".length);
@@ -331,6 +351,7 @@ describe("skill chips", () => {
   });
 
   it("keep the $ menu on dollar text that is not a chip, before a space or a line break", () => {
+    using _cleanup = cleanup();
     const { editor, onChange } = mount("use  now\nfirst \n$babysit tail", { skills: [babysit] });
     // The store takes each change and hands it back, as the composer does.
     const trigger = () => {
@@ -352,6 +373,7 @@ describe("skill chips", () => {
   });
 
   it("pads a pasted skill so it completes as a chip, and pastes other dollar text as it is", () => {
+    using _cleanup = cleanup();
     for (const [pasted, expected] of [
       ["$babysit", "echo $babysit "],
       ["$HOME", "echo $HOME"],
@@ -366,6 +388,7 @@ describe("skill chips", () => {
 
 describe("surround", () => {
   it("leaves composed text and a range other than the selection unwrapped", () => {
+    using _cleanup = cleanup();
     // A dead key or IME replacing the selection.
     const composing = mount("word");
     select(composing.editor, 0, 4);
@@ -386,6 +409,7 @@ describe("surround", () => {
   });
 
   it("wraps a selection in brackets and quotes", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("say hello now");
     select(editor, 4, 9);
     typeOverSelection(editor, "(");
@@ -394,6 +418,7 @@ describe("surround", () => {
   });
 
   it("never wraps a chip, the space beside a mention, or literal text", () => {
+    using _cleanup = cleanup();
     const value = `see ${MENTION} ok`;
     const chip = mount(value);
     select(chip.editor, 0, 8);
@@ -421,6 +446,7 @@ describe("clipboard", () => {
   });
 
   it("copies the source slice and a context fragment for referenced chips", () => {
+    using _cleanup = cleanup();
     const value = `see ${reference} now`;
     const buildContextClipboardFragment = vi.fn(() => "FRAGMENT");
     const { editor } = mount(value, { host: { buildContextClipboardFragment } });
@@ -435,6 +461,7 @@ describe("clipboard", () => {
   });
 
   it("cuts as one undo step and copies nothing without a selection", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("abc def");
     editor.view.focus();
     select(editor, 7);
@@ -452,6 +479,7 @@ describe("clipboard", () => {
   });
 
   it("pads a pasted mention so it completes as a chip", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("hi");
     select(editor, 2);
     clipboardEvent(editor, "paste", new FakeClipboard({ "text/plain": "@README.md" }));
@@ -459,6 +487,7 @@ describe("clipboard", () => {
   });
 
   it("pastes verbatim inside code", () => {
+    using _cleanup = cleanup();
     const value = "```\n\n```";
     const { editor } = mount(value);
     select(editor, 4);
@@ -467,6 +496,7 @@ describe("clipboard", () => {
   });
 
   it("keeps a path continuing an @ query literal, so file search sees it as typed", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("open @src/");
     select(editor, 10);
     clipboardEvent(editor, "paste", new FakeClipboard({ "text/plain": "__init__.py" }));
@@ -474,6 +504,7 @@ describe("clipboard", () => {
   });
 
   it("imports a structured paste's records and rewrites their ids, as one undo step", () => {
+    using _cleanup = cleanup();
     const fragment = encodeComposerContextFragment({
       version: 1,
       source: { environmentId: EnvironmentId.make("env") },
@@ -512,6 +543,7 @@ describe("clipboard", () => {
 
 describe("keys", () => {
   it("offers every key to the composer first, and a claimed key does nothing else", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = vi.fn<NonNullable<ComposerEditorHost["onCommandKeyDown"]>>(() => true);
     const { editor } = mount("hello", { host: { onCommandKeyDown } });
     editor.view.focus();
@@ -531,6 +563,7 @@ describe("keys", () => {
   });
 
   it("tells the composer when Enter is in a list item, and continues the list when it declines", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = vi.fn(() => false);
     const { editor } = mount("- one", { host: { onCommandKeyDown } });
     editor.view.focus();
@@ -541,6 +574,7 @@ describe("keys", () => {
   });
 
   it("ends a quote with a blank line on leaving it, so the text after it is not quoted", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("> quoted", { host: { onCommandKeyDown: () => false } });
     editor.view.focus();
     select(editor, 8);
@@ -551,6 +585,7 @@ describe("keys", () => {
   });
 
   it("keeps a list marker typed without its space, where Enter makes a new line", () => {
+    using _cleanup = cleanup();
     for (const value of ["2.", "1)", "-", "- a\n-"]) {
       const { editor } = mount(value, { host: { onCommandKeyDown: () => false } });
       editor.view.focus();
@@ -561,6 +596,7 @@ describe("keys", () => {
   });
 
   it("makes a new line on an unclaimed Enter in plain mode", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = vi.fn(() => false);
     const { editor } = mount("- one", { mode: "plain", host: { onCommandKeyDown } });
     editor.view.focus();
@@ -571,6 +607,7 @@ describe("keys", () => {
   });
 
   it("keeps Enter and Tab inside code for the code", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = vi.fn(() => true);
     const value = "```\n  x\n```";
     const { editor } = mount(value, { host: { onCommandKeyDown } });
@@ -587,6 +624,7 @@ describe("keys", () => {
   });
 
   it("lets an unclaimed Tab in prose through, for focus order", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("hello", { host: { onCommandKeyDown: () => false } });
     editor.view.focus();
     select(editor, 5);
@@ -596,6 +634,7 @@ describe("keys", () => {
   });
 
   it("swallows Enter while an IME composes", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = vi.fn(() => false);
     const { editor } = mount("ni", { host: { onCommandKeyDown } });
     editor.view.focus();
@@ -609,6 +648,7 @@ describe("keys", () => {
 
 describe("undo grouping", () => {
   it("starts a new step when typing turns into deleting", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("");
     editor.view.focus();
     type(editor, "a");
@@ -628,11 +668,11 @@ describe("undo grouping", () => {
 
 describe("undo pauses", () => {
   it("starts a new step after a second without changes", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("");
     editor.view.focus();
-    const now = Date.now();
-    type(editor, "ab", now);
-    type(editor, "cd", now + 1500);
+    type(editor, "ab", TYPED_AT);
+    type(editor, "cd", TYPED_AT + 1500);
     undo(editor.view);
     expect(docOf(editor)).toBe("ab");
   });
@@ -656,6 +696,7 @@ describe("Vim mode", () => {
   }
 
   it("starts in insert mode with the composer's keys, and Escape enters normal mode in place", async () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = sends();
     const { editor } = mount("hello", { vim: true, host: { onCommandKeyDown } });
     editor.view.focus();
@@ -676,6 +717,7 @@ describe("Vim mode", () => {
   });
 
   it("gives Vim the keys outside insert mode, but Mod+Enter still sends", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = sends();
     const { editor } = mount("hello", { vim: true, host: { onCommandKeyDown } });
     editor.view.focus();
@@ -685,7 +727,7 @@ describe("Vim mode", () => {
 
     press(editor, "x");
     expect(docOf(editor)).toBe("ello");
-    // (jsdom cannot measure Vim's vertical motions, so the text is not checked after these.)
+    // (Only where these keys go is checked, not what Vim's motions make of the text.)
     for (const key of ["Enter", "ArrowUp", "ArrowDown", "Tab"]) press(editor, key);
     expect(onCommandKeyDown).not.toHaveBeenCalled();
 
@@ -695,6 +737,7 @@ describe("Vim mode", () => {
   });
 
   it("leaves Escape to the composer and the page with Vim off", () => {
+    using _cleanup = cleanup();
     const onCommandKeyDown = vi.fn(() => false);
     const { editor } = mount("hello", { host: { onCommandKeyDown } });
     editor.view.focus();
@@ -703,6 +746,7 @@ describe("Vim mode", () => {
   });
 
   it("opens no @ or $ menu while Vim moves the caret in normal mode", () => {
+    using _cleanup = cleanup();
     const { editor, onChange } = mount("see @src", { vim: true });
     editor.view.focus();
     select(editor, 8);
@@ -714,6 +758,7 @@ describe("Vim mode", () => {
   });
 
   it("is back in insert mode once the store empties the prompt, as a send does", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("hello", { vim: true });
     editor.view.focus();
     press(editor, "Escape");
@@ -723,11 +768,11 @@ describe("Vim mode", () => {
   });
 
   it("undoes a whole insert session in one u, whatever its pauses, and Ctrl-r redoes it", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("", { vim: true });
     editor.view.focus();
-    const now = Date.now();
-    type(editor, "ab", now);
-    type(editor, "cd", now + 5000);
+    type(editor, "ab", TYPED_AT);
+    type(editor, "cd", TYPED_AT + 5000);
     press(editor, "Escape");
     press(editor, "u");
     expect(docOf(editor)).toBe("");
@@ -736,6 +781,7 @@ describe("Vim mode", () => {
   });
 
   it("makes each Vim change its own step", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("one two", { vim: true });
     editor.view.focus();
     select(editor, 0);
@@ -753,6 +799,7 @@ describe("Vim mode", () => {
   });
 
   it("opens the palette as the ex line on : in normal mode, and runs the editor's own commands back in the draft", async () => {
+    using _cleanup = cleanup();
     const opened: unknown[] = [];
     const stop = onOpenCommandPalette((detail) => opened.push(detail));
     const { editor } = mount("hello world", { vim: true });
@@ -793,7 +840,7 @@ describe("Vim mode", () => {
     const [item] = group?.items ?? [];
     expect(item?.disabled).toBeUndefined();
     if (item?.kind !== "action") throw new Error("no row to run in the editor");
-    // It runs a frame after the palette closes; that frame runs here, without jsdom measuring.
+    // It runs a frame after the palette closes; the test runs that frame itself.
     const frames: FrameRequestCallback[] = [];
     const frame = vi
       .spyOn(window, "requestAnimationFrame")
@@ -806,6 +853,7 @@ describe("Vim mode", () => {
   });
 
   it("opens the keyboard menu on Space in normal mode, which stays Vim's without a menu", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("hello", { vim: true });
     editor.view.focus();
     select(editor, 0);
@@ -823,6 +871,7 @@ describe("Vim mode", () => {
   });
 
   it("switches in place, keeping the draft, and starts in insert mode when turned on", async () => {
+    using _cleanup = cleanup();
     const { editor } = mount("draft");
     const view = editor.view;
     expect(vimInsertMode(view)).toBeNull();
@@ -840,6 +889,7 @@ describe("Vim mode", () => {
 
 describe("visual edges", () => {
   it("is never on the edge across a hard line break, and always in an empty prompt", () => {
+    using _cleanup = cleanup();
     const { editor } = mount("a\nb");
     editor.view.focus();
     select(editor, 3);
@@ -867,6 +917,7 @@ describe("citation comments", () => {
   const source = serializeAssistantCitation(citation);
 
   it("opens a requested comment once the value carrying the citation lands", () => {
+    using _cleanup = cleanup();
     const { editor, openCitationComment } = mount("ask");
     const value = `ask ${source} `;
     const request = {
@@ -883,6 +934,7 @@ describe("citation comments", () => {
   });
 
   it("saves a comment into the citation's source and removes a cancelled fresh one with its spaces", () => {
+    using _cleanup = cleanup();
     const value = `ask ${source} `;
     const { editor, registry, view } = mount(value);
     const entry = registry.entryAt(view, 4);
@@ -897,6 +949,7 @@ describe("citation comments", () => {
   });
 
   it("saves an unsaved comment into a prompt a question or approval replaces", () => {
+    using _cleanup = cleanup();
     const value = `ask ${source} `;
     const saved = `ask ${serializeAssistantCitation(withAssistantCitationComment(citation, "why?"))} `;
     const onCitationDraftSave = vi.fn<NonNullable<ComposerEditorHost["onCitationDraftSave"]>>();
@@ -916,6 +969,7 @@ describe("citation comments", () => {
   });
 
   it("saves an unsaved comment when the editor is replaced, but not a closed or unchanged one", () => {
+    using _cleanup = cleanup();
     const value = `ask ${source} `;
     const onCitationDraftSave = vi.fn<NonNullable<ComposerEditorHost["onCitationDraftSave"]>>();
     const remounted = mount(value, { host: { onCitationDraftSave } });
@@ -940,6 +994,7 @@ describe("citation comments", () => {
   });
 
   it("cannot change a citation while disabled", () => {
+    using _cleanup = cleanup();
     const value = `ask ${source} `;
     const { editor, registry, view } = mount(value, { disabled: true });
     const entry = registry.entryAt(view, 4);
