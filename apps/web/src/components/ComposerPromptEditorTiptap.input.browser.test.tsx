@@ -16,11 +16,13 @@ import { userEvent } from "vite-plus/test/browser";
 import { act, render } from "../../test/render";
 
 import { serializeEditorDoc } from "~/composer-rich-text-doc";
+// Astrolabe: ComposerPromptEditor renders the CodeMirror engine, so these tests of the Tiptap
+// engine's ProseMirror state mount it directly. It stays in the tree for upstream syncs.
 import {
-  ComposerPromptEditor,
+  ComposerPromptEditorTiptap as ComposerPromptEditor,
   type ComposerPromptEditorHandle,
   type ComposerPromptEditorProps,
-} from "./ComposerPromptEditor";
+} from "./ComposerPromptEditorTiptap";
 
 const babysit: ServerProviderSkill = {
   name: "babysit",
