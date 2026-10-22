@@ -2,216 +2,189 @@
           <section class="story" id="how" aria-labelledby="story-title" data-story>
             <div class="head">
               <div class="head__main">
-                <p class="tag">[04] How a thread works</p>
-                <h2 id="story-title" class="h2" data-reveal>Branch the conversation, not only the code.</h2>
+                <p class="tag">[05] How the work moves</p>
+                <h2 id="story-title" class="h2" data-reveal>One task, three agents, one change.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                A thread is the conversation and the code, saved together after every turn. Here is one,
-                built a step at a time, as the Lineage tab draws it beside the chat.
+                A planning agent splits the work, hands the pieces out and gets the results back. Here is the
+                shape of it, a step at a time.
               </p>
             </div>
             <div class="story__runway">
               <div class="story__stage">
                 <div class="story__top">
-                  <span class="tag">Fig. 2 · One thread and its forks</span>
+                  <span class="tag">Fig. 2 · How a piece of work moves</span>
                   <i class="story__bar" aria-hidden="true"><i></i></i>
                   <span class="tag story__count" data-story-count aria-hidden="true">Stage 1 / 5</span>
                 </div>
                 <div class="story__graph">
                   <div class="story__fig">
                     <svg class="tg" viewBox="0 0 1200 560" role="img" aria-labelledby="tg-title tg-desc">
-                      <title id="tg-title">A thread with two forks</title>
-                      <desc id="tg-desc">A thread of four turns, each saved as a checkpoint. From the third checkpoint, two forks run at once, one with Codex and one with Claude Code. Each fork has a lane of its own; the Codex fork's quiet turns fold into a count, and each fork shows its state: Codex idle for three hours, Claude Code working. The Codex fork is kept, and what it learned is carried back into the thread.</desc>
+                      <title id="tg-title">One task, handed out and brought back as one change</title>
+                      <desc id="tg-desc">You ask Claude to plan Add Apple Pay to checkout. It hands the payment intents API to Codex and the Apple Pay button to Claude Code, each in a git worktree of its own. Both work at once and say where they stand. Each result comes back to the planning thread, and the two pull requests and the wiki change become one change group, merged.</desc>
                       <defs>
-                        <mask id="tg-xfer-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="560">
-                          <path class="k-draw" style="--a: 0.7; --b: 0.77" pathLength="1" d="M800 140C870 140 860 290 930 290" stroke="#fff" stroke-width="10" fill="none" />
+                        <mask id="tg-back-a" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="560">
+                          <path class="k-draw" style="--a: 0.52; --b: 0.58" pathLength="1" d="M740 120C800 120 800 280 860 280" stroke="#fff" stroke-width="10" fill="none" />
+                        </mask>
+                        <mask id="tg-back-b" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="560">
+                          <path class="k-draw" style="--a: 0.56; --b: 0.62" pathLength="1" d="M800 440C870 440 870 280 940 280" stroke="#fff" stroke-width="10" fill="none" />
                         </mask>
                       </defs>
 
-                      <!-- Stage 1–2: a turn is a message and a change; a checkpoint holds both -->
-                      <g class="k-io" style="--a: 0.03; --b: 0.1; --c: 0.33; --d: 0.37">
-                        <path class="tg-lane" d="M50 196H500" />
-                        <path class="tg-lane" d="M50 384H500" />
-                        <g class="tg-lbl tg-lbl--mute">
-                          <text x="516" y="200.5">Conversation</text>
-                          <text x="516" y="388.5">Code</text>
-                        </g>
-                        <g class="tg-msg">
-                          <rect x="96" y="189" width="28" height="14" />
-                          <rect x="216" y="189" width="28" height="14" />
-                          <rect x="336" y="189" width="28" height="14" />
-                          <rect x="456" y="189" width="28" height="14" />
-                        </g>
-                        <g class="tg-lbl tg-lbl--diff">
-                          <text x="110" y="372" text-anchor="middle">+12</text>
-                          <text x="230" y="372" text-anchor="middle">+3 −1</text>
-                          <text x="350" y="372" text-anchor="middle">+28</text>
-                          <text x="470" y="372" text-anchor="middle">+6 −2</text>
-                        </g>
-                      </g>
-                      <g class="tg-caps k-out" style="--c: 0.33; --d: 0.37">
-                        <rect class="k-draw" style="--a: 0.17; --b: 0.21" pathLength="1" x="72" y="176" width="76" height="226" />
-                        <rect class="k-draw" style="--a: 0.19; --b: 0.23" pathLength="1" x="192" y="176" width="76" height="226" />
-                        <rect class="k-draw" style="--a: 0.21; --b: 0.25" pathLength="1" x="312" y="176" width="76" height="226" />
-                        <rect class="k-draw" style="--a: 0.23; --b: 0.27" pathLength="1" x="432" y="176" width="76" height="226" />
-                      </g>
-
-                      <!-- Stage 1: the main line of turns -->
-                      <path class="tg-future k-fade" style="--a: 0.1; --b: 0.15" d="M470 290H1150" />
-                      <path class="tg-line k-draw" style="--a: 0; --b: 0.1" pathLength="1" d="M50 290H470" />
+                      <!-- Stage 1: one thread, asked to plan -->
+                      <path class="tg-future k-fade" style="--a: 0.1; --b: 0.15" d="M330 280H1150" />
+                      <path class="tg-line k-draw" style="--a: 0; --b: 0.1" pathLength="1" d="M50 280H330" />
                       <g class="tg-nodes">
-                        <circle class="k-fade" style="--a: 0.02; --b: 0.04" cx="110" cy="290" r="6" />
-                        <circle class="k-fade" style="--a: 0.04; --b: 0.06" cx="230" cy="290" r="6" />
-                        <circle class="k-fade" style="--a: 0.06; --b: 0.08" cx="350" cy="290" r="6" />
-                        <circle class="k-fade" style="--a: 0.08; --b: 0.1" cx="470" cy="290" r="6" />
+                        <circle class="k-fade" style="--a: 0.02; --b: 0.04" cx="110" cy="280" r="6" />
+                        <circle class="k-fade" style="--a: 0.05; --b: 0.07" cx="220" cy="280" r="6" />
+                        <circle class="k-fade" style="--a: 0.08; --b: 0.1" cx="330" cy="280" r="6" />
                       </g>
-                      <g class="tg-lbl k-fade" style="--a: 0.08; --b: 0.13">
-                        <text x="110" y="328" text-anchor="middle">Turn 1</text>
-                        <text x="230" y="328" text-anchor="middle">Turn 2</text>
-                        <text x="350" y="328" text-anchor="middle">Turn 3</text>
-                        <text x="470" y="328" text-anchor="middle">Turn 4</text>
+                      <g class="tg-chip k-fade" style="--a: 0.03; --b: 0.07">
+                        <rect x="50" y="224" width="84" height="26" />
+                        <text x="92" y="241.5" text-anchor="middle">Claude</text>
                       </g>
-
-                      <!-- Stage 2: every turn is a checkpoint -->
-                      <g class="tg-rings">
-                        <circle class="k-draw" style="--a: 0.17; --b: 0.2" pathLength="1" cx="110" cy="290" r="14" />
-                        <circle class="k-draw" style="--a: 0.19; --b: 0.22" pathLength="1" cx="230" cy="290" r="14" />
-                        <circle class="k-draw" style="--a: 0.21; --b: 0.24" pathLength="1" cx="350" cy="290" r="14" />
-                        <circle class="k-draw" style="--a: 0.23; --b: 0.26" pathLength="1" cx="470" cy="290" r="14" />
+                      <g class="tg-lbl k-fade" style="--a: 0.03; --b: 0.08">
+                        <text x="50" y="200">Add Apple Pay to checkout</text>
                       </g>
-                      <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.22; --b: 0.28">
-                        <text x="110" y="258" text-anchor="middle">cp 1</text>
-                        <text x="230" y="258" text-anchor="middle">cp 2</text>
-                        <text x="350" y="258" text-anchor="middle">cp 3</text>
-                        <text x="470" y="258" text-anchor="middle">cp 4</text>
+                      <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.06; --b: 0.12">
+                        <text x="110" y="318" text-anchor="middle">You ask</text>
+                        <text x="220" y="318" text-anchor="middle">Plan</text>
+                        <text x="330" y="318" text-anchor="middle">Hand off</text>
                       </g>
 
-                      <!-- Stage 3: two forks from checkpoint 3, each on its own agent -->
-                      <g class="tg-b" style="--a: 0.67; --b: 0.71">
-                        <path class="tg-line k-draw" style="--a: 0.35; --b: 0.45" pathLength="1" d="M350 290C420 290 410 440 480 440H760" />
-                        <g class="tg-nodes">
-                          <circle class="k-fade" style="--a: 0.41; --b: 0.43" cx="540" cy="440" r="6" />
-                          <circle class="k-fade" style="--a: 0.43; --b: 0.45" cx="650" cy="440" r="6" />
-                          <circle class="k-fade tg-open" style="--a: 0.45; --b: 0.47" cx="760" cy="440" r="6" />
-                        </g>
-                        <g class="tg-chip k-fade" style="--a: 0.43; --b: 0.47">
-                          <rect x="480" y="462" width="118" height="26" />
-                          <text x="539" y="479.5" text-anchor="middle">Claude Code</text>
-                        </g>
-                        <g class="tg-lbl k-fade" style="--a: 0.45; --b: 0.49">
-                          <text x="480" y="420">Keep rounding at the edge</text>
-                        </g>
+                      <!-- Stage 2: two tasks, two agents, two worktrees -->
+                      <path class="tg-line k-draw" style="--a: 0.18; --b: 0.26" pathLength="1" d="M330 280C400 280 390 120 460 120H480" />
+                      <path class="tg-line k-draw" style="--a: 0.2; --b: 0.28" pathLength="1" d="M330 280C400 280 390 440 460 440H480" />
+                      <g class="tg-tree">
+                        <rect class="k-draw" style="--a: 0.24; --b: 0.31" pathLength="1" x="440" y="78" width="360" height="86" />
+                        <rect class="k-draw" style="--a: 0.25; --b: 0.32" pathLength="1" x="440" y="396" width="400" height="86" />
                       </g>
-                      <path class="tg-line k-draw" style="--a: 0.33; --b: 0.43" pathLength="1" d="M350 290C420 290 410 140 480 140H800" />
+                      <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.27; --b: 0.32">
+                        <text x="440" y="64">Worktree · payment-intents</text>
+                        <text x="440" y="508">Worktree · pay-button</text>
+                      </g>
+                      <g class="tg-chip k-fade" style="--a: 0.24; --b: 0.29">
+                        <rect x="470" y="86" width="72" height="26" />
+                        <text x="506" y="103.5" text-anchor="middle">Codex</text>
+                        <rect x="470" y="404" width="118" height="26" />
+                        <text x="529" y="421.5" text-anchor="middle">Claude Code</text>
+                      </g>
+                      <g class="tg-lbl k-fade" style="--a: 0.26; --b: 0.31">
+                        <text x="470" y="152">Payment intents API</text>
+                        <text x="470" y="470">Apple Pay button</text>
+                      </g>
+
+                      <!-- Stage 3: both at work, each saying where it stands -->
+                      <path class="tg-line k-draw" style="--a: 0.34; --b: 0.44" pathLength="1" d="M480 120H740" />
+                      <path class="tg-line k-draw" style="--a: 0.35; --b: 0.46" pathLength="1" d="M480 440H800" />
                       <g class="tg-nodes">
-                        <g class="k-out" style="--c: 0.52; --d: 0.55">
-                          <circle class="k-fade" style="--a: 0.39; --b: 0.41" cx="540" cy="140" r="6" />
-                          <circle class="k-fade" style="--a: 0.41; --b: 0.43" cx="660" cy="140" r="6" />
+                        <circle class="k-fade" style="--a: 0.37; --b: 0.39" cx="560" cy="120" r="6" />
+                        <circle class="k-fade" style="--a: 0.4; --b: 0.42" cx="650" cy="120" r="6" />
+                        <circle class="k-fade" style="--a: 0.38; --b: 0.4" cx="600" cy="440" r="6" />
+                        <circle class="k-fade" style="--a: 0.42; --b: 0.44" cx="700" cy="440" r="6" />
+                        <g class="k-out" style="--c: 0.54; --d: 0.56">
+                          <circle class="k-fade tg-open" style="--a: 0.43; --b: 0.45" cx="740" cy="120" r="6" />
                         </g>
-                        <circle class="k-fade" style="--a: 0.43; --b: 0.45" cx="800" cy="140" r="6" />
+                        <circle class="k-fade" style="--a: 0.54; --b: 0.56" cx="740" cy="120" r="6" />
+                        <g class="k-out" style="--c: 0.58; --d: 0.6">
+                          <circle class="k-fade tg-open" style="--a: 0.45; --b: 0.47" cx="800" cy="440" r="6" />
+                        </g>
+                        <circle class="k-fade" style="--a: 0.58; --b: 0.6" cx="800" cy="440" r="6" />
                       </g>
-                      <g class="tg-chip k-fade" style="--a: 0.41; --b: 0.45">
-                        <rect x="480" y="92" width="72" height="26" />
-                        <text x="516" y="109.5" text-anchor="middle">Codex</text>
-                      </g>
-                      <g class="tg-lbl k-fade" style="--a: 0.43; --b: 0.47">
-                        <text x="480" y="172">Ledger owns rounding</text>
+                      <g class="tg-lbl tg-lbl--state">
+                        <g class="k-out" style="--c: 0.53; --d: 0.56"><text class="k-fade" style="--a: 0.42; --b: 0.46" x="558" y="104">Working</text></g>
+                        <text class="k-fade" style="--a: 0.55; --b: 0.58" x="558" y="104">Done · 4m 12s</text>
+                        <g class="k-out" style="--c: 0.57; --d: 0.6"><text class="k-fade" style="--a: 0.44; --b: 0.48" x="604" y="422">Working</text></g>
+                        <text class="k-fade" style="--a: 0.59; --b: 0.62" x="604" y="422">Done · 6m 05s</text>
                       </g>
 
-                      <!-- Stage 4: Lineage's reading. Quiet turns fold into a count; each fork says where it stands. -->
-                      <g class="tg-fold k-fade" style="--a: 0.53; --b: 0.57">
-                        <rect x="566" y="128" width="88" height="24" rx="12" />
-                        <text x="610" y="144.5" text-anchor="middle">2 turns</text>
-                      </g>
-                      <g class="tg-lbl tg-lbl--state k-fade" style="--a: 0.56; --b: 0.6">
-                        <text x="480" y="196">Codex · idle · 3h ago</text>
-                      </g>
-                      <g class="tg-b" style="--a: 0.67; --b: 0.71">
-                        <g class="tg-lbl tg-lbl--state k-fade" style="--a: 0.56; --b: 0.6">
-                          <text x="480" y="398">Claude Code · working</text>
-                        </g>
-                      </g>
-
-                      <!-- Stage 5: one fork is kept, and what it learned comes back -->
-                      <g class="tg-lbl tg-lbl--strong k-fade" style="--a: 0.69; --b: 0.72">
-                        <text x="800" y="118" text-anchor="middle">Kept</text>
-                      </g>
-                      <path class="tg-xfer" mask="url(#tg-xfer-mask)" d="M800 140C870 140 860 290 930 290" />
-                      <path class="tg-line k-draw" style="--a: 0.74; --b: 0.8" pathLength="1" d="M470 290H1110" />
+                      <!-- Stage 4: each result comes back to the thread that asked -->
+                      <path class="tg-xfer" mask="url(#tg-back-a)" d="M740 120C800 120 800 280 860 280" />
+                      <path class="tg-xfer" mask="url(#tg-back-b)" d="M800 440C870 440 870 280 940 280" />
+                      <path class="tg-line k-draw" style="--a: 0.6; --b: 0.66" pathLength="1" d="M330 280H940" />
                       <g class="tg-nodes">
-                        <circle class="k-fade" style="--a: 0.76; --b: 0.78" cx="930" cy="290" r="6" />
-                        <circle class="k-fade" style="--a: 0.78; --b: 0.79" cx="1030" cy="290" r="6" />
+                        <circle class="k-fade" style="--a: 0.57; --b: 0.59" cx="860" cy="280" r="6" />
+                        <circle class="k-fade" style="--a: 0.61; --b: 0.63" cx="940" cy="280" r="6" />
                       </g>
-                      <g class="tg-here k-fade" style="--a: 0.79; --b: 0.81">
-                        <circle class="tg-here__ring" cx="1110" cy="290" r="13" />
-                        <circle class="tg-here__pivot" cx="1110" cy="290" r="5.5" />
+                      <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.6; --b: 0.65">
+                        <text x="900" y="256" text-anchor="middle">Results back</text>
                       </g>
-                      <g class="tg-lbl k-fade" style="--a: 0.77; --b: 0.81">
-                        <text x="930" y="328" text-anchor="middle">Brings back</text>
-                        <text x="930" y="348" text-anchor="middle">what it learned</text>
-                        <text x="1110" y="328" text-anchor="middle">You are here</text>
+
+                      <!-- Stage 5: one change -->
+                      <path class="tg-line k-draw" style="--a: 0.68; --b: 0.71" pathLength="1" d="M940 280H984" />
+                      <g class="tg-group k-fade" style="--a: 0.69; --b: 0.74">
+                        <rect x="984" y="196" width="212" height="168" />
+                        <path d="M984 230H1196" />
+                        <text class="tg-group__head" x="1000" y="218">One change group</text>
+                        <text x="1000" y="260">#512 Payment intents API</text>
+                        <text x="1000" y="288">#513 Apple Pay button</text>
+                        <text x="1000" y="316">Payments · wiki change</text>
+                      </g>
+                      <g class="tg-lbl tg-lbl--strong k-fade" style="--a: 0.74; --b: 0.78">
+                        <text x="1000" y="346">Merged together</text>
                       </g>
                     </svg>
-                    <svg class="mf" viewBox="0 0 332 404" role="img" aria-labelledby="mf-title">
-                      <title id="mf-title">A thread of three checkpoints forks into two branches, Codex and Claude Code, which run at once, each showing its state. The Codex branch is kept, and what it learned comes back into the thread.</title>
-                      <path class="tg-future" d="M16 104V344" />
+                    <svg class="mf" viewBox="0 0 332 478" role="img" aria-labelledby="mf-title">
+                      <title id="mf-title">You ask Claude to plan a task. It hands two pieces to Codex and Claude Code, each in a worktree of its own; both work at once, and each result comes back to the planning thread. The pull requests and the wiki change become one change group.</title>
                       <path class="tg-line" d="M16 6V104" />
-                      <path class="tg-line" d="M16 104C16 140 92 132 92 168V268" />
-                      <path class="tg-line mf-dim" d="M16 104C16 140 214 132 214 168V268" />
-                      <path class="tg-xfer" d="M92 268C92 310 16 300 16 344" />
-                      <path class="tg-line" d="M16 344V388" />
-                      <g class="tg-rings"><circle cx="16" cy="16" r="11" /><circle cx="16" cy="60" r="11" /><circle cx="16" cy="104" r="11" /></g>
+                      <path class="tg-future" d="M16 104V330" />
+                      <path class="tg-line" d="M16 104C16 140 92 132 92 168V262" />
+                      <path class="tg-line" d="M16 104C16 140 214 132 214 168V262" />
+                      <path class="tg-xfer" d="M92 262C92 300 16 292 16 330" />
+                      <path class="tg-xfer" d="M214 262C214 312 16 300 16 330" />
+                      <path class="tg-line" d="M16 330V408" />
+                      <g class="tg-tree"><rect x="72" y="132" width="112" height="146" /><rect x="194" y="132" width="128" height="146" /></g>
                       <g class="tg-nodes">
                         <circle cx="16" cy="16" r="4.5" /><circle cx="16" cy="60" r="4.5" /><circle cx="16" cy="104" r="4.5" />
-                        <circle cx="92" cy="196" r="4.5" /><circle cx="92" cy="268" r="4.5" /><circle cx="16" cy="344" r="4.5" />
+                        <circle cx="92" cy="214" r="4.5" /><circle cx="92" cy="262" r="4.5" />
+                        <circle cx="214" cy="214" r="4.5" /><circle cx="214" cy="262" r="4.5" />
+                        <circle cx="16" cy="330" r="4.5" />
                       </g>
-                      <g class="mf-dim"><circle class="tg-node-b" cx="214" cy="196" r="4.5" /><circle class="tg-open" cx="214" cy="268" r="4.5" /></g>
-                      <text class="mf-tag" x="102" y="228">Idle · 3h ago</text>
-                      <text class="mf-tag mf-dim" x="224" y="228">Working</text>
                       <g class="tg-chip mf-chip">
-                        <rect x="102" y="146" width="56" height="20" /><text x="130" y="160" text-anchor="middle">Codex</text>
-                      </g>
-                      <g class="tg-chip mf-chip mf-dim">
-                        <rect x="224" y="146" width="94" height="20" /><text x="271" y="160" text-anchor="middle">Claude Code</text>
+                        <rect x="80" y="146" width="56" height="20" /><text x="108" y="160" text-anchor="middle">Codex</text>
+                        <rect x="202" y="146" width="94" height="20" /><text x="249" y="160" text-anchor="middle">Claude Code</text>
                       </g>
                       <g class="mf-cap">
-                        <text x="102" y="192">Ledger owns</text><text x="102" y="208">rounding</text>
-                        <text x="224" y="192" class="mf-dim">Keep rounding</text><text x="224" y="208" class="mf-dim">at the edge</text>
+                        <text x="102" y="192">Payment</text><text x="102" y="208">intents API</text>
+                        <text x="224" y="192">Apple Pay</text><text x="224" y="208">button</text>
                       </g>
-                      <text class="mf-tag" x="100" y="272">Kept</text>
+                      <text class="mf-tag" x="102" y="244">Done</text>
+                      <text class="mf-tag" x="224" y="244">Done</text>
                       <g class="mf-cap">
-                        <text x="40" y="20"><tspan class="mf-tag">1/5</tspan><tspan dx="8">A thread is a line of turns.</tspan></text>
-                        <text x="40" y="64"><tspan class="mf-tag">2/5</tspan><tspan dx="8">Each turn ends as a checkpoint.</tspan></text>
-                        <text x="40" y="108"><tspan class="mf-tag">3/5</tspan><tspan dx="8">Fork it, each fork on its own agent.</tspan></text>
-                        <text x="110" y="296"><tspan class="mf-tag">4/5</tspan><tspan dx="8">Each fork has a lane, and</tspan></text>
-                        <text x="110" y="312">says where it stands.</text>
-                        <text x="40" y="348"><tspan class="mf-tag">5/5</tspan><tspan dx="8">Keep one; what it learned</tspan></text>
-                        <text x="40" y="364">comes back into the thread.</text>
+                        <text x="40" y="20"><tspan class="mf-tag">1/5</tspan><tspan dx="8">You ask one agent to plan.</tspan></text>
+                        <text x="40" y="64"><tspan class="mf-tag">2/5</tspan><tspan dx="8">It hands out two tasks,</tspan></text>
+                        <text x="40" y="80">each in a worktree of its own.</text>
+                        <text x="40" y="108"><tspan class="mf-tag">3/5</tspan><tspan dx="8">Two agents work at once.</tspan></text>
+                        <text x="40" y="348"><tspan class="mf-tag">4/5</tspan><tspan dx="8">Each result comes back.</tspan></text>
+                        <text x="40" y="380"><tspan class="mf-tag">5/5</tspan><tspan dx="8">Two pull requests and a wiki</tspan></text>
+                        <text x="40" y="396">change, merged as one.</text>
                       </g>
-                      <circle class="tg-here__ring" cx="16" cy="388" r="9" /><circle class="tg-here__pivot" cx="16" cy="388" r="4" />
-                      <text class="mf-tag" x="40" y="392">You are here</text>
+                      <g class="tg-group">
+                        <rect x="8" y="410" width="316" height="62" />
+                        <text x="20" y="434">#512 · #513 · Payments wiki change</text>
+                        <text class="mf-tag" x="20" y="458">One change group · Merged</text>
+                      </g>
                     </svg>
                   </div>
                 </div>
                 <ol class="story__steps">
-                  <li data-step="0"><span class="tag">[1/5]</span><span>A thread is a line of turns: you ask, the agent works, you read what it did.</span></li>
-                  <li data-step="1"><span class="tag">[2/5]</span><span>When a turn ends, the conversation and the code are saved together as a checkpoint.</span></li>
-                  <li data-step="2"><span class="tag">[3/5]</span><span>Fork from any checkpoint. Each fork gets its own branch, and can run a different agent.</span></li>
-                  <li data-step="3"><span class="tag">[4/5]</span><span>Each fork gets a lane. Quiet turns fold into a count, and every fork says where it stands: its agent, working or idle, and since when.</span></li>
-                  <li data-step="4"><span class="tag">[5/5]</span><span>Keep one fork, and carry what it learned back into the thread you started from.</span></li>
+                  <li data-step="0"><span class="tag">[1/5]</span><span>You ask one agent to plan the work. Here, Claude, in one thread.</span></li>
+                  <li data-step="1"><span class="tag">[2/5]</span><span>It hands two tasks to two agents, on any provider, each in a git worktree of its own.</span></li>
+                  <li data-step="2"><span class="tag">[3/5]</span><span>They work at once, and each says where it stands: working, then done.</span></li>
+                  <li data-step="3"><span class="tag">[4/5]</span><span>Each result comes back to the planning thread, as a row it can read and act on.</span></li>
+                  <li data-step="4"><span class="tag">[5/5]</span><span>Their pull requests and the wiki change form one change group, and merge together.</span></li>
                 </ol>
                 <div class="story__text">
-                  <h3 class="h2 story__title">Lineage draws it beside the chat.</h3>
+                  <h3 class="h2 story__title">One thread holds the whole task.</h3>
                   <p class="body">
-                    Open the Lineage tab next to any thread. Hover a turn for its question, its reply and
-                    the files it changed; click it to scroll the chat there, or click a fork to open it in
-                    a tab. What comes back from a fork arrives as a summary, so the thread stays readable.
+                    The planning thread keeps what was asked, who took each piece and what came back. Open
+                    any of the agents from it in a tab to read its work, or steer it yourself.
                   </p>
                   <ul class="caps">
-                    <li>Put the files back as they were at any turn.</li>
-                    <li>Each fork works on a branch of its own.</li>
-                    <li>Switch agents between turns.</li>
-                    <li>Checkpoints are git refs you can read without us.</li>
+                    <li>Hand off to any provider, on your own accounts.</li>
+                    <li>Each agent works in a git worktree of its own.</li>
+                    <li>Results land back in the thread that asked.</li>
+                    <li>Code and docs from every thread ship as one change.</li>
                   </ul>
                 </div>
               </div>
