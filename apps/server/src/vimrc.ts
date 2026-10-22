@@ -25,6 +25,7 @@ import {
   upsertVimrcMapping,
 } from "@t3tools/shared/vimrc";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -128,11 +129,10 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  const publish = (state: ServerVimrc) =>
-    Effect.gen(function* () {
-      const previous = yield* Ref.getAndSet(published, state.text);
-      if (previous !== state.text) yield* PubSub.publish(changes, state);
-    });
+  const publish = Effect.fn("Vimrc.publish")(function* (state: ServerVimrc) {
+    const previous = yield* Ref.getAndSet(published, state.text);
+    if (previous !== state.text) yield* PubSub.publish(changes, state);
+  });
 
   /** Rewrites the file with `edit` applied to its text, keeping every line `edit` leaves. */
   const edit = (change: (text: string) => string) =>
@@ -150,20 +150,30 @@ const make = Effect.gen(function* () {
     const directory = path.dirname(vimrcConfigPath);
     const file = path.basename(vimrcConfigPath);
     const resolved = path.resolve(vimrcConfigPath);
+    // Running the stream is what attaches the watcher, so wait for it: a save made right after
+    // the server starts is otherwise missed. A watch that fails to start lets go of the wait too.
+    const ready = yield* Deferred.make<void>();
     // Debounced: editors emit several events per save, and `fs.watch` can fire before the
     // content is flushed.
-    const events = fs.watch(directory).pipe(
-      Stream.filter(
-        (event) =>
-          event.path === file ||
-          event.path === vimrcConfigPath ||
-          path.resolve(directory, event.path) === resolved,
-      ),
-      Stream.debounce(Duration.millis(100)),
-    );
+    const events = fs
+      .watch(directory, { onReady: () => Deferred.doneUnsafe(ready, Effect.void) })
+      .pipe(
+        Stream.filter(
+          (event) =>
+            event.path === file ||
+            event.path === vimrcConfigPath ||
+            path.resolve(directory, event.path) === resolved,
+        ),
+        Stream.debounce(Duration.millis(100)),
+      );
     yield* Stream.runForEach(events, () =>
       writeLock.withPermits(1)(Effect.flatMap(getSnapshot, publish)),
-    ).pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(watcherScope), Effect.asVoid);
+    ).pipe(
+      Effect.ignoreCause({ log: true }),
+      Effect.ensuring(Deferred.done(ready, Exit.void)),
+      Effect.forkIn(watcherScope),
+    );
+    yield* Deferred.await(ready);
   });
 
   // A missing file is created, so Settings can open it; the vimrc is cosmetic to the server, so
